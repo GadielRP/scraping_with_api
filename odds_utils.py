@@ -263,25 +263,42 @@ def validate_odds_data(odds_data: Dict) -> bool:
         # Complete odds validation - check opening and current odds fields
         required_fields = ['one_open', 'two_open', 'one_cur', 'two_cur']
         validation_type = "complete odds"
+        
+        for field in required_fields:
+            if field not in odds_data or odds_data[field] is None:
+                logger.debug(f"Missing required {validation_type} field: {field}")
+                return False
     else:
         # Final odds validation - check current/final odds fields (either one_cur or one_final)
         if 'one_final' in odds_data:
-            required_fields = ['one_final', 'x_final', 'two_final']
+            # For final odds, only require 1 and 2 (home and away)
+            # X (draw) is optional as some sports don't have draw options
+            required_fields = ['one_final', 'two_final']
             validation_type = "final odds (pre-start)"
         else:
-            required_fields = ['one_cur', 'x_cur', 'two_cur']
+            # For current odds, only require 1 and 2 (home and away)
+            # X (draw) is optional as some sports don't have draw options
+            required_fields = ['one_cur', 'two_cur']
             validation_type = "final odds (discovery)"
+        
+        for field in required_fields:
+            if field not in odds_data or odds_data[field] is None:
+                logger.debug(f"Missing required {validation_type} field: {field}")
+                return False
     
-    for field in required_fields:
-        if field not in odds_data or odds_data[field] is None:
-            logger.debug(f"Missing required {validation_type} field: {field}")
-            return False
+    # Check for reasonable odds values (between 1.001 and 1000) - ONLY for numeric fields
+    # Include optional draw fields if they exist and are not None
+    numeric_fields = required_fields.copy()
+    if odds_data.get('x_open') is not None:
+        numeric_fields.append('x_open')
+    if odds_data.get('x_cur') is not None:
+        numeric_fields.append('x_cur')
+    if odds_data.get('x_final') is not None:
+        numeric_fields.append('x_final')
     
-    # Check for reasonable odds values (between 1.01 and 1000) - ONLY for numeric fields
-    numeric_fields = required_fields + ['x_open', 'x_cur'] if 'x_open' in odds_data else required_fields
     for field in numeric_fields:
         value = odds_data.get(field)
-        if value is not None and isinstance(value, (int, float, Decimal)) and (value < 1.01 or value > 1000):
+        if value is not None and isinstance(value, (int, float, Decimal)) and (value < 1.001 or value > 1000):
             logger.warning(f"Odds value out of reasonable range: {field}={value}")
             return False
     

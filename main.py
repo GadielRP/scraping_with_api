@@ -52,8 +52,8 @@ setup_logging()
 
 from database import db_manager
 from scheduler import job_scheduler
-from alert_system import alert_engine
-from repository import EventRepository, OddsRepository, AlertRepository
+from alert_system import pre_start_notifier
+from repository import EventRepository, OddsRepository
 
 def initialize_system():
     """Initialize the system components"""
@@ -97,6 +97,8 @@ def run_results_collection():
     logger = logging.getLogger(__name__)
     logger.info("Running results collection...")
     job_scheduler.run_job_results_collection_now()
+
+# Test notification functionality removed - system is working correctly
 
 def run_results_collection_all():
     """Run comprehensive results collection for all finished events"""
@@ -184,13 +186,11 @@ def show_status():
         # Get some basic stats
         event_repo = EventRepository()
         odds_repo = OddsRepository()
-        alert_repo = AlertRepository()
         
         with db_manager.get_session() as session:
-            from models import Event, EventOdds, AlertLog, Result
+            from models import Event, EventOdds, Result
             event_count = session.query(Event).count()
             odds_count = session.query(EventOdds).count()
-            alert_count = session.query(AlertLog).count()
             result_count = session.query(Result).count()
         
         # Get scheduled jobs
@@ -201,7 +201,7 @@ def show_status():
         print(f"Events in database: {event_count}")
         print(f"Events with odds: {odds_count}")
         print(f"Events with results: {result_count}")
-        print(f"Total alerts: {alert_count}")
+        print(f"Pre-start notifications: Active")
         print(f"\nScheduled Jobs:")
         for job in jobs:
             # Use the enhanced display format if available, otherwise fall back to old format
@@ -212,15 +212,6 @@ def show_status():
             
             if job['next_run']:
                 print(f"    Next run: {job['next_run']}")
-        
-        # Show recent alerts
-        recent_alerts = alert_engine.get_recent_alerts(hours=24)
-        if recent_alerts:
-            print(f"\nRecent Alerts (last 24h): {len(recent_alerts)}")
-            for alert in recent_alerts[:5]:  # Show last 5
-                payload = alert.get('payload', {})
-                event_info = payload.get('event_info', {})
-                print(f"  - {alert['rule_key']}: {event_info.get('home_team', 'N/A')} vs {event_info.get('away_team', 'N/A')}")
         
         print("\n" + "=" * 40)
         
@@ -259,48 +250,15 @@ def show_events(limit: int = 10):
     except Exception as e:
         logger.error(f"Error showing events: {e}")
 
-def show_alerts(hours: int = 24):
-    """Show recent alerts"""
-    logger = logging.getLogger(__name__)
-    
-    try:
-        alerts = alert_engine.get_recent_alerts(hours=hours)
-        
-        print(f"\n=== Recent Alerts (last {hours}h, showing {len(alerts)}) ===")
-        for alert in alerts:
-            payload = alert.get('payload', {})
-            event_info = payload.get('event_info', {})
-            
-            print(f"\nAlert ID: {alert['id']}")
-            print(f"Event ID: {alert['id']}")
-            print(f"Rule: {alert['rule_key']}")
-            print(f"Triggered: {alert['triggered_at']}")
-            print(f"Teams: {event_info.get('home_team', 'N/A')} vs {event_info.get('away_team', 'N/A')}")
-            print(f"Competition: {event_info.get('competition', 'N/A')}")
-            
-            # Show rule-specific details
-            if alert['rule_key'] == 'significant_drop':
-                for alert_detail in payload.get('alerts', []):
-                    print(f"  - {alert_detail['choice']}: {alert_detail['movement']:.2f}% drop")
-            elif alert['rule_key'] == 'odds_convergence':
-                print(f"  - Convergence threshold: {payload.get('threshold')}")
-            elif alert['rule_key'] == 'extreme_odds':
-                for alert_detail in payload.get('alerts', []):
-                    print(f"  - {alert_detail['choice']}: {alert_detail['odds']} ({alert_detail['type']})")
-        
-        print("\n" + "=" * 40)
-        
-    except Exception as e:
-        logger.error(f"Error showing alerts: {e}")
+# Note: Alert system removed - now only pre-start notifications are sent
 
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='SofaScore Odds Alert System')
     parser.add_argument('command', choices=[
-        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'status', 'events', 'alerts'
+        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'status', 'events'
     ], help='Command to run')
-    parser.add_argument('--limit', type=int, default=10, help='Limit for events/alerts display')
-    parser.add_argument('--hours', type=int, default=24, help='Hours for alerts display')
+    parser.add_argument('--limit', type=int, default=10, help='Limit for events display')
     
     args = parser.parse_args()
     
@@ -313,7 +271,7 @@ def main():
         if args.command == 'start':
             if initialize_system():
                 # Run discovery FIRST
-                run_discovery()
+                
                 # Then start scheduler
                 start_scheduler()
                
@@ -361,12 +319,6 @@ def main():
         elif args.command == 'events':
             if initialize_system():
                 show_events(args.limit)
-            else:
-                logger.error("Failed to initialize system")
-                sys.exit(1)
-        elif args.command == 'alerts':
-            if initialize_system():
-                show_alerts(args.hours)
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)

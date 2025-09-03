@@ -9,7 +9,7 @@ from config import Config
 from sofascore_api import api_client
 from repository import EventRepository, OddsRepository, ResultRepository
 from odds_utils import process_event_odds_from_dropping_odds, process_event_odds
-from alert_system import alert_engine
+from alert_system import pre_start_notifier
 
 logger = logging.getLogger(__name__)
 
@@ -179,16 +179,7 @@ class JobScheduler:
                         skipped_count += 1
                         continue
                     
-                    # Evaluate alerts (fetch fresh EventOdds object if needed)
-                    if Config.ALERT_ENABLED:
-                        # Get fresh EventOdds object for alert evaluation
-                        event_odds = self.odds_repo.get_event_odds(int(id))
-                        if event_odds:
-                            alerts = alert_engine.evaluate_event(event_odds)
-                            if alerts:
-                                logger.info(f"Triggered {len(alerts)} alerts for event {id}")
-                        else:
-                            logger.warning(f"Could not retrieve event odds for alert evaluation: {id}")
+                    # Note: Alert system removed - now only pre-start notifications are sent
                     
                     processed_count += 1
                     
@@ -237,15 +228,7 @@ class JobScheduler:
                 logger.error(f"Failed to upsert event odds for event {id}")
                 return
             
-            # Evaluate alerts
-            if Config.ALERT_ENABLED:
-                event_odds = self.odds_repo.get_event_odds(id)
-                if event_odds:
-                    alerts = alert_engine.evaluate_event(event_odds)
-                    if alerts:
-                        logger.info(f"Triggered {len(alerts)} alerts for event {id}")
-                else:
-                    logger.warning(f"Could not retrieve event odds for alert evaluation: {id}")
+            # Note: Alert system removed - now only pre-start notifications are sent
             
             logger.info(f"Job B completed for event {id}")
             
@@ -253,73 +236,126 @@ class JobScheduler:
             logger.error(f"Error in Job B for event {id}: {e}")
     
     def job_pre_start_check(self):
-        """Job C: Pre-start check for events starting within 30 minutes"""
+        """
+        Job C: Pre-start check for events starting within 30 minutes
+        
+        SMART ODDS EXTRACTION: Only extracts odds at key moments (30 min and 5 min before start)
+        to avoid unnecessary API calls when odds don't change significantly.
+        
+        SMART NOTIFICATIONS: Only sends Telegram notifications when odds are extracted at key moments
+        (30 min and 5 min), but includes ALL upcoming games in those notifications to avoid missing games.
+        """
         logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
         logger.info("Starting Job C: Pre-start check for upcoming games")
         
         try:
-            # Get events starting within the next 30 minutes
-            events = self.event_repo.get_events_starting_soon(Config.PRE_START_WINDOW_MINUTES)
-            if not events:
+            # Get events starting within the next 30 minutes WITH their odds data
+            events_with_odds = self.event_repo.get_events_starting_soon_with_odds(Config.PRE_START_WINDOW_MINUTES)
+            if not events_with_odds:
                 logger.debug("No events starting within the next 30 minutes")
                 return
             
-            logger.info(f"Found {len(events)} events starting within {Config.PRE_START_WINDOW_MINUTES} minutes")
+            logger.info(f"Found {len(events_with_odds)} events starting within {Config.PRE_START_WINDOW_MINUTES} minutes")
+            
+            # Prepare upcoming events data for notifications (ALL games, with updated odds when available)
+            upcoming_events_data = []
             
             # Process each upcoming event
             processed_count = 0
-            for event in events:
+            odds_extracted_count = 0
+            for event_data in events_with_odds:
                 try:
-                    minutes_until_start = self._minutes_until_start(event.start_time_utc)
-                    logger.info(f"🚨 UPCOMING GAME ALERT: {event.home_team} vs {event.away_team} starts in {minutes_until_start} minutes")
+                    minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
+                    logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
                     
-                    # Fetch final odds for this upcoming game using specific event endpoint
-                    logger.info(f"Fetching final odds for upcoming game: {event.id}")
-                    final_odds_response = api_client.get_event_final_odds(event.id, event.slug)
+                    # SMART ODDS EXTRACTION: Only extract odds at key moments (30 min and 5 min)
+                    should_extract_odds = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
                     
-                    if final_odds_response:
-                        # Process the final odds data
-                        final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
-                        if final_odds_data:
-                            # Update the event odds with final odds
-                            upserted_id = self.odds_repo.upsert_event_odds(event.id, final_odds_data)
-                            if upserted_id:
-                                logger.info(f"✅ Final odds updated for {event.home_team} vs {event.away_team}")
-                                
-                                # Create final odds snapshot
-                                snapshot = self.odds_repo.create_odds_snapshot(event.id, final_odds_data)
-                                if snapshot:
-                                    logger.info(f"✅ Final odds snapshot created for event {event.id}")
-                                
-                                # Evaluate alerts with final odds
-                                if Config.ALERT_ENABLED:
-                                    event_odds = self.odds_repo.get_event_odds(event.id)
-                                    if event_odds:
-                                        alerts = alert_engine.evaluate_event(event_odds)
-                                        if alerts:
-                                            logger.info(f"🚨 Final odds triggered {len(alerts)} alerts for {event.home_team} vs {event.away_team}")
+                    # Prepare event data for notification (will be updated with fresh odds if extracted)
+                    notification_event_data = {
+                        'home_team': event_data['home_team'],
+                        'away_team': event_data['away_team'],
+                        'competition': event_data['competition'],
+                        'start_time': event_data['start_time_utc'].strftime("%H:%M"),
+                        'minutes_until_start': minutes_until_start,
+                        'odds': event_data.get('odds')  # Start with existing odds from database
+                    }
+                    
+                    if should_extract_odds:
+                        logger.info(f"🎯 EXTRACTING ODDS: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start")
+                        
+                        # Fetch final odds for this upcoming game using specific event endpoint
+                        final_odds_response = api_client.get_event_final_odds(event_data['id'], event_data['slug'])
+                        
+                        if final_odds_response:
+                            # Process the final odds data
+                            final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
+                            if final_odds_data:
+                                # Update the event odds with final odds
+                                upserted_id = self.odds_repo.upsert_event_odds(event_data['id'], final_odds_data)
+                                if upserted_id:
+                                    logger.info(f"✅ Final odds updated for {event_data['home_team']} vs {event_data['away_team']}")
+                                    
+                                    # Create final odds snapshot
+                                    snapshot = self.odds_repo.create_odds_snapshot(event_data['id'], final_odds_data)
+                                    if snapshot:
+                                        logger.info(f"✅ Final odds snapshot created for event {event_data['id']}")
+                                        odds_extracted_count += 1
+                                        
+                                        # Update notification data with fresh odds (merge with existing odds)
+                                        existing_odds = notification_event_data['odds'] or {}
+                                        merged_odds = {
+                                            # Keep existing opening odds
+                                            'one_open': existing_odds.get('one_open'),
+                                            'x_open': existing_odds.get('x_open'),
+                                            'two_open': existing_odds.get('two_open'),
+                                            # Add fresh final odds
+                                            'one_final': final_odds_data.get('one_final'),
+                                            'x_final': final_odds_data.get('x_final'),
+                                            'two_final': final_odds_data.get('two_final')
+                                        }
+                                        notification_event_data['odds'] = merged_odds
+                                        logger.info(f"📱 Updated odds for notification: {event_data['home_team']} vs {event_data['away_team']} (odds extracted at {minutes_until_start} min)")
+                                else:
+                                    logger.warning(f"Failed to update final odds for event {event_data['id']}")
                             else:
-                                logger.warning(f"Failed to update final odds for event {event.id}")
+                                logger.warning(f"No final odds data extracted for event {event_data['id']}")
                         else:
-                            logger.warning(f"No final odds data extracted for event {event.id}")
+                            logger.warning(f"Failed to fetch final odds for event {event_data['id']}")
                     else:
-                        logger.warning(f"Failed to fetch final odds for event {event.id}")
+                        logger.debug(f"⏭️ SKIPPING ODDS EXTRACTION: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start (not a key moment)")
+                    
+                    # ALWAYS add to notifications (with existing odds if no extraction, or fresh odds if extracted)
+                    upcoming_events_data.append(notification_event_data)
+                    logger.info(f"📱 Added to notifications: {event_data['home_team']} vs {event_data['away_team']} (odds: {'fresh' if should_extract_odds else 'existing'})")
                     
                     processed_count += 1
                     
-                    # TODO: Send notification/alert about upcoming game
-                    # This could be:
-                    # - Email notification
-                    # - Telegram message
-                    # - SMS alert
-                    # - Webhook to external system
-                    
                 except Exception as e:
-                    logger.error(f"Error processing upcoming event {event.id}: {e}")
+                    logger.error(f"Error processing upcoming event {event_data['id']}: {e}")
                     continue
+            
+            # Send notifications about upcoming games ONLY when odds are extracted
+            if upcoming_events_data and Config.NOTIFICATIONS_ENABLED and odds_extracted_count > 0:
+                logger.info(f"Sending notifications for {len(upcoming_events_data)} upcoming games (odds extracted for {odds_extracted_count} games)")
+                notification_sent = pre_start_notifier.notify_upcoming_games(upcoming_events_data)
+                if notification_sent:
+                    logger.info("✅ Upcoming games notifications sent successfully")
+                else:
+                    logger.warning("⚠️ Failed to send some upcoming games notifications")
+            elif upcoming_events_data and Config.NOTIFICATIONS_ENABLED and odds_extracted_count == 0:
+                logger.info(f"📱 NO NOTIFICATIONS SENT: {len(upcoming_events_data)} games found but no odds extracted (not at key moments)")
+            elif upcoming_events_data and not Config.NOTIFICATIONS_ENABLED:
+                logger.info("Notifications disabled - would have sent notifications for upcoming games")
             
             if processed_count > 0:
                 logger.info(f"🚨 Pre-start check completed: {processed_count} games starting soon!")
+                if odds_extracted_count > 0:
+                    logger.info(f"🎯 Odds extracted for {odds_extracted_count} games (smart extraction active)")
+                    logger.info(f"📱 Notifications sent for {len(upcoming_events_data)} games (only when odds extracted)")
+                else:
+                    logger.info(f"⏭️ No odds extracted (smart extraction: only at 30min and 5min)")
+                    logger.info(f"📱 No notifications sent (not at key moments)")
             else:
                 logger.info("Pre-start check completed: No games starting soon")
             
@@ -332,7 +368,32 @@ class JobScheduler:
         # Use local time since SofaScore provides local times
         now = datetime.now()
         time_diff = start_time_utc - now
-        return int(time_diff.total_seconds() / 60)
+        return round(time_diff.total_seconds() / 60)
+    
+    def _should_extract_odds_for_event(self, event_id: int, minutes_until_start: int) -> bool:
+        """
+        Smart logic to determine if odds should be extracted for an event.
+        Only extract odds at key moments: 30 minutes and 5 minutes before start.
+        
+        Args:
+            event_id: Event ID
+            minutes_until_start: Minutes until the event starts
+            
+        Returns:
+            True if odds should be extracted, False otherwise
+        """
+        # Key moments for odds extraction
+        KEY_MOMENTS = [30, 5]
+        
+        # Check if current time aligns with a key moment
+        should_extract = minutes_until_start in KEY_MOMENTS
+        
+        if should_extract:
+            logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until_start} minutes until start - WILL EXTRACT ODDS")
+        else:
+            logger.debug(f"⏭️ Not a key moment for event {event_id}: {minutes_until_start} minutes until start - SKIPPING ODDS EXTRACTION")
+        
+        return should_extract
     
     def job_results_collection(self):
         """Job E: Collect results for finished events from the previous day"""

@@ -66,9 +66,14 @@ class EventRepository:
             logger.error(f"Error getting event {event_id}: {e}")
             return None
     
+
+    
     @staticmethod
-    def get_events_starting_soon(window_minutes: int = 30) -> List[Event]:
-        """Get events starting within the specified window"""
+    def get_events_starting_soon_with_odds(window_minutes: int = 30) -> List[Dict]:
+        """
+        Get events starting within the specified window WITH their odds data.
+        Returns a list of dictionaries containing event info and odds.
+        """
         try:
             with db_manager.get_session() as session:
                 # Use local time since SofaScore provides local times
@@ -77,29 +82,67 @@ class EventRepository:
                 window_end = now + timedelta(minutes=window_minutes)
                 
                 # Debug logging
-                logger.debug(f"Looking for events between {window_start} and {window_end}")
+                logger.debug(f"Looking for events with odds between {window_start} and {window_end}")
                 
-                events = session.query(Event).filter(
+                # JOIN Event with EventOdds to get events with odds data
+                from sqlalchemy.orm import joinedload
+                
+                events_with_odds = session.query(Event).options(
+                    joinedload(Event.event_odds)
+                ).filter(
                     and_(
                         Event.start_time_utc >= window_start,
                         Event.start_time_utc <= window_end
                     )
                 ).all()
                 
+                # Convert to list of dictionaries with event info and odds
+                result = []
+                for event in events_with_odds:
+                    event_data = {
+                        'id': event.id,
+                        'home_team': event.home_team,
+                        'away_team': event.away_team,
+                        'competition': event.competition,
+                        'start_time_utc': event.start_time_utc,
+                        'sport': event.sport,
+                        'country': event.country,
+                        'slug': event.slug,
+                        'odds': None  # Will be populated if odds exist
+                    }
+                    
+                    # Add odds data if available
+                    if hasattr(event, 'event_odds') and event.event_odds:
+                        odds = event.event_odds
+                        event_data['odds'] = {
+                            'one_open': odds.one_open,
+                            'x_open': odds.x_open,
+                            'two_open': odds.two_open,
+                            'one_final': odds.one_final,
+                            'x_final': odds.x_final,
+                            'two_final': odds.two_final
+                        }
+                        logger.debug(f"Event {event.id}: Odds found - 1:{odds.one_final}, X:{odds.x_final}, 2:{odds.two_final}")
+                    else:
+                        logger.debug(f"Event {event.id}: No odds data available")
+                    
+                    result.append(event_data)
+                
                 # Additional debug: log what we found
-                if events:
-                    for event in events:
-                        time_until_start = event.start_time_utc - now
-                        minutes_until_start = int(time_until_start.total_seconds() / 60)
-                        logger.debug(f"Event {event.id}: {event.home_team} vs {event.away_team} starts in {minutes_until_start} minutes")
+                if result:
+                    for event_data in result:
+                        time_until_start = event_data['start_time_utc'] - now
+                        minutes_until_start = round(time_until_start.total_seconds() / 60)
+                        odds_status = "with odds" if event_data['odds'] else "without odds"
+                        logger.debug(f"Event {event_data['id']}: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes ({odds_status})")
                 else:
                     logger.debug("No events found in time window")
                 
-                logger.info(f"Found {len(events)} events starting within {window_minutes} minutes")
-                return events
+                logger.info(f"Found {len(result)} events starting within {window_minutes} minutes")
+                return result
                 
         except Exception as e:
-            logger.error(f"Error getting events starting soon: {e}")
+            logger.error(f"Error getting events starting soon with odds: {e}")
             return []
     
     @staticmethod

@@ -38,8 +38,12 @@ class Config:
     REQUEST_DELAY_SECONDS = float(os.getenv('REQUEST_DELAY_SECONDS', '1.0'))
     MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
     
-    # Alert Configuration
-    ALERT_ENABLED = os.getenv('ALERT_ENABLED', 'false').lower() == 'true'  # Temporarily disabled
+    # Notification Configuration
+    NOTIFICATIONS_ENABLED = os.getenv('NOTIFICATIONS_ENABLED', 'true').lower() == 'true'
+    
+    # Telegram Settings
+    TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
+    TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
     
     # Proxy configuration
     PROXY_ENABLED = os.getenv('PROXY_ENABLED', 'false').lower() == 'true'

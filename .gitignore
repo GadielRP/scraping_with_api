@@ -11,3 +11,12 @@ old/
 csv/
 .cursor/
 exports/
+sofascore.service 
+test_*.py
+test_proxy.py
+__pycache__/test_pre_start_scenarios.cpython-313.pyc
+deployment/
+testjson.py
+__pycache__/*.pyc
+*.pyc
+*.pyo
