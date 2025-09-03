@@ -1,0 +1,6 @@
+2025-09-02 10:28:50,491 - test - INFO - Logger: This is an INFO message
+2025-09-02 10:28:50,492 - test - WARNING - Logger: This is a WARNING message
+2025-09-02 10:28:50,492 - test - ERROR - Logger: This is an ERROR message
+2025-09-02 10:28:50,919 - flush_test - INFO - Logger: Force flush INFO message
+2025-09-02 10:28:50,919 - flush_test - WARNING - Logger: Force flush WARNING message
+2025-09-02 10:28:50,919 - flush_test - ERROR - Logger: Force flush ERROR message

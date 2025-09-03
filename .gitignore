@@ -1,0 +1,13 @@
+debug_discovery_*.json
+dropping_odds.json
+ejemplo.json
+mvp_alerta_de_momios_1_x_2_sofa_score.md
+ocr_*.py
+sofascore_api_backup.py
+changes_*.json
+all_*.json
+.env
+old/
+csv/
+.cursor/
+exports/
