@@ -8,7 +8,7 @@ import json
 from config import Config
 from sofascore_api import api_client
 from repository import EventRepository, OddsRepository, ResultRepository
-from odds_utils import process_event_odds_from_dropping_odds, process_event_odds
+from odds_utils import process_event_odds_from_dropping_odds
 from alert_system import pre_start_notifier
 
 logger = logging.getLogger(__name__)
@@ -193,47 +193,7 @@ class JobScheduler:
         except Exception as e:
             logger.error(f"Error in Job A: {e}")
     
-    def job_ingest_event_odds(self, id: int, event_slug: str = None):
-        """Job B: Ingest odds for a specific event (LEGACY - now handled in Job A)"""
-        logger.info(f"Starting Job B: Ingest odds for event {id} (LEGACY MODE)")
-        
-        try:
-            # Get odds changes using legacy method
-            response = api_client.get_event_odds_changes(id)
-            if not response:
-                logger.error(f"Failed to get odds changes for event {id}")
-                return
-            
-            # Extract odds changes
-            changed_odds = api_client.extract_odds_changes(response)
-            if not changed_odds:
-                logger.warning(f"No odds changes found for event {id}")
-                return
-            
-            # Process odds using legacy method
-            odds_data = process_event_odds(changed_odds)
-            if not odds_data:
-                logger.warning(f"Failed to process odds for event {id}")
-                return
-            
-            # Create snapshot
-            snapshot = self.odds_repo.create_odds_snapshot(id, odds_data)
-            if not snapshot:
-                logger.error(f"Failed to create odds snapshot for event {id}")
-                return
-            
-            # Upsert event odds
-            upserted_id = self.odds_repo.upsert_event_odds(id, odds_data)
-            if not upserted_id:
-                logger.error(f"Failed to upsert event odds for event {id}")
-                return
-            
-            # Note: Alert system removed - now only pre-start notifications are sent
-            
-            logger.info(f"Job B completed for event {id}")
-            
-        except Exception as e:
-            logger.error(f"Error in Job B for event {id}: {e}")
+
     
     def job_pre_start_check(self):
         """

@@ -20,3 +20,4 @@ testjson.py
 __pycache__/*.pyc
 *.pyc
 *.pyo
+.dockerignore

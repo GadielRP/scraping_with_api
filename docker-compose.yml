@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Main Application (defaults to SQLite with persistent volume)
+  app:
+    build: .
+    container_name: sofascore_app
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/sofascore_odds.db}
+      - PROXY_ENABLED=${PROXY_ENABLED:-false}
+      - PROXY_USERNAME=${PROXY_USERNAME}
+      - PROXY_PASSWORD=${PROXY_PASSWORD}
+      - PROXY_ENDPOINT=${PROXY_ENDPOINT}
+      - DISCOVERY_INTERVAL_HOURS=${DISCOVERY_INTERVAL_HOURS:-2}
+      - POLL_INTERVAL_MINUTES=${POLL_INTERVAL_MINUTES:-5}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - NOTIFICATIONS_ENABLED=${NOTIFICATIONS_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlalchemy as sa; import os; url=os.getenv('DATABASE_URL','sqlite:////app/data/sofascore_odds.db'); engine=sa.create_engine(url); conn=engine.connect(); conn.close(); print('ok')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  default:
+    name: sofascore_network

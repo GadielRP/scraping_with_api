@@ -152,12 +152,6 @@ class SofaScoreAPI:
 
         return result
     
-    def get_event_odds_changes(self, id: int) -> Optional[Dict]:
-        """Get odds changes for a specific event with enhanced browser impersonation"""
-        logger.info(f"Fetching odds changes for event {id} using browser impersonation")
-        return self._make_request(f"/event/{id}/odds/1/changes")
-    
-    
     def get_event_final_odds(self, id: int, slug: str) -> Optional[Dict]:
         """Get final odds for a specific event using the dedicated endpoint"""
         logger.info(f"Fetching final odds for event {slug} using dedicated endpoint")
@@ -412,22 +406,6 @@ class SofaScoreAPI:
         except Exception as e:
             logger.error(f"Error extracting events and odds: {e}")
             return events, odds_map
-    
-    def extract_odds_changes(self, response: Dict) -> List[Dict]:
-        """Extract odds changes from API response"""
-        try:
-            changed_odds = response.get('changedOdds') or response.get('changeOdds') or []
-            
-            if not changed_odds:
-                logger.warning("No odds changes found in response")
-                return []
-            
-            logger.info(f" Extracted {len(changed_odds)} odds changes")
-            return changed_odds
-            
-        except Exception as e:
-            logger.error(f"Error extracting odds changes: {e}")
-            return []
     
     def convert_timestamp_to_datetime(self, timestamp: int) -> datetime:
         """Convert Unix timestamp to datetime object"""

@@ -32,7 +32,7 @@ def setup_logging():
     console_handler.setFormatter(formatter)
     
     # Create file handler with UTF-8 encoding
-    file_handler = logging.FileHandler('sofascore_odds.log', encoding='utf-8')
+    file_handler = logging.FileHandler('logs/sofascore_odds.log', encoding='utf-8')
     file_handler.setLevel(getattr(logging, Config.LOG_LEVEL))
     file_handler.setFormatter(formatter)
     
@@ -54,6 +54,7 @@ from database import db_manager
 from scheduler import job_scheduler
 from alert_system import pre_start_notifier
 from repository import EventRepository, OddsRepository
+from final_odds_all import run as run_final_odds_all
 
 def initialize_system():
     """Initialize the system components"""
@@ -256,7 +257,7 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='SofaScore Odds Alert System')
     parser.add_argument('command', choices=[
-        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'status', 'events'
+        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'final-odds-all', 'status', 'events'
     ], help='Command to run')
     parser.add_argument('--limit', type=int, default=10, help='Limit for events display')
     
@@ -307,6 +308,13 @@ def main():
         elif args.command == 'results-all':
             if initialize_system():
                 run_results_collection_all()
+            else:
+                logger.error("Failed to initialize system")
+                sys.exit(1)
+        elif args.command == 'final-odds-all':
+            if initialize_system():
+                logger.info("Running final-odds-all collection...")
+                run_final_odds_all()
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)

@@ -54,65 +54,9 @@ def fractional_to_decimal(fractional_value: str) -> Optional[Decimal]:
         logger.error(f"Error converting fractional {fractional_value}: {e}")
         return None
 
-def parse_odds_changes(changed_odds: List[Dict]) -> Tuple[Optional[Dict], Optional[Dict]]:
-    """
-    Parse odds changes to extract initial and current odds.
-    
-    Args:
-        changed_odds: List of odds change objects from SofaScore API
-    
-    Returns:
-        Tuple of (initial_odds, current_odds) dictionaries
-    """
-    if not changed_odds:
-        logger.warning("No odds changes provided")
-        return None, None
-    
-    try:
-        # Sort by timestamp to ensure correct order
-        sorted_odds = sorted(changed_odds, key=lambda x: int(x.get('timestamp', 0)))
-        
-        initial_odds = sorted_odds[0]
-        current_odds = sorted_odds[-1]
-        
-        logger.debug(f"Found {len(sorted_odds)} odds changes, initial: {initial_odds.get('timestamp')}, current: {current_odds.get('timestamp')}")
-        
-        return initial_odds, current_odds
-        
-    except (KeyError, ValueError) as e:
-        logger.error(f"Error parsing odds changes: {e}")
-        return None, None
 
-def extract_choice_odds(odds_data: Dict, choice_name: str) -> Optional[Decimal]:
-    """
-    Extract decimal odds for a specific choice (1, X, 2).
-    
-    Args:
-        odds_data: Odds data object from SofaScore API
-        choice_name: Choice name ('1', 'X', '2')
-    
-    Returns:
-        Decimal odds value or None if not found
-    """
-    try:
-        choice_key = f"choice{choice_name}" if choice_name in ['1', '2'] else "choice2"
-        
-        if choice_key not in odds_data:
-            logger.debug(f"Choice {choice_name} not found in odds data")
-            return None
-        
-        choice_data = odds_data[choice_key]
-        fractional_value = choice_data.get('fractionalValue')
-        
-        if not fractional_value:
-            logger.warning(f"No fractional value for choice {choice_name}")
-            return None
-        
-        return fractional_to_decimal(fractional_value)
-        
-    except Exception as e:
-        logger.error(f"Error extracting odds for choice {choice_name}: {e}")
-        return None
+
+
 
 def process_event_odds_from_dropping_odds(event_id: str, odds_map: Dict) -> Dict:
     """
@@ -183,69 +127,9 @@ def process_event_odds_from_dropping_odds(event_id: str, odds_map: Dict) -> Dict
         logger.error(f"Error processing odds for event {event_id}: {e}")
         return {}
 
-def process_event_odds(changed_odds: List[Dict]) -> Dict:
-    """
-    Process odds changes for an event and return structured odds data.
-    LEGACY FUNCTION - maintained for backward compatibility
-    
-    Args:
-        changed_odds: List of odds change objects from SofaScore API
-    
-    Returns:
-        Dictionary with processed odds data
-    """
-    initial_odds, current_odds = parse_odds_changes(changed_odds)
-    
-    if not initial_odds or not current_odds:
-        logger.warning("Could not extract initial or current odds")
-        return {}
-    
-    # Extract odds for each choice
-    odds_data = {
-        'one_open': extract_choice_odds(initial_odds, '1'),
-        'x_open': extract_choice_odds(initial_odds, 'X'),
-        'two_open': extract_choice_odds(initial_odds, '2'),
-        'one_cur': extract_choice_odds(current_odds, '1'),
-        'x_cur': extract_choice_odds(current_odds, 'X'),
-        'two_cur': extract_choice_odds(current_odds, '2'),
-        'raw_fractional': {
-            'initial': initial_odds,
-            'current': current_odds,
-            'all_changes': changed_odds
-        }
-    }
-    
-    # Log summary
-    logger.info(f"Processed odds - Open: 1={odds_data['one_open']}, X={odds_data['x_open']}, 2={odds_data['two_open']}")
-    logger.info(f"Processed odds - Current: 1={odds_data['one_cur']}, X={odds_data['x_cur']}, 2={odds_data['two_cur']}")
-    
-    return odds_data
 
-def calculate_odds_movement(open_odds: Decimal, current_odds: Decimal) -> Optional[float]:
-    """
-    Calculate the percentage movement in odds.
-    
-    Args:
-        open_odds: Opening decimal odds
-        current_odds: Current decimal odds
-    
-    Returns:
-        Percentage change as float, or None if invalid
-    """
-    try:
-        if not open_odds or not current_odds:
-            return None
-        
-        if open_odds == 0:
-            logger.warning("Cannot calculate movement with zero opening odds")
-            return None
-        
-        movement = ((current_odds - open_odds) / open_odds) * 100
-        return float(movement)
-        
-    except Exception as e:
-        logger.error(f"Error calculating odds movement: {e}")
-        return None
+
+
 
 def validate_odds_data(odds_data: Dict) -> bool:
     """

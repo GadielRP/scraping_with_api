@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from models import Event, OddsSnapshot, EventOdds, Result, AlertLog
 from database import db_manager
-from odds_utils import process_event_odds, validate_odds_data
+from odds_utils import validate_odds_data
 
 logger = logging.getLogger(__name__)
 

@@ -9962,3 +9962,1746 @@ FROM events LEFT OUTER JOIN event_odds AS event_odds_1 ON events.id = event_odds
 2025-09-03 15:20:06,175 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
 2025-09-03 15:20:06,176 - scheduler - INFO - 🎯 Odds extracted for 1 games (smart extraction active)
 2025-09-03 15:20:06,176 - scheduler - INFO - 📱 Notifications sent for 1 games (only when odds extracted)
+2025-09-03 15:29:16,026 - root - INFO - Logging system initialized successfully
+2025-09-03 15:29:16,467 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 15:29:16,535 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 15:29:16,900 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 15:29:16,901 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 15:29:16,901 - scheduler - INFO - Jobs scheduled:
+2025-09-03 15:29:16,901 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 15:29:16,902 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 15:29:16,902 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 15:29:16,903 - __main__ - INFO - Starting SofaScore Odds System with command: pre-start
+2025-09-03 15:29:16,904 - database - INFO - Database connection test successful
+2025-09-03 15:29:16,906 - database - INFO - Database tables created successfully
+2025-09-03 15:29:16,906 - __main__ - INFO - System initialized successfully
+2025-09-03 15:29:16,906 - __main__ - INFO - Running pre-start check...
+2025-09-03 15:29:16,906 - scheduler - INFO - Running Job C immediately
+2025-09-03 15:29:16,906 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 15:29:16
+2025-09-03 15:29:16,906 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 15:29:16,921 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 15:34:46,424 - root - INFO - Logging system initialized successfully
+2025-09-03 15:34:46,799 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 15:34:46,860 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 15:34:47,210 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 15:34:47,211 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 15:34:47,211 - scheduler - INFO - Jobs scheduled:
+2025-09-03 15:34:47,211 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 15:34:47,211 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 15:34:47,211 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 15:34:47,212 - __main__ - INFO - Starting SofaScore Odds System with command: start
+2025-09-03 15:34:47,215 - database - INFO - Database connection test successful
+2025-09-03 15:34:47,216 - database - INFO - Database tables created successfully
+2025-09-03 15:34:47,216 - __main__ - INFO - System initialized successfully
+2025-09-03 15:34:47,217 - __main__ - INFO - Starting job scheduler...
+2025-09-03 15:34:47,217 - database - INFO - Database connection test successful
+2025-09-03 15:34:47,218 - database - INFO - Database tables created successfully
+2025-09-03 15:34:47,218 - __main__ - INFO - System initialized successfully
+2025-09-03 15:34:47,218 - __main__ - INFO - Starting job scheduler...
+2025-09-03 15:34:47,218 - scheduler - INFO - Scheduler loop started - monitoring for pending jobs...
+2025-09-03 15:34:47,219 - scheduler - INFO - Job scheduler started
+2025-09-03 15:34:47,219 - scheduler - INFO - Running immediate pre-start check for any games starting soon...
+2025-09-03 15:34:47,219 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 15:34:47
+2025-09-03 15:34:47,219 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 15:34:47,233 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 15:34:47,233 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 15:34:47,233 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Salisbury J / Skupski N vs Machac T / Vocel M starts in 25 minutes
+2025-09-03 15:34:47,233 - scheduler - INFO - 📱 Added to notifications: Salisbury J / Skupski N vs Machac T / Vocel M (odds: existing)
+2025-09-03 15:34:47,234 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 15:34:47,234 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 15:34:47,234 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 15:34:47,234 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 15:35:00,227 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 15:35:00
+2025-09-03 15:35:00,227 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 15:35:00,229 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 15:35:00,229 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 15:35:00,229 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Salisbury J / Skupski N vs Machac T / Vocel M starts in 25 minutes
+2025-09-03 15:35:00,230 - scheduler - INFO - 📱 Added to notifications: Salisbury J / Skupski N vs Machac T / Vocel M (odds: existing)
+2025-09-03 15:35:00,230 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 15:35:00,230 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 15:35:00,230 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 15:35:00,230 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 15:40:00,391 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 15:40:00
+2025-09-03 15:40:00,391 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 15:40:00,393 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 15:40:00,393 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 15:40:00,393 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Salisbury J / Skupski N vs Machac T / Vocel M starts in 20 minutes
+2025-09-03 15:40:00,393 - scheduler - INFO - 📱 Added to notifications: Salisbury J / Skupski N vs Machac T / Vocel M (odds: existing)
+2025-09-03 15:40:00,394 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 15:40:00,394 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 15:40:00,394 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 15:40:00,394 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 15:45:00,518 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 15:45:00
+2025-09-03 15:45:00,518 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 15:45:00,520 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 15:45:00,520 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 15:45:00,520 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: América de Cali vs Atlético Bucaramanga starts in 30 minutes
+2025-09-03 15:45:00,520 - scheduler - INFO - 🎯 Key moment detected for event 14461785: 30 minutes until start - WILL EXTRACT ODDS
+2025-09-03 15:45:00,521 - scheduler - INFO - 🎯 EXTRACTING ODDS: América de Cali vs Atlético Bucaramanga - 30 min until start
+2025-09-03 15:45:00,521 - sofascore_api - INFO - Fetching final odds for event atletico-bucaramanga-america-de-cali using dedicated endpoint
+2025-09-03 15:45:02,468 - sofascore_api - INFO - API request successful: /event/14461785/odds/1/all
+2025-09-03 15:45:02,469 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=3.00, X=3.20, 2=2.40
+2025-09-03 15:45:02,476 - scheduler - INFO - ✅ Final odds updated for América de Cali vs Atlético Bucaramanga
+2025-09-03 15:45:02,477 - repository - INFO - Created odds snapshot for event 14461785
+2025-09-03 15:45:02,482 - scheduler - INFO - ✅ Final odds snapshot created for event 14461785
+2025-09-03 15:45:02,482 - scheduler - INFO - 📱 Updated odds for notification: América de Cali vs Atlético Bucaramanga (odds extracted at 30 min)
+2025-09-03 15:45:02,482 - scheduler - INFO - 📱 Added to notifications: América de Cali vs Atlético Bucaramanga (odds: fresh)
+2025-09-03 15:45:02,482 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Salisbury J / Skupski N vs Machac T / Vocel M starts in 15 minutes
+2025-09-03 15:45:02,483 - scheduler - INFO - 📱 Added to notifications: Salisbury J / Skupski N vs Machac T / Vocel M (odds: existing)
+2025-09-03 15:45:02,483 - scheduler - INFO - Sending notifications for 2 upcoming games (odds extracted for 1 games)
+2025-09-03 15:45:03,081 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 15:45:03,081 - alert_system - INFO - ✅ Successfully sent Telegram notification for 2 upcoming games
+2025-09-03 15:45:03,082 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 15:45:03,082 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 15:45:03,082 - scheduler - INFO - 🎯 Odds extracted for 1 games (smart extraction active)
+2025-09-03 15:45:03,082 - scheduler - INFO - 📱 Notifications sent for 2 games (only when odds extracted)
+2025-09-03 15:50:00,185 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 15:50:00
+2025-09-03 15:50:00,185 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 15:50:00,186 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 15:50:00,187 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 15:50:00,187 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: América de Cali vs Atlético Bucaramanga starts in 25 minutes
+2025-09-03 15:50:00,187 - scheduler - INFO - 📱 Added to notifications: América de Cali vs Atlético Bucaramanga (odds: existing)
+2025-09-03 15:50:00,187 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Salisbury J / Skupski N vs Machac T / Vocel M starts in 10 minutes
+2025-09-03 15:50:00,187 - scheduler - INFO - 📱 Added to notifications: Salisbury J / Skupski N vs Machac T / Vocel M (odds: existing)
+2025-09-03 15:50:00,187 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 2 games found but no odds extracted (not at key moments)
+2025-09-03 15:50:00,187 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 15:50:00,187 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 15:50:00,188 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 15:51:25,899 - __main__ - INFO - Received shutdown signal, stopping scheduler...
+2025-09-03 15:51:26,220 - scheduler - INFO - Job scheduler stopped
+2025-09-03 15:53:12,049 - root - INFO - Logging system initialized successfully
+2025-09-03 15:53:13,101 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 15:53:13,349 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 15:53:14,051 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 15:53:14,053 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 15:53:14,054 - scheduler - INFO - Jobs scheduled:
+2025-09-03 15:53:14,054 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 15:53:14,054 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 15:53:14,054 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 15:53:14,060 - __main__ - INFO - Starting SofaScore Odds System with command: start
+2025-09-03 15:53:14,066 - database - INFO - Database connection test successful
+2025-09-03 15:53:14,072 - database - INFO - Database tables created successfully
+2025-09-03 15:53:14,076 - __main__ - INFO - System initialized successfully
+2025-09-03 15:53:14,077 - __main__ - INFO - Starting job scheduler...
+2025-09-03 15:53:14,079 - database - INFO - Database connection test successful
+2025-09-03 15:53:14,085 - database - INFO - Database tables created successfully
+2025-09-03 15:53:14,088 - __main__ - INFO - System initialized successfully
+2025-09-03 15:53:14,088 - __main__ - INFO - Starting job scheduler...
+2025-09-03 15:53:14,100 - scheduler - INFO - Scheduler loop started - monitoring for pending jobs...
+2025-09-03 15:53:14,100 - scheduler - INFO - Job scheduler started
+2025-09-03 15:53:14,104 - scheduler - INFO - Running immediate pre-start check for any games starting soon...
+2025-09-03 15:53:14,105 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 15:53:14
+2025-09-03 15:53:14,106 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 15:53:14,130 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 15:53:14,132 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 15:53:14,134 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: América de Cali vs Atlético Bucaramanga starts in 22 minutes
+2025-09-03 15:53:14,145 - scheduler - INFO - 📱 Added to notifications: América de Cali vs Atlético Bucaramanga (odds: existing)
+2025-09-03 15:53:14,146 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Salisbury J / Skupski N vs Machac T / Vocel M starts in 7 minutes
+2025-09-03 15:53:14,146 - scheduler - INFO - 📱 Added to notifications: Salisbury J / Skupski N vs Machac T / Vocel M (odds: existing)
+2025-09-03 15:53:14,151 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 2 games found but no odds extracted (not at key moments)
+2025-09-03 15:53:14,154 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 15:53:14,155 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 15:53:14,157 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 15:55:00,161 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 15:55:00
+2025-09-03 15:55:00,162 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 15:55:00,163 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 15:55:00,163 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 15:55:00,163 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: América de Cali vs Atlético Bucaramanga starts in 20 minutes
+2025-09-03 15:55:00,164 - scheduler - INFO - 📱 Added to notifications: América de Cali vs Atlético Bucaramanga (odds: existing)
+2025-09-03 15:55:00,164 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Salisbury J / Skupski N vs Machac T / Vocel M starts in 5 minutes
+2025-09-03 15:55:00,164 - scheduler - INFO - 🎯 Key moment detected for event 14508083: 5 minutes until start - WILL EXTRACT ODDS
+2025-09-03 15:55:00,164 - scheduler - INFO - 🎯 EXTRACTING ODDS: Salisbury J / Skupski N vs Machac T / Vocel M - 5 min until start
+2025-09-03 15:55:00,164 - sofascore_api - INFO - Fetching final odds for event machac-vocel-salisbury-skupski using dedicated endpoint
+2025-09-03 15:55:01,184 - sofascore_api - INFO - API request successful: /event/14508083/odds/1/all
+2025-09-03 15:55:01,184 - sofascore_api - INFO - ✅ Final odds extracted (2-choice market): 1=1.30, X=None, 2=3.40
+2025-09-03 15:55:01,191 - scheduler - INFO - ✅ Final odds updated for Salisbury J / Skupski N vs Machac T / Vocel M
+2025-09-03 15:55:01,192 - repository - INFO - Created odds snapshot for event 14508083
+2025-09-03 15:55:01,196 - scheduler - INFO - ✅ Final odds snapshot created for event 14508083
+2025-09-03 15:55:01,196 - scheduler - INFO - 📱 Updated odds for notification: Salisbury J / Skupski N vs Machac T / Vocel M (odds extracted at 5 min)
+2025-09-03 15:55:01,197 - scheduler - INFO - 📱 Added to notifications: Salisbury J / Skupski N vs Machac T / Vocel M (odds: fresh)
+2025-09-03 15:55:01,197 - scheduler - INFO - Sending notifications for 2 upcoming games (odds extracted for 1 games)
+2025-09-03 15:55:01,789 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 15:55:01,790 - alert_system - INFO - ✅ Successfully sent Telegram notification for 2 upcoming games
+2025-09-03 15:55:01,790 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 15:55:01,790 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 15:55:01,791 - scheduler - INFO - 🎯 Odds extracted for 1 games (smart extraction active)
+2025-09-03 15:55:01,791 - scheduler - INFO - 📱 Notifications sent for 2 games (only when odds extracted)
+2025-09-03 16:00:00,904 - scheduler - INFO - Starting Job A: Event Discovery with Odds Processing
+2025-09-03 16:00:00,905 - sofascore_api - INFO - Fetching dropping odds events with odds data using browser impersonation
+2025-09-03 16:00:02,077 - sofascore_api - INFO - API request successful: /odds/1/dropping/all
+2025-09-03 16:00:02,094 - sofascore_api - INFO -  Extracted 20 odds entries from response
+2025-09-03 16:00:02,094 - sofascore_api - INFO -  Extracted 20 valid events from dropping odds
+2025-09-03 16:00:02,094 - scheduler - INFO - Found 20 events in dropping odds
+2025-09-03 16:00:02,100 - odds_utils - INFO - Processed odds - Open: 1=1.08, X=None, 2=7.00
+2025-09-03 16:00:02,101 - odds_utils - INFO - Processed odds - Current: 1=1.32, X=None, 2=3.15
+2025-09-03 16:00:02,101 - repository - INFO - Created odds snapshot for event 14282490
+2025-09-03 16:00:02,113 - odds_utils - INFO - Processed odds - Open: 1=5.25, X=3.40, 2=1.73
+2025-09-03 16:00:02,113 - odds_utils - INFO - Processed odds - Current: 1=2.88, X=3.30, 2=2.40
+2025-09-03 16:00:02,114 - repository - INFO - Created odds snapshot for event 14461710
+2025-09-03 16:00:02,125 - odds_utils - INFO - Processed odds - Open: 1=51.00, X=17.00, 2=1.03
+2025-09-03 16:00:02,125 - odds_utils - INFO - Processed odds - Current: 1=29.00, X=10.00, 2=1.07
+2025-09-03 16:00:02,126 - repository - INFO - Created odds snapshot for event 14582727
+2025-09-03 16:00:02,135 - odds_utils - INFO - Processed odds - Open: 1=1.85, X=3.30, 2=4.00
+2025-09-03 16:00:02,135 - odds_utils - INFO - Processed odds - Current: 1=3.00, X=3.20, 2=2.40
+2025-09-03 16:00:02,135 - repository - INFO - Created odds snapshot for event 14461785
+2025-09-03 16:00:02,146 - odds_utils - INFO - Processed odds - Open: 1=1.70, X=8.00, 2=2.90
+2025-09-03 16:00:02,146 - odds_utils - INFO - Processed odds - Current: 1=2.60, X=7.50, 2=1.85
+2025-09-03 16:00:02,146 - repository - INFO - Created odds snapshot for event 14211111
+2025-09-03 16:00:02,156 - odds_utils - INFO - Processed odds - Open: 1=1.57, X=None, 2=2.25
+2025-09-03 16:00:02,157 - odds_utils - INFO - Processed odds - Current: 1=2.00, X=None, 2=1.73
+2025-09-03 16:00:02,157 - repository - INFO - Created odds snapshot for event 14508086
+2025-09-03 16:00:02,166 - odds_utils - INFO - Processed odds - Open: 1=1.67, X=5.00, 2=3.20
+2025-09-03 16:00:02,166 - odds_utils - INFO - Processed odds - Current: 1=1.28, X=6.50, 2=5.50
+2025-09-03 16:00:02,167 - repository - INFO - Created odds snapshot for event 14594016
+2025-09-03 16:00:02,177 - odds_utils - INFO - Processed odds - Open: 1=1.80, X=7.50, 2=2.70
+2025-09-03 16:00:02,178 - odds_utils - INFO - Processed odds - Current: 1=1.47, X=8.50, 2=3.80
+2025-09-03 16:00:02,178 - repository - INFO - Created odds snapshot for event 14211097
+2025-09-03 16:00:02,188 - odds_utils - INFO - Processed odds - Open: 1=1.14, X=None, 2=5.50
+2025-09-03 16:00:02,188 - odds_utils - INFO - Processed odds - Current: 1=1.18, X=None, 2=4.50
+2025-09-03 16:00:02,188 - repository - INFO - Created odds snapshot for event 14552576
+2025-09-03 16:00:02,199 - odds_utils - INFO - Processed odds - Open: 1=1.29, X=5.25, 2=7.00
+2025-09-03 16:00:02,199 - odds_utils - INFO - Processed odds - Current: 1=1.38, X=4.50, 2=5.75
+2025-09-03 16:00:02,200 - repository - INFO - Created odds snapshot for event 12183479
+2025-09-03 16:00:02,210 - odds_utils - INFO - Processed odds - Open: 1=1.95, X=None, 2=1.87
+2025-09-03 16:00:02,210 - odds_utils - INFO - Processed odds - Current: 1=2.55, X=None, 2=1.54
+2025-09-03 16:00:02,210 - repository - INFO - Created odds snapshot for event 13688679
+2025-09-03 16:00:02,221 - odds_utils - INFO - Processed odds - Open: 1=2.20, X=None, 2=1.62
+2025-09-03 16:00:02,221 - odds_utils - INFO - Processed odds - Current: 1=1.83, X=None, 2=1.83
+2025-09-03 16:00:02,221 - repository - INFO - Created odds snapshot for event 14552897
+2025-09-03 16:00:02,231 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=None, 2=2.50
+2025-09-03 16:00:02,231 - odds_utils - INFO - Processed odds - Current: 1=1.67, X=None, 2=2.10
+2025-09-03 16:00:02,232 - repository - INFO - Created odds snapshot for event 14552519
+2025-09-03 16:00:02,241 - odds_utils - INFO - Processed odds - Open: 1=1.57, X=3.60, 2=5.50
+2025-09-03 16:00:02,241 - odds_utils - INFO - Processed odds - Current: 1=1.33, X=5.00, 2=9.00
+2025-09-03 16:00:02,241 - repository - INFO - Created odds snapshot for event 14461723
+2025-09-03 16:00:02,251 - odds_utils - INFO - Processed odds - Open: 1=2.50, X=None, 2=1.50
+2025-09-03 16:00:02,251 - odds_utils - INFO - Processed odds - Current: 1=3.50, X=None, 2=1.28
+2025-09-03 16:00:02,251 - repository - INFO - Created odds snapshot for event 14552575
+2025-09-03 16:00:02,261 - odds_utils - INFO - Processed odds - Open: 1=1.30, X=None, 2=3.50
+2025-09-03 16:00:02,261 - odds_utils - INFO - Processed odds - Current: 1=1.37, X=None, 2=3.00
+2025-09-03 16:00:02,262 - repository - INFO - Created odds snapshot for event 13988507
+2025-09-03 16:00:02,271 - odds_utils - INFO - Processed odds - Open: 1=1.40, X=6.00, 2=4.33
+2025-09-03 16:00:02,271 - odds_utils - INFO - Processed odds - Current: 1=1.20, X=8.00, 2=7.00
+2025-09-03 16:00:02,271 - repository - INFO - Created odds snapshot for event 14594038
+2025-09-03 16:00:02,282 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=4.00, 2=5.50
+2025-09-03 16:00:02,282 - odds_utils - INFO - Processed odds - Current: 1=1.30, X=5.25, 2=7.50
+2025-09-03 16:00:02,282 - repository - INFO - Created odds snapshot for event 13888416
+2025-09-03 16:00:02,292 - odds_utils - INFO - Processed odds - Open: 1=2.25, X=None, 2=1.65
+2025-09-03 16:00:02,292 - odds_utils - INFO - Processed odds - Current: 1=1.95, X=None, 2=1.80
+2025-09-03 16:00:02,293 - repository - INFO - Created odds snapshot for event 14411783
+2025-09-03 16:00:02,303 - odds_utils - INFO - Processed odds - Open: 1=2.30, X=None, 2=1.63
+2025-09-03 16:00:02,303 - odds_utils - INFO - Processed odds - Current: 1=2.00, X=None, 2=1.77
+2025-09-03 16:00:02,304 - repository - INFO - Created odds snapshot for event 14411782
+2025-09-03 16:00:02,310 - scheduler - INFO - Job A completed: processed 20/20 events
+2025-09-03 16:00:02,310 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:00:02
+2025-09-03 16:00:02,310 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:00:02,311 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 16:00:02,312 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 16:00:02,312 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: América de Cali vs Atlético Bucaramanga starts in 15 minutes
+2025-09-03 16:00:02,312 - scheduler - INFO - 📱 Added to notifications: América de Cali vs Atlético Bucaramanga (odds: existing)
+2025-09-03 16:00:02,312 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Doumbia S / Reboul F vs Cash R / Tracy J starts in 20 minutes
+2025-09-03 16:00:02,312 - scheduler - INFO - 📱 Added to notifications: Doumbia S / Reboul F vs Cash R / Tracy J (odds: existing)
+2025-09-03 16:00:02,313 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 2 games found but no odds extracted (not at key moments)
+2025-09-03 16:00:02,313 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 16:00:02,313 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 16:00:02,313 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 16:05:00,434 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:05:00
+2025-09-03 16:05:00,435 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:05:00,436 - repository - INFO - Found 4 events starting within 30 minutes
+2025-09-03 16:05:00,436 - scheduler - INFO - Found 4 events starting within 30 minutes
+2025-09-03 16:05:00,436 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Columbus Clippers vs Indianapolis Indians starts in 30 minutes
+2025-09-03 16:05:00,437 - scheduler - INFO - 🎯 Key moment detected for event 14411782: 30 minutes until start - WILL EXTRACT ODDS
+2025-09-03 16:05:00,437 - scheduler - INFO - 🎯 EXTRACTING ODDS: Columbus Clippers vs Indianapolis Indians - 30 min until start
+2025-09-03 16:05:00,437 - sofascore_api - INFO - Fetching final odds for event indianapolis-indians-columbus-clippers using dedicated endpoint
+2025-09-03 16:05:01,599 - sofascore_api - INFO - API request successful: /event/14411782/odds/1/all
+2025-09-03 16:05:01,599 - sofascore_api - INFO - ✅ Final odds extracted (2-choice market): 1=2.00, X=None, 2=1.77
+2025-09-03 16:05:01,603 - scheduler - INFO - ✅ Final odds updated for Columbus Clippers vs Indianapolis Indians
+2025-09-03 16:05:01,603 - repository - INFO - Created odds snapshot for event 14411782
+2025-09-03 16:05:01,606 - scheduler - INFO - ✅ Final odds snapshot created for event 14411782
+2025-09-03 16:05:01,607 - scheduler - INFO - 📱 Updated odds for notification: Columbus Clippers vs Indianapolis Indians (odds extracted at 30 min)
+2025-09-03 16:05:01,607 - scheduler - INFO - 📱 Added to notifications: Columbus Clippers vs Indianapolis Indians (odds: fresh)
+2025-09-03 16:05:01,607 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Norfolk Tides vs Nashville Sounds starts in 30 minutes
+2025-09-03 16:05:01,607 - scheduler - INFO - 🎯 Key moment detected for event 14411783: 30 minutes until start - WILL EXTRACT ODDS
+2025-09-03 16:05:01,607 - scheduler - INFO - 🎯 EXTRACTING ODDS: Norfolk Tides vs Nashville Sounds - 30 min until start
+2025-09-03 16:05:01,608 - sofascore_api - INFO - Fetching final odds for event norfolk-tides-nashville-sounds using dedicated endpoint
+2025-09-03 16:05:02,091 - sofascore_api - INFO - API request successful: /event/14411783/odds/1/all
+2025-09-03 16:05:02,091 - sofascore_api - INFO - ✅ Final odds extracted (2-choice market): 1=1.95, X=None, 2=1.80
+2025-09-03 16:05:02,105 - scheduler - INFO - ✅ Final odds updated for Norfolk Tides vs Nashville Sounds
+2025-09-03 16:05:02,105 - repository - INFO - Created odds snapshot for event 14411783
+2025-09-03 16:05:02,109 - scheduler - INFO - ✅ Final odds snapshot created for event 14411783
+2025-09-03 16:05:02,110 - scheduler - INFO - 📱 Updated odds for notification: Norfolk Tides vs Nashville Sounds (odds extracted at 30 min)
+2025-09-03 16:05:02,110 - scheduler - INFO - 📱 Added to notifications: Norfolk Tides vs Nashville Sounds (odds: fresh)
+2025-09-03 16:05:02,110 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: América de Cali vs Atlético Bucaramanga starts in 10 minutes
+2025-09-03 16:05:02,110 - scheduler - INFO - 📱 Added to notifications: América de Cali vs Atlético Bucaramanga (odds: existing)
+2025-09-03 16:05:02,110 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Doumbia S / Reboul F vs Cash R / Tracy J starts in 15 minutes
+2025-09-03 16:05:02,111 - scheduler - INFO - 📱 Added to notifications: Doumbia S / Reboul F vs Cash R / Tracy J (odds: existing)
+2025-09-03 16:05:02,111 - scheduler - INFO - Sending notifications for 4 upcoming games (odds extracted for 2 games)
+2025-09-03 16:05:02,665 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 16:05:02,666 - alert_system - INFO - ✅ Successfully sent Telegram notification for 4 upcoming games
+2025-09-03 16:05:02,666 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 16:05:02,666 - scheduler - INFO - 🚨 Pre-start check completed: 4 games starting soon!
+2025-09-03 16:05:02,666 - scheduler - INFO - 🎯 Odds extracted for 2 games (smart extraction active)
+2025-09-03 16:05:02,666 - scheduler - INFO - 📱 Notifications sent for 4 games (only when odds extracted)
+2025-09-03 16:10:00,804 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:10:00
+2025-09-03 16:10:00,804 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:10:00,805 - repository - INFO - Found 4 events starting within 30 minutes
+2025-09-03 16:10:00,806 - scheduler - INFO - Found 4 events starting within 30 minutes
+2025-09-03 16:10:00,806 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Columbus Clippers vs Indianapolis Indians starts in 25 minutes
+2025-09-03 16:10:00,806 - scheduler - INFO - 📱 Added to notifications: Columbus Clippers vs Indianapolis Indians (odds: existing)
+2025-09-03 16:10:00,806 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Norfolk Tides vs Nashville Sounds starts in 25 minutes
+2025-09-03 16:10:00,806 - scheduler - INFO - 📱 Added to notifications: Norfolk Tides vs Nashville Sounds (odds: existing)
+2025-09-03 16:10:00,806 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: América de Cali vs Atlético Bucaramanga starts in 5 minutes
+2025-09-03 16:10:00,807 - scheduler - INFO - 🎯 Key moment detected for event 14461785: 5 minutes until start - WILL EXTRACT ODDS
+2025-09-03 16:10:00,807 - scheduler - INFO - 🎯 EXTRACTING ODDS: América de Cali vs Atlético Bucaramanga - 5 min until start
+2025-09-03 16:10:00,807 - sofascore_api - INFO - Fetching final odds for event atletico-bucaramanga-america-de-cali using dedicated endpoint
+2025-09-03 16:10:01,977 - sofascore_api - INFO - API request successful: /event/14461785/odds/1/all
+2025-09-03 16:10:01,977 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=3.00, X=3.20, 2=2.40
+2025-09-03 16:10:01,990 - scheduler - INFO - ✅ Final odds updated for América de Cali vs Atlético Bucaramanga
+2025-09-03 16:10:01,991 - repository - INFO - Created odds snapshot for event 14461785
+2025-09-03 16:10:01,994 - scheduler - INFO - ✅ Final odds snapshot created for event 14461785
+2025-09-03 16:10:01,994 - scheduler - INFO - 📱 Updated odds for notification: América de Cali vs Atlético Bucaramanga (odds extracted at 5 min)
+2025-09-03 16:10:01,994 - scheduler - INFO - 📱 Added to notifications: América de Cali vs Atlético Bucaramanga (odds: fresh)
+2025-09-03 16:10:01,994 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Doumbia S / Reboul F vs Cash R / Tracy J starts in 10 minutes
+2025-09-03 16:10:01,995 - scheduler - INFO - 📱 Added to notifications: Doumbia S / Reboul F vs Cash R / Tracy J (odds: existing)
+2025-09-03 16:10:01,995 - scheduler - INFO - Sending notifications for 4 upcoming games (odds extracted for 1 games)
+2025-09-03 16:10:02,577 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 16:10:02,578 - alert_system - INFO - ✅ Successfully sent Telegram notification for 4 upcoming games
+2025-09-03 16:10:02,578 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 16:10:02,578 - scheduler - INFO - 🚨 Pre-start check completed: 4 games starting soon!
+2025-09-03 16:10:02,578 - scheduler - INFO - 🎯 Odds extracted for 1 games (smart extraction active)
+2025-09-03 16:10:02,578 - scheduler - INFO - 📱 Notifications sent for 4 games (only when odds extracted)
+2025-09-03 16:15:00,722 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:15:00
+2025-09-03 16:15:00,722 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:15:00,724 - repository - INFO - Found 3 events starting within 30 minutes
+2025-09-03 16:15:00,724 - scheduler - INFO - Found 3 events starting within 30 minutes
+2025-09-03 16:15:00,724 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Columbus Clippers vs Indianapolis Indians starts in 20 minutes
+2025-09-03 16:15:00,724 - scheduler - INFO - 📱 Added to notifications: Columbus Clippers vs Indianapolis Indians (odds: existing)
+2025-09-03 16:15:00,725 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Norfolk Tides vs Nashville Sounds starts in 20 minutes
+2025-09-03 16:15:00,725 - scheduler - INFO - 📱 Added to notifications: Norfolk Tides vs Nashville Sounds (odds: existing)
+2025-09-03 16:15:00,725 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Doumbia S / Reboul F vs Cash R / Tracy J starts in 5 minutes
+2025-09-03 16:15:00,725 - scheduler - INFO - 🎯 Key moment detected for event 14508086: 5 minutes until start - WILL EXTRACT ODDS
+2025-09-03 16:15:00,725 - scheduler - INFO - 🎯 EXTRACTING ODDS: Doumbia S / Reboul F vs Cash R / Tracy J - 5 min until start
+2025-09-03 16:15:00,725 - sofascore_api - INFO - Fetching final odds for event cash-tracy-doumbia-reboul using dedicated endpoint
+2025-09-03 16:15:01,627 - sofascore_api - INFO - API request successful: /event/14508086/odds/1/all
+2025-09-03 16:15:01,627 - sofascore_api - INFO - ✅ Final odds extracted (2-choice market): 1=2.00, X=None, 2=1.73
+2025-09-03 16:15:01,641 - scheduler - INFO - ✅ Final odds updated for Doumbia S / Reboul F vs Cash R / Tracy J
+2025-09-03 16:15:01,641 - repository - INFO - Created odds snapshot for event 14508086
+2025-09-03 16:15:01,644 - scheduler - INFO - ✅ Final odds snapshot created for event 14508086
+2025-09-03 16:15:01,644 - scheduler - INFO - 📱 Updated odds for notification: Doumbia S / Reboul F vs Cash R / Tracy J (odds extracted at 5 min)
+2025-09-03 16:15:01,645 - scheduler - INFO - 📱 Added to notifications: Doumbia S / Reboul F vs Cash R / Tracy J (odds: fresh)
+2025-09-03 16:15:01,645 - scheduler - INFO - Sending notifications for 3 upcoming games (odds extracted for 1 games)
+2025-09-03 16:15:02,209 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 16:15:02,210 - alert_system - INFO - ✅ Successfully sent Telegram notification for 3 upcoming games
+2025-09-03 16:15:02,210 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 16:15:02,210 - scheduler - INFO - 🚨 Pre-start check completed: 3 games starting soon!
+2025-09-03 16:15:02,210 - scheduler - INFO - 🎯 Odds extracted for 1 games (smart extraction active)
+2025-09-03 16:15:02,210 - scheduler - INFO - 📱 Notifications sent for 3 games (only when odds extracted)
+2025-09-03 16:20:00,355 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:20:00
+2025-09-03 16:20:00,355 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:20:00,357 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 16:20:00,357 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 16:20:00,357 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Columbus Clippers vs Indianapolis Indians starts in 15 minutes
+2025-09-03 16:20:00,357 - scheduler - INFO - 📱 Added to notifications: Columbus Clippers vs Indianapolis Indians (odds: existing)
+2025-09-03 16:20:00,357 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Norfolk Tides vs Nashville Sounds starts in 15 minutes
+2025-09-03 16:20:00,357 - scheduler - INFO - 📱 Added to notifications: Norfolk Tides vs Nashville Sounds (odds: existing)
+2025-09-03 16:20:00,358 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 2 games found but no odds extracted (not at key moments)
+2025-09-03 16:20:00,358 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 16:20:00,358 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 16:20:00,358 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 16:25:00,504 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:25:00
+2025-09-03 16:25:00,504 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:25:00,506 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 16:25:00,506 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 16:25:00,506 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Columbus Clippers vs Indianapolis Indians starts in 10 minutes
+2025-09-03 16:25:00,506 - scheduler - INFO - 📱 Added to notifications: Columbus Clippers vs Indianapolis Indians (odds: existing)
+2025-09-03 16:25:00,506 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Norfolk Tides vs Nashville Sounds starts in 10 minutes
+2025-09-03 16:25:00,507 - scheduler - INFO - 📱 Added to notifications: Norfolk Tides vs Nashville Sounds (odds: existing)
+2025-09-03 16:25:00,507 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 2 games found but no odds extracted (not at key moments)
+2025-09-03 16:25:00,507 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 16:25:00,507 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 16:25:00,507 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 16:33:29,864 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:33:29
+2025-09-03 16:33:29,865 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:33:29,866 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 16:33:29,867 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 16:33:29,867 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Columbus Clippers vs Indianapolis Indians starts in 2 minutes
+2025-09-03 16:33:29,867 - scheduler - INFO - 📱 Added to notifications: Columbus Clippers vs Indianapolis Indians (odds: existing)
+2025-09-03 16:33:30,130 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Norfolk Tides vs Nashville Sounds starts in 1 minutes
+2025-09-03 16:33:30,131 - scheduler - INFO - 📱 Added to notifications: Norfolk Tides vs Nashville Sounds (odds: existing)
+2025-09-03 16:33:30,131 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 2 games found but no odds extracted (not at key moments)
+2025-09-03 16:33:30,131 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 16:33:30,132 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 16:33:30,132 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 16:35:00,177 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:35:00
+2025-09-03 16:35:00,177 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:35:00,179 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 16:40:00,310 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:40:00
+2025-09-03 16:40:00,310 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:40:00,312 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 16:45:00,457 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:45:00
+2025-09-03 16:45:00,457 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:45:00,458 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 16:50:00,611 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:50:00
+2025-09-03 16:50:00,611 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:50:00,613 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 16:52:05,075 - root - INFO - Logging system initialized successfully
+2025-09-03 16:52:05,507 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 16:52:05,566 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 16:52:05,958 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 16:52:05,958 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 16:52:05,959 - scheduler - INFO - Jobs scheduled:
+2025-09-03 16:52:05,959 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 16:52:05,959 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 16:52:05,959 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 16:53:43,164 - root - INFO - Logging system initialized successfully
+2025-09-03 16:53:43,523 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 16:53:43,587 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 16:53:43,911 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 16:53:43,912 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 16:53:43,912 - scheduler - INFO - Jobs scheduled:
+2025-09-03 16:53:43,913 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 16:53:43,913 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 16:53:43,913 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 16:53:49,957 - root - INFO - Logging system initialized successfully
+2025-09-03 16:53:50,295 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 16:53:50,351 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 16:53:50,666 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 16:53:50,666 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 16:53:50,667 - scheduler - INFO - Jobs scheduled:
+2025-09-03 16:53:50,667 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 16:53:50,667 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 16:53:50,667 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 16:53:50,668 - __main__ - INFO - Starting SofaScore Odds System with command: status
+2025-09-03 16:53:50,670 - database - INFO - Database connection test successful
+2025-09-03 16:53:50,671 - database - INFO - Database tables created successfully
+2025-09-03 16:53:50,671 - __main__ - INFO - System initialized successfully
+2025-09-03 16:53:50,672 - database - INFO - Database connection test successful
+2025-09-03 16:53:59,102 - root - INFO - Logging system initialized successfully
+2025-09-03 16:53:59,489 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 16:53:59,559 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 16:53:59,933 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 16:53:59,935 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 16:53:59,935 - scheduler - INFO - Jobs scheduled:
+2025-09-03 16:53:59,935 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 16:53:59,935 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 16:53:59,936 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 16:53:59,937 - __main__ - INFO - Starting SofaScore Odds System with command: results-all
+2025-09-03 16:53:59,939 - database - INFO - Database connection test successful
+2025-09-03 16:53:59,940 - database - INFO - Database tables created successfully
+2025-09-03 16:53:59,941 - __main__ - INFO - System initialized successfully
+2025-09-03 16:53:59,941 - __main__ - INFO - Running comprehensive results collection...
+2025-09-03 16:53:59,941 - scheduler - INFO - Running Job E2 immediately
+2025-09-03 16:53:59,941 - scheduler - INFO - Starting Job E2: Comprehensive results collection
+2025-09-03 16:53:59,956 - repository - INFO - Found 74 finished events
+2025-09-03 16:53:59,956 - scheduler - INFO - Processing 74 finished events
+2025-09-03 16:53:59,959 - sofascore_api - INFO - Fetching event results for event 13688672
+2025-09-03 16:54:01,227 - sofascore_api - INFO - API request successful: /event/13688672
+2025-09-03 16:54:01,227 - sofascore_api - INFO - ✅ Results extracted: 65-68, Winner: 2
+2025-09-03 16:54:01,232 - scheduler - INFO - ✅ Job E2: 13688672 = 65-68, Winner: 2
+2025-09-03 16:54:01,233 - sofascore_api - INFO - Fetching event results for event 13688673
+2025-09-03 16:54:01,495 - sofascore_api - INFO - API request successful: /event/13688673
+2025-09-03 16:54:01,495 - sofascore_api - INFO - ✅ Results extracted: 75-109, Winner: 2
+2025-09-03 16:54:01,509 - scheduler - INFO - ✅ Job E2: 13688673 = 75-109, Winner: 2
+2025-09-03 16:54:01,510 - sofascore_api - INFO - Fetching event results for event 13688675
+2025-09-03 16:54:02,518 - sofascore_api - INFO - API request successful: /event/13688675
+2025-09-03 16:54:02,518 - sofascore_api - INFO - ✅ Results extracted: 61-91, Winner: 2
+2025-09-03 16:54:02,522 - scheduler - INFO - ✅ Job E2: 13688675 = 61-91, Winner: 2
+2025-09-03 16:54:02,523 - sofascore_api - INFO - Fetching event results for event 13688677
+2025-09-03 16:54:03,503 - sofascore_api - INFO - API request successful: /event/13688677
+2025-09-03 16:54:03,504 - sofascore_api - INFO - ✅ Results extracted: 74-71, Winner: 1
+2025-09-03 16:54:03,517 - scheduler - INFO - ✅ Job E2: 13688677 = 74-71, Winner: 1
+2025-09-03 16:54:03,518 - sofascore_api - INFO - Fetching event results for event 14019550
+2025-09-03 16:54:04,523 - sofascore_api - INFO - API request successful: /event/14019550
+2025-09-03 16:54:04,523 - sofascore_api - INFO - ✅ Results extracted: 3-2, Winner: 1
+2025-09-03 16:54:04,527 - scheduler - INFO - ✅ Job E2: 14019550 = 3-2, Winner: 1
+2025-09-03 16:54:04,528 - sofascore_api - INFO - Fetching event results for event 14045295
+2025-09-03 16:54:05,628 - sofascore_api - INFO - API request successful: /event/14045295
+2025-09-03 16:54:05,628 - sofascore_api - INFO - ✅ Results extracted: 29-34, Winner: 2
+2025-09-03 16:54:05,641 - scheduler - INFO - ✅ Job E2: 14045295 = 29-34, Winner: 2
+2025-09-03 16:54:05,642 - sofascore_api - INFO - Fetching event results for event 14045300
+2025-09-03 16:54:06,625 - sofascore_api - INFO - API request successful: /event/14045300
+2025-09-03 16:54:06,625 - sofascore_api - INFO - ✅ Results extracted: 30-33, Winner: 2
+2025-09-03 16:54:06,629 - scheduler - INFO - ✅ Job E2: 14045300 = 30-33, Winner: 2
+2025-09-03 16:54:06,631 - sofascore_api - INFO - Fetching event results for event 14049755
+2025-09-03 16:54:07,620 - sofascore_api - INFO - API request successful: /event/14049755
+2025-09-03 16:54:07,620 - sofascore_api - INFO - ✅ Results extracted: 30-29, Winner: 1
+2025-09-03 16:54:07,633 - scheduler - INFO - ✅ Job E2: 14049755 = 30-29, Winner: 1
+2025-09-03 16:54:07,634 - sofascore_api - INFO - Fetching event results for event 14074322
+2025-09-03 16:54:08,619 - sofascore_api - INFO - API request successful: /event/14074322
+2025-09-03 16:54:08,619 - sofascore_api - INFO - ✅ Results extracted: 3-0, Winner: 1
+2025-09-03 16:54:08,632 - scheduler - INFO - ✅ Job E2: 14074322 = 3-0, Winner: 1
+2025-09-03 16:54:08,633 - sofascore_api - INFO - Fetching event results for event 14084618
+2025-09-03 16:54:09,510 - sofascore_api - INFO - API request successful: /event/14084618
+2025-09-03 16:54:09,510 - sofascore_api - INFO - ✅ Results extracted: 34-22, Winner: 1
+2025-09-03 16:54:09,514 - scheduler - INFO - ✅ Job E2: 14084618 = 34-22, Winner: 1
+2025-09-03 16:54:09,516 - sofascore_api - INFO - Fetching event results for event 14160003
+2025-09-03 16:54:10,581 - sofascore_api - INFO - API request successful: /event/14160003
+2025-09-03 16:54:10,581 - sofascore_api - INFO - ✅ Results extracted: 3-4, Winner: 2
+2025-09-03 16:54:10,595 - scheduler - INFO - ✅ Job E2: 14160003 = 3-4, Winner: 2
+2025-09-03 16:54:10,596 - sofascore_api - INFO - Fetching event results for event 14160005
+2025-09-03 16:54:11,634 - sofascore_api - INFO - API request successful: /event/14160005
+2025-09-03 16:54:11,634 - sofascore_api - INFO - ✅ Results extracted: 1-1, Winner: X
+2025-09-03 16:54:11,647 - scheduler - INFO - ✅ Job E2: 14160005 = 1-1, Winner: X
+2025-09-03 16:54:11,649 - sofascore_api - INFO - Fetching event results for event 14160007
+2025-09-03 16:54:12,622 - sofascore_api - INFO - API request successful: /event/14160007
+2025-09-03 16:54:12,623 - sofascore_api - INFO - ✅ Results extracted: 2-2, Winner: X
+2025-09-03 16:54:12,636 - scheduler - INFO - ✅ Job E2: 14160007 = 2-2, Winner: X
+2025-09-03 16:54:12,637 - sofascore_api - INFO - Fetching event results for event 14160009
+2025-09-03 16:54:13,623 - sofascore_api - INFO - API request successful: /event/14160009
+2025-09-03 16:54:13,623 - sofascore_api - INFO - ✅ Results extracted: 0-1, Winner: 2
+2025-09-03 16:54:13,636 - scheduler - INFO - ✅ Job E2: 14160009 = 0-1, Winner: 2
+2025-09-03 16:54:13,637 - sofascore_api - INFO - Fetching event results for event 14160011
+2025-09-03 16:54:14,625 - sofascore_api - INFO - API request successful: /event/14160011
+2025-09-03 16:54:14,626 - sofascore_api - INFO - ✅ Results extracted: 0-2, Winner: 2
+2025-09-03 16:54:14,639 - scheduler - INFO - ✅ Job E2: 14160011 = 0-2, Winner: 2
+2025-09-03 16:54:14,641 - sofascore_api - INFO - Fetching event results for event 14211099
+2025-09-03 16:54:15,719 - sofascore_api - INFO - API request successful: /event/14211099
+2025-09-03 16:54:15,719 - sofascore_api - INFO - ✅ Results extracted: 29-33, Winner: 2
+2025-09-03 16:54:15,733 - scheduler - INFO - ✅ Job E2: 14211099 = 29-33, Winner: 2
+2025-09-03 16:54:15,737 - sofascore_api - INFO - Fetching event results for event 14410440
+2025-09-03 16:54:16,632 - sofascore_api - INFO - API request successful: /event/14410440
+2025-09-03 16:54:16,633 - sofascore_api - INFO - Event not finished yet - status: AP
+2025-09-03 16:54:16,634 - sofascore_api - INFO - Fetching event results for event 14419727
+2025-09-03 16:54:17,516 - sofascore_api - INFO - API request successful: /event/14419727
+2025-09-03 16:54:17,516 - sofascore_api - INFO - Event not finished yet - status: AET
+2025-09-03 16:54:17,517 - sofascore_api - INFO - Fetching event results for event 14419733
+2025-09-03 16:54:18,511 - sofascore_api - INFO - API request successful: /event/14419733
+2025-09-03 16:54:18,511 - sofascore_api - INFO - Event not finished yet - status: AP
+2025-09-03 16:54:18,512 - sofascore_api - INFO - Fetching event results for event 14461721
+2025-09-03 16:54:19,503 - sofascore_api - INFO - API request successful: /event/14461721
+2025-09-03 16:54:19,503 - sofascore_api - INFO - Event not finished yet - status: AP
+2025-09-03 16:54:19,504 - sofascore_api - INFO - Fetching event results for event 14461722
+2025-09-03 16:54:20,655 - sofascore_api - INFO - API request successful: /event/14461722
+2025-09-03 16:54:20,656 - sofascore_api - INFO - Event not finished yet - status: AP
+2025-09-03 16:54:20,658 - sofascore_api - INFO - Fetching event results for event 14522227
+2025-09-03 16:54:21,647 - sofascore_api - INFO - API request successful: /event/14522227
+2025-09-03 16:54:21,647 - sofascore_api - INFO - ✅ Results extracted: 0-3, Winner: 2
+2025-09-03 16:54:21,661 - scheduler - INFO - ✅ Job E2: 14522227 = 0-3, Winner: 2
+2025-09-03 16:54:21,662 - sofascore_api - INFO - Fetching event results for event 14522235
+2025-09-03 16:54:22,647 - sofascore_api - INFO - API request successful: /event/14522235
+2025-09-03 16:54:22,647 - sofascore_api - INFO - ✅ Results extracted: 2-1, Winner: 1
+2025-09-03 16:54:22,661 - scheduler - INFO - ✅ Job E2: 14522235 = 2-1, Winner: 1
+2025-09-03 16:54:22,663 - sofascore_api - INFO - Fetching event results for event 14522246
+2025-09-03 16:54:23,504 - sofascore_api - INFO - API request successful: /event/14522246
+2025-09-03 16:54:23,505 - sofascore_api - INFO - Event not finished yet - status: AET
+2025-09-03 16:54:23,506 - sofascore_api - INFO - Fetching event results for event 14522252
+2025-09-03 16:54:24,529 - sofascore_api - INFO - API request successful: /event/14522252
+2025-09-03 16:54:24,529 - sofascore_api - INFO - ✅ Results extracted: 2-3, Winner: 2
+2025-09-03 16:54:24,532 - scheduler - INFO - ✅ Job E2: 14522252 = 2-3, Winner: 2
+2025-09-03 16:54:24,533 - sofascore_api - INFO - Fetching event results for event 14522253
+2025-09-03 16:54:25,637 - sofascore_api - INFO - API request successful: /event/14522253
+2025-09-03 16:54:25,637 - sofascore_api - INFO - Event not finished yet - status: AET
+2025-09-03 16:54:25,638 - sofascore_api - INFO - Fetching event results for event 14522257
+2025-09-03 16:54:26,522 - sofascore_api - INFO - API request successful: /event/14522257
+2025-09-03 16:54:26,522 - sofascore_api - INFO - ✅ Results extracted: 2-3, Winner: 2
+2025-09-03 16:54:26,535 - scheduler - INFO - ✅ Job E2: 14522257 = 2-3, Winner: 2
+2025-09-03 16:54:26,536 - sofascore_api - INFO - Fetching event results for event 14522258
+2025-09-03 16:54:27,645 - sofascore_api - INFO - API request successful: /event/14522258
+2025-09-03 16:54:27,646 - sofascore_api - INFO - Event not finished yet - status: AET
+2025-09-03 16:54:27,647 - sofascore_api - INFO - Fetching event results for event 14551794
+2025-09-03 16:54:28,622 - sofascore_api - INFO - API request successful: /event/14551794
+2025-09-03 16:54:28,622 - sofascore_api - INFO - ✅ Results extracted: 1-2, Winner: 2
+2025-09-03 16:54:28,626 - scheduler - INFO - ✅ Job E2: 14551794 = 1-2, Winner: 2
+2025-09-03 16:54:28,626 - sofascore_api - INFO - Fetching event results for event 14551798
+2025-09-03 16:54:29,531 - sofascore_api - INFO - API request successful: /event/14551798
+2025-09-03 16:54:29,531 - sofascore_api - INFO - ✅ Results extracted: 2-0, Winner: 1
+2025-09-03 16:54:29,545 - scheduler - INFO - ✅ Job E2: 14551798 = 2-0, Winner: 1
+2025-09-03 16:54:29,545 - sofascore_api - INFO - Fetching event results for event 14552651
+2025-09-03 16:54:30,641 - sofascore_api - INFO - API request successful: /event/14552651
+2025-09-03 16:54:30,641 - sofascore_api - INFO - ✅ Results extracted: 2-0, Winner: 1
+2025-09-03 16:54:30,655 - scheduler - INFO - ✅ Job E2: 14552651 = 2-0, Winner: 1
+2025-09-03 16:54:30,657 - sofascore_api - INFO - Fetching event results for event 14580352
+2025-09-03 16:54:31,516 - sofascore_api - INFO - API request successful: /event/14580352
+2025-09-03 16:54:31,517 - sofascore_api - INFO - ✅ Results extracted: 1-2, Winner: 2
+2025-09-03 16:54:31,531 - scheduler - INFO - ✅ Job E2: 14580352 = 1-2, Winner: 2
+2025-09-03 16:54:31,536 - sofascore_api - INFO - Fetching event results for event 14591687
+2025-09-03 16:54:32,517 - sofascore_api - INFO - API request successful: /event/14591687
+2025-09-03 16:54:32,518 - sofascore_api - INFO - ✅ Results extracted: 2-0, Winner: 1
+2025-09-03 16:54:32,521 - scheduler - INFO - ✅ Job E2: 14591687 = 2-0, Winner: 1
+2025-09-03 16:54:32,522 - sofascore_api - INFO - Fetching event results for event 14591743
+2025-09-03 16:54:33,632 - sofascore_api - INFO - API request successful: /event/14591743
+2025-09-03 16:54:33,632 - sofascore_api - INFO - Event not finished yet - status: AET
+2025-09-03 16:54:33,635 - sofascore_api - INFO - Fetching event results for event 14595220
+2025-09-03 16:54:34,514 - sofascore_api - INFO - API request successful: /event/14595220
+2025-09-03 16:54:34,514 - sofascore_api - INFO - ✅ Results extracted: 0-2, Winner: 2
+2025-09-03 16:54:34,528 - scheduler - INFO - ✅ Job E2: 14595220 = 0-2, Winner: 2
+2025-09-03 16:54:34,529 - sofascore_api - INFO - Fetching event results for event 14598176
+2025-09-03 16:54:35,514 - sofascore_api - WARNING - HTTP 404 for /event/14598176, waiting 5s, attempt 1/3
+2025-09-03 16:54:40,780 - sofascore_api - WARNING - HTTP 404 for /event/14598176, waiting 10s, attempt 2/3
+2025-09-03 16:54:51,060 - sofascore_api - WARNING - HTTP 404 for /event/14598176, waiting 20s, attempt 3/3
+2025-09-03 16:54:51,060 - sofascore_api - ERROR - HTTP 404 failed after 3 attempts for /event/14598176
+2025-09-03 16:54:51,061 - sofascore_api - WARNING - No response received for event 14598176
+2025-09-03 16:54:51,061 - sofascore_api - INFO - Fetching event results for event 14598189
+2025-09-03 16:54:52,041 - sofascore_api - WARNING - HTTP 404 for /event/14598189, waiting 5s, attempt 1/3
+2025-09-03 16:54:57,305 - sofascore_api - WARNING - HTTP 404 for /event/14598189, waiting 10s, attempt 2/3
+2025-09-03 16:55:00,758 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 16:55:00
+2025-09-03 16:55:00,758 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 16:55:00,761 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 17:00:00,907 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:00:00
+2025-09-03 17:00:00,907 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:00:00,909 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:00:00,909 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:00:00,909 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Adutoys FC vs CA Futuro starts in 30 minutes
+2025-09-03 17:00:00,909 - scheduler - INFO - 🎯 Key moment detected for event 14594016: 30 minutes until start - WILL EXTRACT ODDS
+2025-09-03 17:00:00,910 - scheduler - INFO - 🎯 EXTRACTING ODDS: Adutoys FC vs CA Futuro - 30 min until start
+2025-09-03 17:00:00,910 - sofascore_api - INFO - Fetching final odds for event adutoys-fc-ca-futuro using dedicated endpoint
+2025-09-03 17:00:02,266 - sofascore_api - INFO - API request successful: /event/14594016/odds/1/all
+2025-09-03 17:00:02,266 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=1.28, X=6.50, 2=5.50
+2025-09-03 17:00:02,270 - scheduler - INFO - ✅ Final odds updated for Adutoys FC vs CA Futuro
+2025-09-03 17:00:02,270 - repository - INFO - Created odds snapshot for event 14594016
+2025-09-03 17:00:02,273 - scheduler - INFO - ✅ Final odds snapshot created for event 14594016
+2025-09-03 17:00:02,274 - scheduler - INFO - 📱 Updated odds for notification: Adutoys FC vs CA Futuro (odds extracted at 30 min)
+2025-09-03 17:00:02,274 - scheduler - INFO - 📱 Added to notifications: Adutoys FC vs CA Futuro (odds: fresh)
+2025-09-03 17:00:02,274 - scheduler - INFO - Sending notifications for 1 upcoming games (odds extracted for 1 games)
+2025-09-03 17:00:02,874 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 17:00:02,874 - alert_system - INFO - ✅ Successfully sent Telegram notification for 1 upcoming games
+2025-09-03 17:00:02,875 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 17:00:02,875 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:00:02,875 - scheduler - INFO - 🎯 Odds extracted for 1 games (smart extraction active)
+2025-09-03 17:00:02,875 - scheduler - INFO - 📱 Notifications sent for 1 games (only when odds extracted)
+2025-09-03 17:05:00,016 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:05:00
+2025-09-03 17:05:00,016 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:05:00,017 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:05:00,018 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:05:00,018 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Adutoys FC vs CA Futuro starts in 25 minutes
+2025-09-03 17:05:00,018 - scheduler - INFO - 📱 Added to notifications: Adutoys FC vs CA Futuro (odds: existing)
+2025-09-03 17:05:00,018 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 17:05:00,018 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:05:00,018 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 17:05:00,019 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 17:10:00,148 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:10:00
+2025-09-03 17:10:00,148 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:10:00,151 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:10:00,151 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:10:00,151 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Adutoys FC vs CA Futuro starts in 20 minutes
+2025-09-03 17:10:00,152 - scheduler - INFO - 📱 Added to notifications: Adutoys FC vs CA Futuro (odds: existing)
+2025-09-03 17:10:00,152 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 17:10:00,152 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:10:00,152 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 17:10:00,152 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 17:15:00,274 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:15:00
+2025-09-03 17:15:00,275 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:15:00,276 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:15:00,276 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:15:00,277 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Adutoys FC vs CA Futuro starts in 15 minutes
+2025-09-03 17:15:00,277 - scheduler - INFO - 📱 Added to notifications: Adutoys FC vs CA Futuro (odds: existing)
+2025-09-03 17:15:00,277 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 17:15:00,277 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:15:00,277 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 17:15:00,277 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 17:18:06,036 - __main__ - INFO - Received shutdown signal, stopping scheduler...
+2025-09-03 17:18:06,355 - scheduler - INFO - Job scheduler stopped
+2025-09-03 17:31:48,243 - root - INFO - Logging system initialized successfully
+2025-09-03 17:31:48,608 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 17:31:48,672 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 17:31:49,000 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 17:31:49,001 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 17:31:49,001 - scheduler - INFO - Jobs scheduled:
+2025-09-03 17:31:49,001 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 17:31:49,001 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 17:31:49,001 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 17:31:49,003 - __main__ - INFO - Starting SofaScore Odds System with command: start
+2025-09-03 17:31:49,005 - database - INFO - Database connection test successful
+2025-09-03 17:31:49,006 - database - INFO - Database tables created successfully
+2025-09-03 17:31:49,007 - __main__ - INFO - System initialized successfully
+2025-09-03 17:31:49,007 - __main__ - INFO - Starting job scheduler...
+2025-09-03 17:31:49,007 - database - INFO - Database connection test successful
+2025-09-03 17:31:49,008 - database - INFO - Database tables created successfully
+2025-09-03 17:31:49,008 - __main__ - INFO - System initialized successfully
+2025-09-03 17:31:49,008 - __main__ - INFO - Starting job scheduler...
+2025-09-03 17:31:49,009 - scheduler - INFO - Scheduler loop started - monitoring for pending jobs...
+2025-09-03 17:31:49,009 - scheduler - INFO - Job scheduler started
+2025-09-03 17:31:49,009 - scheduler - INFO - Running immediate pre-start check for any games starting soon...
+2025-09-03 17:31:49,009 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:31:49
+2025-09-03 17:31:49,009 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:31:49,022 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:31:49,023 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:31:49,023 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: CRE vs CD La Prensa starts in 28 minutes
+2025-09-03 17:31:49,023 - scheduler - INFO - 📱 Added to notifications: CRE vs CD La Prensa (odds: existing)
+2025-09-03 17:31:49,023 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 17:31:49,024 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:31:49,024 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 17:31:49,024 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 17:35:00,092 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:35:00
+2025-09-03 17:35:00,092 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:35:00,094 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:35:00,094 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:35:00,094 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: CRE vs CD La Prensa starts in 25 minutes
+2025-09-03 17:35:00,094 - scheduler - INFO - 📱 Added to notifications: CRE vs CD La Prensa (odds: existing)
+2025-09-03 17:35:00,095 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 17:35:00,095 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:35:00,095 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 17:35:00,095 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 17:38:08,048 - root - INFO - Logging system initialized successfully
+2025-09-03 17:38:08,409 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 17:38:08,469 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 17:38:08,792 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 17:38:08,793 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 17:38:08,793 - scheduler - INFO - Jobs scheduled:
+2025-09-03 17:38:08,793 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 17:38:08,793 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 17:38:08,794 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 17:38:08,795 - __main__ - INFO - Starting SofaScore Odds System with command: discovery
+2025-09-03 17:38:08,797 - database - INFO - Database connection test successful
+2025-09-03 17:38:08,798 - database - INFO - Database tables created successfully
+2025-09-03 17:38:08,798 - __main__ - INFO - System initialized successfully
+2025-09-03 17:38:08,798 - __main__ - INFO - Running event discovery...
+2025-09-03 17:38:08,798 - scheduler - INFO - Running Job A immediately
+2025-09-03 17:38:08,799 - scheduler - INFO - Starting Job A: Event Discovery with Odds Processing
+2025-09-03 17:38:08,799 - sofascore_api - INFO - Fetching dropping odds events with odds data using browser impersonation
+2025-09-03 17:38:10,327 - sofascore_api - INFO - API request successful: /odds/1/dropping/all
+2025-09-03 17:38:10,333 - sofascore_api - INFO -  Extracted 20 odds entries from response
+2025-09-03 17:38:10,333 - sofascore_api - INFO -  Extracted 20 valid events from dropping odds
+2025-09-03 17:38:10,333 - scheduler - INFO - Found 20 events in dropping odds
+2025-09-03 17:38:10,357 - odds_utils - INFO - Processed odds - Open: 1=1.08, X=None, 2=7.00
+2025-09-03 17:38:10,357 - odds_utils - INFO - Processed odds - Current: 1=1.32, X=None, 2=3.15
+2025-09-03 17:38:10,358 - repository - INFO - Created odds snapshot for event 14282490
+2025-09-03 17:38:10,371 - odds_utils - INFO - Processed odds - Open: 1=51.00, X=17.00, 2=1.03
+2025-09-03 17:38:10,371 - odds_utils - INFO - Processed odds - Current: 1=29.00, X=10.00, 2=1.07
+2025-09-03 17:38:10,372 - repository - INFO - Created odds snapshot for event 14582727
+2025-09-03 17:38:10,383 - odds_utils - INFO - Processed odds - Open: 1=5.25, X=3.40, 2=1.73
+2025-09-03 17:38:10,383 - odds_utils - INFO - Processed odds - Current: 1=3.20, X=3.40, 2=2.20
+2025-09-03 17:38:10,383 - repository - INFO - Created odds snapshot for event 14461710
+2025-09-03 17:38:10,394 - odds_utils - INFO - Processed odds - Open: 1=1.70, X=8.00, 2=2.90
+2025-09-03 17:38:10,395 - odds_utils - INFO - Processed odds - Current: 1=2.60, X=7.50, 2=1.85
+2025-09-03 17:38:10,395 - repository - INFO - Created odds snapshot for event 14211111
+2025-09-03 17:38:10,405 - odds_utils - INFO - Processed odds - Open: 1=5.00, X=3.60, 2=1.60
+2025-09-03 17:38:10,406 - odds_utils - INFO - Processed odds - Current: 1=3.70, X=3.30, 2=1.90
+2025-09-03 17:38:10,406 - repository - INFO - Created odds snapshot for event 14553320
+2025-09-03 17:38:10,417 - odds_utils - INFO - Processed odds - Open: 1=1.80, X=7.50, 2=2.70
+2025-09-03 17:38:10,417 - odds_utils - INFO - Processed odds - Current: 1=1.47, X=8.50, 2=3.80
+2025-09-03 17:38:10,418 - repository - INFO - Created odds snapshot for event 14211097
+2025-09-03 17:38:10,429 - odds_utils - INFO - Processed odds - Open: 1=1.29, X=5.25, 2=7.00
+2025-09-03 17:38:10,429 - odds_utils - INFO - Processed odds - Current: 1=1.38, X=4.50, 2=5.75
+2025-09-03 17:38:10,429 - repository - INFO - Created odds snapshot for event 12183479
+2025-09-03 17:38:10,440 - odds_utils - INFO - Processed odds - Open: 1=1.95, X=None, 2=1.87
+2025-09-03 17:38:10,440 - odds_utils - INFO - Processed odds - Current: 1=2.55, X=None, 2=1.54
+2025-09-03 17:38:10,440 - repository - INFO - Created odds snapshot for event 13688679
+2025-09-03 17:38:10,452 - odds_utils - INFO - Processed odds - Open: 1=2.20, X=None, 2=1.62
+2025-09-03 17:38:10,452 - odds_utils - INFO - Processed odds - Current: 1=1.83, X=None, 2=1.83
+2025-09-03 17:38:10,453 - repository - INFO - Created odds snapshot for event 14552897
+2025-09-03 17:38:10,463 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=None, 2=2.50
+2025-09-03 17:38:10,463 - odds_utils - INFO - Processed odds - Current: 1=1.67, X=None, 2=2.10
+2025-09-03 17:38:10,463 - repository - INFO - Created odds snapshot for event 14552519
+2025-09-03 17:38:10,474 - odds_utils - INFO - Processed odds - Open: 1=1.91, X=21.00, 2=1.91
+2025-09-03 17:38:10,474 - odds_utils - INFO - Processed odds - Current: 1=2.25, X=23.00, 2=1.63
+2025-09-03 17:38:10,475 - repository - INFO - Created odds snapshot for event 13911482
+2025-09-03 17:38:10,485 - odds_utils - INFO - Processed odds - Open: 1=2.50, X=None, 2=1.50
+2025-09-03 17:38:10,485 - odds_utils - INFO - Processed odds - Current: 1=3.50, X=None, 2=1.28
+2025-09-03 17:38:10,486 - repository - INFO - Created odds snapshot for event 14552575
+2025-09-03 17:38:10,496 - odds_utils - INFO - Processed odds - Open: 1=1.30, X=None, 2=3.50
+2025-09-03 17:38:10,496 - odds_utils - INFO - Processed odds - Current: 1=1.37, X=None, 2=3.00
+2025-09-03 17:38:10,497 - repository - INFO - Created odds snapshot for event 13988507
+2025-09-03 17:38:10,507 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=4.00, 2=5.50
+2025-09-03 17:38:10,507 - odds_utils - INFO - Processed odds - Current: 1=1.29, X=5.25, 2=7.50
+2025-09-03 17:38:10,508 - repository - INFO - Created odds snapshot for event 13888416
+2025-09-03 17:38:10,519 - odds_utils - INFO - Processed odds - Open: 1=2.45, X=3.30, 2=2.80
+2025-09-03 17:38:10,519 - odds_utils - INFO - Processed odds - Current: 1=2.40, X=2.88, 2=3.40
+2025-09-03 17:38:10,519 - repository - INFO - Created odds snapshot for event 14169216
+2025-09-03 17:38:10,529 - odds_utils - INFO - Processed odds - Open: 1=1.67, X=None, 2=2.10
+2025-09-03 17:38:10,529 - odds_utils - INFO - Processed odds - Current: 1=1.83, X=None, 2=1.83
+2025-09-03 17:38:10,529 - repository - INFO - Created odds snapshot for event 14552612
+2025-09-03 17:38:10,539 - odds_utils - INFO - Processed odds - Open: 1=1.45, X=9.50, 2=3.80
+2025-09-03 17:38:10,539 - odds_utils - INFO - Processed odds - Current: 1=1.27, X=11.00, 2=5.50
+2025-09-03 17:38:10,540 - repository - INFO - Created odds snapshot for event 14049752
+2025-09-03 17:38:10,550 - odds_utils - INFO - Processed odds - Open: 1=2.05, X=None, 2=1.80
+2025-09-03 17:38:10,551 - odds_utils - INFO - Processed odds - Current: 1=1.80, X=None, 2=2.05
+2025-09-03 17:38:10,551 - repository - INFO - Created odds snapshot for event 13688682
+2025-09-03 17:38:10,567 - odds_utils - INFO - Processed odds - Open: 1=1.57, X=3.60, 2=5.50
+2025-09-03 17:38:10,568 - odds_utils - INFO - Processed odds - Current: 1=1.38, X=4.50, 2=8.00
+2025-09-03 17:38:10,568 - repository - INFO - Created odds snapshot for event 14461723
+2025-09-03 17:38:10,582 - odds_utils - INFO - Processed odds - Open: 1=2.50, X=None, 2=1.50
+2025-09-03 17:38:10,583 - odds_utils - INFO - Processed odds - Current: 1=3.25, X=None, 2=1.33
+2025-09-03 17:38:10,583 - repository - INFO - Created odds snapshot for event 14552911
+2025-09-03 17:38:10,591 - scheduler - INFO - Job A completed: processed 20/20 events
+2025-09-03 17:40:00,229 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:40:00
+2025-09-03 17:40:00,230 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:40:00,232 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:40:00,232 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:40:00,232 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: CRE vs CD La Prensa starts in 20 minutes
+2025-09-03 17:40:00,232 - scheduler - INFO - 📱 Added to notifications: CRE vs CD La Prensa (odds: existing)
+2025-09-03 17:40:00,232 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 17:40:00,233 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:40:00,233 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 17:40:00,233 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 17:45:00,374 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:45:00
+2025-09-03 17:45:00,374 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:45:00,376 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:45:00,376 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:45:00,376 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: CRE vs CD La Prensa starts in 15 minutes
+2025-09-03 17:45:00,377 - scheduler - INFO - 📱 Added to notifications: CRE vs CD La Prensa (odds: existing)
+2025-09-03 17:45:00,377 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 17:45:00,377 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:45:00,377 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 17:45:00,377 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 17:50:00,513 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:50:00
+2025-09-03 17:50:00,513 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:50:00,515 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:50:00,515 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:50:00,516 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: CRE vs CD La Prensa starts in 10 minutes
+2025-09-03 17:50:00,516 - scheduler - INFO - 📱 Added to notifications: CRE vs CD La Prensa (odds: existing)
+2025-09-03 17:50:00,516 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 17:50:00,516 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:50:00,516 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 17:50:00,516 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 17:55:00,652 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 17:55:00
+2025-09-03 17:55:00,652 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 17:55:00,654 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:55:00,654 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 17:55:00,654 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: CRE vs CD La Prensa starts in 5 minutes
+2025-09-03 17:55:00,654 - scheduler - INFO - 🎯 Key moment detected for event 14594038: 5 minutes until start - WILL EXTRACT ODDS
+2025-09-03 17:55:00,655 - scheduler - INFO - 🎯 EXTRACTING ODDS: CRE vs CD La Prensa - 5 min until start
+2025-09-03 17:55:00,655 - sofascore_api - INFO - Fetching final odds for event cre-cd-la-prensa using dedicated endpoint
+2025-09-03 17:55:02,590 - sofascore_api - INFO - API request successful: /event/14594038/odds/1/all
+2025-09-03 17:55:02,590 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=1.40, X=6.00, 2=4.33
+2025-09-03 17:55:02,596 - scheduler - INFO - ✅ Final odds updated for CRE vs CD La Prensa
+2025-09-03 17:55:02,596 - repository - INFO - Created odds snapshot for event 14594038
+2025-09-03 17:55:02,600 - scheduler - INFO - ✅ Final odds snapshot created for event 14594038
+2025-09-03 17:55:02,600 - scheduler - INFO - 📱 Updated odds for notification: CRE vs CD La Prensa (odds extracted at 5 min)
+2025-09-03 17:55:02,600 - scheduler - INFO - 📱 Added to notifications: CRE vs CD La Prensa (odds: fresh)
+2025-09-03 17:55:02,600 - scheduler - INFO - Sending notifications for 1 upcoming games (odds extracted for 1 games)
+2025-09-03 17:55:03,149 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 17:55:03,150 - alert_system - INFO - ✅ Successfully sent Telegram notification for 1 upcoming games
+2025-09-03 17:55:03,150 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 17:55:03,150 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 17:55:03,150 - scheduler - INFO - 🎯 Odds extracted for 1 games (smart extraction active)
+2025-09-03 17:55:03,150 - scheduler - INFO - 📱 Notifications sent for 1 games (only when odds extracted)
+2025-09-03 18:00:00,281 - scheduler - INFO - Starting Job A: Event Discovery with Odds Processing
+2025-09-03 18:00:00,282 - sofascore_api - INFO - Fetching dropping odds events with odds data using browser impersonation
+2025-09-03 18:00:01,618 - sofascore_api - INFO - API request successful: /odds/1/dropping/all
+2025-09-03 18:00:01,625 - sofascore_api - INFO -  Extracted 20 odds entries from response
+2025-09-03 18:00:01,625 - sofascore_api - INFO -  Extracted 20 valid events from dropping odds
+2025-09-03 18:00:01,625 - scheduler - INFO - Found 20 events in dropping odds
+2025-09-03 18:00:01,631 - odds_utils - INFO - Processed odds - Open: 1=1.08, X=None, 2=7.00
+2025-09-03 18:00:01,631 - odds_utils - INFO - Processed odds - Current: 1=1.32, X=None, 2=3.15
+2025-09-03 18:00:01,631 - repository - INFO - Created odds snapshot for event 14282490
+2025-09-03 18:00:01,641 - odds_utils - INFO - Processed odds - Open: 1=51.00, X=17.00, 2=1.03
+2025-09-03 18:00:01,641 - odds_utils - INFO - Processed odds - Current: 1=29.00, X=10.00, 2=1.07
+2025-09-03 18:00:01,641 - repository - INFO - Created odds snapshot for event 14582727
+2025-09-03 18:00:01,650 - odds_utils - INFO - Processed odds - Open: 1=5.25, X=3.40, 2=1.73
+2025-09-03 18:00:01,650 - odds_utils - INFO - Processed odds - Current: 1=3.20, X=3.40, 2=2.20
+2025-09-03 18:00:01,650 - repository - INFO - Created odds snapshot for event 14461710
+2025-09-03 18:00:01,659 - odds_utils - INFO - Processed odds - Open: 1=1.70, X=8.00, 2=2.90
+2025-09-03 18:00:01,659 - odds_utils - INFO - Processed odds - Current: 1=2.60, X=7.50, 2=1.85
+2025-09-03 18:00:01,660 - repository - INFO - Created odds snapshot for event 14211111
+2025-09-03 18:00:01,668 - odds_utils - INFO - Processed odds - Open: 1=5.00, X=3.60, 2=1.60
+2025-09-03 18:00:01,668 - odds_utils - INFO - Processed odds - Current: 1=3.70, X=3.30, 2=1.90
+2025-09-03 18:00:01,668 - repository - INFO - Created odds snapshot for event 14553320
+2025-09-03 18:00:01,677 - odds_utils - INFO - Processed odds - Open: 1=1.80, X=7.50, 2=2.70
+2025-09-03 18:00:01,677 - odds_utils - INFO - Processed odds - Current: 1=1.47, X=8.50, 2=3.80
+2025-09-03 18:00:01,678 - repository - INFO - Created odds snapshot for event 14211097
+2025-09-03 18:00:01,686 - odds_utils - INFO - Processed odds - Open: 1=1.29, X=5.25, 2=7.00
+2025-09-03 18:00:01,687 - odds_utils - INFO - Processed odds - Current: 1=1.38, X=4.50, 2=5.75
+2025-09-03 18:00:01,687 - repository - INFO - Created odds snapshot for event 12183479
+2025-09-03 18:00:01,696 - odds_utils - INFO - Processed odds - Open: 1=1.95, X=None, 2=1.87
+2025-09-03 18:00:01,696 - odds_utils - INFO - Processed odds - Current: 1=2.55, X=None, 2=1.54
+2025-09-03 18:00:01,696 - repository - INFO - Created odds snapshot for event 13688679
+2025-09-03 18:00:01,706 - odds_utils - INFO - Processed odds - Open: 1=2.20, X=None, 2=1.62
+2025-09-03 18:00:01,706 - odds_utils - INFO - Processed odds - Current: 1=1.83, X=None, 2=1.83
+2025-09-03 18:00:01,706 - repository - INFO - Created odds snapshot for event 14552897
+2025-09-03 18:00:01,716 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=None, 2=2.50
+2025-09-03 18:00:01,716 - odds_utils - INFO - Processed odds - Current: 1=1.67, X=None, 2=2.10
+2025-09-03 18:00:01,716 - repository - INFO - Created odds snapshot for event 14552519
+2025-09-03 18:00:01,725 - odds_utils - INFO - Processed odds - Open: 1=1.91, X=21.00, 2=1.91
+2025-09-03 18:00:01,725 - odds_utils - INFO - Processed odds - Current: 1=2.25, X=23.00, 2=1.63
+2025-09-03 18:00:01,726 - repository - INFO - Created odds snapshot for event 13911482
+2025-09-03 18:00:01,735 - odds_utils - INFO - Processed odds - Open: 1=2.50, X=None, 2=1.50
+2025-09-03 18:00:01,735 - odds_utils - INFO - Processed odds - Current: 1=3.50, X=None, 2=1.28
+2025-09-03 18:00:01,735 - repository - INFO - Created odds snapshot for event 14552575
+2025-09-03 18:00:01,744 - odds_utils - INFO - Processed odds - Open: 1=1.30, X=None, 2=3.50
+2025-09-03 18:00:01,744 - odds_utils - INFO - Processed odds - Current: 1=1.37, X=None, 2=3.00
+2025-09-03 18:00:01,744 - repository - INFO - Created odds snapshot for event 13988507
+2025-09-03 18:00:01,754 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=4.00, 2=5.50
+2025-09-03 18:00:01,754 - odds_utils - INFO - Processed odds - Current: 1=1.29, X=5.25, 2=7.50
+2025-09-03 18:00:01,754 - repository - INFO - Created odds snapshot for event 13888416
+2025-09-03 18:00:01,763 - odds_utils - INFO - Processed odds - Open: 1=2.45, X=3.30, 2=2.80
+2025-09-03 18:00:01,763 - odds_utils - INFO - Processed odds - Current: 1=2.40, X=2.88, 2=3.40
+2025-09-03 18:00:01,763 - repository - INFO - Created odds snapshot for event 14169216
+2025-09-03 18:00:01,771 - odds_utils - INFO - Processed odds - Open: 1=1.67, X=None, 2=2.10
+2025-09-03 18:00:01,772 - odds_utils - INFO - Processed odds - Current: 1=1.83, X=None, 2=1.83
+2025-09-03 18:00:01,772 - repository - INFO - Created odds snapshot for event 14552612
+2025-09-03 18:00:01,780 - odds_utils - INFO - Processed odds - Open: 1=1.45, X=9.50, 2=3.80
+2025-09-03 18:00:01,781 - odds_utils - INFO - Processed odds - Current: 1=1.27, X=11.00, 2=5.50
+2025-09-03 18:00:01,781 - repository - INFO - Created odds snapshot for event 14049752
+2025-09-03 18:00:01,790 - odds_utils - INFO - Processed odds - Open: 1=2.05, X=None, 2=1.80
+2025-09-03 18:00:01,790 - odds_utils - INFO - Processed odds - Current: 1=1.80, X=None, 2=2.05
+2025-09-03 18:00:01,790 - repository - INFO - Created odds snapshot for event 13688682
+2025-09-03 18:00:01,799 - odds_utils - INFO - Processed odds - Open: 1=1.57, X=3.60, 2=5.50
+2025-09-03 18:00:01,799 - odds_utils - INFO - Processed odds - Current: 1=1.38, X=4.50, 2=8.00
+2025-09-03 18:00:01,799 - repository - INFO - Created odds snapshot for event 14461723
+2025-09-03 18:00:01,808 - odds_utils - INFO - Processed odds - Open: 1=2.50, X=None, 2=1.50
+2025-09-03 18:00:01,808 - odds_utils - INFO - Processed odds - Current: 1=3.25, X=None, 2=1.33
+2025-09-03 18:00:01,808 - repository - INFO - Created odds snapshot for event 14552911
+2025-09-03 18:00:01,814 - scheduler - INFO - Job A completed: processed 20/20 events
+2025-09-03 18:00:01,815 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:00:01
+2025-09-03 18:00:01,815 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:00:01,816 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 18:00:01,816 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 18:00:01,816 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Independiente Medellín vs Fortaleza CEIF starts in 30 minutes
+2025-09-03 18:00:01,816 - scheduler - INFO - 🎯 Key moment detected for event 14461723: 30 minutes until start - WILL EXTRACT ODDS
+2025-09-03 18:00:01,816 - scheduler - INFO - 🎯 EXTRACTING ODDS: Independiente Medellín vs Fortaleza CEIF - 30 min until start
+2025-09-03 18:00:01,817 - sofascore_api - INFO - Fetching final odds for event fortaleza-ceif-independiente-medellin using dedicated endpoint
+2025-09-03 18:00:02,088 - sofascore_api - INFO - API request successful: /event/14461723/odds/1/all
+2025-09-03 18:00:02,089 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=1.38, X=4.50, 2=8.00
+2025-09-03 18:00:02,102 - scheduler - INFO - ✅ Final odds updated for Independiente Medellín vs Fortaleza CEIF
+2025-09-03 18:00:02,102 - repository - INFO - Created odds snapshot for event 14461723
+2025-09-03 18:00:02,105 - scheduler - INFO - ✅ Final odds snapshot created for event 14461723
+2025-09-03 18:00:02,105 - scheduler - INFO - 📱 Updated odds for notification: Independiente Medellín vs Fortaleza CEIF (odds extracted at 30 min)
+2025-09-03 18:00:02,105 - scheduler - INFO - 📱 Added to notifications: Independiente Medellín vs Fortaleza CEIF (odds: fresh)
+2025-09-03 18:00:02,105 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Confiança vs Bahia starts in 30 minutes
+2025-09-03 18:00:02,105 - scheduler - INFO - 🎯 Key moment detected for event 14553320: 30 minutes until start - WILL EXTRACT ODDS
+2025-09-03 18:00:02,106 - scheduler - INFO - 🎯 EXTRACTING ODDS: Confiança vs Bahia - 30 min until start
+2025-09-03 18:00:02,106 - sofascore_api - INFO - Fetching final odds for event confianca-bahia using dedicated endpoint
+2025-09-03 18:00:03,085 - sofascore_api - INFO - API request successful: /event/14553320/odds/1/all
+2025-09-03 18:00:03,085 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=3.70, X=3.30, 2=1.90
+2025-09-03 18:00:03,098 - scheduler - INFO - ✅ Final odds updated for Confiança vs Bahia
+2025-09-03 18:00:03,098 - repository - INFO - Created odds snapshot for event 14553320
+2025-09-03 18:00:03,101 - scheduler - INFO - ✅ Final odds snapshot created for event 14553320
+2025-09-03 18:00:03,101 - scheduler - INFO - 📱 Updated odds for notification: Confiança vs Bahia (odds extracted at 30 min)
+2025-09-03 18:00:03,101 - scheduler - INFO - 📱 Added to notifications: Confiança vs Bahia (odds: fresh)
+2025-09-03 18:00:03,102 - scheduler - INFO - Sending notifications for 2 upcoming games (odds extracted for 2 games)
+2025-09-03 18:00:03,670 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 18:00:03,671 - alert_system - INFO - ✅ Successfully sent Telegram notification for 2 upcoming games
+2025-09-03 18:00:03,671 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 18:00:03,671 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 18:00:03,671 - scheduler - INFO - 🎯 Odds extracted for 2 games (smart extraction active)
+2025-09-03 18:00:03,671 - scheduler - INFO - 📱 Notifications sent for 2 games (only when odds extracted)
+2025-09-03 18:05:00,807 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:05:00
+2025-09-03 18:05:00,808 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:05:00,809 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 18:05:00,809 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 18:05:00,809 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Independiente Medellín vs Fortaleza CEIF starts in 25 minutes
+2025-09-03 18:05:00,809 - scheduler - INFO - 📱 Added to notifications: Independiente Medellín vs Fortaleza CEIF (odds: existing)
+2025-09-03 18:05:00,810 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Confiança vs Bahia starts in 25 minutes
+2025-09-03 18:05:00,810 - scheduler - INFO - 📱 Added to notifications: Confiança vs Bahia (odds: existing)
+2025-09-03 18:05:00,810 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 2 games found but no odds extracted (not at key moments)
+2025-09-03 18:05:00,810 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 18:05:00,810 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 18:05:00,810 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 18:10:00,947 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:10:00
+2025-09-03 18:10:00,947 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:10:00,949 - repository - INFO - Found 2 events starting within 30 minutes
+2025-09-03 18:10:00,950 - scheduler - INFO - Found 2 events starting within 30 minutes
+2025-09-03 18:10:00,950 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Independiente Medellín vs Fortaleza CEIF starts in 20 minutes
+2025-09-03 18:10:00,950 - scheduler - INFO - 📱 Added to notifications: Independiente Medellín vs Fortaleza CEIF (odds: existing)
+2025-09-03 18:10:00,950 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Confiança vs Bahia starts in 20 minutes
+2025-09-03 18:10:00,950 - scheduler - INFO - 📱 Added to notifications: Confiança vs Bahia (odds: existing)
+2025-09-03 18:10:00,950 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 2 games found but no odds extracted (not at key moments)
+2025-09-03 18:10:00,950 - scheduler - INFO - 🚨 Pre-start check completed: 2 games starting soon!
+2025-09-03 18:10:00,950 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 18:10:00,951 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 18:15:00,082 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:15:00
+2025-09-03 18:15:00,082 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:15:00,083 - repository - INFO - Found 3 events starting within 30 minutes
+2025-09-03 18:15:00,084 - scheduler - INFO - Found 3 events starting within 30 minutes
+2025-09-03 18:15:00,084 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Deportes Quindío vs Atlético Nacional starts in 30 minutes
+2025-09-03 18:15:00,084 - scheduler - INFO - 🎯 Key moment detected for event 14461710: 30 minutes until start - WILL EXTRACT ODDS
+2025-09-03 18:15:00,084 - scheduler - INFO - 🎯 EXTRACTING ODDS: Deportes Quindío vs Atlético Nacional - 30 min until start
+2025-09-03 18:15:00,084 - sofascore_api - INFO - Fetching final odds for event deportes-quindio-atletico-nacional using dedicated endpoint
+2025-09-03 18:15:00,859 - sofascore_api - INFO - API request successful: /event/14461710/odds/1/all
+2025-09-03 18:15:00,859 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=3.20, X=3.40, 2=2.20
+2025-09-03 18:15:00,863 - scheduler - INFO - ✅ Final odds updated for Deportes Quindío vs Atlético Nacional
+2025-09-03 18:15:00,863 - repository - INFO - Created odds snapshot for event 14461710
+2025-09-03 18:15:00,866 - scheduler - INFO - ✅ Final odds snapshot created for event 14461710
+2025-09-03 18:15:00,867 - scheduler - INFO - 📱 Updated odds for notification: Deportes Quindío vs Atlético Nacional (odds extracted at 30 min)
+2025-09-03 18:15:00,867 - scheduler - INFO - 📱 Added to notifications: Deportes Quindío vs Atlético Nacional (odds: fresh)
+2025-09-03 18:15:00,867 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Independiente Medellín vs Fortaleza CEIF starts in 15 minutes
+2025-09-03 18:15:00,867 - scheduler - INFO - 📱 Added to notifications: Independiente Medellín vs Fortaleza CEIF (odds: existing)
+2025-09-03 18:15:00,867 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Confiança vs Bahia starts in 15 minutes
+2025-09-03 18:15:00,868 - scheduler - INFO - 📱 Added to notifications: Confiança vs Bahia (odds: existing)
+2025-09-03 18:15:00,868 - scheduler - INFO - Sending notifications for 3 upcoming games (odds extracted for 1 games)
+2025-09-03 18:15:01,414 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 18:15:01,414 - alert_system - INFO - ✅ Successfully sent Telegram notification for 3 upcoming games
+2025-09-03 18:15:01,415 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 18:15:01,415 - scheduler - INFO - 🚨 Pre-start check completed: 3 games starting soon!
+2025-09-03 18:15:01,415 - scheduler - INFO - 🎯 Odds extracted for 1 games (smart extraction active)
+2025-09-03 18:15:01,415 - scheduler - INFO - 📱 Notifications sent for 3 games (only when odds extracted)
+2025-09-03 18:20:00,554 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:20:00
+2025-09-03 18:20:00,554 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:20:00,557 - repository - INFO - Found 3 events starting within 30 minutes
+2025-09-03 18:20:00,557 - scheduler - INFO - Found 3 events starting within 30 minutes
+2025-09-03 18:20:00,557 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Deportes Quindío vs Atlético Nacional starts in 25 minutes
+2025-09-03 18:20:00,557 - scheduler - INFO - 📱 Added to notifications: Deportes Quindío vs Atlético Nacional (odds: existing)
+2025-09-03 18:20:00,557 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Independiente Medellín vs Fortaleza CEIF starts in 10 minutes
+2025-09-03 18:20:00,558 - scheduler - INFO - 📱 Added to notifications: Independiente Medellín vs Fortaleza CEIF (odds: existing)
+2025-09-03 18:20:00,558 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Confiança vs Bahia starts in 10 minutes
+2025-09-03 18:20:00,558 - scheduler - INFO - 📱 Added to notifications: Confiança vs Bahia (odds: existing)
+2025-09-03 18:20:00,558 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 3 games found but no odds extracted (not at key moments)
+2025-09-03 18:20:00,558 - scheduler - INFO - 🚨 Pre-start check completed: 3 games starting soon!
+2025-09-03 18:20:00,558 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 18:20:00,558 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 18:25:00,691 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:25:00
+2025-09-03 18:25:00,692 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:25:00,693 - repository - INFO - Found 3 events starting within 30 minutes
+2025-09-03 18:25:00,694 - scheduler - INFO - Found 3 events starting within 30 minutes
+2025-09-03 18:25:00,694 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Deportes Quindío vs Atlético Nacional starts in 20 minutes
+2025-09-03 18:25:00,694 - scheduler - INFO - 📱 Added to notifications: Deportes Quindío vs Atlético Nacional (odds: existing)
+2025-09-03 18:25:00,694 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Independiente Medellín vs Fortaleza CEIF starts in 5 minutes
+2025-09-03 18:25:00,694 - scheduler - INFO - 🎯 Key moment detected for event 14461723: 5 minutes until start - WILL EXTRACT ODDS
+2025-09-03 18:25:00,694 - scheduler - INFO - 🎯 EXTRACTING ODDS: Independiente Medellín vs Fortaleza CEIF - 5 min until start
+2025-09-03 18:25:00,694 - sofascore_api - INFO - Fetching final odds for event fortaleza-ceif-independiente-medellin using dedicated endpoint
+2025-09-03 18:25:01,700 - sofascore_api - INFO - API request successful: /event/14461723/odds/1/all
+2025-09-03 18:25:01,700 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=1.30, X=5.00, 2=9.50
+2025-09-03 18:25:01,704 - scheduler - INFO - ✅ Final odds updated for Independiente Medellín vs Fortaleza CEIF
+2025-09-03 18:25:01,704 - repository - INFO - Created odds snapshot for event 14461723
+2025-09-03 18:25:01,707 - scheduler - INFO - ✅ Final odds snapshot created for event 14461723
+2025-09-03 18:25:01,708 - scheduler - INFO - 📱 Updated odds for notification: Independiente Medellín vs Fortaleza CEIF (odds extracted at 5 min)
+2025-09-03 18:25:01,708 - scheduler - INFO - 📱 Added to notifications: Independiente Medellín vs Fortaleza CEIF (odds: fresh)
+2025-09-03 18:25:01,708 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Confiança vs Bahia starts in 5 minutes
+2025-09-03 18:25:01,708 - scheduler - INFO - 🎯 Key moment detected for event 14553320: 5 minutes until start - WILL EXTRACT ODDS
+2025-09-03 18:25:01,708 - scheduler - INFO - 🎯 EXTRACTING ODDS: Confiança vs Bahia - 5 min until start
+2025-09-03 18:25:01,709 - sofascore_api - INFO - Fetching final odds for event confianca-bahia using dedicated endpoint
+2025-09-03 18:25:02,049 - sofascore_api - INFO - API request successful: /event/14553320/odds/1/all
+2025-09-03 18:25:02,049 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=3.40, X=3.25, 2=2.00
+2025-09-03 18:25:02,053 - scheduler - INFO - ✅ Final odds updated for Confiança vs Bahia
+2025-09-03 18:25:02,053 - repository - INFO - Created odds snapshot for event 14553320
+2025-09-03 18:25:02,056 - scheduler - INFO - ✅ Final odds snapshot created for event 14553320
+2025-09-03 18:25:02,056 - scheduler - INFO - 📱 Updated odds for notification: Confiança vs Bahia (odds extracted at 5 min)
+2025-09-03 18:25:02,056 - scheduler - INFO - 📱 Added to notifications: Confiança vs Bahia (odds: fresh)
+2025-09-03 18:25:02,056 - scheduler - INFO - Sending notifications for 3 upcoming games (odds extracted for 2 games)
+2025-09-03 18:25:02,638 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 18:25:02,638 - alert_system - INFO - ✅ Successfully sent Telegram notification for 3 upcoming games
+2025-09-03 18:25:02,638 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 18:25:02,638 - scheduler - INFO - 🚨 Pre-start check completed: 3 games starting soon!
+2025-09-03 18:25:02,639 - scheduler - INFO - 🎯 Odds extracted for 2 games (smart extraction active)
+2025-09-03 18:25:02,639 - scheduler - INFO - 📱 Notifications sent for 3 games (only when odds extracted)
+2025-09-03 18:30:00,764 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:30:00
+2025-09-03 18:30:00,764 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:30:00,766 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 18:30:00,767 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 18:30:00,767 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Deportes Quindío vs Atlético Nacional starts in 15 minutes
+2025-09-03 18:30:00,767 - scheduler - INFO - 📱 Added to notifications: Deportes Quindío vs Atlético Nacional (odds: existing)
+2025-09-03 18:30:00,767 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 18:30:00,767 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 18:30:00,767 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 18:30:00,767 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 18:35:00,903 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:35:00
+2025-09-03 18:35:00,903 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:35:00,905 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 18:35:00,905 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 18:35:00,905 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Deportes Quindío vs Atlético Nacional starts in 10 minutes
+2025-09-03 18:35:00,905 - scheduler - INFO - 📱 Added to notifications: Deportes Quindío vs Atlético Nacional (odds: existing)
+2025-09-03 18:35:00,906 - scheduler - INFO - 📱 NO NOTIFICATIONS SENT: 1 games found but no odds extracted (not at key moments)
+2025-09-03 18:35:00,906 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 18:35:00,906 - scheduler - INFO - ⏭️ No odds extracted (smart extraction: only at 30min and 5min)
+2025-09-03 18:35:00,906 - scheduler - INFO - 📱 No notifications sent (not at key moments)
+2025-09-03 18:40:00,036 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:40:00
+2025-09-03 18:40:00,036 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:40:00,037 - repository - INFO - Found 1 events starting within 30 minutes
+2025-09-03 18:40:00,037 - scheduler - INFO - Found 1 events starting within 30 minutes
+2025-09-03 18:40:00,037 - scheduler - INFO - 🚨 UPCOMING GAME ALERT: Deportes Quindío vs Atlético Nacional starts in 5 minutes
+2025-09-03 18:40:00,038 - scheduler - INFO - 🎯 Key moment detected for event 14461710: 5 minutes until start - WILL EXTRACT ODDS
+2025-09-03 18:40:00,038 - scheduler - INFO - 🎯 EXTRACTING ODDS: Deportes Quindío vs Atlético Nacional - 5 min until start
+2025-09-03 18:40:00,038 - sofascore_api - INFO - Fetching final odds for event deportes-quindio-atletico-nacional using dedicated endpoint
+2025-09-03 18:40:01,096 - sofascore_api - INFO - API request successful: /event/14461710/odds/1/all
+2025-09-03 18:40:01,096 - sofascore_api - INFO - ✅ Final odds extracted (3-choice market): 1=3.80, X=3.60, 2=1.90
+2025-09-03 18:40:01,100 - scheduler - INFO - ✅ Final odds updated for Deportes Quindío vs Atlético Nacional
+2025-09-03 18:40:01,100 - repository - INFO - Created odds snapshot for event 14461710
+2025-09-03 18:40:01,103 - scheduler - INFO - ✅ Final odds snapshot created for event 14461710
+2025-09-03 18:40:01,104 - scheduler - INFO - 📱 Updated odds for notification: Deportes Quindío vs Atlético Nacional (odds extracted at 5 min)
+2025-09-03 18:40:01,104 - scheduler - INFO - 📱 Added to notifications: Deportes Quindío vs Atlético Nacional (odds: fresh)
+2025-09-03 18:40:01,104 - scheduler - INFO - Sending notifications for 1 upcoming games (odds extracted for 1 games)
+2025-09-03 18:40:01,675 - alert_system - INFO - Telegram notification sent successfully
+2025-09-03 18:40:01,675 - alert_system - INFO - ✅ Successfully sent Telegram notification for 1 upcoming games
+2025-09-03 18:40:01,675 - scheduler - INFO - ✅ Upcoming games notifications sent successfully
+2025-09-03 18:40:01,675 - scheduler - INFO - 🚨 Pre-start check completed: 1 games starting soon!
+2025-09-03 18:40:01,675 - scheduler - INFO - 🎯 Odds extracted for 1 games (smart extraction active)
+2025-09-03 18:40:01,676 - scheduler - INFO - 📱 Notifications sent for 1 games (only when odds extracted)
+2025-09-03 18:45:00,805 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:45:00
+2025-09-03 18:45:00,805 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:45:00,806 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 18:50:00,927 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:50:00
+2025-09-03 18:50:00,927 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:50:00,930 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 18:55:00,054 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 18:55:00
+2025-09-03 18:55:00,054 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 18:55:00,055 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:00:00,184 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:00:00
+2025-09-03 19:00:00,184 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:00:00,185 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:05:00,305 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:05:00
+2025-09-03 19:05:00,305 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:05:00,307 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:10:00,441 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:10:00
+2025-09-03 19:10:00,441 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:10:00,443 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:15:00,579 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:15:00
+2025-09-03 19:15:00,579 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:15:00,580 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:20:00,702 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:20:00
+2025-09-03 19:20:00,702 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:20:00,704 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:25:00,835 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:25:00
+2025-09-03 19:25:00,835 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:25:00,837 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:30:00,966 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:30:00
+2025-09-03 19:30:00,967 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:30:00,968 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:35:00,103 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:35:00
+2025-09-03 19:35:00,103 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:35:00,104 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:40:00,226 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:40:00
+2025-09-03 19:40:00,227 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:40:00,228 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:45:00,358 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:45:00
+2025-09-03 19:45:00,359 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:45:00,360 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:50:00,490 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:50:00
+2025-09-03 19:50:00,491 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:50:00,492 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 19:55:00,617 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 19:55:00
+2025-09-03 19:55:00,617 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 19:55:00,619 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 20:00:00,755 - scheduler - INFO - Starting Job A: Event Discovery with Odds Processing
+2025-09-03 20:00:00,755 - sofascore_api - INFO - Fetching dropping odds events with odds data using browser impersonation
+2025-09-03 20:00:01,785 - sofascore_api - INFO - API request successful: /odds/1/dropping/all
+2025-09-03 20:00:01,791 - sofascore_api - INFO -  Extracted 20 odds entries from response
+2025-09-03 20:00:01,792 - sofascore_api - INFO -  Extracted 20 valid events from dropping odds
+2025-09-03 20:00:01,792 - scheduler - INFO - Found 20 events in dropping odds
+2025-09-03 20:00:01,806 - odds_utils - INFO - Processed odds - Open: 1=1.08, X=None, 2=7.00
+2025-09-03 20:00:01,806 - odds_utils - INFO - Processed odds - Current: 1=1.32, X=None, 2=3.15
+2025-09-03 20:00:01,806 - repository - INFO - Created odds snapshot for event 14282490
+2025-09-03 20:00:01,816 - odds_utils - INFO - Processed odds - Open: 1=51.00, X=17.00, 2=1.03
+2025-09-03 20:00:01,816 - odds_utils - INFO - Processed odds - Current: 1=29.00, X=10.00, 2=1.07
+2025-09-03 20:00:01,816 - repository - INFO - Created odds snapshot for event 14582727
+2025-09-03 20:00:01,825 - odds_utils - INFO - Processed odds - Open: 1=1.70, X=8.00, 2=2.90
+2025-09-03 20:00:01,825 - odds_utils - INFO - Processed odds - Current: 1=2.60, X=7.50, 2=1.85
+2025-09-03 20:00:01,825 - repository - INFO - Created odds snapshot for event 14211111
+2025-09-03 20:00:01,834 - odds_utils - INFO - Processed odds - Open: 1=1.80, X=7.50, 2=2.70
+2025-09-03 20:00:01,834 - odds_utils - INFO - Processed odds - Current: 1=1.47, X=8.50, 2=3.80
+2025-09-03 20:00:01,835 - repository - INFO - Created odds snapshot for event 14211097
+2025-09-03 20:00:01,843 - odds_utils - INFO - Processed odds - Open: 1=1.95, X=None, 2=1.87
+2025-09-03 20:00:01,844 - odds_utils - INFO - Processed odds - Current: 1=2.55, X=None, 2=1.54
+2025-09-03 20:00:01,844 - repository - INFO - Created odds snapshot for event 13688679
+2025-09-03 20:00:01,852 - odds_utils - INFO - Processed odds - Open: 1=2.20, X=None, 2=1.62
+2025-09-03 20:00:01,852 - odds_utils - INFO - Processed odds - Current: 1=1.83, X=None, 2=1.83
+2025-09-03 20:00:01,853 - repository - INFO - Created odds snapshot for event 14552897
+2025-09-03 20:00:01,861 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=4.00, 2=5.50
+2025-09-03 20:00:01,861 - odds_utils - INFO - Processed odds - Current: 1=1.25, X=5.50, 2=8.00
+2025-09-03 20:00:01,862 - repository - INFO - Created odds snapshot for event 13888416
+2025-09-03 20:00:01,871 - odds_utils - INFO - Processed odds - Open: 1=1.91, X=21.00, 2=1.91
+2025-09-03 20:00:01,871 - odds_utils - INFO - Processed odds - Current: 1=2.45, X=26.00, 2=1.60
+2025-09-03 20:00:01,871 - repository - INFO - Created odds snapshot for event 13911482
+2025-09-03 20:00:01,880 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=None, 2=2.50
+2025-09-03 20:00:01,880 - odds_utils - INFO - Processed odds - Current: 1=1.67, X=None, 2=2.10
+2025-09-03 20:00:01,880 - repository - INFO - Created odds snapshot for event 14552519
+2025-09-03 20:00:01,889 - odds_utils - INFO - Processed odds - Open: 1=2.50, X=None, 2=1.50
+2025-09-03 20:00:01,890 - odds_utils - INFO - Processed odds - Current: 1=3.50, X=None, 2=1.28
+2025-09-03 20:00:01,890 - repository - INFO - Created odds snapshot for event 14552575
+2025-09-03 20:00:01,899 - odds_utils - INFO - Processed odds - Open: 1=1.30, X=None, 2=3.50
+2025-09-03 20:00:01,899 - odds_utils - INFO - Processed odds - Current: 1=1.37, X=None, 2=3.00
+2025-09-03 20:00:01,899 - repository - INFO - Created odds snapshot for event 13988507
+2025-09-03 20:00:01,909 - odds_utils - INFO - Processed odds - Open: 1=1.22, X=5.75, 2=15.00
+2025-09-03 20:00:01,909 - odds_utils - INFO - Processed odds - Current: 1=1.22, X=6.00, 2=13.00
+2025-09-03 20:00:01,910 - repository - INFO - Created odds snapshot for event 14169219
+2025-09-03 20:00:01,919 - odds_utils - INFO - Processed odds - Open: 1=2.45, X=3.30, 2=2.80
+2025-09-03 20:00:01,919 - odds_utils - INFO - Processed odds - Current: 1=2.40, X=2.88, 2=3.40
+2025-09-03 20:00:01,919 - repository - INFO - Created odds snapshot for event 14169216
+2025-09-03 20:00:01,928 - odds_utils - INFO - Processed odds - Open: 1=1.67, X=None, 2=2.10
+2025-09-03 20:00:01,928 - odds_utils - INFO - Processed odds - Current: 1=1.83, X=None, 2=1.83
+2025-09-03 20:00:01,928 - repository - INFO - Created odds snapshot for event 14552612
+2025-09-03 20:00:01,937 - odds_utils - INFO - Processed odds - Open: 1=1.45, X=9.50, 2=3.80
+2025-09-03 20:00:01,937 - odds_utils - INFO - Processed odds - Current: 1=1.27, X=11.00, 2=5.50
+2025-09-03 20:00:01,937 - repository - INFO - Created odds snapshot for event 14049752
+2025-09-03 20:00:01,946 - odds_utils - INFO - Processed odds - Open: 1=2.05, X=None, 2=1.80
+2025-09-03 20:00:01,946 - odds_utils - INFO - Processed odds - Current: 1=1.80, X=None, 2=2.05
+2025-09-03 20:00:01,946 - repository - INFO - Created odds snapshot for event 13688682
+2025-09-03 20:00:01,955 - odds_utils - INFO - Processed odds - Open: 1=2.50, X=None, 2=1.50
+2025-09-03 20:00:01,955 - odds_utils - INFO - Processed odds - Current: 1=3.25, X=None, 2=1.33
+2025-09-03 20:00:01,955 - repository - INFO - Created odds snapshot for event 14552911
+2025-09-03 20:00:01,965 - odds_utils - INFO - Processed odds - Open: 1=1.62, X=None, 2=2.20
+2025-09-03 20:00:01,965 - odds_utils - INFO - Processed odds - Current: 1=1.44, X=None, 2=2.63
+2025-09-03 20:00:01,966 - repository - INFO - Created odds snapshot for event 14552573
+2025-09-03 20:00:01,975 - odds_utils - INFO - Processed odds - Open: 1=1.30, X=10.00, 2=5.00
+2025-09-03 20:00:01,975 - odds_utils - INFO - Processed odds - Current: 1=1.37, X=9.50, 2=4.50
+2025-09-03 20:00:01,975 - repository - INFO - Created odds snapshot for event 14045302
+2025-09-03 20:00:01,984 - odds_utils - INFO - Processed odds - Open: 1=1.33, X=4.75, 2=10.00
+2025-09-03 20:00:01,984 - odds_utils - INFO - Processed odds - Current: 1=1.38, X=4.75, 2=9.00
+2025-09-03 20:00:01,984 - repository - INFO - Created odds snapshot for event 14169221
+2025-09-03 20:00:01,990 - scheduler - INFO - Job A completed: processed 20/20 events
+2025-09-03 20:00:01,990 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 20:00:01
+2025-09-03 20:00:01,990 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 20:00:01,991 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 20:05:00,140 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 20:05:00
+2025-09-03 20:05:00,140 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 20:05:00,142 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 20:28:26,298 - root - INFO - Logging system initialized successfully
+2025-09-03 20:28:28,412 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 20:28:28,635 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 20:28:29,343 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 20:28:29,344 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 20:28:29,344 - scheduler - INFO - Jobs scheduled:
+2025-09-03 20:28:29,344 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 20:28:29,345 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 20:28:29,345 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 20:28:29,347 - __main__ - INFO - Starting SofaScore Odds System with command: start
+2025-09-03 20:28:29,354 - database - INFO - Database connection test successful
+2025-09-03 20:28:29,356 - database - INFO - Database tables created successfully
+2025-09-03 20:28:29,357 - __main__ - INFO - System initialized successfully
+2025-09-03 20:28:29,357 - __main__ - INFO - Starting job scheduler...
+2025-09-03 20:28:29,358 - database - INFO - Database connection test successful
+2025-09-03 20:28:29,360 - database - INFO - Database tables created successfully
+2025-09-03 20:28:29,360 - __main__ - INFO - System initialized successfully
+2025-09-03 20:28:29,361 - __main__ - INFO - Starting job scheduler...
+2025-09-03 20:28:29,361 - scheduler - INFO - Scheduler loop started - monitoring for pending jobs...
+2025-09-03 20:28:29,361 - scheduler - INFO - Job scheduler started
+2025-09-03 20:28:29,362 - scheduler - INFO - Running immediate pre-start check for any games starting soon...
+2025-09-03 20:28:29,362 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 20:28:29
+2025-09-03 20:28:29,362 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 20:28:29,386 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 20:30:00,407 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 20:30:00
+2025-09-03 20:30:00,408 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 20:30:00,409 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 20:35:00,516 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 20:35:00
+2025-09-03 20:35:00,516 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 20:35:00,528 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 20:40:00,614 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 20:40:00
+2025-09-03 20:40:00,614 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 20:40:00,626 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 20:45:00,748 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 20:45:00
+2025-09-03 20:45:00,748 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 20:45:00,750 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 20:50:00,870 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 20:50:00
+2025-09-03 20:50:00,871 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 20:50:00,873 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 20:55:00,990 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 20:55:00
+2025-09-03 20:55:00,991 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 20:55:00,992 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:20:54,024 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:20:54
+2025-09-03 21:20:54,119 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:20:54,122 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:20:54,122 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:20:54
+2025-09-03 21:20:54,122 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:20:54,124 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:20:54,124 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:20:54
+2025-09-03 21:20:54,125 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:20:54,127 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:20:54,127 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:20:54
+2025-09-03 21:20:54,128 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:20:54,129 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:20:54,129 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:20:54
+2025-09-03 21:20:54,130 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:20:54,131 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:25:00,243 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:25:00
+2025-09-03 21:25:00,243 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:25:00,244 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:30:00,372 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:30:00
+2025-09-03 21:30:00,372 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:30:00,373 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:35:00,509 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:35:00
+2025-09-03 21:35:00,509 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:35:00,511 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:40:00,631 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:40:00
+2025-09-03 21:40:00,632 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:40:00,633 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:45:00,743 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:45:00
+2025-09-03 21:45:00,744 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:45:00,745 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:50:00,865 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:50:00
+2025-09-03 21:50:00,865 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:50:00,867 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 21:55:00,985 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 21:55:00
+2025-09-03 21:55:00,985 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 21:55:00,987 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:00:00,103 - scheduler - INFO - Starting Job A: Event Discovery with Odds Processing
+2025-09-03 22:00:00,104 - sofascore_api - INFO - Fetching dropping odds events with odds data using browser impersonation
+2025-09-03 22:00:02,263 - sofascore_api - INFO - API request successful: /odds/1/dropping/all
+2025-09-03 22:00:02,271 - sofascore_api - INFO -  Extracted 20 odds entries from response
+2025-09-03 22:00:02,272 - sofascore_api - INFO -  Extracted 20 valid events from dropping odds
+2025-09-03 22:00:02,272 - scheduler - INFO - Found 20 events in dropping odds
+2025-09-03 22:00:02,294 - odds_utils - INFO - Processed odds - Open: 1=1.08, X=None, 2=7.00
+2025-09-03 22:00:02,295 - odds_utils - INFO - Processed odds - Current: 1=1.32, X=None, 2=3.15
+2025-09-03 22:00:02,295 - repository - INFO - Created odds snapshot for event 14282490
+2025-09-03 22:00:02,311 - odds_utils - INFO - Processed odds - Open: 1=51.00, X=17.00, 2=1.03
+2025-09-03 22:00:02,311 - odds_utils - INFO - Processed odds - Current: 1=29.00, X=10.00, 2=1.07
+2025-09-03 22:00:02,311 - repository - INFO - Created odds snapshot for event 14582727
+2025-09-03 22:00:02,322 - odds_utils - INFO - Processed odds - Open: 1=1.70, X=8.00, 2=2.90
+2025-09-03 22:00:02,322 - odds_utils - INFO - Processed odds - Current: 1=2.60, X=7.50, 2=1.85
+2025-09-03 22:00:02,322 - repository - INFO - Created odds snapshot for event 14211111
+2025-09-03 22:00:02,334 - odds_utils - INFO - Processed odds - Open: 1=1.80, X=7.50, 2=2.70
+2025-09-03 22:00:02,334 - odds_utils - INFO - Processed odds - Current: 1=1.47, X=8.50, 2=3.80
+2025-09-03 22:00:02,334 - repository - INFO - Created odds snapshot for event 14211097
+2025-09-03 22:00:02,347 - odds_utils - INFO - Processed odds - Open: 1=1.91, X=21.00, 2=1.91
+2025-09-03 22:00:02,348 - odds_utils - INFO - Processed odds - Current: 1=2.40, X=26.00, 2=1.56
+2025-09-03 22:00:02,348 - repository - INFO - Created odds snapshot for event 13911482
+2025-09-03 22:00:02,360 - odds_utils - INFO - Processed odds - Open: 1=1.95, X=None, 2=1.87
+2025-09-03 22:00:02,360 - odds_utils - INFO - Processed odds - Current: 1=2.55, X=None, 2=1.54
+2025-09-03 22:00:02,360 - repository - INFO - Created odds snapshot for event 13688679
+2025-09-03 22:00:02,371 - odds_utils - INFO - Processed odds - Open: 1=2.20, X=None, 2=1.62
+2025-09-03 22:00:02,371 - odds_utils - INFO - Processed odds - Current: 1=1.83, X=None, 2=1.83
+2025-09-03 22:00:02,371 - repository - INFO - Created odds snapshot for event 14552897
+2025-09-03 22:00:02,383 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=None, 2=2.50
+2025-09-03 22:00:02,383 - odds_utils - INFO - Processed odds - Current: 1=1.67, X=None, 2=2.10
+2025-09-03 22:00:02,384 - repository - INFO - Created odds snapshot for event 14552519
+2025-09-03 22:00:02,395 - odds_utils - INFO - Processed odds - Open: 1=2.50, X=None, 2=1.50
+2025-09-03 22:00:02,395 - odds_utils - INFO - Processed odds - Current: 1=3.50, X=None, 2=1.28
+2025-09-03 22:00:02,395 - repository - INFO - Created odds snapshot for event 14552575
+2025-09-03 22:00:02,406 - odds_utils - INFO - Processed odds - Open: 1=1.30, X=None, 2=3.50
+2025-09-03 22:00:02,406 - odds_utils - INFO - Processed odds - Current: 1=1.37, X=None, 2=3.00
+2025-09-03 22:00:02,407 - repository - INFO - Created odds snapshot for event 13988507
+2025-09-03 22:00:02,418 - odds_utils - INFO - Processed odds - Open: 1=1.50, X=4.00, 2=5.50
+2025-09-03 22:00:02,418 - odds_utils - INFO - Processed odds - Current: 1=1.29, X=5.50, 2=7.50
+2025-09-03 22:00:02,419 - repository - INFO - Created odds snapshot for event 13888416
+2025-09-03 22:00:02,428 - odds_utils - INFO - Processed odds - Open: 1=1.22, X=5.75, 2=15.00
+2025-09-03 22:00:02,429 - odds_utils - INFO - Processed odds - Current: 1=1.22, X=6.00, 2=13.00
+2025-09-03 22:00:02,429 - repository - INFO - Created odds snapshot for event 14169219
+2025-09-03 22:00:02,440 - odds_utils - INFO - Processed odds - Open: 1=2.45, X=3.30, 2=2.80
+2025-09-03 22:00:02,440 - odds_utils - INFO - Processed odds - Current: 1=2.35, X=2.88, 2=3.50
+2025-09-03 22:00:02,440 - repository - INFO - Created odds snapshot for event 14169216
+2025-09-03 22:00:02,450 - odds_utils - INFO - Processed odds - Open: 1=1.67, X=None, 2=2.10
+2025-09-03 22:00:02,451 - odds_utils - INFO - Processed odds - Current: 1=1.83, X=None, 2=1.83
+2025-09-03 22:00:02,451 - repository - INFO - Created odds snapshot for event 14552612
+2025-09-03 22:00:02,461 - odds_utils - INFO - Processed odds - Open: 1=1.45, X=9.50, 2=3.80
+2025-09-03 22:00:02,461 - odds_utils - INFO - Processed odds - Current: 1=1.27, X=11.00, 2=5.50
+2025-09-03 22:00:02,461 - repository - INFO - Created odds snapshot for event 14049752
+2025-09-03 22:00:02,471 - odds_utils - INFO - Processed odds - Open: 1=2.05, X=None, 2=1.80
+2025-09-03 22:00:02,471 - odds_utils - INFO - Processed odds - Current: 1=1.80, X=None, 2=2.05
+2025-09-03 22:00:02,472 - repository - INFO - Created odds snapshot for event 13688682
+2025-09-03 22:00:02,482 - odds_utils - INFO - Processed odds - Open: 1=1.62, X=None, 2=2.20
+2025-09-03 22:00:02,482 - odds_utils - INFO - Processed odds - Current: 1=1.44, X=None, 2=2.63
+2025-09-03 22:00:02,483 - repository - INFO - Created odds snapshot for event 14552573
+2025-09-03 22:00:02,493 - odds_utils - INFO - Processed odds - Open: 1=1.30, X=10.00, 2=5.00
+2025-09-03 22:00:02,493 - odds_utils - INFO - Processed odds - Current: 1=1.37, X=9.50, 2=4.50
+2025-09-03 22:00:02,493 - repository - INFO - Created odds snapshot for event 14045302
+2025-09-03 22:00:02,503 - odds_utils - INFO - Processed odds - Open: 1=1.54, X=None, 2=2.50
+2025-09-03 22:00:02,504 - odds_utils - INFO - Processed odds - Current: 1=1.68, X=None, 2=2.25
+2025-09-03 22:00:02,504 - repository - INFO - Created odds snapshot for event 14537042
+2025-09-03 22:00:02,514 - odds_utils - INFO - Processed odds - Open: 1=1.29, X=5.25, 2=7.00
+2025-09-03 22:00:02,514 - odds_utils - INFO - Processed odds - Current: 1=1.40, X=4.75, 2=7.50
+2025-09-03 22:00:02,515 - repository - INFO - Created odds snapshot for event 12183479
+2025-09-03 22:00:02,521 - scheduler - INFO - Job A completed: processed 20/20 events
+2025-09-03 22:00:02,522 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:00:02
+2025-09-03 22:00:02,522 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:00:02,523 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:05:00,631 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:05:00
+2025-09-03 22:05:00,631 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:05:00,633 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:10:00,744 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:10:00
+2025-09-03 22:10:00,745 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:10:00,746 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:15:00,889 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:15:00
+2025-09-03 22:15:00,890 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:15:00,893 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:20:00,015 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:20:00
+2025-09-03 22:20:00,016 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:20:00,017 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:23:52,941 - root - INFO - Logging system initialized successfully
+2025-09-03 22:23:53,816 - database - INFO - Database engine created for: sqlite:///sofascore_odds.db
+2025-09-03 22:23:53,964 - root - INFO - Proxy enabled: pr.oxylabs.io:7777
+2025-09-03 22:23:54,370 - alert_system - INFO - Telegram notification: ✅ Enabled
+2025-09-03 22:23:54,371 - scheduler - INFO -   - Pre-start check scheduled every 5 minutes at clock intervals
+2025-09-03 22:23:54,371 - scheduler - INFO - Jobs scheduled:
+2025-09-03 22:23:54,371 - scheduler - INFO -   - Discovery: daily at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00
+2025-09-03 22:23:54,371 - scheduler - INFO -   - Pre-start check: every 5 minutes
+2025-09-03 22:23:54,371 - scheduler - INFO -   - Midnight sync: daily at 00:05 (results collection only)
+2025-09-03 22:23:54,375 - __main__ - INFO - Starting SofaScore Odds System with command: final-odds-all
+2025-09-03 22:23:54,377 - database - INFO - Database connection test successful
+2025-09-03 22:23:54,378 - database - INFO - Database tables created successfully
+2025-09-03 22:23:54,378 - __main__ - INFO - System initialized successfully
+2025-09-03 22:23:54,379 - __main__ - INFO - Running final-odds-all collection...
+2025-09-03 22:23:54,379 - final_odds_all - INFO - Starting final-odds-all collection
+2025-09-03 22:23:54,392 - repository - INFO - Found 85 finished events
+2025-09-03 22:23:54,392 - final_odds_all - INFO - Processing 75 finished events (cutoff: 2025-09-03 14:00:00)
+2025-09-03 22:23:54,392 - final_odds_all - INFO - [1/75] Fetching final odds for event 13616312: América Mineiro vs Avaí
+2025-09-03 22:23:54,393 - sofascore_api - INFO - Fetching final odds for event avai-america-mineiro using dedicated endpoint
+2025-09-03 22:23:55,750 - sofascore_api - INFO - API request successful: /event/13616312/odds/1/all
+2025-09-03 22:23:55,756 - repository - INFO - Created odds snapshot for event 13616312
+2025-09-03 22:23:55,761 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 13616312
+2025-09-03 22:23:55,761 - final_odds_all - INFO - [2/75] Fetching final odds for event 13688670: France vs Poland
+2025-09-03 22:23:55,761 - sofascore_api - INFO - Fetching final odds for event poland-france using dedicated endpoint
+2025-09-03 22:23:56,057 - sofascore_api - INFO - API request successful: /event/13688670/odds/1/all
+2025-09-03 22:23:56,071 - repository - INFO - Created odds snapshot for event 13688670
+2025-09-03 22:23:56,073 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 13688670
+2025-09-03 22:23:56,074 - final_odds_all - INFO - [3/75] Fetching final odds for event 13688672: Estonia vs Portugal
+2025-09-03 22:23:56,074 - sofascore_api - INFO - Fetching final odds for event estonia-portugal using dedicated endpoint
+2025-09-03 22:23:57,047 - sofascore_api - INFO - API request successful: /event/13688672/odds/1/all
+2025-09-03 22:23:57,060 - repository - INFO - Created odds snapshot for event 13688672
+2025-09-03 22:23:57,064 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 13688672
+2025-09-03 22:23:57,064 - final_odds_all - INFO - [4/75] Fetching final odds for event 13688673: Czechia vs Latvia
+2025-09-03 22:23:57,064 - sofascore_api - INFO - Fetching final odds for event latvia-czechia using dedicated endpoint
+2025-09-03 22:23:58,058 - sofascore_api - INFO - API request successful: /event/13688673/odds/1/all
+2025-09-03 22:23:58,072 - repository - INFO - Created odds snapshot for event 13688673
+2025-09-03 22:23:58,075 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 13688673
+2025-09-03 22:23:58,076 - final_odds_all - INFO - [5/75] Fetching final odds for event 13688675: Finland vs Germany
+2025-09-03 22:23:58,076 - sofascore_api - INFO - Fetching final odds for event finland-germany using dedicated endpoint
+2025-09-03 22:23:59,057 - sofascore_api - INFO - API request successful: /event/13688675/odds/1/all
+2025-09-03 22:23:59,061 - repository - INFO - Created odds snapshot for event 13688675
+2025-09-03 22:23:59,064 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 13688675
+2025-09-03 22:23:59,064 - final_odds_all - INFO - [6/75] Fetching final odds for event 13688677: Lithuania vs Sweden
+2025-09-03 22:23:59,064 - sofascore_api - INFO - Fetching final odds for event sweden-lithuania using dedicated endpoint
+2025-09-03 22:24:00,057 - sofascore_api - INFO - API request successful: /event/13688677/odds/1/all
+2025-09-03 22:24:00,061 - repository - INFO - Created odds snapshot for event 13688677
+2025-09-03 22:24:00,063 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 13688677
+2025-09-03 22:24:00,064 - final_odds_all - INFO - [7/75] Fetching final odds for event 14019550: Shonan Bellmare vs Sanfrecce Hiroshima
+2025-09-03 22:24:00,064 - sofascore_api - INFO - Fetching final odds for event shonan-bellmare-sanfrecce-hiroshima using dedicated endpoint
+2025-09-03 22:24:01,057 - sofascore_api - INFO - API request successful: /event/14019550/odds/1/all
+2025-09-03 22:24:01,061 - repository - INFO - Created odds snapshot for event 14019550
+2025-09-03 22:24:01,063 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14019550
+2025-09-03 22:24:01,064 - final_odds_all - INFO - [8/75] Fetching final odds for event 14045295: Viborg HK vs Team Esbjerg
+2025-09-03 22:24:01,064 - sofascore_api - INFO - Fetching final odds for event team-esbjerg-viborg-hk using dedicated endpoint
+2025-09-03 22:24:02,247 - sofascore_api - INFO - API request successful: /event/14045295/odds/1/all
+2025-09-03 22:24:02,260 - repository - INFO - Created odds snapshot for event 14045295
+2025-09-03 22:24:02,263 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14045295
+2025-09-03 22:24:02,263 - final_odds_all - INFO - [9/75] Fetching final odds for event 14045300: HH Elite vs Odense Håndbold
+2025-09-03 22:24:02,263 - sofascore_api - INFO - Fetching final odds for event odense-handbold-hh-elite using dedicated endpoint
+2025-09-03 22:24:03,244 - sofascore_api - INFO - API request successful: /event/14045300/odds/1/all
+2025-09-03 22:24:03,248 - repository - INFO - Created odds snapshot for event 14045300
+2025-09-03 22:24:03,251 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14045300
+2025-09-03 22:24:03,252 - final_odds_all - INFO - [10/75] Fetching final odds for event 14049755: Mors-Thy Håndbold vs Ribe-Esbjerg HH
+2025-09-03 22:24:03,252 - sofascore_api - INFO - Fetching final odds for event ribe-esbjerg-hh-mors-thy-handbold using dedicated endpoint
+2025-09-03 22:24:04,232 - sofascore_api - INFO - API request successful: /event/14049755/odds/1/all
+2025-09-03 22:24:04,246 - repository - INFO - Created odds snapshot for event 14049755
+2025-09-03 22:24:04,249 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14049755
+2025-09-03 22:24:04,249 - final_odds_all - INFO - [11/75] Fetching final odds for event 14074322: Baník Ostrava B vs SK Hanácká Slavia Kroměříž
+2025-09-03 22:24:04,249 - sofascore_api - INFO - Fetching final odds for event banik-ostrava-sk-hanacka-slavia-kromeriz using dedicated endpoint
+2025-09-03 22:24:05,061 - sofascore_api - INFO - API request successful: /event/14074322/odds/1/all
+2025-09-03 22:24:05,075 - repository - INFO - Created odds snapshot for event 14074322
+2025-09-03 22:24:05,078 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14074322
+2025-09-03 22:24:05,079 - final_odds_all - INFO - [12/75] Fetching final odds for event 14084618: BSK Handball Elite vs Halden Topphandball
+2025-09-03 22:24:05,079 - sofascore_api - INFO - Fetching final odds for event bsk-handball-elite-halden-topphandball using dedicated endpoint
+2025-09-03 22:24:06,228 - sofascore_api - INFO - API request successful: /event/14084618/odds/1/all
+2025-09-03 22:24:06,242 - repository - INFO - Created odds snapshot for event 14084618
+2025-09-03 22:24:06,245 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14084618
+2025-09-03 22:24:06,246 - final_odds_all - INFO - [13/75] Fetching final odds for event 14115322: Independiente Santa Fe vs Once Caldas
+2025-09-03 22:24:06,246 - sofascore_api - INFO - Fetching final odds for event once-caldas-independiente-santa-fe using dedicated endpoint
+2025-09-03 22:24:07,058 - sofascore_api - INFO - API request successful: /event/14115322/odds/1/all
+2025-09-03 22:24:07,072 - repository - INFO - Created odds snapshot for event 14115322
+2025-09-03 22:24:07,075 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14115322
+2025-09-03 22:24:07,076 - final_odds_all - INFO - [14/75] Fetching final odds for event 14160001: Solihull Moors vs Yeovil Town
+2025-09-03 22:24:07,076 - sofascore_api - INFO - Fetching final odds for event solihull-moors-yeovil-town using dedicated endpoint
+2025-09-03 22:24:08,264 - sofascore_api - INFO - API request successful: /event/14160001/odds/1/all
+2025-09-03 22:24:08,277 - repository - INFO - Created odds snapshot for event 14160001
+2025-09-03 22:24:08,280 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14160001
+2025-09-03 22:24:08,280 - final_odds_all - INFO - [15/75] Fetching final odds for event 14160003: Sutton United vs Boreham Wood
+2025-09-03 22:24:08,281 - sofascore_api - INFO - Fetching final odds for event boreham-wood-sutton-united using dedicated endpoint
+2025-09-03 22:24:09,063 - sofascore_api - INFO - API request successful: /event/14160003/odds/1/all
+2025-09-03 22:24:09,067 - repository - INFO - Created odds snapshot for event 14160003
+2025-09-03 22:24:09,070 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14160003
+2025-09-03 22:24:09,070 - final_odds_all - INFO - [16/75] Fetching final odds for event 14160005: Hartlepool United vs Boston United
+2025-09-03 22:24:09,071 - sofascore_api - INFO - Fetching final odds for event boston-united-hartlepool-united using dedicated endpoint
+2025-09-03 22:24:10,061 - sofascore_api - INFO - API request successful: /event/14160005/odds/1/all
+2025-09-03 22:24:10,065 - repository - INFO - Created odds snapshot for event 14160005
+2025-09-03 22:24:10,067 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14160005
+2025-09-03 22:24:10,068 - final_odds_all - INFO - [17/75] Fetching final odds for event 14160006: Wealdstone vs Southend United
+2025-09-03 22:24:10,068 - sofascore_api - INFO - Fetching final odds for event wealdstone-southend-united using dedicated endpoint
+2025-09-03 22:24:11,241 - sofascore_api - INFO - API request successful: /event/14160006/odds/1/all
+2025-09-03 22:24:11,245 - repository - INFO - Created odds snapshot for event 14160006
+2025-09-03 22:24:11,248 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14160006
+2025-09-03 22:24:11,249 - final_odds_all - INFO - [18/75] Fetching final odds for event 14160007: Truro City vs Aldershot Town
+2025-09-03 22:24:11,249 - sofascore_api - INFO - Fetching final odds for event truro-city-aldershot-town using dedicated endpoint
+2025-09-03 22:24:12,061 - sofascore_api - INFO - API request successful: /event/14160007/odds/1/all
+2025-09-03 22:24:12,075 - repository - INFO - Created odds snapshot for event 14160007
+2025-09-03 22:24:12,078 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14160007
+2025-09-03 22:24:12,078 - final_odds_all - INFO - [19/75] Fetching final odds for event 14160009: Brackley Town vs Carlisle United
+2025-09-03 22:24:12,079 - sofascore_api - INFO - Fetching final odds for event brackley-town-carlisle-united using dedicated endpoint
+2025-09-03 22:24:13,062 - sofascore_api - INFO - API request successful: /event/14160009/odds/1/all
+2025-09-03 22:24:13,076 - repository - INFO - Created odds snapshot for event 14160009
+2025-09-03 22:24:13,079 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14160009
+2025-09-03 22:24:13,079 - final_odds_all - INFO - [20/75] Fetching final odds for event 14160011: Gateshead vs Altrincham FC
+2025-09-03 22:24:13,079 - sofascore_api - INFO - Fetching final odds for event gateshead-altrincham using dedicated endpoint
+2025-09-03 22:24:14,090 - sofascore_api - INFO - API request successful: /event/14160011/odds/1/all
+2025-09-03 22:24:14,094 - repository - INFO - Created odds snapshot for event 14160011
+2025-09-03 22:24:14,097 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14160011
+2025-09-03 22:24:14,097 - final_odds_all - INFO - [21/75] Fetching final odds for event 14168543: Curzon Ashton FC vs Chorley FC
+2025-09-03 22:24:14,097 - sofascore_api - INFO - Fetching final odds for event curzon-ashton-fc-chorley-fc using dedicated endpoint
+2025-09-03 22:24:15,292 - sofascore_api - INFO - API request successful: /event/14168543/odds/1/all
+2025-09-03 22:24:15,305 - repository - INFO - Created odds snapshot for event 14168543
+2025-09-03 22:24:15,308 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14168543
+2025-09-03 22:24:15,309 - final_odds_all - INFO - [22/75] Fetching final odds for event 14168546: Telford United vs Peterborough Sports FC
+2025-09-03 22:24:15,309 - sofascore_api - INFO - Fetching final odds for event peterborough-sports-fc-telford-united using dedicated endpoint
+2025-09-03 22:24:16,301 - sofascore_api - INFO - API request successful: /event/14168546/odds/1/all
+2025-09-03 22:24:16,314 - repository - INFO - Created odds snapshot for event 14168546
+2025-09-03 22:24:16,317 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14168546
+2025-09-03 22:24:16,317 - final_odds_all - INFO - [23/75] Fetching final odds for event 14168551: South Shields vs Radcliffe FC
+2025-09-03 22:24:16,318 - sofascore_api - INFO - Fetching final odds for event south-shields-radcliffe-fc using dedicated endpoint
+2025-09-03 22:24:17,330 - sofascore_api - INFO - API request successful: /event/14168551/odds/1/all
+2025-09-03 22:24:17,344 - repository - INFO - Created odds snapshot for event 14168551
+2025-09-03 22:24:17,347 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14168551
+2025-09-03 22:24:17,348 - final_odds_all - INFO - [24/75] Fetching final odds for event 14211099: HSV Hamburg vs TSV Hannover Burgdorf
+2025-09-03 22:24:17,348 - sofascore_api - INFO - Fetching final odds for event tsv-hannover-burgdorf-hsv-hamburg using dedicated endpoint
+2025-09-03 22:24:18,232 - sofascore_api - INFO - API request successful: /event/14211099/odds/1/all
+2025-09-03 22:24:18,236 - repository - INFO - Created odds snapshot for event 14211099
+2025-09-03 22:24:18,239 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14211099
+2025-09-03 22:24:18,239 - final_odds_all - INFO - [25/75] Fetching final odds for event 14239188: Stockport County vs Wolverhampton U21
+2025-09-03 22:24:18,240 - sofascore_api - INFO - Fetching final odds for event wolverhampton-u21-stockport-county using dedicated endpoint
+2025-09-03 22:24:19,255 - sofascore_api - INFO - API request successful: /event/14239188/odds/1/all
+2025-09-03 22:24:19,271 - repository - INFO - Created odds snapshot for event 14239188
+2025-09-03 22:24:19,274 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14239188
+2025-09-03 22:24:19,275 - final_odds_all - INFO - [26/75] Fetching final odds for event 14239189: Wigan Athletic vs Salford City
+2025-09-03 22:24:19,275 - sofascore_api - INFO - Fetching final odds for event salford-city-wigan-athletic using dedicated endpoint
+2025-09-03 22:24:20,270 - sofascore_api - INFO - API request successful: /event/14239189/odds/1/all
+2025-09-03 22:24:20,275 - repository - INFO - Created odds snapshot for event 14239189
+2025-09-03 22:24:20,279 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14239189
+2025-09-03 22:24:20,279 - final_odds_all - INFO - [27/75] Fetching final odds for event 14355946: Crewe Alexandra vs Chesterfield
+2025-09-03 22:24:20,280 - sofascore_api - INFO - Fetching final odds for event chesterfield-crewe-alexandra using dedicated endpoint
+2025-09-03 22:24:21,273 - sofascore_api - INFO - API request successful: /event/14355946/odds/1/all
+2025-09-03 22:24:21,278 - repository - INFO - Created odds snapshot for event 14355946
+2025-09-03 22:24:21,281 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14355946
+2025-09-03 22:24:21,282 - final_odds_all - INFO - [28/75] Fetching final odds for event 14410424: Peterborough United vs Leyton Orient
+2025-09-03 22:24:21,282 - sofascore_api - INFO - Fetching final odds for event leyton-orient-peterborough-united using dedicated endpoint
+2025-09-03 22:24:22,248 - sofascore_api - INFO - API request successful: /event/14410424/odds/1/all
+2025-09-03 22:24:22,252 - repository - INFO - Created odds snapshot for event 14410424
+2025-09-03 22:24:22,255 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14410424
+2025-09-03 22:24:22,256 - final_odds_all - INFO - [29/75] Fetching final odds for event 14410426: Burton Albion vs Liverpool U21
+2025-09-03 22:24:22,256 - sofascore_api - INFO - Fetching final odds for event liverpool-u21-burton-albion using dedicated endpoint
+2025-09-03 22:24:23,254 - sofascore_api - INFO - API request successful: /event/14410426/odds/1/all
+2025-09-03 22:24:23,259 - repository - INFO - Created odds snapshot for event 14410426
+2025-09-03 22:24:23,263 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14410426
+2025-09-03 22:24:23,263 - final_odds_all - INFO - [30/75] Fetching final odds for event 14410428: Shrewsbury Town vs Walsall
+2025-09-03 22:24:23,263 - sofascore_api - INFO - Fetching final odds for event shrewsbury-town-walsall using dedicated endpoint
+2025-09-03 22:24:24,253 - sofascore_api - INFO - API request successful: /event/14410428/odds/1/all
+2025-09-03 22:24:24,267 - repository - INFO - Created odds snapshot for event 14410428
+2025-09-03 22:24:24,270 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14410428
+2025-09-03 22:24:24,270 - final_odds_all - INFO - [31/75] Fetching final odds for event 14410431: Luton Town vs Barnet
+2025-09-03 22:24:24,270 - sofascore_api - INFO - Fetching final odds for event barnet-luton-town using dedicated endpoint
+2025-09-03 22:24:25,259 - sofascore_api - INFO - API request successful: /event/14410431/odds/1/all
+2025-09-03 22:24:25,264 - repository - INFO - Created odds snapshot for event 14410431
+2025-09-03 22:24:25,268 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14410431
+2025-09-03 22:24:25,269 - final_odds_all - INFO - [32/75] Fetching final odds for event 14410436: AFC Wimbledon vs Stevenage
+2025-09-03 22:24:25,269 - sofascore_api - INFO - Fetching final odds for event afc-wimbledon-stevenage using dedicated endpoint
+2025-09-03 22:24:26,251 - sofascore_api - INFO - API request successful: /event/14410436/odds/1/all
+2025-09-03 22:24:26,255 - repository - INFO - Created odds snapshot for event 14410436
+2025-09-03 22:24:26,258 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14410436
+2025-09-03 22:24:26,258 - final_odds_all - INFO - [33/75] Fetching final odds for event 14410440: Bromley vs Crystal Palace U21
+2025-09-03 22:24:26,258 - sofascore_api - INFO - Fetching final odds for event crystal-palace-u21-bromley using dedicated endpoint
+2025-09-03 22:24:27,276 - sofascore_api - INFO - API request successful: /event/14410440/odds/1/all
+2025-09-03 22:24:27,290 - repository - INFO - Created odds snapshot for event 14410440
+2025-09-03 22:24:27,294 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14410440
+2025-09-03 22:24:27,295 - final_odds_all - INFO - [34/75] Fetching final odds for event 14419713: Sundby BK vs Vanløse IF
+2025-09-03 22:24:27,295 - sofascore_api - INFO - Fetching final odds for event sundby-bk-vanlose-if using dedicated endpoint
+2025-09-03 22:24:28,251 - sofascore_api - INFO - API request successful: /event/14419713/odds/1/all
+2025-09-03 22:24:28,256 - repository - INFO - Created odds snapshot for event 14419713
+2025-09-03 22:24:28,259 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14419713
+2025-09-03 22:24:28,259 - final_odds_all - INFO - [35/75] Fetching final odds for event 14419727: FA 2000 vs Hvidovre
+2025-09-03 22:24:28,259 - sofascore_api - INFO - Fetching final odds for event fa-2000-hvidovre using dedicated endpoint
+2025-09-03 22:24:29,089 - sofascore_api - INFO - API request successful: /event/14419727/odds/1/all
+2025-09-03 22:24:29,093 - repository - INFO - Created odds snapshot for event 14419727
+2025-09-03 22:24:29,096 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14419727
+2025-09-03 22:24:29,097 - final_odds_all - INFO - [36/75] Fetching final odds for event 14419733: Odder vs IF Lyseng
+2025-09-03 22:24:29,097 - sofascore_api - INFO - Fetching final odds for event odder-if-lyseng using dedicated endpoint
+2025-09-03 22:24:30,262 - sofascore_api - INFO - API request successful: /event/14419733/odds/1/all
+2025-09-03 22:24:30,266 - repository - INFO - Created odds snapshot for event 14419733
+2025-09-03 22:24:30,269 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14419733
+2025-09-03 22:24:30,269 - final_odds_all - INFO - [37/75] Fetching final odds for event 14461721: Atlético Cali vs Junior Barranquilla
+2025-09-03 22:24:30,269 - sofascore_api - INFO - Fetching final odds for event atletico-cali-junior-barranquilla using dedicated endpoint
+2025-09-03 22:24:31,065 - sofascore_api - INFO - API request successful: /event/14461721/odds/1/all
+2025-09-03 22:24:31,079 - repository - INFO - Created odds snapshot for event 14461721
+2025-09-03 22:24:31,082 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14461721
+2025-09-03 22:24:31,082 - final_odds_all - INFO - [38/75] Fetching final odds for event 14461722: Real Cundinamarca vs Deportivo Pereira
+2025-09-03 22:24:31,082 - sofascore_api - INFO - Fetching final odds for event real-cundinamarca-deportivo-pereira using dedicated endpoint
+2025-09-03 22:24:32,248 - sofascore_api - INFO - API request successful: /event/14461722/odds/1/all
+2025-09-03 22:24:32,262 - repository - INFO - Created odds snapshot for event 14461722
+2025-09-03 22:24:32,265 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14461722
+2025-09-03 22:24:32,265 - final_odds_all - INFO - [39/75] Fetching final odds for event 14486396: Columbus Clippers vs Indianapolis Indians
+2025-09-03 22:24:32,265 - sofascore_api - INFO - Fetching final odds for event indianapolis-indians-columbus-clippers using dedicated endpoint
+2025-09-03 22:24:33,326 - sofascore_api - INFO - API request successful: /event/14486396/odds/1/all
+2025-09-03 22:24:33,340 - repository - INFO - Created odds snapshot for event 14486396
+2025-09-03 22:24:33,343 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14486396
+2025-09-03 22:24:33,343 - final_odds_all - INFO - [40/75] Fetching final odds for event 14494938: Jannik Sinner vs Alexander Bublik
+2025-09-03 22:24:33,343 - sofascore_api - INFO - Fetching final odds for event jannik-sinner-alexander-bublik using dedicated endpoint
+2025-09-03 22:24:34,072 - sofascore_api - INFO - API request successful: /event/14494938/odds/1/all
+2025-09-03 22:24:34,086 - repository - INFO - Created odds snapshot for event 14494938
+2025-09-03 22:24:34,089 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14494938
+2025-09-03 22:24:34,089 - final_odds_all - INFO - [41/75] Fetching final odds for event 14495000: Jessica Pegula vs Barbora Krejcikova
+2025-09-03 22:24:34,089 - sofascore_api - INFO - Fetching final odds for event barbora-krejcikova-jessica-pegula using dedicated endpoint
+2025-09-03 22:24:35,099 - sofascore_api - INFO - API request successful: /event/14495000/odds/1/all
+2025-09-03 22:24:35,103 - repository - INFO - Created odds snapshot for event 14495000
+2025-09-03 22:24:35,106 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14495000
+2025-09-03 22:24:35,106 - final_odds_all - INFO - [42/75] Fetching final odds for event 14508064: Siniakova K / Townsend T vs Fernandez L A / Williams V
+2025-09-03 22:24:35,107 - sofascore_api - INFO - Fetching final odds for event fernandeza-williams-siniakova-townsend using dedicated endpoint
+2025-09-03 22:24:36,053 - sofascore_api - INFO - API request successful: /event/14508064/odds/1/all
+2025-09-03 22:24:36,067 - repository - INFO - Created odds snapshot for event 14508064
+2025-09-03 22:24:36,071 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14508064
+2025-09-03 22:24:36,071 - final_odds_all - INFO - [43/75] Fetching final odds for event 14522227: Alanya 1221 FK vs Muğlaspor
+2025-09-03 22:24:36,071 - sofascore_api - INFO - Fetching final odds for event alanya-1221-fk-muglaspor using dedicated endpoint
+2025-09-03 22:24:37,282 - sofascore_api - INFO - API request successful: /event/14522227/odds/1/all
+2025-09-03 22:24:37,286 - repository - INFO - Created odds snapshot for event 14522227
+2025-09-03 22:24:37,289 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14522227
+2025-09-03 22:24:37,289 - final_odds_all - INFO - [44/75] Fetching final odds for event 14522233: Yeni Mersin İdman Yurdu AŞ vs Niğde Belediyesi Spor
+2025-09-03 22:24:37,289 - sofascore_api - INFO - Fetching final odds for event nigde-belediyesi-spor-yeni-mersin-idman-yurdu-as using dedicated endpoint
+2025-09-03 22:24:38,239 - sofascore_api - INFO - API request successful: /event/14522233/odds/1/all
+2025-09-03 22:24:38,253 - repository - INFO - Created odds snapshot for event 14522233
+2025-09-03 22:24:38,255 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14522233
+2025-09-03 22:24:38,256 - final_odds_all - INFO - [45/75] Fetching final odds for event 14522235: Karaman FK vs Suvermez Kapadokyaspor
+2025-09-03 22:24:38,256 - sofascore_api - INFO - Fetching final odds for event suvermez-kapadokyaspor-karaman-fk using dedicated endpoint
+2025-09-03 22:24:39,260 - sofascore_api - INFO - API request successful: /event/14522235/odds/1/all
+2025-09-03 22:24:39,264 - repository - INFO - Created odds snapshot for event 14522235
+2025-09-03 22:24:39,267 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14522235
+2025-09-03 22:24:39,267 - final_odds_all - INFO - [46/75] Fetching final odds for event 14522242: Bucaspor 1928 vs İzmir Çoruhlu FK
+2025-09-03 22:24:39,267 - sofascore_api - INFO - Fetching final odds for event bucaspor-1928-izmir-coruhlu-fk using dedicated endpoint
+2025-09-03 22:24:40,236 - sofascore_api - INFO - API request successful: /event/14522242/odds/1/all
+2025-09-03 22:24:40,249 - repository - INFO - Created odds snapshot for event 14522242
+2025-09-03 22:24:40,253 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14522242
+2025-09-03 22:24:40,253 - final_odds_all - INFO - [47/75] Fetching final odds for event 14522246: Bursa Yıldırımspor vs Altay
+2025-09-03 22:24:40,253 - sofascore_api - INFO - Fetching final odds for event 1923-mustafakemalpasa-sk-altay using dedicated endpoint
+2025-09-03 22:24:41,069 - sofascore_api - INFO - API request successful: /event/14522246/odds/1/all
+2025-09-03 22:24:41,073 - repository - INFO - Created odds snapshot for event 14522246
+2025-09-03 22:24:41,076 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14522246
+2025-09-03 22:24:41,077 - final_odds_all - INFO - [48/75] Fetching final odds for event 14522252: Arnavutköy Belediye FSK vs Beykoz İshaklı SF
+2025-09-03 22:24:41,077 - sofascore_api - INFO - Fetching final odds for event beykoz-ishakli-sf-arnavutkoy-belediye-fsk using dedicated endpoint
+2025-09-03 22:24:42,277 - sofascore_api - INFO - API request successful: /event/14522252/odds/1/all
+2025-09-03 22:24:42,290 - repository - INFO - Created odds snapshot for event 14522252
+2025-09-03 22:24:42,294 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14522252
+2025-09-03 22:24:42,294 - final_odds_all - INFO - [49/75] Fetching final odds for event 14522253: Kırklarelispor vs Galata SK
+2025-09-03 22:24:42,294 - sofascore_api - INFO - Fetching final odds for event galata-sk-kirklarelispor using dedicated endpoint
+2025-09-03 22:24:43,257 - sofascore_api - INFO - API request successful: /event/14522253/odds/1/all
+2025-09-03 22:24:43,261 - repository - INFO - Created odds snapshot for event 14522253
+2025-09-03 22:24:43,264 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14522253
+2025-09-03 22:24:43,264 - final_odds_all - INFO - [50/75] Fetching final odds for event 14522257: MKE Ankaragücü vs Karabük İdman Yurdu FK
+2025-09-03 22:24:43,264 - sofascore_api - INFO - Fetching final odds for event karabuk-idman-yurdu-fk-mke-ankaragucu using dedicated endpoint
+2025-09-03 22:24:44,071 - sofascore_api - INFO - API request successful: /event/14522257/odds/1/all
+2025-09-03 22:24:44,075 - repository - INFO - Created odds snapshot for event 14522257
+2025-09-03 22:24:44,078 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14522257
+2025-09-03 22:24:44,078 - final_odds_all - INFO - [51/75] Fetching final odds for event 14522258: Polatlı 1926 SK vs Çankaya FK
+2025-09-03 22:24:44,078 - sofascore_api - INFO - Fetching final odds for event polatli-1926-sk-cankaya-fk using dedicated endpoint
+2025-09-03 22:24:45,297 - sofascore_api - INFO - API request successful: /event/14522258/odds/1/all
+2025-09-03 22:24:45,307 - repository - INFO - Created odds snapshot for event 14522258
+2025-09-03 22:24:45,310 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14522258
+2025-09-03 22:24:45,310 - final_odds_all - INFO - [52/75] Fetching final odds for event 14551792: Daniel Merida vs Jaime Faria
+2025-09-03 22:24:45,311 - sofascore_api - INFO - Fetching final odds for event jaime-faria-daniel-merida using dedicated endpoint
+2025-09-03 22:24:46,070 - sofascore_api - INFO - API request successful: /event/14551792/odds/1/all
+2025-09-03 22:24:46,084 - repository - INFO - Created odds snapshot for event 14551792
+2025-09-03 22:24:46,087 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14551792
+2025-09-03 22:24:46,087 - final_odds_all - INFO - [53/75] Fetching final odds for event 14551794: Jonas Forejtek vs Vilius Gaubas
+2025-09-03 22:24:46,087 - sofascore_api - INFO - Fetching final odds for event vilius-gaubas-jonas-forejtek using dedicated endpoint
+2025-09-03 22:24:47,257 - sofascore_api - INFO - API request successful: /event/14551794/odds/1/all
+2025-09-03 22:24:47,271 - repository - INFO - Created odds snapshot for event 14551794
+2025-09-03 22:24:47,274 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14551794
+2025-09-03 22:24:47,274 - final_odds_all - INFO - [54/75] Fetching final odds for event 14551798: Ignacio Buse vs Pablo Llamas Ruiz
+2025-09-03 22:24:47,274 - sofascore_api - INFO - Fetching final odds for event ignacio-buse-pablo-llamas-ruiz using dedicated endpoint
+2025-09-03 22:24:48,066 - sofascore_api - INFO - API request successful: /event/14551798/odds/1/all
+2025-09-03 22:24:48,070 - repository - INFO - Created odds snapshot for event 14551798
+2025-09-03 22:24:48,073 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14551798
+2025-09-03 22:24:48,073 - final_odds_all - INFO - [55/75] Fetching final odds for event 14552651: Alex Molcan vs Martin Landaluce
+2025-09-03 22:24:48,073 - sofascore_api - INFO - Fetching final odds for event martin-landaluce-alex-molcan using dedicated endpoint
+2025-09-03 22:24:49,292 - sofascore_api - INFO - API request successful: /event/14552651/odds/1/all
+2025-09-03 22:24:49,306 - repository - INFO - Created odds snapshot for event 14552651
+2025-09-03 22:24:49,309 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14552651
+2025-09-03 22:24:49,309 - final_odds_all - INFO - [56/75] Fetching final odds for event 14579389: Oliver Crawford vs Marat Sharipov
+2025-09-03 22:24:49,309 - sofascore_api - INFO - Fetching final odds for event marat-sharipov-oliver-crawford using dedicated endpoint
+2025-09-03 22:24:50,122 - sofascore_api - INFO - API request successful: /event/14579389/odds/1/all
+2025-09-03 22:24:50,135 - repository - INFO - Created odds snapshot for event 14579389
+2025-09-03 22:24:50,138 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14579389
+2025-09-03 22:24:50,138 - final_odds_all - INFO - [57/75] Fetching final odds for event 14579624: Moez Echargui vs Abdullah Shelbayh
+2025-09-03 22:24:50,139 - sofascore_api - INFO - Fetching final odds for event abdullah-shelbayh-moez-echargui using dedicated endpoint
+2025-09-03 22:24:51,245 - sofascore_api - INFO - API request successful: /event/14579624/odds/1/all
+2025-09-03 22:24:51,249 - repository - INFO - Created odds snapshot for event 14579624
+2025-09-03 22:24:51,253 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14579624
+2025-09-03 22:24:51,253 - final_odds_all - INFO - [58/75] Fetching final odds for event 14580348: Lucas Poullain vs Michael Mmoh
+2025-09-03 22:24:51,254 - sofascore_api - INFO - Fetching final odds for event lucas-poullain-michael-mmoh using dedicated endpoint
+2025-09-03 22:24:52,062 - sofascore_api - INFO - API request successful: /event/14580348/odds/1/all
+2025-09-03 22:24:52,075 - repository - INFO - Created odds snapshot for event 14580348
+2025-09-03 22:24:52,079 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14580348
+2025-09-03 22:24:52,079 - final_odds_all - INFO - [59/75] Fetching final odds for event 14580352: Quentin Halys vs Daniil Glinka
+2025-09-03 22:24:52,079 - sofascore_api - INFO - Fetching final odds for event daniil-glinka-quentin-halys using dedicated endpoint
+2025-09-03 22:24:53,077 - sofascore_api - INFO - API request successful: /event/14580352/odds/1/all
+2025-09-03 22:24:53,081 - repository - INFO - Created odds snapshot for event 14580352
+2025-09-03 22:24:53,085 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14580352
+2025-09-03 22:24:53,085 - final_odds_all - INFO - [60/75] Fetching final odds for event 14580790: Andrea Pellegrino vs Remy Bertola
+2025-09-03 22:24:53,085 - sofascore_api - INFO - Fetching final odds for event remy-bertola-andrea-pellegrino using dedicated endpoint
+2025-09-03 22:24:54,278 - sofascore_api - INFO - API request successful: /event/14580790/odds/1/all
+2025-09-03 22:24:54,292 - repository - INFO - Created odds snapshot for event 14580790
+2025-09-03 22:24:54,295 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14580790
+2025-09-03 22:24:54,295 - final_odds_all - INFO - [61/75] Fetching final odds for event 14580791: Stefano Travaglia vs Duje Ajduković
+2025-09-03 22:24:54,296 - sofascore_api - INFO - Fetching final odds for event duje-ajdukovic-stefano-travaglia using dedicated endpoint
+2025-09-03 22:24:55,262 - sofascore_api - INFO - API request successful: /event/14580791/odds/1/all
+2025-09-03 22:24:55,266 - repository - INFO - Created odds snapshot for event 14580791
+2025-09-03 22:24:55,269 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14580791
+2025-09-03 22:24:55,269 - final_odds_all - INFO - [62/75] Fetching final odds for event 14580794: Pierre-Hugues Herbert vs Carlo Alberto Caniato
+2025-09-03 22:24:55,270 - sofascore_api - INFO - Fetching final odds for event carlo-alberto-caniato-pierre-hugues-herbert using dedicated endpoint
+2025-09-03 22:24:56,075 - sofascore_api - INFO - API request successful: /event/14580794/odds/1/all
+2025-09-03 22:24:56,089 - repository - INFO - Created odds snapshot for event 14580794
+2025-09-03 22:24:56,092 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14580794
+2025-09-03 22:24:56,092 - final_odds_all - INFO - [63/75] Fetching final odds for event 14580807: Luciano Darderi vs Federico Arnaboldi
+2025-09-03 22:24:56,092 - sofascore_api - INFO - Fetching final odds for event luciano-darderi-federico-arnaboldi using dedicated endpoint
+2025-09-03 22:24:57,063 - sofascore_api - INFO - API request successful: /event/14580807/odds/1/all
+2025-09-03 22:24:57,067 - repository - INFO - Created odds snapshot for event 14580807
+2025-09-03 22:24:57,069 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14580807
+2025-09-03 22:24:57,069 - final_odds_all - INFO - [64/75] Fetching final odds for event 14581055: Daniel Rincon vs Pablo Carreño Busta
+2025-09-03 22:24:57,070 - sofascore_api - INFO - Fetching final odds for event daniel-rincon-pablo-carreno-busta using dedicated endpoint
+2025-09-03 22:24:58,248 - sofascore_api - INFO - API request successful: /event/14581055/odds/1/all
+2025-09-03 22:24:58,262 - repository - INFO - Created odds snapshot for event 14581055
+2025-09-03 22:24:58,264 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14581055
+2025-09-03 22:24:58,265 - final_odds_all - INFO - [65/75] Fetching final odds for event 14581061: Albert Ramos-Vinolas vs Vilius Gaubas
+2025-09-03 22:24:58,265 - sofascore_api - INFO - Fetching final odds for event vilius-gaubas-albert-ramos-vinolas using dedicated endpoint
+2025-09-03 22:24:59,058 - sofascore_api - INFO - API request successful: /event/14581061/odds/1/all
+2025-09-03 22:24:59,062 - repository - INFO - Created odds snapshot for event 14581061
+2025-09-03 22:24:59,065 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14581061
+2025-09-03 22:24:59,065 - final_odds_all - INFO - [66/75] Fetching final odds for event 14583803: Rodrigo Pacheco Mendez vs Norbert Gombos
+2025-09-03 22:24:59,065 - sofascore_api - INFO - Fetching final odds for event rodrigo-pacheco-mendez-norbert-gombos using dedicated endpoint
+2025-09-03 22:25:00,140 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:25:00
+2025-09-03 22:25:00,141 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:25:00,143 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:25:00,242 - sofascore_api - INFO - API request successful: /event/14583803/odds/1/all
+2025-09-03 22:25:00,256 - repository - INFO - Created odds snapshot for event 14583803
+2025-09-03 22:25:00,259 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14583803
+2025-09-03 22:25:00,259 - final_odds_all - INFO - [67/75] Fetching final odds for event 14591687: Ashton United vs Hallam FC
+2025-09-03 22:25:00,259 - sofascore_api - INFO - Fetching final odds for event hallam-fc-ashton-united using dedicated endpoint
+2025-09-03 22:25:01,075 - sofascore_api - INFO - API request successful: /event/14591687/odds/1/all
+2025-09-03 22:25:01,080 - repository - INFO - Created odds snapshot for event 14591687
+2025-09-03 22:25:01,083 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14591687
+2025-09-03 22:25:01,083 - final_odds_all - INFO - [68/75] Fetching final odds for event 14591743: Chasetown FC vs Worcester City
+2025-09-03 22:25:01,083 - sofascore_api - INFO - Fetching final odds for event chasetown-fc-worcester-city using dedicated endpoint
+2025-09-03 22:25:02,251 - sofascore_api - INFO - API request successful: /event/14591743/odds/1/all
+2025-09-03 22:25:02,265 - repository - INFO - Created odds snapshot for event 14591743
+2025-09-03 22:25:02,268 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14591743
+2025-09-03 22:25:02,268 - final_odds_all - INFO - [69/75] Fetching final odds for event 14592747: Andrea Picchione vs Pedro Martinez
+2025-09-03 22:25:02,268 - sofascore_api - INFO - Fetching final odds for event andrea-picchione-pedro-martinez using dedicated endpoint
+2025-09-03 22:25:03,245 - sofascore_api - INFO - API request successful: /event/14592747/odds/1/all
+2025-09-03 22:25:03,248 - repository - INFO - Created odds snapshot for event 14592747
+2025-09-03 22:25:03,251 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14592747
+2025-09-03 22:25:03,251 - final_odds_all - INFO - [70/75] Fetching final odds for event 14594010: Morales Moralitos vs CA Futuro
+2025-09-03 22:25:03,252 - sofascore_api - INFO - Fetching final odds for event ca-futuro-morales-moralitos using dedicated endpoint
+2025-09-03 22:25:04,263 - sofascore_api - INFO - API request successful: /event/14594010/odds/1/all
+2025-09-03 22:25:04,277 - repository - INFO - Created odds snapshot for event 14594010
+2025-09-03 22:25:04,280 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14594010
+2025-09-03 22:25:04,281 - final_odds_all - INFO - [71/75] Fetching final odds for event 14594032: Norte Villa Busch vs Club Singapur
+2025-09-03 22:25:04,281 - sofascore_api - INFO - Fetching final odds for event norte-villa-busch-club-singapur using dedicated endpoint
+2025-09-03 22:25:05,318 - sofascore_api - INFO - API request successful: /event/14594032/odds/1/all
+2025-09-03 22:25:05,322 - repository - INFO - Created odds snapshot for event 14594032
+2025-09-03 22:25:05,325 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14594032
+2025-09-03 22:25:05,326 - final_odds_all - INFO - [72/75] Fetching final odds for event 14595217: Bootle FC vs Silsden AFC
+2025-09-03 22:25:05,326 - sofascore_api - INFO - Fetching final odds for event silsden-afc-bootle-fc using dedicated endpoint
+2025-09-03 22:25:06,280 - sofascore_api - INFO - API request successful: /event/14595217/odds/1/all
+2025-09-03 22:25:06,284 - repository - INFO - Created odds snapshot for event 14595217
+2025-09-03 22:25:06,286 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14595217
+2025-09-03 22:25:06,287 - final_odds_all - INFO - [73/75] Fetching final odds for event 14595220: Exmouth Town vs Shaftesbury
+2025-09-03 22:25:06,287 - sofascore_api - INFO - Fetching final odds for event exmouth-town-shaftesbury using dedicated endpoint
+2025-09-03 22:25:07,064 - sofascore_api - INFO - API request successful: /event/14595220/odds/1/all
+2025-09-03 22:25:07,068 - repository - INFO - Created odds snapshot for event 14595220
+2025-09-03 22:25:07,070 - final_odds_all - INFO - ✅ Updated odds and created snapshot for event 14595220
+2025-09-03 22:25:07,071 - final_odds_all - INFO - [74/75] Fetching final odds for event 14598176: RKVV ERP vs VV DOVO Veenendaal
+2025-09-03 22:25:07,071 - sofascore_api - INFO - Fetching final odds for event rkvv-erp-vv-dovo-veenendaal using dedicated endpoint
+2025-09-03 22:25:08,291 - sofascore_api - WARNING - HTTP 404 for /event/14598176/odds/1/all, waiting 5s, attempt 1/3
+2025-09-03 22:25:13,577 - sofascore_api - WARNING - HTTP 404 for /event/14598176/odds/1/all, waiting 10s, attempt 2/3
+2025-09-03 22:25:23,870 - sofascore_api - WARNING - HTTP 404 for /event/14598176/odds/1/all, waiting 20s, attempt 3/3
+2025-09-03 22:25:23,870 - sofascore_api - ERROR - HTTP 404 failed after 3 attempts for /event/14598176/odds/1/all
+2025-09-03 22:25:23,870 - final_odds_all - WARNING - Skipping event 14598176: final odds unavailable (possibly 404 or temporary issue)
+2025-09-03 22:25:23,870 - final_odds_all - INFO - [75/75] Fetching final odds for event 14598189: USV Hercules vs VV Goes
+2025-09-03 22:25:23,870 - sofascore_api - INFO - Fetching final odds for event vv-goes-usv-hercules using dedicated endpoint
+2025-09-03 22:30:00,262 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:30:00
+2025-09-03 22:30:00,262 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:30:00,265 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:35:00,383 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:35:00
+2025-09-03 22:35:00,383 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:35:00,385 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:40:00,495 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:40:00
+2025-09-03 22:40:00,495 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:40:00,497 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:45:00,610 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:45:00
+2025-09-03 22:45:00,610 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:45:00,612 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:50:00,749 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:50:00
+2025-09-03 22:50:00,749 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:50:00,751 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 22:55:00,863 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 22:55:00
+2025-09-03 22:55:00,863 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 22:55:00,865 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 23:00:00,986 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 23:00:00
+2025-09-03 23:00:00,986 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 23:00:00,988 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 23:05:00,115 - scheduler - INFO - 🚨 PRE-START CHECK EXECUTED at 23:05:00
+2025-09-03 23:05:00,116 - scheduler - INFO - Starting Job C: Pre-start check for upcoming games
+2025-09-03 23:05:00,117 - repository - INFO - Found 0 events starting within 30 minutes
+2025-09-03 23:08:08,642 - __main__ - INFO - Received shutdown signal, stopping scheduler...
+2025-09-03 23:08:09,204 - scheduler - INFO - Job scheduler stopped
