@@ -1,12 +1,31 @@
-version: '3.8'
-
 services:
+  postgres:
+    image: postgres:15
+    container_name: sofascore-pg
+    environment:
+      - POSTGRES_DB=sofascore_odds
+      - POSTGRES_USER=sofascore
+      - POSTGRES_PASSWORD=Sofa12345
+      - TZ=America/Mexico_City
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
+      - ./backup.dump:/docker-entrypoint-initdb.d/backup.dump:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sofascore -d sofascore_odds"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Main Application (defaults to SQLite with persistent volume)
   app:
     build: .
     container_name: sofascore_app
     environment:
-      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/sofascore_odds.db}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://sofascore:Sofa12345@sofascore-pg:5432/sofascore_odds}
       - PROXY_ENABLED=${PROXY_ENABLED:-false}
       - PROXY_USERNAME=${PROXY_USERNAME}
       - PROXY_PASSWORD=${PROXY_PASSWORD}
@@ -17,15 +36,24 @@ services:
       - NOTIFICATIONS_ENABLED=${NOTIFICATIONS_ENABLED:-false}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - TZ=America/Mexico_City
+      - TIMEZONE=${TIMEZONE:-America/Mexico_City}
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
+    depends_on:
+      - postgres
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import sqlalchemy as sa; import os; url=os.getenv('DATABASE_URL','sqlite:////app/data/sofascore_odds.db'); engine=sa.create_engine(url); conn=engine.connect(); conn.close(); print('ok')"]
+      test: ["CMD", "python", "-c", "import sqlalchemy as sa; import os; url=os.getenv('DATABASE_URL','postgresql+psycopg://sofascore:Sofa12345@sofascore-pg:5432/sofascore_odds'); engine=sa.create_engine(url); conn=engine.connect(); conn.close(); print('ok')"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+volumes:
+  pgdata:
+    external: true
+    name: sofascore_pgdata
 
 networks:
   default:

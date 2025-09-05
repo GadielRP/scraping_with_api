@@ -48,7 +48,7 @@ Sistema automatizado de monitoreo de odds deportivos que proporciona **notificac
 - **Estado**: 🟢 **EN PRODUCCIÓN**
 
 ### ✅ **Infraestructura Técnica - COMPLETADO**
-- **Base de Datos**: SQLite con SQLAlchemy ORM
+- **Base de Datos**: PostgreSQL 15 en Docker (producción) con SQLAlchemy 2 + psycopg v3; SQLite solo para desarrollo local
 - **Manejo de Errores**: Reintentos automáticos con backoff exponencial
 - **Sistema de Proxy**: Rotación automática de IPs (Oxylabs)
 - **Logging**: Sistema completo de registro y monitoreo
@@ -65,6 +65,9 @@ Sistema automatizado de monitoreo de odds deportivos que proporciona **notificac
 - **Sistema de Notificaciones**: Solo cuando es necesario, pero incluye todos los juegos
 - **Recolección de Resultados**: Automática e inteligente
 - **Infraestructura**: Robusta, confiable y optimizada
+  - PostgreSQL en contenedor con volumen `sofascore_pgdata` (bind `127.0.0.1:5432`)
+  - Acceso seguro: túnel SSH desde PC; UFW bloquea 5432 externo
+  - Backups semanales: `scripts/backup_server.py` (servidor) + `scripts/pull_backup_windows.py` (PC)
 
 ### **v0.9 (Agosto 2025) - Resultados** ✅
 - **Sistema de Resultados**: Recolección automática

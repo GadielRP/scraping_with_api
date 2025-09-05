@@ -1,7 +1,6 @@
 # Cloud Production Requirements for SofaScore Odds System
 # Core dependencies
 requests>=2.31.0
-psycopg2-binary>=2.9.0
 python-dotenv>=1.0.0
 schedule>=1.2.0
 sqlalchemy>=2.0.0
@@ -28,3 +27,4 @@ python-decouple>=3.8
 
 # Optional: Redis for caching (if needed)
 redis>=5.0.0
+psycopg[binary]==3.2.9

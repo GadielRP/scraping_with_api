@@ -107,12 +107,13 @@ Sistema automatizado de monitoreo de odds deportivos con **notificaciones inteli
 
 ### **🛠 Infraestructura Técnica - 100% COMPLETADO**
 
-#### **✅ Base de Datos**
-- [x] SQLite con SQLAlchemy ORM
+#### **✅ Base de Datos (actualizado)**
+- [x] PostgreSQL 15 (Docker) en producción + SQLAlchemy 2 + psycopg v3
+- [x] SQLite solo para desarrollo local
 - [x] Modelos: Event, EventOdds, Result
 - [x] Relaciones y constraints
-- [x] Migraciones automáticas
-- [x] Backup y recuperación
+- [x] Migraciones iniciales desde SQLite (script `migrate_sqlite_to_postgres.py`)
+- [x] Backups semanales: `scripts/backup_server.py` + `scripts/pull_backup_windows.py`
 
 #### **✅ Sistema de Proxy**
 - [x] Integración con Oxylabs
@@ -164,6 +165,12 @@ Sistema automatizado de monitoreo de odds deportivos con **notificaciones inteli
 - [x] Incluir todos los juegos próximos
 - [x] Mostrar información completa de odds
 - [x] Manejar edge cases de timing
+
+### **🔐 Seguridad & Operación (nuevo)**
+- [x] PostgreSQL ligado a 127.0.0.1:5432 (no público)
+- [x] Acceso vía túnel SSH desde PC (puerto local 5433)
+- [x] UFW bloquea 5432 externo
+- [x] Guía de operación ampliada: sección 14 en `CLOUD_OPERATIONS_GUIDE.md`
 
 #### **✅ Correcciones de Bugs**
 - [x] Corregir cálculo de minutos (round vs int)

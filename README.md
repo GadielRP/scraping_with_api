@@ -49,10 +49,23 @@ Sistema automatizado de monitoreo de odds de SofaScore que:
 
 ## 🛠 **Instalación y Configuración**
 
-### **Requisitos**
+### **Requisitos (local)**
 ```bash
 pip install -r requirements.txt
 ```
+
+### **Despliegue en la nube (Docker + PostgreSQL)**
+- En producción el sistema corre en Docker y usa PostgreSQL 15.
+- Archivo `docker-compose.yml` orquesta `app` y `postgres` con volumen persistente `sofascore_pgdata` y timezone `America/Mexico_City`.
+- PostgreSQL está ligado a `127.0.0.1:5432` en el servidor y se accede de forma segura mediante túnel SSH desde tu PC.
+
+Pasos rápidos en el servidor (resumen):
+```bash
+cd /opt/sofascore
+docker volume create sofascore_pgdata
+docker compose up -d
+```
+Más detalles: ver `CLOUD_OPERATIONS_GUIDE.md` (túnel SSH, UFW y backups semanales).
 
 ### **Configuración de Telegram**
 1. **Crear bot** en @BotFather
@@ -99,6 +112,14 @@ python main.py events         # Ver eventos recientes
 4. **Notificaciones**: Solo cuando se extraen odds (pero incluye todos los juegos)
 5. **00:05**: Recolección de resultados
 
+### **Backups y Restauración (producción)**
+- Los backups semanales se generan en el servidor con `scripts/backup_server.py` y se descargan a tu PC con `scripts/pull_backup_windows.py`.
+- Guía paso a paso (con rutas exactas PC/servidor): sección 14 de `CLOUD_OPERATIONS_GUIDE.md`.
+
+### **Acceso seguro a PostgreSQL**
+- PostgreSQL no está expuesto públicamente (bind `127.0.0.1:5432`).
+- Conéctate desde tu PC usando un túnel SSH (`-L 5433:localhost:5432`).
+
 ## 📊 **Estado Actual**
 
 ### ✅ **Completado (100%)**
@@ -133,11 +154,12 @@ python main.py events         # Ver eventos recientes
 - **`odds_utils.py`**: Utilidades para procesamiento de odds
 
 ### **Tecnologías**
-- **Python 3.8+**: Lógica principal
-- **SQLAlchemy**: ORM para base de datos
-- **Schedule**: Programación de trabajos
-- **Requests**: API HTTP con manejo de errores
-- **SQLite3**: Base de datos local
+- **Python 3.11+**: Lógica principal
+- **Docker & Docker Compose**: Orquestación en producción
+- **PostgreSQL 15 (Docker) + SQLAlchemy 2 + psycopg (v3)**: Base de datos en producción
+- **SQLite**: Solo para desarrollo local rápido
+- **curl-cffi**: HTTP con impersonación/bypass anti-bot
+- **schedule**: Programación de trabajos
 
 ## 📈 **Métricas del Sistema**
 
