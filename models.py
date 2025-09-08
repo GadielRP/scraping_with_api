@@ -1,5 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, String, Numeric, DateTime, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, String, Numeric, DateTime, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Computed
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import event, DDL, text
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
@@ -72,12 +73,20 @@ class EventOdds(Base):
     
     event_id = Column(Integer, ForeignKey('events.id', ondelete='CASCADE'), primary_key=True)
     market = Column(Text, nullable=False)
+    
+    # Reordered for readability: open/final pairs, then computed deltas
     one_open = Column(Numeric(6, 2))
-    x_open = Column(Numeric(6, 2))
-    two_open = Column(Numeric(6, 2))
     one_final = Column(Numeric(6, 2))
+    x_open = Column(Numeric(6, 2))
     x_final = Column(Numeric(6, 2))
+    two_open = Column(Numeric(6, 2))
     two_final = Column(Numeric(6, 2))
+
+    # Generated columns in Postgres (computed differences open → final)
+    var_one = Column(Numeric(6, 2), Computed("(one_final - one_open)::numeric(6,2)", persisted=True))
+    var_x = Column(Numeric(6, 2), Computed("(x_final - x_open)::numeric(6,2)", persisted=True))
+    var_two = Column(Numeric(6, 2), Computed("(two_final - two_open)::numeric(6,2)", persisted=True))
+
     last_sync_at = Column(DateTime, nullable=False)
     
     # Constraints
@@ -125,3 +134,109 @@ class AlertLog(Base):
             except json.JSONDecodeError:
                 return None
         return None
+
+# ---------------------------------------------------------------------------
+# SQL views helpers – ensure reporting views exist
+# ---------------------------------------------------------------------------
+
+EVENT_UP_ODDS_VIEW_SQL = (
+    """
+    CREATE OR REPLACE VIEW event_up_odds AS
+    SELECT
+        e.start_time_utc AS start_time_utc,
+        (e.home_team || ' / ' || e.away_team) AS participants,
+        eo.one_open AS odds1a,
+        eo.one_final AS odds1b,
+        eo.x_open AS momEa,
+        eo.x_final AS momeEb,
+        eo.two_open AS odds2a,
+        eo.two_final AS odds2b,
+        eo.var_one AS var_1,
+        eo.var_x AS var_x,
+        eo.var_two AS var_2,
+        CASE
+            WHEN r.home_score IS NOT NULL AND r.away_score IS NOT NULL
+            THEN (r.home_score::text || ' - ' || r.away_score::text)
+            ELSE NULL
+        END AS result,
+        e.competition AS competition,
+        e.sport AS sport
+    FROM event_odds eo
+    JOIN events e ON e.id = eo.event_id
+    LEFT JOIN results r ON r.event_id = eo.event_id
+    WHERE eo.var_one > 0
+    """
+)
+
+EVENT_DOWN_ODDS_VIEW_SQL = (
+    """
+    CREATE OR REPLACE VIEW event_down_odds AS
+    SELECT
+        e.start_time_utc AS start_time_utc,
+        (e.home_team || ' / ' || e.away_team) AS participants,
+        eo.one_open AS odds1a,
+        eo.one_final AS odds1b,
+        eo.x_open AS momEa,
+        eo.x_final AS momeEb,
+        eo.two_open AS odds2a,
+        eo.two_final AS odds2b,
+        eo.var_one AS var_1,
+        eo.var_x AS var_x,
+        eo.var_two AS var_2,
+        CASE
+            WHEN r.home_score IS NOT NULL AND r.away_score IS NOT NULL
+            THEN (r.home_score::text || ' - ' || r.away_score::text)
+            ELSE NULL
+        END AS result,
+        e.competition AS competition,
+        e.sport AS sport
+    FROM event_odds eo
+    JOIN events e ON e.id = eo.event_id
+    LEFT JOIN results r ON r.event_id = eo.event_id
+    WHERE eo.var_one < 0
+    """
+)
+
+
+EVENT_FLAT_ODDS_VIEW_SQL = (
+    """
+    CREATE OR REPLACE VIEW event_flat_odds AS
+    SELECT
+        e.start_time_utc AS start_time_utc,
+        (e.home_team || ' / ' || e.away_team) AS participants,
+        eo.one_open AS odds1a,
+        eo.one_final AS odds1b,
+        eo.x_open AS momEa,
+        eo.x_final AS momeEb,
+        eo.two_open AS odds2a,
+        eo.two_final AS odds2b,
+        eo.var_one AS var_1,
+        eo.var_x AS var_x,
+        eo.var_two AS var_2,
+        CASE
+            WHEN r.home_score IS NOT NULL AND r.away_score IS NOT NULL
+            THEN (r.home_score::text || ' - ' || r.away_score::text)
+            ELSE NULL
+        END AS result,
+        e.competition AS competition,
+        e.sport AS sport
+    FROM event_odds eo
+    JOIN events e ON e.id = eo.event_id
+    LEFT JOIN results r ON r.event_id = eo.event_id
+    WHERE eo.var_one = 0
+    """
+)
+
+
+def create_or_replace_views(engine):
+    """Create or replace reporting SQL views. Call this after engine init."""
+    with engine.begin() as conn:
+        conn.exec_driver_sql(EVENT_UP_ODDS_VIEW_SQL)
+        conn.exec_driver_sql(EVENT_DOWN_ODDS_VIEW_SQL)
+        conn.exec_driver_sql(EVENT_FLAT_ODDS_VIEW_SQL)
+
+
+# Also register for metadata create events so new databases get views automatically
+event.listen(Base.metadata, 'after_create', DDL(EVENT_UP_ODDS_VIEW_SQL))
+event.listen(Base.metadata, 'after_create', DDL(EVENT_DOWN_ODDS_VIEW_SQL))
+event.listen(Base.metadata, 'after_create', DDL(EVENT_FLAT_ODDS_VIEW_SQL))

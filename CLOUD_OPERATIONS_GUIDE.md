@@ -1,7 +1,7 @@
 ## SofaScore Odds System – Cloud Ops Guide (Beginner Friendly)
 
 This is a practical, copy‑paste friendly guide with the exact commands you’ll use to run and maintain the app in the cloud (DigitalOcean). It assumes:
-- You have a Droplet (Ubuntu 22.04, 1GB RAM) and can SSH as `root@YOUR_SERVER_IP`.
+- You have a Droplet (Ubuntu 22.04, 1GB RAM) and can SSH as `root@143.244.179.129`.
 - Your project folder on the server is `/opt/sofascore`.
 - You use Windows PowerShell on your PC.
 
@@ -73,7 +73,7 @@ docker cp sofascore-pg:/tmp/latest_backup.dump .\latest_backup.dump
 Copy-Item .\latest_backup.dump .\backup.dump -Force
 
 # Upload the entire project to the server
-scp -r . root@YOUR_SERVER_IP:/opt/sofascore
+scp -r . root@143.244.179.129:/opt/sofascore
 ```
 
 What this does:
@@ -126,7 +126,7 @@ If both show local time (CST/CDT), you’re good. We set `TZ=America/Mexico_City
 Option A – Direct connection (quick):
 1. Install DBeaver (or pgAdmin)
 2. Connect with:
-   - Host: YOUR_SERVER_IP
+   - Host: 143.244.179.129
    - Port: 5432
    - Database: `sofascore_odds`
    - User: `sofascore`
@@ -154,7 +154,7 @@ ufw deny 5432
 ```
 On your PC, open a tunnel and keep the window open:
 ```powershell
-ssh -i ~/.ssh/id_rsa -L 5433:localhost:5432 root@YOUR_SERVER_IP
+ssh -i ~/.ssh/id_rsa -L 5433:localhost:5432 root@143.244.179.129
 ```
 In DBeaver/pgAdmin connect to:
 - Host: `localhost`
@@ -196,7 +196,7 @@ Backups (on the server):
 docker exec -t sofascore-pg pg_dump -U sofascore -d sofascore_odds -F c -f /tmp/backup_$(date +%F).dump
 
 # Copy to your PC (run on your PC)
-scp root@YOUR_SERVER_IP:/tmp/backup_YYYY-MM-DD.dump .
+scp root@143.244.179.129:/tmp/backup_YYYY-MM-DD.dump .
 ```
 
 Restore manually (if needed):
@@ -219,7 +219,7 @@ docker compose up -d
 
 Fastest way (re‑upload from your PC):
 ```powershell
-scp -r . root@YOUR_SERVER_IP:/opt/sofascore
+scp -r . root@143.244.179.129:/opt/sofascore
 ```
 Then on the server:
 ```bash
@@ -295,9 +295,9 @@ free -h
 
 On your PC (PowerShell):
 ```powershell
-ssh -i ~/.ssh/id_rsa root@YOUR_SERVER_IP
-scp -r . root@YOUR_SERVER_IP:/opt/sofascore
-ssh -i ~/.ssh/id_rsa -L 5433:localhost:5432 root@YOUR_SERVER_IP
+ssh -i ~/.ssh/id_rsa root@143.244.179.129
+scp -r . root@143.244.179.129:/opt/sofascore
+ssh -i ~/.ssh/id_rsa -L 5433:localhost:5432 root@143.244.179.129
 ```
 
 On the server (SSH):
@@ -341,145 +341,58 @@ docker exec -it sofascore_app python /app/main.py events --limit 20
 
 ---
 
-### 14) Weekly Backups: create on the server and download to your PC (Beginner friendly)
+### 14) Refresh your LOCAL Docker database from the latest SERVER backup
 
-We’ll keep a copy of your PostgreSQL database outside the server so you’re safe against server loss, mistakes, or corruption. You’ll use two small scripts that are already in this repo:
+Goal: overwrite your LOCAL Postgres (Docker, port 5435) with the newest dump from the server, so you can test locally with current data.
 
-- `scripts/backup_server.py` (runs on the server): creates a compressed `.dump.gz` with `pg_dump` inside the Postgres Docker container and deletes backups older than N days.
-- `scripts/pull_backup_windows.py` (runs on your PC): tells the server to create a fresh backup and then downloads the newest backup to your PC via SSH/SCP.
+Warning: this replaces local data in `sofascore_odds`.
 
-Where to run commands is explicitly stated before each block.
+Steps (run on your PC, PowerShell, in `C:\Users\...\projects\sofascore`):
 
-#### 14.1 One-time preparation
-
-On your PC (PowerShell, any folder):
+1) Ensure local Postgres is running on port 5435
 ```powershell
-# Your user home folder path
-echo $env:USERPROFILE
-
-# Ensure local backups folder exists
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\Documents\sofascore\backups"
-
-# Ensure you have an SSH key (ED25519 recommended). If you already have a key, skip this.
-ssh-keygen -t ed25519 -C "sofascore" -f "$env:USERPROFILE\.ssh\id_ed25519"
+$env:POSTGRES_HOST_PORT = "5435"
+docker compose up -d postgres
+docker compose exec postgres pg_isready -U sofascore -d sofascore_odds
 ```
 
-Install your public key on the server so you can log in without a password:
+2) Download the latest backup from the server to your PC
 ```powershell
-# Replace YOUR_SERVER_IP
-type "$env:USERPROFILE\.ssh\id_ed25519.pub" | ssh root@YOUR_SERVER_IP "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+# Create a fresh backup INSIDE the container, then copy it to the SERVER host
+ssh -i ~/.ssh/id_rsa root@143.244.179.129 "docker exec sofascore-pg bash -lc 'pg_dump -U sofascore -d sofascore_odds -F c -f /tmp/latest_backup.dump && gzip -f /tmp/latest_backup.dump' && docker cp sofascore-pg:/tmp/latest_backup.dump.gz /tmp/latest_backup.dump.gz && ls -lh /tmp/latest_backup.dump.gz"
 
-# Test login using the key
-ssh -i "$env:USERPROFILE\.ssh\id_ed25519" root@YOUR_SERVER_IP hostname
+# Pull the compressed backup from the SERVER to your PC
+scp root@143.244.179.129:/tmp/latest_backup.dump.gz .\
 ```
 
-Upload the scripts to the server.
-On your PC (PowerShell, in your local project folder, e.g. C:\Users\...\projects\sofascore):
+3) Reset your LOCAL database (safe)
 ```powershell
-scp -i "$env:USERPROFILE\.ssh\id_ed25519" -r .\scripts root@YOUR_SERVER_IP:/opt/sofascore/
+# Copy/rename into db-init for convenience (optional)
+Copy-Item .\latest_backup.dump.gz .\db-init\local_backup.dump.gz -Force
+
+# Drop and recreate the local DB owned by 'sofascore' (avoids view/table dependency errors)
+docker compose exec postgres psql -U sofascore -d template1 -v ON_ERROR_STOP=1 `
+  -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='sofascore_odds' AND pid <> pg_backend_pid();" `
+  -c "DROP DATABASE IF EXISTS sofascore_odds;" `
+  -c "CREATE DATABASE sofascore_odds OWNER sofascore;"
+
+# Alternative (if you prefer not to drop the DB): drop views first
+# docker compose exec postgres psql -U sofascore -d sofascore_odds -c "DROP VIEW IF EXISTS event_up_odds, event_down_odds, event_flat_odds;"
+
 ```
 
-On the server (SSH as root@YOUR_SERVER_IP, any folder):
-```bash
-mkdir -p /opt/sofascore/backups
-ls -l /opt/sofascore/scripts/backup_server.py
-```
-
-#### 14.2 Create a backup now (test)
-
-On the server (SSH, any folder, e.g. /root):
-```bash
-python3 /opt/sofascore/scripts/backup_server.py \
-  --container sofascore-pg \
-  --db-name sofascore_odds \
-  --db-user sofascore \
-  --output-dir /opt/sofascore/backups \
-  --retention-days 14
-
-ls -lh /opt/sofascore/backups
-```
-You should see a file like `sofascore_odds_YYYYMMDD_HHMMSS.dump.gz`.
-
-Tip (manual, without the script):
-```bash
-docker exec sofascore-pg pg_dump -U sofascore -d sofascore_odds -Fc | gzip -9 > /opt/sofascore/backups/sofascore_odds_$(date +%Y%m%d_%H%M%S).dump.gz
-```
-
-#### 14.3 Download the latest backup to your PC (manual fallback)
-
-On your PC (PowerShell, in your local project folder):
+4) Restore that backup into LOCAL Docker
 ```powershell
-$Key       = "$env:USERPROFILE\.ssh\id_ed25519"   # or id_rsa if you use RSA
-$Server    = "YOUR_SERVER_IP"
-$RemoteDir = "/opt/sofascore/backups"
-$LocalDir  = "$env:USERPROFILE\Documents\sofascore\backups"
-
-# Ask the server which file is the newest
-$Latest = ssh -i $Key "root@$Server" "ls -1t $RemoteDir/*.dump.gz 2>/dev/null | head -n 1"
-if ([string]::IsNullOrWhiteSpace($Latest)) { throw 'No backups found on server.' }
-
-# Download it (note ${Server} to avoid PowerShell parsing issues)
-scp -i $Key "root@${Server}:$Latest" "$LocalDir"
-
-# Verify locally
-Get-Item (Join-Path $LocalDir (Split-Path $Latest -Leaf))
+docker compose exec postgres bash -lc "gunzip -c /docker-entrypoint-initdb.d/local_backup.dump.gz | pg_restore -U sofascore -d sofascore_odds --clean --if-exists --no-owner --no-privileges"
 ```
 
-If your key has a passphrase and you don’t want to type it every time, use the SSH agent on your PC:
+5) Verify locally (port 5435)
 ```powershell
-Get-Service ssh-agent | Set-Service -StartupType Automatic
-Start-Service ssh-agent
-ssh-add "$env:USERPROFILE\.ssh\id_ed25519"
-```
-
-#### 14.4 Automate weekly on your PC (recommended)
-
-Use the provided Windows script to trigger a fresh backup and download it automatically.
-
-On your PC (PowerShell, in your local project folder):
-```powershell
-python .\scripts\pull_backup_windows.py \
-  --server-ip YOUR_SERVER_IP \
-  --server-user root \
-  --ssh-key "$env:USERPROFILE\.ssh\id_ed25519" \
-  --project-dir /opt/sofascore \
-  --remote-backup-dir /opt/sofascore/backups \
-  --local-backup-dir "$env:USERPROFILE\Documents\sofascore\backups" \
-  --container sofascore-pg \
-  --db-name sofascore_odds \
-  --db-user sofascore \
-  --retention-days 30
-```
-
-Schedule weekly with Windows Task Scheduler:
-1) Create Basic Task → Name: “Pull backup sofascore”.
-2) Trigger: Weekly, pick day/time when your PC is on.
-3) Action: Start a program.
-   - Program: `python`
-   - Arguments: the exact arguments shown above.
-
-Optional: also schedule a weekly server-side backup (redundancy) with cron.
-On the server (SSH):
-```bash
-(crontab -l 2>/dev/null; echo "30 3 * * 0 python3 /opt/sofascore/scripts/backup_server.py --container sofascore-pg --db-name sofascore_odds --db-user sofascore --output-dir /opt/sofascore/backups --retention-days 14 >> /opt/sofascore/backup_cron.log 2>&1") | crontab -
-```
-
-#### 14.5 Restore from a backup (when needed)
-
-On the server (SSH):
-```bash
-gunzip -c /path/to/backup.dump.gz | pg_restore -U sofascore -d sofascore_odds --clean --if-exists --no-owner
+docker compose exec postgres psql -U sofascore -d sofascore_odds -c "SELECT COUNT(*) FROM events;"
+docker compose exec postgres psql -U sofascore -d sofascore_odds -c "SELECT COUNT(*) FROM odds_snapshot;"
 ```
 
 Notes:
-- `--clean --if-exists` drops objects before re-creating them (safe for restoring over an existing DB).
-- If you changed the DB name or user, adjust `-d` and `-U` accordingly.
-
-#### 14.6 Troubleshooting (quick)
-
-- PowerShell error around `root@$Server:` → use `${Server}` in the SCP string: `"root@${Server}:$Latest"`.
-- “Permission denied (publickey)” → ensure your public key is in `~/.ssh/authorized_keys` on the server and that you use the correct private key path with `-i`.
-- Key passphrase prompts → use the SSH agent (`ssh-add`) or create a dedicated key without passphrase only for this task.
-- `python` not found on Windows → use `py -3` instead of `python`.
-- Container name different from `sofascore-pg` → change `--container` accordingly.
-- No backups listed → run the server script first to create one, then retry download.
+- Your pgAdmin/DBeaver connection to LOCAL (127.0.0.1:5435) does not change; just click refresh to see the new data.
+- If a local-only marker table exists from earlier tests, it may be dropped by `--clean`. Recreate it if you still want the marker.
+- To start from an empty local DB and restore on first run, you can wipe the local volume and place a `backup.dump` in `db-init/`, then `docker compose up -d` (this rebuilds local data volume).

@@ -51,6 +51,7 @@ def setup_logging():
 setup_logging()
 
 from database import db_manager
+from models import create_or_replace_views
 from scheduler import job_scheduler
 from alert_system import pre_start_notifier
 from repository import EventRepository, OddsRepository
@@ -68,6 +69,8 @@ def initialize_system():
         
         # Create tables if they don't exist
         db_manager.create_tables()
+        # Ensure reporting views exist or are refreshed
+        create_or_replace_views(db_manager.engine)
         logger.info("System initialized successfully")
         return True
         
