@@ -136,12 +136,12 @@ class AlertLog(Base):
         return None
 
 # ---------------------------------------------------------------------------
-# SQL views helpers – ensure reporting views exist
+# SQL view helper – unified odds view (no filtering by var_one)
 # ---------------------------------------------------------------------------
 
-EVENT_UP_ODDS_VIEW_SQL = (
+EVENT_ALL_ODDS_VIEW_SQL = (
     """
-    CREATE OR REPLACE VIEW event_up_odds AS
+    CREATE OR REPLACE VIEW event_all_odds AS
     SELECT
         e.start_time_utc AS start_time_utc,
         (e.home_team || ' / ' || e.away_team) AS participants,
@@ -164,66 +164,6 @@ EVENT_UP_ODDS_VIEW_SQL = (
     FROM event_odds eo
     JOIN events e ON e.id = eo.event_id
     LEFT JOIN results r ON r.event_id = eo.event_id
-    WHERE eo.var_one > 0
-    """
-)
-
-EVENT_DOWN_ODDS_VIEW_SQL = (
-    """
-    CREATE OR REPLACE VIEW event_down_odds AS
-    SELECT
-        e.start_time_utc AS start_time_utc,
-        (e.home_team || ' / ' || e.away_team) AS participants,
-        eo.one_open AS odds1a,
-        eo.one_final AS odds1b,
-        eo.x_open AS momEa,
-        eo.x_final AS momeEb,
-        eo.two_open AS odds2a,
-        eo.two_final AS odds2b,
-        eo.var_one AS var_1,
-        eo.var_x AS var_x,
-        eo.var_two AS var_2,
-        CASE
-            WHEN r.home_score IS NOT NULL AND r.away_score IS NOT NULL
-            THEN (r.home_score::text || ' - ' || r.away_score::text)
-            ELSE NULL
-        END AS result,
-        e.competition AS competition,
-        e.sport AS sport
-    FROM event_odds eo
-    JOIN events e ON e.id = eo.event_id
-    LEFT JOIN results r ON r.event_id = eo.event_id
-    WHERE eo.var_one < 0
-    """
-)
-
-
-EVENT_FLAT_ODDS_VIEW_SQL = (
-    """
-    CREATE OR REPLACE VIEW event_flat_odds AS
-    SELECT
-        e.start_time_utc AS start_time_utc,
-        (e.home_team || ' / ' || e.away_team) AS participants,
-        eo.one_open AS odds1a,
-        eo.one_final AS odds1b,
-        eo.x_open AS momEa,
-        eo.x_final AS momeEb,
-        eo.two_open AS odds2a,
-        eo.two_final AS odds2b,
-        eo.var_one AS var_1,
-        eo.var_x AS var_x,
-        eo.var_two AS var_2,
-        CASE
-            WHEN r.home_score IS NOT NULL AND r.away_score IS NOT NULL
-            THEN (r.home_score::text || ' - ' || r.away_score::text)
-            ELSE NULL
-        END AS result,
-        e.competition AS competition,
-        e.sport AS sport
-    FROM event_odds eo
-    JOIN events e ON e.id = eo.event_id
-    LEFT JOIN results r ON r.event_id = eo.event_id
-    WHERE eo.var_one = 0
     """
 )
 
@@ -231,12 +171,8 @@ EVENT_FLAT_ODDS_VIEW_SQL = (
 def create_or_replace_views(engine):
     """Create or replace reporting SQL views. Call this after engine init."""
     with engine.begin() as conn:
-        conn.exec_driver_sql(EVENT_UP_ODDS_VIEW_SQL)
-        conn.exec_driver_sql(EVENT_DOWN_ODDS_VIEW_SQL)
-        conn.exec_driver_sql(EVENT_FLAT_ODDS_VIEW_SQL)
+        conn.exec_driver_sql(EVENT_ALL_ODDS_VIEW_SQL)
 
 
 # Also register for metadata create events so new databases get views automatically
-event.listen(Base.metadata, 'after_create', DDL(EVENT_UP_ODDS_VIEW_SQL))
-event.listen(Base.metadata, 'after_create', DDL(EVENT_DOWN_ODDS_VIEW_SQL))
-event.listen(Base.metadata, 'after_create', DDL(EVENT_FLAT_ODDS_VIEW_SQL))
+event.listen(Base.metadata, 'after_create', DDL(EVENT_ALL_ODDS_VIEW_SQL))

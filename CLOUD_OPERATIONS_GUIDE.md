@@ -376,7 +376,7 @@ docker compose exec postgres psql -U sofascore -d template1 -v ON_ERROR_STOP=1 `
   -c "DROP DATABASE IF EXISTS sofascore_odds;" `
   -c "CREATE DATABASE sofascore_odds OWNER sofascore;"
 
-# Alternative (if you prefer not to drop the DB): drop views first
+# Alternative (if you prefer not to drop the DB): drop the old views first (legacy names)
 # docker compose exec postgres psql -U sofascore -d sofascore_odds -c "DROP VIEW IF EXISTS event_up_odds, event_down_odds, event_flat_odds;"
 
 ```
@@ -390,6 +390,7 @@ docker compose exec postgres bash -lc "gunzip -c /docker-entrypoint-initdb.d/loc
 ```powershell
 docker compose exec postgres psql -U sofascore -d sofascore_odds -c "SELECT COUNT(*) FROM events;"
 docker compose exec postgres psql -U sofascore -d sofascore_odds -c "SELECT COUNT(*) FROM odds_snapshot;"
+docker compose exec postgres psql -U sofascore -d sofascore_odds -c "SELECT COUNT(*) FROM event_all_odds;"
 ```
 
 Notes:
