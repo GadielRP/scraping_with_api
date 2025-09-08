@@ -67,8 +67,24 @@ class EventRepository:
             return None
     
 
-    
-    @staticmethod
+    def get_events_starting_soon(self, window_minutes: int = 30):
+        """Get events starting within the specified window as Event objects"""
+        try:
+            with db_manager.get_session() as session:
+                from datetime import datetime, timedelta
+                
+                now = datetime.now()
+                start_window = now + timedelta(minutes=window_minutes)
+                
+                events = session.query(Event).filter(
+                    Event.start_time_utc.between(now, start_window)
+                ).all()
+                
+                return events
+        except Exception as e:
+            logger.error(f"Error getting events starting soon: {e}")
+            return []
+
     def get_events_starting_soon_with_odds(window_minutes: int = 30) -> List[Dict]:
         """
         Get events starting within the specified window WITH their odds data.

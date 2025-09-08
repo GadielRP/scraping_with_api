@@ -51,7 +51,7 @@ def setup_logging():
 setup_logging()
 
 from database import db_manager
-from models import create_or_replace_views
+from models import create_or_replace_views, create_or_replace_materialized_views, refresh_materialized_views
 from scheduler import job_scheduler
 from alert_system import pre_start_notifier
 from repository import EventRepository, OddsRepository
@@ -71,6 +71,8 @@ def initialize_system():
         db_manager.create_tables()
         # Ensure reporting views exist or are refreshed
         create_or_replace_views(db_manager.engine)
+        # Ensure materialized views for alerts exist
+        create_or_replace_materialized_views(db_manager.engine)
         logger.info("System initialized successfully")
         return True
         
@@ -109,6 +111,49 @@ def run_results_collection_all():
     logger = logging.getLogger(__name__)
     logger.info("Running comprehensive results collection...")
     job_scheduler.run_job_results_collection_all_now()
+
+def run_alerts():
+    """Run alert evaluation on upcoming events"""
+    logger = logging.getLogger(__name__)
+    logger.info("Running alert evaluation...")
+    
+    try:
+        from alert_engine import alert_engine
+        from repository import EventRepository
+        
+        # Get upcoming events (within 30 minutes)
+        event_repo = EventRepository()
+        upcoming_events = event_repo.get_events_starting_soon(30)
+        
+        if not upcoming_events:
+            logger.info("No upcoming events found for alert evaluation")
+            return
+        
+        logger.info(f"Evaluating {len(upcoming_events)} upcoming events for alerts")
+        
+        # Evaluate alerts
+        alerts = alert_engine.evaluate_upcoming_events(upcoming_events)
+        
+        if alerts:
+            logger.info(f"Generated {len(alerts)} alerts")
+            # Send alerts
+            alert_engine.send_alerts(alerts)
+        else:
+            logger.info("No alerts generated")
+            
+    except Exception as e:
+        logger.error(f"Error running alerts: {e}")
+
+def refresh_alert_data():
+    """Refresh materialized views for alert processing"""
+    logger = logging.getLogger(__name__)
+    logger.info("Refreshing alert materialized views...")
+    
+    try:
+        refresh_materialized_views(db_manager.engine)
+        logger.info("Alert data refreshed successfully")
+    except Exception as e:
+        logger.error(f"Error refreshing alert data: {e}")
 
 def start_scheduler():
     """Start the job scheduler"""
@@ -260,7 +305,7 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='SofaScore Odds Alert System')
     parser.add_argument('command', choices=[
-        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'final-odds-all', 'status', 'events'
+        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'final-odds-all', 'status', 'events', 'alerts', 'refresh-alerts'
     ], help='Command to run')
     parser.add_argument('--limit', type=int, default=10, help='Limit for events display')
     
@@ -330,6 +375,18 @@ def main():
         elif args.command == 'events':
             if initialize_system():
                 show_events(args.limit)
+            else:
+                logger.error("Failed to initialize system")
+                sys.exit(1)
+        elif args.command == 'alerts':
+            if initialize_system():
+                run_alerts()
+            else:
+                logger.error("Failed to initialize system")
+                sys.exit(1)
+        elif args.command == 'refresh-alerts':
+            if initialize_system():
+                refresh_alert_data()
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)

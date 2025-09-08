@@ -319,6 +319,22 @@ class JobScheduler:
             else:
                 logger.info("Pre-start check completed: No games starting soon")
             
+            # Run alert evaluation on upcoming events
+            if events:
+                try:
+                    logger.info("🔍 Evaluating upcoming events for pattern alerts...")
+                    from alert_engine import alert_engine
+                    
+                    alerts = alert_engine.evaluate_upcoming_events(events)
+                    if alerts:
+                        logger.info(f"📊 Generated {len(alerts)} pattern alerts")
+                        alert_engine.send_alerts(alerts)
+                    else:
+                        logger.debug("No pattern alerts generated")
+                        
+                except Exception as e:
+                    logger.error(f"Error running alert evaluation: {e}")
+            
         except Exception as e:
             logger.error(f"Error in Job C: {e}")
     
@@ -425,6 +441,13 @@ class JobScheduler:
             # Only collect results from previous day - odds don't change after games finish
             logger.info("📊 Collecting results from finished events...")
             self.job_results_collection()
+            
+            # Refresh materialized views for alerts after results are updated
+            logger.info("🔄 Refreshing alert materialized views...")
+            from models import refresh_materialized_views
+            from database import db_manager
+            refresh_materialized_views(db_manager.engine)
+            logger.info("✅ Alert data refreshed")
             
         except Exception as e:
             logger.error(f"Error in Job D: {e}")

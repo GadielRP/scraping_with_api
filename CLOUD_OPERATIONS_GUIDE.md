@@ -337,6 +337,12 @@ docker exec -it sofascore_app python /app/main.py status
 
 # Show recent events (override limit)
 docker exec -it sofascore_app python /app/main.py events --limit 20
+
+# Run alert evaluation manually
+docker exec -it sofascore_app python /app/main.py alerts
+
+# Refresh alert materialized views
+docker exec -it sofascore_app python /app/main.py refresh-alerts
 ```
 
 ---
