@@ -152,7 +152,7 @@ class JobScheduler:
 
                     
                     # Upsert event
-                    event = self.event_repo.upsert_event(event_data)
+                    event = EventRepository.upsert_event(event_data)
                     if not event:
                         logger.warning(f"Failed to upsert event {id}")
                         skipped_count += 1
@@ -166,14 +166,14 @@ class JobScheduler:
                         continue
                     
                     # Create snapshot
-                    snapshot = self.odds_repo.create_odds_snapshot(int(id), odds_data)
+                    snapshot = OddsRepository.create_odds_snapshot(int(id), odds_data)
                     if not snapshot:
                         logger.error(f"Failed to create odds snapshot for event {id}")
                         skipped_count += 1
                         continue
                     
                     # Upsert event odds
-                    upserted_id = self.odds_repo.upsert_event_odds(int(id), odds_data)
+                    upserted_id = OddsRepository.upsert_event_odds(int(id), odds_data)
                     if not upserted_id:
                         logger.error(f"Failed to upsert event odds for event {id}")
                         skipped_count += 1
@@ -210,7 +210,7 @@ class JobScheduler:
         
         try:
             # Get events starting within the next 30 minutes WITH their odds data
-            events_with_odds = self.event_repo.get_events_starting_soon_with_odds(Config.PRE_START_WINDOW_MINUTES)
+            events_with_odds = EventRepository.get_events_starting_soon_with_odds(Config.PRE_START_WINDOW_MINUTES)
             if not events_with_odds:
                 logger.debug("No events starting within the next 30 minutes")
                 return
@@ -252,12 +252,12 @@ class JobScheduler:
                             final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
                             if final_odds_data:
                                 # Update the event odds with final odds
-                                upserted_id = self.odds_repo.upsert_event_odds(event_data['id'], final_odds_data)
+                                upserted_id = OddsRepository.upsert_event_odds(event_data['id'], final_odds_data)
                                 if upserted_id:
                                     logger.info(f"✅ Final odds updated for {event_data['home_team']} vs {event_data['away_team']}")
                                     
                                     # Create final odds snapshot
-                                    snapshot = self.odds_repo.create_odds_snapshot(event_data['id'], final_odds_data)
+                                    snapshot = OddsRepository.create_odds_snapshot(event_data['id'], final_odds_data)
                                     if snapshot:
                                         logger.info(f"✅ Final odds snapshot created for event {event_data['id']}")
                                         odds_extracted_count += 1
@@ -319,21 +319,49 @@ class JobScheduler:
             else:
                 logger.info("Pre-start check completed: No games starting soon")
             
-            # Run alert evaluation on upcoming events
-            if events:
+            # Run alert evaluation ONLY for events at key moments (30 or 5 minutes)
+            # This ensures alerts are only sent when odds are extracted at key moments
+            if events_with_odds and odds_extracted_count > 0:
                 try:
                     logger.info("🔍 Evaluating upcoming events for pattern alerts...")
+                    
+                    # Refresh materialized views to ensure latest data for alert evaluation
+                    logger.info("🔄 Refreshing alert materialized views...")
+                    from models import refresh_materialized_views
+                    from database import db_manager
+                    refresh_materialized_views(db_manager.engine)
+                    logger.info("✅ Alert materialized views refreshed")
+                    
                     from alert_engine import alert_engine
                     
-                    alerts = alert_engine.evaluate_upcoming_events(events)
-                    if alerts:
-                        logger.info(f"📊 Generated {len(alerts)} pattern alerts")
-                        alert_engine.send_alerts(alerts)
+                    # Get Event objects with properly loaded event_odds for alert evaluation
+                    # Only evaluate events that are at key moments (30 or 5 minutes)
+                    events_for_alerts = []
+                    for event_data in events_with_odds:
+                        minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
+                        if minutes_until_start in [30, 5]:  # Only key moments
+                            # Get the Event object for this specific event
+                            event_obj = self.event_repo.get_event_by_id(event_data['id'])
+                            if event_obj:
+                                events_for_alerts.append(event_obj)
+                    
+                    if events_for_alerts:
+                        logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for pattern alerts...")
+                        alerts = alert_engine.evaluate_upcoming_events(events_for_alerts)
+                        if alerts:
+                            logger.info(f"📊 Generated {len(alerts)} candidate reports")
+                            alert_engine.send_alerts(alerts)
+                        else:
+                            logger.debug("No candidate reports generated")
                     else:
-                        logger.debug("No pattern alerts generated")
+                        logger.debug("No events at key moments found for alert evaluation")
                         
                 except Exception as e:
                     logger.error(f"Error running alert evaluation: {e}")
+            elif events_with_odds and odds_extracted_count == 0:
+                logger.info("📊 NO ALERT EVALUATION: Events found but no odds extracted (not at key moments)")
+            else:
+                logger.debug("No events found for alert evaluation")
             
         except Exception as e:
             logger.error(f"Error in Job C: {e}")
@@ -377,7 +405,7 @@ class JobScheduler:
         
         try:
             yesterday = datetime.now() - timedelta(days=1)
-            events = self.event_repo.get_events_by_date(yesterday.date())
+            events = EventRepository.get_events_by_date(yesterday.date())
             
             if not events:
                 logger.info("No events found from previous day")
@@ -396,7 +424,7 @@ class JobScheduler:
         
         for event in events:
             try:
-                if self.result_repo.get_result_by_event_id(event.id):
+                if ResultRepository.get_result_by_event_id(event.id):
                     logger.debug(f"Results exist for event {event.id}, skipping")
                     stats['skipped'] += 1
                     continue
@@ -406,7 +434,7 @@ class JobScheduler:
                     stats['failed'] += 1
                     continue
                 
-                if self.result_repo.upsert_result(event.id, result_data):
+                if ResultRepository.upsert_result(event.id, result_data):
                     stats['updated'] += 1
                     logger.info(f"✅ {job_name}: {event.id} = {result_data['home_score']}-{result_data['away_score']}, Winner: {result_data['winner']}")
                 
@@ -421,7 +449,7 @@ class JobScheduler:
         logger.info("Starting Job E2: Comprehensive results collection")
         
         try:
-            events = self.event_repo.get_all_finished_events()
+            events = EventRepository.get_all_finished_events()
             if not events:
                 logger.info("No finished events found")
                 return

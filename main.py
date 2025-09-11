@@ -155,6 +155,7 @@ def refresh_alert_data():
     except Exception as e:
         logger.error(f"Error refreshing alert data: {e}")
 
+
 def start_scheduler():
     """Start the job scheduler"""
     logger = logging.getLogger(__name__)

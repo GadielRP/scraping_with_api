@@ -110,30 +110,6 @@ class Result(Base):
     # Relationships
     event = relationship("Event", back_populates="result")
 
-class AlertLog(Base):
-    __tablename__ = 'alerts_log'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    event_id = Column(Integer, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
-    rule_key = Column(Text, nullable=False)
-    triggered_at = Column(DateTime, nullable=False)
-    payload = Column(Text)  # JSON as text for SQLite compatibility
-    
-    def set_payload(self, data):
-        """Store payload data as JSON string"""
-        if isinstance(data, dict):
-            self.payload = json.dumps(data)
-        else:
-            self.payload = str(data)
-    
-    def get_payload(self):
-        """Retrieve payload data as dict"""
-        if self.payload:
-            try:
-                return json.loads(self.payload)
-            except json.JSONDecodeError:
-                return None
-        return None
 
 # ---------------------------------------------------------------------------
 # SQL view helper – unified odds view (no filtering by var_one)

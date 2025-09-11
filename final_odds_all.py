@@ -127,12 +127,9 @@ def run_final_odds_all():
     - Sequential processing with built-in API rate limiting
     - Skip/log 404s
     """
-    event_repo = EventRepository()
-    odds_repo = OddsRepository()
-
     logger.info("Starting final-odds-all collection")
 
-    events = event_repo.get_all_finished_events()
+    events = EventRepository.get_all_finished_events()
     if not events:
         logger.info("No finished events found")
         return
@@ -167,14 +164,14 @@ def run_final_odds_all():
                 continue
 
             # Upsert finals (and opening if present — harmless since opening is immutable)
-            upsert_id = odds_repo.upsert_event_odds(event.id, odds)
+            upsert_id = OddsRepository.upsert_event_odds(event.id, odds)
             if not upsert_id:
                 logger.error(f"Failed to upsert odds for event {event.id}")
                 failed += 1
                 continue
 
             # Create snapshot: providing open + cur enables complete snapshot path
-            snapshot = odds_repo.create_odds_snapshot(event.id, odds)
+            snapshot = OddsRepository.create_odds_snapshot(event.id, odds)
             if snapshot:
                 logger.info(f"✅ Updated odds and created snapshot for event {event.id}")
             else:

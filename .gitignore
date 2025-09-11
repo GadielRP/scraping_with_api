@@ -21,6 +21,7 @@ __pycache__/*.pyc
 *.pyc
 *.pyo
 .dockerignore
+debug_*.json
 logs/
 *.log
 data/
@@ -36,3 +37,4 @@ docker-compose.override.yml
 .vscode/
 .idea/
 .DS_Store
+.gitignore

@@ -182,7 +182,7 @@ def validate_odds_data(odds_data: Dict) -> bool:
     
     for field in numeric_fields:
         value = odds_data.get(field)
-        if value is not None and isinstance(value, (int, float, Decimal)) and (value < 1.001 or value > 1000):
+        if value is not None and isinstance(value, (int, float, Decimal)) and (value < 1.00 or value > 1000):
             logger.warning(f"Odds value out of reasonable range: {field}={value}")
             return False
     

@@ -1,6 +1,5 @@
 import logging
-from typing import Dict, Optional, List
-from datetime import datetime, timedelta
+from typing import Dict, List
 import requests
 
 logger = logging.getLogger(__name__)
@@ -84,8 +83,7 @@ class PreStartNotification:
             message += f"   ⏰ Starts in {minutes} minutes ({start_time})\n"
             
             # Add odds information if available
-            if odds:
-                # Get both opening and final odds
+            if odds and odds.get('one_open') and odds.get('two_open'):
                 one_open = odds.get('one_open')
                 x_open = odds.get('x_open')
                 two_open = odds.get('two_open')
@@ -93,36 +91,19 @@ class PreStartNotification:
                 x_final = odds.get('x_final')
                 two_final = odds.get('two_final')
                 
-                # Check if we have any valid odds data (opening or final)
-                # For opening odds: require both 1 and 2 (X is optional for 2-choice sports)
-                has_opening_odds = one_open and two_open
+                message += f"   💰 Odds:\n"
+                message += f"      Opening: 1={one_open:.2f}"
+                if x_open:
+                    message += f", X={x_open:.2f}"
+                message += f", 2={two_open:.2f}\n"
                 
-                # For final odds: require both 1 and 2 (X is optional for 2-choice sports)
-                # This handles both 2-choice (Tennis) and 3-choice (Football) markets
-                has_final_odds = one_final and two_final
-                
-                if has_opening_odds or has_final_odds:
-                    message += f"   💰 Odds:\n"
-                    
-                    # Show opening odds if available
-                    if has_opening_odds:
-                        message += f"      Opening: 1={one_open:.2f}"
-                        if x_open:  # Some sports don't have draw options
-                            message += f", X={x_open:.2f}"
-                        message += f", 2={two_open:.2f}\n"
-                    else:
-                        message += f"      Opening: Not available\n"
-                    
-                    # Show final odds if available
-                    if has_final_odds:
-                        message += f"      Final:   1={one_final:.2f}"
-                        if x_final:  # Some sports don't have draw options
-                            message += f", X={x_final:.2f}"
-                        message += f", 2={two_final:.2f}\n"
-                    else:
-                        message += f"      Final:   Not available\n"
+                if one_final and two_final:
+                    message += f"      Final:   1={one_final:.2f}"
+                    if x_final:
+                        message += f", X={x_final:.2f}"
+                    message += f", 2={two_final:.2f}\n"
                 else:
-                    message += f"   💰 Odds: Not available\n"
+                    message += f"      Final:   Not available\n"
             else:
                 message += f"   💰 Odds: Not available\n"
             
@@ -153,12 +134,167 @@ class PreStartNotification:
             logger.error(f"Error sending Telegram notification: {e}")
             return False
     
-    def test_notifications(self) -> bool:
-        """Test Telegram notification with a test message"""
-        test_message = "🧪 TEST NOTIFICATION\n\nThis is a test message from your SofaScore Odds System.\n\nIf you receive this, your Telegram notifications are working correctly! ✅"
+    def send_telegram_message(self, message: str) -> bool:
+        """Send a custom Telegram message (used by alert system)"""
+        if not self.telegram_enabled:
+            logger.warning("Telegram notifications not configured - cannot send alert message")
+            return False
         
-        logger.info("Testing Telegram notification...")
-        return self._send_telegram_notification(test_message)
+        logger.info("Sending alert message via Telegram...")
+        return self._send_telegram_notification(message)
+    
+    
+    def create_candidate_report_message(self, report_data: Dict) -> str:
+        """
+        Create a unified candidate report message covering all scenarios
+        
+        Args:
+            report_data: Dictionary containing comprehensive candidate information
+        
+        Returns:
+            Formatted message string for Telegram
+        """
+        # Extract report information
+        participants = report_data.get('participants', 'Unknown vs Unknown')
+        competition = report_data.get('competition', 'Unknown')
+        sport = report_data.get('sport', 'Unknown')
+        start_time = report_data.get('start_time', 'Unknown')
+        minutes_until_start = report_data.get('minutes_until_start')
+        status = report_data.get('status', 'unknown')
+        primary_prediction = report_data.get('primary_prediction')
+        primary_confidence = report_data.get('primary_confidence')
+        odds_display = report_data.get('odds_display', 'Not available')
+        vars_display = report_data.get('vars_display', 'Not available')
+        has_draw_odds = report_data.get('has_draw_odds', False)
+        
+        tier1_data = report_data.get('tier1_candidates', {})
+        tier2_data = report_data.get('tier2_candidates', {})
+        
+        tier1_count = tier1_data.get('count', 0)
+        tier2_count = tier2_data.get('count', 0)
+        
+        # Determine message header
+        if status == 'success':
+            confidence_emoji = "✅" if primary_confidence == 'high' else "📊"
+            header = f"{confidence_emoji} **CANDIDATE REPORT - SUCCESS**"
+        elif status == 'no_match':
+            header = f"❌ **CANDIDATE REPORT - NO MATCH**"
+        else:
+            header = f"❓ **CANDIDATE REPORT - UNKNOWN STATUS**"
+        
+        message = f"{header}\n\n"
+        
+        # Event information
+        message += f"🏆 **{participants}**\n"
+        message += f"🏟️ {competition} ({sport})\n"
+        message += f"⏰ Starts at {start_time}"
+        if minutes_until_start is not None:
+            message += f" (in {minutes_until_start} minutes)"
+        message += "\n\n"
+        
+        # Current event data
+        message += f"📈 **Current Variations:**\n"
+        message += f"   {vars_display}\n\n"
+        
+        message += f"💰 **Current Odds:**\n"
+        message += f"   {odds_display}\n\n"
+        
+        # Candidate summary
+        total_candidates = tier1_count + tier2_count
+        message += f"🔍 **Candidate Summary:**\n"
+        message += f"   • Tier 1 (exact): {tier1_count} candidates\n"
+        message += f"   • Tier 2 (similar): {tier2_count} candidates\n"
+        message += f"   • Total: {total_candidates} candidates\n\n"
+        
+        # Tier 1 candidates
+        if tier1_count > 0:
+            message += f"🎯 **Tier 1 - Exact Variations ({tier1_count}):**\n"
+            
+            # Check results
+            tier1_identical = tier1_data.get('identical_results')
+            tier1_similar = tier1_data.get('similar_results')
+            
+            if tier1_identical:
+                prediction_text = tier1_identical.prediction if hasattr(tier1_identical, 'prediction') else tier1_identical.get('prediction', 'Unknown')
+                message += f"   ✅ Identical Results: {prediction_text}\n"
+            elif tier1_similar:
+                prediction_text = tier1_similar.prediction if hasattr(tier1_similar, 'prediction') else tier1_similar.get('prediction', 'Unknown')
+                message += f"   📊 Similar Results: {prediction_text}\n"
+            else:
+                message += f"   ❌ No consistent results found\n"
+            
+            # List matches with variations
+            tier1_matches = tier1_data.get('matches', [])
+            for i, match in enumerate(tier1_matches, 1):
+                variations = match.get('variations', {})
+                var_one = variations.get('var_one', 'N/A')
+                var_x = variations.get('var_x')
+                var_two = variations.get('var_two', 'N/A')
+                
+                # Format variations display based on sport type
+                var_display = f"Δ1: {var_one}"
+                if has_draw_odds:  # 3-way sport (Football, etc.)
+                    if var_x is not None:
+                        var_display += f", ΔX: {var_x:.2f}"
+                    else:
+                        var_display += f", ΔX: N/A"
+                # For no-draw sports (Tennis, etc.), skip ΔX entirely
+                var_display += f", Δ2: {var_two}"
+                
+                message += f"   {i}. {match['participants']} → {match['result_text']}\n"
+                message += f"      Variations: {var_display}\n"
+            message += "\n"
+        
+        # Tier 2 candidates
+        if tier2_count > 0:
+            message += f"📊 **Tier 2 - Similar Variations ({tier2_count}):**\n"
+            
+            # Check results
+            tier2_identical = tier2_data.get('identical_results')
+            tier2_similar = tier2_data.get('similar_results')
+            
+            if tier2_identical:
+                prediction_text = tier2_identical.prediction if hasattr(tier2_identical, 'prediction') else tier2_identical.get('prediction', 'Unknown')
+                message += f"   ✅ Identical Results: {prediction_text}\n"
+            elif tier2_similar:
+                prediction_text = tier2_similar.prediction if hasattr(tier2_similar, 'prediction') else tier2_similar.get('prediction', 'Unknown')
+                message += f"   📊 Similar Results: {prediction_text}\n"
+            else:
+                message += f"   ❌ No consistent results found\n"
+            
+            # List matches with variations
+            tier2_matches = tier2_data.get('matches', [])
+            for i, match in enumerate(tier2_matches, 1):
+                variations = match.get('variations', {})
+                var_one = variations.get('var_one', 'N/A')
+                var_x = variations.get('var_x')
+                var_two = variations.get('var_two', 'N/A')
+                
+                # Format variations display based on sport type
+                var_display = f"Δ1: {var_one}"
+                if has_draw_odds:  # 3-way sport (Football, etc.)
+                    if var_x is not None:
+                        var_display += f", ΔX: {var_x:.2f}"
+                    else:
+                        var_display += f", ΔX: N/A"
+                # For no-draw sports (Tennis, etc.), skip ΔX entirely
+                var_display += f", Δ2: {var_two}"
+                
+                message += f"   {i}. {match['participants']} → {match['result_text']}\n"
+                message += f"      Variations: {var_display}\n"
+            message += "\n"
+        
+        # Primary prediction
+        if primary_prediction:
+            message += f"🎯 **Primary Prediction:** {primary_prediction}\n\n"
+        else:
+            message += f"❌ **No Prediction:** No consistent patterns found\n\n"
+        
+        # Footer
+        message += "*Comprehensive candidate analysis completed*"
+        
+        return message
+    
 
 # Global notification instance
 pre_start_notifier = PreStartNotification()

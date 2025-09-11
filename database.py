@@ -23,7 +23,8 @@ class DatabaseManager:
                 self.database_url,
                 echo=False,  # Set to True for SQL debugging
                 pool_pre_ping=True,
-                pool_recycle=300
+                pool_recycle=300,
+                connect_args={"connect_timeout": Config.DB_CONNECT_TIMEOUT}
             )
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=self.engine)
             logger.info(f"Database engine created for: {self.database_url}")

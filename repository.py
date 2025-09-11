@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from decimal import Decimal
 
-from models import Event, OddsSnapshot, EventOdds, Result, AlertLog
+from models import Event, OddsSnapshot, EventOdds, Result
 from database import db_manager
 from odds_utils import validate_odds_data
 
@@ -58,10 +58,11 @@ class EventRepository:
     
     @staticmethod
     def get_event_by_id(event_id: int) -> Optional[Event]:
-        """Get event by ID"""
+        """Get event by ID with event_odds loaded"""
         try:
             with db_manager.get_session() as session:
-                return session.query(Event).filter(Event.id == event_id).first()
+                from sqlalchemy.orm import joinedload
+                return session.query(Event).options(joinedload(Event.event_odds)).filter(Event.id == event_id).first()
         except Exception as e:
             logger.error(f"Error getting event {event_id}: {e}")
             return None
@@ -72,11 +73,15 @@ class EventRepository:
         try:
             with db_manager.get_session() as session:
                 from datetime import datetime, timedelta
+                from sqlalchemy.orm import joinedload
                 
+                # Use local time since SofaScore provides local times (despite column name)
                 now = datetime.now()
                 start_window = now + timedelta(minutes=window_minutes)
                 
-                events = session.query(Event).filter(
+                events = session.query(Event).options(
+                    joinedload(Event.event_odds)
+                ).filter(
                     Event.start_time_utc.between(now, start_window)
                 ).all()
                 
@@ -85,6 +90,7 @@ class EventRepository:
             logger.error(f"Error getting events starting soon: {e}")
             return []
 
+    @staticmethod
     def get_events_starting_soon_with_odds(window_minutes: int = 30) -> List[Dict]:
         """
         Get events starting within the specified window WITH their odds data.
@@ -374,49 +380,6 @@ class OddsRepository:
             logger.error(f"Error getting odds snapshots for event {event_id}: {e}")
             return []
 
-class AlertRepository:
-    """Repository for alert-related database operations"""
-    
-    @staticmethod
-    def create_alert(event_id: int, rule_key: str, payload: Dict = None) -> Optional[AlertLog]:
-        """Create a new alert log entry"""
-        try:
-            with db_manager.get_session() as session:
-                alert = AlertLog(
-                    event_id=event_id,
-                    rule_key=rule_key,
-                    triggered_at=datetime.utcnow()
-                )
-                
-                if payload:
-                    alert.set_payload(payload)
-                
-                session.add(alert)
-                
-                
-                logger.info(f"Created alert for event {event_id}, rule: {rule_key}")
-                return alert
-                
-        except Exception as e:
-            logger.error(f"Error creating alert for event {event_id}: {e}")
-            return None
-    
-    @staticmethod
-    def get_recent_alerts(hours: int = 24) -> List[AlertLog]:
-        """Get recent alerts"""
-        try:
-            with db_manager.get_session() as session:
-                since = datetime.utcnow() - timedelta(hours=hours)
-                
-                alerts = session.query(AlertLog).filter(
-                    AlertLog.triggered_at >= since
-                ).order_by(AlertLog.triggered_at.desc()).all()
-                
-                return alerts
-                
-        except Exception as e:
-            logger.error(f"Error getting recent alerts: {e}")
-            return []
 
 class ResultRepository:
     """Repository for result-related database operations"""

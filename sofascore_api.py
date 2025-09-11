@@ -181,6 +181,7 @@ class SofaScoreAPI:
         """
         Extract results data from event API response.
         Works with any sport (football, tennis, etc.) by analyzing the response structure.
+        IMPROVED: Handles all finished event status codes, not just status_code=100.
         """
         try:
             if not response or 'event' not in response:
@@ -189,14 +190,36 @@ class SofaScoreAPI:
             
             event_data = response['event']
             
-            # Check if event is finished
+            # Check if event is finished - IMPROVED LOGIC
             status = event_data.get('status', {})
             status_code = status.get('code')
             status_type = status.get('type', '').lower()
+            status_description = status.get('description', '')
             
-            # Only process finished events
-            if status_code != 100 or status_type != 'finished':
-                logger.info(f"Event not finished yet - status: {status.get('description', 'Unknown')}")
+            # Define finished status codes (expanded list)
+            FINISHED_STATUS_CODES = {
+                100,  # Ended (normal finish)
+                110,  # AET (After Extra Time)
+                92,   # Retired (Tennis)
+                120,  # AP (After Penalties)
+                130,  # WO (Walkover)
+                140,  # ABD (Abandoned but with result)
+            }
+            
+            # Define canceled/postponed status codes (should be skipped)
+            CANCELED_STATUS_CODES = {
+                70,   # Canceled
+                80,   # Postponed
+                90,   # Suspended
+            }
+            
+            # Check if event is finished
+            if status_code in CANCELED_STATUS_CODES:
+                logger.info(f"Event canceled/postponed - status: {status_description}")
+                return None
+            
+            if status_code not in FINISHED_STATUS_CODES or status_type != 'finished':
+                logger.info(f"Event not finished yet - status: {status_description}")
                 return None
             
             # Extract scores
@@ -207,18 +230,51 @@ class SofaScoreAPI:
                 logger.warning("Score data not found in response")
                 return None
             
-            # Get final scores - use 'current' or 'display' as primary, 'normaltime' as fallback
+            # IMPROVED: Better score extraction logic
+            # Try multiple score fields in order of preference
+            # Use 'is not None' to handle 0 scores correctly
             home_score = (
-                home_score_data.get('current') or 
-                home_score_data.get('display') or 
-                home_score_data.get('normaltime')
-            )
-            away_score = (
-                away_score_data.get('current') or 
-                away_score_data.get('display') or 
-                away_score_data.get('normaltime')
+                home_score_data.get('current') if home_score_data.get('current') is not None else
+                home_score_data.get('display') if home_score_data.get('display') is not None else
+                home_score_data.get('normaltime') if home_score_data.get('normaltime') is not None else
+                home_score_data.get('overtime') if home_score_data.get('overtime') is not None else
+                home_score_data.get('penalties') if home_score_data.get('penalties') is not None else
+                None
             )
             
+            away_score = (
+                away_score_data.get('current') if away_score_data.get('current') is not None else
+                away_score_data.get('display') if away_score_data.get('display') is not None else
+                away_score_data.get('normaltime') if away_score_data.get('normaltime') is not None else
+                away_score_data.get('overtime') if away_score_data.get('overtime') is not None else
+                away_score_data.get('penalties') if away_score_data.get('penalties') is not None else
+                None
+            )
+            
+            # For tennis, try 'point' field if scores are None
+            if home_score is None and 'point' in home_score_data:
+                try:
+                    home_score = int(home_score_data['point'])
+                except (ValueError, TypeError):
+                    pass
+            
+            if away_score is None and 'point' in away_score_data:
+                try:
+                    away_score = int(away_score_data['point'])
+                except (ValueError, TypeError):
+                    pass
+            
+            # If still no scores, check if it's a valid 0-0 result
+            if home_score is None and away_score is None:
+                # Check if both teams have score data but with 0 values
+                if (home_score_data.get('current') == 0 and away_score_data.get('current') == 0):
+                    home_score = 0
+                    away_score = 0
+                else:
+                    logger.warning("Could not extract valid scores from response")
+                    return None
+            
+            # Final validation - ensure we have valid scores
             if home_score is None or away_score is None:
                 logger.warning("Could not extract valid scores from response")
                 return None
@@ -253,7 +309,7 @@ class SofaScoreAPI:
                 'ended_at': ended_at
             }
             
-            logger.info(f"✅ Results extracted: {home_score}-{away_score}, Winner: {winner}")
+            logger.info(f"✅ Results extracted: {home_score}-{away_score}, Winner: {winner}, Status: {status_description}")
             return result_data
             
         except Exception as e:

@@ -7,6 +7,8 @@ load_dotenv()
 class Config:
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///sofascore_odds.db')
+    # Connection timeout in seconds for PostgreSQL (prevents long OS-level waits)
+    DB_CONNECT_TIMEOUT = int(os.getenv('DB_CONNECT_TIMEOUT', '5'))
     
     # API Configuration
     SOFASCORE_BASE_URL = 'https://api.sofascore.com/api/v1'
