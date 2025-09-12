@@ -158,20 +158,17 @@ class AlertEngine:
             f"shape={'3-way' if var_shape else 'no-draw'}"
         )
         
-        # Find candidates for both tiers, excluding current event
-        current_event_id = event.id
+        # Find candidates for both tiers
         tier1_candidates = self._find_tier1_candidates(
             sport=event.sport,
             var_shape=var_shape,
             cur_v1=cur_v1,
             cur_vx=cur_vx,
-            cur_v2=cur_v2,
-            exclude_event_ids=[current_event_id]
+            cur_v2=cur_v2
         )
         
-        # Extract Tier 1 event IDs to exclude from Tier 2 search, plus current event
+        # Extract Tier 1 event IDs to exclude from Tier 2 search
         tier1_event_ids = [candidate.event_id for candidate in tier1_candidates]
-        tier1_event_ids.append(current_event_id)  # Also exclude current event from Tier 2
         
         tier2_candidates = self._find_tier2_candidates(
             sport=event.sport,
@@ -218,10 +215,10 @@ class AlertEngine:
     
     def _find_tier1_candidates(self, sport: str, var_shape: bool, 
                                cur_v1: float, cur_vx: Optional[float], 
-                               cur_v2: float, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
+                               cur_v2: float) -> List[AlertMatch]:
         """Find historical events with EXACTLY identical variations"""
         return self._find_candidates(sport, var_shape, cur_v1, cur_vx, cur_v2, 
-                                   is_exact=True, exclude_event_ids=exclude_event_ids)
+                                   is_exact=True, exclude_event_ids=None)
     
     def _find_tier2_candidates(self, sport: str, var_shape: bool, 
                                cur_v1: float, cur_vx: Optional[float], 
@@ -364,78 +361,12 @@ class AlertEngine:
         return self._evaluate_rule(matches, 'identical', lambda m: m.result_text, 'exact score')
     
     def _evaluate_similar_results(self, matches: List[AlertMatch]) -> Optional[AlertPrediction]:
-        """Check if matches have same winner and point difference (Tier B rule) - requires at least 2 candidates"""
-        if not matches:
-            return None
-            
-        # Group matches by (winner_side, point_diff)
-        winner_diff_groups = defaultdict(list)
-        for match in matches:
-            key = (match.winner_side, match.point_diff)
-            winner_diff_groups[key].append(match)
-        
-        # Find the most common (winner_side, point_diff) pattern
-        if not winner_diff_groups:
-            return None
-            
-        most_common_pattern = max(winner_diff_groups.keys(), key=lambda k: len(winner_diff_groups[k]))
-        most_common_matches = winner_diff_groups[most_common_pattern]
-        
-        # Tier B requires at least 2 candidates with the same (winner_side, point_diff)
-        if len(most_common_matches) < 2:
-            return None
-        
-        # Create prediction
-        sample_match = most_common_matches[0]
-        prediction_text = self._create_prediction_text(sample_match, sample_match.point_diff, 'similar')
-        
-        return AlertPrediction(
-            rule_type='similar',
-            prediction=prediction_text,
-            winner_side=sample_match.winner_side,
-            point_diff=sample_match.point_diff,
-            exact_score=None,
-            sample_count=len(most_common_matches),
-            confidence='medium'
-        )
+        """Check if all matches have same winner and point difference"""
+        return self._evaluate_rule(matches, 'similar', lambda m: (m.winner_side, m.point_diff), 'winner+diff')
     
     def _evaluate_same_winning_side(self, matches: List[AlertMatch]) -> Optional[AlertPrediction]:
-        """Check if matches have same winning side (Tier C rule) - requires at least 2 candidates"""
-        if not matches:
-            return None
-            
-        # Group matches by winning side
-        winner_groups = defaultdict(list)
-        for match in matches:
-            winner_groups[match.winner_side].append(match)
-        
-        # Find the most common winning side
-        if not winner_groups:
-            return None
-            
-        most_common_winner = max(winner_groups.keys(), key=lambda k: len(winner_groups[k]))
-        most_common_matches = winner_groups[most_common_winner]
-        
-        # Tier C requires at least 2 candidates with the same winning side
-        if len(most_common_matches) < 2:
-            return None
-        
-        # Calculate weighted average point differential
-        point_diff = self._calculate_weighted_avg_point_diff(most_common_matches)
-        
-        # Create prediction
-        sample_match = most_common_matches[0]
-        prediction_text = self._create_prediction_text(sample_match, point_diff, 'same_winning_side')
-        
-        return AlertPrediction(
-            rule_type='same_winning_side',
-            prediction=prediction_text,
-            winner_side=sample_match.winner_side,
-            point_diff=point_diff,
-            exact_score=None,
-            sample_count=len(most_common_matches),
-            confidence='low'
-        )
+        """Check if all matches have same winning side (Tier C rule)"""
+        return self._evaluate_rule(matches, 'same_winning_side', lambda m: m.winner_side, 'winner', use_weighted_avg=True)
     
     def _evaluate_rule(self, matches: List[AlertMatch], rule_type: str, group_key_func, 
                       group_desc: str, use_weighted_avg: bool = False) -> Optional[AlertPrediction]:
@@ -485,28 +416,26 @@ class AlertEngine:
             return 0
         
         if rule_type == 'identical':
-            # Tier A: Count candidates with identical exact results (requires at least 2)
+            # Tier A: Count candidates with identical exact results
             result_groups = defaultdict(list)
             for match in candidates:
                 result_groups[match.result_text].append(match)
             
-            # Count only groups with at least 2 members (identical results)
-            return sum(len(group) for group in result_groups.values() if len(group) >= 2)
+            # Count only groups with multiple members (identical results)
+            return sum(len(group) for group in result_groups.values() if len(group) > 1)
         
         elif rule_type == 'similar':
-            # Tier B: Count candidates that have the same (winner_side, point_diff)
-            # Requires at least 2 candidates with the SAME (winner_side, point_diff)
+            # Tier B: Count ALL candidates that have the same (winner_side, point_diff)
+            # This is the key fix - always check winner_side and point_diff directly
             winner_diff_groups = defaultdict(list)
             for match in candidates:
                 key = (match.winner_side, match.point_diff)
                 winner_diff_groups[key].append(match)
             
-            # Find the group with the most candidates that have the same (winner_side, point_diff)
-            if not winner_diff_groups:
-                return 0
-            
-            largest_group_size = max(len(group) for group in winner_diff_groups.values())
-            return largest_group_size if largest_group_size >= 2 else 0
+            # Count ALL candidates that have the same (winner_side, point_diff)
+            # as long as there are at least 2 total
+            total_similar_candidates = sum(len(group) for group in winner_diff_groups.values())
+            return total_similar_candidates if total_similar_candidates >= 2 else 0
         
         elif rule_type == 'same_winner':
             # Tier C: Count candidates with same winning side
@@ -550,7 +479,7 @@ class AlertEngine:
         return tier_candidates
     
     def _get_tier_a_candidates(self, candidates: List[AlertMatch]) -> List[AlertMatch]:
-        """Get Tier A candidates: Identical exact results (highest priority, requires at least 2 candidates)"""
+        """Get Tier A candidates: Identical exact results (highest priority)"""
         tier_a_candidates = []
         
         result_groups = defaultdict(list)
@@ -558,32 +487,28 @@ class AlertEngine:
             result_groups[match.result_text].append(match)
         
         for group in result_groups.values():
-            if len(group) >= 2:  # Require at least 2 candidates with identical results
+            if len(group) > 1:  # Only groups with multiple identical results
                 tier_a_candidates.extend(group)
         
         return tier_a_candidates
     
     def _get_tier_b_candidates(self, all_candidates: List[AlertMatch], remaining_candidates: List[AlertMatch]) -> List[AlertMatch]:
-        """Get Tier B candidates: Same winner+point_diff as majority pattern (requires at least 2 candidates)"""
+        """Get Tier B candidates: Same winner+point_diff as majority pattern"""
         if not remaining_candidates:
             return []
         
-        # Find the most common (winner_side, point_diff) from REMAINING candidates only
-        remaining_winner_diff_groups = defaultdict(list)
-        for match in remaining_candidates:
+        # Find the most common (winner_side, point_diff) from ALL original candidates
+        all_winner_diff_groups = defaultdict(list)
+        for match in all_candidates:
             key = (match.winner_side, match.point_diff)
-            remaining_winner_diff_groups[key].append(match)
+            all_winner_diff_groups[key].append(match)
         
-        if not remaining_winner_diff_groups:
+        if not all_winner_diff_groups:
             return []
         
-        # Find the most common winner+point_diff pattern among remaining candidates
-        most_common_winner_diff = max(remaining_winner_diff_groups.keys(), 
-                                    key=lambda k: len(remaining_winner_diff_groups[k]))
-        
-        # Tier B requires at least 2 candidates with the same (winner_side, point_diff)
-        if len(remaining_winner_diff_groups[most_common_winner_diff]) < 2:
-            return []
+        # Find the most common winner+point_diff pattern
+        most_common_winner_diff = max(all_winner_diff_groups.keys(), 
+                                    key=lambda k: len(all_winner_diff_groups[k]))
         
         # Assign remaining candidates to Tier B if they match the most common pattern
         tier_b_candidates = []
@@ -594,7 +519,7 @@ class AlertEngine:
         return tier_b_candidates
     
     def _get_tier_c_candidates(self, all_candidates: List[AlertMatch], remaining_candidates: List[AlertMatch]) -> List[AlertMatch]:
-        """Get Tier C candidates: Same winning side as majority from ALL original candidates (requires at least 2 candidates)"""
+        """Get Tier C candidates: Same winning side as majority from ALL original candidates"""
         if not remaining_candidates:
             return []
         
@@ -609,10 +534,6 @@ class AlertEngine:
         # Find the most common winning side from ALL original candidates
         most_common_winner = max(all_winner_groups.keys(), 
                                key=lambda k: len(all_winner_groups[k]))
-        
-        # Tier C requires at least 2 candidates with the same winning side
-        if len(all_winner_groups[most_common_winner]) < 2:
-            return []
         
         # Only assign remaining candidates if they match the majority winner from ALL candidates
         tier_c_candidates = []
@@ -794,7 +715,7 @@ class AlertEngine:
             for match in selected_candidates:
                 result_groups[match.result_text].append(match)
             for group in result_groups.values():
-                if len(group) >= 2:  # Require at least 2 candidates with identical results
+                if len(group) > 1:
                     unique_matching_candidates.update(match.event_id for match in group)
         
         # Add candidates that match Tier B (same winner+point_diff)
@@ -803,11 +724,9 @@ class AlertEngine:
             for match in selected_candidates:
                 key = (match.winner_side, match.point_diff)
                 winner_diff_groups[key].append(match)
-            # Find the largest group with same (winner_side, point_diff)
-            if winner_diff_groups:
-                largest_group = max(winner_diff_groups.values(), key=len)
-                if len(largest_group) >= 2:
-                    unique_matching_candidates.update(match.event_id for match in largest_group)
+            for group in winner_diff_groups.values():
+                if len(group) >= 2:
+                    unique_matching_candidates.update(match.event_id for match in group)
         
         # Add candidates that match Tier C (same winner)
         if tier_c_matches > 0:
@@ -820,7 +739,7 @@ class AlertEngine:
         
         total_matching_candidates = len(unique_matching_candidates)
         
-        # Determine status: SUCCESS only if ALL candidates match at least one rule AND a prediction is generated
+        # Determine status: SUCCESS only if ALL candidates match at least one rule
         if total_matching_candidates == len(selected_candidates):
             # Calculate weighted confidence based on PRIORITY-BASED tier assignments
             # Get the actual tier assignments (with exclusions)
@@ -847,14 +766,7 @@ class AlertEngine:
             
             successful_candidates = len(selected_candidates)
             total_candidates = len(selected_candidates)
-            
-            # Check if a prediction was actually generated
-            if prediction_result is not None:
-                status = 'success'
-            else:
-                # All candidates processed but no prediction generated (insufficient candidates for any tier)
-                status = 'partial'
-                confidence = 0
+            status = 'success'
         else:
             # Some candidates failed to match any rule
             successful_candidates = total_matching_candidates

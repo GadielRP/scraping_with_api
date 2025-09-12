@@ -8,11 +8,11 @@ services:
       - POSTGRES_PASSWORD=Sofa12345
       - TZ=America/Mexico_City
     ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT:-5435}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db-init:/docker-entrypoint-initdb.d
-      - ./backup.dump:/docker-entrypoint-initdb.d/backup.dump:ro
+      #- ./backup.dump:/docker-entrypoint-initdb.d/backup.dump:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sofascore -d sofascore_odds"]
@@ -44,8 +44,10 @@ services:
     depends_on:
       - postgres
     restart: unless-stopped
-    # Production: automatically start scheduler
-    command: ["tail", "-f", "/dev/null"]
+    # Before: automatically started scheduler
+    command: ["python", "main.py", "start"]
+    # Override default command to keep container running without starting scheduler, back to default in production.
+    #command: ["tail", "-f", "/dev/null"]
     healthcheck:
       test: ["CMD", "python", "-c", "import sqlalchemy as sa; import os; url=os.getenv('DATABASE_URL','postgresql+psycopg://sofascore:Sofa12345@sofascore-pg:5432/sofascore_odds'); engine=sa.create_engine(url); conn=engine.connect(); conn.close(); print('ok')"]
       interval: 30s

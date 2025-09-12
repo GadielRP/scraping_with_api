@@ -200,7 +200,6 @@ class PreStartNotification:
         # Determine message header
         status_headers = {
             'success': "✅ **CANDIDATE REPORT - SUCCESS**",
-            'partial': "⚠️ **CANDIDATE REPORT - PARTIAL**",
             'no_match': "❌ **CANDIDATE REPORT - NO MATCH**",
             'no_candidates': "❓ **CANDIDATE REPORT - NO CANDIDATES**"
         }
@@ -248,8 +247,6 @@ class PreStartNotification:
         # Primary prediction
         if primary_prediction:
             message += f"🎯 **Primary Prediction:** {primary_prediction}\n\n"
-        elif status == 'partial':
-            message += f"⚠️ **Partial prediction:** No consistent patterns found, need at least 2 candidates\n\n"
         else:
             message += f"❌ **No Prediction:** No consistent patterns found\n\n"
         
