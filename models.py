@@ -27,6 +27,7 @@ class Event(Base):
     odds_snapshots = relationship("OddsSnapshot", back_populates="event", cascade="all, delete-orphan")
     event_odds = relationship("EventOdds", back_populates="event", uselist=False, cascade="all, delete-orphan")
     result = relationship("Result", back_populates="event", uselist=False, cascade="all, delete-orphan")
+    observations = relationship("EventObservation", back_populates="event", cascade="all, delete-orphan")
 
 class OddsSnapshot(Base):
     __tablename__ = 'odds_snapshot'
@@ -109,6 +110,28 @@ class Result(Base):
     
     # Relationships
     event = relationship("Event", back_populates="result")
+
+class EventObservation(Base):
+    __tablename__ = 'event_observations'
+    
+    observation_id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(Integer, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
+    observation_type = Column(String(50), nullable=False)  # 'ground_type', 'weather', etc.
+    observation_value = Column(Text)  # Flexible value storage
+    sport = Column(String(50))  # For quick filtering
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint('event_id', 'observation_type', name='unique_event_observation_type'),
+    )
+    
+    # Relationships
+    event = relationship("Event", back_populates="observations")
+
+    def __repr__(self):
+        return f"<EventObservation(event_id={self.event_id}, type='{self.observation_type}', value='{self.observation_value}')>"
 
 
 # ---------------------------------------------------------------------------

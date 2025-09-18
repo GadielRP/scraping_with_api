@@ -1,8 +1,8 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.2  
-**Estado General:** ✅ **PROCESS 1 COMPLETADO - PROCESS 2 EN PREPARACIÓN**  
-**Última Actualización:** 11 de Septiembre, 2025
+**Versión:** v1.2.2  
+**Estado General:** ✅ **PROCESS 1 COMPLETADO CON CÓDIGO OPTIMIZADO - PROCESS 2 EN PREPARACIÓN**  
+**Última Actualización:** 18 de Septiembre, 2025
 
 ## 🎯 **Resumen del Proyecto**
 
@@ -15,8 +15,12 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 #### **✅ Motor de Alertas Process 1**
 - [x] **Variation Tiers**: Implementar sistema de dos niveles (Tier 1 exacto, Tier 2 similar)
 - [x] **Análisis de Variaciones**: Análisis de variaciones de odds (var_one, var_x, var_two)
-- [x] **Tolerancia Configurable**: Tolerancia configurable para Tier 2 (±0.04)
+- [x] **Tolerancia Configurable**: Tolerancia configurable para Tier 2 (±0.04, inclusive)
 - [x] **Criterios de Candidatos**: Eventos históricos con variaciones similares
+- [x] **Variaciones Simétricas**: Filtrado de candidatos no simétricos en Tier 2
+  - [x] **Validación Simétrica**: Solo candidatos con variaciones simétricas para predicciones
+  - [x] **Filtrado Inteligente**: Excluye candidatos no simétricos de cálculos de éxito
+  - [x] **Reporte Completo**: Muestra todos los candidatos pero marca no simétricos
 - [x] **Result Tiers**: Sistema de tres niveles de resultado (A, B, C)
   - [x] **Tier A (Idéntico)**: Todos los candidatos tienen el mismo resultado exacto
   - [x] **Tier B (Similar)**: Todos los candidatos tienen el mismo ganador y diferencia de puntos
@@ -239,6 +243,37 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] **Métodos Helper**: Extracción de lógica común en funciones reutilizables
 - [x] **Mejora de Mantenibilidad**: Código más limpio y fácil de mantener
 
+#### **✅ Variaciones Simétricas - Feature Avanzado (v1.2.1)**
+- [x] **Implementación de Simetría**: Validación de variaciones simétricas en Tier 2
+- [x] **Lógica de Filtrado**: Excluye candidatos no simétricos de cálculos de éxito
+- [x] **Tolerancia Inclusiva**: Actualizada tolerancia a 0.0401 para incluir exactamente 0.04
+- [x] **Campo is_symmetrical**: Agregado a AlertMatch dataclass para tracking
+- [x] **Método _check_symmetrical_variations()**: Validación de simetría en variaciones
+- [x] **Filtrado Inteligente**: Solo candidatos simétricos para predicciones
+- [x] **Reporte Mejorado**: Muestra todos los candidatos con estado simétrico
+- [x] **Mensajes Actualizados**: Indica candidatos no simétricos con ❌
+- [x] **Testing Exitoso**: Validado con múltiples escenarios de prueba
+
+#### **✅ Optimización y Limpieza de Código (v1.2.2)**
+- [x] **Eliminación de Métodos No Utilizados**: Removidos métodos de notificaciones obsoletos
+  - [x] `notify_upcoming_games()` - NO SE USA (sistema reemplazado por alert engine)
+  - [x] `_create_upcoming_games_message()` - NO SE USA
+  - [x] `_format_event_message()` - NO SE USA
+  - [x] `_format_odds_display()` - NO SE USA
+- [x] **Eliminación de Variables No Utilizadas**: Removidas variables de notificación obsoletas
+  - [x] `upcoming_events_data` - NO SE USA (se creaba pero nunca se usaba)
+  - [x] `notification_event_data` - NO SE USA (se creaba pero nunca se usaba)
+- [x] **Eliminación de Métodos Duplicados**: Removidos métodos redundantes en alert_engine.py
+  - [x] `_evaluate_identical_results()` - DUPLICADO con `_count_candidates_matching_rule()`
+  - [x] `_evaluate_similar_results()` - DUPLICADO con `_count_candidates_matching_rule()`
+  - [x] `_evaluate_same_winning_side()` - DUPLICADO con `_count_candidates_matching_rule()`
+  - [x] `_evaluate_rule()` - NO SE USA (llamado solo por métodos eliminados)
+  - [x] `_create_mixed_prediction()` - REDUNDANTE (lógica simplificada)
+- [x] **Simplificación de Ground Type**: Solo mostrar ground type para candidatos (no evento actual)
+- [x] **Código Más Limpio**: Reducción significativa de líneas de código innecesarias
+- [x] **Mejor Mantenibilidad**: Código más fácil de entender y mantener
+- [x] **Sin Errores de Linting**: Código limpio y sin warnings
+
 ### **🔐 Seguridad & Operación (nuevo)**
 - [x] PostgreSQL ligado a 127.0.0.1:5432 (no público)
 - [x] Acceso vía túnel SSH desde PC (puerto local 5433)
@@ -264,12 +299,14 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **Infraestructura Técnica**: 100% ✅
 - **Limpieza de Código**: 100% ✅
 - **Optimizaciones Recientes**: 100% ✅
+- **Optimización y Limpieza v1.2.2**: 100% ✅
 
 ### **Estado de Componentes**
 - **main.py**: ✅ Completamente funcional con CLI extendido
-- **scheduler.py**: ✅ Programación robusta con lógica optimizada
-- **alert_engine.py**: ✅ Motor de predicciones basado en patrones
-- **alert_system.py**: ✅ Notificaciones Telegram inteligentes
+- **scheduler.py**: ✅ Programación robusta con lógica optimizada (código limpio)
+- **alert_engine.py**: ✅ Motor de predicciones basado en patrones (métodos duplicados eliminados)
+- **alert_system.py**: ✅ Notificaciones Telegram inteligentes (métodos obsoletos eliminados)
+- **sport_observations.py**: ✅ Gestión de observaciones deportivas (nuevo módulo)
 - **database.py**: ✅ Base de datos estable con vistas materializadas
 - **repository.py**: ✅ Acceso a datos optimizado
 - **config.py**: ✅ Configuración centralizada
@@ -332,9 +369,9 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 
 ## 🚀 **Estado Final del Proyecto**
 
-### **🎉 PRODUCCIÓN - COMPLETADO AL 100% - SISTEMA INTELIGENTE**
+### **🎉 PRODUCCIÓN - COMPLETADO AL 100% - SISTEMA INTELIGENTE Y OPTIMIZADO**
 
-El **SofaScore Odds System v1.1** está **completamente funcional**, **optimizado** y **operando exitosamente en producción**:
+El **SofaScore Odds System v1.2.2** está **completamente funcional**, **optimizado** y **operando exitosamente en producción**:
 
 - ✅ **Sistema de Predicciones**: Análisis de patrones históricos funcionando
 - ✅ **Sistema de Notificaciones**: Telegram funcionando con lógica inteligente
@@ -344,17 +381,39 @@ El **SofaScore Odds System v1.1** está **completamente funcional**, **optimizad
 - ✅ **Sistema de Notificaciones**: Optimizado para incluir todos los juegos
 - ✅ **Recolección de Resultados**: Automática e inteligente **CON FIX CRÍTICO APLICADO**
 - ✅ **Infraestructura**: Robusta, confiable y optimizada
-- ✅ **Código**: Limpio, mantenible y optimizado
+- ✅ **Código**: Limpio, mantenible y optimizado **CON LIMPIEZA COMPLETA v1.2.2**
+- ✅ **Observaciones Deportivas**: Sistema modular para datos específicos por deporte
 
 ### **🏆 Logros Destacados**
 - **Tiempo de Desarrollo**: ~2 meses
-- **Líneas de Código**: ~3,000+ (optimizadas)
+- **Líneas de Código**: ~3,000+ (optimizadas y limpias)
 - **Funcionalidades**: 20+ características principales
 - **Calidad**: Código limpio, mantenible y optimizado
 - **Estado**: Listo para producción 24/7 con inteligencia predictiva
 - **Fix Crítico**: Extracción de resultados mejorada (85% reducción en eventos sin resultados)
+- **Modularidad**: Sistema de observaciones deportivas separado y organizado
+- **Ground Type Extraction**: Script masivo exitoso (161 eventos procesados, 99.4% success rate)
 
 ---
 
-**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA INTELIGENTE**  
-**Próximo Paso**: Despliegue del fix crítico y monitoreo continuo
+---
+
+## 🎾 **Extracción Masiva de Ground Type (Septiembre 2025)**
+
+### **Logro Reciente:**
+- **✅ Script `get_all_courts.py` desarrollado** - Extracción automática de ground type para eventos de tennis
+- **✅ Test local exitoso** - 10/10 eventos procesados (100% success rate)
+- **✅ Deploy en servidor** - 161 eventos procesados, 160 exitosos (99.4% success rate)
+- **✅ Reutilización de código** - Usa la misma lógica que funciona en midnight sync
+- **✅ Fail-safe design** - Continúa procesando aunque algunos eventos fallen
+
+### **Impacto:**
+- **🎯 Cobertura completa** - Todos los eventos de tennis ahora tienen ground type
+- **📊 Notificaciones mejoradas** - Telegram muestra tipo de cancha para candidatos
+- **🔧 Mantenimiento automático** - El sistema ya captura ground type en nuevos eventos
+- **⚡ Performance** - Procesamiento masivo eficiente sin afectar operaciones
+
+---
+
+**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA INTELIGENTE Y OPTIMIZADO**  
+**Próximo Paso**: Monitoreo continuo y preparación para Process 2

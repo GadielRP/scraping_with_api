@@ -1,8 +1,8 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.2  
-**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO - Process 2 EN PREPARACIÓN**  
-**Última Actualización:** 11 de Septiembre, 2025
+**Versión:** v1.2.2  
+**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON CÓDIGO OPTIMIZADO - Process 2 EN PREPARACIÓN**  
+**Última Actualización:** 18 de Septiembre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
@@ -16,7 +16,11 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 #### **🏗️ Arquitectura Process 1:**
 - **Variation Tiers (Niveles de Variación)**:
   - **Tier 1 (Exacto)**: Variaciones idénticas de odds (var_one, var_x, var_two)
-  - **Tier 2 (Similar)**: Variaciones dentro de ±0.04 tolerancia
+  - **Tier 2 (Similar)**: Variaciones dentro de ±0.04 tolerancia (inclusive)
+- **Variaciones Simétricas (Nueva Feature)**:
+  - **Validación Simétrica**: Solo candidatos con variaciones simétricas para predicciones
+  - **Filtrado Inteligente**: Excluye candidatos no simétricos de cálculos de éxito
+  - **Reporte Completo**: Muestra todos los candidatos pero marca no simétricos
 - **Result Tiers (Niveles de Resultado)**:
   - **Tier A (Idéntico)**: Todos los candidatos tienen el mismo resultado exacto
   - **Tier B (Similar)**: Todos los candidatos tienen el mismo ganador y diferencia de puntos
@@ -37,11 +41,13 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 #### **📊 Características Process 1:**
 - **Análisis de Patrones**: Encuentra eventos históricos con variaciones de odds similares
 - **Predicciones Basadas en Datos**: Predice resultados usando patrones históricos
+- **Variaciones Simétricas**: Filtrado avanzado de candidatos no simétricos
 - **Sistema de Reportes Completo**: SUCCESS/NO MATCH con datos completos
 - **Lógica Deportiva**: Maneja deportes con empate (Fútbol) y sin empate (Tenis)
 - **Mensajes Enriquecidos**: Muestra variaciones Δ1, ΔX, Δ2, confianza y timing
 - **Código Optimizado**: Refactorizado para eliminar duplicación (19% reducción de líneas)
-- **Estado**: 🟢 **EN PRODUCCIÓN - COMPLETADO Y OPTIMIZADO**
+- **Limpieza Completa v1.2.2**: Eliminación de métodos no utilizados, variables obsoletas y código redundante
+- **Estado**: 🟢 **EN PRODUCCIÓN - COMPLETADO Y OPTIMIZADO CON CÓDIGO LIMPIO**
 
 ### 🔮 **PROCESS 2 - Sistema de Reglas Específicas por Deporte - EN DESARROLLO (v1.3)**
 **📋 Definición**: Process 2 es un sistema de reglas específicas por deporte que complementa Process 1 con análisis deportivo especializado.
@@ -119,6 +125,26 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Enhanced Messages**: Reportes duales con veredicto final de acuerdo/desacuerdo
 - **Modular Design**: Siguiendo @rules.mdc para máxima mantenibilidad
 - **Estado**: 🟡 **EN DESARROLLO ACTIVO - ARQUITECTURA DUAL PROCESS**
+
+### **v1.2.2 (Septiembre 2025) - OPTIMIZACIÓN Y LIMPIEZA DE CÓDIGO - DESPLEGADO** ✅
+- **Eliminación de Métodos No Utilizados**: Removidos métodos de notificaciones obsoletos
+- **Eliminación de Variables No Utilizadas**: Removidas variables de notificación obsoletas
+- **Eliminación de Métodos Duplicados**: Removidos métodos redundantes en alert_engine.py
+- **Simplificación de Ground Type**: Solo mostrar ground type para candidatos (no evento actual)
+- **Código Más Limpio**: Reducción significativa de líneas de código innecesarias
+- **Mejor Mantenibilidad**: Código más fácil de entender y mantener
+- **Sin Errores de Linting**: Código limpio y sin warnings
+- **Estado**: 🟢 **EN PRODUCCIÓN - CÓDIGO OPTIMIZADO Y LIMPIO**
+
+### **v1.2.1 (Septiembre 2025) - VARIACIONES SIMÉTRICAS - DESPLEGADO** ✅
+- **Variaciones Simétricas**: Filtrado avanzado de candidatos no simétricos en Tier 2
+- **Validación Inteligente**: Solo candidatos con variaciones simétricas para predicciones
+- **Tolerancia Inclusiva**: Actualizada a 0.0401 para incluir exactamente 0.04
+- **Campo is_symmetrical**: Tracking de simetría en AlertMatch dataclass
+- **Filtrado Inteligente**: Excluye candidatos no simétricos de cálculos de éxito
+- **Reporte Mejorado**: Muestra todos los candidatos con estado simétrico
+- **Testing Exitoso**: Validado con múltiples escenarios de prueba
+- **Estado**: 🟢 **EN PRODUCCIÓN - FEATURE AVANZADO IMPLEMENTADO**
 
 ### **v1.1 (Septiembre 2025) - SISTEMA INTELIGENTE - DESPLEGADO** ✅
 - **Sistema de Predicciones**: Análisis de patrones históricos para predecir resultados
@@ -229,14 +255,16 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 
 ## 🎉 **Conclusión**
 
-El **SofaScore Odds System v1.2** tiene **Process 1 completamente funcional** y está **preparando Process 2**:
+El **SofaScore Odds System v1.2.2** tiene **Process 1 completamente funcional con código optimizado** y está **preparando Process 2**:
 
-### ✅ **Process 1 - COMPLETADO Y OPTIMIZADO**
+### ✅ **Process 1 - COMPLETADO Y OPTIMIZADO CON CÓDIGO LIMPIO**
 - ✅ **Sistema de Predicciones**: Análisis de patrones históricos funcionando
 - ✅ **Arquitectura Completa**: Variation Tiers (1,2) + Result Tiers (A,B,C)
+- ✅ **Variaciones Simétricas**: Filtrado avanzado de candidatos no simétricos
 - ✅ **Lógica de Selección**: Tier 1 prioritario sobre Tier 2
 - ✅ **Confianza Ponderada**: 100%/75%/50% para Tiers A/B/C
 - ✅ **Código Optimizado**: 19% reducción de líneas, eliminación de duplicación
+- ✅ **Limpieza Completa v1.2.2**: Eliminación de métodos no utilizados y código redundante
 - ✅ **Sistema de Notificaciones**: Telegram funcionando con lógica inteligente
 - ✅ **Descubrimiento Automático**: Programado cada 2 horas y optimizado
 - ✅ **Verificación Pre-Inicio**: Eficiente con extracción inteligente de odds
@@ -255,4 +283,4 @@ El **SofaScore Odds System v1.2** tiene **Process 1 completamente funcional** y 
 
 ---
 
-**Estado Final**: 🟢 **PROCESS 1 COMPLETADO - PROCESS 2 EN PREPARACIÓN**
+**Estado Final**: 🟢 **PROCESS 1 COMPLETADO CON CÓDIGO OPTIMIZADO - PROCESS 2 EN PREPARACIÓN**

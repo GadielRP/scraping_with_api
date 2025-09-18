@@ -38,3 +38,4 @@ docker-compose.override.yml
 .idea/
 .DS_Store
 .gitignore
+repository_backup.py

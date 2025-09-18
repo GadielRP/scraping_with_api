@@ -309,11 +309,72 @@ class SofaScoreAPI:
                 'ended_at': ended_at
             }
             
+            # OPTIONAL: Extract sport-specific observations (FAIL-SAFE)
+            observations = self._extract_observations_from_response(response)
+            if observations:
+                result_data['observations'] = observations
+            
             logger.info(f"✅ Results extracted: {home_score}-{away_score}, Winner: {winner}, Status: {status_description}")
             return result_data
             
         except Exception as e:
             logger.error(f"Error extracting results from response: {e}")
+            return None
+    
+    def _extract_observations_from_response(self, response: Dict) -> Optional[List[Dict]]:
+        """
+        Extract sport-specific observations from event response.
+        COMPLETELY FAIL-SAFE: Returns None on any error, doesn't break main processing.
+        """
+        try:
+            if not response or 'event' not in response:
+                return None
+            
+            event_data = response['event']
+            observations = []
+            
+            # Extract sport information for context
+            sport = None
+            if 'tournament' in event_data:
+                tournament = event_data['tournament']
+                if 'category' in tournament and 'sport' in tournament['category']:
+                    sport = tournament['category']['sport'].get('name')
+            
+            if not sport:
+                logger.debug("No sport information found, skipping observations")
+                return None
+            
+            # TENNIS: Extract ground type
+            if sport.lower() == 'tennis':
+                logger.info(f"🔍 DEBUG: Processing tennis event, looking for groundType")
+                ground_type = event_data.get('groundType')
+                logger.info(f"🔍 DEBUG: groundType value: {ground_type}")
+                if ground_type:
+                    observations.append({
+                        'type': 'ground_type',
+                        'value': ground_type,
+                        'sport': sport
+                    })
+                    logger.info(f"📍 Tennis ground type extracted: {ground_type}")
+                else:
+                    logger.info(f"🔍 DEBUG: No groundType found in event data")
+            
+            # FUTURE: Add other sports observations here
+            # if sport.lower() == 'football':
+            #     weather = event_data.get('weather')
+            #     if weather:
+            #         observations.append({'type': 'weather', 'value': weather, 'sport': sport})
+            
+            if observations:
+                logger.info(f"✅ Extracted {len(observations)} observations for {sport}")
+                return observations
+            else:
+                logger.debug(f"No observations extracted for {sport}")
+                return None
+                
+        except Exception as e:
+            logger.warning(f"Error extracting observations (FAIL-SAFE): {e}")
+            # FAIL-SAFE: Return None, don't break main processing
             return None
 
     def extract_final_odds_from_response(self, response: Dict) -> Optional[Dict]:

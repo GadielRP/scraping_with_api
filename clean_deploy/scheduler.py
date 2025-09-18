@@ -7,7 +7,7 @@ from typing import List, Optional, Dict
 import json
 from config import Config
 from sofascore_api import api_client
-from repository import EventRepository, OddsRepository, ResultRepository
+from repository import EventRepository, OddsRepository, ResultRepository, ObservationRepository
 from odds_utils import process_event_odds_from_dropping_odds
 from alert_system import pre_start_notifier
 
@@ -217,9 +217,6 @@ class JobScheduler:
             
             logger.info(f"Found {len(events_with_odds)} events starting within {Config.PRE_START_WINDOW_MINUTES} minutes")
             
-            # Prepare upcoming events data for notifications (ALL games, with updated odds when available)
-            upcoming_events_data = []
-            
             # Process each upcoming event
             processed_count = 0
             odds_extracted_count = 0
@@ -231,16 +228,6 @@ class JobScheduler:
                     # SMART ODDS EXTRACTION: Only extract odds at key moments (30 min and 5 min)
                     should_extract_odds = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
                     
-                    # Prepare event data for notification (will be updated with fresh odds if extracted)
-                    notification_event_data = {
-                        'home_team': event_data['home_team'],
-                        'away_team': event_data['away_team'],
-                        'competition': event_data['competition'],
-                        'start_time': event_data['start_time_utc'].strftime("%H:%M"),
-                        'minutes_until_start': minutes_until_start,
-                        'odds': event_data.get('odds')  # Start with existing odds from database
-                    }
-                    
                     if should_extract_odds:
                         logger.info(f"🎯 EXTRACTING ODDS: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start")
                         
@@ -250,6 +237,9 @@ class JobScheduler:
                         if final_odds_response:
                             # Process the final odds data
                             final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
+                            
+                            
+                            
                             if final_odds_data:
                                 # Update the event odds with final odds
                                 upserted_id = OddsRepository.upsert_event_odds(event_data['id'], final_odds_data)
@@ -261,21 +251,6 @@ class JobScheduler:
                                     if snapshot:
                                         logger.info(f"✅ Final odds snapshot created for event {event_data['id']}")
                                         odds_extracted_count += 1
-                                        
-                                        # Update notification data with fresh odds (merge with existing odds)
-                                        existing_odds = notification_event_data['odds'] or {}
-                                        merged_odds = {
-                                            # Keep existing opening odds
-                                            'one_open': existing_odds.get('one_open'),
-                                            'x_open': existing_odds.get('x_open'),
-                                            'two_open': existing_odds.get('two_open'),
-                                            # Add fresh final odds
-                                            'one_final': final_odds_data.get('one_final'),
-                                            'x_final': final_odds_data.get('x_final'),
-                                            'two_final': final_odds_data.get('two_final')
-                                        }
-                                        notification_event_data['odds'] = merged_odds
-                                        logger.info(f"📱 Updated odds for notification: {event_data['home_team']} vs {event_data['away_team']} (odds extracted at {minutes_until_start} min)")
                                 else:
                                     logger.warning(f"Failed to update final odds for event {event_data['id']}")
                             else:
@@ -285,17 +260,12 @@ class JobScheduler:
                     else:
                         logger.debug(f"⏭️ SKIPPING ODDS EXTRACTION: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start (not a key moment)")
                     
-                    # ALWAYS add to notifications (with existing odds if no extraction, or fresh odds if extracted)
-                    upcoming_events_data.append(notification_event_data)
-                    logger.info(f"📱 Added to notifications: {event_data['home_team']} vs {event_data['away_team']} (odds: {'fresh' if should_extract_odds else 'existing'})")
-                    
                     processed_count += 1
                     
                 except Exception as e:
                     logger.error(f"Error processing upcoming event {event_data['id']}: {e}")
                     continue
             
-            # DISABLED: Upcoming games notifications (replaced by new alert engine)
             
             if processed_count > 0:
                 logger.info(f"🚨 Pre-start check completed: {processed_count} games starting soon!")
@@ -421,15 +391,21 @@ class JobScheduler:
                     stats['failed'] += 1
                     continue
                 
+                # MAIN RESULT PROCESSING (unchanged)
                 if ResultRepository.upsert_result(event.id, result_data):
                     stats['updated'] += 1
                     logger.info(f"✅ {job_name}: {event.id} = {result_data['home_score']}-{result_data['away_score']}, Winner: {result_data['winner']}")
+                    
+                    # OPTIONAL: Process observations (FAIL-SAFE - doesn't break main flow)
+                    from sport_observations import sport_observations_manager
+                    sport_observations_manager.process_event_observations(event, result_data)
                 
             except Exception as e:
                 logger.error(f"Error in {job_name} for event {event.id}: {e}")
                 stats['failed'] += 1
         
         return stats
+    
 
     def job_results_collection_all_finished(self):
         """Job E2: Comprehensive results collection for ALL finished events."""
@@ -553,6 +529,7 @@ class JobScheduler:
             next_time = next_time + timedelta(hours=1)
         
         return next_time
+    
 
 # Global scheduler instance
 job_scheduler = JobScheduler()

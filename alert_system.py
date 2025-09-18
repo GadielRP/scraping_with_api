@@ -16,7 +16,7 @@ functionality in this file with clear Process 2 boundaries.
 """
 
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 import requests
 
 logger = logging.getLogger(__name__)
@@ -46,92 +46,6 @@ class PreStartNotification:
         if not self.telegram_enabled:
             logger.warning("Telegram not configured. Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to .env file")
     
-    def notify_upcoming_games(self, upcoming_events: List[Dict]) -> bool:
-        """
-        Send notifications about upcoming games starting within 30 minutes
-        
-        Args:
-            upcoming_events: List of events with start time, teams, minutes until start, and odds data
-        
-        Returns:
-            True if notifications were sent successfully
-        """
-        if not self.notification_enabled or not upcoming_events:
-            return False
-        
-        try:
-            # Create notification message
-            message = self._create_upcoming_games_message(upcoming_events)
-            
-            # Send Telegram notification
-            if self.telegram_enabled:
-                success = self._send_telegram_notification(message)
-                if success:
-                    logger.info(f"✅ Successfully sent Telegram notification for {len(upcoming_events)} upcoming games")
-                else:
-                    logger.warning("⚠️ Failed to send Telegram notification")
-                return success
-            else:
-                logger.warning("Telegram notifications not configured")
-                return False
-            
-        except Exception as e:
-            logger.error(f"Error sending upcoming games notifications: {e}")
-            return False
-    
-    def _create_upcoming_games_message(self, upcoming_events: List[Dict]) -> str:
-        """Create a formatted message for upcoming games with odds information"""
-        if not upcoming_events:
-            return "No upcoming games found."
-        
-        message = "🚨 UPCOMING GAMES ALERT 🚨\n\n"
-        message += f"Found {len(upcoming_events)} game(s) starting soon:\n\n"
-        
-        for event in upcoming_events:
-            message += self._format_event_message(event)
-        
-        message += "🎯 Check SofaScore for final odds and place your bets!"
-        return message
-    
-    def _format_event_message(self, event: Dict) -> str:
-        """Format a single event message with odds information"""
-        minutes = event.get('minutes_until_start', 0)
-        home_team = event.get('home_team', 'Unknown')
-        away_team = event.get('away_team', 'Unknown')
-        start_time = event.get('start_time', 'Unknown')
-        competition = event.get('competition', 'Unknown')
-        
-        message = f"⚽ {home_team} vs {away_team}\n"
-        message += f"   🏆 {competition}\n"
-        message += f"   ⏰ Starts in {minutes} minutes ({start_time})\n"
-        
-        # Add odds information
-        odds_display = self._format_odds_display(event.get('odds'))
-        message += f"   💰 {odds_display}\n\n"
-        
-        return message
-    
-    def _format_odds_display(self, odds: Dict) -> str:
-        """Format odds display for an event"""
-        if not odds or not odds.get('one_open') or not odds.get('two_open'):
-            return "Odds: Not available"
-        
-        # Format opening odds
-        opening_odds = f"Opening: 1={odds['one_open']:.2f}"
-        if odds.get('x_open'):
-            opening_odds += f", X={odds['x_open']:.2f}"
-        opening_odds += f", 2={odds['two_open']:.2f}"
-        
-        # Format final odds
-        if odds.get('one_final') and odds.get('two_final'):
-            final_odds = f"Final:   1={odds['one_final']:.2f}"
-            if odds.get('x_final'):
-                final_odds += f", X={odds['x_final']:.2f}"
-            final_odds += f", 2={odds['two_final']:.2f}"
-        else:
-            final_odds = "Final:   Not available"
-        
-        return f"Odds:\n      {opening_odds}\n      {final_odds}"
     
     def _send_telegram_notification(self, message: str) -> bool:
         """Send notification via Telegram bot"""
@@ -199,35 +113,42 @@ class PreStartNotification:
         
         # Determine message header
         status_headers = {
-            'success': "✅ **CANDIDATE REPORT - SUCCESS**",
-            'partial': "⚠️ **CANDIDATE REPORT - PARTIAL**",
-            'no_match': "❌ **CANDIDATE REPORT - NO MATCH**",
-            'no_candidates': "❓ **CANDIDATE REPORT - NO CANDIDATES**"
+            'success': "✅ CANDIDATE REPORT - SUCCESS",
+            'partial': "⚠️ CANDIDATE REPORT - PARTIAL",
+            'no_match': "❌ CANDIDATE REPORT - NO MATCH",
+            'no_candidates': "❓ CANDIDATE REPORT - NO CANDIDATES"
         }
-        header = status_headers.get(status, "❓ **CANDIDATE REPORT - UNKNOWN STATUS**")
+        header = status_headers.get(status, "❓ CANDIDATE REPORT - UNKNOWN STATUS")
         
         message = f"{header}\n\n"
         
         # Event information
-        message += f"🏆 **{participants}**\n"
+        message += f"🏆 {participants}\n"
         message += f"🏟️ {competition} ({sport})\n"
+        
+        
         message += f"⏰ Starts at {start_time}"
         if minutes_until_start is not None:
             message += f" (in {minutes_until_start} minutes)"
         message += "\n\n"
         
         # Current event data
-        message += f"📈 **Current Variations:**\n"
+        message += f"📈 Current Variations:\n"
         message += f"   {vars_display}\n\n"
         
-        message += f"💰 **Current Odds:**\n"
+        message += f"💰 Current Odds:\n"
         message += f"   {odds_display}\n\n"
         
         # Candidate summary with new logic
         total_candidates_found = tier1_count + tier2_count
-        message += f"🔍 **Candidate Summary:**\n"
+        non_symmetrical_count = report_data.get('non_symmetrical_candidates', 0)
+        
+        message += f"🔍 Candidate Summary:\n"
         message += f"   • Tier 1 (exact): {tier1_count} candidates\n"
-        message += f"   • Tier 2 (similar): {tier2_count} candidates\n"
+        message += f"   • Tier 2 (similar): {tier2_count} candidates"
+        if non_symmetrical_count > 0:
+            message += f" ({non_symmetrical_count} non-symmetrical filtered out)"
+        message += f"\n"
         message += f"   • Selected tier: {selected_tier}\n"
         message += f"   • Successful: {successful_candidates}/{total_candidates} candidates\n"
         message += f"   • Confidence: {primary_confidence}\n\n"
@@ -265,8 +186,30 @@ class PreStartNotification:
         
         for i, match in enumerate(matches, 1):
             var_display = self._format_variations_display(match.get('variations', {}), has_draw_odds)
-            message += f"   {i}. {match['participants']} → {match['result_text']}\n"
+            symmetry_status = ""
+            if 'is_symmetrical' in match:
+                if match['is_symmetrical']:
+                    symmetry_status = " ✅"
+                else:
+                    symmetry_status = " ❌ (unsymmetrical)"
+            
+            message += f"   {i}. {match['participants']} → {match['result_text']}{symmetry_status}\n"
             message += f"      Variations: {var_display}\n"
+            
+            # DEBUG: Log candidate info
+            candidate_event_id = match.get('event_id')
+            candidate_sport = match.get('sport')
+            logger.info(f"🔍 DEBUG: Processing candidate {i} - event_id={candidate_event_id}, sport='{candidate_sport}'")
+            
+            from sport_observations import sport_observations_manager
+            sport_info = sport_observations_manager.format_sport_info_for_candidates(candidate_event_id, candidate_sport)
+            logger.info(f"🔍 DEBUG: Sport info result for candidate {i}: '{sport_info}'")
+            
+            if sport_info:
+                message += f"      {sport_info}\n"
+                logger.info(f"🔍 DEBUG: Added sport info to message for candidate {i}")
+            else:
+                logger.info(f"🔍 DEBUG: No sport info to add for candidate {i}")
         
         return message + "\n"
     
@@ -311,6 +254,7 @@ class PreStartNotification:
         
         message += "\n"
         return message
+    
 
 # Global notification instance
 pre_start_notifier = PreStartNotification()
