@@ -1,8 +1,8 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.2.2  
-**Estado General:** ✅ **PROCESS 1 COMPLETADO CON CÓDIGO OPTIMIZADO - PROCESS 2 EN PREPARACIÓN**  
-**Última Actualización:** 18 de Septiembre, 2025
+**Versión:** v1.2.3  
+**Estado General:** ✅ **PROCESS 1 COMPLETADO CON TIMING FIX Y RESOLUCIÓN DE RESULTADOS FALTANTES - PROCESS 2 EN PREPARACIÓN**  
+**Última Actualización:** 19 de Septiembre, 2025
 
 ## 🎯 **Resumen del Proyecto**
 
@@ -142,7 +142,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Almacenamiento en base de datos
 
 #### **✅ Programación Automática**
-- [x] Sincronización diaria a las 00:05
+- [x] Sincronización diaria a las 04:00 (CORREGIDO: era 00:05, causaba eventos faltantes)
 - [x] Recolección de resultados del día anterior
 - [x] Comando manual para resultados completos
 - [x] Logging de operaciones
@@ -280,6 +280,17 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] UFW bloquea 5432 externo
 - [x] Guía de operación ampliada: sección 14 en `CLOUD_OPERATIONS_GUIDE.md`
 
+### **🕐 Fix Crítico de Timing - COMPLETADO (19/09/2025)**
+- [x] **Problema Identificado**: Midnight job a las 00:05 causaba eventos faltantes
+- [x] **Root Cause**: Eventos que empezaban tarde (22:00-23:59) no terminaban antes de 00:05
+- [x] **Análisis de Datos**: 7 de 17 eventos extractables empezaban a las 23:00
+- [x] **Solución Implementada**: Mover midnight job de 00:05 a 04:00
+- [x] **Resultado**: 3-4 horas de buffer para eventos tardíos
+- [x] **Cobertura Mejorada**: De 96.6% a 99.0% (683 → 700 eventos con resultados)
+- [x] **Archivos Modificados**: `scheduler.py` (línea 40: "00:05" → "04:00")
+- [x] **Scripts de Upsert**: `upsert_debug_results.py` para corregir eventos faltantes
+- [x] **Despliegue Exitoso**: Fix aplicado en servidor y funcionando
+
 #### **✅ Correcciones de Bugs**
 - [x] Corregir cálculo de minutos (round vs int)
 - [x] Corregir lógica de notificaciones
@@ -415,5 +426,5 @@ El **SofaScore Odds System v1.2.2** está **completamente funcional**, **optimiz
 
 ---
 
-**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA INTELIGENTE Y OPTIMIZADO**  
+**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA INTELIGENTE Y OPTIMIZADO CON TIMING FIX**  
 **Próximo Paso**: Monitoreo continuo y preparación para Process 2

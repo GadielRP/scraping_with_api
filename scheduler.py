@@ -36,13 +36,13 @@ class JobScheduler:
         # Job C - Pre-start check (dynamic interval based on Config.POLL_INTERVAL_MINUTES)
         self._setup_pre_start_jobs()
         
-        # Job D - Midnight results collection (at 00:05)
-        schedule.every().day.at("00:05").do(self.job_midnight_sync)
+        # Job D - Midnight results collection (at 04:00)
+        schedule.every().day.at("04:00").do(self.job_midnight_sync)
         
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
         logger.info(f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes")
-        logger.info("  - Midnight sync: daily at 00:05 (results collection only)")
+        logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
     
     def _setup_pre_start_jobs(self):
         """Setup pre-start check jobs at exact 5-minute clock intervals (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)"""

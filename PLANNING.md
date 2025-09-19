@@ -1,8 +1,8 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.2.2  
-**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON CÓDIGO OPTIMIZADO - Process 2 EN PREPARACIÓN**  
-**Última Actualización:** 18 de Septiembre, 2025
+**Versión:** v1.2.3  
+**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON TIMING FIX Y RESOLUCIÓN DE RESULTADOS FALTANTES - Process 2 EN PREPARACIÓN**  
+**Última Actualización:** 19 de Septiembre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
@@ -99,13 +99,15 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Manejo de Edge Cases**: Incluye juegos con diferentes timings en una sola notificación
 - **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO**
 
-### ✅ **Recolección de Resultados - COMPLETADO CON FIX CRÍTICO**
-- **Sincronización**: Diaria a las 00:05
+### ✅ **Recolección de Resultados - COMPLETADO CON FIX CRÍTICO Y TIMING FIX**
+- **Sincronización**: Diaria a las 04:00 (CORREGIDO: era 00:05, causaba eventos faltantes)
 - **Lógica Inteligente**: Tiempos de corte específicos por deporte
 - **Deduplicación**: Evita resultados duplicados
 - **Fix Crítico (10/09/2025)**: Mejorada extracción de resultados para manejar todos los códigos de estado terminados
+- **Timing Fix (19/09/2025)**: Mover midnight job a 04:00 para dar buffer a eventos tardíos
 - **Mejora**: Reducción del 85% en eventos sin resultados (de 8.1% a 1.2% gap)
-- **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO**
+- **Cobertura Final**: 99.0% (700/707 eventos con resultados)
+- **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO CON TIMING FIX**
 
 ### ✅ **Infraestructura Técnica - COMPLETADO**
 - **Base de Datos**: PostgreSQL 15 en Docker (producción) con SQLAlchemy 2 + psycopg v3; SQLite solo para desarrollo local
@@ -125,6 +127,14 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Enhanced Messages**: Reportes duales con veredicto final de acuerdo/desacuerdo
 - **Modular Design**: Siguiendo @rules.mdc para máxima mantenibilidad
 - **Estado**: 🟡 **EN DESARROLLO ACTIVO - ARQUITECTURA DUAL PROCESS**
+
+### **v1.2.3 (Septiembre 2025) - TIMING FIX Y RESOLUCIÓN DE RESULTADOS FALTANTES - DESPLEGADO** ✅
+- **Fix Crítico de Timing**: Midnight job movido de 00:05 a 04:00 para dar buffer a eventos tardíos
+- **Análisis de Root Cause**: 7 de 17 eventos extractables empezaban a las 23:00 (no terminaban antes de 00:05)
+- **Cobertura Mejorada**: De 96.6% a 99.0% (683 → 700 eventos con resultados)
+- **Scripts de Upsert**: `upsert_debug_results.py` para corregir eventos faltantes
+- **Despliegue Exitoso**: Fix aplicado en servidor y funcionando
+- **Estado**: 🟢 **EN PRODUCCIÓN - SISTEMA OPTIMIZADO CON TIMING FIX**
 
 ### **v1.2.2 (Septiembre 2025) - GROUND TYPE EXTRACTION - DESPLEGADO** ✅
 - **Extracción Masiva Ground Type**: Script exitoso para 161 eventos de tennis (99.4% success rate)
@@ -280,4 +290,4 @@ El **SofaScore Odds System v1.2.2** tiene **Process 1 completamente funcional co
 
 ---
 
-**Estado Final**: 🟢 **PROCESS 1 COMPLETADO CON CÓDIGO OPTIMIZADO - PROCESS 2 EN PREPARACIÓN**
+**Estado Final**: 🟢 **PROCESS 1 COMPLETADO CON TIMING FIX Y RESOLUCIÓN DE RESULTADOS FALTANTES - PROCESS 2 EN PREPARACIÓN**

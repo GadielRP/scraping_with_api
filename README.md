@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.2.2  
-**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON GROUND TYPE EXTRACTION - Process 2 EN PREPARACIÓN**  
-**Última Actualización:** 18 de Septiembre, 2025
+**Versión:** v1.2.3  
+**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON TIMING FIX Y RESOLUCIÓN DE RESULTADOS FALTANTES - Process 2 EN PREPARACIÓN**  
+**Última Actualización:** 19 de Septiembre, 2025
 
 ## 🎯 **Descripción del Sistema**
 
@@ -95,11 +95,13 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Manejo de Edge Cases**: Incluye juegos con diferentes timings en una sola notificación
 
 ### ✅ **Recolección de Resultados**
-- **Sincronización**: Diaria a las 00:05
+- **Sincronización**: Diaria a las 04:00 (CORREGIDO: era 00:05, causaba eventos faltantes)
 - **Lógica Inteligente**: Tiempos de corte específicos por deporte
 - **Deduplicación**: Evita resultados duplicados
 - **Fix Crítico (10/09/2025)**: Mejorada extracción para manejar todos los códigos de estado terminados
+- **Timing Fix (19/09/2025)**: Mover midnight job a 04:00 para dar buffer a eventos tardíos
 - **Mejora**: Reducción del 85% en eventos sin resultados (de 8.1% a 1.2% gap)
+- **Cobertura Final**: 99.0% (700/707 eventos con resultados)
 
 ## 🛠 **Instalación y Configuración**
 
@@ -175,7 +177,7 @@ python main.py results-all
 3. **Momentos Clave**: Extracción de odds a los 30 y 5 minutos
 4. **Análisis de Patrones**: Evaluación de alertas basadas en historial
 5. **Notificaciones**: Pre-inicio + Predicciones inteligentes
-6. **00:05**: Recolección de resultados
+6. **04:00**: Recolección de resultados (CORREGIDO: era 00:05)
 
 ### **Sistema de Predicciones - ¿Qué hace un Candidato?**
 
@@ -284,21 +286,29 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 
 **¡Tu sistema inteligente de SofaScore está optimizado y funcionando perfectamente!** 🚀⚽🧠
 
-## 🔧 **Fix Crítico Aplicado y Desplegado (10/09/2025)**
+## 🔧 **Fixes Críticos Aplicados y Desplegados**
 
-### **Problema Resuelto**
+### **Fix 1: Extracción de Resultados (10/09/2025)**
 - **Issue**: 8.1% de eventos sin resultados debido a lógica restrictiva en la extracción de resultados
 - **Solución**: Mejorada la lógica para manejar todos los códigos de estado terminados (100, 110, 92, 120, 130, 140)
 - **Resultado**: Reducción del 85% en eventos sin resultados (de 27 a 4 eventos)
 
+### **Fix 2: Timing de Midnight Job (19/09/2025)**
+- **Issue**: Midnight job a las 00:05 causaba eventos faltantes (eventos que empezaban tarde no terminaban antes de 00:05)
+- **Root Cause**: 7 de 17 eventos extractables empezaban a las 23:00 (no terminaban antes de 00:05)
+- **Solución**: Mover midnight job de 00:05 a 04:00 para dar 3-4 horas de buffer
+- **Resultado**: Cobertura mejorada de 96.6% a 99.0% (683 → 700 eventos con resultados)
+
 ### **Despliegue Exitoso**
-- ✅ **Sistema v1.1 desplegado** en producción (10/09/2025)
+- ✅ **Sistema v1.2.3 desplegado** en producción (19/09/2025)
 - ✅ **Base de datos actualizada** con computed columns y materialized views
+- ✅ **Timing fix aplicado**: Midnight job movido a 04:00
+- ✅ **Scripts de upsert**: `upsert_debug_results.py` para corregir eventos faltantes
 - ✅ **Notificaciones optimizadas**: UPCOMING GAMES ALERT deshabilitado, solo CANDIDATE REPORTS activos
-- ✅ **Comando post-despliegue ejecutado**: `python main.py results-all`
 
 ### **Archivos Modificados**
 - `sofascore_api.py`: Lógica de extracción de resultados mejorada
-- `scheduler.py`: Notificaciones UPCOMING GAMES ALERT deshabilitadas
+- `scheduler.py`: Midnight job movido a 04:00, notificaciones UPCOMING GAMES ALERT deshabilitadas
+- `upsert_debug_results.py`: Script para corregir eventos faltantes
 - `docker-compose.yml`: Configuración de producción corregida
 
