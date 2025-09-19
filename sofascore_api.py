@@ -379,8 +379,8 @@ class SofaScoreAPI:
 
     def extract_final_odds_from_response(self, response: Dict) -> Optional[Dict]:
         """
-        Extract final/current odds data from any market structure automatically.
-        This function is completely sport-agnostic and adapts to any market type
+        Extract final/current odds data from full time market structure automatically.
+        This function is completely sport-agnostic and captures full time market structure.
         based purely on the actual choices available.
         """
         try:
@@ -390,83 +390,84 @@ class SofaScoreAPI:
             
             # Look for any market with choices
             for market in response['markets']:
-                choices = market.get('choices', [])
-                if not choices:
-                    continue
-                
-                # Extract final odds for each choice dynamically
-                odds_data = {}
-                available_choices = []
-                
-                for choice in choices:
-                    name = choice.get('name')
-                    current_fractional = choice.get('fractionalValue')
-                    
-                    if not current_fractional:
-                        logger.warning(f"Missing fractional value for choice {name}")
+                if market.get('isLive') == False and market.get('marketName') == 'Full time':
+                    choices = market.get('choices', [])
+                    if not choices:
                         continue
                     
-                    # Store the choice name and convert odds
-                    available_choices.append(name)
-                    odds_data[f'{name}_final'] = fractional_to_decimal(current_fractional)
-                
-                # Analyze market structure automatically based on available choices
-                if len(available_choices) >= 2:
-                    # Determine market type based on actual choices, not hardcoded sport names
-                    if len(available_choices) == 3:
-                        # 3-choice market - check if any choice could be a draw equivalent
-                        # Look for patterns that suggest a draw option (middle choice, or any non-extreme choice)
-                        if len(odds_data) == 3:
-                            # Extract the three choices in order
-                            choice_names = list(odds_data.keys())
-                            # Map to our standard format: first choice = one, middle choice = x, last choice = two
-                            result = {
-                                'one_final': odds_data[choice_names[0]],
-                                'x_final': odds_data[choice_names[1]],  # Middle choice (draw equivalent)
-                                'two_final': odds_data[choice_names[2]]
-                            }
-                            logger.info(f"✅ Final odds extracted (3-choice market): 1={result['one_final']}, X={result['x_final']}, 2={result['two_final']}")
-                            return result
-                        else:
-                            logger.warning(f"Incomplete 3-choice market data: {odds_data}")
+                    # Extract final odds for each choice dynamically
+                    odds_data = {}
+                    available_choices = []
+                    
+                    for choice in choices:
+                        name = choice.get('name')
+                        current_fractional = choice.get('fractionalValue')
+                        
+                        if not current_fractional:
+                            logger.warning(f"Missing fractional value for choice {name}")
                             continue
-                            
-                    elif len(available_choices) == 2:
-                        # 2-choice market - any sport without draw option
-                        if len(odds_data) == 2:
-                            # Map to our standard format, setting X to None
-                            choice_names = list(odds_data.keys())
-                            result = {
-                                'one_final': odds_data[choice_names[0]],
-                                'x_final': None,  # No draw option in 2-choice markets
-                                'two_final': odds_data[choice_names[1]]
-                            }
-                            logger.info(f"✅ Final odds extracted (2-choice market): 1={result['one_final']}, X=None, 2={result['two_final']}")
-                            return result
+                        
+                        # Store the choice name and convert odds
+                        available_choices.append(name)
+                        odds_data[f'{name}_final'] = fractional_to_decimal(current_fractional)
+                    
+                    # Analyze market structure automatically based on available choices
+                    if len(available_choices) >= 2:
+                        # Determine market type based on actual choices, not hardcoded sport names
+                        if len(available_choices) == 3:
+                            # 3-choice market - check if any choice could be a draw equivalent
+                            # Look for patterns that suggest a draw option (middle choice, or any non-extreme choice)
+                            if len(odds_data) == 3:
+                                # Extract the three choices in order
+                                choice_names = list(odds_data.keys())
+                                # Map to our standard format: first choice = one, middle choice = x, last choice = two
+                                result = {
+                                    'one_final': odds_data[choice_names[0]],
+                                    'x_final': odds_data[choice_names[1]],  # Middle choice (draw equivalent)
+                                    'two_final': odds_data[choice_names[2]]
+                                }
+                                logger.info(f"✅ Final odds extracted (3-choice market): 1={result['one_final']}, X={result['x_final']}, 2={result['two_final']}")
+                                return result
+                            else:
+                                logger.warning(f"Incomplete 3-choice market data: {odds_data}")
+                                continue
+                                
+                        elif len(available_choices) == 2:
+                            # 2-choice market - any sport without draw option
+                            if len(odds_data) == 2:
+                                # Map to our standard format, setting X to None
+                                choice_names = list(odds_data.keys())
+                                result = {
+                                    'one_final': odds_data[choice_names[0]],
+                                    'x_final': None,  # No draw option in 2-choice markets
+                                    'two_final': odds_data[choice_names[1]]
+                                }
+                                logger.info(f"✅ Final odds extracted (2-choice market): 1={result['one_final']}, X=None, 2={result['two_final']}")
+                                return result
+                            else:
+                                logger.warning(f"Incomplete 2-choice market data: {odds_data}")
+                                continue
+                                
+                        elif len(available_choices) > 3:
+                            # Multi-choice market - extract first two choices as main competitors
+                            if len(odds_data) >= 2:
+                                choice_names = list(odds_data.keys())
+                                result = {
+                                    'one_final': odds_data[choice_names[0]],
+                                    'x_final': None,  # Multi-choice markets typically don't have draws
+                                    'two_final': odds_data[choice_names[1]]
+                                }
+                                logger.info(f"✅ Final odds extracted (multi-choice market): 1={result['one_final']}, X=None, 2={result['two_final']}")
+                                return result
+                            else:
+                                logger.warning(f"Multi-choice market without extractable first two choices: {odds_data}")
+                                continue
                         else:
-                            logger.warning(f"Incomplete 2-choice market data: {odds_data}")
-                            continue
-                            
-                    elif len(available_choices) > 3:
-                        # Multi-choice market - extract first two choices as main competitors
-                        if len(odds_data) >= 2:
-                            choice_names = list(odds_data.keys())
-                            result = {
-                                'one_final': odds_data[choice_names[0]],
-                                'x_final': None,  # Multi-choice markets typically don't have draws
-                                'two_final': odds_data[choice_names[1]]
-                            }
-                            logger.info(f"✅ Final odds extracted (multi-choice market): 1={result['one_final']}, X=None, 2={result['two_final']}")
-                            return result
-                        else:
-                            logger.warning(f"Multi-choice market without extractable first two choices: {odds_data}")
+                            logger.warning(f"Market with insufficient choices: {available_choices}")
                             continue
                     else:
                         logger.warning(f"Market with insufficient choices: {available_choices}")
                         continue
-                else:
-                    logger.warning(f"Market with insufficient choices: {available_choices}")
-                    continue
             
             logger.warning("No suitable market found for final odds extraction")
             return None

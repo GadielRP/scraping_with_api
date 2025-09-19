@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # Constants
 RULE_WEIGHTS = {'A': 4, 'B': 3, 'C': 2}
 MAX_WEIGHT = 4
-TIER2_TOLERANCE = 0.04
+TIER2_TOLERANCE = 0.040001  # Slightly higher to handle floating point precision
 MIN_SAMPLES = 1
 
 WINNER_NAMES = {
@@ -575,11 +575,14 @@ class AlertEngine:
             
             # Find the most common winning side
             if not winner_groups:
+                logger.info(f"🔍 DEBUG: Tier C - No winner groups found")
                 return 0
             
             most_common_winner = max(winner_groups.keys(), key=lambda k: len(winner_groups[k]))
             most_common_count = len(winner_groups[most_common_winner])
-            return most_common_count if most_common_count >= 2 else 0
+            result = most_common_count if most_common_count >= 2 else 0
+            logger.info(f"🔍 DEBUG: Tier C - Most common winner: {most_common_winner}, count: {most_common_count}, result: {result}")
+            return result
         
         return 0
     
@@ -624,28 +627,28 @@ class AlertEngine:
         return tier_a_candidates
     
     def _get_tier_b_candidates(self, all_candidates: List[AlertMatch], remaining_candidates: List[AlertMatch]) -> List[AlertMatch]:
-        """Get Tier B candidates: Same winner+point_diff as majority pattern (requires at least 2 candidates)"""
+        """Get Tier B candidates: Same winner+point_diff as majority pattern from ALL candidates (requires at least 2 candidates)"""
         if not remaining_candidates:
             return []
         
-        # Find the most common (winner_side, point_diff) from REMAINING candidates only
-        remaining_winner_diff_groups = defaultdict(list)
-        for match in remaining_candidates:
+        # Find the most common (winner_side, point_diff) from ALL candidates (not just remaining)
+        all_winner_diff_groups = defaultdict(list)
+        for match in all_candidates:
             key = (match.winner_side, match.point_diff)
-            remaining_winner_diff_groups[key].append(match)
+            all_winner_diff_groups[key].append(match)
         
-        if not remaining_winner_diff_groups:
+        if not all_winner_diff_groups:
             return []
         
-        # Find the most common winner+point_diff pattern among remaining candidates
-        most_common_winner_diff = max(remaining_winner_diff_groups.keys(), 
-                                    key=lambda k: len(remaining_winner_diff_groups[k]))
+        # Find the most common winner+point_diff pattern among ALL candidates
+        most_common_winner_diff = max(all_winner_diff_groups.keys(), 
+                                    key=lambda k: len(all_winner_diff_groups[k]))
         
         # Tier B requires at least 2 candidates with the same (winner_side, point_diff)
-        if len(remaining_winner_diff_groups[most_common_winner_diff]) < 2:
+        if len(all_winner_diff_groups[most_common_winner_diff]) < 2:
             return []
         
-        # Assign remaining candidates to Tier B if they match the most common pattern
+        # Only assign REMAINING candidates that match the most common pattern from ALL candidates
         tier_b_candidates = []
         for match in remaining_candidates:
             if (match.winner_side, match.point_diff) == most_common_winner_diff:
@@ -729,7 +732,9 @@ class AlertEngine:
             for tier, matches in tier_candidates.items()
         )
         
-        return total_weighted_diff / total_weight if total_weight > 0 else 0
+        # Use round() to handle floating point precision issues
+        result = total_weighted_diff / total_weight if total_weight > 0 else 0
+        return round(result, 6)  # Round to 6 decimal places to avoid precision issues
     
     def _calculate_weighted_avg_point_diff(self, matches: List[AlertMatch]) -> float:
         """Calculate weighted average point differential for Tier C rule"""
@@ -741,19 +746,9 @@ class AlertEngine:
             total_weighted_diff += match.point_diff * weight
             total_weight += weight
         
-        return total_weighted_diff / total_weight if total_weight > 0 else 0
-    
-    def _calculate_weighted_avg_point_diff(self, matches: List[AlertMatch]) -> float:
-        """Calculate weighted average point differential for Tier C rule"""
-        total_weighted_diff = 0
-        total_weight = 0
-        weight = RULE_WEIGHTS['C']  # Use Tier C weight
-        
-        for match in matches:
-            total_weighted_diff += match.point_diff * weight
-            total_weight += weight
-        
-        return total_weighted_diff / total_weight if total_weight > 0 else 0
+        # Use round() to handle floating point precision issues
+        result = total_weighted_diff / total_weight if total_weight > 0 else 0
+        return round(result, 6)  # Round to 6 decimal places to avoid precision issues
     
     def _create_prediction_text(self, match: AlertMatch, point_diff, rule_type: str) -> str:
         """Create prediction text based on rule type and match data"""
@@ -778,10 +773,10 @@ class AlertEngine:
                                     cand_v1: float, cand_vx: Optional[float], cand_v2: float) -> bool:
         """
         Check if candidate variations are symmetrical to current variations.
-        Symmetrical means all variations move in the same direction by the same amount.
+        Symmetrical means all variations move by the same AMOUNT (direction doesn't matter).
         
         Example: Current (0.37, -0.30, -1.13) vs Candidate (0.35, -0.32, -1.15)
-        All variations moved by -0.02, so they are symmetrical.
+        All variations moved by amount 0.02, so they are symmetrical.
         
         Args:
             cur_v1, cur_vx, cur_v2: Current event variations
@@ -790,41 +785,22 @@ class AlertEngine:
         Returns:
             True if variations are symmetrical, False otherwise
         """
-        # Calculate differences for each variation
-        d1_diff = cand_v1 - cur_v1
-        d2_diff = cand_v2 - cur_v2
-        dx_diff = (cand_vx - cur_vx) if cand_vx is not None and cur_vx is not None else 0
+        # Calculate absolute differences for each variation (amount only, ignore direction)
+        d1_abs_diff = abs(abs(cand_v1) - abs(cur_v1))
+        d2_abs_diff = abs(abs(cand_v2) - abs(cur_v2))
+        dx_abs_diff = abs(abs(cand_vx) - abs(cur_vx)) if cand_vx is not None and cur_vx is not None else 0
         
         # For 2-way sports (no draw), only check d1 and d2
         if cur_vx is None and cand_vx is None:
-            # Check if both variations move in the same direction by the same amount
-            return abs(d1_diff - d2_diff) < 0.001  # Allow for tiny floating point differences
+            # Check if both variations moved by the same amount
+            return abs(d1_abs_diff - d2_abs_diff) < 0.0011  # Slightly higher to handle floating point precision
         
         # For 3-way sports (with draw), check all three variations
         else:
-            # Check if all three variations move in the same direction by the same amount
-            return (abs(d1_diff - d2_diff) < 0.001 and 
-                    abs(d1_diff - dx_diff) < 0.001 and 
-                    abs(d2_diff - dx_diff) < 0.001)
-    
-    def _create_prediction_text(self, match: AlertMatch, point_diff, rule_type: str) -> str:
-        """Create prediction text based on rule type and match data"""
-        winner_name = WINNER_NAMES.get(match.winner_side, 'Unknown')
-        
-        if match.winner_side == 'X':
-            return "Draw"
-        
-        if rule_type == 'identical':
-            if match.point_diff and match.point_diff > 0:
-                return f"{winner_name} wins by point differential of: {match.point_diff}"
-            else:
-                return f"Exact score: {match.result_text}"
-        else:
-            # Similar or same winning side rules
-            if rule_type == 'same_winning_side':
-                return f"{winner_name} wins by point differential of: {point_diff:.2f}"
-            else:
-                return f"{winner_name} wins by point differential of: {point_diff}"
+            # Check if all three variations moved by the same amount
+            return (abs(d1_abs_diff - d2_abs_diff) < 0.0011 and 
+                    abs(d1_abs_diff - dx_abs_diff) < 0.0011 and 
+                    abs(d2_abs_diff - dx_abs_diff) < 0.0011)
     
     def _evaluate_candidates_with_new_logic(self, tier1_candidates: List[AlertMatch], 
                                            tier2_candidates: List[AlertMatch]) -> Dict:
@@ -834,16 +810,26 @@ class AlertEngine:
         Returns:
             Dict with evaluation results including tier used, rule matched, prediction, and confidence
         """
-        # Tier selection logic: Use Tier 1 if available, otherwise Tier 2
+        # Combine identical and symmetrical similar candidates
+        combined_candidates = []
+        selected_tier = ""
+        
+        # Always include Tier 1 (identical) candidates
         if tier1_candidates:
-            selected_tier = "Tier 1 (exact variations)"
-            selected_candidates = tier1_candidates
-            logger.info(f"🎯 Using {selected_tier} for evaluation ({len(selected_candidates)} candidates)")
-        elif tier2_candidates:
-            selected_tier = "Tier 2 (similar variations)"
-            selected_candidates = tier2_candidates
-            logger.info(f"🎯 Using {selected_tier} for evaluation ({len(selected_candidates)} candidates)")
-        else:
+            combined_candidates.extend(tier1_candidates)
+            selected_tier = "Tier 1 (exact)"
+        
+        # Add symmetrical Tier 2 candidates
+        if tier2_candidates:
+            symmetrical_tier2 = [c for c in tier2_candidates if c.is_symmetrical]
+            if symmetrical_tier2:
+                combined_candidates.extend(symmetrical_tier2)
+                if selected_tier:
+                    selected_tier += f" + Tier 2 symmetrical ({len(symmetrical_tier2)})"
+                else:
+                    selected_tier = f"Tier 2 symmetrical ({len(symmetrical_tier2)})"
+        
+        if not combined_candidates:
             return {
                 'status': 'no_candidates',
                 'selected_tier': None,
@@ -854,20 +840,19 @@ class AlertEngine:
                 'total_candidates': 0
             }
         
-        # Filter out non-symmetrical candidates for Tier 2 (exact matches are always symmetrical)
-        if selected_tier == "Tier 2 (similar variations)":
-            symmetrical_candidates = [c for c in selected_candidates if c.is_symmetrical]
-            non_symmetrical_candidates = [c for c in selected_candidates if not c.is_symmetrical]
-            
-            if non_symmetrical_candidates:
-                logger.info(f"🔍 Filtering out {len(non_symmetrical_candidates)} non-symmetrical candidates from success calculations")
-                for candidate in non_symmetrical_candidates:
+        selected_candidates = combined_candidates
+        logger.info(f"🎯 Using combined candidates for evaluation: {len(selected_candidates)} total ({selected_tier})")
+        
+        # Log non-symmetrical candidates that were filtered out during combination
+        non_symmetrical_count = 0
+        if tier2_candidates:
+            non_symmetrical_tier2 = [c for c in tier2_candidates if not c.is_symmetrical]
+            non_symmetrical_count = len(non_symmetrical_tier2)
+            if non_symmetrical_tier2:
+                logger.info(f"🔍 Filtered out {len(non_symmetrical_tier2)} non-symmetrical Tier 2 candidates")
+                for candidate in non_symmetrical_tier2:
                     dx_display = f"{candidate.var_x:.2f}" if candidate.var_x is not None else "N/A"
                     logger.info(f"   ❌ Non-symmetrical: {candidate.participants} (vars: Δ1={candidate.var_one:.2f}, ΔX={dx_display}, Δ2={candidate.var_two:.2f})")
-            
-            # Use only symmetrical candidates for rule evaluation and success calculations
-            selected_candidates = symmetrical_candidates
-            logger.info(f"🎯 Using {len(selected_candidates)} symmetrical candidates for rule evaluation")
         
         # Evaluate rules in priority order: A (identical) > B (similar) > C (same winning side)
         rule_a_result = self._evaluate_identical_results(selected_candidates)
@@ -878,6 +863,9 @@ class AlertEngine:
         tier_a_matches = self._count_candidates_matching_rule(selected_candidates, 'identical')
         tier_b_matches = self._count_candidates_matching_rule(selected_candidates, 'similar')
         tier_c_matches = self._count_candidates_matching_rule(selected_candidates, 'same_winner')
+        
+        # DEBUG: Log the counting results
+        logger.info(f"🔍 DEBUG: Rule counting results - A: {tier_a_matches}, B: {tier_b_matches}, C: {tier_c_matches}")
         
         # Calculate total UNIQUE candidates that match at least one rule
         # We need to count unique candidates, not sum up all rule matches
@@ -938,6 +926,7 @@ class AlertEngine:
                                 len(tier_assignments['C']) * RULE_WEIGHTS['C'])
             max_possible_weight = len(selected_candidates) * MAX_WEIGHT
             confidence = (weighted_successes / max_possible_weight) * 100 if max_possible_weight > 0 else 0
+            confidence = round(confidence, 1)  # Round to 1 decimal place to avoid precision issues
             
             # Use the highest priority rule that has the most matches for prediction
             if tier_a_matches > 0:
@@ -980,10 +969,7 @@ class AlertEngine:
         # Get rule activation details for reporting
         rule_activations = self._get_rule_activations(selected_candidates)
         
-        # Calculate non-symmetrical candidates count for Tier 2
-        non_symmetrical_count = 0
-        if selected_tier == "Tier 2 (similar variations)":
-            non_symmetrical_count = len([c for c in tier2_candidates if not c.is_symmetrical])
+        # Non-symmetrical count already calculated above during filtering
         
         return {
             'status': status,

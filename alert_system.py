@@ -158,12 +158,13 @@ class PreStartNotification:
         if rule_activations:
             message += self._format_rule_activations(rule_activations)
         
-        # Show candidates from selected tier only
-        if selected_tier == "Tier 1 (exact variations)" and tier1_count > 0:
-            message += self._format_tier_candidates("🎯", "Selected Tier 1 - Exact Variations", 
+        # Show candidates from all available tiers
+        if tier1_count > 0:
+            message += self._format_tier_candidates("🎯", "Tier 1 - Exact Variations", 
                                                  tier1_count, tier1_data.get('matches', []), has_draw_odds)
-        elif selected_tier == "Tier 2 (similar variations)" and tier2_count > 0:
-            message += self._format_tier_candidates("📊", "Selected Tier 2 - Similar Variations", 
+        if tier2_count > 0:
+            # Always show ALL Tier 2 candidates with symmetrical status indicators
+            message += self._format_tier_candidates("📊", "Tier 2 - Similar Variations", 
                                                  tier2_count, tier2_data.get('matches', []), has_draw_odds)
         
         # Primary prediction

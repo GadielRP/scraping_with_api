@@ -237,9 +237,7 @@ class JobScheduler:
                         if final_odds_response:
                             # Process the final odds data
                             final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
-                            
-                            
-                            
+                                                     
                             if final_odds_data:
                                 # Update the event odds with final odds
                                 upserted_id = OddsRepository.upsert_event_odds(event_data['id'], final_odds_data)
