@@ -116,7 +116,7 @@ class PreStartNotification:
             'success': "✅ CANDIDATE REPORT - SUCCESS",
             'partial': "⚠️ CANDIDATE REPORT - PARTIAL",
             'no_match': "❌ CANDIDATE REPORT - NO MATCH",
-            'no_candidates': "❓ CANDIDATE REPORT - NO CANDIDATES"
+            'no_candidates': "❓ CANDIDATE REPORT - NO  VALID CANDIDATES"
         }
         header = status_headers.get(status, "❓ CANDIDATE REPORT - UNKNOWN STATUS")
         

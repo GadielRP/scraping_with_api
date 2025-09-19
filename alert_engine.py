@@ -837,7 +837,11 @@ class AlertEngine:
                 'prediction': None,
                 'confidence': 0,
                 'successful_candidates': 0,
-                'total_candidates': 0
+                'total_candidates': 0,
+                'non_symmetrical_candidates': len([c for c in tier2_candidates if not c.is_symmetrical]),
+                'rule_activations': {},
+                'tier1_candidates': tier1_candidates,
+                'tier2_candidates': tier2_candidates
             }
         
         selected_candidates = combined_candidates
