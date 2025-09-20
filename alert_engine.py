@@ -73,6 +73,7 @@ class AlertMatch:
     var_two: float
     sport: str = 'Tennis'  # Default sport, will be set from search context
     is_symmetrical: bool = True  # True for exact matches (Tier 1) and symmetrical similar matches (Tier 2)
+    competition: str = 'Unknown'  # Competition/tournament name
 
 @dataclass
 class AlertPrediction:
@@ -311,7 +312,7 @@ class AlertEngine:
         
         sql = f"""
                     SELECT event_id, participants, result_text, winner_side, point_diff,
-                           var_one, var_x, var_two
+                           var_one, var_x, var_two, competition
                     FROM mv_alert_events
                     WHERE sport = :sport
                       AND var_shape = :var_shape
@@ -367,7 +368,8 @@ class AlertEngine:
                 var_x=float(row.var_x) if row.var_x is not None else None,
                 var_two=float(row.var_two),
                 sport=sport,
-                is_symmetrical=is_symmetrical
+                is_symmetrical=is_symmetrical,
+                competition=row.competition or 'Unknown'
             ))
                 
         return matches
@@ -1050,6 +1052,7 @@ class AlertEngine:
                 'participants': match.participants,
                 'result_text': match.result_text,
                 'is_symmetrical': match.is_symmetrical,
+                'competition': match.competition,
                 'variations': {
                     'var_one': match.var_one,
                     'var_x': match.var_x,

@@ -1,7 +1,7 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.2.3  
-**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON TIMING FIX Y RESOLUCIÓN DE RESULTADOS FALTANTES - Process 2 EN PREPARACIÓN**  
+**Versión:** v1.2.4  
+**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON COMPETITION FIELD Y SPORT CLASSIFICATION - Process 2 EN PREPARACIÓN**  
 **Última Actualización:** 19 de Septiembre, 2025
 
 ## 🎯 **Visión del Proyecto**
@@ -45,6 +45,9 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Sistema de Reportes Completo**: SUCCESS/NO MATCH con datos completos
 - **Lógica Deportiva**: Maneja deportes con empate (Fútbol) y sin empate (Tenis)
 - **Mensajes Enriquecidos**: Muestra variaciones Δ1, ΔX, Δ2, confianza y timing
+- **Competition Display**: Muestra competencia/torneo para cada candidato histórico
+- **Sport Classification**: Sistema modular de clasificación deportiva (Tennis Singles/Doubles)
+- **AlertMatch Enhancement**: Dataclass actualizado con competition field
 - **Código Optimizado**: Refactorizado para eliminar duplicación (19% reducción de líneas)
 - **Limpieza Completa v1.2.2**: Eliminación de métodos no utilizados, variables obsoletas y código redundante
 - **Estado**: 🟢 **EN PRODUCCIÓN - COMPLETADO Y OPTIMIZADO CON CÓDIGO LIMPIO**

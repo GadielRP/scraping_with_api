@@ -1,7 +1,7 @@
 # SofaScore Odds System
 
-**Versión:** v1.2.3  
-**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON TIMING FIX Y RESOLUCIÓN DE RESULTADOS FALTANTES - Process 2 EN PREPARACIÓN**  
+**Versión:** v1.2.4  
+**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON COMPETITION FIELD Y SPORT CLASSIFICATION - Process 2 EN PREPARACIÓN**  
 **Última Actualización:** 19 de Septiembre, 2025
 
 ## 🎯 **Descripción del Sistema**
@@ -47,7 +47,27 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Lógica Deportiva**: Maneja deportes con empate (Fútbol) y sin empate (Tenis)
 - **Mensajes Enriquecidos**: Muestra variaciones Δ1, ΔX, Δ2, confianza y timing
 - **Ground Type Display**: Muestra tipo de cancha para eventos de tennis en notificaciones
+- **Competition Display**: Muestra competencia/torneo para cada candidato histórico
+- **Sport Classification**: Sistema modular de clasificación deportiva (Tennis Singles/Doubles)
+- **AlertMatch Structure**: Dataclass completo con competition field para candidatos históricos
 - **Datos Completos**: 161 eventos de tennis con ground type extraído (99.4% success rate)
+
+#### **📊 AlertMatch Dataclass Structure:**
+```python
+@dataclass
+class AlertMatch:
+    event_id: int                    # ID del evento histórico
+    participants: str                # "Team A vs Team B"
+    result_text: str                 # "2-1", "6-4, 6-2"
+    winner_side: str                 # "1", "X", "2"
+    point_diff: int                  # Diferencia de puntos
+    var_one: float                   # Variación odds home
+    var_x: Optional[float]           # Variación odds draw (si aplica)
+    var_two: float                   # Variación odds away
+    sport: str = 'Tennis'            # Deporte del evento
+    is_symmetrical: bool = True      # Si variaciones son simétricas
+    competition: str = 'Unknown'     # 🆕 Competencia/torneo
+```
 
 ### 🔮 **PROCESS 2 - Sistema de Reglas Específicas por Deporte - EN DESARROLLO (v1.3)**
 **📋 Definición**: Process 2 es un sistema de reglas específicas por deporte que complementa Process 1 con análisis deportivo especializado.

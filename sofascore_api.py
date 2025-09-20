@@ -477,7 +477,7 @@ class SofaScoreAPI:
             return None
     
     def extract_events_and_odds_from_dropping_response(self, response: Dict) -> Tuple[List[Dict], Dict]:
-        """Extract both events and their odds data from dropping odds response"""
+        """Extract both events and their odds data from dropping odds response with sport classification"""
         events = []
         odds_map = {}
         
@@ -486,20 +486,39 @@ class SofaScoreAPI:
                 logger.warning("No events found in dropping odds response")
                 return events, odds_map
             
+            # Import sport classifier for dynamic sport classification
+            from sport_classifier import sport_classifier
+            
             # Extract events
             for event in response['events']:
                 try:
+                    # Extract basic event data
+                    original_sport = event.get('tournament', {}).get('category', {}).get('sport', {}).get('name')
+                    home_team = event.get('homeTeam', {}).get('name')
+                    away_team = event.get('awayTeam', {}).get('name')
+                    
+                    # Apply sport classification logic
+                    classified_sport = sport_classifier.classify_sport(
+                        sport=original_sport,
+                        home_team=home_team,
+                        away_team=away_team
+                    )
+                    
                     event_data = {
                         'id': event.get('id'),
                         'customId': event.get('customId'),
                         'slug': event.get('slug'),
                         'startTimestamp': event.get('startTimestamp'),
-                        'sport': event.get('tournament', {}).get('category', {}).get('sport', {}).get('name'),
+                        'sport': classified_sport,  # Use classified sport instead of original
                         'competition': f"{event.get('tournament', {}).get('category', {}).get('name')}, {event.get('tournament', {}).get('name')}",
                         'country': event.get('tournament', {}).get('category', {}).get('country', {}).get('name'),
-                        'homeTeam': event.get('homeTeam', {}).get('name'),
-                        'awayTeam': event.get('awayTeam', {}).get('name'),
+                        'homeTeam': home_team,
+                        'awayTeam': away_team,
                     }
+                    
+                    # Log sport classification for monitoring
+                    if classified_sport != original_sport:
+                        logger.info(f"🎾 Sport classified: '{original_sport}' → '{classified_sport}' for {home_team} vs {away_team}")
                     
                     required_fields = ['id', 'slug', 'startTimestamp', 'sport', 'competition', 'homeTeam', 'awayTeam']
                     if all(event_data.get(field) for field in required_fields):
