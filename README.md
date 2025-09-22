@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.2.4  
-**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON COMPETITION FIELD Y SPORT CLASSIFICATION - Process 2 EN PREPARACIÓN**  
-**Última Actualización:** 19 de Septiembre, 2025
+**Versión:** v1.2.6  
+**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON VARIATION DIFFERENCES DISPLAY - Process 2 EN PREPARACIÓN**  
+**Última Actualización:** 22 de Diciembre, 2024
 
 ## 🎯 **Descripción del Sistema**
 
@@ -46,10 +46,11 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Sistema de Reportes Completo**: SUCCESS/NO MATCH con datos completos
 - **Lógica Deportiva**: Maneja deportes con empate (Fútbol) y sin empate (Tenis)
 - **Mensajes Enriquecidos**: Muestra variaciones Δ1, ΔX, Δ2, confianza y timing
+- **Variation Differences Display**: Muestra diferencias exactas para Tier 2 candidatos (similar matches)
 - **Ground Type Display**: Muestra tipo de cancha para eventos de tennis en notificaciones
 - **Competition Display**: Muestra competencia/torneo para cada candidato histórico
 - **Sport Classification**: Sistema modular de clasificación deportiva (Tennis Singles/Doubles)
-- **AlertMatch Structure**: Dataclass completo con competition field para candidatos históricos
+- **AlertMatch Structure**: Dataclass completo con competition field y var_diffs para candidatos históricos
 - **Datos Completos**: 161 eventos de tennis con ground type extraído (99.4% success rate)
 
 #### **📊 AlertMatch Dataclass Structure:**
@@ -67,6 +68,7 @@ class AlertMatch:
     sport: str = 'Tennis'            # Deporte del evento
     is_symmetrical: bool = True      # Si variaciones son simétricas
     competition: str = 'Unknown'     # 🆕 Competencia/torneo
+    var_diffs: Optional[Dict[str, float]] = None  # 🆕 Diferencias de variaciones
 ```
 
 ### 🔮 **PROCESS 2 - Sistema de Reglas Específicas por Deporte - EN DESARROLLO (v1.3)**
@@ -123,6 +125,15 @@ class AlertMatch:
 - **Mejora**: Reducción del 85% en eventos sin resultados (de 8.1% a 1.2% gap)
 - **Cobertura Final**: 99.0% (700/707 eventos con resultados)
 
+### ✅ **Sistema de Corrección de Timestamps (v1.2.6)**
+- **Detección Automática**: Compara timestamps de la API con la base de datos
+- **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
+- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos)
+- **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
+- **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
+- **Logging Detallado**: Registro completo de correcciones de timestamps
+- **Perfecto para Testing**: Permite desactivar corrección para pruebas con timestamps manuales
+
 ## 🛠 **Instalación y Configuración**
 
 ### **Requisitos (local)**
@@ -162,6 +173,15 @@ PROXY_USERNAME=tu_usuario
 PROXY_PASSWORD=tu_password
 ```
 
+### **Configuración de Corrección de Timestamps (Nuevo v1.2.6)**
+```bash
+# Para PRODUCCIÓN (corrección automática activada)
+ENABLE_TIMESTAMP_CORRECTION=true
+
+# Para TESTING (corrección desactivada para timestamps manuales)
+ENABLE_TIMESTAMP_CORRECTION=false
+```
+
 ## 📱 **Uso del Sistema**
 
 ### **Comandos Principales**
@@ -195,9 +215,10 @@ python main.py results-all
 1. **00:00-22:00**: Descubrimiento cada 2 horas
 2. **Cada 5 min**: Verificación de juegos próximos
 3. **Momentos Clave**: Extracción de odds a los 30 y 5 minutos
-4. **Análisis de Patrones**: Evaluación de alertas basadas en historial
-5. **Notificaciones**: Pre-inicio + Predicciones inteligentes
-6. **04:00**: Recolección de resultados (CORREGIDO: era 00:05)
+4. **Corrección de Timestamps**: Verificación y actualización automática (si está habilitada)
+5. **Análisis de Patrones**: Evaluación de alertas basadas en historial
+6. **Notificaciones**: Pre-inicio + Predicciones inteligentes
+7. **04:00**: Recolección de resultados (CORREGIDO: era 00:05)
 
 ### **Sistema de Predicciones - ¿Qué hace un Candidato?**
 
@@ -240,6 +261,7 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 - Extracción inteligente de odds (solo en momentos clave)
 - Sistema de notificaciones inteligente (solo cuando es necesario)
 - Recolección automática de resultados **CON FIX CRÍTICO APLICADO**
+- Sistema de corrección automática de timestamps **NUEVO v1.2.6**
 - Manejo robusto de errores y reintentos
 - Sistema de proxy con rotación de IPs
 - Base de datos PostgreSQL con SQLAlchemy
@@ -250,6 +272,7 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 - **Notificaciones**: Funcionando con lógica inteligente
 - **Descubrimiento**: Programado cada 2 horas
 - **Extracción de Odds**: Solo en momentos clave (30 y 5 minutos)
+- **Corrección de Timestamps**: Automática y configurable **NUEVO v1.2.6**
 - **Resultados**: Recolectándose automáticamente
 - **Monitoreo**: Sistema estable y eficiente 24/7
 
@@ -319,16 +342,39 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - **Solución**: Mover midnight job de 00:05 a 04:00 para dar 3-4 horas de buffer
 - **Resultado**: Cobertura mejorada de 96.6% a 99.0% (683 → 700 eventos con resultados)
 
+### **Fix 3: Variation Differences Display (22/09/2025)**
+- **Feature**: Agregado display de diferencias exactas para Tier 2 candidatos
+- **Enhancement**: AlertMatch dataclass actualizado con campo `var_diffs`
+- **Display**: Formato ±0.020 para mostrar diferencias entre variaciones actuales e históricas
+- **Beneficio**: Mejor debugging y comprensión de simetría en candidatos
+- **Soporte**: Maneja correctamente deportes 2-way y 3-way
+- **Resultado**: Telegram messages más informativos con datos técnicos precisos
+
+### **Fix 4: Sistema de Corrección de Timestamps (22/12/2024)**
+- **Feature**: Sistema automático de corrección de timestamps desactualizados
+- **Optimización**: Solo verifica timestamps en momentos clave (30 y 5 minutos)
+- **Control**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
+- **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
+- **API Efficiency**: Reduce llamadas innecesarias a la API
+- **Testing Friendly**: Permite desactivar corrección para pruebas con timestamps manuales
+- **Resultado**: Sistema más robusto y eficiente con control total sobre corrección de timestamps
+
 ### **Despliegue Exitoso**
-- ✅ **Sistema v1.2.3 desplegado** en producción (19/09/2025)
+- ✅ **Sistema v1.2.6 desplegado** en producción (22/12/2024)
 - ✅ **Base de datos actualizada** con computed columns y materialized views
 - ✅ **Timing fix aplicado**: Midnight job movido a 04:00
+- ✅ **Variation Differences Display**: Feature avanzado implementado
+- ✅ **Sistema de Corrección de Timestamps**: Feature nuevo implementado
 - ✅ **Scripts de upsert**: `upsert_debug_results.py` para corregir eventos faltantes
 - ✅ **Notificaciones optimizadas**: UPCOMING GAMES ALERT deshabilitado, solo CANDIDATE REPORTS activos
 
 ### **Archivos Modificados**
-- `sofascore_api.py`: Lógica de extracción de resultados mejorada
-- `scheduler.py`: Midnight job movido a 04:00, notificaciones UPCOMING GAMES ALERT deshabilitadas
+- `alert_engine.py`: AlertMatch dataclass actualizado con campo `var_diffs`, cálculo de diferencias
+- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos
+- `sofascore_api.py`: Lógica de extracción de resultados mejorada, sistema de corrección de timestamps
+- `scheduler.py`: Midnight job movido a 04:00, sistema de corrección de timestamps, notificaciones UPCOMING GAMES ALERT deshabilitadas
+- `config.py`: Variable `ENABLE_TIMESTAMP_CORRECTION` para control de corrección de timestamps
+- `repository.py`: Método `update_event_starting_time` para actualizar timestamps
 - `upsert_debug_results.py`: Script para corregir eventos faltantes
 - `docker-compose.yml`: Configuración de producción corregida
 

@@ -1,8 +1,8 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.2.4  
-**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON COMPETITION FIELD Y SPORT CLASSIFICATION - Process 2 EN PREPARACIÓN**  
-**Última Actualización:** 19 de Septiembre, 2025
+**Versión:** v1.2.6  
+**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON VARIATION DIFFERENCES DISPLAY - Process 2 EN PREPARACIÓN**  
+**Última Actualización:** 22 de Diciembre, 2024
 
 ## 🎯 **Visión del Proyecto**
 
@@ -17,10 +17,15 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Variation Tiers (Niveles de Variación)**:
   - **Tier 1 (Exacto)**: Variaciones idénticas de odds (var_one, var_x, var_two)
   - **Tier 2 (Similar)**: Variaciones dentro de ±0.04 tolerancia (inclusive)
-- **Variaciones Simétricas (Nueva Feature)**:
+- **Variaciones Simétricas (Feature Avanzado)**:
   - **Validación Simétrica**: Solo candidatos con variaciones simétricas para predicciones
   - **Filtrado Inteligente**: Excluye candidatos no simétricos de cálculos de éxito
   - **Reporte Completo**: Muestra todos los candidatos pero marca no simétricos
+- **Variation Differences Display (Nueva Feature v1.2.5)**:
+  - **Diferencias Calculadas**: Muestra diferencias exactas entre variaciones actuales e históricas
+  - **Display Inteligente**: Formato ±0.020 para Tier 2 candidatos (similar matches)
+  - **Debugging Mejorado**: Ayuda a entender por qué candidatos son/no son simétricos
+  - **Formato Profesional**: Presentación limpia de datos técnicos en Telegram
 - **Result Tiers (Niveles de Resultado)**:
   - **Tier A (Idéntico)**: Todos los candidatos tienen el mismo resultado exacto
   - **Tier B (Similar)**: Todos los candidatos tienen el mismo ganador y diferencia de puntos
@@ -47,10 +52,11 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Mensajes Enriquecidos**: Muestra variaciones Δ1, ΔX, Δ2, confianza y timing
 - **Competition Display**: Muestra competencia/torneo para cada candidato histórico
 - **Sport Classification**: Sistema modular de clasificación deportiva (Tennis Singles/Doubles)
-- **AlertMatch Enhancement**: Dataclass actualizado con competition field
+- **AlertMatch Enhancement**: Dataclass actualizado con competition field y var_diffs
+- **Variation Differences Display**: Muestra diferencias exactas para Tier 2 candidatos
 - **Código Optimizado**: Refactorizado para eliminar duplicación (19% reducción de líneas)
 - **Limpieza Completa v1.2.2**: Eliminación de métodos no utilizados, variables obsoletas y código redundante
-- **Estado**: 🟢 **EN PRODUCCIÓN - COMPLETADO Y OPTIMIZADO CON CÓDIGO LIMPIO**
+- **Estado**: 🟢 **EN PRODUCCIÓN - COMPLETADO Y OPTIMIZADO CON VARIATION DIFFERENCES DISPLAY**
 
 ### 🔮 **PROCESS 2 - Sistema de Reglas Específicas por Deporte - EN DESARROLLO (v1.3)**
 **📋 Definición**: Process 2 es un sistema de reglas específicas por deporte que complementa Process 1 con análisis deportivo especializado.
@@ -112,6 +118,16 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Cobertura Final**: 99.0% (700/707 eventos con resultados)
 - **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO CON TIMING FIX**
 
+### ✅ **Sistema de Corrección de Timestamps - COMPLETADO (v1.2.6)**
+- **Detección Automática**: Compara timestamps de la API con la base de datos
+- **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
+- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos)
+- **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
+- **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
+- **Logging Detallado**: Registro completo de correcciones de timestamps
+- **Perfecto para Testing**: Permite desactivar corrección para pruebas con timestamps manuales
+- **Estado**: 🟢 **EN PRODUCCIÓN - NUEVO FEATURE IMPLEMENTADO**
+
 ### ✅ **Infraestructura Técnica - COMPLETADO**
 - **Base de Datos**: PostgreSQL 15 en Docker (producción) con SQLAlchemy 2 + psycopg v3; SQLite solo para desarrollo local
 - **Manejo de Errores**: Reintentos automáticos con backoff exponencial
@@ -144,6 +160,26 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Notificaciones Mejoradas**: Telegram muestra tipo de cancha para candidatos de tennis
 - **Cobertura Completa**: Todos los eventos de tennis ahora tienen ground type
 - **Estado**: 🟢 **EN PRODUCCIÓN - SISTEMA COMPLETO CON DATOS DE GROUND TYPE**
+
+### **v1.2.5 (Septiembre 2025) - VARIATION DIFFERENCES DISPLAY - DESPLEGADO** ✅
+- **Variation Differences Display**: Muestra diferencias exactas entre variaciones actuales e históricas
+- **AlertMatch Enhancement**: Agregado campo `var_diffs` para almacenar diferencias calculadas
+- **Display Inteligente**: Formato ±0.020 para Tier 2 candidatos (similar matches)
+- **Debugging Mejorado**: Ayuda a entender por qué candidatos son/no son simétricos
+- **Formato Profesional**: Presentación limpia de datos técnicos en Telegram
+- **Soporte 2-way/3-way**: Maneja deportes con/sin empate correctamente
+- **Testing Exitoso**: Validado con múltiples escenarios de prueba
+- **Estado**: 🟢 **EN PRODUCCIÓN - FEATURE AVANZADO IMPLEMENTADO**
+
+### **v1.2.6 (Diciembre 2024) - SISTEMA DE CORRECCIÓN DE TIMESTAMPS - DESPLEGADO** ✅
+- **Sistema de Corrección de Timestamps**: Detección y corrección automática de timestamps desactualizados
+- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos antes del inicio)
+- **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
+- **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados con tracking de eventos recientes
+- **API Efficiency**: Reduce llamadas innecesarias a la API manteniendo precisión
+- **Testing Friendly**: Permite desactivar corrección para pruebas con timestamps manuales
+- **Logging Detallado**: Registro completo de correcciones y decisiones del sistema
+- **Estado**: 🟢 **EN PRODUCCIÓN - FEATURE NUEVO IMPLEMENTADO**
 
 ### **v1.2.1 (Septiembre 2025) - VARIACIONES SIMÉTRICAS - DESPLEGADO** ✅
 - **Variaciones Simétricas**: Filtrado avanzado de candidatos no simétricos en Tier 2
@@ -293,4 +329,4 @@ El **SofaScore Odds System v1.2.2** tiene **Process 1 completamente funcional co
 
 ---
 
-**Estado Final**: 🟢 **PROCESS 1 COMPLETADO CON TIMING FIX Y RESOLUCIÓN DE RESULTADOS FALTANTES - PROCESS 2 EN PREPARACIÓN**
+**Estado Final**: 🟢 **PROCESS 1 COMPLETADO CON VARIATION DIFFERENCES DISPLAY - PROCESS 2 EN PREPARACIÓN**

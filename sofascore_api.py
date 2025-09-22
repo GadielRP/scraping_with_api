@@ -26,20 +26,18 @@ class SofaScoreAPI:
     
     def _setup_session(self):
         """Setup session with proxy configuration"""
+        self.session = requests.Session(impersonate="chrome120")
+        
         if self.proxy_enabled and self.proxy_username and self.proxy_password:
             # Format: username:password@proxy_endpoint
             proxy_url = f"http://{self.proxy_username}:{self.proxy_password}@{self.proxy_endpoint}"
-            
-            self.session = requests.Session(impersonate="chrome120")
             self.session.proxies = {
                 'http': proxy_url,
                 'https': proxy_url
             }
-            
-            logging.info(f"Proxy enabled: {self.proxy_endpoint}")
+            logger.info(f"Proxy enabled: {self.proxy_endpoint}")
         else:
-            self.session = requests.Session(impersonate="chrome120")
-            logging.info("Proxy disabled - using direct connection")
+            logger.info("Proxy disabled - using direct connection")
     
     def _rate_limit(self):
         """Implement rate limiting between requests"""
@@ -157,8 +155,8 @@ class SofaScoreAPI:
         logger.info(f"Fetching final odds for event {slug} using dedicated endpoint")
         return self._make_request(f"/event/{id}/odds/1/all")
     
-    def get_event_results(self, event_id: int) -> Optional[Dict]:
-        """
+    def get_event_results(self, event_id: int, update_time: bool = False) -> Optional[Dict]:
+        """ 
         Fetch event results from /event/{id} endpoint.
         Returns structured result data ready for database upsert.
         """
@@ -170,7 +168,15 @@ class SofaScoreAPI:
             if not response:
                 logger.warning(f"No response received for event {event_id}")
                 return None
-            
+            if update_time:
+                event_data = response.get('event', {})
+                # SofaScore uses 'startTimestamp' (camelCase), not 'startTimeStamp'
+                start_timestamp = event_data.get('startTimestamp')
+                if start_timestamp is None:
+                    logger.warning(f"No startTimestamp found in API response for event {event_id}")
+                    logger.debug(f"Available event fields: {list(event_data.keys())}")
+                    return None  # Return None to indicate API error, not time change
+                return self.check_and_update_starting_time(event_id, start_timestamp)
             return self.extract_results_from_response(response)
             
         except Exception as e:
@@ -544,6 +550,42 @@ class SofaScoreAPI:
             logger.error(f"Error extracting events and odds: {e}")
             return events, odds_map
     
+
+    def check_and_update_starting_time(self, event_id: int, startTimeStamp: int) -> bool:
+        """
+        Compares the stored starting time with the new starting time that was passed in,
+        if they are different, it updates the starting time of the event in the database
+        """
+        try:
+            # Query the database for the starting_time_utc of the event and store it in current_starting_time
+            from repository import EventRepository
+            event = EventRepository.get_event_by_id(event_id)
+            if not event:
+                logger.warning(f"Event {event_id} not found in database")
+                return False
+            
+            current_starting_time = event.start_time_utc
+            new_starting_time = self.convert_timestamp_to_datetime(startTimeStamp)
+            
+            # Compare the current_starting_time with the new starting time that was passed in startTimeStamp
+            if current_starting_time == new_starting_time:
+                logger.debug(f"Starting time unchanged for event {event_id}: {current_starting_time}")
+                return True  # Same time, process should continue
+            else:
+                logger.info(f"Starting time changed for event {event_id}: {current_starting_time} -> {new_starting_time}")
+                
+                # If they are different, update the starting time of the event in the database
+                if EventRepository.update_event_starting_time(event_id, new_starting_time):
+                    logger.info(f"✅ Successfully updated starting time for event {event_id}")
+                    return False  # Time was updated, don't continue with odds extraction
+                else:
+                    logger.error(f"Failed to update starting time for event {event_id}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Error in check_and_update_starting_time for event {event_id}: {e}")
+            return False
+
     def convert_timestamp_to_datetime(self, timestamp: int) -> datetime:
         """Convert Unix timestamp to datetime object"""
         return datetime.fromtimestamp(timestamp)
@@ -555,6 +597,8 @@ class SofaScoreAPI:
         window_start = event_time.replace(minute=event_time.minute - window_minutes)
         
         return window_start <= now <= event_time
+
+    
 
 # Global API client instance
 api_client = SofaScoreAPI()

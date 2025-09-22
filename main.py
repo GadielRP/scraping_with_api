@@ -8,6 +8,7 @@ It provides a command-line interface for running the various jobs and managing t
 
 import argparse
 import logging
+import os
 import sys
 import signal
 import time
@@ -30,6 +31,9 @@ def setup_logging():
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(getattr(logging, Config.LOG_LEVEL))
     console_handler.setFormatter(formatter)
+    
+    # Create logs directory if it doesn't exist
+    os.makedirs('logs', exist_ok=True)
     
     # Create file handler with UTF-8 encoding
     file_handler = logging.FileHandler('logs/sofascore_odds.log', encoding='utf-8')

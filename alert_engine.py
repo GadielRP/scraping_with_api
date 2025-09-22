@@ -74,6 +74,8 @@ class AlertMatch:
     sport: str = 'Tennis'  # Default sport, will be set from search context
     is_symmetrical: bool = True  # True for exact matches (Tier 1) and symmetrical similar matches (Tier 2)
     competition: str = 'Unknown'  # Competition/tournament name
+    # Variation differences from current event (for display purposes)
+    var_diffs: Optional[Dict[str, float]] = None  # {'d1': 0.02, 'dx': 0.01, 'd2': 0.02}
 
 @dataclass
 class AlertPrediction:
@@ -331,6 +333,18 @@ class AlertEngine:
         for row in candidates:
             dx_display = f"{row.var_x:.2f}" if row.var_x is not None else "NULL"
             
+            # Calculate variation differences for display purposes
+            var_diffs = None
+            if not is_exact:  # Only calculate differences for similar matches (Tier 2)
+                d1_diff = abs(float(row.var_one) - cur_v1)
+                d2_diff = abs(float(row.var_two) - cur_v2)
+                dx_diff = abs(float(row.var_x) - cur_vx) if row.var_x is not None and cur_vx is not None else 0
+                var_diffs = {
+                    'd1': round(d1_diff, 3),
+                    'd2': round(d2_diff, 3),
+                    'dx': round(dx_diff, 3) if row.var_x is not None and cur_vx is not None else None
+                }
+            
             # Check if variations are symmetrical (only for Tier 2 similar matches)
             is_symmetrical = True  # Default to True for exact matches (Tier 1)
             if not is_exact:
@@ -346,15 +360,11 @@ class AlertEngine:
                     f"| result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
                 )
             else:
-                # Calculate differences for similar matches
-                d1_diff = abs(float(row.var_one) - cur_v1)
-                d2_diff = abs(float(row.var_two) - cur_v2)
-                dx_diff = abs(float(row.var_x) - cur_vx) if row.var_x is not None and cur_vx is not None else 0
-                
                 symmetry_status = "SYMMETRICAL" if is_symmetrical else "UNSYMMETRICAL"
+                dx_diff_display = f"{var_diffs['dx']:.3f}" if var_diffs['dx'] is not None else "0.000"
                 logger.info(
                     f"{match_type} MATCH: event_id={row.event_id} vars=(d1={row.var_one:.2f}, dx={dx_display}, d2={row.var_two:.2f}) "
-                    f"| diffs=(d1={d1_diff:.3f}, dx={dx_diff:.3f}, d2={d2_diff:.3f}) "
+                    f"| diffs=(d1={var_diffs['d1']:.3f}, dx={dx_diff_display}, d2={var_diffs['d2']:.3f}) "
                     f"| {symmetry_status} | result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
                 )
             
@@ -369,7 +379,8 @@ class AlertEngine:
                 var_two=float(row.var_two),
                 sport=sport,
                 is_symmetrical=is_symmetrical,
-                competition=row.competition or 'Unknown'
+                competition=row.competition or 'Unknown',
+                var_diffs=var_diffs
             ))
                 
         return matches
@@ -1057,7 +1068,8 @@ class AlertEngine:
                     'var_one': match.var_one,
                     'var_x': match.var_x,
                     'var_two': match.var_two
-                }
+                },
+                'var_diffs': match.var_diffs
             }
             for match in candidates
         ]

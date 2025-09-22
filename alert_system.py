@@ -196,7 +196,13 @@ class PreStartNotification:
             
             message += f"   {i}. {match['participants']} → {match['result_text']}{symmetry_status}\n"
             message += f"      Competition: {match.get('competition', 'Unknown')}\n"
-            message += f"      Variations: {var_display}\n"
+            message += f"      Variations: {var_display}\n\n"
+            
+            # Add variation differences for Tier 2 candidates (similar matches)
+            var_diffs = match.get('var_diffs')
+            if var_diffs:
+                diff_display = self._format_variation_differences(var_diffs, has_draw_odds)
+                message += f"      Differences: {diff_display}\n"
             
             # DEBUG: Log candidate info
             candidate_event_id = match.get('event_id')
@@ -228,6 +234,20 @@ class PreStartNotification:
         
         var_display += f", Δ2: {var_two}"
         return var_display
+    
+    def _format_variation_differences(self, var_diffs: Dict, has_draw_odds: bool) -> str:
+        """Format variation differences display based on sport type"""
+        d1_diff = var_diffs.get('d1', 0)
+        d2_diff = var_diffs.get('d2', 0)
+        dx_diff = var_diffs.get('dx')
+        
+        diff_display = f"Δ1: ±{d1_diff:.3f}"
+        
+        if has_draw_odds and dx_diff is not None:  # 3-way sport (Football, etc.)
+            diff_display += f", ΔX: ±{dx_diff:.3f}"
+        
+        diff_display += f", Δ2: ±{d2_diff:.3f}"
+        return diff_display
     
     def _format_rule_activations(self, rule_activations: Dict) -> str:
         """Format rule activations for display"""

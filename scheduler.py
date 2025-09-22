@@ -23,13 +23,16 @@ class JobScheduler:
         self.odds_repo = OddsRepository()
         self.result_repo = ResultRepository()
         
+        # Track recently processed rescheduled events to prevent infinite loops
+        self.recently_rescheduled = set()  # Set of event_ids processed in last 10 minutes
+        self.last_cleanup_time = time.time()  # Track when we last cleaned the set
+        
         # Setup jobs
         self._setup_jobs()
     
     def _setup_jobs(self):
         """Setup all scheduled jobs"""
         # Job A - Discovery (at configurable clock times from Config.DISCOVERY_TIMES)
-        from config import Config
         for time_str in Config.DISCOVERY_TIMES:
             schedule.every().day.at(time_str).do(self.job_discovery)
         
@@ -61,6 +64,14 @@ class JobScheduler:
         schedule.every().hour.at(":55").do(self.job_pre_start_check)
         
         logger.info(f"  - Pre-start check scheduled every 5 minutes at clock intervals")
+    
+    def _cleanup_recently_rescheduled(self):
+        """Clean up old entries from recently_rescheduled set to prevent memory leaks"""
+        current_time = time.time()
+        if current_time - self.last_cleanup_time > 600:  # Clean up every 10 minutes
+            self.recently_rescheduled.clear()
+            self.last_cleanup_time = current_time
+            logger.debug("Cleaned up recently_rescheduled tracking set")
 
     def start(self):
         """Start the scheduler in a separate thread"""
@@ -124,8 +135,6 @@ class JobScheduler:
                 return
             
             # Save API response to JSON file for debugging
-            import json
-            from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             json_filename = f"debug_discovery_{timestamp}.json"
             try:
@@ -225,10 +234,8 @@ class JobScheduler:
                     minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
                     logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
                     
-                    # SMART ODDS EXTRACTION: Only extract odds at key moments (30 min and 5 min)
-                    should_extract_odds = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
-                    
-                    if should_extract_odds:
+                    # SMART ODDS EXTRACTION: Only extract odds at key moments (30 min and 5 min)                  
+                    if self._should_extract_odds_for_event(event_data['id'], minutes_until_start):
                         logger.info(f"🎯 EXTRACTING ODDS: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start")
                         
                         # Fetch final odds for this upcoming game using specific event endpoint
@@ -323,7 +330,6 @@ class JobScheduler:
     
     def _minutes_until_start(self, start_time_utc) -> int:
         """Calculate minutes until event starts"""
-        from datetime import datetime
         # Use local time since SofaScore provides local times
         now = datetime.now()
         time_diff = start_time_utc - now
@@ -347,13 +353,125 @@ class JobScheduler:
         # Check if current time aligns with a key moment
         should_extract = minutes_until_start in KEY_MOMENTS
         
-        if should_extract:
-            logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until_start} minutes until start - WILL EXTRACT ODDS")
-        else:
-            logger.debug(f"⏭️ Not a key moment for event {event_id}: {minutes_until_start} minutes until start - SKIPPING ODDS EXTRACTION")
+        # Only check and update starting time if event is in key moments (optimization)
+        if not should_extract:
+            logger.debug(f"⏭️ Not a key moment for event {event_id}: {minutes_until_start} minutes until start - SKIPPING API CALL AND ODDS EXTRACTION")
+            return False
         
-        return should_extract
+        # Check if timestamp correction is enabled
+        if not Config.ENABLE_TIMESTAMP_CORRECTION:
+            logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until_start} minutes until start - WILL EXTRACT ODDS (timestamp correction disabled)")
+            return True
+        
+        # Check and update starting time only for events in key moments
+        correct_starting_time = api_client.get_event_results(event_id, update_time=True)
+        
+        if correct_starting_time:
+            logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until_start} minutes until start - WILL EXTRACT ODDS")
+            return True
+        elif correct_starting_time is None:
+            # API call failed - skip odds extraction but don't trigger rescheduled logic
+            logger.warning(f"⏭️ API error for event {event_id} - skipping odds extraction")
+            return False
+        elif not correct_starting_time:
+            # Starting time was actually updated - check if rescheduled game is now in key moments
+            logger.info(f"🔄 Starting time changed for event {event_id} - checking if rescheduled game is in key moments")
+            self._check_rescheduled_event(event_id)
+            return False
+        else:
+            logger.debug(f"⏭️ Starting Time changed for event {event_id} - skipping odds extraction or not a key moment")
+            return False
     
+    def _check_rescheduled_event(self, event_id: int):
+        """
+        Check if a rescheduled event is now within the 30 or 5 minute window.
+        If so, extract odds and process alerts for the rescheduled game.
+        Includes complete pre-start job workflow to avoid infinite loops.
+        """
+        try:
+            # Clean up old tracking entries
+            self._cleanup_recently_rescheduled()
+            
+            # Check if we've already processed this rescheduled event recently (prevent infinite loops)
+            if event_id in self.recently_rescheduled:
+                logger.debug(f"Event {event_id} already processed as rescheduled recently - skipping to prevent infinite loop")
+                return
+            
+            # Get the updated event data
+            event = self.event_repo.get_event_by_id(event_id)
+            if not event:
+                logger.warning(f"Could not find event {event_id} after time update")
+                return
+            
+            # Calculate new minutes until start
+            new_minutes_until_start = self._minutes_until_start(event.start_time_utc)
+            
+            # Check if rescheduled game is now in key moments (30 or 5 minutes)
+            if new_minutes_until_start in [30, 5]:
+                logger.info(f"🎯 RESCHEDULED GAME ALERT: Event {event_id} is now starting in {new_minutes_until_start} minutes")
+                
+                # Mark this event as recently processed to prevent infinite loops
+                self.recently_rescheduled.add(event_id)
+                
+                # Extract odds for the rescheduled game (same logic as main pre-start job)
+                final_odds_response = api_client.get_event_final_odds(event_id, event.slug)
+                if final_odds_response:
+                    final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
+                    if final_odds_data:
+                        # Update odds and create snapshot
+                        upserted_id = OddsRepository.upsert_event_odds(event_id, final_odds_data)
+                        if upserted_id:
+                            OddsRepository.create_odds_snapshot(event_id, final_odds_data)
+                            logger.info(f"✅ Odds extracted for rescheduled event {event_id}")
+                            
+                            # COMPLETE PRE-START WORKFLOW: Process alerts for rescheduled event
+                            # This prevents infinite loops by doing the complete job once
+                            self._process_alerts_for_rescheduled_event(event)
+                        else:
+                            logger.warning(f"Failed to update odds for rescheduled event {event_id}")
+                    else:
+                        logger.warning(f"No odds data extracted for rescheduled event {event_id}")
+                else:
+                    logger.warning(f"Failed to fetch odds for rescheduled event {event_id}")
+            else:
+                logger.debug(f"Rescheduled event {event_id} not in key moments: {new_minutes_until_start} minutes until start")
+                
+        except Exception as e:
+            logger.error(f"Error checking rescheduled event {event_id}: {e}")
+    
+    def _process_alerts_for_rescheduled_event(self, event):
+        """
+        Process alerts for a rescheduled event that was just updated with new odds.
+        This completes the pre-start job workflow to prevent infinite loops.
+        """
+        try:
+            logger.info(f"🔍 Processing alerts for rescheduled event {event.id}")
+            
+            # Refresh materialized views to ensure latest data for alert evaluation
+            logger.info("🔄 Refreshing alert materialized views for rescheduled event...")
+            from models import refresh_materialized_views
+            from database import db_manager
+            refresh_materialized_views(db_manager.engine)
+            logger.info("✅ Alert materialized views refreshed")
+            
+            # Get the Event object with properly loaded event_odds for alert evaluation
+            event_obj = self.event_repo.get_event_by_id(event.id)
+            if event_obj and event_obj.event_odds:
+                logger.info(f"🔍 Evaluating rescheduled event {event.id} for pattern alerts...")
+                
+                from alert_engine import alert_engine
+                alerts = alert_engine.evaluate_upcoming_events([event_obj])
+                if alerts:
+                    logger.info(f"📊 Generated {len(alerts)} candidate reports for rescheduled event {event.id}")
+                    alert_engine.send_alerts(alerts)
+                else:
+                    logger.debug(f"No candidate reports generated for rescheduled event {event.id}")
+            else:
+                logger.warning(f"Could not load event_odds for rescheduled event {event.id}")
+                
+        except Exception as e:
+            logger.error(f"Error processing alerts for rescheduled event {event.id}: {e}")
+            
     def job_results_collection(self):
         """Job E: Collect results for finished events from the previous day"""
         logger.info("Starting Job E: Results collection for finished events")

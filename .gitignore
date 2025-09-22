@@ -39,3 +39,5 @@ docker-compose.override.yml
 .DS_Store
 .gitignore
 repository_backup.py
+
+TASKS_DUAL_PROCESS.md

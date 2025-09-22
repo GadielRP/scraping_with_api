@@ -43,6 +43,9 @@ class Config:
     # Notification Configuration
     NOTIFICATIONS_ENABLED = os.getenv('NOTIFICATIONS_ENABLED', 'true').lower() == 'true'
     
+    # Timestamp Correction Configuration
+    ENABLE_TIMESTAMP_CORRECTION = os.getenv('ENABLE_TIMESTAMP_CORRECTION', 'true').lower() == 'true'
+    
     # Telegram Settings
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
     TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')

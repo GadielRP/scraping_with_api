@@ -67,6 +67,25 @@ class EventRepository:
             logger.error(f"Error getting event {event_id}: {e}")
             return None
     
+    @staticmethod
+    def update_event_starting_time(event_id: int, new_start_time: datetime) -> bool:
+        """Update the starting time of an event"""
+        try:
+            with db_manager.get_session() as session:
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if event:
+                    event.start_time_utc = new_start_time
+                    event.updated_at = datetime.utcnow()
+                    session.commit()
+                    logger.info(f"Updated starting time for event {event_id} to {new_start_time}")
+                    return True
+                else:
+                    logger.warning(f"Event {event_id} not found for starting time update")
+                    return False
+        except Exception as e:
+            logger.error(f"Error updating starting time for event {event_id}: {e}")
+            return False
+    
 
     def get_events_starting_soon(self, window_minutes: int = 30):
         """Get events starting within the specified window as Event objects"""

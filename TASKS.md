@@ -1,8 +1,8 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.2.3  
-**Estado General:** ✅ **PROCESS 1 COMPLETADO CON TIMING FIX, RESOLUCIÓN DE RESULTADOS FALTANTES Y FIX CRÍTICO DE RULE ACTIVATIONS - PROCESS 2 EN PREPARACIÓN**  
-**Última Actualización:** 19 de Septiembre, 2025
+**Versión:** v1.2.6  
+**Estado General:** ✅ **PROCESS 1 COMPLETADO CON VARIATION DIFFERENCES DISPLAY - PROCESS 2 EN PREPARACIÓN**  
+**Última Actualización:** 22 de Diciembre, 2024
 
 ## 🎯 **Resumen del Proyecto**
 
@@ -158,6 +158,28 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Migraciones iniciales desde SQLite (script `migrate_sqlite_to_postgres.py`)
 - [x] Backups semanales: `scripts/backup_server.py` + `scripts/pull_backup_windows.py`
 
+### **🕐 Sistema de Corrección de Timestamps - 100% COMPLETADO (v1.2.6)**
+
+#### **✅ Detección y Corrección Automática**
+- [x] **Comparación de Timestamps**: Compara timestamps de la API con la base de datos
+- [x] **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
+- [x] **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos)
+- [x] **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
+- [x] **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
+- [x] **Logging Detallado**: Registro completo de correcciones de timestamps
+
+#### **✅ Integración con Scheduler**
+- [x] **Verificación en Momentos Clave**: Solo verifica timestamps cuando es necesario
+- [x] **Manejo de Eventos Reprogramados**: Lógica completa para eventos con timestamps actualizados
+- [x] **Procesamiento Completo**: Incluye extracción de odds y alertas para eventos reprogramados
+- [x] **Tracking de Eventos**: Sistema para evitar procesamiento repetido de eventos
+
+#### **✅ Testing y Configuración**
+- [x] **Configuración Flexible**: Permite activar/desactivar corrección de timestamps
+- [x] **Perfecto para Testing**: Permite desactivar corrección para pruebas con timestamps manuales
+- [x] **Variables de Entorno**: Configuración simple via `.env` file
+- [x] **Documentación**: Guía completa de configuración y uso
+
 #### **✅ Sistema de Proxy**
 - [x] Integración con Oxylabs
 - [x] Rotación automática de IPs
@@ -243,6 +265,15 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] **Métodos Helper**: Extracción de lógica común en funciones reutilizables
 - [x] **Mejora de Mantenibilidad**: Código más limpio y fácil de mantener
 
+#### **✅ Variation Differences Display - Feature Avanzado (v1.2.5)**
+- [x] **AlertMatch Enhancement**: Agregado campo `var_diffs` para almacenar diferencias calculadas
+- [x] **Cálculo de Diferencias**: Diferencias exactas entre variaciones actuales e históricas
+- [x] **Display Inteligente**: Formato ±0.020 para Tier 2 candidatos (similar matches)
+- [x] **Soporte 2-way/3-way**: Maneja deportes con/sin empate correctamente
+- [x] **Debugging Mejorado**: Ayuda a entender por qué candidatos son/no son simétricos
+- [x] **Formato Profesional**: Presentación limpia de datos técnicos en Telegram
+- [x] **Testing Exitoso**: Validado con múltiples escenarios de prueba
+
 #### **✅ Variaciones Simétricas - Feature Avanzado (v1.2.1)**
 - [x] **Implementación de Simetría**: Validación de variaciones simétricas en Tier 2
 - [x] **Lógica de Filtrado**: Excluye candidatos no simétricos de cálculos de éxito
@@ -314,6 +345,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **Extracción Inteligente de Odds**: 100% ✅
 - **Sistema de Notificaciones Optimizado**: 100% ✅
 - **Recolección de Resultados**: 100% ✅
+- **Sistema de Corrección de Timestamps**: 100% ✅ **NUEVO v1.2.6**
 - **Infraestructura Técnica**: 100% ✅
 - **Limpieza de Código**: 100% ✅
 - **Optimizaciones Recientes**: 100% ✅
@@ -321,14 +353,14 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 
 ### **Estado de Componentes**
 - **main.py**: ✅ Completamente funcional con CLI extendido
-- **scheduler.py**: ✅ Programación robusta con lógica optimizada (código limpio)
+- **scheduler.py**: ✅ Programación robusta con lógica optimizada + sistema de corrección de timestamps
 - **alert_engine.py**: ✅ Motor de predicciones basado en patrones (métodos duplicados eliminados, fix crítico de rule activations aplicado)
 - **alert_system.py**: ✅ Notificaciones Telegram inteligentes (métodos obsoletos eliminados)
 - **sport_observations.py**: ✅ Gestión de observaciones deportivas (nuevo módulo)
 - **database.py**: ✅ Base de datos estable con vistas materializadas
-- **repository.py**: ✅ Acceso a datos optimizado
-- **config.py**: ✅ Configuración centralizada
-- **sofascore_api.py**: ✅ API client con manejo inteligente
+- **repository.py**: ✅ Acceso a datos optimizado + método update_event_starting_time
+- **config.py**: ✅ Configuración centralizada + variable ENABLE_TIMESTAMP_CORRECTION
+- **sofascore_api.py**: ✅ API client con manejo inteligente + sistema de corrección de timestamps
 - **odds_utils.py**: ✅ Utilidades para procesamiento de odds
 
 ## 🎯 **Objetivos Alcanzados**
@@ -341,6 +373,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Extracción inteligente de odds solo en momentos clave
 - [x] Sistema de notificaciones optimizado
 - [x] Recolección de resultados terminados
+- [x] Sistema de corrección automática de timestamps **NUEVO v1.2.6**
 - [x] Sistema robusto de manejo de errores
 
 ### **✅ Calidad y Confiabilidad**
@@ -389,7 +422,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 
 ### **🎉 PRODUCCIÓN - COMPLETADO AL 100% - SISTEMA INTELIGENTE Y OPTIMIZADO**
 
-El **SofaScore Odds System v1.2.2** está **completamente funcional**, **optimizado** y **operando exitosamente en producción**:
+El **SofaScore Odds System v1.2.6** está **completamente funcional**, **optimizado** y **operando exitosamente en producción**:
 
 - ✅ **Sistema de Predicciones**: Análisis de patrones históricos funcionando
 - ✅ **Sistema de Notificaciones**: Telegram funcionando con lógica inteligente
@@ -398,6 +431,7 @@ El **SofaScore Odds System v1.2.2** está **completamente funcional**, **optimiz
 - ✅ **Extracción de Odds**: Solo en momentos clave (30 y 5 minutos)
 - ✅ **Sistema de Notificaciones**: Optimizado para incluir todos los juegos
 - ✅ **Recolección de Resultados**: Automática e inteligente **CON FIX CRÍTICO APLICADO**
+- ✅ **Sistema de Corrección de Timestamps**: Automático y configurable **NUEVO v1.2.6**
 - ✅ **Infraestructura**: Robusta, confiable y optimizada
 - ✅ **Código**: Limpio, mantenible y optimizado **CON LIMPIEZA COMPLETA v1.2.2**
 - ✅ **Observaciones Deportivas**: Sistema modular para datos específicos por deporte
@@ -433,5 +467,5 @@ El **SofaScore Odds System v1.2.2** está **completamente funcional**, **optimiz
 
 ---
 
-**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA INTELIGENTE Y OPTIMIZADO CON TIMING FIX Y FIX CRÍTICO DE RULE ACTIVATIONS**  
+**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA INTELIGENTE Y OPTIMIZADO CON CORRECCIÓN DE TIMESTAMPS**  
 **Próximo Paso**: Monitoreo continuo y preparación para Process 2
