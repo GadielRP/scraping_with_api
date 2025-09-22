@@ -183,9 +183,8 @@ class PreStartNotification:
     def _format_tier_candidates(self, icon: str, title: str, count: int, 
                               matches: List[Dict], has_draw_odds: bool) -> str:
         """Format tier candidates for display"""
-        message = f"{icon} **{title} ({count}):**\n"
-        print(f"matches: {matches}")
-        
+        message = f"\n{icon} **{title} ({count}):**\n"
+            
         for i, match in enumerate(matches, 1):
             var_display = self._format_variations_display(match.get('variations', {}), has_draw_odds)
             symmetry_status = ""
@@ -196,7 +195,7 @@ class PreStartNotification:
                     symmetry_status = " ❌ (unsymmetrical)"
             
             message += f"   {i}. {match['participants']} → {match['result_text']}{symmetry_status}\n"
-            message += f"      Competition: {match.get('competition', 'Unknown')}\n\n"
+            message += f"      Competition: {match.get('competition', 'Unknown')}\n"
             message += f"      Variations: {var_display}\n"
             
             # DEBUG: Log candidate info
