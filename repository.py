@@ -8,6 +8,7 @@ from decimal import Decimal
 from models import Event, OddsSnapshot, EventOdds, Result, EventObservation
 from database import db_manager
 from odds_utils import validate_odds_data
+from timezone_utils import get_local_now
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class EventRepository:
                     event.country = event_data.get('country')
                     event.home_team = event_data['homeTeam']
                     event.away_team = event_data['awayTeam']
-                    event.updated_at = datetime.utcnow()
+                    event.updated_at = get_local_now()
                     logger.debug(f"Updated event {event_data['id']}")
                 else:
                     # Create new event
@@ -75,7 +76,7 @@ class EventRepository:
                 event = session.query(Event).filter(Event.id == event_id).first()
                 if event:
                     event.start_time_utc = new_start_time
-                    event.updated_at = datetime.utcnow()
+                    event.updated_at = get_local_now()
                     session.commit()
                     logger.info(f"Updated starting time for event {event_id} to {new_start_time}")
                     return True
@@ -283,7 +284,7 @@ class OddsRepository:
                     # Complete odds snapshot (from discovery) - has both opening and current odds
                     snapshot = OddsSnapshot(
                         event_id=event_id,
-                        collected_at=datetime.utcnow(),
+                        collected_at=get_local_now(),
                         market='1X2',
                         one_open=odds_data.get('one_open'),
                         x_open=odds_data.get('x_open'),
@@ -301,7 +302,7 @@ class OddsRepository:
                     
                     snapshot = OddsSnapshot(
                         event_id=event_id,
-                        collected_at=datetime.utcnow(),
+                        collected_at=get_local_now(),
                         market='1X2',
                         one_open=None,  # Not available for final odds only
                         x_open=None,    # Not available for final odds only
@@ -344,7 +345,7 @@ class OddsRepository:
                     event_odds.one_final = odds_data.get('one_final') or odds_data.get('one_cur')
                     event_odds.x_final = odds_data.get('x_final') or odds_data.get('x_cur')
                     event_odds.two_final = odds_data.get('two_final') or odds_data.get('two_cur')
-                    event_odds.last_sync_at = datetime.utcnow()
+                    event_odds.last_sync_at = get_local_now()
                     
                     logger.debug(f"Updated event odds for event {event_id}")
                 else:
@@ -358,7 +359,7 @@ class OddsRepository:
                         one_final=odds_data.get('one_final') or odds_data.get('one_cur'),
                         x_final=odds_data.get('x_final') or odds_data.get('x_cur'),
                         two_final=odds_data.get('two_final') or odds_data.get('two_cur'),
-                        last_sync_at=datetime.utcnow()
+                        last_sync_at=get_local_now()
                     )
                     session.add(event_odds)
                     logger.debug(f"Created new event odds for event {event_id}")
@@ -416,7 +417,7 @@ class ResultRepository:
                     result.away_score = result_data.get('away_score')
                     result.winner = result_data.get('winner')
                     result.ended_at = result_data.get('ended_at')
-                    result.updated_at = datetime.utcnow()
+                    result.updated_at = get_local_now()
                 else:
                     # Create new result
                     result = Result(
@@ -469,7 +470,7 @@ class ObservationRepository:
                     # Update existing observation
                     observation.observation_value = observation_value
                     observation.sport = sport
-                    observation.updated_at = datetime.utcnow()
+                    observation.updated_at = get_local_now()
                     logger.debug(f"Updated observation {observation_type} for event {event_id}")
                 else:
                     # Create new observation

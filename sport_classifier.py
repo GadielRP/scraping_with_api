@@ -18,6 +18,7 @@ import logging
 import argparse
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from timezone_utils import get_local_now
 
 # Import database dependencies
 from database import db_manager
@@ -237,7 +238,7 @@ class SportClassifier:
                         event = session.query(Event).filter(Event.id == correction['event_id']).first()
                         if event:
                             event.sport = correction['corrected_sport']
-                            event.updated_at = datetime.utcnow()
+                            event.updated_at = get_local_now()
                             corrected_count += 1
                             logger.debug(f"✅ Corrected event {event.id}: {correction['corrected_sport']}")
                         else:

@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 from database import db_manager
 from config import Config
+from timezone_utils import get_local_now_iso
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -39,7 +40,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             
             health_data = {
                 'status': 'healthy' if db_healthy else 'unhealthy',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': get_local_now_iso(),
                 'database': 'connected' if db_healthy else 'disconnected',
                 'version': 'v0.9'
             }
@@ -62,7 +63,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             error_data = {
                 'status': 'error',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': get_local_now_iso(),
                 'error': str(e)
             }
             self.wfile.write(json.dumps(error_data).encode())
@@ -90,7 +91,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             
             status_data = {
                 'status': 'healthy' if db_healthy else 'unhealthy',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': get_local_now_iso(),
                 'database': 'connected' if db_healthy else 'disconnected',
                 'version': 'v0.9',
                 'environment': {
@@ -114,7 +115,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             error_data = {
                 'status': 'error',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': get_local_now_iso(),
                 'error': str(e)
             }
             self.wfile.write(json.dumps(error_data).encode())

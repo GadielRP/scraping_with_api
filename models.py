@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
 import json
+from timezone_utils import get_local_now
 
 Base = declarative_base()
 
@@ -20,8 +21,8 @@ class Event(Base):
     country = Column(Text)
     home_team = Column(Text, nullable=False)
     away_team = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
     
     # Relationships
     odds_snapshots = relationship("OddsSnapshot", back_populates="event", cascade="all, delete-orphan")
@@ -106,7 +107,7 @@ class Result(Base):
     away_score = Column(Integer)
     winner = Column(Text)  # '1' | 'X' | '2' or NULL
     ended_at = Column(DateTime)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
     
     # Relationships
     event = relationship("Event", back_populates="result")
@@ -119,8 +120,8 @@ class EventObservation(Base):
     observation_type = Column(String(50), nullable=False)  # 'ground_type', 'weather', etc.
     observation_value = Column(Text)  # Flexible value storage
     sport = Column(String(50))  # For quick filtering
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
     
     # Constraints
     __table_args__ = (
