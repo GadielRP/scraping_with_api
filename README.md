@@ -357,6 +357,7 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
 - **API Efficiency**: Reduce llamadas innecesarias a la API
 - **Testing Friendly**: Permite desactivar corrección para pruebas con timestamps manuales
+- **Captura Completa de Odds**: Extrae odds para eventos futuros Y pasados (cualquier minuto negativo)
 - **Resultado**: Sistema más robusto y eficiente con control total sobre corrección de timestamps
 
 ### **Despliegue Exitoso**

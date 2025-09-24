@@ -406,9 +406,12 @@ class JobScheduler:
             # Calculate new minutes until start
             new_minutes_until_start = self._minutes_until_start(event.start_time_utc)
             
-            # Check if rescheduled game is now in key moments (30 or 5 minutes)
-            if new_minutes_until_start in [30, 5]:
-                logger.info(f"🎯 RESCHEDULED GAME ALERT: Event {event_id} is now starting in {new_minutes_until_start} minutes")
+            # Check if rescheduled game is now in key moments (30 or 5 minutes) OR has already started (negative minutes)
+            if new_minutes_until_start in [30, 5] or new_minutes_until_start < 0:
+                if new_minutes_until_start >= 0:
+                    logger.info(f"🎯 RESCHEDULED GAME ALERT: Event {event_id} is now starting in {new_minutes_until_start} minutes")
+                else:
+                    logger.info(f"🎯 RESCHEDULED GAME ALERT: Event {event_id} has already started {abs(new_minutes_until_start)} minutes ago - extracting latest odds")
                 
                 # Mark this event as recently processed to prevent infinite loops
                 self.recently_rescheduled.add(event_id)
@@ -424,9 +427,12 @@ class JobScheduler:
                             OddsRepository.create_odds_snapshot(event_id, final_odds_data)
                             logger.info(f"✅ Odds extracted for rescheduled event {event_id}")
                             
-                            # COMPLETE PRE-START WORKFLOW: Process alerts for rescheduled event
-                            # This prevents infinite loops by doing the complete job once
-                            self._process_alerts_for_rescheduled_event(event)
+                            # Only process alerts for future events (betting still possible)
+                            if new_minutes_until_start >= 0:
+                                logger.info(f"🔍 Processing alerts for future rescheduled event {event_id}")
+                                self._process_alerts_for_rescheduled_event(event)
+                            else:
+                                logger.info(f"⏭️ Skipping alert processing for past event {event_id} (betting no longer possible)")
                         else:
                             logger.warning(f"Failed to update odds for rescheduled event {event_id}")
                     else:
@@ -434,7 +440,7 @@ class JobScheduler:
                 else:
                     logger.warning(f"Failed to fetch odds for rescheduled event {event_id}")
             else:
-                logger.debug(f"Rescheduled event {event_id} not in key moments: {new_minutes_until_start} minutes until start")
+                logger.debug(f"Rescheduled event {event_id} not in key moments and hasn't started yet: {new_minutes_until_start} minutes until start")
                 
         except Exception as e:
             logger.error(f"Error checking rescheduled event {event_id}: {e}")

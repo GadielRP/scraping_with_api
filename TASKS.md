@@ -167,6 +167,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
 - [x] **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
 - [x] **Logging Detallado**: Registro completo de correcciones de timestamps
+- [x] **Captura Completa de Odds**: Extrae odds para eventos futuros Y pasados (cualquier minuto negativo)
 
 #### **✅ Integración con Scheduler**
 - [x] **Verificación en Momentos Clave**: Solo verifica timestamps cuando es necesario
