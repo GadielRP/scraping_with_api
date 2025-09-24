@@ -23,9 +23,9 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
   - **Reporte Completo**: Muestra todos los candidatos pero marca no simétricos
 - **Variation Differences Display (Nueva Feature v1.2.5)**:
   - **Diferencias Calculadas**: Muestra diferencias exactas entre variaciones actuales e históricas
-  - **Display Inteligente**: Formato ±0.020 para Tier 2 candidatos (similar matches)
+  - **Display Inteligente**: Formato +0.020/-0.015 para Tier 2 candidatos (similar matches) con signos visibles
   - **Debugging Mejorado**: Ayuda a entender por qué candidatos son/no son simétricos
-  - **Formato Profesional**: Presentación limpia de datos técnicos en Telegram
+  - **Formato Profesional**: Presentación limpia de datos técnicos en Telegram con dirección de diferencias
 - **Result Tiers (Niveles de Resultado)**:
   - **Tier A (Idéntico)**: Todos los candidatos tienen el mismo resultado exacto
   - **Tier B (Similar)**: Todos los candidatos tienen el mismo ganador y diferencia de puntos
@@ -164,9 +164,9 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 ### **v1.2.5 (Septiembre 2025) - VARIATION DIFFERENCES DISPLAY - DESPLEGADO** ✅
 - **Variation Differences Display**: Muestra diferencias exactas entre variaciones actuales e históricas
 - **AlertMatch Enhancement**: Agregado campo `var_diffs` para almacenar diferencias calculadas
-- **Display Inteligente**: Formato ±0.020 para Tier 2 candidatos (similar matches)
+- **Display Inteligente**: Formato +0.020/-0.015 para Tier 2 candidatos (similar matches) con signos visibles
 - **Debugging Mejorado**: Ayuda a entender por qué candidatos son/no son simétricos
-- **Formato Profesional**: Presentación limpia de datos técnicos en Telegram
+- **Formato Profesional**: Presentación limpia de datos técnicos en Telegram con dirección de diferencias
 - **Soporte 2-way/3-way**: Maneja deportes con/sin empate correctamente
 - **Testing Exitoso**: Validado con múltiples escenarios de prueba
 - **Estado**: 🟢 **EN PRODUCCIÓN - FEATURE AVANZADO IMPLEMENTADO**

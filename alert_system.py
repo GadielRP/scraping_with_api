@@ -241,12 +241,13 @@ class PreStartNotification:
         d2_diff = var_diffs.get('d2', 0)
         dx_diff = var_diffs.get('dx')
         
-        diff_display = f"Δ1: ±{d1_diff:.3f}"
+        # Show the actual sign (positive/negative) instead of ±
+        diff_display = f"Δ1: {d1_diff:+.3f}"
         
         if has_draw_odds and dx_diff is not None:  # 3-way sport (Football, etc.)
-            diff_display += f", ΔX: ±{dx_diff:.3f}"
+            diff_display += f", ΔX: {dx_diff:+.3f}"
         
-        diff_display += f", Δ2: ±{d2_diff:.3f}"
+        diff_display += f", Δ2: {d2_diff:+.3f}"
         return diff_display
     
     def _format_rule_activations(self, rule_activations: Dict) -> str:

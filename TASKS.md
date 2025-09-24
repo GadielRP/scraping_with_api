@@ -268,10 +268,10 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 #### **✅ Variation Differences Display - Feature Avanzado (v1.2.5)**
 - [x] **AlertMatch Enhancement**: Agregado campo `var_diffs` para almacenar diferencias calculadas
 - [x] **Cálculo de Diferencias**: Diferencias exactas entre variaciones actuales e históricas
-- [x] **Display Inteligente**: Formato ±0.020 para Tier 2 candidatos (similar matches)
+- [x] **Display Inteligente**: Formato +0.020/-0.015 para Tier 2 candidatos (similar matches) con signos visibles
 - [x] **Soporte 2-way/3-way**: Maneja deportes con/sin empate correctamente
 - [x] **Debugging Mejorado**: Ayuda a entender por qué candidatos son/no son simétricos
-- [x] **Formato Profesional**: Presentación limpia de datos técnicos en Telegram
+- [x] **Formato Profesional**: Presentación limpia de datos técnicos en Telegram con dirección de diferencias
 - [x] **Testing Exitoso**: Validado con múltiples escenarios de prueba
 
 #### **✅ Variaciones Simétricas - Feature Avanzado (v1.2.1)**

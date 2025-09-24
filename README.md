@@ -46,7 +46,7 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Sistema de Reportes Completo**: SUCCESS/NO MATCH con datos completos
 - **Lógica Deportiva**: Maneja deportes con empate (Fútbol) y sin empate (Tenis)
 - **Mensajes Enriquecidos**: Muestra variaciones Δ1, ΔX, Δ2, confianza y timing
-- **Variation Differences Display**: Muestra diferencias exactas para Tier 2 candidatos (similar matches)
+- **Variation Differences Display**: Muestra diferencias exactas para Tier 2 candidatos (similar matches) con signos visibles
 - **Ground Type Display**: Muestra tipo de cancha para eventos de tennis en notificaciones
 - **Competition Display**: Muestra competencia/torneo para cada candidato histórico
 - **Sport Classification**: Sistema modular de clasificación deportiva (Tennis Singles/Doubles)
@@ -345,10 +345,10 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 ### **Fix 3: Variation Differences Display (22/09/2025)**
 - **Feature**: Agregado display de diferencias exactas para Tier 2 candidatos
 - **Enhancement**: AlertMatch dataclass actualizado con campo `var_diffs`
-- **Display**: Formato ±0.020 para mostrar diferencias entre variaciones actuales e históricas
+- **Display**: Formato +0.020/-0.015 para mostrar diferencias entre variaciones actuales e históricas con signos visibles
 - **Beneficio**: Mejor debugging y comprensión de simetría en candidatos
 - **Soporte**: Maneja correctamente deportes 2-way y 3-way
-- **Resultado**: Telegram messages más informativos con datos técnicos precisos
+- **Resultado**: Telegram messages más informativos con datos técnicos precisos y dirección de diferencias
 
 ### **Fix 4: Sistema de Corrección de Timestamps (22/12/2024)**
 - **Feature**: Sistema automático de corrección de timestamps desactualizados
@@ -369,8 +369,8 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - ✅ **Notificaciones optimizadas**: UPCOMING GAMES ALERT deshabilitado, solo CANDIDATE REPORTS activos
 
 ### **Archivos Modificados**
-- `alert_engine.py`: AlertMatch dataclass actualizado con campo `var_diffs`, cálculo de diferencias
-- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos
+- `alert_engine.py`: AlertMatch dataclass actualizado con campo `var_diffs`, cálculo de diferencias con signos visibles
+- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos con signos visibles
 - `sofascore_api.py`: Lógica de extracción de resultados mejorada, sistema de corrección de timestamps
 - `scheduler.py`: Midnight job movido a 04:00, sistema de corrección de timestamps, notificaciones UPCOMING GAMES ALERT deshabilitadas
 - `config.py`: Variable `ENABLE_TIMESTAMP_CORRECTION` para control de corrección de timestamps

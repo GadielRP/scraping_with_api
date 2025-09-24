@@ -336,13 +336,20 @@ class AlertEngine:
             # Calculate variation differences for display purposes
             var_diffs = None
             if not is_exact:  # Only calculate differences for similar matches (Tier 2)
-                d1_diff = abs(float(row.var_one) - cur_v1)
-                d2_diff = abs(float(row.var_two) - cur_v2)
-                dx_diff = abs(float(row.var_x) - cur_vx) if row.var_x is not None and cur_vx is not None else 0
+                # Calculate signed differences for display (preserving sign)
+                d1_diff_signed = float(row.var_one) - cur_v1
+                d2_diff_signed = float(row.var_two) - cur_v2
+                dx_diff_signed = float(row.var_x) - cur_vx if row.var_x is not None and cur_vx is not None else 0
+                
+                # Calculate absolute differences for symmetry logic (unchanged)
+                d1_diff_abs = abs(d1_diff_signed)
+                d2_diff_abs = abs(d2_diff_signed)
+                dx_diff_abs = abs(dx_diff_signed) if row.var_x is not None and cur_vx is not None else 0
+                
                 var_diffs = {
-                    'd1': round(d1_diff, 3),
-                    'd2': round(d2_diff, 3),
-                    'dx': round(dx_diff, 3) if row.var_x is not None and cur_vx is not None else None
+                    'd1': round(d1_diff_signed, 3),  # Store signed difference for display
+                    'd2': round(d2_diff_signed, 3),  # Store signed difference for display
+                    'dx': round(dx_diff_signed, 3) if row.var_x is not None and cur_vx is not None else None  # Store signed difference for display
                 }
             
             # Check if variations are symmetrical (only for Tier 2 similar matches)
@@ -364,7 +371,7 @@ class AlertEngine:
                 dx_diff_display = f"{var_diffs['dx']:.3f}" if var_diffs['dx'] is not None else "0.000"
                 logger.info(
                     f"{match_type} MATCH: event_id={row.event_id} vars=(d1={row.var_one:.2f}, dx={dx_display}, d2={row.var_two:.2f}) "
-                    f"| diffs=(d1={var_diffs['d1']:.3f}, dx={dx_diff_display}, d2={var_diffs['d2']:.3f}) "
+                    f"| diffs=(d1={var_diffs['d1']:+.3f}, dx={dx_diff_display}, d2={var_diffs['d2']:+.3f}) "
                     f"| {symmetry_status} | result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
                 )
             

@@ -29,7 +29,7 @@ TIMEZONE = Config.TIMEZONE
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,  # Only show warnings and errors
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('migration.log', encoding='utf-8'),
@@ -74,7 +74,9 @@ class CSVToPostgreSQLMigrator:
             'odds_updated': 0,
             'results_created': 0,
             'results_updated': 0,
-            'errors': 0
+            'errors': 0,
+            'conflicts': 0,
+            'failed_rows': []
         }
     
     def connect_to_database(self):
@@ -135,10 +137,9 @@ class CSVToPostgreSQLMigrator:
             # Convert to datetime first
             df['start_time_utc'] = pd.to_datetime(df['start_time_utc'], errors='coerce', dayfirst=True)
             
-            # Handle timezone conversion: CSV times are in Mexico City timezone
-            # but column name suggests UTC, so we need to localize properly
-            df['start_time_utc'] = df['start_time_utc'].dt.tz_localize(self.timezone, ambiguous='infer')
-            logger.info(f"Converted timestamps to {TIMEZONE} timezone")
+            # CSV times are already in Mexico City timezone, no conversion needed
+            # Just ensure they are naive datetime objects for database storage
+            logger.info(f"CSV timestamps are already in {TIMEZONE} timezone - no conversion needed")
         
         # Handle other timestamp columns that might have NaN values
         timestamp_columns = ['ended_at', 'created_at', 'updated_at', 'last_sync_at']
@@ -185,6 +186,142 @@ class CSVToPostgreSQLMigrator:
         # Return naive datetime (without timezone info) for database storage
         return local_now.replace(tzinfo=None)
     
+    def _compare_event_content(self, existing_event, event_data, row):
+        """Compare all fields between existing event and CSV data."""
+        try:
+            # Compare basic event fields
+            if (existing_event.slug != row['slug'] or
+                existing_event.start_time_utc != row['start_time_utc'] or
+                existing_event.sport != row['sport'] or
+                existing_event.competition != row['competition'] or
+                existing_event.country != row.get('country') or
+                existing_event.home_team != row['home_team'] or
+                existing_event.away_team != row['away_team']):
+                return False
+            
+            # Compare odds data
+            existing_odds = self.session.query(EventOdds).filter(EventOdds.event_id == existing_event.id).first()
+            if existing_odds:
+                if (existing_odds.one_open != row['one_open'] or
+                    existing_odds.one_final != row['one_final'] or
+                    existing_odds.x_open != row['x_open'] or
+                    existing_odds.x_final != row['x_final'] or
+                    existing_odds.two_open != row['two_open'] or
+                    existing_odds.two_final != row['two_final'] or
+                    existing_odds.var_one != row['var_one'] or
+                    existing_odds.var_x != row['var_x'] or
+                    existing_odds.var_two != row['var_two']):
+                    return False
+            
+            # Compare results data
+            existing_result = self.session.query(Result).filter(Result.event_id == existing_event.id).first()
+            if existing_result:
+                if (existing_result.home_score != row['home_score'] or
+                    existing_result.away_score != row['away_score'] or
+                    existing_result.winner != row['winner']):
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            print(f"      Error comparing content: {e}")
+            return False
+    
+    def _process_single_row(self, index: int, row: pd.Series) -> bool:
+        """
+        Process a single row with individual transaction handling.
+        
+        Args:
+            index: Row index
+            row: DataFrame row
+            
+        Returns:
+            bool: True if successful, False if failed
+        """
+        try:
+            # Get event_id from CSV
+            csv_event_id = int(row['event_id'])
+            
+            # Check if event with this ID already exists
+            existing_event = self.session.query(Event).filter(
+                Event.id == csv_event_id
+            ).first()
+            
+            # Prepare event data
+            event_data = {
+                'custom_id': row.get('custom_id'),
+                'slug': row['slug'],
+                'start_time_utc': row['start_time_utc'],
+                'sport': row['sport'],
+                'competition': row['competition'],
+                'country': row.get('country'),
+                'home_team': row['home_team'],
+                'away_team': row['away_team'],
+                'created_at': self._get_local_now() if pd.isna(row.get('created_at')) else row['created_at'],
+                'updated_at': self._get_local_now() if pd.isna(row.get('updated_at')) else row['updated_at']
+            }
+            
+            if existing_event:
+                # Compare ALL fields to check if content is exactly the same
+                content_matches = self._compare_event_content(existing_event, event_data, row)
+                
+                if content_matches:
+                    print(f"  ⏭️  Skipping existing event {csv_event_id}: {row['slug']} (content matches)")
+                    return True
+                else:
+                    # Complete replacement: delete existing odds and results, then recreate
+                    print(f"  🔄 COMPLETE REPLACEMENT for event {csv_event_id}: {existing_event.slug} → {row['slug']}")
+                    print(f"      Content differs - updating with CSV data")
+                    
+                    # Delete existing odds and results
+                    self.session.query(EventOdds).filter(EventOdds.event_id == existing_event.id).delete()
+                    self.session.query(Result).filter(Result.event_id == existing_event.id).delete()
+                    
+                    # Update all fields with CSV data
+                    for key, value in event_data.items():
+                        if key != 'id':  # Don't update the ID
+                            setattr(existing_event, key, value)
+                    
+                    self.stats['events_updated'] += 1
+                    event_id = existing_event.id
+                    
+                    # Create new odds and results for this event
+                    self._migrate_event_odds(row, event_id)
+                    self._migrate_event_results(row, event_id)
+            else:
+                # Create new event with auto-generated ID
+                new_event = Event(**event_data)
+                self.session.add(new_event)
+                self.session.flush()  # Get the auto-generated ID
+                event_id = new_event.id
+                self.stats['events_created'] += 1
+                print(f"  ➕ Created event {event_id}: {row['slug']}")
+                
+                # Migrate odds and results for this new event
+                self._migrate_event_odds(row, event_id)
+                self._migrate_event_results(row, event_id)
+            
+            # Commit this individual row
+            self.session.commit()
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error processing event at row {index + 1}: {e}")
+            logger.error(f"  Row data: {row.to_dict()}")
+            logger.error(f"  Error type: {type(e).__name__}")
+            logger.error(f"  Error details: {str(e)}")
+            
+            # Rollback only this row
+            self.session.rollback()
+            self.stats['errors'] += 1
+            self.stats['failed_rows'].append({
+                'row': index + 1,
+                'slug': row.get('slug', 'Unknown'),
+                'error': str(e),
+                'error_type': type(e).__name__
+            })
+            return False
+    
     def migrate_events(self, df: pd.DataFrame):
         """
         Migrate events data to the events table.
@@ -192,52 +329,21 @@ class CSVToPostgreSQLMigrator:
         Args:
             df: DataFrame containing CSV data
         """
-        logger.info("Migrating events...")
+        print(f"🔄 Processing {len(df)} rows...")
         
         for index, row in df.iterrows():
-            try:
-                # Check if event already exists
-                existing_event = self.session.query(Event).filter(
-                    Event.slug == row['slug']
-                ).first()
-                
-                # Prepare event data
-                event_data = {
-                    'custom_id': row.get('custom_id'),
-                    'slug': row['slug'],
-                    'start_time_utc': row['start_time_utc'],
-                    'sport': row['sport'],
-                    'competition': row['competition'],
-                    'country': row.get('country'),
-                    'home_team': row['home_team'],
-                    'away_team': row['away_team'],
-                    'created_at': self._get_local_now() if pd.isna(row.get('created_at')) else row['created_at'],
-                    'updated_at': self._get_local_now() if pd.isna(row.get('updated_at')) else row['updated_at']
-                }
-                
-                if existing_event:
-                    # Update existing event
-                    for key, value in event_data.items():
-                        if key != 'id':  # Don't update the ID
-                            setattr(existing_event, key, value)
-                    self.stats['events_updated'] += 1
-                    event_id = existing_event.id
-                else:
-                    # Create new event
-                    new_event = Event(**event_data)
-                    self.session.add(new_event)
-                    self.session.flush()  # Get the ID
-                    event_id = new_event.id
-                    self.stats['events_created'] += 1
-                
-                # Migrate odds and results for this event
-                self._migrate_event_odds(row, event_id)
-                self._migrate_event_results(row, event_id)
-                
-            except Exception as e:
-                logger.error(f"❌ Error processing event at row {index}: {e}")
-                self.stats['errors'] += 1
+            print(f"\n📋 Row {index + 1}/{len(df)}: {row.get('slug', 'Unknown')}")
+            
+            # Process each row individually with its own transaction
+            success = self._process_single_row(index, row)
+            
+            if not success:
+                print(f"❌ Row {index + 1} failed, continuing...")
                 continue
+            
+            # Show progress every 25 rows
+            if (index + 1) % 25 == 0:
+                print(f"✅ Progress: {index + 1}/{len(df)} rows processed...")
     
     def _migrate_event_odds(self, row: pd.Series, event_id: int):
         """
@@ -272,11 +378,13 @@ class CSVToPostgreSQLMigrator:
                     if key != 'event_id':  # Don't update the event_id
                         setattr(existing_odds, key, value)
                 self.stats['odds_updated'] += 1
+                print(f"    📝 Updated odds for event {event_id}")
             else:
                 # Create new odds
                 new_odds = EventOdds(**odds_data)
                 self.session.add(new_odds)
                 self.stats['odds_created'] += 1
+                print(f"    ➕ Created odds for event {event_id}")
                 
         except Exception as e:
             logger.error(f"❌ Error migrating odds for event {event_id}: {e}")
@@ -316,11 +424,13 @@ class CSVToPostgreSQLMigrator:
                     if key != 'event_id':  # Don't update the event_id
                         setattr(existing_result, key, value)
                 self.stats['results_updated'] += 1
+                print(f"    📝 Updated results for event {event_id}")
             else:
                 # Create new results
                 new_result = Result(**results_data)
                 self.session.add(new_result)
                 self.stats['results_created'] += 1
+                print(f"    ➕ Created results for event {event_id}")
                 
         except Exception as e:
             logger.error(f"❌ Error migrating results for event {event_id}: {e}")
@@ -340,10 +450,10 @@ class CSVToPostgreSQLMigrator:
             df = self.read_csv_data()
             
             # Step 3: Migrate data
+            logger.info("Starting data migration process...")
             self.migrate_events(df)
             
-            # Step 4: Commit changes
-            self.session.commit()
+            # Note: Each row is committed individually, no global commit needed
             logger.info("Migration completed successfully!")
             
             # Step 5: Print statistics
@@ -351,27 +461,40 @@ class CSVToPostgreSQLMigrator:
             
         except Exception as e:
             logger.error(f"❌ Migration failed: {e}")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"Error details: {str(e)}")
             if self.session:
+                logger.info("Rolling back all changes...")
                 self.session.rollback()
             raise
         finally:
             if self.session:
+                logger.info("Closing database session...")
                 self.session.close()
     
     def _print_statistics(self):
-        """Print migration statistics."""
-        logger.info("\nMIGRATION STATISTICS:")
-        logger.info(f"   Total rows processed: {self.stats['total_rows']}")
-        logger.info(f"   Events created: {self.stats['events_created']}")
-        logger.info(f"   Events updated: {self.stats['events_updated']}")
-        logger.info(f"   Odds created: {self.stats['odds_created']}")
-        logger.info(f"   Odds updated: {self.stats['odds_updated']}")
-        logger.info(f"   Results created: {self.stats['results_created']}")
-        logger.info(f"   Results updated: {self.stats['results_updated']}")
-        logger.info(f"   Errors encountered: {self.stats['errors']}")
-        
+        """Print migration statistics and save to JSON."""
         success_rate = ((self.stats['total_rows'] - self.stats['errors']) / self.stats['total_rows']) * 100
-        logger.info(f"   Success rate: {success_rate:.1f}%")
+        
+        # No JSON file creation needed
+        
+        # Print summary to console
+        print(f"\n📊 MIGRATION RESULTS:")
+        print(f"   Total rows processed: {self.stats['total_rows']}")
+        print(f"   Events created: {self.stats['events_created']}")
+        print(f"   Events updated: {self.stats['events_updated']}")
+        print(f"   Odds created: {self.stats['odds_created']}")
+        print(f"   Odds updated: {self.stats['odds_updated']}")
+        print(f"   Results created: {self.stats['results_created']}")
+        print(f"   Results updated: {self.stats['results_updated']}")
+        print(f"   Errors encountered: {self.stats['errors']}")
+        print(f"   Conflicts detected: {self.stats['conflicts']}")
+        print(f"   Success rate: {success_rate:.1f}%")
+        
+        if self.stats['failed_rows']:
+            print(f"\n❌ FAILED ROWS ({len(self.stats['failed_rows'])}):")
+            for failed_row in self.stats['failed_rows']:
+                print(f"   Row {failed_row['row']}: {failed_row['slug']} - {failed_row['error_type']}: {failed_row['error']}")
 
 def main():
     """
