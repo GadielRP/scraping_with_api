@@ -236,26 +236,34 @@ class SofaScoreAPI:
                 logger.warning("Score data not found in response")
                 return None
             
-            # IMPROVED: Better score extraction logic
-            # Try multiple score fields in order of preference
-            # Use 'is not None' to handle 0 scores correctly
-            home_score = (
-                home_score_data.get('current') if home_score_data.get('current') is not None else
-                home_score_data.get('display') if home_score_data.get('display') is not None else
-                home_score_data.get('normaltime') if home_score_data.get('normaltime') is not None else
-                home_score_data.get('overtime') if home_score_data.get('overtime') is not None else
-                home_score_data.get('penalties') if home_score_data.get('penalties') is not None else
-                None
-            )
+            # IMPROVED: Better score extraction logic with penalty handling
+            # For penalty shootouts (status code 120), use normaltime instead of current
+            # to get only regular time results, not including penalty scores
             
-            away_score = (
-                away_score_data.get('current') if away_score_data.get('current') is not None else
-                away_score_data.get('display') if away_score_data.get('display') is not None else
-                away_score_data.get('normaltime') if away_score_data.get('normaltime') is not None else
-                away_score_data.get('overtime') if away_score_data.get('overtime') is not None else
-                away_score_data.get('penalties') if away_score_data.get('penalties') is not None else
-                None
-            )
+            if status_code == 120:  # AP (After Penalties)
+                logger.info(f"Penalty shootout detected (status 120) - using normaltime scores instead of current")
+                home_score = home_score_data.get('normaltime')
+                away_score = away_score_data.get('normaltime')
+            else:
+                # Try multiple score fields in order of preference for non-penalty games
+                # Use 'is not None' to handle 0 scores correctly
+                home_score = (
+                    home_score_data.get('current') if home_score_data.get('current') is not None else
+                    home_score_data.get('display') if home_score_data.get('display') is not None else
+                    home_score_data.get('normaltime') if home_score_data.get('normaltime') is not None else
+                    home_score_data.get('overtime') if home_score_data.get('overtime') is not None else
+                    home_score_data.get('penalties') if home_score_data.get('penalties') is not None else
+                    None
+                )
+                
+                away_score = (
+                    away_score_data.get('current') if away_score_data.get('current') is not None else
+                    away_score_data.get('display') if away_score_data.get('display') is not None else
+                    away_score_data.get('normaltime') if away_score_data.get('normaltime') is not None else
+                    away_score_data.get('overtime') if away_score_data.get('overtime') is not None else
+                    away_score_data.get('penalties') if away_score_data.get('penalties') is not None else
+                    None
+                )
             
             # For tennis, try 'point' field if scores are None
             if home_score is None and 'point' in home_score_data:
@@ -289,18 +297,31 @@ class SofaScoreAPI:
             winner = None
             winner_code = event_data.get('winnerCode')
             
-            if winner_code == 1:
-                winner = '1'  # Home team wins
-            elif winner_code == 2:
-                winner = '2'  # Away team wins
-            elif winner_code == 3:
-                winner = 'X'  # Draw (for sports that support draws)
-            elif home_score == away_score:
-                winner = 'X'  # Draw based on equal scores
-            elif home_score > away_score:
-                winner = '1'  # Home team wins
+            if status_code == 120:  # AP (After Penalties)
+                # For penalty shootouts, determine winner based on regular time scores only
+                if home_score == away_score:
+                    winner = 'X'  # Draw in regular time (penalties don't count for betting analysis)
+                    logger.info(f"Penalty shootout result: Regular time was {home_score}-{away_score} (draw)")
+                elif home_score > away_score:
+                    winner = '1'  # Home team wins in regular time
+                    logger.info(f"Penalty shootout result: Regular time was {home_score}-{away_score} (home wins)")
+                else:
+                    winner = '2'  # Away team wins in regular time
+                    logger.info(f"Penalty shootout result: Regular time was {home_score}-{away_score} (away wins)")
             else:
-                winner = '2'  # Away team wins
+                # For non-penalty games, use standard logic
+                if winner_code == 1:
+                    winner = '1'  # Home team wins
+                elif winner_code == 2:
+                    winner = '2'  # Away team wins
+                elif winner_code == 3:
+                    winner = 'X'  # Draw (for sports that support draws)
+                elif home_score == away_score:
+                    winner = 'X'  # Draw based on equal scores
+                elif home_score > away_score:
+                    winner = '1'  # Home team wins
+                else:
+                    winner = '2'  # Away team wins
             
             # Extract end time
             ended_at = None

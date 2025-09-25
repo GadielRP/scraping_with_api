@@ -27,9 +27,9 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
   - **Debugging Mejorado**: Ayuda a entender por qué candidatos son/no son simétricos
   - **Formato Profesional**: Presentación limpia de datos técnicos en Telegram con dirección de diferencias
 - **Result Tiers (Niveles de Resultado)**:
-  - **Tier A (Idéntico)**: Todos los candidatos tienen el mismo resultado exacto
-  - **Tier B (Similar)**: Todos los candidatos tienen el mismo ganador y diferencia de puntos
-  - **Tier C (Mismo Ganador)**: Todos los candidatos tienen el mismo ganador (con promedio ponderado de diferencias)
+  - **Tier A (Idéntico)**: candidatos que tienen el mismo resultado exacto
+  - **Tier B (Similar)**: candidatos que tienen el mismo ganador y diferencia de puntos
+  - **Tier C (Mismo Ganador)**: candidatos que tienen el mismo ganador (con promedio ponderado de diferencias)
 
 #### **🎯 Lógica Process 1:**
 - **Selección de Tier**: Si hay candidatos Tier 1, solo se usa Tier 1. Si no, se usa Tier 2.
