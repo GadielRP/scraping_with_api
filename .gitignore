@@ -23,8 +23,8 @@ test_proxy.py
 tests/
 
 # deployment
-.dockerignore
-clean_deploy/
+
+
 MIGRATION_GUIDE.md
 deploy_direct.sh
 deploy.sh
