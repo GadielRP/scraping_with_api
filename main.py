@@ -59,7 +59,7 @@ from models import create_or_replace_views, create_or_replace_materialized_views
 from scheduler import job_scheduler
 from alert_system import pre_start_notifier
 from repository import EventRepository, OddsRepository
-from final_odds_all import run as run_final_odds_all
+
 
 def initialize_system():
     """Initialize the system components"""
@@ -364,13 +364,7 @@ def main():
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)
-        elif args.command == 'final-odds-all':
-            if initialize_system():
-                logger.info("Running final-odds-all collection...")
-                run_final_odds_all()
-            else:
-                logger.error("Failed to initialize system")
-                sys.exit(1)
+        
         elif args.command == 'status':
             if initialize_system():
                 show_status()

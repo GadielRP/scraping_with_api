@@ -10,6 +10,7 @@ from sofascore_api import api_client
 from repository import EventRepository, OddsRepository, ResultRepository, ObservationRepository
 from odds_utils import process_event_odds_from_dropping_odds
 from alert_system import pre_start_notifier
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +137,9 @@ class JobScheduler:
             
             # Save API response to JSON file for debugging
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            json_filename = f"debug_discovery_{timestamp}.json"
+            json_filename = os.path.join("debug", f"debug_discovery_{timestamp}.json")
             try:
+                os.makedirs("debug", exist_ok=True)  # ensure folder exists
                 with open(json_filename, 'w', encoding='utf-8') as f:
                     json.dump(response, f, indent=2, ensure_ascii=False)
                 logger.debug(f"API response saved to {json_filename}")
