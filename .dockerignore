@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+env.cloud.template
+
+# Local data & logs
+data/
+logs/
+*.log
+
+# Debug/export artifacts
+debug_discovery_*.json
+dropping_odds.json
+ejemplo.json
+exports/
+csv/
+old/
+
+# Tests and tooling
+test_*.py
+*.ipynb
+.curer/
+.cursor/
+.vscode/
+.idea/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Deployment files you don’t want inside image
+*.service
+deploy_direct.sh

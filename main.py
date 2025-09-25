@@ -59,7 +59,7 @@ from models import create_or_replace_views, create_or_replace_materialized_views
 from scheduler import job_scheduler
 from alert_system import pre_start_notifier
 from repository import EventRepository, OddsRepository
-from final_odds_all import run as run_final_odds_all
+
 
 def initialize_system():
     """Initialize the system components"""
@@ -310,7 +310,7 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='SofaScore Odds Alert System')
     parser.add_argument('command', choices=[
-        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'final-odds-all', 'status', 'events', 'alerts', 'refresh-alerts'
+        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'status', 'events', 'alerts', 'refresh-alerts'
     ], help='Command to run')
     parser.add_argument('--limit', type=int, default=10, help='Limit for events display')
     
@@ -364,13 +364,7 @@ def main():
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)
-        elif args.command == 'final-odds-all':
-            if initialize_system():
-                logger.info("Running final-odds-all collection...")
-                run_final_odds_all()
-            else:
-                logger.error("Failed to initialize system")
-                sys.exit(1)
+        
         elif args.command == 'status':
             if initialize_system():
                 show_status()
