@@ -310,7 +310,7 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='SofaScore Odds Alert System')
     parser.add_argument('command', choices=[
-        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'final-odds-all', 'status', 'events', 'alerts', 'refresh-alerts'
+        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'status', 'events', 'alerts', 'refresh-alerts'
     ], help='Command to run')
     parser.add_argument('--limit', type=int, default=10, help='Limit for events display')
     
