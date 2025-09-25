@@ -194,9 +194,9 @@ class PreStartNotification:
                 else:
                     symmetry_status = " ❌ (unsymmetrical)"
             
-            message += f"   {i}. {match['participants']} → {match['result_text']}{symmetry_status}\n"
+            message += f"\n   {i}. {match['participants']} → {match['result_text']}{symmetry_status}\n"
             message += f"      Competition: {match.get('competition', 'Unknown')}\n"
-            message += f"      Variations: {var_display}\n\n"
+            message += f"      Variations: {var_display}\n"
             
             # Add variation differences for Tier 2 candidates (similar matches)
             var_diffs = match.get('var_diffs')
