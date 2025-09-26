@@ -310,13 +310,37 @@ class JobScheduler:
                                 events_for_alerts.append(event_obj)
                     
                     if events_for_alerts:
-                        logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for pattern alerts...")
-                        alerts = alert_engine.evaluate_upcoming_events(events_for_alerts)
-                        if alerts:
-                            logger.info(f"📊 Generated {len(alerts)} candidate reports")
-                            alert_engine.send_alerts(alerts)
-                        else:
-                            logger.debug("No candidate reports generated")
+                        logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for dual process alerts...")
+                        
+                        # Execute Dual Process (Process 1 + Process 2)
+                        try:
+                            from prediction_engine import prediction_engine
+                            dual_reports = []
+                            
+                            for event_obj in events_for_alerts:
+                                minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
+                                dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                                if dual_report:
+                                    dual_reports.append(dual_report)
+                            
+                            if dual_reports:
+                                logger.info(f"📊 Generated {len(dual_reports)} dual process reports")
+                                # Send dual process alerts using enhanced alert system
+                                self._send_dual_process_alerts(dual_reports)
+                            else:
+                                logger.debug("No dual process reports generated")
+                                
+                        except Exception as e:
+                            logger.error(f"Error running dual process evaluation: {e}")
+                            
+                            # Fallback to Process 1 only if dual process fails
+                            logger.info("🔄 Falling back to Process 1 only...")
+                            alerts = alert_engine.evaluate_upcoming_events(events_for_alerts)
+                            if alerts:
+                                logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback)")
+                                alert_engine.send_alerts(alerts)
+                            else:
+                                logger.debug("No Process 1 candidate reports generated (fallback)")
                     else:
                         logger.debug("No events at key moments found for alert evaluation")
                         
@@ -653,6 +677,27 @@ class JobScheduler:
             next_time = next_time + timedelta(hours=1)
         
         return next_time
+    
+    def _send_dual_process_alerts(self, dual_reports: List) -> None:
+        """
+        Send dual process alerts via Telegram using enhanced alert system.
+        
+        Args:
+            dual_reports: List of DualProcessReport objects
+        """
+        try:
+            from alert_system import pre_start_notifier
+            
+            # Use alert_system to send dual process alerts (modular approach)
+            success = pre_start_notifier.send_dual_process_alerts(dual_reports)
+            
+            if success:
+                logger.info(f"✅ Dual process alerts sent successfully")
+            else:
+                logger.warning(f"❌ Failed to send dual process alerts")
+                    
+        except Exception as e:
+            logger.error(f"Error in _send_dual_process_alerts: {e}")
     
 
 # Global scheduler instance

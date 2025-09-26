@@ -1,5 +1,5 @@
 """
-Alert System - Telegram notification system for Process 1
+Alert System - Telegram notification system for Process 1 and Dual Process
 
 PROCESS 1 BOUNDARIES:
 ====================
@@ -10,9 +10,13 @@ PROCESS 1 INTEGRATION:
 This file handles Telegram notifications for Process 1 candidate reports.
 It formats and sends Process 1 results (SUCCESS/NO MATCH/NO CANDIDATES).
 
-PROCESS 2 PREPARATION:
-Process 2 notifications will be handled by separate files or extended
-functionality in this file with clear Process 2 boundaries.
+DUAL PROCESS INTEGRATION:
+This file now handles Telegram notifications for Dual Process reports.
+It formats and sends combined Process 1 + Process 2 results with comparison.
+
+PROCESS 2 INTEGRATION:
+Process 2 notifications are integrated within Dual Process notifications.
+Process 2 boundaries are handled by separate files with clear boundaries.
 """
 
 import logging
@@ -91,10 +95,7 @@ class PreStartNotification:
         """
         # Extract report information
         participants = report_data.get('participants', 'Unknown vs Unknown')
-        competition = report_data.get('competition', 'Unknown')
-        sport = report_data.get('sport', 'Unknown')
-        start_time = report_data.get('start_time', 'Unknown')
-        minutes_until_start = report_data.get('minutes_until_start')
+        
         status = report_data.get('status', 'unknown')
         selected_tier = report_data.get('selected_tier', 'Unknown')
         primary_prediction = report_data.get('primary_prediction')
@@ -113,25 +114,18 @@ class PreStartNotification:
         
         # Determine message header
         status_headers = {
-            'success': "✅ CANDIDATE REPORT - SUCCESS",
-            'partial': "⚠️ CANDIDATE REPORT - PARTIAL",
-            'no_match': "❌ CANDIDATE REPORT - NO MATCH",
-            'no_candidates': "❓ CANDIDATE REPORT - NO  VALID CANDIDATES"
+            'success': "✅ PROCESS 1 - SUCCESS",
+            'partial': "⚠️ PROCESS 1 - PARTIAL",
+            'no_match': "❌ PROCESS 1 - NO MATCH",
+            'no_candidates': "❓ PROCESS 1 - NO  VALID CANDIDATES"
         }
-        header = status_headers.get(status, "❓ CANDIDATE REPORT - UNKNOWN STATUS")
+        header = status_headers.get(status, "❓ PROCESS 1 - UNKNOWN STATUS")
         
         message = f"{header}\n\n"
         
         # Event information
         message += f"🏆 {participants}\n"
-        message += f"🏟️ {competition} ({sport})\n"
-        
-        
-        message += f"⏰ Starts at {start_time}"
-        if minutes_until_start is not None:
-            message += f" (in {minutes_until_start} minutes)"
-        message += "\n\n"
-        
+                
         # Current event data
         message += f"📈 Current Variations:\n"
         message += f"   {vars_display}\n\n"
@@ -169,21 +163,18 @@ class PreStartNotification:
         
         # Primary prediction
         if primary_prediction:
-            message += f"🎯 **Primary Prediction:** {primary_prediction}\n\n"
+            message += f"🎯 Primary Prediction: {primary_prediction}\n\n"
         elif status == 'partial':
-            message += f"⚠️ **Partial prediction:** No consistent patterns found, need at least 2 candidates\n\n"
+            message += f"⚠️ Partial prediction: No consistent patterns found, need at least 2 candidates\n\n"
         else:
-            message += f"❌ **No Prediction:** No consistent patterns found\n\n"
-        
-        # Footer
-        message += "*Comprehensive candidate analysis completed*"
+            message += f"❌ No Prediction: No consistent patterns found\n\n"
         
         return message
     
     def _format_tier_candidates(self, icon: str, title: str, count: int, 
                               matches: List[Dict], has_draw_odds: bool) -> str:
         """Format tier candidates for display"""
-        message = f"\n{icon} **{title} ({count}):**\n"
+        message = f"\n{icon} {title} ({count}):\n"
             
         for i, match in enumerate(matches, 1):
             var_display = self._format_variations_display(match.get('variations', {}), has_draw_odds)
@@ -194,7 +185,8 @@ class PreStartNotification:
                 else:
                     symmetry_status = " ❌ (unsymmetrical)"
             
-            message += f"\n   {i}. {match['participants']} → {match['result_text']}{symmetry_status}\n"
+            message += f"\n   {i}. {match['participants']}:\n"
+            message += f"      Result: {match['result_text']}{symmetry_status}\n"
             message += f"      Competition: {match.get('competition', 'Unknown')}\n"
             message += f"      Variations: {var_display}\n"
             
@@ -255,7 +247,7 @@ class PreStartNotification:
         if not rule_activations:
             return ""
         
-        message = "📋 **Rule Activations:**\n"
+        message = "📋 Rule Activations:\n"
         
         # Define rule descriptions
         rule_descriptions = {
@@ -278,6 +270,185 @@ class PreStartNotification:
         message += "\n"
         return message
     
+    def create_dual_process_message(self, dual_report) -> str:
+        """
+        Create enhanced Telegram message for dual process report with full debug information.
+        Integrates Process 1 candidate report with Process 2 formula results.
+        
+        Args:
+            dual_report: DualProcessReport object
+            
+        Returns:
+            Formatted message string for Telegram
+        """
+        try:
+            # Determine header based on verdict
+            verdict_headers = {
+                'AGREE': "✅ DUAL PROCESS - AGREEMENT",
+                'DISAGREE': "⚔️ DUAL PROCESS - DISAGREEMENT", 
+                'PARTIAL': "⚠️ DUAL PROCESS - PARTIAL RESULT",
+                'ERROR': "❌ DUAL PROCESS - ERROR"
+            }
+            
+            header = verdict_headers.get(dual_report.verdict.value, "❓ DUAL PROCESS - UNKNOWN")
+            
+            message = f"{header}\n\n"
+            
+            # Event information
+            message += f"🏆 {dual_report.participants}\n"
+            
+            # Get competition from process1_report if available
+            competition = "Unknown"
+            if dual_report.process1_report:
+                competition = dual_report.process1_report.get('competition', 'Unknown')
+            
+            # Add sport with emoji and competition
+            if dual_report.sport == 'Football':
+                message += f"⚽ {dual_report.sport} ({competition})"
+            elif dual_report.sport == 'Basketball':
+                message += f"🏀 {dual_report.sport} ({competition})"
+            elif dual_report.sport == 'Tennis':
+                message += f"🎾 {dual_report.sport} ({competition})"
+            elif dual_report.sport == 'Hockey':
+                message += f"🏒 {dual_report.sport} ({competition})"
+            elif dual_report.sport == 'Baseball':
+                message += f"⚾ {dual_report.sport} ({competition})"
+            elif dual_report.sport == 'Handball':
+                message += f"🤼 {dual_report.sport} ({competition})"
+            elif dual_report.sport == 'Rugby':
+                message += f"🏉 {dual_report.sport} ({competition})"
+            elif dual_report.sport == 'Volleyball':
+                message += f"🏐 {dual_report.sport} ({competition})"
+            else:
+                message += f"🏟️ {dual_report.sport} ({competition})"
+            
+            if dual_report.minutes_until_start is not None:
+                message += f"\n🕒 Game starting in {dual_report.minutes_until_start} minutes"
+            message += "\n\n"
+            
+            # Process 1 Results - COMPLETE REPORT (reusing existing format)
+            message += f"📊 Process 1 (Historical Patterns):\n\n"
+            if dual_report.process1_report:
+                # Reuse the complete Process 1 message format
+                process1_message = self.create_candidate_report_message(dual_report.process1_report)
+                
+                # Extract the main content from Process 1 message (skip header)
+                lines = process1_message.split('\n')
+                # Skip the header line and empty line, start from event info
+                start_index = 0  # Skip header and empty line
+                process1_content = '\n'.join(lines[start_index:])
+                
+                # Add Process 1 content with proper indentation
+                for line in process1_content.split('\n'):
+                    if line.strip():  # Skip empty lines
+                        message += f"   {line}\n"
+                    else:
+                        message += "\n"
+            else:
+                message += f"   ❌ No Process 1 report available ({dual_report.process1_status})\n"
+            
+            # Process 2 Results - DETAILED DEBUG
+            message += f"\n🧪 Process 2 (Sport Formulas):\n"
+            if dual_report.process2_prediction:
+                p2_winner = dual_report.process2_prediction[0]
+                winner_text = {'1': 'Home', 'X': 'Draw', '2': 'Away'}.get(p2_winner, p2_winner)
+                if winner_text == 'Draw':
+                    message += f"   ✅ Prediction: {winner_text}\n"
+                else:
+                    message += f"   ✅ Prediction: {winner_text} wins\n"
+                
+                # Show Process 2 detailed information
+                if dual_report.process2_report:
+                    # Show variables calculated
+                    variables = dual_report.process2_report.get('variables_calculated', {})
+                    if variables:
+                        message += f"   📊 Variables: β={variables.get('β', 0):.3f}, ζ={variables.get('ζ', 0):.3f}, γ={variables.get('γ', 0):.3f}\n"
+                        message += f"   📊 Variables: δ={variables.get('δ', 0):.3f}, ε={variables.get('ε', 0):.3f}\n"
+                    
+                    # Show activated formulas
+                    if 'activated_formulas' in dual_report.process2_report:
+                        formulas = dual_report.process2_report['activated_formulas']
+                        message += f"   📋 Formulas activated: {len(formulas)}\n"
+                        
+                        # Show all activated formulas (not just first 3)
+                        for formula in formulas:
+                            formula_name = formula.get('formula_name', 'Unknown')
+                            winner_side = formula.get('winner_side', '?')
+                            point_diff = formula.get('point_diff', 0)
+                            
+                            # Clean up formula name for display
+                            clean_name = formula_name.replace('formula_', '').replace('_', ' ').title()
+                            winner_text = {'1': 'Home', 'X': 'Draw', '2': 'Away'}.get(winner_side, winner_side)
+                            message += f"     • {clean_name}: {winner_text} wins (diff: {point_diff})\n"
+                    
+                    # Show total formulas checked
+                    total_formulas = dual_report.process2_report.get('total_formulas_checked', 0)
+                    activated_count = dual_report.process2_report.get('formulas_activated_count', 0)
+                    message += f"   🧮 Formulas checked: {activated_count}/{total_formulas}\n"
+            else:
+                message += f"   ❌ No prediction ({dual_report.process2_status})\n"
+            
+            # Final Verdict - ENHANCED
+            message += f"\n🎯 Final Verdict: {dual_report.verdict.value}\n"
+            message += f"📝 {dual_report.agreement_details}\n"
+            
+            if dual_report.final_prediction:
+                final_winner = dual_report.final_prediction[0]
+                winner_text = {'1': 'Home', 'X': 'Draw', '2': 'Away'}.get(final_winner, final_winner)
+                if winner_text == 'Draw':
+                    message += f"🏆 Final Prediction: {winner_text}\n"
+                else:
+                    message += f"🏆 Final Prediction: {winner_text} wins\n"
+            
+            # Debug summary
+            message += f"\n🔍 Debug Summary:\n"
+            message += f"   Process 1 Status: {dual_report.process1_status}\n"
+            message += f"   Process 2 Status: {dual_report.process2_status}\n"
+            message += f"   Comparison: {dual_report.verdict.value}\n"
+            
+            message += f"\n⏰ Generated at {dual_report.timestamp}"
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"Error creating dual process message: {e}")
+            return f"❌ Error creating dual process message for event {dual_report.event_id}: {str(e)}"
+    
+    def send_dual_process_alerts(self, dual_reports: List) -> bool:
+        """
+        Send dual process alerts via Telegram.
+        
+        Args:
+            dual_reports: List of DualProcessReport objects
+            
+        Returns:
+            True if at least one alert was sent successfully
+        """
+        if not dual_reports:
+            return True
+            
+        success_count = 0
+        
+        for dual_report in dual_reports:
+            try:
+                # Create enhanced message for dual process report
+                message = self.create_dual_process_message(dual_report)
+                
+                # Send via Telegram
+                sent = self.send_telegram_message(message)
+                
+                if sent:
+                    success_count += 1
+                    logger.info(f"✅ Dual process alert sent for event {dual_report.event_id}: {dual_report.verdict.value}")
+                else:
+                    logger.warning(f"❌ Failed to send dual process alert for event {dual_report.event_id}")
+                    
+            except Exception as e:
+                logger.error(f"Error sending dual process alert for event {dual_report.event_id}: {e}")
+                continue
+        
+        logger.info(f"Sent {success_count}/{len(dual_reports)} dual process alerts successfully")
+        return success_count > 0
 
 # Global notification instance
 pre_start_notifier = PreStartNotification()
