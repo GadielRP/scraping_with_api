@@ -163,11 +163,11 @@ class PreStartNotification:
         
         # Primary prediction
         if primary_prediction:
-            message += f"🎯 Primary Prediction: {primary_prediction}\n\n"
+            message += f"🎯 Primary Prediction: {primary_prediction}\n"
         elif status == 'partial':
-            message += f"⚠️ Partial prediction: No consistent patterns found, need at least 2 candidates\n\n"
+            message += f"⚠️ Partial prediction: No consistent patterns found, need at least 2 candidates\n"
         else:
-            message += f"❌ No Prediction: No consistent patterns found\n\n"
+            message += f"❌ No Prediction: No consistent patterns found\n"
         
         return message
     
@@ -334,8 +334,7 @@ class PreStartNotification:
                 
                 # Extract the main content from Process 1 message (skip header)
                 lines = process1_message.split('\n')
-                # Skip the header line and empty line, start from event info
-                start_index = 0  # Skip header and empty line
+                start_index = 0
                 process1_content = '\n'.join(lines[start_index:])
                 
                 # Add Process 1 content with proper indentation

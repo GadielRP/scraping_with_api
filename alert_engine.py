@@ -848,6 +848,8 @@ class AlertEngine:
                     selected_tier += f" + Tier 2 symmetrical ({len(symmetrical_tier2)})"
                 else:
                     selected_tier = f"Tier 2 symmetrical ({len(symmetrical_tier2)})"
+            # Note: Non-symmetrical Tier 2 candidates are NOT added to combined_candidates
+            # They are logged for debugging but not used for evaluation
         
         if not combined_candidates:
             return {
@@ -890,6 +892,8 @@ class AlertEngine:
         
         # DEBUG: Log the counting results
         logger.info(f"🔍 DEBUG: Rule counting results - A: {tier_a_matches}, B: {tier_b_matches}, C: {tier_c_matches}")
+        
+        
         
         # Calculate total UNIQUE candidates that match at least one rule
         # We need to count unique candidates, not sum up all rule matches
@@ -939,6 +943,7 @@ class AlertEngine:
             prediction_result = None
             successful_candidates = 1
             total_candidates = 1
+            logger.info(f"🔍 DEBUG: Status: {status}")
         elif total_matching_candidates == len(selected_candidates) and len(selected_candidates) > 0:
             # Calculate weighted confidence based on PRIORITY-BASED tier assignments
             # Get the actual tier assignments (with exclusions)
@@ -970,10 +975,12 @@ class AlertEngine:
             # Check if a prediction was actually generated
             if prediction_result is not None:
                 status = 'success'
+                logger.info(f"🔍 DEBUG: Status: {status}")
             else:
                 # All candidates processed but no prediction generated (insufficient candidates for any tier)
                 status = 'partial'
                 confidence = 0
+                logger.info(f"🔍 DEBUG: Status: {status}")
         else:
             # Some candidates failed to match any rule OR no candidates left after filtering
             successful_candidates = total_matching_candidates
@@ -984,9 +991,12 @@ class AlertEngine:
             if total_matching_candidates == len(selected_candidates) and len(selected_candidates) > 0:
                 # All candidates processed but no prediction generated (insufficient candidates for any tier)
                 status = 'partial'
+                logger.info(f"🔍 DEBUG: Status: {status}")
             else:
                 # Some candidates failed to match any rule
                 status = 'no_match'
+                    
+            logger.info(f"🔍 DEBUG: Status: {status}")
             
             prediction_result = None
         

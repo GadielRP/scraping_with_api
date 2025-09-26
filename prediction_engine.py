@@ -143,16 +143,18 @@ class PredictionEngine:
                 primary_prediction = alert_report.get('primary_prediction')
                 status = alert_report.get('status', 'unknown')
                 
+                # Check if we have a primary prediction (success case)
                 if primary_prediction and status == 'success':
-                    # Parse Process 1 prediction (this might need adjustment based on actual format)
-                    # For now, assume we can extract winner_side from prediction text
+                    # Parse Process 1 prediction
                     winner_side = self._extract_winner_from_process1_prediction(primary_prediction)
                     if winner_side:
                         process1_prediction = (winner_side, 1)  # Always point_diff=1 for comparison
                         logger.info(f"✅ Process 1 prediction: {winner_side}")
                         return alert_report, process1_prediction, 'success'
                 
-                logger.info(f"⚠️ Process 1 generated report but no clear prediction")
+                # For partial/no_match cases, we still want to show the report even without prediction
+                # This allows dual process to show Process 1 findings even when no clear prediction
+                logger.info(f"⚠️ Process 1 generated report but no clear prediction (status: {status})")
                 return alert_report, None, status
             else:
                 logger.info(f"⚠️ Process 1 found no candidates for event {event.id}")
@@ -300,15 +302,27 @@ class PredictionEngine:
             
             prediction_lower = prediction_text.lower()
             
-            # Check for draw
+            # Check for draw (exact match first)
+            if prediction_lower == 'draw':
+                return 'X'
+            
+            # Check for home win (exact match first)
+            if prediction_lower.startswith('home'):
+                return '1'
+            
+            # Check for away win (exact match first)
+            if prediction_lower.startswith('away'):
+                return '2'
+            
+            # Check for draw in text
             if 'draw' in prediction_lower or 'empate' in prediction_lower:
                 return 'X'
             
-            # Check for home win
+            # Check for home win in text
             if 'home' in prediction_lower or 'local' in prediction_lower:
                 return '1'
             
-            # Check for away win  
+            # Check for away win in text
             if 'away' in prediction_lower or 'visita' in prediction_lower:
                 return '2'
             

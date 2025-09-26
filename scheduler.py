@@ -320,8 +320,25 @@ class JobScheduler:
                             for event_obj in events_for_alerts:
                                 minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
                                 dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
-                                if dual_report:
+                                
+                                # Only add dual report if at least one process has a prediction OR if Process 1 found candidates
+                                # This ensures we show Process 1 findings even when no clear prediction is made
+                                should_send = False
+                                reason = ""
+                                
+                                if dual_report.process1_prediction or dual_report.process2_prediction:
+                                    should_send = True
+                                    reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
+                                elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
+                                    # Process 1 found candidates but no clear prediction - still show the report
+                                    should_send = True
+                                    reason = f"Process1 found candidates (status: {dual_report.process1_status})"
+                                
+                                if should_send:
                                     dual_reports.append(dual_report)
+                                    logger.info(f"✅ Dual process report added for event {event_obj.id}: {reason}")
+                                else:
+                                    logger.debug(f"⏭️ Skipping dual process report for event {event_obj.id}: No predictions or candidates found")
                             
                             if dual_reports:
                                 logger.info(f"📊 Generated {len(dual_reports)} dual process reports")
