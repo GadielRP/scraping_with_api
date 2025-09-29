@@ -65,177 +65,70 @@ class FootballFormulas:
     def get_all_formulas(self):
         """Return list of all formula methods"""
         return [
-            self.formula_empate_gamma_delta,
-            self.formula_empate_epsilon_zeta,
-            self.formula_ena_local_gamma_delta,
-            self.formula_gana_local_gamma_delta,
-            self.formula_gana_local_gamma_delta_var_two,
-            self.formula_gana_local_gamma_delta_zeta,
-            self.formula_gana_local_epsilon_zeta,
-            self.formula_gana_visita_gamma_delta_epsilon,
-            self.formula_gana_visita_gamma_delta_var_two,
-            self.formula_gana_visita_gamma_delta,
-            self.formula_gana_visita_epsilon_zeta
+            self.formula_gana_visita_epsilon_gamma,
+            self.formula_empatan_epsilon_gamma,
+            self.formula_gana_local_epsilon_gamma
         ]
     
-    def formula_empate_gamma_delta(self) -> Optional[Tuple[str, int]]:
-        """
-        Empateγδ: γ=0 y δ≥0, δ abs ≤ 0.1; Empate.
-        """
-        try:
-            if self._is_equal(self.γ, 0) and self.δ >= 0 and abs(self.δ) <= 0.1:
-                logger.info(f"✅ Fórmula Empateγδ activada: γ={self.γ:.3f}, δ={self.δ:.3f}")
-                return ("X", 1)
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error en formula_empate_gamma_delta: {e}")
-            return None
+    def _is_equal_with_tolerance(self, a: float, b: float, tolerance: float = 0.04) -> bool:
+        """Check if two values are equal within specified tolerance"""
+        return abs(a - b) <= tolerance
     
-    def formula_empate_epsilon_zeta(self) -> Optional[Tuple[str, int]]:
+    def formula_gana_visita_epsilon_gamma(self) -> Optional[Tuple[str, int]]:
         """
-        Empateεζ: ε=0, ζ abs ≤ 0.1; Empate.
-        """
-        try:
-            if self._is_equal(self.ε, 0) and abs(self.ζ) <= 0.1:
-                logger.info(f"✅ Fórmula Empateεζ activada: ε={self.ε:.3f}, ζ={self.ζ:.3f}")
-                return ("X", 1)
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error en formula_empate_epsilon_zeta: {e}")
-            return None
-    
-    def formula_ena_local_gamma_delta(self) -> Optional[Tuple[str, int]]:
-        """
-        ENA Localγδ: γ=abs ≥ 0, γ ≤0.1, δ≥0.01, δ≤0.04; ENA.
-        Nota: ENA (Empate No Aplica) se interpreta como empate por ahora
+        Gana Visita: abs(ε=γ) con una tolerancia para la igualdad de 0.04 inclusiva,
+        δ=ζ, β=0. Gana Visita.
         """
         try:
-            if abs(self.γ) >= 0 and self.γ <= 0.1 and self.δ >= 0.01 and self.δ <= 0.04:
-                logger.info(f"✅ Fórmula ENA Localγδ activada: γ={self.γ:.3f}, δ={self.δ:.3f}")
-                return ("X", 1)  # Interpretamos ENA como empate por ahora
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error en formula_ena_local_gamma_delta: {e}")
-            return None
-    
-    def formula_gana_local_gamma_delta(self) -> Optional[Tuple[str, int]]:
-        """
-        Gana Localγδ: γ=δ o la diferencia entre ambos sea abs≤0.12, ε≤1.15; Gana Local
-        """
-        try:
-            condition1 = self._is_equal(self.γ, self.δ) or abs(self.γ - self.δ) <= 0.12
-            condition2 = self.ε <= 1.15
-            
-            if condition1 and condition2:
-                logger.info(f"✅ Fórmula Gana Localγδ activada: γ={self.γ:.3f}, δ={self.δ:.3f}, ε={self.ε:.3f}")
-                return ("1", 1)
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error en formula_gana_local_gamma_delta: {e}")
-            return None
-    
-    def formula_gana_local_gamma_delta_var_two(self) -> Optional[Tuple[str, int]]:
-        """
-        Gana Localγδ_var_two: γ=δ o la diferencia entre ambos sea abs≤0.12, ε≤1.15 y var_two=0; Gana Local
-        """
-        try:
-            condition1 = self._is_equal(self.γ, self.δ) or abs(self.γ - self.δ) <= 0.12
-            condition2 = self.ε <= 1.15
-            condition3 = self._is_equal(self.var_two, 0)
+            # abs(ε=γ) con tolerancia de 0.04 inclusiva
+            condition1 = self._is_equal_with_tolerance(abs(self.ε), abs(self.γ), 0.04)
+            # δ=ζ
+            condition2 = self._is_equal(self.δ, self.ζ)
+            # β=0
+            condition3 = self._is_equal(self.β, 0)
             
             if condition1 and condition2 and condition3:
-                logger.info(f"✅ Fórmula Gana Localγδ_var_two activada: γ={self.γ:.3f}, δ={self.δ:.3f}, ε={self.ε:.3f}, var_two={self.var_two:.3f}")
-                return ("1", 1)
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error en formula_gana_local_gamma_delta_var_two: {e}")
-            return None
-    
-    def formula_gana_local_gamma_delta_zeta(self) -> Optional[Tuple[str, int]]:
-        """
-        Gana Localγδζ: γ=δ o la diferencia entre ambos sea abs≤0.1, ε≤1.15, var_two≥0, var_two≤0.05, ζ=0; Gana Local
-        """
-        try:
-            condition1 = self._is_equal(self.γ, self.δ) or abs(self.γ - self.δ) <= 0.1
-            condition2 = self.ε <= 1.15
-            condition3 = self.var_two >= 0 and self.var_two <= 0.05
-            condition4 = self._is_equal(self.ζ, 0)
-            
-            if condition1 and condition2 and condition3 and condition4:
-                logger.info(f"✅ Fórmula Gana Localγδζ activada: γ={self.γ:.3f}, δ={self.δ:.3f}, ε={self.ε:.3f}, var_two={self.var_two:.3f}, ζ={self.ζ:.3f}")
-                return ("1", 1)
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error en formula_gana_local_gamma_delta_zeta: {e}")
-            return None
-    
-    def formula_gana_local_epsilon_zeta(self) -> Optional[Tuple[str, int]]:
-        """
-        Gana localεζ: ε=0, ζ>1, ζ<2; Gana Local.
-        """
-        try:
-            if self._is_equal(self.ε, 0) and self.ζ > 1 and self.ζ < 2:
-                logger.info(f"✅ Fórmula Gana localεζ activada: ε={self.ε:.3f}, ζ={self.ζ:.3f}")
-                return ("1", 1)
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error en formula_gana_local_epsilon_zeta: {e}")
-            return None
-    
-    def formula_gana_visita_gamma_delta_epsilon(self) -> Optional[Tuple[str, int]]:
-        """
-        Gana Visitaγδε: abs(γ+δ)=ε; Gana Visita
-        """
-        try:
-            if self._is_equal(abs(self.γ + self.δ), self.ε):
-                logger.info(f"✅ Fórmula Gana Visitaγδε activada: γ={self.γ:.3f}, δ={self.δ:.3f}, ε={self.ε:.3f}, abs(γ+δ)={abs(self.γ + self.δ):.3f}")
+                logger.info(f"✅ Fórmula Gana Visita activada: ε={self.ε:.3f}, γ={self.γ:.3f}, δ={self.δ:.3f}, ζ={self.ζ:.3f}, β={self.β:.3f}")
                 return ("2", 1)
             return None
         except Exception as e:
-            logger.error(f"❌ Error en formula_gana_visita_gamma_delta_epsilon: {e}")
+            logger.error(f"❌ Error en formula_gana_visita_epsilon_gamma: {e}")
             return None
     
-    def formula_gana_visita_gamma_delta_var_two(self) -> Optional[Tuple[str, int]]:
+    def formula_empatan_epsilon_gamma(self) -> Optional[Tuple[str, int]]:
         """
-        Gana Visitaγδ_var_two: γ=δ o la diferencia entre ambos sea abs≤0.1, var_one=0; Gana Visita.
+        Empatan: ε=γ, β=0.10, abs(ζ-β)=ε=γ. Empate.
         """
         try:
-            condition1 = self._is_equal(self.γ, self.δ) or abs(self.γ - self.δ) <= 0.1
-            condition2 = self._is_equal(self.var_one, 0)
+            # ε=γ
+            condition1 = self._is_equal(self.ε, self.γ)
+            # β=0.10
+            condition2 = self._is_equal(self.β, 0.10)
+            # abs(ζ-β)=ε=γ (abs(ζ-β) debe ser igual a ε y γ)
+            condition3 = self._is_equal(abs(self.ζ - self.β), self.ε) and self._is_equal(abs(self.ζ - self.β), self.γ)
+            
+            if condition1 and condition2 and condition3:
+                logger.info(f"✅ Fórmula Empatan activada: ε={self.ε:.3f}, γ={self.γ:.3f}, β={self.β:.3f}, ζ={self.ζ:.3f}, abs(ζ-β)={abs(self.ζ - self.β):.3f}")
+                return ("X", 1)
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error en formula_empatan_epsilon_gamma: {e}")
+            return None
+    
+    def formula_gana_local_epsilon_gamma(self) -> Optional[Tuple[str, int]]:
+        """
+        Gana local: ε=γ, β+ζ=δ. Gana Local.
+        """
+        try:
+            # ε=γ
+            condition1 = self._is_equal(self.ε, self.γ)
+            # β+ζ=δ
+            condition2 = self._is_equal(self.β + self.ζ, self.δ)
             
             if condition1 and condition2:
-                logger.info(f"✅ Fórmula Gana Visitaγδ_var_two activada: γ={self.γ:.3f}, δ={self.δ:.3f}, var_one={self.var_one:.3f}")
-                return ("2", 1)
+                logger.info(f"✅ Fórmula Gana local activada: ε={self.ε:.3f}, γ={self.γ:.3f}, β={self.β:.3f}, ζ={self.ζ:.3f}, δ={self.δ:.3f}")
+                return ("1", 1)
             return None
         except Exception as e:
-            logger.error(f"❌ Error en formula_gana_visita_gamma_delta_var_two: {e}")
-            return None
-    
-    def formula_gana_visita_gamma_delta(self) -> Optional[Tuple[str, int]]:
-        """
-        Gana Visitaγδ: γ=δ con diferencia entre ambos abs≤0.1, abs(β+γ)=ε; Gana Visita
-        """
-        try:
-            condition1 = abs(self.γ - self.δ) <= 0.1
-            condition2 = self._is_equal(abs(self.β + self.γ), self.ε)
-            
-            if condition1 and condition2:
-                logger.info(f"✅ Fórmula Gana Visitaγδ activada: γ={self.γ:.3f}, δ={self.δ:.3f}, β={self.β:.3f}, ε={self.ε:.3f}, abs(β+γ)={abs(self.β + self.γ):.3f}")
-                return ("2", 1)
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error en formula_gana_visita_gamma_delta: {e}")
-            return None
-    
-    def formula_gana_visita_epsilon_zeta(self) -> Optional[Tuple[str, int]]:
-        """
-        Gana visitaεζ: ε=0, ζ < 1; GanaVisita
-        """
-        try:
-            if self._is_equal(self.ε, 0) and self.ζ < 1:
-                logger.info(f"✅ Fórmula Gana visitaεζ activada: ε={self.ε:.3f}, ζ={self.ζ:.3f}")
-                return ("2", 1)
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error en formula_gana_visita_epsilon_zeta: {e}")
+            logger.error(f"❌ Error en formula_gana_local_epsilon_gamma: {e}")
             return None

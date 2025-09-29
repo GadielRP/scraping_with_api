@@ -126,11 +126,7 @@ class PreStartNotification:
         }
         header = status_headers.get(status, "❓ PROCESS 1 - UNKNOWN STATUS")
         
-        message = f"{header}\n\n"
-        
-        # Event information
-        message += f"🏆 {report_data.get('event_id', 'Unknown')} {participants}\n"
-                
+        message = f"{header}\n\n"             
         # Current event data
         message += f"📈 Current Variations:\n"
         message += f"{vars_display}\n\n"
@@ -293,10 +289,10 @@ class PreStartNotification:
             
             header = verdict_headers.get(dual_report.verdict.value, "❓ DUAL PROCESS - UNKNOWN")
             
-            message = f"{header}\n\n"
+            message = f"{header}\n"
             
             # Event information
-            message += f"🏆 {dual_report.participants}\n"
+            message += f"🏆 {dual_report.event_id} {dual_report.participants}\n"
             
             # Get competition from process1_report if available
             competition = "Unknown"
@@ -325,10 +321,10 @@ class PreStartNotification:
             
             if dual_report.minutes_until_start is not None:
                 message += f"\n🕒 Game starting in {dual_report.minutes_until_start} minutes"
-            message += "\n\n"
+            message += "\n"
             
             # Process 1 Results - COMPLETE REPORT (reusing existing format)
-            message += f"📊 Process 1 (Historical Patterns):\n\n"
+            message += f"\n"
             if dual_report.process1_report:
                 # Reuse the complete Process 1 message format
                 process1_message = self.create_candidate_report_message(dual_report.process1_report)
@@ -353,22 +349,22 @@ class PreStartNotification:
                 p2_winner = dual_report.process2_prediction[0]
                 winner_text = {'1': 'Home', 'X': 'Draw', '2': 'Away'}.get(p2_winner, p2_winner)
                 if winner_text == 'Draw':
-                    message += f"   ✅ Prediction: {winner_text}\n"
+                    message += f" ✅ Prediction: {winner_text}\n"
                 else:
-                    message += f"   ✅ Prediction: {winner_text} wins\n"
+                    message += f" ✅ Prediction: {winner_text} wins\n"
                 
                 # Show Process 2 detailed information
                 if dual_report.process2_report:
                     # Show variables calculated
                     variables = dual_report.process2_report.get('variables_calculated', {})
                     if variables:
-                        message += f"   📊 Variables: β={variables.get('β', 0):.3f}, ζ={variables.get('ζ', 0):.3f}, γ={variables.get('γ', 0):.3f}\n"
-                        message += f"   📊 Variables: δ={variables.get('δ', 0):.3f}, ε={variables.get('ε', 0):.3f}\n"
+                        message += f" 📊 Variables: β={variables.get('β', 0):.3f}, ζ={variables.get('ζ', 0):.3f}, γ={variables.get('γ', 0):.3f}\n"
+                        message += f" 📊 Variables: δ={variables.get('δ', 0):.3f}, ε={variables.get('ε', 0):.3f}\n"
                     
                     # Show activated formulas
                     if 'activated_formulas' in dual_report.process2_report:
                         formulas = dual_report.process2_report['activated_formulas']
-                        message += f"   📋 Formulas activated: {len(formulas)}\n"
+                        message += f" 📋 Formulas activated: {len(formulas)}\n"
                         
                         # Show all activated formulas (not just first 3)
                         for formula in formulas:
@@ -379,14 +375,14 @@ class PreStartNotification:
                             # Clean up formula name for display
                             clean_name = formula_name.replace('formula_', '').replace('_', ' ').title()
                             winner_text = {'1': 'Home', 'X': 'Draw', '2': 'Away'}.get(winner_side, winner_side)
-                            message += f"     • {clean_name}: {winner_text} wins (diff: {point_diff})\n"
+                            message += f"• {clean_name}: {winner_text} wins (diff: {point_diff})\n"
                     
                     # Show total formulas checked
                     total_formulas = dual_report.process2_report.get('total_formulas_checked', 0)
                     activated_count = dual_report.process2_report.get('formulas_activated_count', 0)
-                    message += f"   🧮 Formulas checked: {activated_count}/{total_formulas}\n"
+                    message += f"🧮 Formulas checked: {activated_count}/{total_formulas}\n"
             else:
-                message += f"   ❌ No prediction ({dual_report.process2_status})\n"
+                message += f"❌ No prediction ({dual_report.process2_status})\n"
             
             # Final Verdict - ENHANCED
             message += f"\n🎯 Final Verdict: {dual_report.verdict.value}\n"
@@ -402,12 +398,8 @@ class PreStartNotification:
             
             # Debug summary
             message += f"\n🔍 Debug Summary:\n"
-            message += f"   Process 1 Status: {dual_report.process1_status}\n"
-            message += f"   Process 2 Status: {dual_report.process2_status}\n"
-            message += f"   Comparison: {dual_report.verdict.value}\n"
-            
-            message += f"\n⏰ Generated at {dual_report.timestamp}"
-            
+            message += f"Process 1 Status: {dual_report.process1_status}\n"
+            message += f"Process 2 Status: {dual_report.process2_status}"
             return message
             
         except Exception as e:
