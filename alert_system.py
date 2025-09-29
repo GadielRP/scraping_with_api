@@ -208,13 +208,9 @@ class PreStartNotification:
             
             from sport_observations import sport_observations_manager
             sport_info = sport_observations_manager.format_sport_info_for_candidates(candidate_event_id, candidate_sport)
-            logger.info(f"🔍 DEBUG: Sport info result for candidate {i}: '{sport_info}'")
-            
+
             if sport_info:
                 message += f"{sport_info}\n"
-                logger.info(f"🔍 DEBUG: Added sport info to message for candidate {i}")
-            else:
-                logger.info(f"🔍 DEBUG: No sport info to add for candidate {i}")
         
         return message + "\n"
     
@@ -453,6 +449,7 @@ class PreStartNotification:
         
         logger.info(f"Sent {success_count}/{len(dual_reports)} dual process alerts successfully")
         return success_count > 0
+    
 
 # Global notification instance
 pre_start_notifier = PreStartNotification()

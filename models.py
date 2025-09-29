@@ -29,6 +29,7 @@ class Event(Base):
     event_odds = relationship("EventOdds", back_populates="event", uselist=False, cascade="all, delete-orphan")
     result = relationship("Result", back_populates="event", uselist=False, cascade="all, delete-orphan")
     observations = relationship("EventObservation", back_populates="event", cascade="all, delete-orphan")
+    prediction_logs = relationship("PredictionLog", back_populates="event", uselist=False, cascade="all, delete-orphan")
 
 class OddsSnapshot(Base):
     __tablename__ = 'odds_snapshot'
@@ -133,6 +134,31 @@ class EventObservation(Base):
 
     def __repr__(self):
         return f"<EventObservation(event_id={self.event_id}, type='{self.observation_type}', value='{self.observation_value}')>"
+
+class PredictionLog(Base):
+    __tablename__ = 'prediction_logs'
+    
+    event_id = Column(Integer, ForeignKey('events.id', ondelete='CASCADE'), primary_key=True)
+    sport = Column(String(50))
+    participants = Column(Text)
+    competition = Column(String(100))
+    prediction_type = Column(String(20), nullable=False, default='process1')
+    confidence_level = Column(String(20))  # 'high', 'medium', 'low', '100.0%'
+    prediction_winner = Column(String(10))  # '1', 'X', '2'
+    prediction_point_diff = Column(Integer)
+    tier1_count = Column(Integer, default=0)  # Number of Tier 1 activations
+    tier2_count = Column(Integer, default=0)  # Number of Tier 2 activations
+    # Fields for actual results (initially NULL)
+    actual_result = Column(Text)
+    actual_winner = Column(String(10))  # '1', 'X', '2'
+    actual_point_diff = Column(Integer)
+    status = Column(String(20), default='pending')  # 'pending', 'completed', 'cancelled'
+    
+    # Relationships
+    event = relationship("Event", back_populates="prediction_logs")
+
+    def __repr__(self):
+        return f"<PredictionLog(event_id={self.event_id}, prediction_type='{self.prediction_type}', status='{self.status}')>"
 
 
 # ---------------------------------------------------------------------------

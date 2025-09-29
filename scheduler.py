@@ -348,6 +348,39 @@ class JobScheduler:
                                 logger.info(f"📊 Generated {len(dual_reports)} dual process reports")
                                 # Send dual process alerts using enhanced alert system
                                 self._send_dual_process_alerts(dual_reports)
+                                
+                                # Log predictions for successful Process 1 reports
+                                from modules.prediction import prediction_logger
+                                
+                                for dual_report in dual_reports:
+                                    # Only log predictions from Process 1 with success status
+                                    if (dual_report.process1_report and 
+                                        dual_report.process1_report.get('status') == 'success'):
+                                        
+                                        # Get the event object
+                                        event_obj = self.event_repo.get_event_by_id(dual_report.event_id)
+                                        if event_obj:
+                                            # Check if event is exactly 5 minutes from start
+                                            minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
+                                            if minutes_until_start == 5:
+                                                # Log the prediction only at 5 minutes
+                                                success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
+                                                if success:
+                                                    logger.info(f"✅ Prediction logged for dual process event {dual_report.event_id} (5 minutes from start)")
+                                                else:
+                                                    # Check if it's a duplicate (already exists) vs. actual failure
+                                                    from database import db_manager
+                                                    from models import PredictionLog
+                                                    with db_manager.get_session() as session:
+                                                        existing = session.query(PredictionLog).filter_by(event_id=dual_report.event_id).first()
+                                                        if existing:
+                                                            logger.info(f"ℹ️ Prediction already exists for dual process event {dual_report.event_id} - no action needed")
+                                                        else:
+                                                            logger.warning(f"❌ Failed to log prediction for dual process event {dual_report.event_id}")
+                                            else:
+                                                logger.info(f"⏭️ Skipping prediction logging for event {dual_report.event_id} - {minutes_until_start} minutes until start (not 5 minutes)")
+                                        else:
+                                            logger.warning(f"Could not find event {dual_report.event_id} for prediction logging")
                             else:
                                 logger.debug("No dual process reports generated")
                                 
@@ -360,6 +393,39 @@ class JobScheduler:
                             if alerts:
                                 logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback)")
                                 alert_engine.send_alerts(alerts)
+                                
+                                # Log predictions for successful Process 1 reports (fallback)
+                                from modules.prediction import prediction_logger
+                                
+                                for alert in alerts:
+                                    # Only log predictions with success status
+                                    if alert.get('status') == 'success':
+                                        event_id = alert.get('event_id')
+                                        if event_id:
+                                            # Get the event object
+                                            event_obj = self.event_repo.get_event_by_id(event_id)
+                                            if event_obj:
+                                                # Check if event is exactly 5 minutes from start
+                                                minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
+                                                if minutes_until_start == 5:
+                                                    # Log the prediction only at 5 minutes
+                                                    success = prediction_logger.log_prediction(event_obj, alert)
+                                                    if success:
+                                                        logger.info(f"✅ Prediction logged for Process 1 event {event_id} (5 minutes from start)")
+                                                    else:
+                                                        # Check if it's a duplicate (already exists) vs. actual failure
+                                                        from database import db_manager
+                                                        from models import PredictionLog
+                                                        with db_manager.get_session() as session:
+                                                            existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
+                                                            if existing:
+                                                                logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
+                                                            else:
+                                                                logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
+                                                else:
+                                                    logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start} minutes until start (not 5 minutes)")
+                                            else:
+                                                logger.warning(f"Could not find event {event_id} for prediction logging")
                             else:
                                 logger.debug("No Process 1 candidate reports generated (fallback)")
                     else:
@@ -371,6 +437,8 @@ class JobScheduler:
                 logger.info("📊 NO ALERT EVALUATION: Events found but no odds extracted (not at key moments)")
             else:
                 logger.debug("No events found for alert evaluation")
+            
+            # Note: Prediction logging is handled within the alert evaluation above
             
         except Exception as e:
             logger.error(f"Error in Job C: {e}")
@@ -606,6 +674,18 @@ class JobScheduler:
             # Only collect results from previous day - odds don't change after games finish
             logger.info("📊 Collecting results from finished events...")
             self.job_results_collection()
+            
+            # Update prediction logs with actual results
+            logger.info("📊 Updating prediction logs with actual results...")
+            from modules.prediction import prediction_logger
+            
+            # Use the prediction logging module directly
+            stats = prediction_logger.update_predictions_with_results()
+            
+            if 'error' in stats:
+                logger.error(f"Error updating prediction logs: {stats['error']}")
+            else:
+                logger.info(f"📊 Prediction logs updated: {stats['updated']} completed, {stats['cancelled']} cancelled")
             
             # Refresh materialized views for alerts after results are updated
             logger.info("🔄 Refreshing alert materialized views...")
