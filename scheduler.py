@@ -283,11 +283,15 @@ class JobScheduler:
             else:
                 logger.info("Pre-start check completed: No games starting soon")
             
-            # Run alert evaluation ONLY for events at key moments (30 or 5 minutes)
-            # This ensures alerts are only sent when odds are extracted at key moments
-            if events_with_odds and odds_extracted_count > 0:
+            # Run alert evaluation for events at key moments (30 or 5 minutes)
+            # This ensures alerts are sent when odds are extracted OR when odds extraction is disabled for testing
+            should_evaluate_alerts = events_with_odds and (odds_extracted_count > 0 or not Config.ENABLE_ODDS_EXTRACTION)
+            if should_evaluate_alerts:
                 try:
-                    logger.info("🔍 Evaluating upcoming events for pattern alerts...")
+                    if not Config.ENABLE_ODDS_EXTRACTION:
+                        logger.info("🔍 Evaluating upcoming events for pattern alerts (odds extraction disabled for testing)...")
+                    else:
+                        logger.info("🔍 Evaluating upcoming events for pattern alerts...")
                     
                     # Refresh materialized views to ensure latest data for alert evaluation
                     logger.info("🔄 Refreshing alert materialized views...")
@@ -390,6 +394,11 @@ class JobScheduler:
         Returns:
             True if odds should be extracted, False otherwise
         """
+        # Check if odds extraction is enabled (for testing purposes)
+        if not Config.ENABLE_ODDS_EXTRACTION:
+            logger.info(f"🚫 ODDS EXTRACTION DISABLED: Skipping odds extraction for event {event_id} (ENABLE_ODDS_EXTRACTION=false)")
+            return False
+        
         # Key moments for odds extraction
         KEY_MOMENTS = [30, 5]
         

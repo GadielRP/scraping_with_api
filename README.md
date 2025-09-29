@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.2.6  
-**Estado:** ✅ **PRODUCCIÓN - Process 1 COMPLETADO CON VARIATION DIFFERENCES DISPLAY - Process 2 EN PREPARACIÓN**  
-**Última Actualización:** 22 de Diciembre, 2024
+**Versión:** v1.3.0  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO**  
+**Última Actualización:** 26 de Septiembre, 2025
 
 ## 🎯 **Descripción del Sistema**
 
@@ -71,23 +71,39 @@ class AlertMatch:
     var_diffs: Optional[Dict[str, float]] = None  # 🆕 Diferencias de variaciones
 ```
 
-### 🔮 **PROCESS 2 - Sistema de Reglas Específicas por Deporte - EN DESARROLLO (v1.3)**
-**📋 Definición**: Process 2 es un sistema de reglas específicas por deporte que complementa Process 1 con análisis deportivo especializado.
+### ✅ **PROCESS 2 - Sistema de Reglas Específicas por Deporte - IMPLEMENTADO (v1.3)**
+**📋 Definición**: Process 2 es un sistema de reglas específicas por deporte que complementa Process 1 con análisis deportivo especializado usando fórmulas matemáticas específicas.
 
 #### **🏗️ Arquitectura Process 2:**
 - **Estructura Modular**: Un archivo por deporte siguiendo @rules.mdc
-  - `sports/handball.py`: 8+ reglas específicas de handball
-  - `sports/rugby.py`: 8+ reglas específicas de rugby
-  - `sports/tennis.py`, `football.py`, `basketball.py`: En desarrollo
-- **Return Estandarizado**: `[winner_side, point_diff]` compatible con Process 1
+  - `process2/sports/football.py`: 11 fórmulas específicas de fútbol implementadas
+  - `process2/sports/handball.py`: En desarrollo
+  - `process2/sports/rugby.py`: En desarrollo
+  - `process2/sports/tennis.py`, `basketball.py`: En desarrollo
+- **Variables Deportivas**: Cálculo en memoria de variables específicas por deporte
+  - **Fútbol**: β, ζ, γ, δ, ε calculadas a partir de var_one, var_x, var_two
+- **Return Estandarizado**: `(winner_side, point_diff)` compatible con Process 1
 - **Integración Dual**: Orchestrador ejecuta ambos procesos y compara resultados
 
 #### **🎯 Dual Process Integration:**
 - **Prediction Engine**: `prediction_engine.py` orquesta ambos procesos
-- **Comparison Logic**: Prioridad en `winner_side`, tolerancia en `point_diff` por deporte
-- **Enhanced Messages**: Reportes separados + veredicto final (AGREE/DISAGREE)
+- **Comparison Logic**: Prioridad en `winner_side`, tolerancia en `point_diff`
+- **Enhanced Messages**: Reportes separados + veredicto final (AGREE/DISAGREE/PARTIAL/ERROR)
 - **Failure Handling**: Ambos reportes enviados cuando hay desacuerdo o fallas
-- **Estado**: 🟡 **EN DESARROLLO ACTIVO - ARQUITECTURA DUAL PROCESS**
+- **Estado**: 🟢 **IMPLEMENTADO Y FUNCIONANDO - SISTEMA DUAL PROCESS COMPLETO**
+
+#### **📊 Fórmulas de Fútbol Implementadas:**
+- **Empateγδ**: γ=0 y δ≥0, δ abs ≤ 0.1 → Empate
+- **Empateεζ**: ε=0, ζ abs ≤ 0.1 → Empate
+- **Gana Localγδ**: γ=δ o diferencia abs≤0.12, ε≤1.15 → Gana Local
+- **Gana Localγδ_var_two**: γ=δ o diferencia abs≤0.12, ε≤1.15, var_two=0 → Gana Local
+- **Gana Localγδζ**: γ=δ o diferencia abs≤0.1, ε≤1.15, var_two≥0, var_two≤0.05, ζ=0 → Gana Local
+- **Gana localεζ**: ε=0, ζ>1, ζ<2 → Gana Local
+- **Gana Visitaγδε**: abs(γ+δ)=ε → Gana Visita
+- **Gana Visitaγδ_var_two**: γ=δ o diferencia abs≤0.1, var_one=0 → Gana Visita
+- **Gana Visitaγδ**: γ=δ con diferencia abs≤0.1, abs(β+γ)=ε → Gana Visita
+- **Gana visitaεζ**: ε=0, ζ < 1 → Gana Visita
+- **ENA Localγδ**: γ=abs ≥ 0, γ ≤0.1, δ≥0.01, δ≤0.04 → ENA (No Aplica)
 
 ### ✅ **Sistema de Notificaciones Inteligentes (v1.0)**
 - **Telegram Bot**: Notificaciones automáticas en tiempo real
@@ -280,11 +296,13 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 
 ### **Componentes Principales**
 - **`main.py`**: Punto de entrada y CLI
-- **`scheduler.py`**: Programación de trabajos con lógica optimizada
-- **`process1_engine.py`**: Motor de predicciones basado en patrones históricos (Process 1)
-- **`process2_engine.py`**: Motor de reglas específicas por deporte (Process 2)
+- **`scheduler.py`**: Programación de trabajos con lógica optimizada y dual process integration
+- **`alert_engine.py`**: Motor de predicciones basado en patrones históricos (Process 1)
+- **`process2/`**: Sistema modular de reglas específicas por deporte (Process 2)
+  - **`process2_engine.py`**: Motor principal de Process 2
+  - **`sports/football.py`**: 11 fórmulas específicas de fútbol implementadas
+  - **`sports/`**: Módulos para otros deportes (en desarrollo)
 - **`prediction_engine.py`**: Orchestrador dual process con lógica de comparación
-- **`sports/`**: Módulos específicos por deporte (handball, rugby, tennis, etc.)
 - **`alert_system.py`**: Sistema de notificaciones Telegram con reportes duales
 - **`database.py`**: Gestión de base de datos
 - **`repository.py`**: Acceso a datos optimizado
@@ -315,19 +333,21 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 - **Logging**: Registro detallado de todas las operaciones
 - **Recuperación**: Reinicio automático en caso de errores críticos
 
-## 🎉 **¡Listo para Producción - Sistema Inteligente!**
+## 🎉 **¡Listo para Producción - Sistema Dual Process Inteligente!**
 
 El sistema está **completamente funcional**, **optimizado** y **listo para producción**:
-- ✅ Predicciones basadas en patrones históricos
-- ✅ Notificaciones Telegram con lógica inteligente
-- ✅ Descubrimiento automático cada 2 horas
-- ✅ Extracción de odds solo en momentos clave
-- ✅ Sistema de notificaciones optimizado
-- ✅ Recolección de resultados programada
-- ✅ Manejo robusto de errores
-- ✅ Monitoreo 24/7 eficiente
+- ✅ **Process 1**: Predicciones basadas en patrones históricos
+- ✅ **Process 2**: Sistema de reglas específicas por deporte (fútbol implementado)
+- ✅ **Dual Process**: Orchestrador que compara ambos procesos
+- ✅ **Notificaciones Telegram**: Reportes duales con veredicto final
+- ✅ **Descubrimiento automático**: Cada 2 horas
+- ✅ **Extracción de odds**: Solo en momentos clave
+- ✅ **Sistema de notificaciones**: Optimizado con lógica dual
+- ✅ **Recolección de resultados**: Programada
+- ✅ **Manejo robusto de errores**: Con fallback a Process 1
+- ✅ **Monitoreo 24/7**: Eficiente y estable
 
-**¡Tu sistema inteligente de SofaScore está optimizado y funcionando perfectamente!** 🚀⚽🧠
+**¡Tu sistema dual process inteligente de SofaScore está optimizado y funcionando perfectamente!** 🚀⚽🧠🔬
 
 ## 🔧 **Fixes Críticos Aplicados y Desplegados**
 
@@ -361,19 +381,28 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - **Resultado**: Sistema más robusto y eficiente con control total sobre corrección de timestamps
 
 ### **Despliegue Exitoso**
-- ✅ **Sistema v1.2.6 desplegado** en producción (22/12/2024)
+- ✅ **Sistema v1.3.0 desplegado** en producción (26/09/2025)
 - ✅ **Base de datos actualizada** con computed columns y materialized views
 - ✅ **Timing fix aplicado**: Midnight job movido a 04:00
 - ✅ **Variation Differences Display**: Feature avanzado implementado
 - ✅ **Sistema de Corrección de Timestamps**: Feature nuevo implementado
+- ✅ **Process 2 implementado**: Sistema de reglas específicas por deporte
+- ✅ **Dual Process System**: Orchestrador que compara Process 1 + Process 2
+- ✅ **Fórmulas de Fútbol**: 11 fórmulas específicas implementadas
+- ✅ **Notificaciones duales**: Reportes combinados con veredicto final
 - ✅ **Scripts de upsert**: `upsert_debug_results.py` para corregir eventos faltantes
-- ✅ **Notificaciones optimizadas**: UPCOMING GAMES ALERT deshabilitado, solo CANDIDATE REPORTS activos
+- ✅ **Notificaciones optimizadas**: UPCOMING GAMES ALERT deshabilitado, solo DUAL PROCESS REPORTS activos
 
 ### **Archivos Modificados**
 - `alert_engine.py`: AlertMatch dataclass actualizado con campo `var_diffs`, cálculo de diferencias con signos visibles
-- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos con signos visibles
+- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos, notificaciones duales implementadas
 - `sofascore_api.py`: Lógica de extracción de resultados mejorada, sistema de corrección de timestamps
-- `scheduler.py`: Midnight job movido a 04:00, sistema de corrección de timestamps, notificaciones UPCOMING GAMES ALERT deshabilitadas
+- `scheduler.py`: Midnight job movido a 04:00, sistema de corrección de timestamps, dual process integration
+- `prediction_engine.py`: **NUEVO** - Orchestrador dual process con lógica de comparación
+- `process2/`: **NUEVO** - Sistema modular de Process 2
+  - `process2_engine.py`: Motor principal de Process 2
+  - `sports/football.py`: 11 fórmulas específicas de fútbol implementadas
+  - `__init__.py`: Definición de boundaries y arquitectura
 - `config.py`: Variable `ENABLE_TIMESTAMP_CORRECTION` para control de corrección de timestamps
 - `repository.py`: Método `update_event_starting_time` para actualizar timestamps
 - `upsert_debug_results.py`: Script para corregir eventos faltantes

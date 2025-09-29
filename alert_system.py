@@ -45,8 +45,10 @@ class PreStartNotification:
         self.telegram_bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
         self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID', '')
         self.telegram_enabled = bool(self.telegram_bot_token and self.telegram_chat_id)
+        self.telegram_test_only = os.getenv('TEST_ONLY_MODE', 'false').lower() == 'true'
+        self.personal_chat_id = os.getenv('PERSONAL_CHAT_ID', '')
         
-        logger.info(f"Telegram notification: {'✅ Enabled' if self.telegram_enabled else '❌ Disabled'}")
+        logger.info(f"Telegram notification: {'âœ… Enabled' if self.telegram_enabled else 'âŒ Disabled'}")
         if not self.telegram_enabled:
             logger.warning("Telegram not configured. Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to .env file")
     
@@ -61,6 +63,9 @@ class PreStartNotification:
                 'parse_mode': 'HTML'
             }
             
+            if self.telegram_test_only:
+                data['chat_id'] = self.personal_chat_id
+                
             response = requests.post(url, data=data, timeout=10)
             if response.status_code == 200:
                 logger.info("Telegram notification sent successfully")
@@ -124,28 +129,28 @@ class PreStartNotification:
         message = f"{header}\n\n"
         
         # Event information
-        message += f"🏆 {participants}\n"
+        message += f"🏆 {report_data.get('event_id', 'Unknown')} {participants}\n"
                 
         # Current event data
         message += f"📈 Current Variations:\n"
-        message += f"   {vars_display}\n\n"
+        message += f"{vars_display}\n\n"
         
         message += f"💰 Current Odds:\n"
-        message += f"   {odds_display}\n\n"
+        message += f"{odds_display}\n\n"
         
         # Candidate summary with new logic
         total_candidates_found = tier1_count + tier2_count
         non_symmetrical_count = report_data.get('non_symmetrical_candidates', 0)
         
         message += f"🔍 Candidate Summary:\n"
-        message += f"   • Tier 1 (exact): {tier1_count} candidates\n"
-        message += f"   • Tier 2 (similar): {tier2_count} candidates"
+        message += f"• Tier 1 (exact): {tier1_count} candidates\n"
+        message += f"• Tier 2 (similar): {tier2_count} candidates"
         if non_symmetrical_count > 0:
             message += f" ({non_symmetrical_count} non-symmetrical filtered out)"
         message += f"\n"
-        message += f"   • Selected tier: {selected_tier}\n"
-        message += f"   • Successful: {successful_candidates}/{total_candidates} candidates\n"
-        message += f"   • Confidence: {primary_confidence}\n\n"
+        message += f"• Selected tier: {selected_tier}\n"
+        message += f"• Successful: {successful_candidates}/{total_candidates} candidates\n"
+        message += f"• Confidence: {primary_confidence}\n\n"
         
         # Add rule activations summary
         rule_activations = report_data.get('rule_activations', {})
@@ -154,20 +159,20 @@ class PreStartNotification:
         
         # Show candidates from all available tiers
         if tier1_count > 0:
-            message += self._format_tier_candidates("🎯", "Tier 1 - Exact Variations", 
+            message += self._format_tier_candidates("🎯", "Exact Vars", 
                                                  tier1_count, tier1_data.get('matches', []), has_draw_odds)
         if tier2_count > 0:
             # Always show ALL Tier 2 candidates with symmetrical status indicators
-            message += self._format_tier_candidates("📊", "Tier 2 - Similar Variations", 
+            message += self._format_tier_candidates("📊", "Similar Vars", 
                                                  tier2_count, tier2_data.get('matches', []), has_draw_odds)
         
         # Primary prediction
         if primary_prediction:
-            message += f"🎯 Primary Prediction: {primary_prediction}\n"
+            message += f"🎯: {primary_prediction}\n"
         elif status == 'partial':
-            message += f"⚠️ Partial prediction: No consistent patterns found, need at least 2 candidates\n"
+            message += f"⚠️ Need at least 2 candidates\n"
         else:
-            message += f"❌ No Prediction: No consistent patterns found\n"
+            message += f"❌ No Prediction\n"
         
         return message
     
@@ -185,16 +190,16 @@ class PreStartNotification:
                 else:
                     symmetry_status = " ❌ (unsymmetrical)"
             
-            message += f"\n   {i}. {match['participants']}:\n"
-            message += f"      Result: {match['result_text']}{symmetry_status}\n"
-            message += f"      Competition: {match.get('competition', 'Unknown')}\n"
-            message += f"      Variations: {var_display}\n"
+            message += f"\n{i}. {match['participants']} ({match.get('competition', 'Unknown')}):\n"
+            message += f"R: {match['result_text']}{symmetry_status}\n"  
+            message += f"Δ: {var_display}\n"
             
             # Add variation differences for Tier 2 candidates (similar matches)
             var_diffs = match.get('var_diffs')
             if var_diffs:
                 diff_display = self._format_variation_differences(var_diffs, has_draw_odds)
-                message += f"      Differences: {diff_display}\n"
+                message += f"Diff: {diff_display}\n"
+                message += f"L1: {match.get('distance_l1', 'N/A')}\n"
             
             # DEBUG: Log candidate info
             candidate_event_id = match.get('event_id')
@@ -206,7 +211,7 @@ class PreStartNotification:
             logger.info(f"🔍 DEBUG: Sport info result for candidate {i}: '{sport_info}'")
             
             if sport_info:
-                message += f"      {sport_info}\n"
+                message += f"{sport_info}\n"
                 logger.info(f"🔍 DEBUG: Added sport info to message for candidate {i}")
             else:
                 logger.info(f"🔍 DEBUG: No sport info to add for candidate {i}")
@@ -340,11 +345,11 @@ class PreStartNotification:
                 # Add Process 1 content with proper indentation
                 for line in process1_content.split('\n'):
                     if line.strip():  # Skip empty lines
-                        message += f"   {line}\n"
+                        message += f"{line}\n"
                     else:
                         message += "\n"
             else:
-                message += f"   ❌ No Process 1 report available ({dual_report.process1_status})\n"
+                message += f"❌ No Process 1 report available ({dual_report.process1_status})\n"
             
             # Process 2 Results - DETAILED DEBUG
             message += f"\n🧪 Process 2 (Sport Formulas):\n"
@@ -452,7 +457,3 @@ class PreStartNotification:
 # Global notification instance
 pre_start_notifier = PreStartNotification()
 
-# PROCESS 1 END BOUNDARY
-# ======================
-# Process 1 notification system ends here.
-# Process 2 notifications will be implemented with clear boundaries.

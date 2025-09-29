@@ -24,7 +24,7 @@ tests/
 
 # deployment
 
-
+clean_scp/
 MIGRATION_GUIDE.md
 deploy_direct.sh
 deploy.sh

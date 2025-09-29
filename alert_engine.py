@@ -45,7 +45,8 @@ logger = logging.getLogger(__name__)
 # Constants
 RULE_WEIGHTS = {'A': 4, 'B': 3, 'C': 2}
 MAX_WEIGHT = 4
-TIER2_TOLERANCE = 0.040001  # Slightly higher to handle floating point precision
+TIER2_TOLERANCE = 0.040001  # Slightly higher to handle floating point precision (legacy component-based)
+L1_TAU_DEFAULT = 0.12  # Default L1 distance threshold for similarity search
 MIN_SAMPLES = 1
 
 WINNER_NAMES = {
@@ -76,6 +77,8 @@ class AlertMatch:
     competition: str = 'Unknown'  # Competition/tournament name
     # Variation differences from current event (for display purposes)
     var_diffs: Optional[Dict[str, float]] = None  # {'d1': 0.02, 'dx': 0.01, 'd2': 0.02}
+    # L1 distance from current event (for L1-based similarity search)
+    distance_l1: Optional[float] = None  # Sum of absolute differences: |Δvar_one| + |Δvar_x| + |Δvar_two|
 
 @dataclass
 class AlertPrediction:
@@ -178,18 +181,20 @@ class AlertEngine:
         tier1_event_ids = [candidate.event_id for candidate in tier1_candidates]
         tier1_event_ids.append(current_event_id)  # Also exclude current event from Tier 2
         
-        tier2_candidates = self._find_tier2_candidates(
+        # Use L1 distance-based similarity search instead of component-based tolerance
+        tier2_candidates = self._find_l1_similar_candidates(
             sport=event.sport,
             var_shape=var_shape,
             cur_v1=cur_v1,
             cur_vx=cur_vx,
             cur_v2=cur_v2,
-            exclude_event_ids=tier1_event_ids
+            exclude_event_ids=tier1_event_ids,
+            tau=L1_TAU_DEFAULT
         )
         
         # Log candidate findings
         logger.info(f"Found {len(tier1_candidates)} Tier 1 (exact) candidates for event {event.id}")
-        logger.info(f"Found {len(tier2_candidates)} Tier 2 (similar) candidates for event {event.id}")
+        logger.info(f"Found {len(tier2_candidates)} Tier 2 (L1-similar, τ={L1_TAU_DEFAULT}) candidates for event {event.id}")
         
         # Create comprehensive candidate report
         if tier1_candidates or tier2_candidates:
@@ -221,6 +226,100 @@ class AlertEngine:
             logger.error(f"Error getting variations for event {event_id}: {e}")
             return None
     
+    def _get_event_sport(self, event_id: int) -> Optional[str]:
+        """Get sport for an event from mv_alert_events"""
+        try:
+            with db_manager.get_session() as session:
+                from sqlalchemy import text
+                result = session.execute(
+                    text("SELECT sport FROM mv_alert_events WHERE event_id = :event_id LIMIT 1"),
+                    {'event_id': event_id}
+                )
+                row = result.fetchone()
+                return row.sport if row else None
+                
+        except Exception as e:
+            logger.error(f"Error getting sport for event {event_id}: {e}")
+            return None
+    
+    def _process_l1_candidates(self, candidates, cur_v1: float, cur_vx: Optional[float], 
+                              cur_v2: float, tau: float, sport: str, 
+                              max_candidates: int) -> List[AlertMatch]:
+        """Process candidates with L1 distance calculation and filtering"""
+        matches = []
+        
+        for row in candidates:
+            # Calculate L1 distance
+            cand_v1 = float(row.var_one)
+            cand_vx = float(row.var_x) if row.var_x is not None else None
+            cand_v2 = float(row.var_two)
+            
+            # Calculate component differences
+            dx_1 = abs(cand_v1 - cur_v1)
+            dx_x = abs((0.0 if cand_vx is None else cand_vx) - (0.0 if cur_vx is None else cur_vx))
+            dx_2 = abs(cand_v2 - cur_v2)
+            
+            # Calculate L1 distance
+            dist_l1 = dx_1 + dx_x + dx_2
+            dist_l1 = round(dist_l1, 6)  # Round to avoid floating point precision issues
+            
+            # Apply L1 threshold filter
+            if dist_l1 <= tau:
+                # Calculate signed differences for display (reusing existing logic)
+                d1_diff_signed = cand_v1 - cur_v1
+                d2_diff_signed = cand_v2 - cur_v2
+                dx_diff_signed = (cand_vx if cand_vx is not None else 0.0) - (cur_vx if cur_vx is not None else 0.0)
+                
+                var_diffs = {
+                    'd1': round(d1_diff_signed, 3),
+                    'd2': round(d2_diff_signed, 3),
+                    'dx': round(dx_diff_signed, 3) if cur_vx is not None or cand_vx is not None else None
+                }
+                
+                # Check symmetry for Tennis sports (reuse existing logic)
+                is_symmetrical = True  # Default for non-Tennis sports
+                if sport.lower() == 'tennis':
+                    is_symmetrical = self._check_symmetrical_variations(
+                        cur_v1, cur_vx, cur_v2,
+                        cand_v1, cand_vx, cand_v2
+                    )
+                
+                # Log match details
+                dx_display = f"{cand_vx:.2f}" if cand_vx is not None else "NULL"
+                dx_diff_display = f"{var_diffs['dx']:.3f}" if var_diffs['dx'] is not None else "0.000"
+                symmetry_status = "SYMMETRICAL" if is_symmetrical else "UNSYMMETRICAL"
+                logger.info(
+                    f"L1 MATCH: event_id={row.event_id} vars=(d1={cand_v1:.2f}, dx={dx_display}, d2={cand_v2:.2f}) "
+                    f"| diffs=(d1={var_diffs['d1']:+.3f}, dx={dx_diff_display}, d2={var_diffs['d2']:+.3f}) "
+                    f"| L1={dist_l1:.4f} | {symmetry_status} | result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
+                )
+                
+                matches.append(AlertMatch(
+                    event_id=row.event_id,
+                    participants=row.participants,
+                    result_text=row.result_text,
+                    winner_side=row.winner_side,
+                    point_diff=row.point_diff,
+                    var_one=cand_v1,
+                    var_x=cand_vx,
+                    var_two=cand_v2,
+                    sport=sport,
+                    is_symmetrical=is_symmetrical,  # Apply sport-specific symmetry logic
+                    competition=row.competition or 'Unknown',
+                    var_diffs=var_diffs,
+                    distance_l1=dist_l1
+                ))
+        
+        # Sort by L1 distance (ascending) and then by component differences for stability
+        matches.sort(key=lambda m: (m.distance_l1, abs(m.var_diffs['d1']), abs(m.var_diffs['d2'])))
+        
+        # Limit results
+        if len(matches) > max_candidates:
+            logger.info(f"Limiting L1 results to top {max_candidates} closest matches")
+            matches = matches[:max_candidates]
+        
+        return matches
+    
     def _find_tier1_candidates(self, sport: str, var_shape: bool, 
                                cur_v1: float, cur_vx: Optional[float], 
                                cur_v2: float, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
@@ -234,6 +333,142 @@ class AlertEngine:
         """Find historical events with SIMILAR variations (within ±0.04 tolerance, inclusive)"""
         return self._find_candidates(sport, var_shape, cur_v1, cur_vx, cur_v2, 
                                    is_exact=False, exclude_event_ids=exclude_event_ids)
+    
+    def _find_l1_similar_candidates(self, sport: str, var_shape: bool, 
+                                   cur_v1: float, cur_vx: Optional[float], 
+                                   cur_v2: float, exclude_event_ids: List[int] = None,
+                                   tau: float = L1_TAU_DEFAULT) -> List[AlertMatch]:
+        """Find historical events with SIMILAR variations using L1 distance threshold"""
+        try:
+            with db_manager.get_session() as session:
+                from sqlalchemy import text
+                
+                logger.info(f"Searching for L1 similar variations (τ={tau})...")
+                dx_display = f"{cur_vx:.2f}" if cur_vx is not None else "NULL"
+                logger.info(f"Current variations: d1={cur_v1:.2f}, dx={dx_display}, d2={cur_v2:.2f}")
+                
+                if exclude_event_ids:
+                    logger.info(f"Excluding {len(exclude_event_ids)} event IDs: {exclude_event_ids}")
+                
+                # Build SQL query for L∞ box prefilter
+                sql_query, params = self._build_l1_prefilter_sql(
+                    sport=sport,
+                    var_shape=var_shape,
+                    cur_v1=cur_v1,
+                    cur_vx=cur_vx,
+                    cur_v2=cur_v2,
+                    tau=tau,
+                    by_shape=True,  # Use same var_shape for consistency with existing logic
+                    exclude_event_ids=exclude_event_ids,
+                    max_candidates=500
+                )
+                
+                result = session.execute(text(sql_query), params)
+                candidates = result.fetchall()
+                
+                logger.info(f"Found {len(candidates)} L1-similar candidates")
+                
+                # Process matches with L1 distance calculation
+                matches = self._process_l1_candidates(
+                    candidates=candidates,
+                    cur_v1=cur_v1,
+                    cur_vx=cur_vx,
+                    cur_v2=cur_v2,
+                    tau=tau,
+                    sport=sport,
+                    max_candidates=500
+                )
+                
+                if matches:
+                    logger.info(f"SUCCESS: Found {len(matches)} L1-similar matches")
+                else:
+                    logger.info(f"No L1-similar matches found")
+                
+                return matches
+                
+        except Exception as e:
+            logger.error(f"Error finding L1-similar historical matches: {e}")
+            return []
+
+    def find_similar_by_l1(self, event_id: int, tau: float = L1_TAU_DEFAULT, by_shape: bool = True, 
+                          max_candidates: int = 500) -> List[AlertMatch]:
+        """
+        Find historical events with similar variations using L1 distance.
+        
+        Returns events from the same sport (and optionally same var_shape) whose
+        L1 distance = |Δvar_one| + |Δvar_x| + |Δvar_two| is <= tau from the current event.
+        Supports var_x = NULL by imputing 0 only if by_shape=False; if by_shape=True, doesn't mix shapes.
+        
+        Args:
+            event_id: Current event ID to find similar events for
+            tau: L1 distance threshold (default 0.12)
+            by_shape: If True, only search within same var_shape (recommended)
+            max_candidates: Maximum candidates to return after L1 filtering
+            
+        Returns:
+            List of AlertMatch objects with distance_l1 field populated, sorted by L1 distance
+        """
+        # Get variations for the current event
+        current_vars = self._get_event_variations(event_id)
+        if not current_vars:
+            logger.debug(f"No variations found for event {event_id}")
+            return []
+            
+        cur_v1, cur_vx, cur_v2, var_shape = current_vars
+        # Convert Decimal to float for calculations
+        cur_v1 = float(cur_v1 or 0)
+        cur_vx = float(cur_vx) if cur_vx is not None else None
+        cur_v2 = float(cur_v2 or 0)
+        
+        # Get sport for the current event
+        sport = self._get_event_sport(event_id)
+        if not sport:
+            logger.error(f"Could not determine sport for event {event_id}")
+            return []
+            
+        logger.info(f"🔍 L1 search: event {event_id}, sport={sport}, τ={tau}, by_shape={by_shape}")
+        dx_display = f"{cur_vx:.2f}" if cur_vx is not None else "NULL"
+        logger.info(f"Current variations: d1={cur_v1:.2f}, dx={dx_display}, d2={cur_v2:.2f}, shape={'3-way' if var_shape else 'no-draw'}")
+        
+        try:
+            with db_manager.get_session() as session:
+                from sqlalchemy import text
+                
+                # Build SQL query for L∞ box prefilter
+                sql_query, params = self._build_l1_prefilter_sql(
+                    sport=sport,
+                    var_shape=var_shape,
+                    cur_v1=cur_v1,
+                    cur_vx=cur_vx,
+                    cur_v2=cur_v2,
+                    tau=tau,
+                    by_shape=by_shape,
+                    exclude_event_ids=[event_id],
+                    max_candidates=max_candidates * 2  # Get more candidates for L1 filtering
+                )
+                
+                result = session.execute(text(sql_query), params)
+                candidates = result.fetchall()
+                
+                logger.info(f"L∞ prefilter found {len(candidates)} candidates")
+                
+                # Apply L1 distance calculation and final filtering
+                l1_matches = self._process_l1_candidates(
+                    candidates=candidates,
+                    cur_v1=cur_v1,
+                    cur_vx=cur_vx,
+                    cur_v2=cur_v2,
+                    tau=tau,
+                    sport=sport,
+                    max_candidates=max_candidates
+                )
+                
+                logger.info(f"L1 filtering found {len(l1_matches)} matches (τ={tau})")
+                return l1_matches
+                
+        except Exception as e:
+            logger.error(f"Error in L1 similarity search for event {event_id}: {e}")
+            return []
     
     def _find_candidates(self, sport: str, var_shape: bool, cur_v1: float, 
                         cur_vx: Optional[float], cur_v2: float, is_exact: bool, 
@@ -278,6 +513,72 @@ class AlertEngine:
             logger.error(f"Error finding {error_type} historical matches: {e}")
             return []
     
+    def _build_l1_prefilter_sql(self, sport: str, var_shape: bool, cur_v1: float,
+                              cur_vx: Optional[float], cur_v2: float, tau: float,
+                              by_shape: bool = True, exclude_event_ids: List[int] = None,
+                              max_candidates: int = 500) -> Tuple[str, Dict]:
+        """Build SQL query for L1 distance prefiltering using L∞ box constraints"""
+        # Build exclusion clause
+        exclude_clause = ""
+        if exclude_event_ids:
+            exclude_ids_str = ','.join(map(str, exclude_event_ids))
+            exclude_clause = f" AND event_id NOT IN ({exclude_ids_str})"
+        
+        # Base parameters
+        params = {
+            'sport': sport,
+            'tau': tau,
+            'cur_v1': cur_v1,
+            'cur_v2': cur_v2,
+            'max_candidates': max_candidates
+        }
+        
+        # Build var_shape condition
+        var_shape_condition = ""
+        if by_shape:
+            params['var_shape'] = var_shape
+            var_shape_condition = "AND var_shape = :var_shape"
+        
+        # Build variation conditions for L∞ box prefilter
+        if cur_vx is None:
+            # No-draw sports (Tennis, etc.)
+            if by_shape:
+                var_conditions = "ABS(var_one - :cur_v1) <= :tau AND ABS(var_two - :cur_v2) <= :tau AND var_x IS NULL"
+            else:
+                # Allow mixing with 3-way sports when by_shape=False
+                var_conditions = "ABS(var_one - :cur_v1) <= :tau AND ABS(var_two - :cur_v2) <= :tau"
+        else:
+            # 3-way sports (Football, etc.)
+            params['cur_vx'] = cur_vx
+            if by_shape:
+                var_conditions = "ABS(var_one - :cur_v1) <= :tau AND ABS(var_two - :cur_v2) <= :tau AND var_x IS NOT NULL AND ABS(var_x - :cur_vx) <= :tau"
+            else:
+                # Allow mixing with no-draw sports when by_shape=False
+                var_conditions = "ABS(var_one - :cur_v1) <= :tau AND ABS(var_two - :cur_v2) <= :tau AND (var_x IS NULL OR ABS(var_x - :cur_vx) <= :tau)"
+        
+        # Build SQL with ordering for better candidate selection
+        # Handle cur_vx parameter properly for ordering
+        if cur_vx is None:
+            # For no-draw sports, don't use cur_vx in ORDER BY
+            order_by_clause = "(ABS(var_one - :cur_v1) + ABS(var_two - :cur_v2))"
+        else:
+            # For 3-way sports, include cur_vx in ORDER BY
+            order_by_clause = "(ABS(var_one - :cur_v1) + ABS(var_two - :cur_v2) + ABS(COALESCE(var_x, 0) - COALESCE(:cur_vx, 0)))"
+        
+        sql = f"""
+                    SELECT event_id, participants, result_text, winner_side, point_diff,
+                           var_one, var_x, var_two, competition
+                    FROM mv_alert_events
+                    WHERE sport = :sport
+                      {var_shape_condition}
+                      AND {var_conditions}
+                      {exclude_clause}
+                    ORDER BY {order_by_clause}
+                    LIMIT :max_candidates
+        """
+        
+        return sql, params
+
     def _build_candidate_sql(self, sport: str, var_shape: bool, cur_v1: float, 
                            cur_vx: Optional[float], cur_v2: float, is_exact: bool, 
                            exclude_event_ids: List[int] = None) -> Tuple[str, Dict]:
@@ -1086,7 +1387,8 @@ class AlertEngine:
                     'var_x': match.var_x,
                     'var_two': match.var_two
                 },
-                'var_diffs': match.var_diffs
+                'var_diffs': match.var_diffs,
+                'distance_l1': match.distance_l1  # Include L1 distance for L1-based matches
             }
             for match in candidates
         ]
