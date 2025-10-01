@@ -138,9 +138,9 @@ class PreStartNotification:
         total_candidates_found = tier1_count + tier2_count
         non_symmetrical_count = report_data.get('non_symmetrical_candidates', 0)
         
-        message += f"🔍 Candidate Summary:\n"
-        message += f"• Tier 1 (exact): {tier1_count} candidates\n"
-        message += f"• Tier 2 (similar): {tier2_count} candidates"
+        message += f"🔍Summary:\n"
+        message += f"• T1 (exact): {tier1_count}\n"
+        message += f"• T2 (similar): {tier2_count}"
         if non_symmetrical_count > 0:
             message += f" ({non_symmetrical_count} non-symmetrical filtered out)"
         message += f"\n"
@@ -184,7 +184,7 @@ class PreStartNotification:
                 if match['is_symmetrical']:
                     symmetry_status = " ✅"
                 else:
-                    symmetry_status = " ❌ (unsymmetrical)"
+                    symmetry_status = " ❌"
             
             message += f"\n{i}. {match['participants']} ({match.get('competition', 'Unknown')}):\n"
             message += f"R: {match['result_text']}{symmetry_status}\n"  
@@ -301,26 +301,28 @@ class PreStartNotification:
             
             # Add sport with emoji and competition
             if dual_report.sport == 'Football':
-                message += f"⚽ {dual_report.sport} ({competition})"
+                message += f"⚽({competition})"
             elif dual_report.sport == 'Basketball':
-                message += f"🏀 {dual_report.sport} ({competition})"
+                message += f"🏀({competition})"
             elif dual_report.sport == 'Tennis':
-                message += f"🎾 {dual_report.sport} ({competition})"
+                message += f"🎾({competition})"
             elif dual_report.sport == 'Hockey':
-                message += f"🏒 {dual_report.sport} ({competition})"
+                message += f"🏒({competition})"
             elif dual_report.sport == 'Baseball':
-                message += f"⚾ {dual_report.sport} ({competition})"
+                message += f"⚾({competition})"
             elif dual_report.sport == 'Handball':
                 message += f"🤼 {dual_report.sport} ({competition})"
             elif dual_report.sport == 'Rugby':
-                message += f"🏉 {dual_report.sport} ({competition})"
+                message += f"🏉({competition})"
+            elif dual_report.sport == 'American Football':
+                message += f"🏈({competition})"
             elif dual_report.sport == 'Volleyball':
-                message += f"🏐 {dual_report.sport} ({competition})"
+                message += f"🏐({competition})"
             else:
                 message += f"🏟️ {dual_report.sport} ({competition})"
             
             if dual_report.minutes_until_start is not None:
-                message += f"\n🕒 Game starting in {dual_report.minutes_until_start} minutes"
+                message += f"\n🕒 starting in {dual_report.minutes_until_start} minutes"
             message += "\n"
             
             # Process 1 Results - COMPLETE REPORT (reusing existing format)
@@ -385,7 +387,7 @@ class PreStartNotification:
                 message += f"❌ No prediction ({dual_report.process2_status})\n"
             
             # Final Verdict - ENHANCED
-            message += f"\n🎯 Final Verdict: {dual_report.verdict.value}\n"
+            message += f"\nFinal Verdict: {dual_report.verdict.value}\n"
             message += f"📝 {dual_report.agreement_details}\n"
             
             if dual_report.final_prediction:
@@ -395,11 +397,7 @@ class PreStartNotification:
                     message += f"🏆 Final Prediction: {winner_text}\n"
                 else:
                     message += f"🏆 Final Prediction: {winner_text} wins\n"
-            
-            # Debug summary
-            message += f"\n🔍 Debug Summary:\n"
-            message += f"Process 1 Status: {dual_report.process1_status}\n"
-            message += f"Process 2 Status: {dual_report.process2_status}"
+            message += f"date: {dual_report.date}\n"
             return message
             
         except Exception as e:

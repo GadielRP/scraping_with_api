@@ -66,7 +66,10 @@ db-init/local.backup.dump.gz
 01-restore.sh
 
 
-
+# csv for telegram predictions
+.last_processed_id
+predictions_*.csv
+parse_telegram_predictions.py
 
 
 
