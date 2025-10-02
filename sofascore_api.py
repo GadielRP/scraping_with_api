@@ -155,7 +155,7 @@ class SofaScoreAPI:
         logger.info(f"Fetching final odds for event {slug} using dedicated endpoint")
         return self._make_request(f"/event/{id}/odds/1/all")
     
-    def get_event_results(self, event_id: int, update_time: bool = False) -> Optional[Dict]:
+    def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False) -> Optional[Dict]:
         """ 
         Fetch event results from /event/{id} endpoint.
         Returns structured result data ready for database upsert.
@@ -168,6 +168,11 @@ class SofaScoreAPI:
             if not response:
                 logger.warning(f"No response received for event {event_id}")
                 return None
+
+            if update_court_type:
+                from sport_observations import sport_observations_manager
+                return sport_observations_manager.extract_tennis_ground_type(event_id, response)
+                        
             if update_time:
                 event_data = response.get('event', {})
                 # SofaScore uses 'startTimestamp' (camelCase), not 'startTimeStamp'
@@ -183,6 +188,7 @@ class SofaScoreAPI:
             logger.error(f"Error fetching event results for {event_id}: {e}")
             return None
     
+
     def extract_results_from_response(self, response: Dict) -> Optional[Dict]:
         """
         Extract results data from event API response.

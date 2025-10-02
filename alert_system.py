@@ -102,11 +102,10 @@ class PreStartNotification:
         participants = report_data.get('participants', 'Unknown vs Unknown')
         
         status = report_data.get('status', 'unknown')
-        selected_tier = report_data.get('selected_tier', 'Unknown')
+        
         primary_prediction = report_data.get('primary_prediction')
-        primary_confidence = report_data.get('primary_confidence')
-        successful_candidates = report_data.get('successful_candidates', 0)
-        total_candidates = report_data.get('total_candidates', 0)
+        
+        
         odds_display = report_data.get('odds_display', 'Not available')
         vars_display = report_data.get('vars_display', 'Not available')
         has_draw_odds = report_data.get('has_draw_odds', False)
@@ -144,9 +143,9 @@ class PreStartNotification:
         if non_symmetrical_count > 0:
             message += f" ({non_symmetrical_count} non-symmetrical filtered out)"
         message += f"\n"
-        message += f"• Selected tier: {selected_tier}\n"
-        message += f"• Successful: {successful_candidates}/{total_candidates} candidates\n"
-        message += f"• Confidence: {primary_confidence}\n\n"
+        
+        
+        
         
         # Add rule activations summary
         rule_activations = report_data.get('rule_activations', {})
@@ -322,7 +321,12 @@ class PreStartNotification:
                 message += f"🏟️ {dual_report.sport} ({competition})"
             
             if dual_report.minutes_until_start is not None:
-                message += f"\n🕒 starting in {dual_report.minutes_until_start} minutes"
+                message += f"\n🕒 {dual_report.minutes_until_start} min."
+            
+            # Add court type observation for Tennis/Tennis Doubles events
+            if dual_report.sport in ['Tennis', 'Tennis Doubles'] and dual_report.court_type:
+                message += f"\n📢Obs: {dual_report.court_type}"
+            
             message += "\n"
             
             # Process 1 Results - COMPLETE REPORT (reusing existing format)
@@ -397,7 +401,7 @@ class PreStartNotification:
                     message += f"🏆 Final Prediction: {winner_text}\n"
                 else:
                     message += f"🏆 Final Prediction: {winner_text} wins\n"
-            message += f"date: {dual_report.date}\n"
+            
             return message
             
         except Exception as e:

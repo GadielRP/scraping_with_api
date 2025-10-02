@@ -79,6 +79,8 @@ class AlertMatch:
     var_diffs: Optional[Dict[str, float]] = None  # {'d1': 0.02, 'dx': 0.01, 'd2': 0.02}
     # L1 distance from current event (for L1-based similarity search)
     distance_l1: Optional[float] = None  # Sum of absolute differences: |Δvar_one| + |Δvar_x| + |Δvar_two|
+    # Court type for Tennis events (for filtering by playing surface)
+    court_type: Optional[str] = None  # "Hardcourt indoor", "Red clay", "Grass", etc.
 
 @dataclass
 class AlertPrediction:
@@ -127,7 +129,7 @@ class AlertEngine:
         Returns list of alert dictionaries.
         
         Args:
-            event: Event object to evaluate
+            event: Event object to evaluate (must have court_type attribute for Tennis filtering)
             minutes_until_start: Minutes until the event starts (calculated if not provided)
         """
         # Load event odds if not already loaded
@@ -196,8 +198,20 @@ class AlertEngine:
         logger.info(f"Found {len(tier1_candidates)} Tier 1 (exact) candidates for event {event.id}")
         logger.info(f"Found {len(tier2_candidates)} Tier 2 (L1-similar, τ={L1_TAU_DEFAULT}) candidates for event {event.id}")
         
+        # COURT TYPE FILTERING: Filter candidates by court type for Tennis/Tennis Doubles
+        current_court_type = getattr(event, 'court_type', None)
+        if current_court_type and event.sport in ['Tennis', 'Tennis Doubles']:
+            logger.info(f"🎾 Applying court type filter for {event.sport}: '{current_court_type}'")
+            tier1_candidates = self._filter_candidates_by_court_type(tier1_candidates, current_court_type, event.sport)
+            tier2_candidates = self._filter_candidates_by_court_type(tier2_candidates, current_court_type, event.sport)
+            logger.info(f"After court type filter: {len(tier1_candidates)} Tier 1, {len(tier2_candidates)} Tier 2 candidates")
+        
         # Create comprehensive candidate report
         if tier1_candidates or tier2_candidates:
+            # Pre-evaluate to check if we have valid candidates after filtering
+            evaluation_result = self._evaluate_candidates_with_new_logic(tier1_candidates, tier2_candidates)
+            
+            # Create report for ALL statuses (including no_candidates)
             candidate_report = self._create_candidate_report(
                 event=event,
                 tier1_candidates=tier1_candidates,
@@ -307,7 +321,8 @@ class AlertEngine:
                     is_symmetrical=is_symmetrical,  # Apply sport-specific symmetry logic
                     competition=row.competition or 'Unknown',
                     var_diffs=var_diffs,
-                    distance_l1=dist_l1
+                    distance_l1=dist_l1,
+                    court_type=getattr(row, 'court_type', None)  # Get court_type from query result
                 ))
         
         # Sort by L1 distance (ascending) and then by component differences for stability
@@ -522,7 +537,7 @@ class AlertEngine:
         exclude_clause = ""
         if exclude_event_ids:
             exclude_ids_str = ','.join(map(str, exclude_event_ids))
-            exclude_clause = f" AND event_id NOT IN ({exclude_ids_str})"
+            exclude_clause = f" AND mae.event_id NOT IN ({exclude_ids_str})"
         
         # Base parameters
         params = {
@@ -537,39 +552,42 @@ class AlertEngine:
         var_shape_condition = ""
         if by_shape:
             params['var_shape'] = var_shape
-            var_shape_condition = "AND var_shape = :var_shape"
+            var_shape_condition = "AND mae.var_shape = :var_shape"
         
         # Build variation conditions for L∞ box prefilter
         if cur_vx is None:
             # No-draw sports (Tennis, etc.)
             if by_shape:
-                var_conditions = "ABS(var_one - :cur_v1) <= :tau AND ABS(var_two - :cur_v2) <= :tau AND var_x IS NULL"
+                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tau AND ABS(mae.var_two - :cur_v2) <= :tau AND mae.var_x IS NULL"
             else:
                 # Allow mixing with 3-way sports when by_shape=False
-                var_conditions = "ABS(var_one - :cur_v1) <= :tau AND ABS(var_two - :cur_v2) <= :tau"
+                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tau AND ABS(mae.var_two - :cur_v2) <= :tau"
         else:
             # 3-way sports (Football, etc.)
             params['cur_vx'] = cur_vx
             if by_shape:
-                var_conditions = "ABS(var_one - :cur_v1) <= :tau AND ABS(var_two - :cur_v2) <= :tau AND var_x IS NOT NULL AND ABS(var_x - :cur_vx) <= :tau"
+                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tau AND ABS(mae.var_two - :cur_v2) <= :tau AND mae.var_x IS NOT NULL AND ABS(mae.var_x - :cur_vx) <= :tau"
             else:
                 # Allow mixing with no-draw sports when by_shape=False
-                var_conditions = "ABS(var_one - :cur_v1) <= :tau AND ABS(var_two - :cur_v2) <= :tau AND (var_x IS NULL OR ABS(var_x - :cur_vx) <= :tau)"
+                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tau AND ABS(mae.var_two - :cur_v2) <= :tau AND (mae.var_x IS NULL OR ABS(mae.var_x - :cur_vx) <= :tau)"
         
         # Build SQL with ordering for better candidate selection
         # Handle cur_vx parameter properly for ordering
         if cur_vx is None:
             # For no-draw sports, don't use cur_vx in ORDER BY
-            order_by_clause = "(ABS(var_one - :cur_v1) + ABS(var_two - :cur_v2))"
+            order_by_clause = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_two - :cur_v2))"
         else:
             # For 3-way sports, include cur_vx in ORDER BY
-            order_by_clause = "(ABS(var_one - :cur_v1) + ABS(var_two - :cur_v2) + ABS(COALESCE(var_x, 0) - COALESCE(:cur_vx, 0)))"
+            order_by_clause = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_two - :cur_v2) + ABS(COALESCE(mae.var_x, 0) - COALESCE(:cur_vx, 0)))"
         
         sql = f"""
-                    SELECT event_id, participants, result_text, winner_side, point_diff,
-                           var_one, var_x, var_two, competition
-                    FROM mv_alert_events
-                    WHERE sport = :sport
+                    SELECT mae.event_id, mae.participants, mae.result_text, mae.winner_side, mae.point_diff,
+                           mae.var_one, mae.var_x, mae.var_two, mae.competition,
+                           eo.observation_value as court_type
+                    FROM mv_alert_events mae
+                    LEFT JOIN event_observations eo ON mae.event_id = eo.event_id 
+                      AND eo.observation_type = 'ground_type'
+                    WHERE mae.sport = :sport
                       {var_shape_condition}
                       AND {var_conditions}
                       {exclude_clause}
@@ -587,7 +605,7 @@ class AlertEngine:
         exclude_clause = ""
         if exclude_event_ids:
             exclude_ids_str = ','.join(map(str, exclude_event_ids))
-            exclude_clause = f" AND event_id NOT IN ({exclude_ids_str})"
+            exclude_clause = f" AND mae.event_id NOT IN ({exclude_ids_str})"
         
         # Base parameters
         params = {
@@ -600,26 +618,29 @@ class AlertEngine:
         if cur_vx is None:
             # No-draw sports (Tennis, etc.)
             if is_exact:
-                var_conditions = "var_one = :cur_v1 AND var_two = :cur_v2 AND var_x IS NULL"
+                var_conditions = "mae.var_one = :cur_v1 AND mae.var_two = :cur_v2 AND mae.var_x IS NULL"
             else:
                 params['tolerance'] = self.TIER2_TOLERANCE
-                var_conditions = "ABS(var_one - :cur_v1) <= :tolerance AND ABS(var_two - :cur_v2) <= :tolerance AND var_x IS NULL"
+                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tolerance AND ABS(mae.var_two - :cur_v2) <= :tolerance AND mae.var_x IS NULL"
         else:
             # 3-way sports (Football, etc.)
             params['cur_vx'] = cur_vx
             if is_exact:
-                var_conditions = "var_one = :cur_v1 AND var_two = :cur_v2 AND var_x = :cur_vx"
+                var_conditions = "mae.var_one = :cur_v1 AND mae.var_two = :cur_v2 AND mae.var_x = :cur_vx"
             else:
                 params['tolerance'] = self.TIER2_TOLERANCE
-                var_conditions = "ABS(var_one - :cur_v1) <= :tolerance AND ABS(var_two - :cur_v2) <= :tolerance AND var_x IS NOT NULL AND ABS(var_x - :cur_vx) <= :tolerance"
+                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tolerance AND ABS(mae.var_two - :cur_v2) <= :tolerance AND mae.var_x IS NOT NULL AND ABS(mae.var_x - :cur_vx) <= :tolerance"
         
         sql = f"""
-                    SELECT event_id, participants, result_text, winner_side, point_diff,
-                           var_one, var_x, var_two, competition
-                    FROM mv_alert_events
-                    WHERE sport = :sport
-                      AND var_shape = :var_shape
-          AND {var_conditions}{exclude_clause}
+                    SELECT mae.event_id, mae.participants, mae.result_text, mae.winner_side, mae.point_diff,
+                           mae.var_one, mae.var_x, mae.var_two, mae.competition,
+                           eo.observation_value as court_type
+                    FROM mv_alert_events mae
+                    LEFT JOIN event_observations eo ON mae.event_id = eo.event_id 
+                      AND eo.observation_type = 'ground_type'
+                    WHERE mae.sport = :sport
+                      AND mae.var_shape = :var_shape
+                      AND {var_conditions}{exclude_clause}
         """
         
         return sql, params
@@ -688,7 +709,8 @@ class AlertEngine:
                 sport=sport,
                 is_symmetrical=is_symmetrical,
                 competition=row.competition or 'Unknown',
-                var_diffs=var_diffs
+                var_diffs=var_diffs,
+                court_type=getattr(row, 'court_type', None)  # Get court_type from query result
             ))
                 
         return matches
@@ -1090,6 +1112,66 @@ class AlertEngine:
             else:
                 return f"{winner_name} wins by point differential of: {point_diff}"
     
+    def _filter_candidates_by_court_type(self, candidates: List[AlertMatch], 
+                                         current_court_type: Optional[str], 
+                                         sport: str) -> List[AlertMatch]:
+        """
+        Filter candidates by court type for Tennis/Tennis Doubles events.
+        COMPLETELY FAIL-SAFE: Returns all candidates if filtering fails or if not Tennis.
+        
+        Args:
+            candidates: List of candidate matches to filter
+            current_court_type: Court type of the current upcoming event
+            sport: Sport name (e.g., 'Tennis', 'Football', etc.)
+            
+        Returns:
+            Filtered list of candidates matching the court type (or all candidates if not applicable)
+        """
+        try:
+            # Only filter for Tennis/Tennis Doubles sports
+            if sport not in ['Tennis', 'Tennis Doubles']:
+                logger.debug(f"Court type filtering not applicable for sport: {sport}")
+                return candidates
+            
+            # If no current court type provided, return all candidates (fail-safe)
+            if not current_court_type:
+                logger.info(f"🎾 No court type provided for filtering - returning all {len(candidates)} candidates")
+                return candidates
+            
+            # Filter candidates by matching court type
+            filtered_candidates = [
+                candidate for candidate in candidates 
+                if candidate.court_type == current_court_type
+            ]
+            
+            # Log filtering results
+            filtered_count = len(filtered_candidates)
+            original_count = len(candidates)
+            removed_count = original_count - filtered_count
+            
+            if removed_count > 0:
+                logger.info(f"🎾 Court type filter: '{current_court_type}' - kept {filtered_count}/{original_count} candidates ({removed_count} filtered out)")
+                
+                # Log which candidates were filtered out
+                for candidate in candidates:
+                    if candidate not in filtered_candidates:
+                        logger.info(f"   ❌ Filtered out: {candidate.participants} (court: {candidate.court_type or 'Unknown'})")
+                
+                # Log which candidates were kept (maintained)
+                if filtered_candidates:
+                    logger.info(f"🎾 Candidates that passed the court type filter:")
+                    for candidate in filtered_candidates:
+                        logger.info(f"   ✅ Kept: {candidate.participants} (court: {candidate.court_type or 'Unknown'})")
+            else:
+                logger.info(f"🎾 Court type filter: '{current_court_type}' - all {original_count} candidates match")
+            
+            return filtered_candidates
+            
+        except Exception as e:
+            logger.warning(f"Error filtering candidates by court type: {e}")
+            # FAIL-SAFE: Return all candidates on error
+            return candidates
+    
     def _check_symmetrical_variations(self, cur_v1: float, cur_vx: Optional[float], cur_v2: float,
                                     cand_v1: float, cand_vx: Optional[float], cand_v2: float) -> bool:
         """
@@ -1140,8 +1222,9 @@ class AlertEngine:
             combined_candidates.extend(tier1_candidates)
             selected_tier = "Tier 1 (exact)"
         
-        # Add symmetrical Tier 2 candidates
+        # Add Tier 2 candidates - ALWAYS apply symmetry filter
         if tier2_candidates:
+            # Apply symmetry filter to ALL Tier 2 candidates (regardless of count)
             symmetrical_tier2 = [c for c in tier2_candidates if c.is_symmetrical]
             if symmetrical_tier2:
                 combined_candidates.extend(symmetrical_tier2)
@@ -1149,7 +1232,15 @@ class AlertEngine:
                     selected_tier += f" + Tier 2 symmetrical ({len(symmetrical_tier2)})"
                 else:
                     selected_tier = f"Tier 2 symmetrical ({len(symmetrical_tier2)})"
-            # Note: Non-symmetrical Tier 2 candidates are NOT added to combined_candidates
+            
+            # Log non-symmetrical candidates that were filtered out
+            non_symmetrical_tier2 = [c for c in tier2_candidates if not c.is_symmetrical]
+            if non_symmetrical_tier2:
+                logger.info(f"🔍 Filtered out {len(non_symmetrical_tier2)} non-symmetrical Tier 2 candidates")
+                for candidate in non_symmetrical_tier2:
+                    logger.info(f"   ❌ Non-symmetrical: {candidate.participants} (court: {candidate.court_type or 'Unknown'})")
+            
+            # Note: Non-symmetrical Tier 2 candidates are NEVER added to combined_candidates
             # They are logged for debugging but not used for evaluation
         
         if not combined_candidates:
@@ -1170,16 +1261,8 @@ class AlertEngine:
         selected_candidates = combined_candidates
         logger.info(f"🎯 Using combined candidates for evaluation: {len(selected_candidates)} total ({selected_tier})")
         
-        # Log non-symmetrical candidates that were filtered out during combination
-        non_symmetrical_count = 0
-        if tier2_candidates:
-            non_symmetrical_tier2 = [c for c in tier2_candidates if not c.is_symmetrical]
-            non_symmetrical_count = len(non_symmetrical_tier2)
-            if non_symmetrical_tier2:
-                logger.info(f"🔍 Filtered out {len(non_symmetrical_tier2)} non-symmetrical Tier 2 candidates")
-                for candidate in non_symmetrical_tier2:
-                    dx_display = f"{candidate.var_x:.2f}" if candidate.var_x is not None else "N/A"
-                    logger.info(f"   ❌ Non-symmetrical: {candidate.participants} (vars: Δ1={candidate.var_one:.2f}, ΔX={dx_display}, Δ2={candidate.var_two:.2f})")
+        # Count non-symmetrical candidates that were filtered out
+        non_symmetrical_count = len([c for c in tier2_candidates if not c.is_symmetrical])
         
         # Evaluate rules in priority order: A (identical) > B (similar) > C (same winning side)
         rule_a_result = self._evaluate_identical_results(selected_candidates)
@@ -1235,19 +1318,26 @@ class AlertEngine:
         # Initialize prediction_result to avoid UnboundLocalError
         prediction_result = None
         
-        # Determine status: SUCCESS only if ALL candidates match at least one rule AND a prediction is generated
-        # Special case: If only 1 candidate after filtering, it's PARTIAL (insufficient for any tier)
-        if len(selected_candidates) == 1:
-            # Single candidate case - insufficient for any tier activation
-            status = 'partial'
+        # Determine status based on candidate count and rule matching
+        if len(selected_candidates) == 0:
+            # No candidates left after filtering (court type + symmetry filters)
+            status = 'no_candidates'
+            successful_candidates = 0
+            total_candidates = 0
             confidence = 0
             prediction_result = None
+            logger.info(f"🔍 DEBUG: Status: {status} (all candidates filtered out)")
+        elif len(selected_candidates) == 1:
+            # Single candidate case - insufficient for prediction (need at least 2)
+            status = 'partial'
+            confidence = 0
+            prediction_result = None  # No prediction for single candidate
             successful_candidates = 1
             total_candidates = 1
-            logger.info(f"🔍 DEBUG: Status: {status}")
-        elif total_matching_candidates == len(selected_candidates) and len(selected_candidates) > 0:
+            logger.info(f"🔍 DEBUG: Status: {status} (single candidate - insufficient for prediction)")
+        elif total_matching_candidates == len(selected_candidates):
+            # All candidates match at least one rule - evaluate for SUCCESS
             # Calculate weighted confidence based on PRIORITY-BASED tier assignments
-            # Get the actual tier assignments (with exclusions)
             tier_assignments = self._get_candidates_by_rule_tiers(selected_candidates)
             
             # Calculate confidence using each candidate's HIGHEST priority tier only
@@ -1283,23 +1373,13 @@ class AlertEngine:
                 confidence = 0
                 logger.info(f"🔍 DEBUG: Status: {status}")
         else:
-            # Some candidates failed to match any rule OR no candidates left after filtering
+            # Some candidates failed to match any rule
+            status = 'no_match'
             successful_candidates = total_matching_candidates
             total_candidates = len(selected_candidates)
             confidence = 0
-            
-            # Check if this is a PARTIAL case (insufficient candidates for any tier) vs NO MATCH (candidates failed rules
-            if total_matching_candidates == len(selected_candidates) and len(selected_candidates) > 0:
-                # All candidates processed but no prediction generated (insufficient candidates for any tier)
-                status = 'partial'
-                logger.info(f"🔍 DEBUG: Status: {status}")
-            else:
-                # Some candidates failed to match any rule
-                status = 'no_match'
-                    
-            logger.info(f"🔍 DEBUG: Status: {status}")
-            
             prediction_result = None
+            logger.info(f"🔍 DEBUG: Status: {status} (candidates failed rules)")
         
         # Get rule activation details for reporting
         rule_activations = self._get_rule_activations(selected_candidates)
@@ -1382,6 +1462,7 @@ class AlertEngine:
                 'result_text': match.result_text,
                 'is_symmetrical': match.is_symmetrical,
                 'competition': match.competition,
+                'court_type': match.court_type,  # Include court type for Tennis events
                 'variations': {
                     'var_one': match.var_one,
                     'var_x': match.var_x,

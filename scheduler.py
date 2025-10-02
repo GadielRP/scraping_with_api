@@ -11,7 +11,7 @@ from repository import EventRepository, OddsRepository, ResultRepository, Observ
 from odds_utils import process_event_odds_from_dropping_odds
 from alert_system import pre_start_notifier
 import os
-
+from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
 
 class JobScheduler:
@@ -264,6 +264,22 @@ class JobScheduler:
                                 logger.warning(f"No final odds data extracted for event {event_data['id']}")
                         else:
                             logger.warning(f"Failed to fetch final odds for event {event_data['id']}")
+                        
+                        # COURT TYPE EXTRACTION: For Tennis/Tennis Doubles events at key moments
+                        if event_data['sport'] in ['Tennis', 'Tennis Doubles']:
+                            logger.info(f"🎾 Tennis event detected at key moment - extracting court type for event {event_data['id']}")
+                            
+                            # Check if event already has observations before making API call
+                            
+                            if not sport_observations_manager.has_observations_for_event(event_data['id']):
+                                # No observations exist, proceed with API call to extract court type
+                                no_value = api_client.get_event_results(
+                                    event_id=event_data['id'],
+                                    update_court_type=True
+                                )
+                            else:
+                                logger.info(f"🎾 Event {event_data['id']} already has observations - skipping API call")
+                            
                     else:
                         logger.debug(f"⏭️ SKIPPING ODDS EXTRACTION: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start (not a key moment)")
                     
@@ -323,6 +339,17 @@ class JobScheduler:
                             
                             for event_obj in events_for_alerts:
                                 minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
+                                
+                                # Enrich event object with court type for Tennis/Tennis Doubles events
+                                event_obj.court_type = None  # Default value
+                                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                    observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                                    if observation:
+                                        event_obj.court_type = observation.observation_value
+                                        logger.info(f"🎾 Court type for event {event_obj.id}: {event_obj.court_type}")
+                                    else:
+                                        logger.info(f"🎾 No court type found for event {event_obj.id}")
+                                
                                 dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
                                 
                                 # Only add dual report if at least one process has a prediction OR if Process 1 found candidates
@@ -639,7 +666,7 @@ class JobScheduler:
                     logger.info(f"✅ {job_name}: {event.id} = {result_data['home_score']}-{result_data['away_score']}, Winner: {result_data['winner']}")
                     
                     # OPTIONAL: Process observations (FAIL-SAFE - doesn't break main flow)
-                    from sport_observations import sport_observations_manager
+                    
                     sport_observations_manager.process_event_observations(event, result_data)
                 
             except Exception as e:

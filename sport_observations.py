@@ -30,6 +30,33 @@ class SportObservationsManager:
     def __init__(self):
         self.observation_repo = ObservationRepository()
     
+    def has_observations_for_event(self, event_id: int) -> bool:
+        """
+        Check if an event already has any observations in the database.
+        
+        Args:
+            event_id: ID of the event to check
+            
+        Returns:
+            True if the event has observations, False otherwise
+        """
+        try:
+            # Check if any observations exist for this event
+            observations = self.observation_repo.get_all_observations(event_id)
+            has_observations = len(observations) > 0
+            
+            if has_observations:
+                logger.info(f"🎾 Event {event_id} already has {len(observations)} observations - skipping API call")
+            else:
+                logger.info(f"🎾 Event {event_id} has no observations - proceeding with API call")
+                
+            return has_observations
+            
+        except Exception as e:
+            logger.warning(f"🎾 Error checking observations for event {event_id}: {e}")
+            # FAIL-SAFE: If we can't check, assume no observations and proceed with API call
+            return False
+    
     def extract_tennis_ground_type(self, event_id: int, api_response: Dict) -> None:
         """
         Extract ground type for tennis events during pre-start check.
@@ -49,7 +76,7 @@ class SportObservationsManager:
             logger.info(f"🔍 DEBUG: API response keys: {list(api_response.keys()) if api_response else 'None'}")
             if api_response and 'event' in api_response:
                 event_data = api_response['event']
-                logger.info(f"🔍 DEBUG: Event data keys: {list(event_data.keys()) if event_data else 'None'}")
+                
                 if 'groundType' in event_data:
                     logger.info(f"🔍 DEBUG: Found groundType in event data: {event_data['groundType']}")
                 else:
@@ -92,7 +119,7 @@ class SportObservationsManager:
         except Exception as e:
             logger.warning(f"🎾 Error extracting ground type for tennis event {event_id}: {e}")
             # FAIL-SAFE: Don't break the main pre-start flow
-    
+        
     def process_event_observations(self, event, result_data: Dict) -> None:
         """
         Process event observations from result data.

@@ -62,6 +62,7 @@ class DualProcessReport:
     # Metadata
     minutes_until_start: Optional[int]
     timestamp: str
+    court_type: Optional[str] = None  # Court type for Tennis/Tennis Doubles events
 
 class PredictionEngine:
     """Orchestrator for dual process prediction system"""
@@ -74,7 +75,7 @@ class PredictionEngine:
         Execute both Process 1 and Process 2 and compare results.
         
         Args:
-            event: Event object to evaluate
+            event: Event object to evaluate (must have court_type attribute for Tennis events)
             minutes_until_start: Minutes until event starts
             
         Returns:
@@ -101,6 +102,7 @@ class PredictionEngine:
                 event_id=event.id,
                 participants=f"{event.home_team} vs {event.away_team}",
                 sport=event.sport,
+                court_type=getattr(event, 'court_type', None),  # Get court_type from event object
                 process1_report=process1_report,
                 process1_prediction=process1_prediction,
                 process1_status=process1_status,
@@ -125,6 +127,10 @@ class PredictionEngine:
         """
         Execute Process 1 (Historical Pattern Matching).
         
+        Args:
+            event: Event object (must have court_type attribute for Tennis events)
+            minutes_until_start: Minutes until event starts
+        
         Returns:
             Tuple of (report_dict, prediction_tuple, status_string)
         """
@@ -133,8 +139,8 @@ class PredictionEngine:
             
             from alert_engine import alert_engine
             
-            # Evaluate using Process 1
-            alerts = alert_engine.evaluate_upcoming_events([event])
+            # Evaluate using Process 1 (event object has court_type attribute)
+            alerts = alert_engine.evaluate_single_event(event, minutes_until_start)
             
             if alerts and len(alerts) > 0:
                 alert_report = alerts[0]  # Get first alert report
@@ -348,6 +354,7 @@ class PredictionEngine:
             event_id=event.id if hasattr(event, 'id') else 0,
             participants=f"{getattr(event, 'home_team', '?')} vs {getattr(event, 'away_team', '?')}",
             sport=getattr(event, 'sport', 'Unknown'),
+            court_type=getattr(event, 'court_type', None),  # Get court_type from event object
             process1_report=None,
             process1_prediction=None,
             process1_status='error',
