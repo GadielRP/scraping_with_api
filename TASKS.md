@@ -1,8 +1,8 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.3.0  
+**Versión:** v1.3.1  
 **Estado General:** ✅ **DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO**  
-**Última Actualización:** 26 de Septiembre, 2025
+**Última Actualización:** 1 de Octubre, 2025
 
 ## 🎯 **Resumen del Proyecto**
 
@@ -357,6 +357,37 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Manejar casos de odds faltantes
 - [x] Optimizar flujo de trabajo
 
+### **🎯 Odds Display en Notificaciones - COMPLETADO (01/10/2025)**
+
+#### **✅ AlertMatch Dataclass Enhancement**
+- [x] **Campos de Odds**: Agregado one_open, x_open, two_open, one_final, x_final, two_final
+- [x] **Valores por Defecto**: Valores por defecto de 0.0 para todos los campos de odds
+- [x] **Compatibilidad**: Mantiene compatibilidad con código existente
+- [x] **Documentación**: Documentación actualizada de la estructura
+
+#### **✅ SQL Query Optimization**
+- [x] **Query de Candidatos**: Agregado odds a _build_candidate_sql()
+- [x] **Query de L1 Prefilter**: Agregado odds a _build_l1_prefilter_sql()
+- [x] **Columnas de Odds**: Incluye mae.one_open, mae.x_open, mae.two_open, mae.one_final, mae.x_final, mae.two_final
+- [x] **Optimización**: Queries optimizados para incluir odds sin afectar rendimiento
+
+#### **✅ Data Processing Enhancement**
+- [x] **Process Candidate Matches**: Agregado odds a _process_candidate_matches()
+- [x] **Process L1 Candidates**: Agregado odds a _process_l1_candidates()
+- [x] **Valores por Defecto**: Manejo de valores nulos con valores por defecto de 0.0
+- [x] **Consistencia**: Misma lógica de procesamiento para ambos tipos de candidatos
+
+#### **✅ Data Formatting Enhancement**
+- [x] **Format Candidate Data**: Agregado odds a _format_candidate_data()
+- [x] **Data Structure**: Incluye odds en la estructura de datos para alert_system.py
+- [x] **Completitud**: Todos los campos de odds disponibles para notificaciones
+
+#### **✅ Integration Testing**
+- [x] **AlertMatch Creation**: Validado creación de AlertMatch con todos los campos
+- [x] **Data Formatting**: Validado formateo de datos con odds
+- [x] **System Integration**: Validado funcionamiento completo del sistema
+- [x] **Error Handling**: Validado manejo de errores y valores por defecto
+
 ## 📊 **Métricas de Progreso**
 
 ### **Progreso General: 100%** 🎉
@@ -374,12 +405,13 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **Limpieza de Código**: 100% ✅
 - **Optimizaciones Recientes**: 100% ✅
 - **Optimización y Limpieza v1.2.2**: 100% ✅
+- **Odds Display en Notificaciones**: 100% ✅ **NUEVO v1.3.1**
 
 ### **Estado de Componentes**
 - **main.py**: ✅ Completamente funcional con CLI extendido
 - **scheduler.py**: ✅ Programación robusta con lógica optimizada + sistema de corrección de timestamps + dual process integration
-- **alert_engine.py**: ✅ Motor de predicciones basado en patrones (métodos duplicados eliminados, fix crítico de rule activations aplicado)
-- **alert_system.py**: ✅ Notificaciones Telegram inteligentes (métodos obsoletos eliminados) + notificaciones duales
+- **alert_engine.py**: ✅ Motor de predicciones basado en patrones (métodos duplicados eliminados, fix crítico de rule activations aplicado, odds display implementado)
+- **alert_system.py**: ✅ Notificaciones Telegram inteligentes (métodos obsoletos eliminados) + notificaciones duales + odds display
 - **prediction_engine.py**: ✅ **NUEVO** - Orchestrador dual process con lógica de comparación
 - **process2/**: ✅ **NUEVO** - Sistema modular de Process 2
   - **process2_engine.py**: ✅ Motor principal de Process 2
@@ -406,6 +438,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Recolección de resultados terminados
 - [x] Sistema de corrección automática de timestamps
 - [x] Sistema robusto de manejo de errores
+- [x] **Odds Display**: Muestra odds completas en notificaciones **NUEVO v1.3.1**
 
 ### **✅ Calidad y Confiabilidad**
 - [x] Manejo robusto de errores HTTP
@@ -423,6 +456,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Configuración simple y directa
 - [x] Información completa de odds (apertura y finales)
 - [x] Sin spam de notificaciones
+- [x] **Odds Display**: Información completa de odds en candidatos históricos **NUEVO v1.3.1**
 
 ## 🔧 **Descubierto Durante el Trabajo - 10 de Septiembre, 2025**
 
@@ -453,7 +487,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 
 ### **🎉 PRODUCCIÓN - COMPLETADO AL 100% - SISTEMA DUAL PROCESS INTELIGENTE Y OPTIMIZADO**
 
-El **SofaScore Odds System v1.3.0** está **completamente funcional**, **optimizado** y **operando exitosamente en producción**:
+El **SofaScore Odds System v1.3.1** está **completamente funcional**, **optimizado** y **operando exitosamente en producción**:
 
 - ✅ **Process 1**: Análisis de patrones históricos funcionando
 - ✅ **Process 2**: Sistema de reglas específicas por deporte (fútbol implementado) **NUEVO v1.3.0**
@@ -468,6 +502,7 @@ El **SofaScore Odds System v1.3.0** está **completamente funcional**, **optimiz
 - ✅ **Infraestructura**: Robusta, confiable y optimizada
 - ✅ **Código**: Limpio, mantenible y optimizado **CON LIMPIEZA COMPLETA v1.2.2**
 - ✅ **Observaciones Deportivas**: Sistema modular para datos específicos por deporte
+- ✅ **Odds Display**: Muestra odds completas en notificaciones **NUEVO v1.3.1**
 
 ### **🏆 Logros Destacados**
 - **Tiempo de Desarrollo**: ~3 meses
@@ -480,6 +515,7 @@ El **SofaScore Odds System v1.3.0** está **completamente funcional**, **optimiz
 - **Ground Type Extraction**: Script masivo exitoso (161 eventos procesados, 99.4% success rate)
 - **Dual Process System**: Process 1 + Process 2 funcionando en producción **NUEVO v1.3.0**
 - **Football Formulas**: 11 fórmulas específicas implementadas y funcionando **NUEVO v1.3.0**
+- **Odds Display**: Notificaciones con odds completas implementadas **NUEVO v1.3.1**
 
 ---
 
@@ -502,5 +538,5 @@ El **SofaScore Odds System v1.3.0** está **completamente funcional**, **optimiz
 
 ---
 
-**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA DUAL PROCESS INTELIGENTE Y OPTIMIZADO**  
+**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA DUAL PROCESS INTELIGENTE Y OPTIMIZADO CON ODDS DISPLAY**  
 **Próximo Paso**: Monitoreo continuo y desarrollo de fórmulas para otros deportes (handball, rugby, tennis, basketball)

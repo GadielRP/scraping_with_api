@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.3.0  
+**Versión:** v1.3.1  
 **Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO**  
-**Última Actualización:** 26 de Septiembre, 2025
+**Última Actualización:** 1 de Octubre, 2025
 
 ## 🎯 **Descripción del Sistema**
 
@@ -13,6 +13,7 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Extrae odds inteligentemente** solo en momentos clave (30 y 5 minutos antes)
 - **Recolecta resultados** de juegos terminados
 - **Funciona 24/7** con programación inteligente y optimizada
+- **Muestra odds completas** en notificaciones (apertura y finales)
 
 ## 🚀 **Características Principales**
 
@@ -52,6 +53,7 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Sport Classification**: Sistema modular de clasificación deportiva (Tennis Singles/Doubles)
 - **AlertMatch Structure**: Dataclass completo con competition field y var_diffs para candidatos históricos
 - **Datos Completos**: 161 eventos de tennis con ground type extraído (99.4% success rate)
+- **Odds Display**: Muestra odds de apertura y finales en notificaciones
 
 #### **📊 AlertMatch Dataclass Structure:**
 ```python
@@ -67,8 +69,14 @@ class AlertMatch:
     var_two: float                   # Variación odds away
     sport: str = 'Tennis'            # Deporte del evento
     is_symmetrical: bool = True      # Si variaciones son simétricas
-    competition: str = 'Unknown'     # 🆕 Competencia/torneo
-    var_diffs: Optional[Dict[str, float]] = None  # 🆕 Diferencias de variaciones
+    competition: str = 'Unknown'     # Competencia/torneo
+    var_diffs: Optional[Dict[str, float]] = None  # Diferencias de variaciones
+    one_open: float = 0.0            # Odds de apertura home
+    x_open: float = 0.0              # Odds de apertura draw
+    two_open: float = 0.0            # Odds de apertura away
+    one_final: float = 0.0           # Odds finales home
+    x_final: float = 0.0             # Odds finales draw
+    two_final: float = 0.0           # Odds finales away
 ```
 
 ### ✅ **PROCESS 2 - Sistema de Reglas Específicas por Deporte - IMPLEMENTADO (v1.3)**
@@ -111,6 +119,7 @@ class AlertMatch:
 - **Formato Rico**: Emojis, información detallada, odds de apertura y finales
 - **Configuración Simple**: Solo requiere bot token y chat ID
 - **Lógica Optimizada**: Incluye todos los juegos próximos en una sola notificación
+- **Odds Display**: Muestra odds completas (apertura y finales) en candidatos históricos
 
 ### ✅ **Descubrimiento Automático Optimizado**
 - **Programación**: Cada 2 horas (00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00)
@@ -233,7 +242,7 @@ python main.py results-all
 3. **Momentos Clave**: Extracción de odds a los 30 y 5 minutos
 4. **Corrección de Timestamps**: Verificación y actualización automática (si está habilitada)
 5. **Análisis de Patrones**: Evaluación de alertas basadas en historial
-6. **Notificaciones**: Pre-inicio + Predicciones inteligentes
+6. **Notificaciones**: Pre-inicio + Predicciones inteligentes con odds completas
 7. **04:00**: Recolección de resultados (CORREGIDO: era 00:05)
 
 ### **Sistema de Predicciones - ¿Qué hace un Candidato?**
@@ -250,11 +259,11 @@ Un **candidato** es un evento histórico que el sistema identifica como similar 
 - **Resultados Similares**: Todos los candidatos Tier 2 tuvieron el mismo ganador y diferencia de puntos
 - **Datos Completos**: El evento histórico debe tener odds y resultados completos
 
-
 ### **Notas:**
 - **Candidatos encontrados = Siempre notificar**: Si se rompe la regla de unanimidad, el sistema envía un mensaje "NO MATCH" con todos los datos para perfeccionar la lógica
 - **Datos completos**: Todos los casos con candidatos se reportan con variaciones y resultados detallados
 - **Análisis mejorado**: Los datos de "no match" permiten perfeccionar fórmulas y criterios
+- **Odds Display**: Las notificaciones muestran odds de apertura y finales para cada candidato histórico
 
 #### **⚽ Ejemplo Práctico:**
 Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el sistema busca eventos históricos con variaciones similares y verifica si todos tuvieron el mismo resultado (ej: "Home 2-1").
@@ -282,10 +291,11 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 - Sistema de proxy con rotación de IPs
 - Base de datos PostgreSQL con SQLAlchemy
 - Programación inteligente de trabajos
+- **Odds Display en Notificaciones**: Muestra odds de apertura y finales en candidatos históricos
 
 ### 🎯 **En Producción - Optimizado**
 - **Predicciones**: Análisis de patrones históricos funcionando
-- **Notificaciones**: Funcionando con lógica inteligente
+- **Notificaciones**: Funcionando con lógica inteligente y odds completas
 - **Descubrimiento**: Programado cada 2 horas
 - **Extracción de Odds**: Solo en momentos clave (30 y 5 minutos)
 - **Corrección de Timestamps**: Automática y configurable **NUEVO v1.2.6**
@@ -303,7 +313,7 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
   - **`sports/football.py`**: 11 fórmulas específicas de fútbol implementadas
   - **`sports/`**: Módulos para otros deportes (en desarrollo)
 - **`prediction_engine.py`**: Orchestrador dual process con lógica de comparación
-- **`alert_system.py`**: Sistema de notificaciones Telegram con reportes duales
+- **`alert_system.py`**: Sistema de notificaciones Telegram con reportes duales y odds display
 - **`database.py`**: Gestión de base de datos
 - **`repository.py`**: Acceso a datos optimizado
 - **`config.py`**: Configuración centralizada
@@ -339,7 +349,7 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - ✅ **Process 1**: Predicciones basadas en patrones históricos
 - ✅ **Process 2**: Sistema de reglas específicas por deporte (fútbol implementado)
 - ✅ **Dual Process**: Orchestrador que compara ambos procesos
-- ✅ **Notificaciones Telegram**: Reportes duales con veredicto final
+- ✅ **Notificaciones Telegram**: Reportes duales con veredicto final y odds completas
 - ✅ **Descubrimiento automático**: Cada 2 horas
 - ✅ **Extracción de odds**: Solo en momentos clave
 - ✅ **Sistema de notificaciones**: Optimizado con lógica dual
@@ -380,8 +390,16 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - **Captura Completa de Odds**: Extrae odds para eventos futuros Y pasados (cualquier minuto negativo)
 - **Resultado**: Sistema más robusto y eficiente con control total sobre corrección de timestamps
 
+### **Fix 5: Odds Display en Notificaciones (01/10/2025)**
+- **Feature**: Agregado display de odds de apertura y finales en candidatos históricos
+- **Enhancement**: AlertMatch dataclass actualizado con campos de odds (one_open, x_open, two_open, one_final, x_final, two_final)
+- **Display**: Muestra odds completas en notificaciones de Telegram para mejor análisis
+- **Beneficio**: Información completa de odds para cada candidato histórico
+- **Soporte**: Maneja correctamente deportes 2-way y 3-way
+- **Resultado**: Notificaciones más informativas con datos completos de odds
+
 ### **Despliegue Exitoso**
-- ✅ **Sistema v1.3.0 desplegado** en producción (26/09/2025)
+- ✅ **Sistema v1.3.1 desplegado** en producción (01/10/2025)
 - ✅ **Base de datos actualizada** con computed columns y materialized views
 - ✅ **Timing fix aplicado**: Midnight job movido a 04:00
 - ✅ **Variation Differences Display**: Feature avanzado implementado
@@ -392,10 +410,11 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - ✅ **Notificaciones duales**: Reportes combinados con veredicto final
 - ✅ **Scripts de upsert**: `upsert_debug_results.py` para corregir eventos faltantes
 - ✅ **Notificaciones optimizadas**: UPCOMING GAMES ALERT deshabilitado, solo DUAL PROCESS REPORTS activos
+- ✅ **Odds Display**: Notificaciones con odds completas implementadas
 
 ### **Archivos Modificados**
-- `alert_engine.py`: AlertMatch dataclass actualizado con campo `var_diffs`, cálculo de diferencias con signos visibles
-- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos, notificaciones duales implementadas
+- `alert_engine.py`: AlertMatch dataclass actualizado con campos de odds, cálculo de diferencias con signos visibles
+- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos, notificaciones duales implementadas, odds display agregado
 - `sofascore_api.py`: Lógica de extracción de resultados mejorada, sistema de corrección de timestamps
 - `scheduler.py`: Midnight job movido a 04:00, sistema de corrección de timestamps, dual process integration
 - `prediction_engine.py`: **NUEVO** - Orchestrador dual process con lógica de comparación
@@ -407,4 +426,3 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - `repository.py`: Método `update_event_starting_time` para actualizar timestamps
 - `upsert_debug_results.py`: Script para corregir eventos faltantes
 - `docker-compose.yml`: Configuración de producción corregida
-

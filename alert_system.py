@@ -109,7 +109,7 @@ class PreStartNotification:
         odds_display = report_data.get('odds_display', 'Not available')
         vars_display = report_data.get('vars_display', 'Not available')
         has_draw_odds = report_data.get('has_draw_odds', False)
-        
+        confidence = report_data.get('primary_confidence', 'Not available')
         tier1_data = report_data.get('tier1_candidates', {})
         tier2_data = report_data.get('tier2_candidates', {})
         
@@ -139,7 +139,8 @@ class PreStartNotification:
         
         message += f"🔍Summary:\n"
         message += f"• T1 (exact): {tier1_count}\n"
-        message += f"• T2 (similar): {tier2_count}"
+        message += f"• T2 (similar): {tier2_count}\n"
+        message += f"• Confidence: {confidence}\n"
         if non_symmetrical_count > 0:
             message += f" ({non_symmetrical_count} non-symmetrical filtered out)"
         message += f"\n"
@@ -187,6 +188,8 @@ class PreStartNotification:
             
             message += f"\n{i}. {match['participants']} ({match.get('competition', 'Unknown')}):\n"
             message += f"R: {match['result_text']}{symmetry_status}\n"  
+            message += f"Open: {match['one_open']}, {match['x_open']}, {match['two_open']}\n"
+            message += f"Final: {match['one_final']}, {match['x_final']}, {match['two_final']}\n"
             message += f"Δ: {var_display}\n"
             
             # Add variation differences for Tier 2 candidates (similar matches)
@@ -257,11 +260,11 @@ class PreStartNotification:
             weight = activation['weight']
             description = rule_descriptions.get(tier, f'Tier {tier}')
             
-            message += f"   • Tier {tier} ({description}): {count} candidates (weight: {weight})\n"
+            message += f"• Tier {tier} ({description}): {count} candidates (weight: {weight})\n"
             
             # Show which candidates activated this rule
             for candidate in activation['candidates']:
-                message += f"     - {candidate['participants']} → {candidate['result_text']}\n"
+                message += f" - {candidate['participants']} → {candidate['result_text']}\n"
         
         message += "\n"
         return message

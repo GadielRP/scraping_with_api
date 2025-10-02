@@ -1,14 +1,14 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.3.0  
+**Versión:** v1.3.1  
 **Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO**  
-**Última Actualización:** 26 de Septiembre, 2025
+**Última Actualización:** 1 de Octubre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
 Sistema automatizado de monitoreo y predicción de odds deportivos que proporciona **notificaciones inteligentes** y **predicciones basadas en patrones históricos**, permitiendo a los usuarios tomar decisiones informadas usando análisis de datos históricos y **extracción eficiente de odds** solo en momentos clave.
 
-## 🚀 **Estado Actual (v1.2)**
+## 🚀 **Estado Actual (v1.3.1)**
 
 ### ✅ **PROCESS 1 - Sistema de Predicciones Inteligentes - COMPLETADO (v1.1)**
 **📋 Definición**: Process 1 es el sistema de análisis de patrones de odds que evalúa eventos históricos para predecir resultados futuros.
@@ -56,7 +56,8 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Variation Differences Display**: Muestra diferencias exactas para Tier 2 candidatos
 - **Código Optimizado**: Refactorizado para eliminar duplicación (19% reducción de líneas)
 - **Limpieza Completa v1.2.2**: Eliminación de métodos no utilizados, variables obsoletas y código redundante
-- **Estado**: 🟢 **EN PRODUCCIÓN - COMPLETADO Y OPTIMIZADO CON VARIATION DIFFERENCES DISPLAY**
+- **Odds Display**: Muestra odds de apertura y finales en notificaciones
+- **Estado**: 🟢 **EN PRODUCCIÓN - COMPLETADO Y OPTIMIZADO CON VARIATION DIFFERENCES DISPLAY Y ODDS DISPLAY**
 
 ### ✅ **PROCESS 2 - Sistema de Reglas Específicas por Deporte - IMPLEMENTADO (v1.3)**
 **📋 Definición**: Process 2 es un sistema de reglas específicas por deporte que complementa Process 1 con análisis deportivo especializado usando fórmulas matemáticas específicas.
@@ -98,7 +99,8 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Formato Rico**: Emojis, información detallada, odds de apertura y finales
 - **Configuración Simple**: Solo requiere bot token y chat ID
 - **Lógica Optimizada**: Incluye todos los juegos próximos en una sola notificación
-- **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO**
+- **Odds Display**: Muestra odds completas (apertura y finales) en candidatos históricos
+- **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO CON ODDS DISPLAY**
 
 ### ✅ **Descubrimiento Automático - COMPLETADO**
 - **Programación**: Cada 2 horas (00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00)
@@ -152,6 +154,14 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Estado**: 🟢 **EN PRODUCCIÓN**
 
 ## 🔄 **Evolución del Proyecto**
+
+### **v1.3.1 (Octubre 2025) - ODDS DISPLAY EN NOTIFICACIONES - IMPLEMENTADO** ✅
+- **Odds Display Feature**: Agregado display de odds de apertura y finales en candidatos históricos
+- **AlertMatch Enhancement**: Dataclass actualizado con campos de odds (one_open, x_open, two_open, one_final, x_final, two_final)
+- **Enhanced Notifications**: Notificaciones de Telegram muestran odds completas para mejor análisis
+- **SQL Query Optimization**: Queries optimizados para incluir odds en candidatos
+- **Data Formatting**: Formateo de datos para incluir odds en notificaciones
+- **Estado**: 🟢 **IMPLEMENTADO Y FUNCIONANDO - ODDS DISPLAY COMPLETO**
 
 ### **v1.3.0 (Septiembre 2025) - DUAL PROCESS INTEGRATION - IMPLEMENTADO** ✅
 - **Process 2 Implementation**: Sistema modular de reglas específicas por deporte implementado
@@ -256,6 +266,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - [x] Sistema de notificaciones optimizado
 - [x] Recolección de resultados terminados
 - [x] Sistema robusto de manejo de errores
+- [x] **Odds Display**: Muestra odds completas en notificaciones
 
 ### ✅ **Calidad y Confiabilidad**
 - [x] Manejo robusto de errores HTTP
@@ -264,6 +275,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - [x] Recuperación automática de fallos
 - [x] Programación precisa y confiable
 - [x] Extracción eficiente de odds
+- [x] Sistema de notificaciones inteligente
 
 ### ✅ **Experiencia del Usuario**
 - [x] Notificaciones claras y útiles
@@ -271,7 +283,8 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - [x] Formato rico con emojis e información clara
 - [x] Configuración simple y directa
 - [x] Información completa de odds (apertura y finales)
-- [x] Ground type display para eventos de tennis en notificaciones
+- [x] Sin spam de notificaciones
+- [x] **Odds Display**: Información completa de odds en candidatos históricos
 
 ## 🚫 **Características Removidas**
 
@@ -313,10 +326,11 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Información Completa**: Equipos, competencia, horario, odds
 - **Facilidad de Uso**: Configuración en 3 pasos
 - **Eficiencia**: Solo extrae odds cuando es necesario
+- **Odds Display**: Información completa de odds en notificaciones
 
 ## 🎉 **Conclusión**
 
-El **SofaScore Odds System v1.2.2** tiene **Process 1 completamente funcional con código optimizado** y está **preparando Process 2**:
+El **SofaScore Odds System v1.3.1** tiene **Process 1 completamente funcional con código optimizado** y está **preparando Process 2**:
 
 ### ✅ **Process 1 - COMPLETADO Y OPTIMIZADO CON CÓDIGO LIMPIO**
 - ✅ **Sistema de Predicciones**: Análisis de patrones históricos funcionando
@@ -332,6 +346,7 @@ El **SofaScore Odds System v1.2.2** tiene **Process 1 completamente funcional co
 - ✅ **Extracción de Odds**: Solo en momentos clave (30 y 5 minutos)
 - ✅ **Recolección de Resultados**: Automática e inteligente
 - ✅ **Infraestructura**: Robusta, confiable y optimizada
+- ✅ **Odds Display**: Muestra odds completas en notificaciones
 
 ### ✅ **Process 2 - IMPLEMENTADO Y FUNCIONANDO**
 - 🟢 **Arquitectura Modular**: Archivos separados por deporte siguiendo @rules.mdc
@@ -341,8 +356,8 @@ El **SofaScore Odds System v1.2.2** tiene **Process 1 completamente funcional co
 - 🟢 **Enhanced Reporting**: Reportes separados + veredicto final (AGREE/DISAGREE/PARTIAL/ERROR)
 - 🟢 **Football Formulas**: 11 fórmulas específicas implementadas y funcionando
 
-**El proyecto ha evolucionado de un sistema de notificaciones a un sistema dual process inteligente con Process 1 y Process 2 funcionando en producción.** 🚀⚽🧠🔬
+**El proyecto ha evolucionado de un sistema de notificaciones a un sistema dual process inteligente con Process 1 y Process 2 funcionando en producción, ahora con odds display completo.** 🚀⚽🧠🔬
 
 ---
 
-**Estado Final**: 🟢 **DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO EN PRODUCCIÓN**
+**Estado Final**: 🟢 **DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO EN PRODUCCIÓN CON ODDS DISPLAY**
