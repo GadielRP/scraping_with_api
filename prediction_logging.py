@@ -150,23 +150,35 @@ class PredictionLogger:
     def update_predictions_with_results(self) -> Dict[str, int]:
         """
         Update prediction logs with actual results from completed events.
+        Only processes predictions for events from the previous day (matching results collection logic).
         
         Returns:
             Dictionary with update statistics
         """
         try:
             from database import db_manager
-            from models import PredictionLog, Result
+            from models import PredictionLog, Result, Event
+            from datetime import datetime, timedelta
             
             with db_manager.get_session() as session:
-                # Get all pending predictions
-                pending_predictions = session.query(PredictionLog).filter_by(status='pending').all()
+                # Only process predictions for events from the previous day (same logic as results collection)
+                yesterday = datetime.now() - timedelta(days=1)
+                yesterday_date = yesterday.date()
+                
+                logger.info(f"📊 Updating predictions for events from {yesterday_date}")
+                
+                # Get pending predictions for events from the previous day only
+                pending_predictions = session.query(PredictionLog).join(Event, PredictionLog.event_id == Event.id).filter(
+                    PredictionLog.status == 'pending',
+                    Event.start_time_utc >= yesterday_date,
+                    Event.start_time_utc < yesterday_date + timedelta(days=1)
+                ).all()
                 
                 if not pending_predictions:
-                    logger.info("No pending predictions found to update")
+                    logger.info(f"No pending predictions found for events from {yesterday_date}")
                     return {'updated': 0, 'cancelled': 0, 'total': 0}
                 
-                logger.info(f"Found {len(pending_predictions)} pending predictions to update")
+                logger.info(f"Found {len(pending_predictions)} pending predictions to update for events from {yesterday_date}")
                 
                 updated_count = 0
                 cancelled_count = 0
