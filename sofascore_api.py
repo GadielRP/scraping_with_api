@@ -5,7 +5,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from config import Config
 from odds_utils import fractional_to_decimal
-
+from sport_observations import sport_observations_manager
+from alert_system import pre_start_notifier
 logger = logging.getLogger(__name__)
 
 class SofaScoreAPI:
@@ -155,7 +156,7 @@ class SofaScoreAPI:
         logger.info(f"Fetching final odds for event {slug} using dedicated endpoint")
         return self._make_request(f"/event/{id}/odds/1/all")
     
-    def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False) -> Optional[Dict]:
+    def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False, minutes_until_start: int = 0) -> Optional[Dict]:
         """ 
         Fetch event results from /event/{id} endpoint.
         Returns structured result data ready for database upsert.
@@ -170,7 +171,7 @@ class SofaScoreAPI:
                 return None
 
             if update_court_type:
-                from sport_observations import sport_observations_manager
+                
                 return sport_observations_manager.extract_tennis_ground_type(event_id, response)
                         
             if update_time:
@@ -181,7 +182,12 @@ class SofaScoreAPI:
                     logger.warning(f"No startTimestamp found in API response for event {event_id}")
                     logger.debug(f"Available event fields: {list(event_data.keys())}")
                     return None  # Return None to indicate API error, not time change
-                return self.check_and_update_starting_time(event_id, start_timestamp)
+                if minutes_until_start == 1:
+                    logger.info(f"1-minute event detected for event {event_id} - checking for final timestamp correction")
+                    return self.check_and_update_starting_time(event_id, start_timestamp, send_alert=True)
+                else:
+                    logger.info(f"Event {event_id} is not a 1-minute event - checking for final timestamp correction")
+                    return self.check_and_update_starting_time(event_id, start_timestamp)
             return self.extract_results_from_response(response)
             
         except Exception as e:
@@ -578,7 +584,7 @@ class SofaScoreAPI:
             return events, odds_map
     
 
-    def check_and_update_starting_time(self, event_id: int, startTimeStamp: int) -> bool:
+    def check_and_update_starting_time(self, event_id: int, startTimeStamp: int, send_alert: bool = False) -> bool:
         """
         Compares the stored starting time with the new starting time that was passed in,
         if they are different, it updates the starting time of the event in the database
@@ -604,6 +610,13 @@ class SofaScoreAPI:
                 # If they are different, update the starting time of the event in the database
                 if EventRepository.update_event_starting_time(event_id, new_starting_time):
                     logger.info(f"✅ Successfully updated starting time for event {event_id}")
+                    if send_alert:
+                        logger.info(f"🕐 Sending alert for event {event_id} - starting time changed")
+                        pre_start_notifier.send_time_correction_message(event_id, current_starting_time, new_starting_time)
+                        return False # Send alert and don't continue with odds extraction, time was updated
+                    else:
+                        logger.info(f"🕐 Starting time changed for event {event_id} - not sending alert")
+                        return False # Time was updated, don't continue with odds extraction
                     return False  # Time was updated, don't continue with odds extraction
                 else:
                     logger.error(f"Failed to update starting time for event {event_id}")
@@ -621,9 +634,12 @@ class SofaScoreAPI:
         """Check if an event is starting within the specified window"""
         now = datetime.now()
         event_time = self.convert_timestamp_to_datetime(start_timestamp)
-        window_start = event_time.replace(minute=event_time.minute - window_minutes)
         
-        return window_start <= now <= event_time
+        # Calculate time difference in minutes
+        delta_min = (event_time - now).total_seconds() / 60
+        
+        # Return True if event is within the window (0 to window_minutes minutes from now)
+        return 0 <= delta_min <= window_minutes
 
     
 

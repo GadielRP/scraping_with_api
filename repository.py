@@ -179,8 +179,6 @@ class EventRepository:
                         logger.debug(f"Event {event_data['id']}: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes ({odds_status})")
                 else:
                     logger.debug("No events found in time window")
-                
-                logger.info(f"Found {len(result)} events starting within {window_minutes} minutes")
                 return result
                 
         except Exception as e:

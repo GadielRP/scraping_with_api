@@ -13,6 +13,7 @@ from alert_system import pre_start_notifier
 import os
 from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
+from alert_engine import alert_engine
 
 class JobScheduler:
     """Main job scheduler for the SofaScore odds system"""
@@ -49,22 +50,12 @@ class JobScheduler:
         logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
     
     def _setup_pre_start_jobs(self):
-        """Setup pre-start check jobs at exact 5-minute clock intervals (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)"""
-        # Schedule jobs at exact 5-minute intervals on the clock
-        schedule.every().hour.at(":00").do(self.job_pre_start_check)
-        schedule.every().hour.at(":05").do(self.job_pre_start_check)
-        schedule.every().hour.at(":10").do(self.job_pre_start_check)
-        schedule.every().hour.at(":15").do(self.job_pre_start_check)
-        schedule.every().hour.at(":20").do(self.job_pre_start_check)
-        schedule.every().hour.at(":25").do(self.job_pre_start_check)
-        schedule.every().hour.at(":30").do(self.job_pre_start_check)
-        schedule.every().hour.at(":35").do(self.job_pre_start_check)
-        schedule.every().hour.at(":40").do(self.job_pre_start_check)
-        schedule.every().hour.at(":45").do(self.job_pre_start_check)
-        schedule.every().hour.at(":50").do(self.job_pre_start_check)
-        schedule.every().hour.at(":55").do(self.job_pre_start_check)
+        """Setup pre-start check jobs every 1 minute at the exact minute mark to catch 1-minute timestamp corrections"""
+        # Schedule jobs at exact minute marks (00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59)
+        for minute in range(60):
+            schedule.every().hour.at(f":{minute:02d}").do(self.job_pre_start_check)
         
-        logger.info(f"  - Pre-start check scheduled every 5 minutes at clock intervals")
+        logger.info(f"  - Pre-start check scheduled every 1 minute at exact minute marks (to catch 1-minute timestamp corrections)")
     
     def _cleanup_recently_rescheduled(self):
         """Clean up old entries from recently_rescheduled set to prevent memory leaks"""
@@ -217,7 +208,7 @@ class JobScheduler:
         (30 min and 5 min), but includes ALL upcoming games in those notifications to avoid missing games.
         """
         logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
-        logger.info("Starting Job C: Pre-start check for upcoming games")
+        
         
         try:
             # Get events starting within the next 30 minutes WITH their odds data
@@ -316,18 +307,25 @@ class JobScheduler:
                     refresh_materialized_views(db_manager.engine)
                     logger.info("✅ Alert materialized views refreshed")
                     
-                    from alert_engine import alert_engine
                     
                     # Get Event objects with properly loaded event_odds for alert evaluation
                     # Only evaluate events that are at key moments (30 or 5 minutes)
                     events_for_alerts = []
                     for event_data in events_with_odds:
-                        minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
-                        if minutes_until_start in [30, 5]:  # Only key moments
-                            # Get the Event object for this specific event
-                            event_obj = self.event_repo.get_event_by_id(event_data['id'])
-                            if event_obj:
-                                events_for_alerts.append(event_obj)
+                        # Get the Event object first to ensure we have fresh DB state
+                        event_obj = self.event_repo.get_event_by_id(event_data['id'])
+                        if not event_obj:
+                            continue
+                        
+                        # Skip if rescheduled in this cycle
+                        if event_obj.id in self.recently_rescheduled:
+                            logger.debug(f"⏭️ Skipping event {event_obj.id} - already rescheduled in this cycle")
+                            continue
+                        
+                        # Calculate minutes from fresh DB time, not stale event_data
+                        minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
+                        if minutes_until_start in [30, 5, 1]:  # Key moments including 1-minute timestamp correction
+                            events_for_alerts.append(event_obj)
                     
                     if events_for_alerts:
                         logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for dual process alerts...")
@@ -338,6 +336,7 @@ class JobScheduler:
                             dual_reports = []
                             
                             for event_obj in events_for_alerts:
+                                # Calculate minutes from FRESH database time, not stale event data
                                 minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
                                 
                                 # Enrich event object with court type for Tennis/Tennis Doubles events
@@ -495,10 +494,24 @@ class JobScheduler:
             return False
         
         # Key moments for odds extraction
-        KEY_MOMENTS = [30, 5]
+        KEY_MOMENTS = [30, 5, 1]
         
         # Check if current time aligns with a key moment
         should_extract = minutes_until_start in KEY_MOMENTS
+        
+        if minutes_until_start == 1:
+            # For 1-minute events, always check and update starting time (no odds extraction)
+            logger.info(f"🕐 1-minute event detected for event {event_id} - checking for final timestamp correction")
+            correct_starting_time = api_client.get_event_results(event_id, update_time=True, minutes_until_start=minutes_until_start)
+            if correct_starting_time is None:
+                logger.warning(f"⏭️ API error for 1-minute event {event_id} - skipping timestamp correction")
+                return False
+            elif not correct_starting_time:
+                # Starting time was updated - check if rescheduled game is now in key moments
+                logger.info(f"🔄 Starting time changed for 1-minute event {event_id} - checking if rescheduled game is in key moments")
+                self.recently_rescheduled.add(event_id)  # Mark immediately to prevent double processing
+                self._check_rescheduled_event(event_id)
+            return False  # Never extract odds at 1 minute, only timestamp correction
         
         # Only check and update starting time if event is in key moments (optimization)
         if not should_extract:
@@ -521,8 +534,9 @@ class JobScheduler:
             logger.warning(f"⏭️ API error for event {event_id} - skipping odds extraction")
             return False
         elif not correct_starting_time:
-            # Starting time was actually updated - check if rescheduled game is now in key moments
-            logger.info(f"🔄 Starting time changed for event {event_id} - checking if rescheduled game is in key moments")
+            # Starting time was actually updated - mark as rescheduled and check if rescheduled game is now in key moments
+            logger.info(f"🔄 Starting time changed for event {event_id} - marking as rescheduled and checking if rescheduled game is in key moments")
+            self.recently_rescheduled.add(event_id)  # Mark immediately to prevent double processing
             self._check_rescheduled_event(event_id)
             return False
         else:
@@ -595,10 +609,11 @@ class JobScheduler:
     def _process_alerts_for_rescheduled_event(self, event):
         """
         Process alerts for a rescheduled event that was just updated with new odds.
+        Uses the same dual-process flow as normal events for consistent alert format.
         This completes the pre-start job workflow to prevent infinite loops.
         """
         try:
-            logger.info(f"🔍 Processing alerts for rescheduled event {event.id}")
+            logger.info(f"🔍 Processing dual-process alerts for rescheduled event {event.id}")
             
             # Refresh materialized views to ensure latest data for alert evaluation
             logger.info("🔄 Refreshing alert materialized views for rescheduled event...")
@@ -609,21 +624,68 @@ class JobScheduler:
             
             # Get the Event object with properly loaded event_odds for alert evaluation
             event_obj = self.event_repo.get_event_by_id(event.id)
-            if event_obj and event_obj.event_odds:
-                logger.info(f"🔍 Evaluating rescheduled event {event.id} for pattern alerts...")
-                
-                from alert_engine import alert_engine
-                alerts = alert_engine.evaluate_upcoming_events([event_obj])
-                if alerts:
-                    logger.info(f"📊 Generated {len(alerts)} candidate reports for rescheduled event {event.id}")
-                    alert_engine.send_alerts(alerts)
-                else:
-                    logger.debug(f"No candidate reports generated for rescheduled event {event.id}")
-            else:
+            if not event_obj or not event_obj.event_odds:
                 logger.warning(f"Could not load event_odds for rescheduled event {event.id}")
+                return
+            
+            # Calculate minutes until start for the rescheduled event using FRESH database time
+            minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
+            logger.info(f"🔍 Evaluating rescheduled event {event.id} for dual-process alerts (starts in {minutes_until_start} minutes)...")
+            
+            # Enrich event object with court type for Tennis/Tennis Doubles events
+            event_obj.court_type = None  # Default value
+            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                from repository import ObservationRepository
+                observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                if observation:
+                    event_obj.court_type = observation.observation_value
+                    logger.info(f"🎾 Court type for rescheduled event {event_obj.id}: {event_obj.court_type}")
+                else:
+                    logger.info(f"🎾 No court type found for rescheduled event {event_obj.id}")
+            
+            # Use the same dual-process evaluation as normal events with CORRECTED timing
+            from prediction_engine import prediction_engine
+            dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+            
+            # Only send if at least one process has a prediction OR if Process 1 found candidates
+            should_send = False
+            reason = ""
+            
+            if dual_report.process1_prediction or dual_report.process2_prediction:
+                should_send = True
+                reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
+            elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
+                # Process 1 found candidates but no clear prediction - still show the report
+                should_send = True
+                reason = f"Process1 found candidates (status: {dual_report.process1_status})"
+            
+            if should_send:
+                logger.info(f"✅ Dual process report generated for rescheduled event {event.id}: {reason}")
+                # Send dual process alerts using the same method as normal events
+                self._send_dual_process_alerts([dual_report])
+                
+                # Log predictions for successful Process 1 reports (same logic as normal events)
+                from modules.prediction import prediction_logger
+                if (dual_report.process1_report and 
+                    dual_report.process1_report.get('status') == 'success' and
+                    minutes_until_start == 5):  # Only log at 5 minutes
+                    success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
+                    if success:
+                        logger.info(f"✅ Prediction logged for rescheduled event {event.id} (5 minutes from start)")
+                    else:
+                        # Check if it's a duplicate (already exists) vs. actual failure
+                        from models import PredictionLog
+                        with db_manager.get_session() as session:
+                            existing = session.query(PredictionLog).filter_by(event_id=event.id).first()
+                            if existing:
+                                logger.info(f"ℹ️ Prediction already exists for rescheduled event {event.id} - no action needed")
+                            else:
+                                logger.warning(f"❌ Failed to log prediction for rescheduled event {event.id}")
+            else:
+                logger.debug(f"⏭️ No dual process report generated for rescheduled event {event.id}: No predictions or candidates found")
                 
         except Exception as e:
-            logger.error(f"Error processing alerts for rescheduled event {event.id}: {e}")
+            logger.error(f"Error processing dual-process alerts for rescheduled event {event.id}: {e}")
             
     def job_results_collection(self):
         """Job E: Collect results for finished events from the previous day"""

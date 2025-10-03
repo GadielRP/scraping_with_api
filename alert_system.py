@@ -18,10 +18,11 @@ PROCESS 2 INTEGRATION:
 Process 2 notifications are integrated within Dual Process notifications.
 Process 2 boundaries are handled by separate files with clear boundaries.
 """
-
+from datetime import datetime
 import logging
 from typing import Dict, List, Optional
 import requests
+from repository import EventRepository
 
 logger = logging.getLogger(__name__)
 
@@ -447,6 +448,65 @@ class PreStartNotification:
         logger.info(f"Sent {success_count}/{len(dual_reports)} dual process alerts successfully")
         return success_count > 0
     
+
+    def send_time_correction_message(self, event_id: int, current_starting_time: datetime, new_starting_time: datetime) -> bool:
+        """
+        Send a time correction message via Telegram.
+        
+        Args:
+            event_id: Event ID
+            current_starting_time: Original starting time
+            new_starting_time: Updated starting time
+
+        Returns:
+            True if the message was sent successfully
+        """
+        try:
+            # Fetch event details to get participants
+            
+            event = EventRepository.get_event_by_id(event_id)
+            
+            if not event:
+                logger.warning(f"Could not find event {event_id} for time correction message")
+                participants = "Unknown vs Unknown"
+            else:
+                participants = f"{event.home_team} vs {event.away_team}"
+            
+            # Format times for display
+            current_time_str = current_starting_time.strftime("%H:%M")
+            new_time_str = new_starting_time.strftime("%H:%M")
+            
+            # Calculate time difference
+            time_diff = new_starting_time - current_starting_time
+            if time_diff.total_seconds() > 0:
+                diff_str = f"+{int(time_diff.total_seconds() / 60)} min"
+            else:
+                diff_str = f"{int(time_diff.total_seconds() / 60)} min"
+            
+            # Create message
+            message = f"🕐 <b>Time Correction Alert</b>\n\n"
+            message += f"🏆 <b>{participants}</b>\n"
+            message += f"📅 Event ID: {event_id}\n\n"
+            message += f"⏰ <b>Time Change:</b>\n"
+            message += f"• Original: {current_time_str}\n"
+            message += f"• Updated: {new_time_str}\n"
+            message += f"• Difference: {diff_str}\n\n"
+            message += f"🔄 <i>Starting time corrected 1 minute before original start</i>"
+            
+            if not self.telegram_enabled:
+                logger.warning("Telegram notifications not configured - cannot send time correction message")
+                return False
+            
+            logger.info(f"Sending time correction message for event {event_id}: {participants}")
+            return self.send_telegram_message(message)
+            
+        except Exception as e:
+            logger.error(f"Error creating time correction message for event {event_id}: {e}")
+            # Fallback message without participants
+            message = f"🕐 Time correction message for event {event_id}\n\n"
+            message += f"Current starting time: {current_starting_time}\n"
+            message += f"New starting time: {new_starting_time}\n"
+            return self.send_telegram_message(message)
 
 # Global notification instance
 pre_start_notifier = PreStartNotification()
