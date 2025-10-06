@@ -171,7 +171,6 @@ class SofaScoreAPI:
                 return None
 
             if update_court_type:
-                
                 return sport_observations_manager.extract_tennis_ground_type(event_id, response)
                         
             if update_time:
@@ -183,7 +182,7 @@ class SofaScoreAPI:
                     logger.debug(f"Available event fields: {list(event_data.keys())}")
                     return None  # Return None to indicate API error, not time change
                 if minutes_until_start == 1:
-                    logger.info(f"1-minute event detected for event {event_id} - checking for final timestamp correction")
+                    
                     return self.check_and_update_starting_time(event_id, start_timestamp, send_alert=True)
                 else:
                     logger.info(f"Event {event_id} is not a 1-minute event - checking for final timestamp correction")

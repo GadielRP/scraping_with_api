@@ -511,6 +511,9 @@ class JobScheduler:
                 logger.info(f"🔄 Starting time changed for 1-minute event {event_id} - checking if rescheduled game is in key moments")
                 self.recently_rescheduled.add(event_id)  # Mark immediately to prevent double processing
                 self._check_rescheduled_event(event_id)
+            else:
+                logger.info(f"🟡 No changes made for the starting time of event {event_id}")
+                
             return False  # Never extract odds at 1 minute, only timestamp correction
         
         # Only check and update starting time if event is in key moments (optimization)
