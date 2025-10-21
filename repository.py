@@ -33,6 +33,7 @@ class EventRepository:
                     event.country = event_data.get('country')
                     event.home_team = event_data['homeTeam']
                     event.away_team = event_data['awayTeam']
+                    event.gender = event_data['gender']
                     event.updated_at = get_local_now()
                     logger.debug(f"Updated event {event_data['id']}")
                 else:
@@ -46,7 +47,8 @@ class EventRepository:
                         competition=event_data['competition'],
                         country=event_data.get('country'),
                         home_team=event_data['homeTeam'],
-                        away_team=event_data['awayTeam']
+                        away_team=event_data['awayTeam'],
+                        gender=event_data['gender']
                     )
                     session.add(event)
                     logger.debug(f"Created new event {event_data['id']}")

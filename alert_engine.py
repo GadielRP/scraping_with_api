@@ -66,6 +66,7 @@ class AlertMatch:
     """Represents a historical match that fits the pattern"""
     event_id: int
     participants: str
+    gender: str
     result_text: str
     winner_side: str
     point_diff: int
@@ -178,6 +179,7 @@ class AlertEngine:
         current_event_id = event.id
         tier1_candidates = self._find_tier1_candidates(
             sport=event.sport,
+            gender=event.gender,
             var_shape=var_shape,
             cur_v1=cur_v1,
             cur_vx=cur_vx,
@@ -192,6 +194,7 @@ class AlertEngine:
         # Use L1 distance-based similarity search instead of component-based tolerance
         tier2_candidates = self._find_l1_similar_candidates(
             sport=event.sport,
+            gender=event.gender,
             var_shape=var_shape,
             cur_v1=cur_v1,
             cur_vx=cur_vx,
@@ -317,6 +320,7 @@ class AlertEngine:
                 matches.append(AlertMatch(
                     event_id=row.event_id,
                     participants=row.participants,
+                    gender=getattr(row, 'gender', 'unknown'),  # Get gender from query result
                     result_text=row.result_text,
                     winner_side=row.winner_side,
                     point_diff=row.point_diff,
@@ -347,15 +351,15 @@ class AlertEngine:
         
         return matches
     
-    def _find_tier1_candidates(self, sport: str, var_shape: bool, 
+    def _find_tier1_candidates(self, sport: str, gender: str, var_shape: bool, 
                                cur_v1: float, cur_vx: Optional[float], 
                                cur_v2: float, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
         """Find historical events with EXACTLY identical variations"""
-        return self._find_candidates(sport, var_shape, cur_v1, cur_vx, cur_v2, 
+        return self._find_candidates(sport, gender, var_shape, cur_v1, cur_vx, cur_v2, 
                                    is_exact=True, exclude_event_ids=exclude_event_ids)
     
     
-    def _find_l1_similar_candidates(self, sport: str, var_shape: bool, 
+    def _find_l1_similar_candidates(self, sport: str, gender: str, var_shape: bool, 
                                    cur_v1: float, cur_vx: Optional[float], 
                                    cur_v2: float, exclude_event_ids: List[int] = None,
                                    tau: float = L1_TAU_DEFAULT) -> List[AlertMatch]:
@@ -367,6 +371,7 @@ class AlertEngine:
                 logger.info(f"Searching for L1 similar variations (τ={tau})...")
                 dx_display = f"{cur_vx:.2f}" if cur_vx is not None else "NULL"
                 logger.info(f"Current variations: d1={cur_v1:.2f}, dx={dx_display}, d2={cur_v2:.2f}")
+                logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
                 
                 if exclude_event_ids:
                     logger.info(f"Excluding {len(exclude_event_ids)} event IDs: {exclude_event_ids}")
@@ -374,6 +379,7 @@ class AlertEngine:
                 # Build SQL query for L∞ box prefilter
                 sql_query, params = self._build_l1_prefilter_sql(
                     sport=sport,
+                    gender=gender,
                     var_shape=var_shape,
                     cur_v1=cur_v1,
                     cur_vx=cur_vx,
@@ -412,7 +418,7 @@ class AlertEngine:
             return []
 
     
-    def _find_candidates(self, sport: str, var_shape: bool, cur_v1: float, 
+    def _find_candidates(self, sport: str, gender: str, var_shape: bool, cur_v1: float, 
                         cur_vx: Optional[float], cur_v2: float, is_exact: bool, 
                         exclude_event_ids: List[int] = None) -> List[AlertMatch]:
         """Unified candidate search for both exact and similar variations"""
@@ -426,13 +432,14 @@ class AlertEngine:
                 
                 dx_display = f"{cur_vx:.2f}" if cur_vx is not None else "NULL"
                 logger.info(f"Current variations: d1={cur_v1:.2f}, dx={dx_display}, d2={cur_v2:.2f}")
+                logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
                 
                 if exclude_event_ids:
                     logger.info(f"Excluding {len(exclude_event_ids)} Tier 1 event IDs: {exclude_event_ids}")
                 
                 # Build SQL query and parameters
                 sql_query, params = self._build_candidate_sql(
-                    sport, var_shape, cur_v1, cur_vx, cur_v2, is_exact, exclude_event_ids
+                    sport, gender, var_shape, cur_v1, cur_vx, cur_v2, is_exact, exclude_event_ids
                 )
                 
                 result = session.execute(text(sql_query), params)
@@ -455,7 +462,7 @@ class AlertEngine:
             logger.error(f"Error finding {error_type} historical matches: {e}")
             return []
     
-    def _build_l1_prefilter_sql(self, sport: str, var_shape: bool, cur_v1: float,
+    def _build_l1_prefilter_sql(self, sport: str, gender: str, var_shape: bool, cur_v1: float,
                               cur_vx: Optional[float], cur_v2: float, tau: float,
                               by_shape: bool = True, exclude_event_ids: List[int] = None,
                               max_candidates: int = 500) -> Tuple[str, Dict]:
@@ -469,6 +476,7 @@ class AlertEngine:
         # Base parameters
         params = {
             'sport': sport,
+            'gender': gender,
             'tau': tau,
             'cur_v1': cur_v1,
             'cur_v2': cur_v2,
@@ -516,6 +524,7 @@ class AlertEngine:
                     LEFT JOIN event_observations eo ON mae.event_id = eo.event_id 
                       AND eo.observation_type = 'ground_type'
                     WHERE mae.sport = :sport
+                      AND mae.gender = :gender
                       {var_shape_condition}
                       AND {var_conditions}
                       {exclude_clause}
@@ -525,7 +534,7 @@ class AlertEngine:
         
         return sql, params
 
-    def _build_candidate_sql(self, sport: str, var_shape: bool, cur_v1: float, 
+    def _build_candidate_sql(self, sport: str, gender: str, var_shape: bool, cur_v1: float, 
                            cur_vx: Optional[float], cur_v2: float, is_exact: bool, 
                            exclude_event_ids: List[int] = None) -> Tuple[str, Dict]:
         """Build SQL query and parameters for candidate search"""
@@ -538,6 +547,7 @@ class AlertEngine:
         # Base parameters
         params = {
             'sport': sport,
+            'gender': gender,
             'var_shape': var_shape,
             'cur_v1': cur_v1,
             'cur_v2': cur_v2
@@ -568,6 +578,7 @@ class AlertEngine:
                     LEFT JOIN event_observations eo ON mae.event_id = eo.event_id 
                       AND eo.observation_type = 'ground_type'
                     WHERE mae.sport = :sport
+                      AND mae.gender = :gender
                       AND mae.var_shape = :var_shape
                       AND {var_conditions}{exclude_clause}
         """
@@ -629,6 +640,7 @@ class AlertEngine:
             matches.append(AlertMatch(
                 event_id=row.event_id,
                 participants=row.participants,
+                gender=getattr(row, 'gender', 'unknown'),  # Get gender from query result
                 result_text=row.result_text,
                 winner_side=row.winner_side,
                 point_diff=row.point_diff,

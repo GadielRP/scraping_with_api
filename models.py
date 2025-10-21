@@ -21,6 +21,8 @@ class Event(Base):
     country = Column(Text)
     home_team = Column(Text, nullable=False)
     away_team = Column(Text, nullable=False)
+    gender = Column(String(10), nullable=False, default="unknown")  # 'Men' or 'Women' or 'Mixed'
+
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
     
@@ -203,6 +205,7 @@ MV_ALERT_EVENTS_SQL = (
     SELECT
         e.id AS event_id,
         e.sport,
+        e.gender,
         e.start_time_utc,
         (e.home_team || ' vs ' || e.away_team) AS participants,
         e.home_team,
@@ -247,7 +250,8 @@ MV_ALERT_EVENTS_INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_mv_alert_sport_shape_total ON mv_alert_events (sport, var_shape, var_total);",
     "CREATE INDEX IF NOT EXISTS idx_mv_alert_sport_winner_diff ON mv_alert_events (sport, winner_side, point_diff);",
     "CREATE INDEX IF NOT EXISTS idx_mv_alert_start_time ON mv_alert_events (start_time_utc);",
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_alert_event_id ON mv_alert_events (event_id);"
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_alert_event_id ON mv_alert_events (event_id);",
+    "CREATE INDEX IF NOT EXISTS idx_mv_alert_sport_gender ON mv_alert_events (sport, gender);"
 ]
 
 
@@ -259,6 +263,8 @@ def create_or_replace_views(engine):
 def create_or_replace_materialized_views(engine):
     """Create or replace materialized views for alerts. Call this after engine init."""
     with engine.begin() as conn:
+        # Drop existing materialized view to recreate with new schema
+        conn.exec_driver_sql("DROP MATERIALIZED VIEW IF EXISTS mv_alert_events CASCADE;")
         conn.exec_driver_sql(MV_ALERT_EVENTS_SQL)
         for index_sql in MV_ALERT_EVENTS_INDEXES_SQL:
             conn.exec_driver_sql(index_sql)

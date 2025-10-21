@@ -39,7 +39,17 @@ class SofaScoreAPI:
             logger.info(f"Proxy enabled: {self.proxy_endpoint}")
         else:
             logger.info("Proxy disabled - using direct connection")
-    
+            
+    def get_gender(self, home_team: Dict, away_team: Dict) -> str:
+        """Get the gender of the event from the home and away team"""
+        """Get the gender of the event"""
+        gender_home_team = home_team.get('gender', 'unknown')
+        gender_away_team = away_team.get('gender', 'unknown')
+        if gender_home_team != gender_away_team:
+            logger.info(f"🔍 DEBUG: Gender mismatch detected: {gender_home_team} != {gender_away_team}")
+            return "mixed"
+        else: return gender_home_team if gender_home_team else "unknown"
+
     def _rate_limit(self):
         """Implement rate limiting between requests"""
         current_time = time.time()
@@ -534,9 +544,9 @@ class SofaScoreAPI:
                     original_sport = event.get('tournament', {}).get('category', {}).get('sport', {}).get('name')
                     home_team = event.get('homeTeam', {}).get('name')
                     away_team = event.get('awayTeam', {}).get('name')
-                    
+                    gender = self.get_gender(event.get('homeTeam', {}), event.get('awayTeam', {}))
                     # Apply sport classification logic
-                    classified_sport = sport_classifier.classify_sport(
+                    classified_sport = sport_classifier.classify_sport( 
                         sport=original_sport,
                         home_team=home_team,
                         away_team=away_team
@@ -552,13 +562,14 @@ class SofaScoreAPI:
                         'country': event.get('tournament', {}).get('category', {}).get('country', {}).get('name'),
                         'homeTeam': home_team,
                         'awayTeam': away_team,
+                        'gender': gender,
                     }
                     
                     # Log sport classification for monitoring
                     if classified_sport != original_sport:
                         logger.info(f"🎾 Sport classified: '{original_sport}' → '{classified_sport}' for {home_team} vs {away_team}")
                     
-                    required_fields = ['id', 'slug', 'startTimestamp', 'sport', 'competition', 'homeTeam', 'awayTeam']
+                    required_fields = ['id', 'slug', 'startTimestamp', 'sport', 'competition', 'homeTeam', 'awayTeam', 'gender']
                     if all(event_data.get(field) for field in required_fields):
                         events.append(event_data)
                     else:
