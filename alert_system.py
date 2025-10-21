@@ -394,10 +394,6 @@ class PreStartNotification:
             else:
                 message += f"❌ No prediction ({dual_report.process2_status})\n"
             
-            # Final Verdict - ENHANCED
-            message += f"\nFinal Verdict: {dual_report.verdict.value}\n"
-            message += f"📝 {dual_report.agreement_details}\n"
-            
             if dual_report.final_prediction:
                 final_winner = dual_report.final_prediction[0]
                 winner_text = {'1': 'Home', 'X': 'Draw', '2': 'Away'}.get(final_winner, final_winner)

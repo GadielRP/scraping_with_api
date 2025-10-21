@@ -190,16 +190,21 @@ class SportObservationsManager:
             
             # TENNIS: Add ground type
             if sport.lower() == 'tennis':
-                logger.info(f"🔍 DEBUG: Processing Tennis event {event_id}")
+                
                 ground_type_obs = self.observation_repo.get_observation(event_id, 'ground_type')
-                logger.info(f"🔍 DEBUG: Ground type observation result: {ground_type_obs}")
                 
                 if ground_type_obs and ground_type_obs.observation_value:
-                    result = f"🎾 Court: {ground_type_obs.observation_value}"
+                    if ground_type_obs.observation_value.lower() == 'hardcourt indoor': result = f"👟: Indoor"
+                    elif ground_type_obs.observation_value.lower() == 'hardcourt outdoor': result = f"👟: Outdoor"
+                    elif 'clay' in ground_type_obs.observation_value.lower(): result = f"👟: Clay"
+                    elif 'grass' in ground_type_obs.observation_value.lower(): result = f"👟: Grass"
+                    elif 'carpet' in ground_type_obs.observation_value.lower(): result = f"👟: Carpet"
+                    elif 'synthetic' in ground_type_obs.observation_value.lower(): result = f"👟: Synthetic"
+                    else: result = f"👟: Unknown"
                     logger.info(f"🔍 DEBUG: Found ground type: {result}")
                     return result
                 else:
-                    result = "🎾 Court: Unknown"
+                    result = "👟: Unknown"
                     logger.info(f"🔍 DEBUG: No ground type found, returning: {result}")
                     return result
             

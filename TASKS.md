@@ -388,6 +388,70 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] **System Integration**: Validado funcionamiento completo del sistema
 - [x] **Error Handling**: Validado manejo de errores y valores por defecto
 
+### **🎯 Gender Filtering en Candidate Search - COMPLETADO (21/10/2025)**
+
+#### **✅ Database Schema Enhancement**
+- [x] **Materialized View Update**: Agregado columna `gender` a `mv_alert_events`
+- [x] **Index Optimization**: Creado índice `idx_mv_alert_sport_gender` para consultas eficientes
+- [x] **Schema Migration**: Actualizada función `create_or_replace_materialized_views()` para recrear vista
+- [x] **Data Integrity**: Validado que todos los eventos del servidor tienen género correcto
+
+#### **✅ AlertMatch Dataclass Enhancement**
+- [x] **Gender Field**: Agregado campo `gender` a AlertMatch dataclass
+- [x] **Object Creation**: Actualizado `_process_candidate_matches()` y `_process_l1_candidates()` para incluir género
+- [x] **Data Extraction**: Implementado `getattr(row, 'gender', 'unknown')` para extraer género de queries
+- [x] **Backward Compatibility**: Mantiene compatibilidad con código existente
+
+#### **✅ SQL Query Enhancement**
+- [x] **Tier 1 Candidates**: Agregado filtro `AND mae.gender = :gender` a `_build_candidate_sql()`
+- [x] **Tier 2 Candidates**: Agregado filtro `AND mae.gender = :gender` a `_build_l1_prefilter_sql()`
+- [x] **Parameter Passing**: Actualizado parámetros para incluir `gender` en todas las queries
+- [x] **Function Signatures**: Actualizado `_find_l1_similar_candidates()` y `_find_candidates()` para aceptar género
+
+#### **✅ Filtering Logic Implementation**
+- [x] **Event Gender Extraction**: Implementado paso de `event.gender` desde `evaluate_single_event()`
+- [x] **Candidate Filtering**: Candidatos históricos filtrados por mismo deporte, variaciones similares Y mismo género
+- [x] **Logging Enhancement**: Agregado logging de filtrado por género para debugging
+- [x] **Error Handling**: Manejo robusto de casos donde género no está disponible
+
+#### **✅ Integration Testing**
+- [x] **Database Queries**: Validado que queries filtran correctamente por género
+- [x] **Object Creation**: Validado creación de AlertMatch con campo gender
+- [x] **System Integration**: Validado funcionamiento completo del sistema con filtrado de género
+- [x] **Performance**: Validado que filtrado de género no afecta rendimiento de queries
+
+### **🎯 Tier 1 Exact Odds Search - COMPLETADO (21/10/2025)**
+
+#### **✅ Tier 1 Search Logic Enhancement**
+- [x] **Function Signature Update**: Modificado `_find_tier1_candidates()` para aceptar `current_odds` en lugar de variaciones
+- [x] **Search Criteria Change**: Tier 1 ahora busca eventos históricos con odds exactamente idénticas
+- [x] **Odds Matching Logic**: Implementado matching de `one_open`, `two_open`, `one_final`, `two_final`
+- [x] **Draw Handling**: Implementado manejo correcto de `x_open`, `x_final` para deportes 3-way usando `var_shape`
+
+#### **✅ SQL Query Enhancement for Tier 1**
+- [x] **Exact Odds Query**: Actualizado `_build_candidate_sql()` para construir queries de odds exactas cuando `is_exact=True`
+- [x] **3-way Sports Support**: Implementado matching de X odds para deportes con empate (Football)
+- [x] **2-way Sports Support**: Implementado exclusión de X odds para deportes sin empate (Tennis)
+- [x] **Parameter Handling**: Actualizado parámetros para incluir odds en lugar de variaciones
+
+#### **✅ Unified Candidate Search**
+- [x] **Dual Search Logic**: Implementado lógica unificada en `_find_candidates()` para manejar odds (Tier 1) y variaciones (Tier 2)
+- [x] **Smart Processing**: Implementado procesamiento diferenciado para exact odds vs similar variations
+- [x] **Logging Enhancement**: Actualizado logging para mostrar odds en Tier 1 y variaciones en Tier 2
+- [x] **Error Handling**: Manejo robusto de casos donde odds no están disponibles
+
+#### **✅ Deduplication System**
+- [x] **Exclusion Logic**: Mantenido sistema de exclusión que previene duplicación entre Tier 1 y Tier 2
+- [x] **Event ID Tracking**: Implementado tracking de Tier 1 event IDs para exclusión en Tier 2
+- [x] **Search Separation**: Validado que Tier 1 (exact odds) y Tier 2 (similar variations) no se solapan
+- [x] **Performance**: Validado que deduplication no afecta rendimiento del sistema
+
+#### **✅ Integration Testing**
+- [x] **Tier 1 Odds Search**: Validado que Tier 1 encuentra eventos con odds exactamente idénticas
+- [x] **Tier 2 Variations Search**: Validado que Tier 2 mantiene búsqueda por variaciones similares
+- [x] **No Duplication**: Validado que no hay duplicación entre Tier 1 y Tier 2
+- [x] **Sport Support**: Validado funcionamiento correcto para deportes 2-way y 3-way
+
 ## 📊 **Métricas de Progreso**
 
 ### **Progreso General: 100%** 🎉
@@ -406,11 +470,13 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **Optimizaciones Recientes**: 100% ✅
 - **Optimización y Limpieza v1.2.2**: 100% ✅
 - **Odds Display en Notificaciones**: 100% ✅ **NUEVO v1.3.1**
+- **Gender Filtering en Candidate Search**: 100% ✅ **NUEVO v1.3.2**
+- **Tier 1 Exact Odds Search**: 100% ✅ **NUEVO v1.3.3**
 
 ### **Estado de Componentes**
 - **main.py**: ✅ Completamente funcional con CLI extendido
 - **scheduler.py**: ✅ Programación robusta con lógica optimizada + sistema de corrección de timestamps + dual process integration
-- **alert_engine.py**: ✅ Motor de predicciones basado en patrones (métodos duplicados eliminados, fix crítico de rule activations aplicado, odds display implementado)
+- **alert_engine.py**: ✅ Motor de predicciones basado en patrones (métodos duplicados eliminados, fix crítico de rule activations aplicado, odds display implementado, gender filtering implementado, tier 1 exact odds search implementado)
 - **alert_system.py**: ✅ Notificaciones Telegram inteligentes (métodos obsoletos eliminados) + notificaciones duales + odds display
 - **prediction_engine.py**: ✅ **NUEVO** - Orchestrador dual process con lógica de comparación
 - **process2/**: ✅ **NUEVO** - Sistema modular de Process 2
@@ -503,6 +569,8 @@ El **SofaScore Odds System v1.3.1** está **completamente funcional**, **optimiz
 - ✅ **Código**: Limpio, mantenible y optimizado **CON LIMPIEZA COMPLETA v1.2.2**
 - ✅ **Observaciones Deportivas**: Sistema modular para datos específicos por deporte
 - ✅ **Odds Display**: Muestra odds completas en notificaciones **NUEVO v1.3.1**
+- ✅ **Gender Filtering**: Filtrado por género en búsqueda de candidatos implementado **NUEVO v1.3.2**
+- ✅ **Tier 1 Exact Odds Search**: Búsqueda por odds exactas en Tier 1 implementado **NUEVO v1.3.3**
 
 ### **🏆 Logros Destacados**
 - **Tiempo de Desarrollo**: ~3 meses
@@ -516,6 +584,8 @@ El **SofaScore Odds System v1.3.1** está **completamente funcional**, **optimiz
 - **Dual Process System**: Process 1 + Process 2 funcionando en producción **NUEVO v1.3.0**
 - **Football Formulas**: 11 fórmulas específicas implementadas y funcionando **NUEVO v1.3.0**
 - **Odds Display**: Notificaciones con odds completas implementadas **NUEVO v1.3.1**
+- **Gender Filtering**: Filtrado por género en búsqueda de candidatos implementado **NUEVO v1.3.2**
+- **Tier 1 Exact Odds Search**: Búsqueda por odds exactas en Tier 1 implementado **NUEVO v1.3.3**
 
 ---
 
@@ -538,5 +608,5 @@ El **SofaScore Odds System v1.3.1** está **completamente funcional**, **optimiz
 
 ---
 
-**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA DUAL PROCESS INTELIGENTE Y OPTIMIZADO CON ODDS DISPLAY**  
+**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA DUAL PROCESS INTELIGENTE Y OPTIMIZADO CON ODDS DISPLAY, GENDER FILTERING Y TIER 1 EXACT ODDS SEARCH**  
 **Próximo Paso**: Monitoreo continuo y desarrollo de fórmulas para otros deportes (handball, rugby, tennis, basketball)

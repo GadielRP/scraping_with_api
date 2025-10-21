@@ -163,6 +163,25 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Data Formatting**: Formateo de datos para incluir odds en notificaciones
 - **Estado**: 🟢 **IMPLEMENTADO Y FUNCIONANDO - ODDS DISPLAY COMPLETO**
 
+### **v1.3.2 (Octubre 2025) - GENDER FILTERING EN CANDIDATE SEARCH - IMPLEMENTADO** ✅
+- **Gender Filtering Feature**: Implementado filtrado por género en búsqueda de candidatos históricos
+- **Database Schema Update**: Materialized view `mv_alert_events` actualizada con columna `gender` e índice optimizado
+- **AlertMatch Enhancement**: Dataclass actualizado con campo `gender` y filtrado en SQL queries
+- **Filtering Logic**: Candidatos históricos filtrados por mismo deporte, variaciones similares Y mismo género
+- **Enhanced Precision**: Predicciones más precisas al comparar solo eventos del mismo género (M/F)
+- **Mixed Events Support**: Maneja correctamente eventos masculinos, femeninos y mixtos
+- **Estado**: 🟢 **IMPLEMENTADO Y FUNCIONANDO - GENDER FILTERING COMPLETO**
+
+### **v1.3.3 (Octubre 2025) - TIER 1 EXACT ODDS SEARCH - IMPLEMENTADO** ✅
+- **Tier 1 Exact Odds Feature**: Cambiado Tier 1 de búsqueda por variaciones exactas a búsqueda por odds exactas
+- **Search Logic Enhancement**: Tier 1 ahora busca eventos históricos con odds iniciales y finales idénticas
+- **SQL Query Update**: Tier 1 queries actualizados para buscar exact odds (one_open, two_open, one_final, two_final)
+- **Tier 2 Unchanged**: Mantiene búsqueda por variaciones similares usando L1 distance (0.12 threshold)
+- **Deduplication System**: Sistema de exclusión previene duplicación entre Tier 1 y Tier 2
+- **Sport Support**: Maneja correctamente deportes 2-way (Tennis) y 3-way (Football) con var_shape logic
+- **Enhanced Precision**: Tier 1 más preciso al encontrar eventos con odds exactamente idénticas
+- **Estado**: 🟢 **IMPLEMENTADO Y FUNCIONANDO - TIER 1 EXACT ODDS SEARCH COMPLETO**
+
 ### **v1.3.0 (Septiembre 2025) - DUAL PROCESS INTEGRATION - IMPLEMENTADO** ✅
 - **Process 2 Implementation**: Sistema modular de reglas específicas por deporte implementado
 - **Football Formulas**: 11 fórmulas específicas de fútbol implementadas
@@ -347,6 +366,8 @@ El **SofaScore Odds System v1.3.1** tiene **Process 1 completamente funcional co
 - ✅ **Recolección de Resultados**: Automática e inteligente
 - ✅ **Infraestructura**: Robusta, confiable y optimizada
 - ✅ **Odds Display**: Muestra odds completas en notificaciones
+- ✅ **Gender Filtering**: Filtrado por género en búsqueda de candidatos implementado
+- ✅ **Tier 1 Exact Odds Search**: Búsqueda por odds exactas en Tier 1 implementado
 
 ### ✅ **Process 2 - IMPLEMENTADO Y FUNCIONANDO**
 - 🟢 **Arquitectura Modular**: Archivos separados por deporte siguiendo @rules.mdc

@@ -398,6 +398,25 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - **Soporte**: Maneja correctamente deportes 2-way y 3-way
 - **Resultado**: Notificaciones más informativas con datos completos de odds
 
+### **Fix 6: Gender Filtering en Candidate Search (21/10/2025)**
+- **Feature**: Implementado filtrado por género en búsqueda de candidatos históricos
+- **Enhancement**: AlertMatch dataclass actualizado con campo `gender` y filtrado en SQL queries
+- **Database Schema**: Materialized view `mv_alert_events` actualizada con columna `gender` e índice optimizado
+- **Filtering Logic**: Candidatos históricos filtrados por mismo deporte, variaciones similares Y mismo género
+- **Beneficio**: Predicciones más precisas al comparar solo eventos del mismo género (M/F)
+- **Soporte**: Maneja correctamente eventos masculinos, femeninos y mixtos
+- **Resultado**: Sistema de predicciones más preciso con filtrado de género implementado
+
+### **Fix 7: Tier 1 Exact Odds Search (21/10/2025)**
+- **Feature**: Cambiado Tier 1 de búsqueda por variaciones exactas a búsqueda por odds exactas
+- **Enhancement**: Tier 1 ahora busca eventos históricos con odds iniciales y finales idénticas
+- **Search Logic**: Tier 1 busca exact odds (one_open, two_open, one_final, two_final) + X odds para deportes 3-way
+- **Tier 2 Unchanged**: Mantiene búsqueda por variaciones similares usando L1 distance
+- **Deduplication**: Sistema de exclusión previene duplicación entre Tier 1 y Tier 2
+- **Beneficio**: Tier 1 más preciso al encontrar eventos con odds exactamente idénticas
+- **Soporte**: Maneja correctamente deportes 2-way (Tennis) y 3-way (Football) con var_shape
+- **Resultado**: Sistema de predicciones más preciso con búsqueda de odds exactas en Tier 1
+
 ### **Despliegue Exitoso**
 - ✅ **Sistema v1.3.1 desplegado** en producción (01/10/2025)
 - ✅ **Base de datos actualizada** con computed columns y materialized views
@@ -411,6 +430,8 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - ✅ **Scripts de upsert**: `upsert_debug_results.py` para corregir eventos faltantes
 - ✅ **Notificaciones optimizadas**: UPCOMING GAMES ALERT deshabilitado, solo DUAL PROCESS REPORTS activos
 - ✅ **Odds Display**: Notificaciones con odds completas implementadas
+- ✅ **Gender Filtering**: Filtrado por género en búsqueda de candidatos implementado
+- ✅ **Tier 1 Exact Odds Search**: Búsqueda por odds exactas en Tier 1 implementado
 
 ### **Archivos Modificados**
 - `alert_engine.py`: AlertMatch dataclass actualizado con campos de odds, cálculo de diferencias con signos visibles

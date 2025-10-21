@@ -181,9 +181,7 @@ class AlertEngine:
             sport=event.sport,
             gender=event.gender,
             var_shape=var_shape,
-            cur_v1=cur_v1,
-            cur_vx=cur_vx,
-            cur_v2=cur_v2,
+            current_odds=event.event_odds,
             exclude_event_ids=[current_event_id]
         )
         
@@ -352,10 +350,9 @@ class AlertEngine:
         return matches
     
     def _find_tier1_candidates(self, sport: str, gender: str, var_shape: bool, 
-                               cur_v1: float, cur_vx: Optional[float], 
-                               cur_v2: float, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
-        """Find historical events with EXACTLY identical variations"""
-        return self._find_candidates(sport, gender, var_shape, cur_v1, cur_vx, cur_v2, 
+                               current_odds, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
+        """Find historical events with EXACTLY identical odds (initial and final)"""
+        return self._find_candidates(sport, gender, var_shape, current_odds, 
                                    is_exact=True, exclude_event_ids=exclude_event_ids)
     
     
@@ -418,37 +415,59 @@ class AlertEngine:
             return []
 
     
-    def _find_candidates(self, sport: str, gender: str, var_shape: bool, cur_v1: float, 
-                        cur_vx: Optional[float], cur_v2: float, is_exact: bool, 
-                        exclude_event_ids: List[int] = None) -> List[AlertMatch]:
-        """Unified candidate search for both exact and similar variations"""
+    def _find_candidates(self, sport: str, gender: str, var_shape: bool, 
+                        search_data, is_exact: bool, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
+        """Unified candidate search for both exact odds and similar variations"""
         try:
             with db_manager.get_session() as session:
                 from sqlalchemy import text
                 
-                search_type = "EXACTLY identical" if is_exact else "SIMILAR"
-                tolerance_info = "" if is_exact else f" (tolerance: ±{self.TIER2_TOLERANCE})"
-                logger.info(f"Searching for {search_type} variations{tolerance_info}...")
-                
-                dx_display = f"{cur_vx:.2f}" if cur_vx is not None else "NULL"
-                logger.info(f"Current variations: d1={cur_v1:.2f}, dx={dx_display}, d2={cur_v2:.2f}")
-                logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
+                if is_exact:
+                    # Tier 1: Search for exact odds
+                    search_type = "EXACTLY identical odds"
+                    current_odds = search_data
+                    logger.info(f"Searching for {search_type}...")
+                    logger.info(f"Current odds: 1={current_odds.one_open}→{current_odds.one_final}, "
+                               f"X={current_odds.x_open}→{current_odds.x_final if current_odds.x_open else 'N/A'}, "
+                               f"2={current_odds.two_open}→{current_odds.two_final}")
+                    logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
+                    
+                    # Build SQL query for exact odds
+                    sql_query, params = self._build_candidate_sql(
+                        sport, gender, var_shape, current_odds, is_exact, exclude_event_ids
+                    )
+                else:
+                    # Tier 2: Search for similar variations (unchanged)
+                    search_type = "SIMILAR variations"
+                    tolerance_info = f" (tolerance: ±{self.TIER2_TOLERANCE})"
+                    cur_v1, cur_vx, cur_v2 = search_data
+                    logger.info(f"Searching for {search_type}{tolerance_info}...")
+                    
+                    dx_display = f"{cur_vx:.2f}" if cur_vx is not None else "NULL"
+                    logger.info(f"Current variations: d1={cur_v1:.2f}, dx={dx_display}, d2={cur_v2:.2f}")
+                    logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
+                    
+                    # Build SQL query for similar variations
+                    sql_query, params = self._build_candidate_sql(
+                        sport, gender, var_shape, cur_v1, cur_vx, cur_v2, is_exact, exclude_event_ids
+                    )
                 
                 if exclude_event_ids:
-                    logger.info(f"Excluding {len(exclude_event_ids)} Tier 1 event IDs: {exclude_event_ids}")
-                
-                # Build SQL query and parameters
-                sql_query, params = self._build_candidate_sql(
-                    sport, gender, var_shape, cur_v1, cur_vx, cur_v2, is_exact, exclude_event_ids
-                )
+                    logger.info(f"Excluding {len(exclude_event_ids)} event IDs: {exclude_event_ids}")
                 
                 result = session.execute(text(sql_query), params)
                 candidates = result.fetchall()
                 
-                logger.info(f"Found {len(candidates)} candidates with {search_type.upper()} variations")
+                logger.info(f"Found {len(candidates)} candidates with {search_type.upper()}")
                 
                 # Process matches
-                matches = self._process_candidate_matches(candidates, cur_v1, cur_vx, cur_v2, is_exact, sport)
+                if is_exact:
+                    # For exact odds, we don't need variation parameters for processing
+                    matches = self._process_candidate_matches(candidates, 0, None, 0, is_exact, sport)
+                else:
+                    # For similar variations, use the variation parameters
+                    cur_v1, cur_vx, cur_v2 = search_data
+                    matches = self._process_candidate_matches(candidates, cur_v1, cur_vx, cur_v2, is_exact, sport)
                 
                 if matches:
                     logger.info(f"SUCCESS: Found {len(matches)} {search_type.lower()} matches")
@@ -458,7 +477,7 @@ class AlertEngine:
                 return matches
                 
         except Exception as e:
-            error_type = "exact" if is_exact else "similar"
+            error_type = "exact odds" if is_exact else "similar variations"
             logger.error(f"Error finding {error_type} historical matches: {e}")
             return []
     
@@ -534,9 +553,8 @@ class AlertEngine:
         
         return sql, params
 
-    def _build_candidate_sql(self, sport: str, gender: str, var_shape: bool, cur_v1: float, 
-                           cur_vx: Optional[float], cur_v2: float, is_exact: bool, 
-                           exclude_event_ids: List[int] = None) -> Tuple[str, Dict]:
+    def _build_candidate_sql(self, sport: str, gender: str, var_shape: bool, 
+                           search_data, is_exact: bool, exclude_event_ids: List[int] = None) -> Tuple[str, Dict]:
         """Build SQL query and parameters for candidate search"""
         # Build exclusion clause
         exclude_clause = ""
@@ -548,26 +566,52 @@ class AlertEngine:
         params = {
             'sport': sport,
             'gender': gender,
-            'var_shape': var_shape,
-            'cur_v1': cur_v1,
-            'cur_v2': cur_v2
+            'var_shape': var_shape
         }
         
-        if cur_vx is None:
-            # No-draw sports (Tennis, etc.)
-            if is_exact:
-                var_conditions = "mae.var_one = :cur_v1 AND mae.var_two = :cur_v2 AND mae.var_x IS NULL"
+        if is_exact:
+            # Tier 1: Search for exact odds
+            current_odds = search_data
+            params.update({
+                'cur_one_open': current_odds.one_open,
+                'cur_two_open': current_odds.two_open,
+                'cur_one_final': current_odds.one_final,
+                'cur_two_final': current_odds.two_final
+            })
+            
+            if var_shape:
+                # 3-way sports (Football, etc.) - include X odds
+                params.update({
+                    'cur_x_open': current_odds.x_open,
+                    'cur_x_final': current_odds.x_final
+                })
+                odds_conditions = ("mae.one_open = :cur_one_open AND mae.two_open = :cur_two_open AND "
+                                 "mae.one_final = :cur_one_final AND mae.two_final = :cur_two_final AND "
+                                 "mae.x_open = :cur_x_open AND mae.x_final = :cur_x_final")
             else:
-                params['tolerance'] = self.TIER2_TOLERANCE
-                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tolerance AND ABS(mae.var_two - :cur_v2) <= :tolerance AND mae.var_x IS NULL"
+                # No-draw sports (Tennis, etc.) - exclude X odds
+                odds_conditions = ("mae.one_open = :cur_one_open AND mae.two_open = :cur_two_open AND "
+                                 "mae.one_final = :cur_one_final AND mae.two_final = :cur_two_final AND "
+                                 "mae.x_open IS NULL AND mae.x_final IS NULL")
         else:
-            # 3-way sports (Football, etc.)
-            params['cur_vx'] = cur_vx
-            if is_exact:
-                var_conditions = "mae.var_one = :cur_v1 AND mae.var_two = :cur_v2 AND mae.var_x = :cur_vx"
-            else:
+            # Tier 2: Search for similar variations (unchanged)
+            cur_v1, cur_vx, cur_v2 = search_data
+            params.update({
+                'cur_v1': cur_v1,
+                'cur_v2': cur_v2
+            })
+            
+            if cur_vx is None:
+                # No-draw sports (Tennis, etc.)
                 params['tolerance'] = self.TIER2_TOLERANCE
-                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tolerance AND ABS(mae.var_two - :cur_v2) <= :tolerance AND mae.var_x IS NOT NULL AND ABS(mae.var_x - :cur_vx) <= :tolerance"
+                odds_conditions = "ABS(mae.var_one - :cur_v1) <= :tolerance AND ABS(mae.var_two - :cur_v2) <= :tolerance AND mae.var_x IS NULL"
+            else:
+                # 3-way sports (Football, etc.)
+                params.update({
+                    'cur_vx': cur_vx,
+                    'tolerance': self.TIER2_TOLERANCE
+                })
+                odds_conditions = "ABS(mae.var_one - :cur_v1) <= :tolerance AND ABS(mae.var_two - :cur_v2) <= :tolerance AND mae.var_x IS NOT NULL AND ABS(mae.var_x - :cur_vx) <= :tolerance"
         
         sql = f"""
                     SELECT mae.event_id, mae.participants, mae.result_text, mae.winner_side, mae.point_diff,
@@ -580,7 +624,7 @@ class AlertEngine:
                     WHERE mae.sport = :sport
                       AND mae.gender = :gender
                       AND mae.var_shape = :var_shape
-                      AND {var_conditions}{exclude_clause}
+                      AND {odds_conditions}{exclude_clause}
         """
         
         return sql, params
