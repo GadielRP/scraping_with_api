@@ -308,11 +308,13 @@ class AlertEngine:
             dx_display = f"{cand_vx:.2f}" if cand_vx is not None else "NULL"
             dx_diff_display = f"{var_diffs['dx']:.3f}" if var_diffs['dx'] is not None else "0.000"
             symmetry_status = "SYMMETRICAL" if is_symmetrical else "UNSYMMETRICAL"
+            """ for debugging purposes, take quotes off when need to see the match details
             logger.info(
                 f"L1 MATCH: event_id={row.event_id} vars=(d1={cand_v1:.2f}, dx={dx_display}, d2={cand_v2:.2f}) "
                 f"| diffs=(d1={var_diffs['d1']:+.3f}, dx={dx_diff_display}, d2={var_diffs['d2']:+.3f}) "
                 f"| L1={dist_l1:.4f} | {symmetry_status} | result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
             )
+            """
             
             matches.append(AlertMatch(
                 event_id=row.event_id,
@@ -346,7 +348,7 @@ class AlertEngine:
             logger.info(f"Limiting L1 results to top {max_candidates} closest matches")
             matches = matches[:max_candidates]
         
-        logger.info(f"🔍 DEBUG: Final L1 matches returned: {len(matches)}")
+        #logger.info(f"🔍 DEBUG: Final L1 matches returned: {len(matches)}")
         return matches
     
     def _find_tier1_candidates(self, sport: str, gender: str, var_shape: bool, 
@@ -908,13 +910,13 @@ class AlertEngine:
             
             # Find the most common winning side
             if not winner_groups:
-                logger.info(f"🔍 DEBUG: Tier C - No winner groups found")
+                #logger.info(f"🔍 DEBUG: Tier C - No winner groups found")
                 return 0
             
             most_common_winner = max(winner_groups.keys(), key=lambda k: len(winner_groups[k]))
             most_common_count = len(winner_groups[most_common_winner])
             result = most_common_count if most_common_count >= 2 else 0
-            logger.info(f"🔍 DEBUG: Tier C - Most common winner: {most_common_winner}, count: {most_common_count}, result: {result}")
+            #logger.info(f"🔍 DEBUG: Tier C - Most common winner: {most_common_winner}, count: {most_common_count}, result: {result}")
             return result
         
         return 0
@@ -1214,7 +1216,7 @@ class AlertEngine:
         
         # Add Tier 2 candidates - ALWAYS apply symmetry filter
         if tier2_candidates:
-            logger.info(f"🔍 DEBUG: Tier 2 candidates before symmetry filter: {len(tier2_candidates)}")
+            #logger.info(f"🔍 DEBUG: Tier 2 candidates before symmetry filter: {len(tier2_candidates)}")
             # Apply symmetry filter to ALL Tier 2 candidates (regardless of count)
             symmetrical_tier2 = [c for c in tier2_candidates if c.is_symmetrical]
             logger.info(f"🔍 DEBUG: Symmetrical Tier 2 candidates: {len(symmetrical_tier2)}")
@@ -1227,7 +1229,7 @@ class AlertEngine:
             
             # Log non-symmetrical candidates that were filtered out
             non_symmetrical_tier2 = [c for c in tier2_candidates if not c.is_symmetrical]
-            logger.info(f"🔍 DEBUG: Non-symmetrical Tier 2 candidates: {len(non_symmetrical_tier2)}")
+            #logger.info(f"🔍 DEBUG: Non-symmetrical Tier 2 candidates: {len(non_symmetrical_tier2)}")
             if non_symmetrical_tier2:
                 logger.info(f"🔍 Filtered out {len(non_symmetrical_tier2)} non-symmetrical Tier 2 candidates")
                 for candidate in non_symmetrical_tier2:
@@ -1268,10 +1270,8 @@ class AlertEngine:
         tier_c_matches = self._count_candidates_matching_rule(selected_candidates, 'same_winner')
         
         # DEBUG: Log the counting results
-        logger.info(f"🔍 DEBUG: Rule counting results - A: {tier_a_matches}, B: {tier_b_matches}, C: {tier_c_matches}")
-        
-        
-        
+        #logger.info(f"🔍 DEBUG: Rule counting results - A: {tier_a_matches}, B: {tier_b_matches}, C: {tier_c_matches}")
+
         # Calculate total UNIQUE candidates that match at least one rule
         # We need to count unique candidates, not sum up all rule matches
         unique_matching_candidates = set()
