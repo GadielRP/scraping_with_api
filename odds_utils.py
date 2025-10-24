@@ -75,8 +75,18 @@ def process_event_odds_from_dropping_odds(event_id: str, odds_map: Dict) -> Dict
             return {}
         
         event_odds = odds_map[event_id]
-        odds_data_raw = event_odds.get('odds', {})
-        choices = odds_data_raw.get('choices', [])
+        
+        # Handle both structures:
+        # - Dropping odds: odds_map[event_id]['odds']['choices']
+        # - Winning odds: odds_map[event_id]['choices'] (no intermediate 'odds' key)
+        if 'odds' in event_odds:
+            # Dropping odds structure (nested)
+            odds_data_raw = event_odds.get('odds', {})
+            choices = odds_data_raw.get('choices', [])
+        else:
+            # Winning odds structure (flat)
+            odds_data_raw = event_odds
+            choices = event_odds.get('choices', [])
         
         if not choices:
             logger.warning(f"No choices found for event {event_id}")
@@ -127,10 +137,6 @@ def process_event_odds_from_dropping_odds(event_id: str, odds_map: Dict) -> Dict
         logger.error(f"Error processing odds for event {event_id}: {e}")
         return {}
 
-
-
-
-
 def validate_odds_data(odds_data: Dict) -> bool:
     """
     Validate processed odds data for consistency.
@@ -143,10 +149,15 @@ def validate_odds_data(odds_data: Dict) -> bool:
         True if valid, False otherwise
     """
     # Check if this is complete odds data (has both opening and current odds)
-    if 'one_open' in odds_data and 'one_cur' in odds_data:
+    if ('one_open' in odds_data and 'one_cur' in odds_data) or ('one_initial' in odds_data and 'one_final' in odds_data):
         # Complete odds validation - check opening and current odds fields
-        required_fields = ['one_open', 'two_open', 'one_cur', 'two_cur']
-        validation_type = "complete odds"
+        # Handle both 'open'/'cur' and 'initial'/'final' naming conventions
+        if 'one_open' in odds_data:
+            required_fields = ['one_open', 'two_open', 'one_cur', 'two_cur']
+            validation_type = "complete odds (open/cur)"
+        else:
+            required_fields = ['one_initial', 'two_initial', 'one_final', 'two_final']
+            validation_type = "complete odds (initial/final)"
         
         for field in required_fields:
             if field not in odds_data or odds_data[field] is None:
@@ -179,6 +190,8 @@ def validate_odds_data(odds_data: Dict) -> bool:
         numeric_fields.append('x_cur')
     if odds_data.get('x_final') is not None:
         numeric_fields.append('x_final')
+    if odds_data.get('x_initial') is not None:
+        numeric_fields.append('x_initial')
     
     for field in numeric_fields:
         value = odds_data.get(field)

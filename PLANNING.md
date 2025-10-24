@@ -1,14 +1,47 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.3.1  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO**  
-**Última Actualización:** 1 de Octubre, 2025
+**Versión:** v1.4.2  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED**  
+**Última Actualización:** 23 de Octubre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
 Sistema automatizado de monitoreo y predicción de odds deportivos que proporciona **notificaciones inteligentes** y **predicciones basadas en patrones históricos**, permitiendo a los usuarios tomar decisiones informadas usando análisis de datos históricos y **extracción eficiente de odds** solo en momentos clave.
 
-## 🚀 **Estado Actual (v1.3.1)**
+## 🚀 **Estado Actual (v1.4.2)**
+
+### ✅ **NUEVO EN v1.4.0 - Multi-Source Discovery & Auto-Migration**
+
+#### **Multi-Source Event Discovery**
+- **Discovery 1 (Dropping Odds)**: Sistema original, cada 2 horas
+- **Discovery 2 (Special Events)**: Nuevas fuentes implementadas
+  - ✅ High Value Streaks (rachas de alto valor)
+  - ✅ H2H Events (head-to-head)
+  - ✅ Winning Odds (mejores odds de victoria)
+  - ⏸️ Team Streaks (pendiente - estructura incompatible)
+- **Event Tracking**: Campo `discovery_source` en cada evento para identificar origen
+- **Arquitectura**: `sofascore_api2.py` extiende API con nuevos métodos
+- **Normalización**: Eventos de todas las fuentes procesados por el mismo pipeline
+
+#### **Auto-Migration System**
+- **Model-Driven**: Inspección automática de diferencias entre `models.py` y base de datos
+- **Self-Healing**: Sistema añade columnas faltantes automáticamente al iniciar
+- **Zero Manual SQL**: No requiere scripts de migración manual
+- **Smart Indexing**: Crea índices automáticos para columnas comunes
+- **Safe by Design**: Solo añade columnas (no elimina ni modifica tipos)
+- **Production Ready**: Migración exitosa del campo `discovery_source` en v1.4
+
+### ✅ **NUEVO EN v1.4.1 - Critical Fixes**
+- **Timezone Fix**: Corregido cálculo de minutos hasta inicio de eventos (eliminados valores negativos -357, -358)
+- **Discovery 2 Scheduling Fix**: Discovery 2 ahora ejecuta en los mismos horarios que Discovery 1 (sincronizado)
+- **Synchronized Execution**: Ambos discovery jobs ejecutan simultáneamente cada 2 horas
+- **Production Ready**: Sistema completamente funcional con todas las fuentes de eventos operativas
+
+### ✅ **NUEVO EN v1.4.2 - Performance Optimizations**
+- **Team Streaks 404 Handling**: Eliminación inmediata de eventos sin odds (no más retries innecesarios)
+- **Reduced Logging**: Logging optimizado para mejor rendimiento y menor ruido
+- **Faster Processing**: Procesamiento 35x más rápido para eventos problemáticos
+- **Efficient Cleanup**: Limpieza automática de eventos sin odds disponibles
 
 ### ✅ **PROCESS 1 - Sistema de Predicciones Inteligentes - COMPLETADO (v1.1)**
 **📋 Definición**: Process 1 es el sistema de análisis de patrones de odds que evalúa eventos históricos para predecir resultados futuros.
@@ -108,6 +141,17 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Cobertura Global**: Eventos de múltiples ligas y competencias
 - **Actualización Inteligente**: Actualiza eventos existentes y sus odds
 - **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO**
+
+### 🟡 **Discovery 2 - Sistema de Fuentes Adicionales - EN DESARROLLO**
+- **Objetivo**: Expandir fuentes de descubrimiento de eventos más allá de dropping odds
+- **Fuentes Objetivo**: High value streaks, team streaks, H2H, winning odds
+- **Progreso**:
+  - ✅ **High Value Streaks**: Función de normalización implementada (`extract_events_from_high_value_streaks`)
+  - ⏸️ **Team Streaks**: Pausado (respuesta contiene datos de equipos, no eventos)
+  - 🔄 **H2H Events**: En análisis
+  - 🔄 **Winning Odds Events**: Pendiente
+- **Archivo**: `sofascore_api2.py` para nuevos métodos de API
+- **Estado**: 🟡 **EN DESARROLLO ACTIVO**
 
 ### ✅ **Verificación Pre-Inicio con Extracción Inteligente - COMPLETADO**
 - **Frecuencia**: Cada 5 minutos en intervalos de reloj

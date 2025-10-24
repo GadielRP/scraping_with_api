@@ -46,22 +46,27 @@ def get_local_now_iso():
     """
     return get_local_now_aware().isoformat()
 
-def convert_utc_to_local(utc_dt):
+def convert_utc_to_local(utc_dt, keep_tzinfo=False):
     """
     Convert UTC datetime to local timezone.
     
     Args:
         utc_dt: UTC datetime object
+        keep_tzinfo: If True, return timezone-aware datetime; if False, return naive datetime
         
     Returns:
-        datetime: Local timezone datetime (naive)
+        datetime: Local timezone datetime (naive or aware depending on keep_tzinfo)
     """
     if utc_dt.tzinfo is None:
         # Assume it's UTC if no timezone info
         utc_dt = utc_dt.replace(tzinfo=pytz.UTC)
     
     local_dt = utc_dt.astimezone(TIMEZONE)
-    return local_dt.replace(tzinfo=None)
+    
+    if keep_tzinfo:
+        return local_dt  # Return timezone-aware datetime
+    else:
+        return local_dt.replace(tzinfo=None)  # Return naive datetime
 
 def convert_local_to_utc(local_dt):
     """

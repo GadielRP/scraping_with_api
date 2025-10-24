@@ -66,17 +66,25 @@ def initialize_system():
     logger = logging.getLogger(__name__)
     
     try:
-        # Test database connection
+        # Step 1: Test database connection
         if not db_manager.test_connection():
             logger.error("Database connection failed")
             return False
         
-        # Create tables if they don't exist
+        # Step 2: Create tables if they don't exist (without materialized views)
         db_manager.create_tables()
-        # Ensure reporting views exist or are refreshed
+        
+        # Step 3: Run schema migrations BEFORE creating views
+        # This ensures all columns exist before views try to reference them
+        if not db_manager.check_and_migrate_schema():
+            logger.warning("Schema migration check failed, but continuing...")
+        
+        # Step 4: Create/update regular views (can reference migrated columns)
         create_or_replace_views(db_manager.engine)
-        # Ensure materialized views for alerts exist
+        
+        # Step 5: Create/update materialized views (after migrations, so discovery_source exists)
         create_or_replace_materialized_views(db_manager.engine)
+        
         logger.info("System initialized successfully")
         return True
         
@@ -89,6 +97,12 @@ def run_discovery():
     logger = logging.getLogger(__name__)
     logger.info("Running event discovery...")
     job_scheduler.run_job_discovery_now()
+
+def run_discovery2():
+    """Run event discovery 2 job (streaks, h2h, winning odds)"""
+    logger = logging.getLogger(__name__)
+    logger.info("Running event discovery 2 (streaks, h2h, winning odds)...")
+    job_scheduler.run_job_discovery2_now()
 
 def run_pre_start_check():
     """Run pre-start check job"""
@@ -178,7 +192,8 @@ def start_scheduler():
     print("\n🚀 SofaScore Odds System Started Successfully!")
     print("=" * 50)
     print("📅 Scheduled Jobs:")
-    print(f"  • Discovery: Daily at {', '.join(Config.DISCOVERY_TIMES)}")
+    print(f"  • Discovery (dropping odds): Daily at {', '.join(Config.DISCOVERY_TIMES)}")
+    print(f"  • Discovery 2 (streaks, top team streaks, h2h, winning odds): Daily at {', '.join(Config.DISCOVERY_TIMES)}")
     
     # Calculate and display dynamic pre-start check times
     interval_minutes = Config.POLL_INTERVAL_MINUTES
@@ -310,7 +325,7 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='SofaScore Odds Alert System')
     parser.add_argument('command', choices=[
-        'start', 'discovery', 'pre-start', 'midnight', 'results', 'results-all', 'status', 'events', 'alerts', 'refresh-alerts'
+        'start', 'discovery', 'discovery2', 'pre-start', 'midnight', 'results', 'results-all', 'status', 'events', 'alerts', 'refresh-alerts'
     ], help='Command to run')
     parser.add_argument('--limit', type=int, default=10, help='Limit for events display')
     
@@ -337,6 +352,12 @@ def main():
         elif args.command == 'discovery':
             if initialize_system():
                 run_discovery()
+            else:
+                logger.error("Failed to initialize system")
+                sys.exit(1)
+        elif args.command == 'discovery2':
+            if initialize_system():
+                run_discovery2()
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)

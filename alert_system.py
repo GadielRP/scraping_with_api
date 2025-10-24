@@ -291,7 +291,6 @@ class PreStartNotification:
             }
             
             header = verdict_headers.get(dual_report.verdict.value, "❓ DUAL PROCESS - UNKNOWN")
-            
             message = f"{header}\n"
             
             # Event information

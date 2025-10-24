@@ -34,6 +34,9 @@ class EventRepository:
                     event.home_team = event_data['homeTeam']
                     event.away_team = event_data['awayTeam']
                     event.gender = event_data['gender']
+                    # Only update discovery_source if explicitly provided (preserve original discovery source)
+                    if 'discovery_source' in event_data:
+                        event.discovery_source = event_data['discovery_source']
                     event.updated_at = get_local_now()
                     logger.debug(f"Updated event {event_data['id']}")
                 else:
@@ -48,7 +51,8 @@ class EventRepository:
                         country=event_data.get('country'),
                         home_team=event_data['homeTeam'],
                         away_team=event_data['awayTeam'],
-                        gender=event_data['gender']
+                        gender=event_data['gender'],
+                        discovery_source=event_data.get('discovery_source', 'dropping_odds')
                     )
                     session.add(event)
                     logger.debug(f"Created new event {event_data['id']}")
@@ -87,6 +91,40 @@ class EventRepository:
                     return False
         except Exception as e:
             logger.error(f"Error updating starting time for event {event_id}: {e}")
+            return False
+    
+    @staticmethod
+    def delete_event(event_id: int) -> bool:
+        """Delete an event and all its related data (odds, results, observations)"""
+        try:
+            with db_manager.get_session() as session:
+                # Get the event first to check if it exists
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if not event:
+                    logger.warning(f"Event {event_id} not found for deletion")
+                    return False
+                
+                # Delete related data first (due to foreign key constraints)
+                # Delete odds snapshots
+                session.query(OddsSnapshot).filter(OddsSnapshot.event_id == event_id).delete()
+                
+                # Delete event odds
+                session.query(EventOdds).filter(EventOdds.event_id == event_id).delete()
+                
+                # Delete results
+                session.query(Result).filter(Result.event_id == event_id).delete()
+                
+                # Delete observations
+                session.query(EventObservation).filter(EventObservation.event_id == event_id).delete()
+                
+                # Finally delete the event
+                session.query(Event).filter(Event.id == event_id).delete()
+                
+                logger.info(f"✅ Deleted event {event_id} and all related data")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error deleting event {event_id}: {e}")
             return False
     
 
@@ -280,18 +318,26 @@ class OddsRepository:
             
             with db_manager.get_session() as session:
                 # Create snapshot with appropriate odds data
-                if 'one_open' in odds_data and 'one_cur' in odds_data:
+                if ('one_open' in odds_data and 'one_cur' in odds_data) or ('one_initial' in odds_data and 'one_final' in odds_data):
                     # Complete odds snapshot (from discovery) - has both opening and current odds
+                    # Handle both 'open'/'cur' and 'initial'/'final' naming conventions
+                    one_open = odds_data.get('one_open') or odds_data.get('one_initial')
+                    x_open = odds_data.get('x_open') or odds_data.get('x_initial')
+                    two_open = odds_data.get('two_open') or odds_data.get('two_initial')
+                    one_cur = odds_data.get('one_cur') or odds_data.get('one_final')
+                    x_cur = odds_data.get('x_cur') or odds_data.get('x_final')
+                    two_cur = odds_data.get('two_cur') or odds_data.get('two_final')
+                    
                     snapshot = OddsSnapshot(
                         event_id=event_id,
                         collected_at=get_local_now(),
                         market='1X2',
-                        one_open=odds_data.get('one_open'),
-                        x_open=odds_data.get('x_open'),
-                        two_open=odds_data.get('two_open'),
-                        one_cur=odds_data.get('one_cur'),
-                        x_cur=odds_data.get('x_cur'),
-                        two_cur=odds_data.get('two_cur')
+                        one_open=one_open,
+                        x_open=x_open,
+                        two_open=two_open,
+                        one_cur=one_cur,
+                        x_cur=x_cur,
+                        two_cur=two_cur
                     )
                 else:
                     # Final odds snapshot (from pre-start or discovery final odds) - only current/final odds
@@ -333,13 +379,21 @@ class OddsRepository:
                 event_odds = session.query(EventOdds).filter(EventOdds.event_id == event_id).first()
                 
                 if event_odds:
-                    # Update existing record
+                    # Update existing record - handle both 'open' and 'initial' naming conventions
                     if odds_data.get('one_open') is not None:
                         event_odds.one_open = odds_data['one_open']
+                    elif odds_data.get('one_initial') is not None:
+                        event_odds.one_open = odds_data['one_initial']
+                    
                     if odds_data.get('x_open') is not None:
                         event_odds.x_open = odds_data['x_open']
+                    elif odds_data.get('x_initial') is not None:
+                        event_odds.x_open = odds_data['x_initial']
+                    
                     if odds_data.get('two_open') is not None:
                         event_odds.two_open = odds_data['two_open']
+                    elif odds_data.get('two_initial') is not None:
+                        event_odds.two_open = odds_data['two_initial']
                     
                     # Always update final odds (handle both naming conventions)
                     event_odds.one_final = odds_data.get('one_final') or odds_data.get('one_cur')
@@ -349,13 +403,13 @@ class OddsRepository:
                     
                     logger.debug(f"Updated event odds for event {event_id}")
                 else:
-                    # Create new record
+                    # Create new record - handle both 'open' and 'initial' naming conventions
                     event_odds = EventOdds(
                         event_id=event_id,
                         market='1X2',
-                        one_open=odds_data.get('one_open'),
-                        x_open=odds_data.get('x_open'),
-                        two_open=odds_data.get('two_open'),
+                        one_open=odds_data.get('one_open') or odds_data.get('one_initial'),
+                        x_open=odds_data.get('x_open') or odds_data.get('x_initial'),
+                        two_open=odds_data.get('two_open') or odds_data.get('two_initial'),
                         one_final=odds_data.get('one_final') or odds_data.get('one_cur'),
                         x_final=odds_data.get('x_final') or odds_data.get('x_cur'),
                         two_final=odds_data.get('two_final') or odds_data.get('two_cur'),

@@ -22,6 +22,7 @@ class Event(Base):
     home_team = Column(Text, nullable=False)
     away_team = Column(Text, nullable=False)
     gender = Column(String(10), nullable=False, default="unknown")  # 'Men' or 'Women' or 'Mixed'
+    discovery_source = Column(String(50), nullable=False, default='dropping_odds')  # 'dropping_odds', 'high_value_streaks', 'h2h', 'winning_odds', 'team_streaks'
 
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
@@ -206,6 +207,7 @@ MV_ALERT_EVENTS_SQL = (
         e.id AS event_id,
         e.sport,
         e.gender,
+        e.discovery_source,
         e.start_time_utc,
         (e.home_team || ' vs ' || e.away_team) AS participants,
         e.home_team,
@@ -275,6 +277,7 @@ def refresh_materialized_views(engine):
         conn.exec_driver_sql("REFRESH MATERIALIZED VIEW mv_alert_events;")
 
 
-# Also register for metadata create events so new databases get views automatically
+# Register only the regular view for automatic creation
+# Materialized views are created manually in initialize_system() after migrations
 event.listen(Base.metadata, 'after_create', DDL(EVENT_ALL_ODDS_VIEW_SQL))
-event.listen(Base.metadata, 'after_create', DDL(MV_ALERT_EVENTS_SQL))
+# NOTE: Materialized view is NOT auto-created here - it's created after schema migrations in main.py

@@ -7,6 +7,9 @@ from config import Config
 from odds_utils import fractional_to_decimal
 from sport_observations import sport_observations_manager
 from alert_system import pre_start_notifier
+from repository import EventRepository
+from sport_classifier import sport_classifier
+
 logger = logging.getLogger(__name__)
 
 class SofaScoreAPI:
@@ -42,13 +45,80 @@ class SofaScoreAPI:
             
     def get_gender(self, home_team: Dict, away_team: Dict) -> str:
         """Get the gender of the event from the home and away team"""
-        """Get the gender of the event"""
         gender_home_team = home_team.get('gender', 'unknown')
         gender_away_team = away_team.get('gender', 'unknown')
-        if gender_home_team != gender_away_team:
-            logger.info(f"🔍 DEBUG: Gender mismatch detected: {gender_home_team} != {gender_away_team}")
-            return "mixed"
-        else: return gender_home_team if gender_home_team else "unknown"
+
+        # Case 1: both are known and equal
+        if gender_home_team == gender_away_team and gender_home_team != 'unknown':
+            return gender_home_team
+
+        # Case 2: one is unknown, return the known one
+        if gender_home_team == 'unknown' and gender_away_team != 'unknown':
+            return gender_away_team
+        if gender_away_team == 'unknown' and gender_home_team != 'unknown':
+            return gender_home_team
+
+        # Case 3: both unknown
+        if gender_home_team == 'unknown' and gender_away_team == 'unknown':
+            return 'unknown'
+
+        # Case 4: both known but different
+        logger.info(f"🔍 DEBUG: Gender mismatch detected: {gender_home_team} != {gender_away_team}")
+        return "mixed"
+
+    def get_event_information(self, event: Dict, discovery_source: str = 'dropping_odds') -> Dict:
+        """
+        Extract and structure event information from a single event object.
+        
+        Args:
+            event: The event object from the API response
+            discovery_source: The source that discovered this event (default: 'dropping_odds')
+            
+        Returns:
+            Dict containing structured event data with keys: id, customId, slug, startTimestamp,
+            sport, competition, country, homeTeam, awayTeam, gender, discovery_source
+        """
+        try:
+            # Extract basic event information
+            original_sport = event.get('tournament', {}).get('category', {}).get('sport', {}).get('name')
+            home_team = event.get('homeTeam', {}).get('name')
+            away_team = event.get('awayTeam', {}).get('name')
+            
+            # Get gender information
+            gender = self.get_gender(event.get('homeTeam', {}), event.get('awayTeam', {}))
+            
+            # Classify sport using the sport classifier
+            classified_sport = sport_classifier.classify_sport(
+                sport=original_sport,
+                home_team=home_team,
+                away_team=away_team
+            )
+            
+            # Build structured event data
+            event_data = {
+                'id': event.get('id'),
+                'customId': event.get('customId'),
+                'slug': event.get('slug'),
+                'startTimestamp': event.get('startTimestamp'),
+                'sport': classified_sport,
+                'competition': f"{event.get('tournament', {}).get('category', {}).get('name')}, {event.get('tournament', {}).get('name')}, {event.get('tournament', {}).get('uniqueTournament', {}).get('name')}",
+                'country': event.get('venue', {}).get('country', {}).get('name') or event.get('tournament', {}).get('category', {}).get('country', {}).get('name'),
+                'homeTeam': home_team,
+                'awayTeam': away_team,
+                'gender': gender,
+                'discovery_source': discovery_source,
+            }
+            
+            # Log sport classification if it changed
+            if classified_sport != original_sport:
+                logger.info(f"🎾 Sport classified: '{original_sport}' → '{classified_sport}' for {home_team} vs {away_team}")
+            
+            return event_data
+            
+        except Exception as e:
+            logger.error(f"Error extracting event information: {e}")
+            return {}
+
 
     def _rate_limit(self):
         """Implement rate limiting between requests"""
@@ -63,7 +133,7 @@ class SofaScoreAPI:
         
         self.last_request_time = time.time()
     
-    def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+    def _make_request(self, endpoint: str, params: Optional[Dict] = None, no_retry_on_404: bool = False) -> Optional[Dict]:
         """Make an HTTP request with enhanced browser impersonation and proxy support"""
         url = f"{self.base_url}{endpoint}"
         
@@ -92,7 +162,6 @@ class SofaScoreAPI:
                 
                 if response.status_code == 200:
                     data = response.json()
-                    logger.info(f"API request successful: {endpoint}")
                     return data
                 
                 # Handle specific error codes with appropriate retry strategies
@@ -118,7 +187,23 @@ class SofaScoreAPI:
                         logger.error(f"Rate limit exceeded after {Config.MAX_RETRIES} attempts for {endpoint}")
                         break
                 
-                elif response.status_code in [404, 500, 502, 503, 504, 522, 525]:
+                elif response.status_code == 404:
+                    # 404 errors - handle based on no_retry_on_404 flag
+                    if no_retry_on_404:
+                        logger.debug(f"HTTP 404 for {endpoint} - no retry requested")
+                        return None
+                    else:
+                        # Standard 404 retry logic
+                        wait_time = min(5 * (2 ** attempt), 60)  # 5s, 10s, 20s, 40s, max 60s
+                        logger.warning(f"HTTP 404 for {endpoint}, waiting {wait_time}s, attempt {attempt + 1}/{Config.MAX_RETRIES}")
+                        if attempt < Config.MAX_RETRIES - 1:
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            logger.error(f"HTTP 404 failed after {Config.MAX_RETRIES} attempts for {endpoint}")
+                            break
+                
+                elif response.status_code in [500, 502, 503, 504, 522, 525]:
                     # Server errors - retry with exponential backoff
                     wait_time = min(5 * (2 ** attempt), 60)  # 5s, 10s, 20s, 40s, max 60s
                     logger.warning(f"HTTP {response.status_code} for {endpoint}, waiting {wait_time}s, attempt {attempt + 1}/{Config.MAX_RETRIES}")
@@ -161,11 +246,56 @@ class SofaScoreAPI:
 
         return result
     
-    def get_event_final_odds(self, id: int, slug: str) -> Optional[Dict]:
+    def get_event_final_odds(self, id: int, slug: str=None, no_retry_on_404: bool = False) -> Optional[Dict]:
         """Get final odds for a specific event using the dedicated endpoint"""
-        logger.info(f"Fetching final odds for event {slug} using dedicated endpoint")
-        return self._make_request(f"/event/{id}/odds/1/all")
+        if slug:
+            return self._make_request(f"/event/{slug}/odds/1/all", no_retry_on_404=no_retry_on_404)
+        else:
+            return self._make_request(f"/event/{id}/odds/1/all", no_retry_on_404=no_retry_on_404)
     
+    def update_event_information_from_response(self, response: Dict) -> bool:
+        """
+        Extract and update event information from /event/{id} API response.
+        Uses the refactored get_event_information function to ensure consistency.
+        This is called during midnight sync to update event info using existing API calls.
+        
+        Note: discovery_source is NOT updated - it preserves the original discovery source.
+        
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        try:
+            if not response or 'event' not in response:
+                logger.warning("No event data in response for information update")
+                return False
+            
+            event_response = response['event']
+            
+            # Extract event information using our refactored function
+            # Note: The response structure from /event/{id} is the same as dropping odds
+            event_data = self.get_event_information(event_response, discovery_source='results_sync')
+            
+            if not event_data or not event_data.get('id'):
+                logger.warning("Could not extract event information from response")
+                return False
+            
+            # Remove discovery_source from event_data to preserve the original discovery source
+            # The discovery_source should only be set during initial discovery, not during updates
+            event_data.pop('discovery_source', None)
+            
+            # Update event in database (without changing discovery_source)
+            updated_event = EventRepository.upsert_event(event_data)
+            if updated_event:
+                logger.info(f"✅ Event information updated for event {event_data['id']} from results sync")
+                return True
+            else:
+                logger.warning(f"Failed to update event information for event {event_data.get('id')}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error updating event information from response: {e}")
+            return False
+
     def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False, minutes_until_start: int = 0) -> Optional[Dict]:
         """ 
         Fetch event results from /event/{id} endpoint.
@@ -179,7 +309,13 @@ class SofaScoreAPI:
             if not response:
                 logger.warning(f"No response received for event {event_id}")
                 return None
-
+            
+            # Update event information from response (midnight sync optimization)
+            # This ensures we always have complete event data from the authoritative /event/{id} endpoint
+            if not update_time and not update_court_type:
+                # Only update during normal results collection (not during time checks or court type extraction)
+                self.update_event_information_from_response(response)
+            
             if update_court_type:
                 return sport_observations_manager.extract_tennis_ground_type(event_id, response)
                         
@@ -425,11 +561,15 @@ class SofaScoreAPI:
             # FAIL-SAFE: Return None, don't break main processing
             return None
 
-    def extract_final_odds_from_response(self, response: Dict) -> Optional[Dict]:
+    def extract_final_odds_from_response(self, response: Dict, initial_odds_extraction: bool = False) -> Optional[Dict]:
         """
         Extract final/current odds data from full time market structure automatically.
         This function is completely sport-agnostic and captures full time market structure.
         based purely on the actual choices available.
+        
+        Args:
+            response: The API response containing market data
+            initial_odds_extraction: If True, also extract initial odds alongside final odds
         """
         try:
             if not response or 'markets' not in response:
@@ -447,9 +587,13 @@ class SofaScoreAPI:
                     odds_data = {}
                     available_choices = []
                     
+                    # Only create initial_odds_data if we need it
+                    initial_odds_data = {} if initial_odds_extraction else None
+                    
                     for choice in choices:
                         name = choice.get('name')
                         current_fractional = choice.get('fractionalValue')
+                        initial_fractional = choice.get('initialFractionalValue')
                         
                         if not current_fractional:
                             logger.warning(f"Missing fractional value for choice {name}")
@@ -458,6 +602,12 @@ class SofaScoreAPI:
                         # Store the choice name and convert odds
                         available_choices.append(name)
                         odds_data[f'{name}_final'] = fractional_to_decimal(current_fractional)
+                        
+                        # Extract initial odds if requested and available
+                        if initial_odds_extraction and initial_fractional:
+                            initial_odds_data[f'{name}_initial'] = fractional_to_decimal(initial_fractional)
+                        elif initial_odds_extraction and not initial_fractional:
+                            logger.warning(f"Missing initial fractional value for choice {name}")
                     
                     # Analyze market structure automatically based on available choices
                     if len(available_choices) >= 2:
@@ -474,7 +624,19 @@ class SofaScoreAPI:
                                     'x_final': odds_data[choice_names[1]],  # Middle choice (draw equivalent)
                                     'two_final': odds_data[choice_names[2]]
                                 }
-                                logger.info(f"✅ Final odds extracted (3-choice market): 1={result['one_final']}, X={result['x_final']}, 2={result['two_final']}")
+                                
+                                # Add initial odds if requested
+                                if initial_odds_extraction and initial_odds_data and len(initial_odds_data) == 3:
+                                    initial_choice_names = list(initial_odds_data.keys())
+                                    result.update({
+                                        'one_initial': initial_odds_data[initial_choice_names[0]],
+                                        'x_initial': initial_odds_data[initial_choice_names[1]],
+                                        'two_initial': initial_odds_data[initial_choice_names[2]]
+                                    })
+                                    logger.info(f"✅ Odds extracted (3-choice market)")
+                                else:
+                                    logger.info(f"✅ Final odds extracted (3-choice market)")
+                                
                                 return result
                             else:
                                 logger.warning(f"Incomplete 3-choice market data: {odds_data}")
@@ -490,7 +652,19 @@ class SofaScoreAPI:
                                     'x_final': None,  # No draw option in 2-choice markets
                                     'two_final': odds_data[choice_names[1]]
                                 }
-                                logger.info(f"✅ Final odds extracted (2-choice market): 1={result['one_final']}, X=None, 2={result['two_final']}")
+                                
+                                # Add initial odds if requested
+                                if initial_odds_extraction and initial_odds_data and len(initial_odds_data) == 2:
+                                    initial_choice_names = list(initial_odds_data.keys())
+                                    result.update({
+                                        'one_initial': initial_odds_data[initial_choice_names[0]],
+                                        'x_initial': None,  # No draw option in 2-choice markets
+                                        'two_initial': initial_odds_data[initial_choice_names[1]]
+                                    })
+                                    logger.info(f"✅ Odds extracted (2-choice market)")
+                                else:
+                                    logger.info(f"✅ Final odds extracted (2-choice market)")
+                                
                                 return result
                             else:
                                 logger.warning(f"Incomplete 2-choice market data: {odds_data}")
@@ -505,7 +679,19 @@ class SofaScoreAPI:
                                     'x_final': None,  # Multi-choice markets typically don't have draws
                                     'two_final': odds_data[choice_names[1]]
                                 }
-                                logger.info(f"✅ Final odds extracted (multi-choice market): 1={result['one_final']}, X=None, 2={result['two_final']}")
+                                
+                                # Add initial odds if requested
+                                if initial_odds_extraction and initial_odds_data and len(initial_odds_data) >= 2:
+                                    initial_choice_names = list(initial_odds_data.keys())
+                                    result.update({
+                                        'one_initial': initial_odds_data[initial_choice_names[0]],
+                                        'x_initial': None,  # Multi-choice markets typically don't have draws
+                                        'two_initial': initial_odds_data[initial_choice_names[1]]
+                                    })
+                                    logger.info(f"✅ Odds extracted (multi-choice market)")
+                                else:
+                                    logger.info(f"✅ Final odds extracted (multi-choice market)")
+                                
                                 return result
                             else:
                                 logger.warning(f"Multi-choice market without extractable first two choices: {odds_data}")
@@ -524,74 +710,41 @@ class SofaScoreAPI:
             logger.error(f"Error extracting final odds: {e}")
             return None
     
-    def extract_events_and_odds_from_dropping_response(self, response: Dict) -> Tuple[List[Dict], Dict]:
+    def extract_events_and_odds_from_dropping_response(self, response: Dict, odds_extraction: bool = True, discovery_source: str = 'dropping_odds') -> Tuple[List[Dict], Dict]:
         """Extract both events and their odds data from dropping odds response with sport classification"""
-        events = []
-        odds_map = {}
-        
+        events: List[Dict] = []
+        odds_map: Dict = {}
+
         try:
             if not response or 'events' not in response:
                 logger.warning("No events found in dropping odds response")
                 return events, odds_map
-            
-            # Import sport classifier for dynamic sport classification
-            from sport_classifier import sport_classifier
-            
-            # Extract events
+
             for event in response['events']:
                 try:
-                    # Extract basic event data
-                    original_sport = event.get('tournament', {}).get('category', {}).get('sport', {}).get('name')
-                    home_team = event.get('homeTeam', {}).get('name')
-                    away_team = event.get('awayTeam', {}).get('name')
-                    gender = self.get_gender(event.get('homeTeam', {}), event.get('awayTeam', {}))
-                    # Apply sport classification logic
-                    classified_sport = sport_classifier.classify_sport( 
-                        sport=original_sport,
-                        home_team=home_team,
-                        away_team=away_team
-                    )
-                    
-                    event_data = {
-                        'id': event.get('id'),
-                        'customId': event.get('customId'),
-                        'slug': event.get('slug'),
-                        'startTimestamp': event.get('startTimestamp'),
-                        'sport': classified_sport,  # Use classified sport instead of original
-                        'competition': f"{event.get('tournament', {}).get('category', {}).get('name')}, {event.get('tournament', {}).get('name')}",
-                        'country': event.get('tournament', {}).get('category', {}).get('country', {}).get('name'),
-                        'homeTeam': home_team,
-                        'awayTeam': away_team,
-                        'gender': gender,
-                    }
-                    
-                    # Log sport classification for monitoring
-                    if classified_sport != original_sport:
-                        logger.info(f"🎾 Sport classified: '{original_sport}' → '{classified_sport}' for {home_team} vs {away_team}")
-                    
+                    # Use the new get_event_information function
+                    event_data = self.get_event_information(event, discovery_source)
+
                     required_fields = ['id', 'slug', 'startTimestamp', 'sport', 'competition', 'homeTeam', 'awayTeam', 'gender']
                     if all(event_data.get(field) for field in required_fields):
                         events.append(event_data)
                     else:
                         logger.warning(f"Event {event.get('id')} missing required fields")
-                        
+
                 except Exception as e:
                     logger.error(f"Error processing event: {e}")
                     continue
-            
-            # Extract odds map
-            if 'oddsMap' in response:
+
+            if odds_extraction and 'oddsMap' in response:
                 odds_map = response['oddsMap']
-                logger.info(f" Extracted {len(odds_map)} odds entries from response")
-            else:
-                logger.warning("No oddsMap found in response")
-            
-            logger.info(f" Extracted {len(events)} valid events from dropping odds")
+                logger.info(f"Extracted {len(odds_map)} odds entries from response")
+
             return events, odds_map
-            
+
         except Exception as e:
             logger.error(f"Error extracting events and odds: {e}")
             return events, odds_map
+
     
 
     def check_and_update_starting_time(self, event_id: int, startTimeStamp: int, send_alert: bool = False) -> bool:
@@ -601,7 +754,6 @@ class SofaScoreAPI:
         """
         try:
             # Query the database for the starting_time_utc of the event and store it in current_starting_time
-            from repository import EventRepository
             event = EventRepository.get_event_by_id(event_id)
             if not event:
                 logger.warning(f"Event {event_id} not found in database")

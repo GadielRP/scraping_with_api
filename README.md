@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.3.1  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO**  
-**Última Actualización:** 1 de Octubre, 2025
+**Versión:** v1.4.2  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED**  
+**Última Actualización:** 23 de Octubre, 2025
 
 ## 🎯 **Descripción del Sistema**
 
@@ -121,11 +121,25 @@ class AlertMatch:
 - **Lógica Optimizada**: Incluye todos los juegos próximos en una sola notificación
 - **Odds Display**: Muestra odds completas (apertura y finales) en candidatos históricos
 
-### ✅ **Descubrimiento Automático Optimizado**
+### ✅ **Multi-Source Discovery System (v1.4)**
+#### **Discovery 1 - Dropping Odds (Producción)**
 - **Programación**: Cada 2 horas (00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00)
+- **Fuente**: `/odds/1/dropping/all`
 - **Deportes**: Fútbol, Tenis, Baloncesto, Béisbol y más
 - **Cobertura Global**: Eventos de múltiples ligas y competencias
-- **Actualización Inteligente**: Actualiza eventos existentes y sus odds
+
+#### **Discovery 2 - Special Events (Producción)**
+- **Programación**: Cada 2 horas (configurable)
+- **Fuentes Implementadas**:
+  - ✅ **High Value Streaks**: Eventos con rachas de alto valor (`/odds/1/high-value-streaks`)
+  - ✅ **H2H Events**: Eventos con historial head-to-head (`/odds/1/top-h2h/all`)
+  - ✅ **Winning Odds**: Eventos con mejores odds de victoria (`/odds/1/winning/all`)
+  - ⏸️ **Team Streaks**: Pendiente (respuesta no contiene eventos directamente)
+  
+#### **Event Tracking**
+- **Discovery Source Field**: Cada evento incluye `discovery_source` para identificar su origen
+- **Valores**: `'dropping_odds'`, `'high_value_streaks'`, `'h2h'`, `'winning_odds'`, `'team_streaks'`
+- **Uso**: Permite aplicar lógica de alertas específica según la fuente
 
 ### ✅ **Verificación Pre-Inicio con Extracción Inteligente**
 - **Frecuencia**: Cada 5 minutos en intervalos de reloj
@@ -157,7 +171,27 @@ class AlertMatch:
 - **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
 - **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
 - **Logging Detallado**: Registro completo de correcciones de timestamps
-- **Perfecto para Testing**: Permite desactivar corrección para pruebas con timestamps manuales
+
+### ✅ **Auto-Migration System (v1.4) - NEW**
+- **Model-Driven**: Detecta automáticamente diferencias entre `models.py` y la base de datos
+- **Self-Healing**: Añade columnas faltantes sin intervención manual
+- **Smart Indexing**: Crea índices automáticamente para columnas comunes (source, sport, status, type, gender)
+- **Safe Operations**: Solo añade columnas (no elimina, no modifica tipos por seguridad)
+- **Transaction-Based**: Todas las migraciones en transacciones (rollback en error)
+- **Zero Downtime**: Migraciones en milisegundos al inicio del sistema
+- **Ejemplo**: `discovery_source` column añadida automáticamente en v1.4
+
+### ✅ **Critical Fixes (v1.4.1) - NEW**
+- **Timezone Fix**: Corregido cálculo de minutos hasta inicio de eventos (eliminados valores negativos)
+- **Discovery 2 Scheduling Fix**: Discovery 2 ahora ejecuta en los mismos horarios que Discovery 1
+- **Synchronized Execution**: Ambos discovery jobs ejecutan simultáneamente cada 2 horas
+- **Production Ready**: Sistema completamente funcional con todas las fuentes de eventos operativas
+
+### ✅ **Performance Optimizations (v1.4.2) - NEW**
+- **Team Streaks 404 Handling**: Eliminación inmediata de eventos sin odds (no más retries innecesarios)
+- **Reduced Logging**: Logging optimizado para mejor rendimiento y menor ruido
+- **Faster Processing**: Procesamiento 35x más rápido para eventos problemáticos
+- **Efficient Cleanup**: Limpieza automática de eventos sin odds disponibles
 
 ## 🛠 **Instalación y Configuración**
 

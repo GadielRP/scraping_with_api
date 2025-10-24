@@ -266,11 +266,12 @@ class AlertEngine:
     def _process_l1_candidates(self, candidates, cur_v1: float, cur_vx: Optional[float], 
                               cur_v2: float, tau: float, sport: str, 
                               max_candidates: int) -> List[AlertMatch]:
-        """Process candidates with L1 distance calculation and filtering"""
+        """Process candidates that already passed L1 distance filtering in SQL"""
         matches = []
+        logger.info(f"🔍 DEBUG: Processing {len(candidates)} candidates (already L1-filtered by SQL)")
         
         for row in candidates:
-            # Calculate L1 distance
+            # Calculate L1 distance for display and sorting
             cand_v1 = float(row.var_one)
             cand_vx = float(row.var_x) if row.var_x is not None else None
             cand_v2 = float(row.var_two)
@@ -284,60 +285,58 @@ class AlertEngine:
             dist_l1 = dx_1 + dx_x + dx_2
             dist_l1 = round(dist_l1, 6)  # Round to avoid floating point precision issues
             
-            # Apply L1 threshold filter
-            if dist_l1 <= tau:
-                # Calculate signed differences for display (reusing existing logic)
-                d1_diff_signed = cand_v1 - cur_v1
-                d2_diff_signed = cand_v2 - cur_v2
-                dx_diff_signed = (cand_vx if cand_vx is not None else 0.0) - (cur_vx if cur_vx is not None else 0.0)
-                
-                var_diffs = {
-                    'd1': round(d1_diff_signed, 3),
-                    'd2': round(d2_diff_signed, 3),
-                    'dx': round(dx_diff_signed, 3) if cur_vx is not None or cand_vx is not None else None
-                }
-                
-                # Check symmetry for Tennis sports (reuse existing logic)
-                is_symmetrical = True  # Default for non-Tennis sports
-                if sport.lower() == 'tennis':
-                    is_symmetrical = self._check_symmetrical_variations(
-                        cur_v1, cur_vx, cur_v2,
-                        cand_v1, cand_vx, cand_v2
-                    )
-                
-                # Log match details
-                dx_display = f"{cand_vx:.2f}" if cand_vx is not None else "NULL"
-                dx_diff_display = f"{var_diffs['dx']:.3f}" if var_diffs['dx'] is not None else "0.000"
-                symmetry_status = "SYMMETRICAL" if is_symmetrical else "UNSYMMETRICAL"
-                logger.info(
-                    f"L1 MATCH: event_id={row.event_id} vars=(d1={cand_v1:.2f}, dx={dx_display}, d2={cand_v2:.2f}) "
-                    f"| diffs=(d1={var_diffs['d1']:+.3f}, dx={dx_diff_display}, d2={var_diffs['d2']:+.3f}) "
-                    f"| L1={dist_l1:.4f} | {symmetry_status} | result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
+            # Calculate signed differences for display
+            d1_diff_signed = cand_v1 - cur_v1
+            d2_diff_signed = cand_v2 - cur_v2
+            dx_diff_signed = (cand_vx if cand_vx is not None else 0.0) - (cur_vx if cur_vx is not None else 0.0)
+            
+            var_diffs = {
+                'd1': round(d1_diff_signed, 3),
+                'd2': round(d2_diff_signed, 3),
+                'dx': round(dx_diff_signed, 3) if cur_vx is not None or cand_vx is not None else None
+            }
+            
+            # Check symmetry for Tennis sports
+            is_symmetrical = True  # Default for non-Tennis sports
+            if sport.lower() == 'tennis':
+                is_symmetrical = self._check_symmetrical_variations(
+                    cur_v1, cur_vx, cur_v2,
+                    cand_v1, cand_vx, cand_v2
                 )
-                
-                matches.append(AlertMatch(
-                    event_id=row.event_id,
-                    participants=row.participants,
-                    gender=getattr(row, 'gender', 'unknown'),  # Get gender from query result
-                    result_text=row.result_text,
-                    winner_side=row.winner_side,
-                    point_diff=row.point_diff,
-                    one_open=float(row.one_open) if row.one_open is not None else 0.0,
-                    x_open=float(row.x_open) if row.x_open is not None else 0.0,
-                    two_open=float(row.two_open) if row.two_open is not None else 0.0,
-                    one_final=float(row.one_final) if row.one_final is not None else 0.0,
-                    x_final=float(row.x_final) if row.x_final is not None else 0.0,
-                    two_final=float(row.two_final) if row.two_final is not None else 0.0,
-                    var_one=cand_v1,
-                    var_x=cand_vx,
-                    var_two=cand_v2,
-                    sport=sport,
-                    is_symmetrical=is_symmetrical,  # Apply sport-specific symmetry logic
-                    competition=row.competition or 'Unknown',
-                    var_diffs=var_diffs,
-                    distance_l1=dist_l1,
-                    court_type=getattr(row, 'court_type', None)  # Get court_type from query result
-                ))
+            
+            # Log match details
+            dx_display = f"{cand_vx:.2f}" if cand_vx is not None else "NULL"
+            dx_diff_display = f"{var_diffs['dx']:.3f}" if var_diffs['dx'] is not None else "0.000"
+            symmetry_status = "SYMMETRICAL" if is_symmetrical else "UNSYMMETRICAL"
+            logger.info(
+                f"L1 MATCH: event_id={row.event_id} vars=(d1={cand_v1:.2f}, dx={dx_display}, d2={cand_v2:.2f}) "
+                f"| diffs=(d1={var_diffs['d1']:+.3f}, dx={dx_diff_display}, d2={var_diffs['d2']:+.3f}) "
+                f"| L1={dist_l1:.4f} | {symmetry_status} | result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
+            )
+            
+            matches.append(AlertMatch(
+                event_id=row.event_id,
+                participants=row.participants,
+                gender=getattr(row, 'gender', 'unknown'),  # Get gender from query result
+                result_text=row.result_text,
+                winner_side=row.winner_side,
+                point_diff=row.point_diff,
+                one_open=float(row.one_open) if row.one_open is not None else 0.0,
+                x_open=float(row.x_open) if row.x_open is not None else 0.0,
+                two_open=float(row.two_open) if row.two_open is not None else 0.0,
+                one_final=float(row.one_final) if row.one_final is not None else 0.0,
+                x_final=float(row.x_final) if row.x_final is not None else 0.0,
+                two_final=float(row.two_final) if row.two_final is not None else 0.0,
+                var_one=cand_v1,
+                var_x=cand_vx,
+                var_two=cand_v2,
+                sport=sport,
+                is_symmetrical=is_symmetrical,  # Apply sport-specific symmetry logic
+                competition=row.competition or 'Unknown',
+                var_diffs=var_diffs,
+                distance_l1=dist_l1,
+                court_type=getattr(row, 'court_type', None)  # Get court_type from query result
+            ))
         
         # Sort by L1 distance (ascending) and then by component differences for stability
         matches.sort(key=lambda m: (m.distance_l1, abs(m.var_diffs['d1']), abs(m.var_diffs['d2'])))
@@ -347,6 +346,7 @@ class AlertEngine:
             logger.info(f"Limiting L1 results to top {max_candidates} closest matches")
             matches = matches[:max_candidates]
         
+        logger.info(f"🔍 DEBUG: Final L1 matches returned: {len(matches)}")
         return matches
     
     def _find_tier1_candidates(self, sport: str, gender: str, var_shape: bool, 
@@ -485,7 +485,7 @@ class AlertEngine:
                               cur_vx: Optional[float], cur_v2: float, tau: float,
                               by_shape: bool = True, exclude_event_ids: List[int] = None,
                               max_candidates: int = 500) -> Tuple[str, Dict]:
-        """Build SQL query for L1 distance prefiltering using L∞ box constraints"""
+        """Build SQL query for L1 distance prefiltering using L1 distance constraints"""
         # Build exclusion clause
         exclude_clause = ""
         if exclude_event_ids:
@@ -508,31 +508,30 @@ class AlertEngine:
             params['var_shape'] = var_shape
             var_shape_condition = "AND mae.var_shape = :var_shape"
         
-        # Build variation conditions for L∞ box prefilter
+        # Build variation conditions for L1 distance prefilter (more accurate than L∞ box)
         if cur_vx is None:
-            # No-draw sports (Tennis, etc.)
+            # No-draw sports (Tennis, etc.) - L1 distance: |var_one - cur_v1| + |var_two - cur_v2|
             if by_shape:
-                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tau AND ABS(mae.var_two - :cur_v2) <= :tau AND mae.var_x IS NULL"
+                var_conditions = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_two - :cur_v2)) <= :tau AND mae.var_x IS NULL"
             else:
                 # Allow mixing with 3-way sports when by_shape=False
-                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tau AND ABS(mae.var_two - :cur_v2) <= :tau"
+                var_conditions = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_two - :cur_v2)) <= :tau"
         else:
-            # 3-way sports (Football, etc.)
+            # 3-way sports (Football, etc.) - L1 distance: |var_one - cur_v1| + |var_x - cur_vx| + |var_two - cur_v2|
             params['cur_vx'] = cur_vx
             if by_shape:
-                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tau AND ABS(mae.var_two - :cur_v2) <= :tau AND mae.var_x IS NOT NULL AND ABS(mae.var_x - :cur_vx) <= :tau"
+                var_conditions = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_x - :cur_vx) + ABS(mae.var_two - :cur_v2)) <= :tau AND mae.var_x IS NOT NULL"
             else:
                 # Allow mixing with no-draw sports when by_shape=False
-                var_conditions = "ABS(mae.var_one - :cur_v1) <= :tau AND ABS(mae.var_two - :cur_v2) <= :tau AND (mae.var_x IS NULL OR ABS(mae.var_x - :cur_vx) <= :tau)"
+                var_conditions = "(ABS(mae.var_one - :cur_v1) + ABS(COALESCE(mae.var_x, 0) - COALESCE(:cur_vx, 0)) + ABS(mae.var_two - :cur_v2)) <= :tau"
         
-        # Build SQL with ordering for better candidate selection
-        # Handle cur_vx parameter properly for ordering
+        # Build SQL with L1 distance ordering for better candidate selection
         if cur_vx is None:
-            # For no-draw sports, don't use cur_vx in ORDER BY
+            # For no-draw sports, order by L1 distance: |var_one - cur_v1| + |var_two - cur_v2|
             order_by_clause = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_two - :cur_v2))"
         else:
-            # For 3-way sports, include cur_vx in ORDER BY
-            order_by_clause = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_two - :cur_v2) + ABS(COALESCE(mae.var_x, 0) - COALESCE(:cur_vx, 0)))"
+            # For 3-way sports, order by L1 distance: |var_one - cur_v1| + |var_x - cur_vx| + |var_two - cur_v2|
+            order_by_clause = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_x - :cur_vx) + ABS(mae.var_two - :cur_v2))"
         
         sql = f"""
                     SELECT mae.event_id, mae.participants, mae.result_text, mae.winner_side, mae.point_diff,
@@ -1215,8 +1214,10 @@ class AlertEngine:
         
         # Add Tier 2 candidates - ALWAYS apply symmetry filter
         if tier2_candidates:
+            logger.info(f"🔍 DEBUG: Tier 2 candidates before symmetry filter: {len(tier2_candidates)}")
             # Apply symmetry filter to ALL Tier 2 candidates (regardless of count)
             symmetrical_tier2 = [c for c in tier2_candidates if c.is_symmetrical]
+            logger.info(f"🔍 DEBUG: Symmetrical Tier 2 candidates: {len(symmetrical_tier2)}")
             if symmetrical_tier2:
                 combined_candidates.extend(symmetrical_tier2)
                 if selected_tier:
@@ -1226,6 +1227,7 @@ class AlertEngine:
             
             # Log non-symmetrical candidates that were filtered out
             non_symmetrical_tier2 = [c for c in tier2_candidates if not c.is_symmetrical]
+            logger.info(f"🔍 DEBUG: Non-symmetrical Tier 2 candidates: {len(non_symmetrical_tier2)}")
             if non_symmetrical_tier2:
                 logger.info(f"🔍 Filtered out {len(non_symmetrical_tier2)} non-symmetrical Tier 2 candidates")
                 for candidate in non_symmetrical_tier2:

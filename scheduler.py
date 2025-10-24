@@ -5,8 +5,10 @@ import threading
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 import json
+from typing import Tuple
 from config import Config
 from sofascore_api import api_client
+import sofascore_api2  # Import to attach new methods to api_client
 from repository import EventRepository, OddsRepository, ResultRepository, ObservationRepository
 from odds_utils import process_event_odds_from_dropping_odds
 from alert_system import pre_start_notifier
@@ -14,6 +16,7 @@ import os
 from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
 from alert_engine import alert_engine
+from timezone_utils import get_local_now_aware, convert_utc_to_local
 
 class JobScheduler:
     """Main job scheduler for the SofaScore odds system"""
@@ -38,6 +41,11 @@ class JobScheduler:
         for time_str in Config.DISCOVERY_TIMES:
             schedule.every().day.at(time_str).do(self.job_discovery)
         
+        # Job B - Discovery 2 (at the same scheduled times as Discovery 1)
+        # Use the same scheduled times as Discovery 1 for consistency
+        for time_str in Config.DISCOVERY_TIMES:
+            schedule.every().day.at(time_str).do(self.job_discovery2)
+        
         # Job C - Pre-start check (dynamic interval based on Config.POLL_INTERVAL_MINUTES)
         self._setup_pre_start_jobs()
         
@@ -46,6 +54,7 @@ class JobScheduler:
         
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
+        logger.info(f"  - Discovery 2 (streaks, h2h, winning odds): daily at {', '.join(Config.DISCOVERY_TIMES)}")
         logger.info(f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes")
         logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
     
@@ -114,7 +123,112 @@ class JobScheduler:
             except Exception as e:
                 logger.error(f"Error in scheduler loop: {e}")
                 time.sleep(5)
-    
+
+    def job_discovery2(self):
+        """Job B: Discover new events from streaks, team streaks, h2h and winning odds events"""
+        logger.info("Starting Job B: Event Discovery from streaks, team streaks, h2h and winning odds events")
+        try:
+            
+            # Get high value streaks events - special handling due to different response structure
+            high_value_streaks_events_response = api_client.get_high_value_streaks_events()
+            if not high_value_streaks_events_response:
+                logger.error("Failed to get high value streaks events")
+                return
+            # Extract events from nested structure (general + head2head arrays)
+            extracted_events = api_client.extract_events_from_high_value_streaks(high_value_streaks_events_response)
+            if not extracted_events:
+                logger.warning("No events found in high value streaks events")
+                return
+            # Construct a response dict that extract_events_and_odds_from_dropping_response can process
+            normalized_response = {"events": extracted_events}
+            high_value_streaks_events, _ = api_client.extract_events_and_odds_from_dropping_response(normalized_response, odds_extraction=False, discovery_source='high_value_streaks')
+            if not high_value_streaks_events:
+                logger.warning("No events found after processing high value streaks events")
+                return
+
+            # Team streaks events - special handling due to different response structure
+            team_streaks_response = api_client.get_team_streaks_events()
+            if not team_streaks_response:
+                logger.error("Failed to get team streaks events")
+                return
+
+            # Extract team IDs from team streaks response
+            team_ids = api_client.get_team_ids_from_team_streaks(team_streaks_response)
+            if not team_ids:
+                logger.warning("No team IDs found in team streaks response")
+                return
+
+            logger.info(f"Found {len(team_ids)} teams in team streaks response")
+
+            # Get nearest events for each team
+            team_streaks_events = []
+            for team_id in team_ids:
+                try:
+                    nearest_event_id = api_client.get_nearest_event_for_team(team_id)
+                    if nearest_event_id:
+                        # Get full event data using the existing event endpoint
+                        event_response = api_client.get_event_details(nearest_event_id)
+                        if event_response:
+                            # Use the existing get_event_information method to structure the data
+                            event_data = api_client.get_event_information(event_response, discovery_source='team_streaks')
+                            if event_data:
+                                team_streaks_events.append(event_data)
+                                logger.debug(f"Added event {nearest_event_id} for team {team_id}")
+                            else:
+                                logger.warning(f"Failed to structure event data for event {nearest_event_id}")
+                        else:
+                            logger.warning(f"Failed to get event details for event {nearest_event_id}")
+                    else:
+                        logger.warning(f"No nearest event found for team {team_id}")
+                except Exception as e:
+                    logger.error(f"Error processing team {team_id}: {e}")
+                    continue
+
+            if not team_streaks_events:
+                logger.warning("No events found after processing team streaks")
+                return
+
+            # H2H events
+            h2h_events_response = api_client.get_h2h_events()
+            if not h2h_events_response:
+                logger.error("Failed to get h2h events")
+                return
+
+            h2h_events, _ = api_client.extract_events_and_odds_from_dropping_response(h2h_events_response, odds_extraction=False, discovery_source='h2h')
+            if not h2h_events:
+                logger.warning("No events found in h2h events")
+                return
+
+            # Winning odds events
+            winning_odds_events_response = api_client.get_winning_odds_events()
+            if not winning_odds_events_response:
+                logger.error("Failed to get winning odds events")
+                return
+
+            winning_odds_events, winning_odds_events_odds_map = api_client.extract_events_and_odds_from_dropping_response(winning_odds_events_response, odds_extraction=True, discovery_source='winning_odds')
+            if not winning_odds_events:
+                logger.warning("No events found in winning odds events")
+                return
+
+            # Process each event lists with its odds data
+            # High value streaks events
+            processed_count, skipped_count = self.process_events_and_odds(high_value_streaks_events, odds_processing=False, discovery_source='high_value_streaks')
+            logger.info(f"high value streaks events completed: processed {processed_count}/{len(high_value_streaks_events)} events, skipped {skipped_count} events")
+
+            # Team streaks events
+            processed_count, skipped_count = self.process_events_and_odds(team_streaks_events, odds_processing=False, discovery_source='team_streaks')
+            logger.info(f"team streaks events completed: processed {processed_count}/{len(team_streaks_events)} events, skipped {skipped_count} events")
+
+            # H2H events
+            processed_count, skipped_count = self.process_events_and_odds(h2h_events, odds_processing=False, discovery_source='h2h')
+            logger.info(f"h2h events completed: processed {processed_count}/{len(h2h_events)} events, skipped {skipped_count} events")
+
+            # Winning odds events
+            processed_count, skipped_count = self.process_events_and_odds(winning_odds_events, winning_odds_events_odds_map, discovery_source='winning_odds')
+            logger.info(f"winning odds events completed: processed {processed_count}/{len(winning_odds_events)} events, skipped {skipped_count} events")
+        except Exception as e:
+            logger.error(f"Error in Job B: {e}")
+
     def job_discovery(self):
         """Job A: Discover new events from dropping odds AND process their odds data in one go"""
         logger.info("Starting Job A: Event Discovery with Odds Processing")
@@ -137,36 +251,43 @@ class JobScheduler:
             except Exception as e:
                 logger.warning(f"Failed to save JSON debug file: {e}")
             
-            # Extract events and odds data
-            events, odds_map = api_client.extract_events_and_odds_from_dropping_response(response)
+            # Extract events and odds data with discovery_source
+            events, odds_map = api_client.extract_events_and_odds_from_dropping_response(response, odds_extraction=True, discovery_source='dropping_odds')
             if not events:
                 logger.warning("No events found in dropping odds")
                 return
-            
             logger.info(f"Found {len(events)} events in dropping odds")
-            
-            # Process each event with its odds data
-            processed_count = 0
-            skipped_count = 0
-            for event_data in events:
-                try:
-                    id = str(event_data['id'])
 
-                    
-                    # Upsert event
-                    event = EventRepository.upsert_event(event_data)
-                    if not event:
-                        logger.warning(f"Failed to upsert event {id}")
-                        skipped_count += 1
-                        continue
-                    
+            # Process each event with its odds data
+            processed_count, skipped_count = self.process_events_and_odds(events, odds_map, discovery_source='dropping_odds')
+            logger.info(f"Job A completed: processed {processed_count}/{len(events)} events, skipped {skipped_count} events")
+            
+            
+        except Exception as e:
+            logger.error(f"Error in Job A: {e}")
+    
+    def process_events_and_odds(self, events: List, odds_map: Optional[Dict] = None, odds_processing: bool = True, discovery_source: str = None) -> Tuple[int, int]:
+        """process event and its odds data"""
+        processed_count = 0 # Process each event with its odds data
+        skipped_count = 0
+        for event_data in events:
+            try:
+                id = str(event_data['id'])
+                # Upsert event
+                event = EventRepository.upsert_event(event_data)
+                if not event:
+                    logger.warning(f"Failed to upsert event {id}")
+                    skipped_count += 1
+                    continue
+                
+                if odds_processing:
                     # Process odds data from the single API call
                     odds_data = process_event_odds_from_dropping_odds(id, odds_map)
                     if not odds_data:
                         logger.warning(f"No odds data found for event {id}")
                         skipped_count += 1
                         continue
-                    
+                
                     # Create snapshot
                     snapshot = OddsRepository.create_odds_snapshot(int(id), odds_data)
                     if not snapshot:
@@ -180,22 +301,58 @@ class JobScheduler:
                         logger.error(f"Failed to upsert event odds for event {id}")
                         skipped_count += 1
                         continue
+                else:
+                    # Use no-retry for team streaks events to avoid 404 retries
+                    no_retry = discovery_source == 'team_streaks'
+                    odds_data = api_client.get_event_final_odds(id, no_retry_on_404=no_retry)
+                    if not odds_data:
+                        # Special handling for team streaks events with 404 errors
+                        if discovery_source == 'team_streaks':
+                            logger.info(f"Team streaks event {id} - no odds available, deleting")
+                            if EventRepository.delete_event(int(id)):
+                                logger.debug(f"Deleted team streaks event {id}")
+                            else:
+                                logger.error(f"Failed to delete team streaks event {id}")
+                        else:
+                            logger.warning(f"No odds data found for event {id}")
+                        skipped_count += 1
+                        continue
                     
-                    # Note: Alert system removed - now only pre-start notifications are sent
+                    processed_odds_data = api_client.extract_final_odds_from_response(odds_data, initial_odds_extraction=True)
+                    if not processed_odds_data:
+                        # Special handling for team streaks events with 404 errors
+                        if discovery_source == 'team_streaks':
+                            logger.info(f"Team streaks event {id} - no odds data, deleting")
+                            if EventRepository.delete_event(int(id)):
+                                logger.debug(f"Deleted team streaks event {id}")
+                            else:
+                                logger.error(f"Failed to delete team streaks event {id}")
+                        else:
+                            logger.warning(f"No processed odds data found for event {id}")
+                        skipped_count += 1
+                        continue
                     
-                    processed_count += 1
+                    # Create snapshot
+                    snapshot = OddsRepository.create_odds_snapshot(int(id), processed_odds_data)
+                    if not snapshot:
+                        logger.error(f"Failed to create odds snapshot for event {id}")
+                        skipped_count += 1
+                        continue
                     
-                except Exception as e:
-                    logger.error(f"Error processing event {event_data.get('id')}: {e}")
-                    skipped_count += 1
-                    continue
-            
-            logger.info(f"Job A completed: processed {processed_count}/{len(events)} events")
-            
-        except Exception as e:
-            logger.error(f"Error in Job A: {e}")
-    
+                    # Upsert event odds
+                    upserted_id = OddsRepository.upsert_event_odds(int(id), processed_odds_data)
+                    if not upserted_id:
+                        logger.error(f"Failed to upsert event odds for event {id}")
+                        skipped_count += 1
+                        continue
+                # Note: Alert system removed - now only pre-start notifications are sent
+                processed_count += 1
 
+            except Exception as e:
+                logger.error(f"Error processing event {event_data.get('id')}: {e}")
+                skipped_count += 1
+                continue
+        return processed_count, skipped_count
     
     def job_pre_start_check(self):
         """
@@ -471,9 +628,21 @@ class JobScheduler:
     
     def _minutes_until_start(self, start_time_utc) -> int:
         """Calculate minutes until event starts"""
-        # Use local time since SofaScore provides local times
-        now = datetime.now()
-        time_diff = start_time_utc - now
+        # Note: start_time_utc is actually stored in local timezone (not UTC)
+        # This is because datetime.fromtimestamp() creates local time, not UTC
+        # So we treat it as local time and make it timezone-aware
+        from timezone_utils import TIMEZONE
+        if start_time_utc.tzinfo is None:
+            # Make the naive datetime timezone-aware in local timezone
+            start_local = TIMEZONE.localize(start_time_utc)
+        else:
+            start_local = start_time_utc
+
+        # Get local current time (aware)
+        now = get_local_now_aware()
+
+        # Calculate time difference in minutes
+        time_diff = start_local - now
         return round(time_diff.total_seconds() / 60)
     
     def _should_extract_odds_for_event(self, event_id: int, minutes_until_start: int) -> bool:
@@ -793,6 +962,11 @@ class JobScheduler:
         """Run Job A immediately"""
         logger.info("Running Job A immediately")
         self.job_discovery()
+    
+    def run_job_discovery2_now(self):
+        """Run Job B immediately"""
+        logger.info("Running Job B immediately")
+        self.job_discovery2()
     
     def run_job_pre_start_check_now(self):
         """Run Job C immediately"""
