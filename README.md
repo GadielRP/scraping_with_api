@@ -129,12 +129,13 @@ class AlertMatch:
 - **Cobertura Global**: Eventos de múltiples ligas y competencias
 
 #### **Discovery 2 - Special Events (Producción)**
-- **Programación**: Cada 2 horas (configurable)
+- **Programación**: Cada 6 horas en hh:02 (configurable via DISCOVERY2_INTERVAL_HOURS)
 - **Fuentes Implementadas**:
-  - ✅ **High Value Streaks**: Eventos con rachas de alto valor (`/odds/1/high-value-streaks`)
-  - ✅ **H2H Events**: Eventos con historial head-to-head (`/odds/1/top-h2h/all`)
-  - ✅ **Winning Odds**: Eventos con mejores odds de victoria (`/odds/1/winning/all`)
-  - ⏸️ **Team Streaks**: Pendiente (respuesta no contiene eventos directamente)
+  - ✅ **High Value Streaks**: Eventos con rachas de alto valor (solo información básica)
+  - ✅ **H2H Events**: Eventos con historial head-to-head (solo información básica)
+  - ✅ **Winning Odds**: Eventos con mejores odds de victoria (con odds completas)
+  - ✅ **Team Streaks**: Eventos de rachas de equipos (con odds completas)
+- **Optimización**: High Value Streaks y H2H procesan solo eventos, odds se obtienen en pre-start checks
   
 #### **Event Tracking**
 - **Discovery Source Field**: Cada evento incluye `discovery_source` para identificar su origen
@@ -192,6 +193,8 @@ class AlertMatch:
 - **Reduced Logging**: Logging optimizado para mejor rendimiento y menor ruido
 - **Faster Processing**: Procesamiento 35x más rápido para eventos problemáticos
 - **Efficient Cleanup**: Limpieza automática de eventos sin odds disponibles
+- **Event-Only Processing**: Discovery2 procesa solo información de eventos, odds se obtienen en pre-start checks
+- **Optimized Scheduling**: Discovery2 ejecuta en hh:02 para evitar conflictos con pre-start checks
 
 ## 🛠 **Instalación y Configuración**
 

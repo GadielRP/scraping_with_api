@@ -42,6 +42,9 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Reduced Logging**: Logging optimizado para mejor rendimiento y menor ruido
 - **Faster Processing**: Procesamiento 35x más rápido para eventos problemáticos
 - **Efficient Cleanup**: Limpieza automática de eventos sin odds disponibles
+- **Event-Only Processing**: Discovery2 procesa solo información de eventos, odds se obtienen en pre-start checks
+- **Optimized Scheduling**: Discovery2 ejecuta en hh:02 para evitar conflictos con pre-start checks
+- **Modular Optimization**: Código de optimización modularizado en `optimization.py`
 
 ### ✅ **PROCESS 1 - Sistema de Predicciones Inteligentes - COMPLETADO (v1.1)**
 **📋 Definición**: Process 1 es el sistema de análisis de patrones de odds que evalúa eventos históricos para predecir resultados futuros.
@@ -142,16 +145,17 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Actualización Inteligente**: Actualiza eventos existentes y sus odds
 - **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO**
 
-### 🟡 **Discovery 2 - Sistema de Fuentes Adicionales - EN DESARROLLO**
+### ✅ **Discovery 2 - Sistema de Fuentes Adicionales - COMPLETADO**
 - **Objetivo**: Expandir fuentes de descubrimiento de eventos más allá de dropping odds
-- **Fuentes Objetivo**: High value streaks, team streaks, H2H, winning odds
+- **Fuentes Implementadas**: High value streaks, team streaks, H2H, winning odds
 - **Progreso**:
-  - ✅ **High Value Streaks**: Función de normalización implementada (`extract_events_from_high_value_streaks`)
-  - ⏸️ **Team Streaks**: Pausado (respuesta contiene datos de equipos, no eventos)
-  - 🔄 **H2H Events**: En análisis
-  - 🔄 **Winning Odds Events**: Pendiente
+  - ✅ **High Value Streaks**: Implementado con procesamiento event-only
+  - ✅ **Team Streaks**: Implementado con procesamiento completo de odds
+  - ✅ **H2H Events**: Implementado con procesamiento event-only
+  - ✅ **Winning Odds**: Implementado con procesamiento completo de odds
 - **Archivo**: `sofascore_api2.py` para nuevos métodos de API
-- **Estado**: 🟡 **EN DESARROLLO ACTIVO**
+- **Optimización**: Event-only processing para High Value Streaks y H2H
+- **Estado**: 🟢 **COMPLETADO Y OPTIMIZADO**
 
 ### ✅ **Verificación Pre-Inicio con Extracción Inteligente - COMPLETADO**
 - **Frecuencia**: Cada 5 minutos en intervalos de reloj

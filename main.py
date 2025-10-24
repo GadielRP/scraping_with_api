@@ -193,7 +193,7 @@ def start_scheduler():
     print("=" * 50)
     print("📅 Scheduled Jobs:")
     print(f"  • Discovery (dropping odds): Daily at {', '.join(Config.DISCOVERY_TIMES)}")
-    print(f"  • Discovery 2 (streaks, top team streaks, h2h, winning odds): Daily at {', '.join(Config.DISCOVERY_TIMES)}")
+    print(f"  • Discovery 2 (streaks, top team streaks, h2h, winning odds): Daily at {', '.join(Config.DISCOVERY2_TIMES)}")
     
     # Calculate and display dynamic pre-start check times
     interval_minutes = Config.POLL_INTERVAL_MINUTES

@@ -127,10 +127,6 @@ def process_event_odds_from_dropping_odds(event_id: str, odds_map: Dict) -> Dict
                 odds_data['two_open'] = initial_decimal
                 odds_data['two_cur'] = current_decimal
         
-        # Log summary
-        logger.info(f"Processed odds - Open: 1={odds_data['one_open']}, X={odds_data['x_open']}, 2={odds_data['two_open']}")
-        logger.info(f"Processed odds - Current: 1={odds_data['one_cur']}, X={odds_data['x_cur']}, 2={odds_data['two_cur']}")
-        
         return odds_data
         
     except Exception as e:

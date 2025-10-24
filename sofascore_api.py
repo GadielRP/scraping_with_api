@@ -1,6 +1,7 @@
 from curl_cffi import requests
 import time
 import logging
+import threading
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from config import Config
@@ -18,6 +19,7 @@ class SofaScoreAPI:
         # Use curl-cffi with Chrome impersonation - THIS IS THE KEY CHANGE!
         self.session = requests.Session(impersonate="chrome120")
         self.last_request_time = 0
+        self._rate_limit_lock = threading.Lock()  # Thread-safe rate limiting
         
         # Add proxy configuration
         self.proxy_enabled = Config.PROXY_ENABLED
@@ -121,17 +123,18 @@ class SofaScoreAPI:
 
 
     def _rate_limit(self):
-        """Implement rate limiting between requests"""
-        current_time = time.time()
-        time_since_last = current_time - self.last_request_time
-        min_interval = Config.REQUEST_DELAY_SECONDS
-        
-        if time_since_last < min_interval:
-            sleep_time = min_interval - time_since_last
-            logger.debug(f"Rate limiting: sleeping for {sleep_time:.2f} seconds")
-            time.sleep(sleep_time)
-        
-        self.last_request_time = time.time()
+        """Implement thread-safe rate limiting between requests"""
+        with self._rate_limit_lock:
+            current_time = time.time()
+            time_since_last = current_time - self.last_request_time
+            min_interval = Config.REQUEST_DELAY_SECONDS
+            
+            if time_since_last < min_interval:
+                sleep_time = min_interval - time_since_last
+                logger.debug(f"Rate limiting: sleeping for {sleep_time:.2f} seconds")
+                time.sleep(sleep_time)
+            
+            self.last_request_time = time.time()
     
     def _make_request(self, endpoint: str, params: Optional[Dict] = None, no_retry_on_404: bool = False) -> Optional[Dict]:
         """Make an HTTP request with enhanced browser impersonation and proxy support"""
@@ -248,9 +251,10 @@ class SofaScoreAPI:
     
     def get_event_final_odds(self, id: int, slug: str=None, no_retry_on_404: bool = False) -> Optional[Dict]:
         """Get final odds for a specific event using the dedicated endpoint"""
-        if slug:
-            return self._make_request(f"/event/{slug}/odds/1/all", no_retry_on_404=no_retry_on_404)
+        if not slug:
+            return self._make_request(f"/event/{id}/odds/1/all", no_retry_on_404=no_retry_on_404)
         else:
+            logger.info(f"Fetching final odds for event {slug} using dedicated endpoint")
             return self._make_request(f"/event/{id}/odds/1/all", no_retry_on_404=no_retry_on_404)
     
     def update_event_information_from_response(self, response: Dict) -> bool:

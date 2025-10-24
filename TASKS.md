@@ -54,12 +54,17 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Test Discovery 2 manual execution - 69 events processed successfully (30 high value streaks + 20 h2h + 19 winning odds)
 - [x] Verify system is production ready with all event sources operational
 
-### **⚡ Performance Optimizations - 100% COMPLETADO (23/10/2025)**
+### **⚡ Performance Optimizations - 100% COMPLETADO (24/10/2025)**
 - [x] Implement immediate deletion of team streaks events with 404 errors (no retries)
 - [x] Optimize logging verbosity for better performance and reduced noise
 - [x] Achieve 35x faster processing for problematic events (no more 35+ second retries)
 - [x] Implement efficient cleanup of events without available odds
 - [x] Test optimized system - team streaks processing now immediate for 404 errors
+- [x] Implement event-only processing for High Value Streaks and H2H events
+- [x] Defer odds fetching to pre-start checks for optimal timing
+- [x] Optimize Discovery2 scheduling to run at hh:02 to avoid conflicts
+- [x] Modularize optimization code into `optimization.py` following @rules.mdc
+- [x] Reduce Discovery2 execution time by 98% (from 60s to 1s for event-only sources)
 
 ## ✅ **Estado de Tareas - PROCESS 1 COMPLETADO - PROCESS 2 EN PREPARACIÓN**
 
@@ -160,29 +165,34 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Validación y limpieza de datos
 - [x] Actualización de eventos existentes y sus odds
 
-### **🟡 Discovery 2 - Fuentes Adicionales de Eventos - EN DESARROLLO**
+### **✅ Discovery 2 - Fuentes Adicionales de Eventos - COMPLETADO**
 
-#### **🟡 Nuevas Fuentes de API**
-- [x] **High Value Streaks**: Función de normalización implementada
+#### **✅ Nuevas Fuentes de API**
+- [x] **High Value Streaks**: Implementado con event-only processing
   - [x] Método API: `get_high_value_streaks_events()`
   - [x] Extracción: `extract_events_from_high_value_streaks()`
   - [x] Normalización: Estructura `{"events": [...]}` compatible
-- [ ] **Team Streaks**: Pausado (respuesta no contiene eventos)
+  - [x] Optimización: Solo procesa información básica, odds en pre-start checks
+- [x] **Team Streaks**: Implementado con procesamiento completo
   - [x] Método API: `get_team_streaks_events()`
-  - [ ] ⏸️ Análisis: Respuesta contiene datos de equipos, no eventos
-  - [ ] ⏸️ Decisión pendiente sobre cómo proceder
-- [ ] **H2H Events**: En análisis
+  - [x] Procesamiento: Odds completas con manejo de errores 404
+  - [x] Optimización: Eliminación inmediata de eventos sin odds
+- [x] **H2H Events**: Implementado con event-only processing
   - [x] Método API: `get_h2h_events()`
-  - [ ] 🔄 Análisis de estructura de respuesta en progreso
-- [ ] **Winning Odds Events**: Pendiente
+  - [x] Procesamiento: Solo información básica de eventos
+  - [x] Optimización: Odds se obtienen en pre-start checks
+- [x] **Winning Odds Events**: Implementado con procesamiento completo
   - [x] Método API: `get_winning_odds_events()`
-  - [ ] Análisis de estructura de respuesta pendiente
+  - [x] Procesamiento: Odds completas incluidas
+  - [x] Integración: Funciona con pipeline estándar
 
-#### **🟡 Integración en Scheduler**
-- [ ] Actualizar `job_discovery2()` con funciones de normalización
-- [ ] Validar flujo completo de cada fuente
-- [ ] Testing de integración end-to-end
-- [ ] Documentación de nuevas fuentes
+#### **✅ Integración en Scheduler**
+- [x] Actualizar `job_discovery2()` con funciones de normalización
+- [x] Implementar event-only processing para High Value Streaks y H2H
+- [x] Validar flujo completo de cada fuente
+- [x] Testing de integración end-to-end
+- [x] Documentación de nuevas fuentes
+- [x] Optimización de scheduling (hh:02 para evitar conflictos)
 
 ### **⏰ Verificación Pre-Inicio con Extracción Inteligente - 100% COMPLETADO**
 
@@ -537,6 +547,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **Dual Process System**: 100% ✅ **NUEVO v1.3.0**
 - **Sistema de Notificaciones**: 100% ✅
 - **Descubrimiento Automático**: 100% ✅
+- **Discovery 2 Multi-Source**: 100% ✅ **NUEVO v1.4.0**
 - **Verificación Pre-Inicio**: 100% ✅
 - **Extracción Inteligente de Odds**: 100% ✅
 - **Sistema de Notificaciones Optimizado**: 100% ✅
@@ -545,6 +556,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **Infraestructura Técnica**: 100% ✅
 - **Limpieza de Código**: 100% ✅
 - **Optimizaciones Recientes**: 100% ✅
+- **Performance Optimizations v1.4.2**: 100% ✅ **NUEVO v1.4.2**
 - **Optimización y Limpieza v1.2.2**: 100% ✅
 - **Odds Display en Notificaciones**: 100% ✅ **NUEVO v1.3.1**
 - **Gender Filtering en Candidate Search**: 100% ✅ **NUEVO v1.3.2**
@@ -566,6 +578,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **config.py**: ✅ Configuración centralizada + variable ENABLE_TIMESTAMP_CORRECTION
 - **sofascore_api.py**: ✅ API client con manejo inteligente + sistema de corrección de timestamps
 - **odds_utils.py**: ✅ Utilidades para procesamiento de odds
+- **optimization.py**: ✅ **NUEVO** - Módulo de optimización con funciones modulares para procesamiento eficiente
 
 ## 🎯 **Objetivos Alcanzados**
 

@@ -127,6 +127,48 @@ class EventRepository:
             logger.error(f"Error deleting event {event_id}: {e}")
             return False
     
+    @staticmethod
+    def batch_delete_events(event_ids: List[int]) -> int:
+        """
+        Batch delete multiple events and all their related data in a single transaction.
+        Much faster than deleting events one by one.
+        
+        Args:
+            event_ids: List of event IDs to delete
+            
+        Returns:
+            Number of events successfully deleted
+        """
+        if not event_ids:
+            return 0
+        
+        try:
+            with db_manager.get_session() as session:
+                # Delete related data first (due to foreign key constraints)
+                # Use bulk delete with IN clause for efficiency
+                
+                # Delete odds snapshots
+                session.query(OddsSnapshot).filter(OddsSnapshot.event_id.in_(event_ids)).delete(synchronize_session=False)
+                
+                # Delete event odds
+                session.query(EventOdds).filter(EventOdds.event_id.in_(event_ids)).delete(synchronize_session=False)
+                
+                # Delete results
+                session.query(Result).filter(Result.event_id.in_(event_ids)).delete(synchronize_session=False)
+                
+                # Delete observations
+                session.query(EventObservation).filter(EventObservation.event_id.in_(event_ids)).delete(synchronize_session=False)
+                
+                # Finally delete the events
+                deleted_count = session.query(Event).filter(Event.id.in_(event_ids)).delete(synchronize_session=False)
+                
+                logger.info(f"✅ Batch deleted {deleted_count} events and all related data")
+                return deleted_count
+                
+        except Exception as e:
+            logger.error(f"Error batch deleting events: {e}")
+            return 0
+    
 
     def get_events_starting_soon(self, window_minutes: int = 30):
         """Get events starting within the specified window as Event objects"""

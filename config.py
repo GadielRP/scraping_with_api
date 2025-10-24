@@ -17,9 +17,11 @@ class Config:
     # Scheduler Configuration
     POLL_INTERVAL_MINUTES = int(os.getenv('POLL_INTERVAL_MINUTES', '5'))
     DISCOVERY_INTERVAL_HOURS = int(os.getenv('DISCOVERY_INTERVAL_HOURS', '6'))
+    DISCOVERY2_INTERVAL_HOURS = int(os.getenv('DISCOVERY2_INTERVAL_HOURS', '6'))  # Separate interval for Discovery2
     PRE_START_WINDOW_MINUTES = int(os.getenv('PRE_START_WINDOW_MINUTES', '30'))
     
     # Discovery Schedule Times (dynamically generated based on DISCOVERY_INTERVAL_HOURS)
+    # Runs at exact hours: 00:00, 06:00, 12:00, 18:00 (if interval is 6)
     def _generate_discovery_times():
         interval_hours = int(os.getenv('DISCOVERY_INTERVAL_HOURS', '6'))
         times = []
@@ -28,6 +30,17 @@ class Config:
         return times
     
     DISCOVERY_TIMES = _generate_discovery_times()
+    
+    # Discovery2 Schedule Times (runs at hh:02 to avoid blocking pre-start checks at hh:00)
+    # Runs at 2 minutes past the hour: 00:02, 06:02, 12:02, 18:02 (if interval is 6)
+    def _generate_discovery2_times():
+        interval_hours = int(os.getenv('DISCOVERY2_INTERVAL_HOURS', '6'))
+        times = []
+        for hour in range(0, 24, interval_hours):
+            times.append(f"{hour:02d}:02")  # Run at hh:02 instead of hh:00
+        return times
+    
+    DISCOVERY2_TIMES = _generate_discovery2_times()
     
     # Timezone
     TIMEZONE = os.getenv('TIMEZONE', 'America/Mexico_City')

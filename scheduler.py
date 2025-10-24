@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 import json
 from typing import Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import Config
 from sofascore_api import api_client
 import sofascore_api2  # Import to attach new methods to api_client
@@ -17,6 +18,14 @@ from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
 from alert_engine import alert_engine
 from timezone_utils import get_local_now_aware, convert_utc_to_local
+
+# Import optimization utilities
+from optimization import (
+    parallel_team_event_fetching,
+    process_with_batch_cleanup,
+    process_with_parallel_db_ops,
+    process_events_only
+)
 
 class JobScheduler:
     """Main job scheduler for the SofaScore odds system"""
@@ -41,9 +50,9 @@ class JobScheduler:
         for time_str in Config.DISCOVERY_TIMES:
             schedule.every().day.at(time_str).do(self.job_discovery)
         
-        # Job B - Discovery 2 (at the same scheduled times as Discovery 1)
-        # Use the same scheduled times as Discovery 1 for consistency
-        for time_str in Config.DISCOVERY_TIMES:
+        # Job B - Discovery 2 (at hh:02 to avoid blocking pre-start checks at hh:00)
+        # Uses Config.DISCOVERY2_TIMES which runs at 2 minutes past the hour
+        for time_str in Config.DISCOVERY2_TIMES:
             schedule.every().day.at(time_str).do(self.job_discovery2)
         
         # Job C - Pre-start check (dynamic interval based on Config.POLL_INTERVAL_MINUTES)
@@ -54,7 +63,7 @@ class JobScheduler:
         
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
-        logger.info(f"  - Discovery 2 (streaks, h2h, winning odds): daily at {', '.join(Config.DISCOVERY_TIMES)}")
+        logger.info(f"  - Discovery 2 (streaks, h2h, winning odds): daily at {', '.join(Config.DISCOVERY2_TIMES)}")
         logger.info(f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes")
         logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
     
@@ -160,33 +169,22 @@ class JobScheduler:
 
             logger.info(f"Found {len(team_ids)} teams in team streaks response")
 
-            # Get nearest events for each team
-            team_streaks_events = []
-            for team_id in team_ids:
-                try:
-                    nearest_event_id = api_client.get_nearest_event_for_team(team_id)
-                    if nearest_event_id:
-                        # Get full event data using the existing event endpoint
-                        event_response = api_client.get_event_details(nearest_event_id)
-                        if event_response:
-                            # Use the existing get_event_information method to structure the data
-                            event_data = api_client.get_event_information(event_response, discovery_source='team_streaks')
-                            if event_data:
-                                team_streaks_events.append(event_data)
-                                logger.debug(f"Added event {nearest_event_id} for team {team_id}")
-                            else:
-                                logger.warning(f"Failed to structure event data for event {nearest_event_id}")
-                        else:
-                            logger.warning(f"Failed to get event details for event {nearest_event_id}")
-                    else:
-                        logger.warning(f"No nearest event found for team {team_id}")
-                except Exception as e:
-                    logger.error(f"Error processing team {team_id}: {e}")
-                    continue
+            # Use optimized parallel fetching from optimization module (10 workers for speed)
+            team_streaks_events = parallel_team_event_fetching(team_ids, max_workers=10)
 
             if not team_streaks_events:
                 logger.warning("No events found after processing team streaks")
-                return
+                logger.info("Skipping team streaks processing (no valid events fetched)")
+            else:
+                logger.info(f"Successfully fetched {len(team_streaks_events)} team streak events")
+                
+                # Use optimized batch cleanup processing from optimization module (10 workers)
+                processed_count, skipped_count = process_with_batch_cleanup(
+                    team_streaks_events,
+                    discovery_source='team_streaks',
+                    max_workers=10
+                )
+                logger.info(f"team streaks events completed: processed {processed_count}/{len(team_streaks_events)} events, skipped {skipped_count} events")
 
             # H2H events
             h2h_events_response = api_client.get_h2h_events()
@@ -210,21 +208,33 @@ class JobScheduler:
                 logger.warning("No events found in winning odds events")
                 return
 
-            # Process each event lists with its odds data
-            # High value streaks events
-            processed_count, skipped_count = self.process_events_and_odds(high_value_streaks_events, odds_processing=False, discovery_source='high_value_streaks')
+            # Process each event lists with optimized methods (AGGRESSIVE: 10 workers)
+            
+            # High value streaks events - Use event-only processing (no odds fetching)
+            processed_count, skipped_count = process_events_only(
+                high_value_streaks_events,
+                discovery_source='high_value_streaks',
+                max_workers=10
+            )
             logger.info(f"high value streaks events completed: processed {processed_count}/{len(high_value_streaks_events)} events, skipped {skipped_count} events")
 
-            # Team streaks events
-            processed_count, skipped_count = self.process_events_and_odds(team_streaks_events, odds_processing=False, discovery_source='team_streaks')
-            logger.info(f"team streaks events completed: processed {processed_count}/{len(team_streaks_events)} events, skipped {skipped_count} events")
+            # Team streaks events already processed above with batch cleanup (10 workers)
 
-            # H2H events
-            processed_count, skipped_count = self.process_events_and_odds(h2h_events, odds_processing=False, discovery_source='h2h')
+            # H2H events - Use event-only processing (no odds fetching)
+            processed_count, skipped_count = process_events_only(
+                h2h_events,
+                discovery_source='h2h',
+                max_workers=10
+            )
             logger.info(f"h2h events completed: processed {processed_count}/{len(h2h_events)} events, skipped {skipped_count} events")
 
-            # Winning odds events
-            processed_count, skipped_count = self.process_events_and_odds(winning_odds_events, winning_odds_events_odds_map, discovery_source='winning_odds')
+            # Winning odds events - Use parallel DB ops with 10 workers (odds pre-fetched)
+            processed_count, skipped_count = process_with_parallel_db_ops(
+                winning_odds_events,
+                winning_odds_events_odds_map,
+                discovery_source='winning_odds',
+                max_workers=10
+            )
             logger.info(f"winning odds events completed: processed {processed_count}/{len(winning_odds_events)} events, skipped {skipped_count} events")
         except Exception as e:
             logger.error(f"Error in Job B: {e}")
@@ -258,101 +268,18 @@ class JobScheduler:
                 return
             logger.info(f"Found {len(events)} events in dropping odds")
 
-            # Process each event with its odds data
-            processed_count, skipped_count = self.process_events_and_odds(events, odds_map, discovery_source='dropping_odds')
+            # Use optimized parallel DB ops with 10 workers (odds pre-fetched in odds_map)
+            processed_count, skipped_count = process_with_parallel_db_ops(
+                events,
+                odds_map,
+                discovery_source='dropping_odds',
+                max_workers=10
+            )
             logger.info(f"Job A completed: processed {processed_count}/{len(events)} events, skipped {skipped_count} events")
             
             
         except Exception as e:
             logger.error(f"Error in Job A: {e}")
-    
-    def process_events_and_odds(self, events: List, odds_map: Optional[Dict] = None, odds_processing: bool = True, discovery_source: str = None) -> Tuple[int, int]:
-        """process event and its odds data"""
-        processed_count = 0 # Process each event with its odds data
-        skipped_count = 0
-        for event_data in events:
-            try:
-                id = str(event_data['id'])
-                # Upsert event
-                event = EventRepository.upsert_event(event_data)
-                if not event:
-                    logger.warning(f"Failed to upsert event {id}")
-                    skipped_count += 1
-                    continue
-                
-                if odds_processing:
-                    # Process odds data from the single API call
-                    odds_data = process_event_odds_from_dropping_odds(id, odds_map)
-                    if not odds_data:
-                        logger.warning(f"No odds data found for event {id}")
-                        skipped_count += 1
-                        continue
-                
-                    # Create snapshot
-                    snapshot = OddsRepository.create_odds_snapshot(int(id), odds_data)
-                    if not snapshot:
-                        logger.error(f"Failed to create odds snapshot for event {id}")
-                        skipped_count += 1
-                        continue
-                    
-                    # Upsert event odds
-                    upserted_id = OddsRepository.upsert_event_odds(int(id), odds_data)
-                    if not upserted_id:
-                        logger.error(f"Failed to upsert event odds for event {id}")
-                        skipped_count += 1
-                        continue
-                else:
-                    # Use no-retry for team streaks events to avoid 404 retries
-                    no_retry = discovery_source == 'team_streaks'
-                    odds_data = api_client.get_event_final_odds(id, no_retry_on_404=no_retry)
-                    if not odds_data:
-                        # Special handling for team streaks events with 404 errors
-                        if discovery_source == 'team_streaks':
-                            logger.info(f"Team streaks event {id} - no odds available, deleting")
-                            if EventRepository.delete_event(int(id)):
-                                logger.debug(f"Deleted team streaks event {id}")
-                            else:
-                                logger.error(f"Failed to delete team streaks event {id}")
-                        else:
-                            logger.warning(f"No odds data found for event {id}")
-                        skipped_count += 1
-                        continue
-                    
-                    processed_odds_data = api_client.extract_final_odds_from_response(odds_data, initial_odds_extraction=True)
-                    if not processed_odds_data:
-                        # Special handling for team streaks events with 404 errors
-                        if discovery_source == 'team_streaks':
-                            logger.info(f"Team streaks event {id} - no odds data, deleting")
-                            if EventRepository.delete_event(int(id)):
-                                logger.debug(f"Deleted team streaks event {id}")
-                            else:
-                                logger.error(f"Failed to delete team streaks event {id}")
-                        else:
-                            logger.warning(f"No processed odds data found for event {id}")
-                        skipped_count += 1
-                        continue
-                    
-                    # Create snapshot
-                    snapshot = OddsRepository.create_odds_snapshot(int(id), processed_odds_data)
-                    if not snapshot:
-                        logger.error(f"Failed to create odds snapshot for event {id}")
-                        skipped_count += 1
-                        continue
-                    
-                    # Upsert event odds
-                    upserted_id = OddsRepository.upsert_event_odds(int(id), processed_odds_data)
-                    if not upserted_id:
-                        logger.error(f"Failed to upsert event odds for event {id}")
-                        skipped_count += 1
-                        continue
-                # Note: Alert system removed - now only pre-start notifications are sent
-                processed_count += 1
-
-            except Exception as e:
-                logger.error(f"Error processing event {event_data.get('id')}: {e}")
-                skipped_count += 1
-                continue
-        return processed_count, skipped_count
     
     def job_pre_start_check(self):
         """
@@ -870,7 +797,23 @@ class JobScheduler:
             if not events:
                 logger.info("No events found from previous day")
                 return
-            
+            # update final odds for all events, temporal chunk of code. delete when done using it. this is for the midnight sync to get the final odds for all events.
+            for event_data in events:
+                final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
+                if final_odds_response:
+                    final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
+                    if final_odds_data:
+                        upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
+                        if upserted_id:
+                            snapshot = OddsRepository.create_odds_snapshot(event_data.id, final_odds_data)
+                            logger.info(f"✅ Final odds updated for {event_data.home_team} vs {event_data.away_team}")
+                        else:
+                            logger.warning(f"Failed to update final odds for event {event_data.id}")
+                    else:
+                        logger.warning(f"No final odds data extracted for event {event_data.id}")
+                else:
+                    logger.warning(f"Failed to fetch final odds for event {event_data.id}")
+            # end of temporal chunk of code. delete when done using it.
             logger.info(f"Processing {len(events)} events from previous day")
             stats = self._collect_results_for_events(events, "Job E")
             logger.info(f"Job E completed: {stats['updated']} updated, {stats['skipped']} skipped, {stats['failed']} failed")
@@ -936,6 +879,8 @@ class JobScheduler:
             logger.info("📊 Collecting results from finished events...")
             self.job_results_collection()
             
+            
+
             # Update prediction logs with actual results
             logger.info("📊 Updating prediction logs with actual results...")
             from modules.prediction import prediction_logger
