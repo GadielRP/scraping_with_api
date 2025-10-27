@@ -534,9 +534,9 @@ class SofaScoreAPI:
             
             # TENNIS: Extract ground type
             if sport.lower() == 'tennis':
-                logger.info(f"🔍 DEBUG: Processing tennis event, looking for groundType")
+                
                 ground_type = event_data.get('groundType')
-                logger.info(f"🔍 DEBUG: groundType value: {ground_type}")
+                
                 if ground_type:
                     observations.append({
                         'type': 'ground_type',

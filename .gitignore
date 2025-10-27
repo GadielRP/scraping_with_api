@@ -71,6 +71,7 @@ db-init/local.backup.dump.gz
 predictions_*.csv
 parse_telegram_predictions.py
 
+collect_yesterday_odds.py
 
 
 

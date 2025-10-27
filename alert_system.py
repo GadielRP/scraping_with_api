@@ -457,7 +457,28 @@ class PreStartNotification:
         try:
             message = f"📊 <b>H2H STREAK ALERT</b>\n\n"
             message += f"🏆 <b>{streak.participants}</b>\n"
-            message += f"⚽ Sport: {streak.sport}\n"
+            if streak.sport == 'Football':
+                message += f"⚽ "
+            elif streak.sport == 'Basketball':
+                message += f"🏀 "
+            elif streak.sport == 'Tennis':
+                message += f"🎾 "
+            elif streak.sport == 'Hockey':
+                message += f"🏒 "
+            elif streak.sport == 'Baseball':
+                message += f"⚾ "
+            elif streak.sport == 'Handball':
+                message += f"🤼 {streak.sport})"
+            elif streak.sport == 'Rugby':
+                message += f"🏉 "
+            elif streak.sport == 'American Football':
+                message += f"🏈 "
+            elif streak.sport == 'Volleyball':
+                message += f"🏐 "
+            else:
+                message += f"🏟️ {streak.sport}"
+            
+            message += f"({streak.competition_slug.replace('-', ' ').title()})\n"
             message += f"⏰ Starts in: {streak.minutes_until_start} minutes\n\n"
             
             message += f"📈 <b>H2H Statistics (Last 2 Years)</b>\n"

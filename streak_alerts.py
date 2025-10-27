@@ -20,6 +20,7 @@ class H2HStreak:
     event_id: int
     custom_id: str
     participants: str
+    competition_slug: str
     sport: str
     home_team_name: str  # Upcoming event home team
     away_team_name: str  # Upcoming event away team
@@ -89,7 +90,7 @@ class StreakAlertEngine:
             logger.error(f"Error getting team last 10 results for {team_name}: {e}")
             return []
     
-    def get_team_last_10_results_by_id(self, team_id: int, team_name: str) -> List[Dict]:
+    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str) -> List[Dict]:
         """
         Get the last 10 results for a team using team_id.
         Processes team results response and returns standardized format.
@@ -259,7 +260,7 @@ class StreakAlertEngine:
             return None
 
     def analyze_h2h_events(self, event_id: int, event_custom_id: str, 
-                          event_start_time: datetime, sport: str, participants: str,
+                          event_start_time: datetime, sport: str, competition_slug: str, participants: str,
                           home_team_name: str, away_team_name: str,
                           h2h_events: List[Dict], minutes_until_start: int,
                           home_team_id: int = None, away_team_id: int = None) -> Optional[H2HStreak]:
@@ -268,61 +269,61 @@ class StreakAlertEngine:
         Tracks wins relative to ACTUAL TEAMS (not home/away positions which change historically).
         """
         try:
-            if not h2h_events:
-                return None
-            
-            # Filter events within 2-year window
-            cutoff_timestamp = (event_start_time - self.two_year_window).timestamp()
-            
-            # Extract results using proven logic and map to actual teams
+            # Initialize results list - will be empty if no H2H events or no past events
             results = []
-            for event in h2h_events:
-                event_timestamp = event.get('startTimestamp', 0)
-                
-                # Only past events within 2-year window
-                if event_timestamp >= cutoff_timestamp and event_timestamp < event_start_time.timestamp():
-                    # Use proven extraction logic
-                    result_data = api_client.extract_results_from_response({'event': event})
-                    if result_data:
-                        # Get team names from historical event
-                        hist_home = event.get('homeTeam', {}).get('name', '')
-                        hist_away = event.get('awayTeam', {}).get('name', '')
-                        
-                        # Map winner to actual teams (not positions)
-                        winner_position = result_data['winner']  # '1', '2', or 'X'
-                        
-                        # Determine which team won relative to upcoming event's home team
-                        if winner_position == 'X':
-                            winner_relative = 'X'
-                            upcoming_home_score = result_data['home_score'] if hist_home == home_team_name else result_data['away_score']
-                            upcoming_away_score = result_data['away_score'] if hist_home == home_team_name else result_data['home_score']
-                        elif winner_position == '1':  # Historical home team won
-                            if hist_home == home_team_name:
-                                winner_relative = '1'  # Upcoming home team won
-                                upcoming_home_score = result_data['home_score']
-                                upcoming_away_score = result_data['away_score']
-                            else:  # Historical home was upcoming away team
-                                winner_relative = '2'  # Upcoming away team won
-                                upcoming_home_score = result_data['away_score']
-                                upcoming_away_score = result_data['home_score']
-                        else:  # winner_position == '2' - Historical away team won
-                            if hist_away == away_team_name:
-                                winner_relative = '2'  # Upcoming away team won
-                                upcoming_home_score = result_data['home_score']
-                                upcoming_away_score = result_data['away_score']
-                            else:  # Historical away was upcoming home team
-                                winner_relative = '1'  # Upcoming home team won
-                                upcoming_home_score = result_data['away_score']
-                                upcoming_away_score = result_data['home_score']
-                        
-                        results.append({
-                            'winner': winner_relative,
-                            'home_score': upcoming_home_score,
-                            'away_score': upcoming_away_score
-                        })
             
-            if not results:
-                return None
+            if h2h_events:
+                # Filter events within 2-year window
+                cutoff_timestamp = (event_start_time - self.two_year_window).timestamp()
+                
+                # Extract results using proven logic and map to actual teams
+                for event in h2h_events:
+                    event_timestamp = event.get('startTimestamp', 0)
+                    
+                    # Only past events within 2-year window
+                    if event_timestamp >= cutoff_timestamp and event_timestamp < event_start_time.timestamp():
+                        # Use proven extraction logic
+                        result_data = api_client.extract_results_from_response({'event': event})
+                        if result_data:
+                            # Get team names from historical event
+                            hist_home = event.get('homeTeam', {}).get('name', '')
+                            hist_away = event.get('awayTeam', {}).get('name', '')
+                            
+                            # Map winner to actual teams (not positions)
+                            winner_position = result_data['winner']  # '1', '2', or 'X'
+                            
+                            # Determine which team won relative to upcoming event's home team
+                            if winner_position == 'X':
+                                winner_relative = 'X'
+                                upcoming_home_score = result_data['home_score'] if hist_home == home_team_name else result_data['away_score']
+                                upcoming_away_score = result_data['away_score'] if hist_home == home_team_name else result_data['home_score']
+                            elif winner_position == '1':  # Historical home team won
+                                if hist_home == home_team_name:
+                                    winner_relative = '1'  # Upcoming home team won
+                                    upcoming_home_score = result_data['home_score']
+                                    upcoming_away_score = result_data['away_score']
+                                else:  # Historical home was upcoming away team
+                                    winner_relative = '2'  # Upcoming away team won
+                                    upcoming_home_score = result_data['away_score']
+                                    upcoming_away_score = result_data['home_score']
+                            else:  # winner_position == '2' - Historical away team won
+                                if hist_away == away_team_name:
+                                    winner_relative = '2'  # Upcoming away team won
+                                    upcoming_home_score = result_data['home_score']
+                                    upcoming_away_score = result_data['away_score']
+                                else:  # Historical away was upcoming home team
+                                    winner_relative = '1'  # Upcoming home team won
+                                    upcoming_home_score = result_data['away_score']
+                                    upcoming_away_score = result_data['home_score']
+                            
+                            results.append({
+                                'winner': winner_relative,
+                                'home_score': upcoming_home_score,
+                                'away_score': upcoming_away_score
+                            })
+            
+            # Continue processing even if no H2H results found
+            # This allows us to still show team form and winning odds data
             
             # Calculate statistics relative to upcoming event teams
             home_wins = sum(1 for r in results if r['winner'] == '1')
@@ -351,7 +352,7 @@ class StreakAlertEngine:
             away_team_draws = 0
             
             if home_team_id:
-                home_team_results = self.get_team_last_10_results_by_id(home_team_id, home_team_name)
+                home_team_results = self.get_team_last_10_results_by_id(home_team_id, home_team_name, competition_slug)
                 home_team_wins = sum(1 for r in home_team_results if r['winner'] == '1')
                 home_team_losses = sum(1 for r in home_team_results if r['winner'] == '2')
                 home_team_draws = sum(1 for r in home_team_results if r['winner'] == 'X')
@@ -360,7 +361,7 @@ class StreakAlertEngine:
                 logger.debug(f"No home_team_id provided for {home_team_name}")
             
             if away_team_id:
-                away_team_results = self.get_team_last_10_results_by_id(away_team_id, away_team_name)
+                away_team_results = self.get_team_last_10_results_by_id(away_team_id, away_team_name, competition_slug)
                 away_team_wins = sum(1 for r in away_team_results if r['winner'] == '1')
                 away_team_losses = sum(1 for r in away_team_results if r['winner'] == '2')
                 away_team_draws = sum(1 for r in away_team_results if r['winner'] == 'X')
@@ -375,6 +376,7 @@ class StreakAlertEngine:
                 event_id=event_id,
                 custom_id=event_custom_id,
                 participants=participants,
+                competition_slug=competition_slug,
                 sport=sport,
                 home_team_name=home_team_name,
                 away_team_name=away_team_name,
@@ -423,7 +425,7 @@ class StreakAlertEngine:
             Tuple of (streak_text, streak_count)
         """
         if not results:
-            return "No recent matches", 0
+            return "No H2H matches found between these players", 0
         
         # Get the most recent result
         current_result = results[0]
@@ -454,16 +456,31 @@ class StreakAlertEngine:
         """
         Determine if a streak alert should be sent.
         
-        Always send alerts if we have H2H data (no significance filtering).
-        Only requirement: at least 1 H2H match analyzed.
+        Send alerts if we have:
+        1. H2H data (at least 1 match analyzed), OR
+        2. Team form data (at least one team has results), OR  
+        3. Winning odds data
+        
+        This ensures we send alerts even when there are no H2H matches
+        but we have team form or winning odds information.
         
         Args:
             streak: H2HStreak object
             
         Returns:
-            True if at least 1 match was analyzed
+            True if we have any meaningful data to show
         """
-        return streak.matches_analyzed >= 1
+        # Check if we have H2H data
+        has_h2h_data = streak.matches_analyzed >= 1
+        
+        # Check if we have team form data
+        has_team_form = (streak.home_team_wins + streak.home_team_losses + streak.home_team_draws > 0) or \
+                       (streak.away_team_wins + streak.away_team_losses + streak.away_team_draws > 0)
+        
+        # Check if we have winning odds data
+        has_winning_odds = streak.winning_odds_data is not None
+        
+        return has_h2h_data or has_team_form or has_winning_odds
 
 
 # Global streak alert engine instance

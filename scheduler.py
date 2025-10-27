@@ -311,6 +311,8 @@ class JobScheduler:
             # Process each upcoming event
             processed_count = 0
             odds_extracted_count = 0
+            # Track events with odds extracted to prevent timing drift issues
+            events_with_odds_extracted = []
             for event_data in events_with_odds:
                 try:
                     minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
@@ -338,6 +340,13 @@ class JobScheduler:
                                     if snapshot:
                                         logger.info(f"✅ Final odds snapshot created for event {event_data['id']}")
                                         odds_extracted_count += 1
+                                        
+                                        # Track this event for alert evaluation (capture timing when odds were extracted)
+                                        events_with_odds_extracted.append({
+                                            'event_id': event_data['id'],
+                                            'start_time': event_data['start_time_utc'],
+                                            'minutes_until_start': minutes_until_start
+                                        })
                                 else:
                                     logger.warning(f"Failed to update final odds for event {event_data['id']}")
                             else:
@@ -397,23 +406,51 @@ class JobScheduler:
                     
                     
                     # Get Event objects with properly loaded event_odds for alert evaluation
-                    # Only evaluate events that are at key moments (30 or 5 minutes)
+                    # Use tracked events with odds extracted to prevent timing drift issues
                     events_for_alerts = []
-                    for event_data in events_with_odds:
-                        # Get the Event object first to ensure we have fresh DB state
-                        event_obj = self.event_repo.get_event_by_id(event_data['id'])
-                        if not event_obj:
-                            continue
+                    
+                    if events_with_odds_extracted:
+                        # Use tracked events (events where odds were successfully extracted)
+                        logger.info(f"🔍 Using tracked events for alert evaluation ({len(events_with_odds_extracted)} events with odds extracted)")
                         
-                        # Skip if rescheduled in this cycle
-                        if event_obj.id in self.recently_rescheduled:
-                            logger.debug(f"⏭️ Skipping event {event_obj.id} - already rescheduled in this cycle")
-                            continue
-                        
-                        # Calculate minutes from fresh DB time, not stale event_data
-                        minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
-                        if minutes_until_start in [30, 5, 1]:  # Key moments including 1-minute timestamp correction
+                        for tracked_event in events_with_odds_extracted:
+                            # Get the Event object to ensure we have fresh DB state
+                            event_obj = self.event_repo.get_event_by_id(tracked_event['event_id'])
+                            if not event_obj:
+                                logger.warning(f"Could not find event {tracked_event['event_id']} for alert evaluation")
+                                continue
+                            
+                            # CRITICAL: Check if event was rescheduled after odds extraction
+                            if event_obj.start_time_utc != tracked_event['start_time']:
+                                logger.warning(f"⏭️ Event {tracked_event['event_id']} was rescheduled after odds extraction - skipping alert evaluation")
+                                continue
+                            
+                            # Skip if already processed as rescheduled in this cycle
+                            if event_obj.id in self.recently_rescheduled:
+                                logger.debug(f"⏭️ Skipping event {event_obj.id} - already rescheduled in this cycle")
+                                continue
+                            
+                            # Use the minutes from when odds were extracted (prevents timing drift)
                             events_for_alerts.append(event_obj)
+                    else:
+                        # Fallback: Use original logic if no events with odds extracted
+                        logger.info("🔍 No tracked events found - using fallback logic for alert evaluation")
+                        
+                        for event_data in events_with_odds:
+                            # Get the Event object first to ensure we have fresh DB state
+                            event_obj = self.event_repo.get_event_by_id(event_data['id'])
+                            if not event_obj:
+                                continue
+                            
+                            # Skip if rescheduled in this cycle
+                            if event_obj.id in self.recently_rescheduled:
+                                logger.debug(f"⏭️ Skipping event {event_obj.id} - already rescheduled in this cycle")
+                                continue
+                            
+                            # Calculate minutes from fresh DB time, not stale event_data
+                            minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
+                            if minutes_until_start in [30, 5, 1]:  # Key moments including 1-minute timestamp correction
+                                events_for_alerts.append(event_obj)
                     
                     if events_for_alerts:
                         logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for dual process alerts and streak alerts...")
@@ -448,12 +485,14 @@ class JobScheduler:
                                     # Get team IDs from the current event details (not H2H response)
                                     home_team_id = None
                                     away_team_id = None
+                                    competition_slug = None
                                     try:
                                         # Fetch current event details to get correct team IDs
                                         event_details = api_client.get_event_details(event_obj.id)
                                         if event_details:
                                             home_team_id = event_details.get('homeTeam', {}).get('id')
                                             away_team_id = event_details.get('awayTeam', {}).get('id')
+                                            competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
                                             logger.debug(f"Extracted team IDs from current event: Home={home_team_id}, Away={away_team_id}")
                                         else:
                                             logger.warning(f"Could not fetch event details for {event_obj.id}")
@@ -466,6 +505,7 @@ class JobScheduler:
                                         event_custom_id=event_obj.custom_id,
                                         event_start_time=event_obj.start_time_utc,
                                         sport=event_obj.sport,
+                                        competition_slug=competition_slug,
                                         participants=f"{event_obj.home_team} vs {event_obj.away_team}",
                                         home_team_name=event_obj.home_team,
                                         away_team_name=event_obj.away_team,
@@ -880,7 +920,7 @@ class JobScheduler:
             for event_data in events:
                 final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
                 if final_odds_response:
-                    final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
+                    final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
                     if final_odds_data:
                         upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
                         if upserted_id:
@@ -957,7 +997,6 @@ class JobScheduler:
             # Only collect results from previous day - odds don't change after games finish
             logger.info("📊 Collecting results from finished events...")
             self.job_results_collection()
-            
             
 
             # Update prediction logs with actual results

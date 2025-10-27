@@ -113,6 +113,7 @@ class SportObservationsManager:
                             logger.warning(f"🎾 ❌ Failed to save {obs_type} for event {event_id}")
                     else:
                         logger.warning(f"🎾 ❌ Invalid observation data: {observation}")
+                return 
             else:
                 logger.info(f"🎾 No observations found for tennis event {event_id}")
                 
