@@ -1,8 +1,8 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.4.2  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED**  
-**Última Actualización:** 23 de Octubre, 2025
+**Versión:** v1.4.3  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS**  
+**Última Actualización:** 24 de Octubre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
@@ -45,6 +45,21 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Event-Only Processing**: Discovery2 procesa solo información de eventos, odds se obtienen en pre-start checks
 - **Optimized Scheduling**: Discovery2 ejecuta en hh:02 para evitar conflictos con pre-start checks
 - **Modular Optimization**: Código de optimización modularizado en `optimization.py`
+
+### ✅ **NUEVO EN v1.4.3 - H2H Streak Alerts (ENHANCED)**
+- **H2H Analysis**: Sistema de análisis de rachas head-to-head entre equipos
+- **Team-Relative Tracking**: Sigue victorias por equipo real (no por posición home/away que cambia históricamente)
+- **Team Form Integration**: Incluye últimos 10 juegos de cada equipo (W-L-D) usando `/team/{id}/events/last/0`
+- **Winning Odds Analysis**: Integra análisis de odds ganadoras con expected vs actual performance
+- **Robust Null Handling**: Maneja casos donde home/away odds son null con mensajes flexibles
+- **Proven Logic Reuse**: Importa y reutiliza `api_client.extract_results_from_response()`
+- **2-Year Window**: Analiza matches históricos de los últimos 2 años
+- **Flexible Display**: Muestra todos los resultados dentro de ventana de 2 años
+- **Integrated Flow**: Se ejecuta en momentos clave (30, 5 min) antes de dual process alerts
+- **Enhanced Implementation**: ~470 líneas en `streak_alerts.py`, incluye team results + winning odds processing
+- **Enhanced Statistics**: H2H stats + team form + winning odds + win rates por equipo, avg scores, current streak con nombres
+- **Enhanced Telegram**: Muestra H2H stats + team form + winning odds analysis + all results con emojis
+- **Production Ready**: Validado con data real y manejo robusto de edge cases, null handling implementado
 
 ### ✅ **PROCESS 1 - Sistema de Predicciones Inteligentes - COMPLETADO (v1.1)**
 **📋 Definición**: Process 1 es el sistema de análisis de patrones de odds que evalúa eventos históricos para predecir resultados futuros.

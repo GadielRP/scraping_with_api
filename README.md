@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.4.2  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED**  
-**Última Actualización:** 23 de Octubre, 2025
+**Versión:** v1.4.3  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS**  
+**Última Actualización:** 24 de Octubre, 2025
 
 ## 🎯 **Descripción del Sistema**
 
@@ -195,6 +195,18 @@ class AlertMatch:
 - **Efficient Cleanup**: Limpieza automática de eventos sin odds disponibles
 - **Event-Only Processing**: Discovery2 procesa solo información de eventos, odds se obtienen en pre-start checks
 - **Optimized Scheduling**: Discovery2 ejecuta en hh:02 para evitar conflictos con pre-start checks
+
+### ✅ **H2H Streak Alerts (v1.4.3) - ENHANCED**
+- **H2H Analysis**: Analiza head-to-head histórico entre equipos (últimos 2 años)
+- **Team-Relative Tracking**: Sigue victorias por equipo real (no por posición home/away histórica)
+- **Team Form Integration**: Incluye últimos 10 juegos de cada equipo (W-L-D)
+- **Winning Odds Analysis**: Integra análisis de odds ganadoras con expected vs actual performance
+- **Robust Null Handling**: Maneja casos donde home/away odds son null con mensajes flexibles
+- **Proven Logic**: Reutiliza `api_client.extract_results_from_response()` para consistencia total
+- **Flexible Results**: Muestra todos los resultados H2H en ventana de 2 años
+- **Integrated Flow**: Se ejecuta en momentos clave (30, 5 min) junto con dual process alerts
+- **Enhanced Telegram Alerts**: Muestra H2H stats + team form + winning odds + rachas actuales con emojis
+- **Production Ready**: Validado con data real y manejo robusto de edge cases
 
 ## 🛠 **Instalación y Configuración**
 

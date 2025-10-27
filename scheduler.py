@@ -18,6 +18,11 @@ from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
 from alert_engine import alert_engine
 from timezone_utils import get_local_now_aware, convert_utc_to_local
+from models import refresh_materialized_views
+from database import db_manager
+from prediction_engine import prediction_engine
+from database import db_manager
+from models import PredictionLog, refresh_materialized_views
 
 # Import optimization utilities
 from optimization import (
@@ -320,7 +325,7 @@ class JobScheduler:
                         
                         if final_odds_response:
                             # Process the final odds data
-                            final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
+                            final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
                                                      
                             if final_odds_data:
                                 # Update the event odds with final odds
@@ -386,8 +391,7 @@ class JobScheduler:
                     
                     # Refresh materialized views to ensure latest data for alert evaluation
                     logger.info("🔄 Refreshing alert materialized views...")
-                    from models import refresh_materialized_views
-                    from database import db_manager
+                    
                     refresh_materialized_views(db_manager.engine)
                     logger.info("✅ Alert materialized views refreshed")
                     
@@ -412,11 +416,89 @@ class JobScheduler:
                             events_for_alerts.append(event_obj)
                     
                     if events_for_alerts:
-                        logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for dual process alerts...")
+                        logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for dual process alerts and streak alerts...")
                         
+                        # ========================================
+                        # H2H STREAK ANALYSIS
+                        # ========================================
+                        logger.info(f"📊 Starting H2H streak analysis for {len(events_for_alerts)} events...")
+                        streak_reports = []
+                        
+                        try:
+                            from streak_alerts import streak_alert_engine
+                            
+                            for event_obj in events_for_alerts:
+                                try:
+                                    # Check if event has custom_id
+                                    if not event_obj.custom_id:
+                                        logger.debug(f"Event {event_obj.id} has no custom_id - skipping H2H streak analysis")
+                                        continue
+                                    
+                                    # Fetch H2H events for this custom_id
+                                    h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
+                                    if not h2h_response or 'events' not in h2h_response:
+                                        logger.debug(f"No H2H data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
+                                        continue
+                                    
+                                    h2h_events = h2h_response['events']
+                                    
+                                    # Calculate minutes until start
+                                    minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
+                                    
+                                    # Get team IDs from the current event details (not H2H response)
+                                    home_team_id = None
+                                    away_team_id = None
+                                    try:
+                                        # Fetch current event details to get correct team IDs
+                                        event_details = api_client.get_event_details(event_obj.id)
+                                        if event_details:
+                                            home_team_id = event_details.get('homeTeam', {}).get('id')
+                                            away_team_id = event_details.get('awayTeam', {}).get('id')
+                                            logger.debug(f"Extracted team IDs from current event: Home={home_team_id}, Away={away_team_id}")
+                                        else:
+                                            logger.warning(f"Could not fetch event details for {event_obj.id}")
+                                    except Exception as e:
+                                        logger.error(f"Error fetching event details for {event_obj.id}: {e}")
+                                    
+                                    # Analyze H2H events with team results
+                                    streak_analysis = streak_alert_engine.analyze_h2h_events(
+                                        event_id=event_obj.id,
+                                        event_custom_id=event_obj.custom_id,
+                                        event_start_time=event_obj.start_time_utc,
+                                        sport=event_obj.sport,
+                                        participants=f"{event_obj.home_team} vs {event_obj.away_team}",
+                                        home_team_name=event_obj.home_team,
+                                        away_team_name=event_obj.away_team,
+                                        h2h_events=h2h_events,
+                                        minutes_until_start=minutes_until_start,
+                                        home_team_id=home_team_id,
+                                        away_team_id=away_team_id
+                                    )
+                                    
+                                    if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
+                                        streak_reports.append(streak_analysis)
+                                        logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
+                                    
+                                except Exception as e:
+                                    logger.error(f"Error analyzing H2H streak for event {event_obj.id}: {e}")
+                                    continue
+                            
+                            # Send H2H streak alerts if any were generated
+                            if streak_reports:
+                                logger.info(f"📊 Generated {len(streak_reports)} H2H streak alerts")
+                                pre_start_notifier.send_h2h_streak_alerts(streak_reports)
+                            else:
+                                logger.info("No H2H streak data found for events at key moments")
+                                
+                        except Exception as e:
+                            logger.error(f"Error in H2H streak analysis: {e}")
+                        
+                        # ========================================
+                        # DUAL PROCESS ALERTS (Process 1 + Process 2)
+                        # ========================================
                         # Execute Dual Process (Process 1 + Process 2)
                         try:
-                            from prediction_engine import prediction_engine
+                            
                             dual_reports = []
                             
                             for event_obj in events_for_alerts:
@@ -479,8 +561,7 @@ class JobScheduler:
                                                     logger.info(f"✅ Prediction logged for dual process event {dual_report.event_id} (5 minutes from start)")
                                                 else:
                                                     # Check if it's a duplicate (already exists) vs. actual failure
-                                                    from database import db_manager
-                                                    from models import PredictionLog
+                                                    
                                                     with db_manager.get_session() as session:
                                                         existing = session.query(PredictionLog).filter_by(event_id=dual_report.event_id).first()
                                                         if existing:
@@ -524,8 +605,7 @@ class JobScheduler:
                                                         logger.info(f"✅ Prediction logged for Process 1 event {event_id} (5 minutes from start)")
                                                     else:
                                                         # Check if it's a duplicate (already exists) vs. actual failure
-                                                        from database import db_manager
-                                                        from models import PredictionLog
+                                                        
                                                         with db_manager.get_session() as session:
                                                             existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
                                                             if existing:
@@ -716,8 +796,7 @@ class JobScheduler:
             
             # Refresh materialized views to ensure latest data for alert evaluation
             logger.info("🔄 Refreshing alert materialized views for rescheduled event...")
-            from models import refresh_materialized_views
-            from database import db_manager
+            
             refresh_materialized_views(db_manager.engine)
             logger.info("✅ Alert materialized views refreshed")
             

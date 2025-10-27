@@ -444,6 +444,145 @@ class PreStartNotification:
         return success_count > 0
     
 
+    def create_h2h_streak_message(self, streak) -> str:
+        """
+        Create H2H streak alert message for Telegram.
+        
+        Args:
+            streak: H2HStreak object with analysis results
+            
+        Returns:
+            Formatted message string for Telegram
+        """
+        try:
+            message = f"📊 <b>H2H STREAK ALERT</b>\n\n"
+            message += f"🏆 <b>{streak.participants}</b>\n"
+            message += f"⚽ Sport: {streak.sport}\n"
+            message += f"⏰ Starts in: {streak.minutes_until_start} minutes\n\n"
+            
+            message += f"📈 <b>H2H Statistics (Last 2 Years)</b>\n"
+            message += f"• Total Matches: {streak.matches_analyzed}\n"
+            message += f"• {streak.home_team_name}: {streak.home_wins} wins ({streak.home_win_rate}%)\n"
+            message += f"• {streak.away_team_name}: {streak.away_wins} wins ({streak.away_win_rate}%)\n"
+            if streak.draws > 0:
+                message += f"• Draws: {streak.draws} ({streak.draw_rate}%)\n"
+            message += f"• Avg Score: {streak.avg_home_score:.1f} - {streak.avg_away_score:.1f}\n\n"
+            
+            message += f"🔥 <b>Current Streak</b>\n"
+            message += f"• {streak.current_streak}\n\n"
+            
+            # NEW: Team Results Section
+            if hasattr(streak, 'home_team_wins') and hasattr(streak, 'away_team_wins'):
+                message += f"📊 <b>Team Form (Last 10 Games)</b>\n"
+                message += f"• {streak.home_team_name}: {streak.home_team_wins}W-{streak.home_team_losses}L-{streak.home_team_draws}D\n"
+                message += f"• {streak.away_team_name}: {streak.away_team_wins}W-{streak.away_team_losses}L-{streak.away_team_draws}D\n\n"
+            
+            # NEW: Winning Odds Section
+            if hasattr(streak, 'winning_odds_data') and streak.winning_odds_data:
+                # Check if we have any valid odds data
+                has_home_odds = 'home' in streak.winning_odds_data and streak.winning_odds_data['home'] is not None
+                has_away_odds = 'away' in streak.winning_odds_data and streak.winning_odds_data['away'] is not None
+                
+                if has_home_odds or has_away_odds:
+                    message += f"🎯 <b>Winning Odds Analysis</b>\n"
+                    
+                    # Home team odds
+                    if has_home_odds:
+                        home_odds = streak.winning_odds_data['home']
+                        home_decimal = home_odds.get('decimalValue', 0)
+                        home_expected = home_odds.get('expected', 0)
+                        home_actual = home_odds.get('actual', 0)
+                        
+                        message += f"• <b>{streak.home_team_name}</b>\n"
+                        message += f"  📊 Odds: {home_decimal} (Expected: {home_expected}%, Actual: {home_actual}%)\n"
+                        if home_actual > home_expected:
+                            message += f"  ✅ <i>Outperforming expectations by {home_actual - home_expected}%</i>\n"
+                        elif home_actual < home_expected:
+                            message += f"  ⚠️ <i>Underperforming by {home_expected - home_actual}%</i>\n"
+                        else:
+                            message += f"  ⚖️ <i>Meeting expectations</i>\n"
+                    else:
+                        message += f"• <b>{streak.home_team_name}</b>: <i>No odds data available</i>\n"
+                    
+                    # Away team odds
+                    if has_away_odds:
+                        away_odds = streak.winning_odds_data['away']
+                        away_decimal = away_odds.get('decimalValue', 0)
+                        away_expected = away_odds.get('expected', 0)
+                        away_actual = away_odds.get('actual', 0)
+                        
+                        message += f"• <b>{streak.away_team_name}</b>\n"
+                        message += f"  📊 Odds: {away_decimal} (Expected: {away_expected}%, Actual: {away_actual}%)\n"
+                        if away_actual > away_expected:
+                            message += f"  ✅ <i>Outperforming expectations by {away_actual - away_expected}%</i>\n"
+                        elif away_actual < away_expected:
+                            message += f"  ⚠️ <i>Underperforming by {away_expected - away_actual}%</i>\n"
+                        else:
+                            message += f"  ⚖️ <i>Meeting expectations</i>\n"
+                    else:
+                        message += f"• <b>{streak.away_team_name}</b>: <i>No odds data available</i>\n"
+                    
+                    message += "\n"
+            
+            if streak.all_results:
+                # Display all results (flexible count)
+                result_count = len(streak.all_results)
+                message += f"📋 <b>All {result_count} Results</b> (most recent first)\n"
+                result_symbols = []
+                for result in streak.all_results:
+                    if result == '1':
+                        result_symbols.append('🏠')
+                    elif result == '2':
+                        result_symbols.append('✈️')
+                    elif result == 'X':
+                        result_symbols.append('🤝')
+                result_str = ' '.join(result_symbols)
+                message += f"• {result_str}\n\n"
+            
+            message += f"<i>💡 Streak analysis based on {streak.matches_analyzed} matches in last 2 years</i>"
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"Error creating H2H streak message: {e}")
+            return f"❌ Error creating H2H streak message for event {streak.event_id}: {str(e)}"
+    
+    def send_h2h_streak_alerts(self, streak_reports: List) -> bool:
+        """
+        Send H2H streak alerts via Telegram.
+        
+        Args:
+            streak_reports: List of H2HStreak objects
+            
+        Returns:
+            True if at least one alert was sent successfully
+        """
+        if not streak_reports:
+            return True
+            
+        success_count = 0
+        
+        for streak in streak_reports:
+            try:
+                # Create message for streak report
+                message = self.create_h2h_streak_message(streak)
+                
+                # Send via Telegram
+                sent = self.send_telegram_message(message)
+                
+                if sent:
+                    success_count += 1
+                    logger.info(f"✅ H2H streak alert sent for event {streak.event_id}")
+                else:
+                    logger.warning(f"❌ Failed to send H2H streak alert for event {streak.event_id}")
+                    
+            except Exception as e:
+                logger.error(f"Error sending H2H streak alert for event {streak.event_id}: {e}")
+                continue
+        
+        logger.info(f"Sent {success_count}/{len(streak_reports)} H2H streak alerts successfully")
+        return success_count > 0
+    
     def send_time_correction_message(self, event_id: int, current_starting_time: datetime, new_starting_time: datetime) -> bool:
         """
         Send a time correction message via Telegram.

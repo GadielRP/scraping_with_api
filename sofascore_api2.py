@@ -75,8 +75,27 @@ def get_event_details(self, event_id: int) -> Optional[Dict]:
     
     if not response or 'event' not in response:
         return None
-    
     return response['event']
+
+def get_team_last_10_results_response(self, team_id: int) -> Optional[Dict]:
+    """Fetch the last 10 results for a team from the /team/{id}/events/last/0 endpoint."""
+    endpoint = f"/team/{team_id}/events/last/0"
+    response = self._make_request(endpoint)
+    if not response or 'events' not in response:
+        logger.error(f"No results found for team {team_id}")
+        return None
+    return response
+
+def get_winning_odds_response(self, event_id: int) -> Optional[Dict]:
+    """Fetch the winning odds for an event from the /event/{event_id}/provider/1/winning-odds endpoint."""
+    endpoint = f"/event/{event_id}/provider/1/winning-odds"
+    logger.debug(f"Making API request to: {endpoint}")
+    response = self._make_request(endpoint)
+    logger.debug(f"API response type: {type(response)}, content: {response}")
+    if not response:
+        logger.debug(f"No winning odds found for event {event_id}")
+        return None
+    return response
 
 # Event extraction methods
 def extract_events_from_high_value_streaks(self, response: Dict) -> List[Dict]:
@@ -117,6 +136,25 @@ def extract_events_from_high_value_streaks(self, response: Dict) -> List[Dict]:
         logger.error(f"❌ Error extracting events from high value streaks response: {e}")
         return []
 
+
+def get_h2h_events_for_event(self, custom_id: str) -> Optional[Dict]:
+    """
+    Fetch H2H events for a specific custom_id using /event/{custom_id}/h2h/events endpoint.
+    
+    This endpoint returns all historical and future matches between the two teams
+    associated with the custom_id.
+    
+    Args:
+        custom_id: Custom ID of the event (e.g., 'ccKcsmcKc')
+        
+    Returns:
+        Dict containing 'events' list with all H2H matches, or None if error
+    """
+    logger.info(f"Fetching H2H events for custom_id: {custom_id}")
+    endpoint = f"/event/{custom_id}/h2h/events"
+    return self._make_request(endpoint)
+
+
 # --- Dynamically attach these methods to the existing class ---
 SofaScoreAPI.get_high_value_streaks_events = get_high_value_streaks_events
 SofaScoreAPI.get_team_streaks_events = get_team_streaks_events
@@ -126,5 +164,8 @@ SofaScoreAPI.get_team_ids_from_team_streaks = get_team_ids_from_team_streaks
 SofaScoreAPI.get_nearest_event_for_team = get_nearest_event_for_team
 SofaScoreAPI.get_event_details = get_event_details
 SofaScoreAPI.extract_events_from_high_value_streaks = extract_events_from_high_value_streaks
+SofaScoreAPI.get_h2h_events_for_event = get_h2h_events_for_event
+SofaScoreAPI.get_team_last_10_results_response = get_team_last_10_results_response
+SofaScoreAPI.get_winning_odds_response = get_winning_odds_response
 
 logger.info("✅ sofascore_api2 methods successfully loaded and attached to SofaScoreAPI")

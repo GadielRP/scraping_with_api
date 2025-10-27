@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 RULE_WEIGHTS = {'A': 4, 'B': 3, 'C': 2}
 MAX_WEIGHT = 4
 TIER2_TOLERANCE = 0.040001  # Slightly higher to handle floating point precision (legacy component-based)
-L1_TAU_DEFAULT = 0.12  # Default L1 distance threshold for similarity search
+L1_TAU_DEFAULT = 0.04  # Default L1 distance threshold for similarity search
 MIN_SAMPLES = 1
 
 WINNER_NAMES = {
