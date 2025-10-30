@@ -268,6 +268,52 @@ class EventRepository:
             return []
     
     @staticmethod
+    def get_events_started_recently(window_minutes: int = 5) -> List[Dict]:
+        """
+        Get events that started within the last N minutes (default 5).
+        Used to catch late timestamp corrections that occur after the game starts.
+        Returns a list of dictionaries containing event info.
+        """
+        try:
+            with db_manager.get_session() as session:
+                # Use local time since SofaScore provides local times
+                now = datetime.now()
+                # Round window_start down to seconds (remove microseconds) to catch events that started exactly at that time
+                window_start = now - timedelta(minutes=window_minutes, seconds=10)
+                window_start = window_start.replace(microsecond=0)  # Round down to second precision
+                window_end = now  # Up to current time
+                
+                # Get events that started recently (within the last N minutes)
+                # Use > instead of >= for window_end to avoid catching events that haven't started yet
+                events_started_recently = session.query(Event).filter(
+                    and_(
+                        Event.start_time_utc >= window_start,
+                        Event.start_time_utc < now  # Must have already started (strictly less than now)
+                    )
+                ).all()
+                
+                # Convert to list of dictionaries with event info
+                result = []
+                for event in events_started_recently:
+                    event_data = {
+                        'id': event.id,
+                        'home_team': event.home_team,
+                        'away_team': event.away_team,
+                        'competition': event.competition,
+                        'start_time_utc': event.start_time_utc,
+                        'sport': event.sport,
+                        'country': event.country,
+                        'slug': event.slug
+                    }
+                    result.append(event_data)
+                
+                return result
+                
+        except Exception as e:
+            logger.error(f"Error getting events started recently: {e}")
+            return []
+    
+    @staticmethod
     def get_todays_events() -> List[Event]:
         """Get all events for today"""
         try:

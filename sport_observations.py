@@ -57,7 +57,7 @@ class SportObservationsManager:
             # FAIL-SAFE: If we can't check, assume no observations and proceed with API call
             return False
     
-    def extract_tennis_ground_type(self, event_id: int, api_response: Dict) -> None:
+    def extract_tennis_ground_type(self, event_id: int, api_response: Dict) -> Optional[List[Dict]]:
         """
         Extract ground type for tennis events during pre-start check.
         FAIL-SAFE: Logs warnings on error but doesn't break main flow.
@@ -72,19 +72,6 @@ class SportObservationsManager:
             # Import here to avoid circular imports
             from sofascore_api import api_client
             
-            # DEBUG: Log the API response structure to understand what we're getting
-            logger.info(f"🔍 DEBUG: API response keys: {list(api_response.keys()) if api_response else 'None'}")
-            if api_response and 'event' in api_response:
-                event_data = api_response['event']
-                
-                if 'groundType' in event_data:
-                    logger.info(f"🔍 DEBUG: Found groundType in event data: {event_data['groundType']}")
-                else:
-                    logger.info(f"🔍 DEBUG: No groundType field in event data")
-                    # Check if it's in a different location
-                    if 'tournament' in event_data:
-                        tournament = event_data['tournament']
-                        logger.info(f"🔍 DEBUG: Tournament keys: {list(tournament.keys()) if tournament else 'None'}")
             
             # Use the existing method from sofascore_api to extract observations
             observations = api_client._extract_observations_from_response(api_response)
@@ -93,6 +80,7 @@ class SportObservationsManager:
                 logger.info(f"🎾 Found {len(observations)} observations for tennis event {event_id}")
                 
                 # Process each observation
+                
                 for observation in observations:
                     obs_type = observation.get('type')
                     obs_value = observation.get('value')
@@ -109,11 +97,12 @@ class SportObservationsManager:
                         
                         if saved_obs:
                             logger.info(f"🎾 ✅ Saved {obs_type}: {obs_value} for event {event_id}")
+                            return observations
                         else:
                             logger.warning(f"🎾 ❌ Failed to save {obs_type} for event {event_id}")
                     else:
                         logger.warning(f"🎾 ❌ Invalid observation data: {observation}")
-                return 
+                return
             else:
                 logger.info(f"🎾 No observations found for tennis event {event_id}")
                 

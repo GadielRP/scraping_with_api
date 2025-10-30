@@ -179,13 +179,7 @@ def start_scheduler():
     logger = logging.getLogger(__name__)
     logger.info("Starting job scheduler...")
     
-    # Initialize system first
-    if not initialize_system():
-        logger.error("Failed to initialize system")
-        return False
-
-    # Start the job scheduler
-    logger.info("Starting job scheduler...")
+    # Start the job scheduler (system already initialized in main)
     job_scheduler.start()
        
     # Print startup information
@@ -339,16 +333,12 @@ def main():
     try:
         if args.command == 'start':
             if initialize_system():
-                # Run discovery FIRST
                 
                 # Then start scheduler
                 start_scheduler()
-               
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)
-            
-            run_discovery()
         elif args.command == 'discovery':
             if initialize_system():
                 run_discovery()

@@ -1,8 +1,8 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.4.3  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS**  
-**Última Actualización:** 24 de Octubre, 2025
+**Versión:** v1.4.5  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS**  
+**Última Actualización:** 29 de Octubre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
@@ -46,19 +46,43 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Optimized Scheduling**: Discovery2 ejecuta en hh:02 para evitar conflictos con pre-start checks
 - **Modular Optimization**: Código de optimización modularizado en `optimization.py`
 
+### ✅ **NUEVO EN v1.4.3 - H2H Streak Alerts Enhancements**
+- **Batched Team Form Display**: Forma del equipo mostrada en lotes de 5 partidos con estadísticas individuales
+- **Enhanced Message Format**: Muestra resumen general + lotes detallados con puntos netos por lote
+- **404 Error Resilience**: Sistema flexible que continúa funcionando sin datos de odds (404s comunes)
+- **Improved Error Handling**: 404s para winning odds manejados como DEBUG level (no ERROR)
+- **Flexible System**: Continúa enviando alertas H2H incluso cuando faltan datos de odds
+- **Better User Experience**: Mensajes más informativos con datos históricos detallados
+
+### ✅ **NUEVO EN v1.4.4 - Duplicate Initialization Fix**
+- **Fixed Double Initialization**: Eliminada inicialización duplicada que causaba logs duplicados
+- **Cleaner Startup Logs**: Sistema ahora muestra logs únicos sin redundancia
+- **Optimized Flow**: Discovery ejecuta antes del scheduler startup
+- **Code Cleanup**: Removida lógica duplicada de initialize_system()
+
+### ✅ **NUEVO EN v1.4.5 - Detailed Match Results with Dates**
+- **Individual H2H Match Results**: Muestra cada partido H2H con detalles completos (home, away, scores)
+- **Grouped by Winner**: Resultados organizados por equipo ganador preservando orden histórico
+- **Date Display**: Fechas completas (MM/DD/YYYY) en resultados H2H y Historical Form
+- **Historical Home/Away Preservation**: No reordena equipos, mantiene quien era home/away históricamente
+- **Single Variable Pattern**: Usa solo `all_matches`, extrae resultados cuando es necesario
+ - **Per-team H/A Net Points**: En H2H, cada bloque de equipo muestra `[H:+n, A:+n]` sumando diferencias solo de sus victorias; "Total Matches" ahora muestra solo el conteo
+
 ### ✅ **NUEVO EN v1.4.3 - H2H Streak Alerts (ENHANCED)**
 - **H2H Analysis**: Sistema de análisis de rachas head-to-head entre equipos
 - **Team-Relative Tracking**: Sigue victorias por equipo real (no por posición home/away que cambia históricamente)
 - **Team Form Integration**: Incluye últimos 10 juegos de cada equipo (W-L-D) usando `/team/{id}/events/last/0`
+- **Batched Team Form Display**: Muestra forma del equipo en lotes de 5 partidos con estadísticas individuales
 - **Winning Odds Analysis**: Integra análisis de odds ganadoras con expected vs actual performance
 - **Robust Null Handling**: Maneja casos donde home/away odds son null con mensajes flexibles
+- **404 Error Resilience**: Sistema flexible que continúa funcionando sin datos de odds (404s comunes)
 - **Proven Logic Reuse**: Importa y reutiliza `api_client.extract_results_from_response()`
 - **2-Year Window**: Analiza matches históricos de los últimos 2 años
 - **Flexible Display**: Muestra todos los resultados dentro de ventana de 2 años
 - **Integrated Flow**: Se ejecuta en momentos clave (30, 5 min) antes de dual process alerts
 - **Enhanced Implementation**: ~470 líneas en `streak_alerts.py`, incluye team results + winning odds processing
-- **Enhanced Statistics**: H2H stats + team form + winning odds + win rates por equipo, avg scores, current streak con nombres
-- **Enhanced Telegram**: Muestra H2H stats + team form + winning odds analysis + all results con emojis
+- **Enhanced Statistics**: H2H stats + team form batched + winning odds + win rates por equipo, avg scores, current streak con nombres
+- **Enhanced Telegram**: Muestra H2H stats + team form batched + winning odds analysis + all results con emojis
 - **Production Ready**: Validado con data real y manejo robusto de edge cases, null handling implementado
 
 ### ✅ **PROCESS 1 - Sistema de Predicciones Inteligentes - COMPLETADO (v1.1)**

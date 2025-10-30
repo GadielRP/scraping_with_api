@@ -331,11 +331,12 @@ class SofaScoreAPI:
                     logger.warning(f"No startTimestamp found in API response for event {event_id}")
                     logger.debug(f"Available event fields: {list(event_data.keys())}")
                     return None  # Return None to indicate API error, not time change
-                if minutes_until_start == 1:
-                    
+                
+                # Check if this is for a recently started event (negative minutes) - send alert
+                if minutes_until_start < 0:
                     return self.check_and_update_starting_time(event_id, start_timestamp, send_alert=True)
                 else:
-                    logger.info(f"Event {event_id} is not a 1-minute event - checking for final timestamp correction")
+                    # Regular timestamp check for upcoming events
                     return self.check_and_update_starting_time(event_id, start_timestamp)
             return self.extract_results_from_response(response)
             
@@ -497,12 +498,6 @@ class SofaScoreAPI:
                 'ended_at': ended_at
             }
             
-            # OPTIONAL: Extract sport-specific observations (FAIL-SAFE)
-            observations = self._extract_observations_from_response(response)
-            if observations:
-                result_data['observations'] = observations
-            
-            logger.info(f"✅ Results extracted: {home_score}-{away_score}, Winner: {winner}, Status: {status_description}")
             return result_data
             
         except Exception as e:
@@ -533,7 +528,7 @@ class SofaScoreAPI:
                 return None
             
             # TENNIS: Extract ground type
-            if sport.lower() == 'tennis':
+            if sport.lower() == 'tennis' or sport.lower() == 'tennis doubles':
                 
                 ground_type = event_data.get('groundType')
                 

@@ -189,7 +189,7 @@ class AlertEngine:
         tier1_event_ids = [candidate.event_id for candidate in tier1_candidates]
         tier1_event_ids.append(current_event_id)  # Also exclude current event from Tier 2
         
-        # Use L1 distance-based similarity search instead of component-based tolerance
+        # Use L1 distance-based similarity search with initial odds filtering
         tier2_candidates = self._find_l1_similar_candidates(
             sport=event.sport,
             gender=event.gender,
@@ -198,7 +198,8 @@ class AlertEngine:
             cur_vx=cur_vx,
             cur_v2=cur_v2,
             exclude_event_ids=tier1_event_ids,
-            tau=L1_TAU_DEFAULT
+            tau=L1_TAU_DEFAULT,
+            current_odds=event.event_odds
         )
         
         # Log candidate findings
@@ -361,7 +362,8 @@ class AlertEngine:
     def _find_l1_similar_candidates(self, sport: str, gender: str, var_shape: bool, 
                                    cur_v1: float, cur_vx: Optional[float], 
                                    cur_v2: float, exclude_event_ids: List[int] = None,
-                                   tau: float = L1_TAU_DEFAULT) -> List[AlertMatch]:
+                                   tau: float = L1_TAU_DEFAULT,
+                                   current_odds: Optional[object] = None) -> List[AlertMatch]:
         """Find historical events with SIMILAR variations using L1 distance threshold"""
         try:
             with db_manager.get_session() as session:
@@ -372,10 +374,17 @@ class AlertEngine:
                 logger.info(f"Current variations: d1={cur_v1:.2f}, dx={dx_display}, d2={cur_v2:.2f}")
                 logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
                 
+                # Log initial odds filtering if available
+                if current_odds:
+                    logger.info(f"Initial odds filtering: 1={current_odds.one_open} (±0.50), 2={current_odds.two_open} (±0.50)")
+                    if current_odds.x_open is not None:
+                        logger.info(f"Initial odds filtering: X={current_odds.x_open} (±0.50)")
+                    logger.info(f"Total odds tolerance: 1.50 (0.50 per odds)")
+                
                 if exclude_event_ids:
                     logger.info(f"Excluding {len(exclude_event_ids)} event IDs: {exclude_event_ids}")
                 
-                # Build SQL query for L∞ box prefilter
+                # Build SQL query for L1 prefilter with initial odds filtering
                 sql_query, params = self._build_l1_prefilter_sql(
                     sport=sport,
                     gender=gender,
@@ -386,7 +395,8 @@ class AlertEngine:
                     tau=tau,
                     by_shape=True,  # Use same var_shape for consistency with existing logic
                     exclude_event_ids=exclude_event_ids,
-                    max_candidates=500
+                    max_candidates=500,
+                    current_odds=current_odds
                 )
                 
                 result = session.execute(text(sql_query), params)
@@ -486,7 +496,7 @@ class AlertEngine:
     def _build_l1_prefilter_sql(self, sport: str, gender: str, var_shape: bool, cur_v1: float,
                               cur_vx: Optional[float], cur_v2: float, tau: float,
                               by_shape: bool = True, exclude_event_ids: List[int] = None,
-                              max_candidates: int = 500) -> Tuple[str, Dict]:
+                              max_candidates: int = 500, current_odds: Optional[object] = None) -> Tuple[str, Dict]:
         """Build SQL query for L1 distance prefiltering using L1 distance constraints"""
         # Build exclusion clause
         exclude_clause = ""
@@ -527,6 +537,27 @@ class AlertEngine:
                 # Allow mixing with no-draw sports when by_shape=False
                 var_conditions = "(ABS(mae.var_one - :cur_v1) + ABS(COALESCE(mae.var_x, 0) - COALESCE(:cur_vx, 0)) + ABS(mae.var_two - :cur_v2)) <= :tau"
         
+        # Build initial odds filtering conditions (0.50 range per odds, total 1.50)
+        initial_odds_conditions = ""
+        if current_odds:
+            # Add initial odds parameters
+            params.update({
+                'cur_one_open': current_odds.one_open,
+                'cur_two_open': current_odds.two_open,
+                'odds_tolerance': 0.50  # 0.50 range per odds
+            })
+            
+            # Build initial odds conditions
+            initial_odds_conditions = "AND ABS(mae.one_open - :cur_one_open) <= :odds_tolerance AND ABS(mae.two_open - :cur_two_open) <= :odds_tolerance"
+            
+            # Add X odds condition for 3-way sports
+            if cur_vx is not None and current_odds.x_open is not None:
+                params['cur_x_open'] = current_odds.x_open
+                initial_odds_conditions += " AND ABS(mae.x_open - :cur_x_open) <= :odds_tolerance"
+            elif cur_vx is None:
+                # For no-draw sports, ensure X odds are NULL
+                initial_odds_conditions += " AND mae.x_open IS NULL"
+        
         # Build SQL with L1 distance ordering for better candidate selection
         if cur_vx is None:
             # For no-draw sports, order by L1 distance: |var_one - cur_v1| + |var_two - cur_v2|
@@ -547,6 +578,7 @@ class AlertEngine:
                       AND mae.gender = :gender
                       {var_shape_condition}
                       AND {var_conditions}
+                      {initial_odds_conditions}
                       {exclude_clause}
                     ORDER BY {order_by_clause}
                     LIMIT :max_candidates
@@ -1202,43 +1234,37 @@ class AlertEngine:
         """
         Evaluate candidates using new tier selection and weighted logic
         
+        TEMPORARY MODIFICATION: Only use Tier 1 candidates for status, confidence, and summary calculations.
+        Tier 2 candidates are still included in the report for display purposes but don't affect evaluation.
+        
         Returns:
             Dict with evaluation results including tier used, rule matched, prediction, and confidence
         """
-        # Combine identical and symmetrical similar candidates
-        combined_candidates = []
+        # TEMPORARY: Only use Tier 1 candidates for evaluation calculations
+        # Tier 2 candidates are kept for display but excluded from status/confidence/summary
+        evaluation_candidates = []
         selected_tier = ""
         
-        # Always include Tier 1 (identical) candidates
+        # Only include Tier 1 (identical) candidates for evaluation
         if tier1_candidates:
-            combined_candidates.extend(tier1_candidates)
+            evaluation_candidates.extend(tier1_candidates)
             selected_tier = "Tier 1 (exact)"
         
-        # Add Tier 2 candidates - ALWAYS apply symmetry filter
+        # TEMPORARY: Skip Tier 2 candidates for evaluation but keep them for display
         if tier2_candidates:
-            #logger.info(f"🔍 DEBUG: Tier 2 candidates before symmetry filter: {len(tier2_candidates)}")
-            # Apply symmetry filter to ALL Tier 2 candidates (regardless of count)
+            # Apply symmetry filter to ALL Tier 2 candidates (for display purposes)
             symmetrical_tier2 = [c for c in tier2_candidates if c.is_symmetrical]
-            logger.info(f"🔍 DEBUG: Symmetrical Tier 2 candidates: {len(symmetrical_tier2)}")
-            if symmetrical_tier2:
-                combined_candidates.extend(symmetrical_tier2)
-                if selected_tier:
-                    selected_tier += f" + Tier 2 symmetrical ({len(symmetrical_tier2)})"
-                else:
-                    selected_tier = f"Tier 2 symmetrical ({len(symmetrical_tier2)})"
+            logger.info(f"🔍 DEBUG: Tier 2 candidates found: {len(tier2_candidates)} (symmetrical: {len(symmetrical_tier2)})")
+            logger.info(f"⚠️ TEMPORARY: Tier 2 candidates excluded from evaluation - only used for display")
             
             # Log non-symmetrical candidates that were filtered out
             non_symmetrical_tier2 = [c for c in tier2_candidates if not c.is_symmetrical]
-            #logger.info(f"🔍 DEBUG: Non-symmetrical Tier 2 candidates: {len(non_symmetrical_tier2)}")
             if non_symmetrical_tier2:
                 logger.info(f"🔍 Filtered out {len(non_symmetrical_tier2)} non-symmetrical Tier 2 candidates")
                 for candidate in non_symmetrical_tier2:
                     logger.info(f"   ❌ Non-symmetrical: {candidate.participants} (court: {candidate.court_type or 'Unknown'})")
-            
-            # Note: Non-symmetrical Tier 2 candidates are NEVER added to combined_candidates
-            # They are logged for debugging but not used for evaluation
         
-        if not combined_candidates:
+        if not evaluation_candidates:
             return {
                 'status': 'no_candidates',
                 'selected_tier': None,
@@ -1253,8 +1279,9 @@ class AlertEngine:
                 'tier2_candidates': tier2_candidates
             }
         
-        selected_candidates = combined_candidates
-        logger.info(f"🎯 Using combined candidates for evaluation: {len(selected_candidates)} total ({selected_tier})")
+        # TEMPORARY: Use only Tier 1 candidates for evaluation calculations
+        selected_candidates = evaluation_candidates
+        logger.info(f"🎯 Using Tier 1 candidates only for evaluation: {len(selected_candidates)} total ({selected_tier})")
         
         # Count non-symmetrical candidates that were filtered out
         non_symmetrical_count = len([c for c in tier2_candidates if not c.is_symmetrical])
@@ -1415,7 +1442,11 @@ class AlertEngine:
         
         # Format candidate data for display
         tier1_matches_data = self._format_candidate_data(tier1_candidates)
-        tier2_matches_data = self._format_candidate_data(tier2_candidates)
+        # Limit Tier 2 candidates to 12 to avoid Telegram character limit
+        tier2_candidates_limited = tier2_candidates[:12] if tier2_candidates else []
+        if len(tier2_candidates) > 12:
+            logger.info(f"📊 Limited Tier 2 candidates display to 12 (from {len(tier2_candidates)} total) to avoid Telegram character limit")
+        tier2_matches_data = self._format_candidate_data(tier2_candidates_limited)
         
         return {
             'event_id': event.id,
@@ -1423,6 +1454,7 @@ class AlertEngine:
             'participants': f"{event.home_team} vs {event.away_team}",
             'competition': event.competition,
             'sport': event.sport,
+            'discovery_source': event.discovery_source,
             'start_time': event.start_time_utc.strftime("%H:%M"),
             'minutes_until_start': minutes_until_start,
             'odds_display': odds_display,
@@ -1440,7 +1472,7 @@ class AlertEngine:
                 'matches': tier1_matches_data
             },
             'tier2_candidates': {
-                'count': len(tier2_candidates),
+                'count': len(tier2_candidates_limited),
                 'matches': tier2_matches_data
             }
         }

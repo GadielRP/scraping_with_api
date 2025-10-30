@@ -36,6 +36,17 @@ class PreStartNotification:
         # Load notification settings from config
         self._load_notification_settings()
     
+    def _format_game_date(self, timestamp: int) -> str:
+        """Format timestamp to date string (MM/DD format)"""
+        if timestamp == 0:
+            return ""
+        try:
+            from datetime import datetime
+            dt = datetime.fromtimestamp(timestamp)
+            return dt.strftime("%m/%d/%Y")
+        except Exception:
+            return ""
+    
     def _load_notification_settings(self):
         """Load notification settings from environment variables"""
         import os
@@ -100,7 +111,7 @@ class PreStartNotification:
             Formatted message string for Telegram
         """
         # Extract report information
-        participants = report_data.get('participants', 'Unknown vs Unknown')
+        
         
         status = report_data.get('status', 'unknown')
         
@@ -139,9 +150,9 @@ class PreStartNotification:
         non_symmetrical_count = report_data.get('non_symmetrical_candidates', 0)
         
         message += f"🔍Summary:\n"
-        message += f"• T1 (exact): {tier1_count}\n"
-        message += f"• T2 (similar): {tier2_count}\n"
-        message += f"• Confidence: {confidence}\n"
+        message += f"T1 (exact): {tier1_count}\n"
+        message += f"T2 (similar): {tier2_count}\n"
+        message += f"Confidence: {confidence}\n"
         if non_symmetrical_count > 0:
             message += f" ({non_symmetrical_count} non-symmetrical filtered out)"
         message += f"\n"
@@ -186,8 +197,9 @@ class PreStartNotification:
                     symmetry_status = " ✅"
                 else:
                     symmetry_status = " ❌"
-            
-            message += f"\n{i}. {match['participants']} ({match.get('competition', 'Unknown')}):\n"
+            competition_parts = match.get('competition', 'Unknown').split(',')
+            competition = competition_parts[-1].strip() if competition_parts else 'Unknown'
+            message += f"\n{i}. {match['participants']} ({competition}):\n"
             message += f"R: {match['result_text']}{symmetry_status}\n"  
             message += f"Open: {match['one_open']}, {match['x_open']}, {match['two_open']}\n"
             message += f"Final: {match['one_final']}, {match['x_final']}, {match['two_final']}\n"
@@ -261,7 +273,7 @@ class PreStartNotification:
             weight = activation['weight']
             description = rule_descriptions.get(tier, f'Tier {tier}')
             
-            message += f"• Tier {tier} ({description}): {count} candidates (weight: {weight})\n"
+            message += f"Tier {tier} ({description}): {count} candidates (weight: {weight})\n"
             
             # Show which candidates activated this rule
             for candidate in activation['candidates']:
@@ -295,7 +307,7 @@ class PreStartNotification:
             
             # Event information
             message += f"🏆 {dual_report.event_id} {dual_report.participants}\n"
-            
+            message += f"🔍 {dual_report.discovery_source.title().replace('_', ' ')}\n"
             # Get competition from process1_report if available
             competition = "Unknown"
             if dual_report.process1_report:
@@ -384,7 +396,7 @@ class PreStartNotification:
                             # Clean up formula name for display
                             clean_name = formula_name.replace('formula_', '').replace('_', ' ').title()
                             winner_text = {'1': 'Home', 'X': 'Draw', '2': 'Away'}.get(winner_side, winner_side)
-                            message += f"• {clean_name}: {winner_text} wins (diff: {point_diff})\n"
+                            message += f"{clean_name}: {winner_text} wins (diff: {point_diff})\n"
                     
                     # Show total formulas checked
                     total_formulas = dual_report.process2_report.get('total_formulas_checked', 0)
@@ -455,8 +467,8 @@ class PreStartNotification:
             Formatted message string for Telegram
         """
         try:
-            message = f"📊 <b>H2H STREAK ALERT</b>\n\n"
-            message += f"🏆 <b>{streak.participants}</b>\n"
+            message = f"📊 <b>{streak.discovery_source.title().replace('_', ' ')} Streak Alert</b>\n"
+            message += f"🏆 <b>{streak.event_id} {streak.participants}</b>\n"
             if streak.sport == 'Football':
                 message += f"⚽ "
             elif streak.sport == 'Basketball':
@@ -478,25 +490,187 @@ class PreStartNotification:
             else:
                 message += f"🏟️ {streak.sport}"
             
-            message += f"({streak.competition_slug.replace('-', ' ').title()})\n"
-            message += f"⏰ Starts in: {streak.minutes_until_start} minutes\n\n"
+            message += f"({streak.competition_name})\n"
+            message += f"⏰ {streak.minutes_until_start} minutes\n\n"
             
-            message += f"📈 <b>H2H Statistics (Last 2 Years)</b>\n"
-            message += f"• Total Matches: {streak.matches_analyzed}\n"
-            message += f"• {streak.home_team_name}: {streak.home_wins} wins ({streak.home_win_rate}%)\n"
-            message += f"• {streak.away_team_name}: {streak.away_wins} wins ({streak.away_win_rate}%)\n"
-            if streak.draws > 0:
-                message += f"• Draws: {streak.draws} ({streak.draw_rate}%)\n"
-            message += f"• Avg Score: {streak.avg_home_score:.1f} - {streak.avg_away_score:.1f}\n\n"
+            message += f"📈 H2H (Last 2 Years):\n"
             
-            message += f"🔥 <b>Current Streak</b>\n"
-            message += f"• {streak.current_streak}\n\n"
+            # Total matches only
+            message += f"Total Matches: {streak.matches_analyzed}\n"
             
-            # NEW: Team Results Section
+            # Group matches by winner to show results organized by team
+            if hasattr(streak, 'all_matches') and streak.all_matches:
+                # Extract results to count wins per team
+                all_results = [match.get('winner', '?') for match in streak.all_matches]
+                
+                # Show home team wins section
+                if streak.home_wins > 0:
+                    # Compute per-team net points by role for upcoming home team
+                    home_team_home_net = 0
+                    home_team_away_net = 0
+                    for m in streak.all_matches:
+                        if m.get('winner') == '1':
+                            hist_home = m.get('hist_home')
+                            hs = m.get('hist_home_score', 0)
+                            as_ = m.get('hist_away_score', 0)
+                            if hist_home == streak.home_team_name:
+                                home_team_home_net += (hs - as_)
+                            else:
+                                home_team_away_net += (as_ - hs)
+                    home_net_str = f"+{home_team_home_net}" if home_team_home_net >= 0 else str(home_team_home_net)
+                    away_net_str = f"+{home_team_away_net}" if home_team_away_net >= 0 else str(home_team_away_net)
+                    message += f"\n{streak.home_team_name}: {streak.home_wins} wins ({streak.home_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
+                    match_num = 1
+                    for match in streak.all_matches:
+                        if match.get('winner') == '1':
+                            hist_home = match.get('hist_home', 'Unknown')
+                            hist_away = match.get('hist_away', 'Unknown')
+                            hist_home_score = match.get('hist_home_score', 0)
+                            hist_away_score = match.get('hist_away_score', 0)
+                            match_timestamp = match.get('startTimestamp', 0)
+                            match_date = self._format_game_date(match_timestamp)
+                            date_prefix = f"{match_date} " if match_date else ""
+                            message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
+                            match_num += 1
+                
+                # Show away team wins section
+                if streak.away_wins > 0:
+                    # Compute per-team net points by role for upcoming away team
+                    away_team_home_net = 0
+                    away_team_away_net = 0
+                    for m in streak.all_matches:
+                        if m.get('winner') == '2':
+                            hist_home = m.get('hist_home')
+                            hs = m.get('hist_home_score', 0)
+                            as_ = m.get('hist_away_score', 0)
+                            if hist_home == streak.away_team_name:
+                                away_team_home_net += (hs - as_)
+                            else:
+                                away_team_away_net += (as_ - hs)
+                    home_net_str = f"+{away_team_home_net}" if away_team_home_net >= 0 else str(away_team_home_net)
+                    away_net_str = f"+{away_team_away_net}" if away_team_away_net >= 0 else str(away_team_away_net)
+                    message += f"\n{streak.away_team_name}: {streak.away_wins} wins ({streak.away_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
+                    for match in streak.all_matches:
+                        if match.get('winner') == '2':
+                            hist_home = match.get('hist_home', 'Unknown')
+                            hist_away = match.get('hist_away', 'Unknown')
+                            hist_home_score = match.get('hist_home_score', 0)
+                            hist_away_score = match.get('hist_away_score', 0)
+                            match_timestamp = match.get('startTimestamp', 0)
+                            match_date = self._format_game_date(match_timestamp)
+                            date_prefix = f"{match_date} " if match_date else ""
+                            message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
+                
+                # Show draws section (if any)
+                if streak.draws > 0:
+                    message += f"\nDraws: {streak.draws} ({streak.draw_rate}%)\n"
+                    for match in streak.all_matches:
+                        if match.get('winner') == 'X':
+                            hist_home = match.get('hist_home', 'Unknown')
+                            hist_away = match.get('hist_away', 'Unknown')
+                            hist_home_score = match.get('hist_home_score', 0)
+                            hist_away_score = match.get('hist_away_score', 0)
+                            match_timestamp = match.get('startTimestamp', 0)
+                            match_date = self._format_game_date(match_timestamp)
+                            date_prefix = f"{match_date} " if match_date else ""
+                            message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
+            else:
+                # No matches available, show summary only
+                message += f"{streak.home_team_name}: {streak.home_wins} wins ({streak.home_win_rate}%)\n"
+                message += f"{streak.away_team_name}: {streak.away_wins} wins ({streak.away_win_rate}%)\n"
+                if streak.draws > 0:
+                    message += f"Draws: {streak.draws} ({streak.draw_rate}%)\n"
+            
+            message += "\n"
+            
+            
+            # NEW: Team Results Section - Overall Form + Batched Display
             if hasattr(streak, 'home_team_wins') and hasattr(streak, 'away_team_wins'):
-                message += f"📊 <b>Team Form (Last 10 Games)</b>\n"
-                message += f"• {streak.home_team_name}: {streak.home_team_wins}W-{streak.home_team_losses}L-{streak.home_team_draws}D\n"
-                message += f"• {streak.away_team_name}: {streak.away_team_wins}W-{streak.away_team_losses}L-{streak.away_team_draws}D\n\n"
+                message += f"📊 Last 10 Games:\n"
+                message += f"{streak.home_team_name}: {streak.home_team_wins}W-{streak.home_team_losses}L-{streak.home_team_draws}D\n"
+                message += f"{streak.away_team_name}: {streak.away_team_wins}W-{streak.away_team_losses}L-{streak.away_team_draws}D\n\n"
+                
+                # Display batched form for historical analysis
+                if hasattr(streak, 'home_team_batches') and hasattr(streak, 'away_team_batches'):
+                    message += f"📈 Historical Form:\n"
+                    
+                    # Display home team batches
+                    if streak.home_team_batches:
+                        message += f"<b>{streak.home_team_name}</b>:\n"
+                        for i, batch in enumerate(streak.home_team_batches):
+                            # Calculate game count for this batch (5, 10, 15, etc.)
+                            game_count = (i + 1) * 5
+                            batch_summary = f"{game_count}: {batch['batch_wins']}W-{batch['batch_losses']}L-{batch['batch_draws']}D"
+                            if batch['batch_net_points'] > 0:
+                                batch_summary += f"(+{batch['batch_net_points']})"
+                            elif batch['batch_net_points'] < 0:
+                                batch_summary += f"({batch['batch_net_points']})"
+                            else:
+                                batch_summary += " (0)"
+                            
+                            # Add net points by role
+                            home_net = batch.get('batch_home_net_points', 0)
+                            away_net = batch.get('batch_away_net_points', 0)
+                            # Format with proper sign
+                            home_net_str = f"+{home_net}" if home_net >= 0 else str(home_net)
+                            away_net_str = f"+{away_net}" if away_net >= 0 else str(away_net)
+                            batch_summary += f" [H:{home_net_str}, A:{away_net_str}]"
+                            
+                            message += f"{batch_summary}\n"
+                            
+                            # Show individual games in this batch
+                            for game in batch['games']:
+                                game_date = self._format_game_date(game.get('startTimestamp', 0))
+                                date_prefix = f"{game_date} " if game_date else ""
+                                role_indicator = "🏠" if game.get('role') == 'home' else "✈️"
+                                message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                            
+                            # Add break line between batches (except for the last batch)
+                            if i < len(streak.home_team_batches) - 1:
+                                message += "\n"
+                    else:
+                        message += f"<b>{streak.home_team_name}</b>: No recent form data\n"
+                    
+                    message += "\n"
+                    
+                    # Display away team batches
+                    if streak.away_team_batches:
+                        message += f"<b>{streak.away_team_name}</b>:\n"
+                        for i, batch in enumerate(streak.away_team_batches):
+                            # Calculate game count for this batch (5, 10, 15, etc.)
+                            game_count = (i + 1) * 5
+                            batch_summary = f"{game_count}: {batch['batch_wins']}W-{batch['batch_losses']}L-{batch['batch_draws']}D"
+                            if batch['batch_net_points'] > 0:
+                                batch_summary += f"(+{batch['batch_net_points']})"
+                            elif batch['batch_net_points'] < 0:
+                                batch_summary += f"({batch['batch_net_points']})"
+                            else:
+                                batch_summary += " (0)"
+                            
+                            # Add net points by role
+                            home_net = batch.get('batch_home_net_points', 0)
+                            away_net = batch.get('batch_away_net_points', 0)
+                            # Format with proper sign
+                            home_net_str = f"+{home_net}" if home_net >= 0 else str(home_net)
+                            away_net_str = f"+{away_net}" if away_net >= 0 else str(away_net)
+                            batch_summary += f" [H:{home_net_str}, A:{away_net_str}]"
+                            
+                            message += f"{batch_summary}\n"
+                            
+                            # Show individual games in this batch
+                            for game in batch['games']:
+                                game_date = self._format_game_date(game.get('startTimestamp', 0))
+                                date_prefix = f"{game_date} " if game_date else ""
+                                role_indicator = "🏠" if game.get('role') == 'home' else "✈️"
+                                message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                            
+                            # Add break line between batches (except for the last batch)
+                            if i < len(streak.away_team_batches) - 1:
+                                message += "\n"
+                    else:
+                        message += f"<b>{streak.away_team_name}</b>: No recent form data\n"
+                    
+                    message += "\n"
             
             # NEW: Winning Odds Section
             if hasattr(streak, 'winning_odds_data') and streak.winning_odds_data:
@@ -505,7 +679,7 @@ class PreStartNotification:
                 has_away_odds = 'away' in streak.winning_odds_data and streak.winning_odds_data['away'] is not None
                 
                 if has_home_odds or has_away_odds:
-                    message += f"🎯 <b>Winning Odds Analysis</b>\n"
+                    message += f"🎯 Winning Odds:\n"
                     
                     # Home team odds
                     if has_home_odds:
@@ -514,16 +688,16 @@ class PreStartNotification:
                         home_expected = home_odds.get('expected', 0)
                         home_actual = home_odds.get('actual', 0)
                         
-                        message += f"• <b>{streak.home_team_name}</b>\n"
-                        message += f"  📊 Odds: {home_decimal} (Expected: {home_expected}%, Actual: {home_actual}%)\n"
+                        message += f"<b>{streak.home_team_name}</b>\n"
+                        message += f"📊 Odds: {home_decimal} (Expected: {home_expected}%, Actual: {home_actual}%)\n"
                         if home_actual > home_expected:
-                            message += f"  ✅ <i>Outperforming expectations by {home_actual - home_expected}%</i>\n"
+                            message += f"✅⬆️ {home_actual - home_expected}%\n"
                         elif home_actual < home_expected:
-                            message += f"  ⚠️ <i>Underperforming by {home_expected - home_actual}%</i>\n"
+                            message += f"⚠️⬇️ {home_expected - home_actual}%\n"
                         else:
-                            message += f"  ⚖️ <i>Meeting expectations</i>\n"
+                            message += f"⚖️ Meeting expectations\n"
                     else:
-                        message += f"• <b>{streak.home_team_name}</b>: <i>No odds data available</i>\n"
+                        message += f"{streak.home_team_name}: No odds data available\n"
                     
                     # Away team odds
                     if has_away_odds:
@@ -532,35 +706,19 @@ class PreStartNotification:
                         away_expected = away_odds.get('expected', 0)
                         away_actual = away_odds.get('actual', 0)
                         
-                        message += f"• <b>{streak.away_team_name}</b>\n"
-                        message += f"  📊 Odds: {away_decimal} (Expected: {away_expected}%, Actual: {away_actual}%)\n"
+                        message += f"<b>{streak.away_team_name}</b>\n"
+                        message += f"📊 Odds: {away_decimal} (Expected: {away_expected}%, Actual: {away_actual}%)\n"
                         if away_actual > away_expected:
-                            message += f"  ✅ <i>Outperforming expectations by {away_actual - away_expected}%</i>\n"
+                            message += f"✅⬆️ {away_actual - away_expected}%\n"
                         elif away_actual < away_expected:
-                            message += f"  ⚠️ <i>Underperforming by {away_expected - away_actual}%</i>\n"
+                            message += f"⚠️⬇️ {away_expected - away_actual}%\n"
                         else:
-                            message += f"  ⚖️ <i>Meeting expectations</i>\n"
+                            message += f"⚖️ Meeting expectations\n"
                     else:
-                        message += f"• <b>{streak.away_team_name}</b>: <i>No odds data available</i>\n"
+                        message += f"<b>{streak.away_team_name}</b>: <i>No odds data available</i>\n"
                     
                     message += "\n"
             
-            if streak.all_results:
-                # Display all results (flexible count)
-                result_count = len(streak.all_results)
-                message += f"📋 <b>All {result_count} Results</b> (most recent first)\n"
-                result_symbols = []
-                for result in streak.all_results:
-                    if result == '1':
-                        result_symbols.append('🏠')
-                    elif result == '2':
-                        result_symbols.append('✈️')
-                    elif result == 'X':
-                        result_symbols.append('🤝')
-                result_str = ' '.join(result_symbols)
-                message += f"• {result_str}\n\n"
-            
-            message += f"<i>💡 Streak analysis based on {streak.matches_analyzed} matches in last 2 years</i>"
             
             return message
             
@@ -643,10 +801,10 @@ class PreStartNotification:
             message += f"🏆 <b>{participants}</b>\n"
             message += f"📅 Event ID: {event_id}\n\n"
             message += f"⏰ <b>Time Change:</b>\n"
-            message += f"• Original: {current_time_str}\n"
-            message += f"• Updated: {new_time_str}\n"
-            message += f"• Difference: {diff_str}\n\n"
-            message += f"🔄 <i>Starting time corrected 1 minute before original start</i>"
+            message += f"Original: {current_time_str}\n"
+            message += f"Updated: {new_time_str}\n"
+            message += f"Difference: {diff_str}\n\n"
+            message += f"🔄 <i>Starting time corrected during late timestamp check</i>"
             
             if not self.telegram_enabled:
                 logger.warning("Telegram notifications not configured - cannot send time correction message")

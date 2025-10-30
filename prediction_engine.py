@@ -43,7 +43,7 @@ class DualProcessReport:
     event_id: int
     participants: str
     sport: str
-    
+    discovery_source: str
     # Process 1 results
     process1_report: Optional[Dict]
     process1_prediction: Optional[Tuple[str, int]]  # (winner_side, point_diff)
@@ -102,6 +102,7 @@ class PredictionEngine:
                 event_id=event.id,
                 participants=f"{event.home_team} vs {event.away_team}",
                 sport=event.sport,
+                discovery_source=event.discovery_source,
                 court_type=getattr(event, 'court_type', None),  # Get court_type from event object
                 process1_report=process1_report,
                 process1_prediction=process1_prediction,

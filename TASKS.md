@@ -1,8 +1,8 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.4.3  
-**Estado General:** ✅ **MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + CRITICAL FIXES + OPTIMIZATIONS + ENHANCED H2H STREAKS IMPLEMENTADO**  
-**Última Actualización:** 24 de Octubre, 2025
+**Versión:** v1.4.5  
+**Estado General:** ✅ **MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + CRITICAL FIXES + OPTIMIZATIONS + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS**  
+**Última Actualización:** 29 de Octubre, 2025
 
 ## 🎯 **Resumen del Proyecto**
 
@@ -82,6 +82,40 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Remove significance filtering - send all H2H data
 - [x] Follow @rules.mdc modularity principles
 - [x] Production ready with comprehensive edge case handling
+
+### **📊 H2H Streak Alerts Enhancements - 100% COMPLETADO (24/10/2025)**
+- [x] Implement batched team form display (5 matches per batch)
+- [x] Add individual game results within each batch
+- [x] Calculate net points per batch (points for - points against)
+- [x] Update message format to show overall summary + detailed batches
+- [x] Add break lines between batches for better readability
+- [x] Change batch numbering from "Batch 1" to "Last 5", "Last 10", etc.
+- [x] Fix 404 error handling for winning odds (use no_retry_on_404=True)
+- [x] Improve error logging (404s as DEBUG level, not ERROR)
+- [x] Make system more resilient to missing odds data
+- [x] Test batched results processing with real data
+- [x] Validate enhanced message formatting
+- [x] Ensure system continues working even with 404 errors
+
+### **🔧 Duplicate Initialization Fix - 100% COMPLETADO (29/10/2025)**
+- [x] Identify duplicate initialize_system() calls in main.py
+- [x] Remove duplicate initialization from start_scheduler() function
+- [x] Move run_discovery() before scheduler startup in main() flow
+- [x] Test cleaner startup flow without duplicate logs
+- [x] Verify system initializes only once with clean logging
+- [x] Validate all initialization steps execute in correct order
+
+### **📊 Detailed H2H Match Results - 100% COMPLETADO (29/10/2025)**
+- [x] Refactor H2HStreak to use only all_matches variable (remove all_results)
+- [x] Add individual match details (home team, away team, scores) to H2H data
+- [x] Update message formatting to display individual H2H matches grouped by winner
+- [x] Preserve historical home/away order (no reordering of teams)
+- [x] Add date timestamps to H2H match results
+- [x] Add date display to H2H section with full date format (MM/DD/YYYY)
+- [x] Add date display to Historical Form section with full date format (MM/DD/YYYY)
+- [x] Update date formatting to include year in all displays
+- [x] Test complete H2H message with individual match results and dates
+ - [x] Compute and display per-team H2H net points by role `[H:+n, A:+n]` (solo victorias del equipo); remover net points de "Total Matches"
 
 ## ✅ **Estado de Tareas - PROCESS 1 COMPLETADO - PROCESS 2 EN PREPARACIÓN**
 
@@ -575,6 +609,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **Optimizaciones Recientes**: 100% ✅
 - **Performance Optimizations v1.4.2**: 100% ✅ **NUEVO v1.4.2**
 - **H2H Streak Alerts v1.4.3**: 100% ✅ **NUEVO v1.4.3 - ENHANCED**
+- **H2H Streak Alerts Enhancements v1.4.3**: 100% ✅ **NUEVO v1.4.3 - ENHANCED**
 - **Optimización y Limpieza v1.2.2**: 100% ✅
 - **Odds Display en Notificaciones**: 100% ✅ **NUEVO v1.3.1**
 - **Gender Filtering en Candidate Search**: 100% ✅ **NUEVO v1.3.2**
@@ -597,7 +632,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **sofascore_api.py**: ✅ API client con manejo inteligente + sistema de corrección de timestamps
 - **odds_utils.py**: ✅ Utilidades para procesamiento de odds
 - **optimization.py**: ✅ **NUEVO** - Módulo de optimización con funciones modulares para procesamiento eficiente
-- **streak_alerts.py**: ✅ **NUEVO** - Sistema de alertas de rachas H2H reutilizando lógica probada
+- **streak_alerts.py**: ✅ **NUEVO** - Sistema de alertas de rachas H2H reutilizando lógica probada + batched team form display
 
 ## 🎯 **Objetivos Alcanzados**
 

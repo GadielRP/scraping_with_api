@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.4.3  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS**  
-**Última Actualización:** 24 de Octubre, 2025
+**Versión:** v1.4.6  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION**  
+**Última Actualización:** 30 de Octubre, 2025
 
 ## 🎯 **Descripción del Sistema**
 
@@ -196,17 +196,37 @@ class AlertMatch:
 - **Event-Only Processing**: Discovery2 procesa solo información de eventos, odds se obtienen en pre-start checks
 - **Optimized Scheduling**: Discovery2 ejecuta en hh:02 para evitar conflictos con pre-start checks
 
-### ✅ **H2H Streak Alerts (v1.4.3) - ENHANCED**
+### ✅ **H2H Streak Alerts Enhancements (v1.4.3) - NEW**
+- **Batched Team Form Display**: Forma del equipo mostrada en lotes de 5 partidos con estadísticas individuales
+- **Enhanced Message Format**: Muestra resumen general + lotes detallados con puntos netos por lote
+- **404 Error Resilience**: Sistema flexible que continúa funcionando sin datos de odds (404s comunes)
+- **Improved Error Handling**: 404s para winning odds manejados como DEBUG level (no ERROR)
+- **Flexible System**: Continúa enviando alertas H2H incluso cuando faltan datos de odds
+- **Better User Experience**: Mensajes más informativos con datos históricos detallados
+
+### ✅ **Duplicate Initialization Fix (v1.4.4) - NEW**
+- **Fixed Double Initialization**: Eliminada inicialización duplicada en main.py
+- **Cleaner Startup**: Sistema ahora inicializa una sola vez sin logs duplicados
+- **Optimized Flow**: Discovery ejecuta antes de scheduler startup
+- **Better Logging**: Logs más claros sin redundancia en startup
+
+### ✅ **H2H Streak Alerts (v1.4.5) - DETAILED MATCH RESULTS**
 - **H2H Analysis**: Analiza head-to-head histórico entre equipos (últimos 2 años)
+- **Individual Match Results**: Muestra resultados detallados de cada partido con fechas (MM/DD/YYYY)
+- **Grouped Display**: Resultados agrupados por equipo ganador con home/away preservado
 - **Team-Relative Tracking**: Sigue victorias por equipo real (no por posición home/away histórica)
-- **Team Form Integration**: Incluye últimos 10 juegos de cada equipo (W-L-D)
+- **Team Form Integration**: Incluye últimos 10 juegos de cada equipo (W-L-D) con formato de lotes de 5
+- **Date Display**: Fechas completas mostradas en todos los resultados (H2H + Historical Form)
+- **Batched Team Form Display**: Muestra forma del equipo en lotes de 5 partidos con estadísticas individuales
 - **Winning Odds Analysis**: Integra análisis de odds ganadoras con expected vs actual performance
 - **Robust Null Handling**: Maneja casos donde home/away odds son null con mensajes flexibles
+- **404 Error Resilience**: Sistema flexible que continúa funcionando sin datos de odds (404s comunes)
 - **Proven Logic**: Reutiliza `api_client.extract_results_from_response()` para consistencia total
 - **Flexible Results**: Muestra todos los resultados H2H en ventana de 2 años
 - **Integrated Flow**: Se ejecuta en momentos clave (30, 5 min) junto con dual process alerts
-- **Enhanced Telegram Alerts**: Muestra H2H stats + team form + winning odds + rachas actuales con emojis
+- **Enhanced Telegram Alerts**: Muestra H2H stats + team form batched + winning odds + rachas actuales con emojis
 - **Production Ready**: Validado con data real y manejo robusto de edge cases
+ - **Per-team Net Points by Role**: Cada equipo muestra `[H:+n, A:+n]` calculado solo sobre sus propias victorias; la línea "Total Matches" ahora muestra solo el conteo (sin netos)
 
 ## 🛠 **Instalación y Configuración**
 

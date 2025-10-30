@@ -90,7 +90,8 @@ def get_winning_odds_response(self, event_id: int) -> Optional[Dict]:
     """Fetch the winning odds for an event from the /event/{event_id}/provider/1/winning-odds endpoint."""
     endpoint = f"/event/{event_id}/provider/1/winning-odds"
     logger.debug(f"Making API request to: {endpoint}")
-    response = self._make_request(endpoint)
+    # Use no_retry_on_404=True because 404s are common for winning odds (not all events have this data)
+    response = self._make_request(endpoint, no_retry_on_404=True)
     logger.debug(f"API response type: {type(response)}, content: {response}")
     if not response:
         logger.debug(f"No winning odds found for event {event_id}")
@@ -113,7 +114,7 @@ def extract_events_from_high_value_streaks(self, response: Dict) -> List[Dict]:
         List[Dict]: list of event dictionaries
     """
     events = []
-    
+    events_high_value_streaks_h2h = []
     try:
         # Extract from 'general' array
         if 'general' in response:
@@ -126,11 +127,11 @@ def extract_events_from_high_value_streaks(self, response: Dict) -> List[Dict]:
         if 'head2head' in response:
             for item in response['head2head']:
                 if 'event' in item:
-                    events.append(item['event'])
+                    events_high_value_streaks_h2h.append(item['event'])
                     logger.debug(f"Extracted event from head2head: {item['event'].get('id')} - {item['event'].get('slug')}")
         
         logger.info(f"✅ Extracted {len(events)} events from high value streaks response (general + head2head)")
-        return events
+        return events, events_high_value_streaks_h2h
         
     except Exception as e:
         logger.error(f"❌ Error extracting events from high value streaks response: {e}")

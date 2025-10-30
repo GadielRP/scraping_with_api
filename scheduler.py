@@ -73,12 +73,12 @@ class JobScheduler:
         logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
     
     def _setup_pre_start_jobs(self):
-        """Setup pre-start check jobs every 1 minute at the exact minute mark to catch 1-minute timestamp corrections"""
+        """Setup pre-start check jobs every 1 minute at the exact minute mark"""
         # Schedule jobs at exact minute marks (00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59)
         for minute in range(60):
             schedule.every().hour.at(f":{minute:02d}").do(self.job_pre_start_check)
         
-        logger.info(f"  - Pre-start check scheduled every 1 minute at exact minute marks (to catch 1-minute timestamp corrections)")
+        logger.info(f"  - Pre-start check scheduled every 1 minute at exact minute marks (checks upcoming events + timestamp corrections for recently started events)")
     
     def _cleanup_recently_rescheduled(self):
         """Clean up old entries from recently_rescheduled set to prevent memory leaks"""
@@ -149,17 +149,21 @@ class JobScheduler:
                 logger.error("Failed to get high value streaks events")
                 return
             # Extract events from nested structure (general + head2head arrays)
-            extracted_events = api_client.extract_events_from_high_value_streaks(high_value_streaks_events_response)
+            extracted_events, extracted_events_high_value_streaks_h2h = api_client.extract_events_from_high_value_streaks(high_value_streaks_events_response)
             if not extracted_events:
                 logger.warning("No events found in high value streaks events")
                 return
             # Construct a response dict that extract_events_and_odds_from_dropping_response can process
             normalized_response = {"events": extracted_events}
+            normalized_response_h2h = {"events": extracted_events_high_value_streaks_h2h}
             high_value_streaks_events, _ = api_client.extract_events_and_odds_from_dropping_response(normalized_response, odds_extraction=False, discovery_source='high_value_streaks')
+            high_value_streaks_events_h2h, _ = api_client.extract_events_and_odds_from_dropping_response(normalized_response_h2h, odds_extraction=False, discovery_source='high_value_streaks_h2h')
             if not high_value_streaks_events:
                 logger.warning("No events found after processing high value streaks events")
                 return
-
+            if not high_value_streaks_events_h2h:
+                logger.warning("No events found after processing high value streaks events h2h")
+                return
             # Team streaks events - special handling due to different response structure
             team_streaks_response = api_client.get_team_streaks_events()
             if not team_streaks_response:
@@ -197,7 +201,7 @@ class JobScheduler:
                 logger.error("Failed to get h2h events")
                 return
 
-            h2h_events, _ = api_client.extract_events_and_odds_from_dropping_response(h2h_events_response, odds_extraction=False, discovery_source='h2h')
+            h2h_events, _ = api_client.extract_events_and_odds_from_dropping_response(h2h_events_response, odds_extraction=False, discovery_source='top_h2h')
             if not h2h_events:
                 logger.warning("No events found in h2h events")
                 return
@@ -222,6 +226,14 @@ class JobScheduler:
                 max_workers=10
             )
             logger.info(f"high value streaks events completed: processed {processed_count}/{len(high_value_streaks_events)} events, skipped {skipped_count} events")
+
+            # High value streaks events h2h - Use event-only processing (no odds fetching)
+            processed_count, skipped_count = process_events_only(
+                high_value_streaks_events_h2h,
+                discovery_source='high_value_streaks_h2h',
+                max_workers=10
+            )
+            logger.info(f"high value streaks events h2h completed: processed {processed_count}/{len(high_value_streaks_events_h2h)} events, skipped {skipped_count} events")
 
             # Team streaks events already processed above with batch cleanup (10 workers)
 
@@ -295,12 +307,23 @@ class JobScheduler:
         
         SMART NOTIFICATIONS: Only sends Telegram notifications when odds are extracted at key moments
         (30 min and 5 min), but includes ALL upcoming games in those notifications to avoid missing games.
+        
+        TIMESTAMP CORRECTION: Also checks events that started within the last 5 minutes for late
+        timestamp corrections that may occur after the game starts.
         """
         logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
         
         
         try:
-            # Get events starting within the next 30 minutes WITH their odds data
+            observations = None
+            
+            # STEP 1: Check recently started events for timestamp corrections (5 minutes after start)
+            events_started_recently = EventRepository.get_events_started_recently(window_minutes=5)
+            if events_started_recently:
+                logger.info(f"Found {len(events_started_recently)} events that started recently (checking for late timestamp corrections)")
+                self._check_recently_started_events_for_timestamp_corrections(events_started_recently)
+            
+            # STEP 2: Get events starting within the next 30 minutes WITH their odds data
             events_with_odds = EventRepository.get_events_starting_soon_with_odds(Config.PRE_START_WINDOW_MINUTES)
             if not events_with_odds:
                 logger.debug("No events starting within the next 30 minutes")
@@ -362,7 +385,7 @@ class JobScheduler:
                             
                             if not sport_observations_manager.has_observations_for_event(event_data['id']):
                                 # No observations exist, proceed with API call to extract court type
-                                no_value = api_client.get_event_results(
+                                observations = api_client.get_event_results(
                                     event_id=event_data['id'],
                                     update_court_type=True
                                 )
@@ -449,215 +472,236 @@ class JobScheduler:
                             
                             # Calculate minutes from fresh DB time, not stale event_data
                             minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
-                            if minutes_until_start in [30, 5, 1]:  # Key moments including 1-minute timestamp correction
+                            if minutes_until_start in [30, 5]:  # Key moments for odds extraction
                                 events_for_alerts.append(event_obj)
                     
                     if events_for_alerts:
-                        logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for dual process alerts and streak alerts...")
+                        logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for H2H and dual process alerts...")
                         
                         # ========================================
-                        # H2H STREAK ANALYSIS
+                        # PROCESS EACH EVENT INDIVIDUALLY (H2H + DUAL ALERTS IN PAIRS)
                         # ========================================
-                        logger.info(f"📊 Starting H2H streak analysis for {len(events_for_alerts)} events...")
-                        streak_reports = []
-                        
                         try:
                             from streak_alerts import streak_alert_engine
                             
                             for event_obj in events_for_alerts:
                                 try:
-                                    # Check if event has custom_id
-                                    if not event_obj.custom_id:
-                                        logger.debug(f"Event {event_obj.id} has no custom_id - skipping H2H streak analysis")
-                                        continue
+                                    logger.info(f"🔍 Processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team}")
                                     
-                                    # Fetch H2H events for this custom_id
-                                    h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
-                                    if not h2h_response or 'events' not in h2h_response:
-                                        logger.debug(f"No H2H data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
-                                        continue
-                                    
-                                    h2h_events = h2h_response['events']
-                                    
-                                    # Calculate minutes until start
+                                    # Calculate minutes from FRESH database time, not stale event data
                                     minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
                                     
-                                    # Get team IDs from the current event details (not H2H response)
-                                    home_team_id = None
-                                    away_team_id = None
-                                    competition_slug = None
-                                    try:
-                                        # Fetch current event details to get correct team IDs
-                                        event_details = api_client.get_event_details(event_obj.id)
-                                        if event_details:
-                                            home_team_id = event_details.get('homeTeam', {}).get('id')
-                                            away_team_id = event_details.get('awayTeam', {}).get('id')
-                                            competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
-                                            logger.debug(f"Extracted team IDs from current event: Home={home_team_id}, Away={away_team_id}")
-                                        else:
-                                            logger.warning(f"Could not fetch event details for {event_obj.id}")
-                                    except Exception as e:
-                                        logger.error(f"Error fetching event details for {event_obj.id}: {e}")
+                                    # ========================================
+                                    # H2H STREAK ANALYSIS FOR THIS EVENT
+                                    # ========================================
+                                    streak_analysis = None
                                     
-                                    # Analyze H2H events with team results
-                                    streak_analysis = streak_alert_engine.analyze_h2h_events(
-                                        event_id=event_obj.id,
-                                        event_custom_id=event_obj.custom_id,
-                                        event_start_time=event_obj.start_time_utc,
-                                        sport=event_obj.sport,
-                                        competition_slug=competition_slug,
-                                        participants=f"{event_obj.home_team} vs {event_obj.away_team}",
-                                        home_team_name=event_obj.home_team,
-                                        away_team_name=event_obj.away_team,
-                                        h2h_events=h2h_events,
-                                        minutes_until_start=minutes_until_start,
-                                        home_team_id=home_team_id,
-                                        away_team_id=away_team_id
-                                    )
-                                    
-                                    if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
-                                        streak_reports.append(streak_analysis)
-                                        logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
-                                    
-                                except Exception as e:
-                                    logger.error(f"Error analyzing H2H streak for event {event_obj.id}: {e}")
-                                    continue
-                            
-                            # Send H2H streak alerts if any were generated
-                            if streak_reports:
-                                logger.info(f"📊 Generated {len(streak_reports)} H2H streak alerts")
-                                pre_start_notifier.send_h2h_streak_alerts(streak_reports)
-                            else:
-                                logger.info("No H2H streak data found for events at key moments")
-                                
-                        except Exception as e:
-                            logger.error(f"Error in H2H streak analysis: {e}")
-                        
-                        # ========================================
-                        # DUAL PROCESS ALERTS (Process 1 + Process 2)
-                        # ========================================
-                        # Execute Dual Process (Process 1 + Process 2)
-                        try:
-                            
-                            dual_reports = []
-                            
-                            for event_obj in events_for_alerts:
-                                # Calculate minutes from FRESH database time, not stale event data
-                                minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
-                                
-                                # Enrich event object with court type for Tennis/Tennis Doubles events
-                                event_obj.court_type = None  # Default value
-                                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                    observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
-                                    if observation:
-                                        event_obj.court_type = observation.observation_value
-                                        logger.info(f"🎾 Court type for event {event_obj.id}: {event_obj.court_type}")
+                                    # Check if event has custom_id for H2H analysis
+                                    if event_obj.custom_id:
+                                        try:
+                                            # Fetch H2H events for this custom_id
+                                            h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
+                                            if h2h_response and 'events' in h2h_response:
+                                                h2h_events = h2h_response['events']
+                                                
+                                                # Get team IDs from the current event details (not H2H response)
+                                                home_team_id = None
+                                                away_team_id = None
+                                                competition_slug = None
+                                                competition_name = None
+                                                
+                                                try:
+                                                    # Fetch current event details to get correct team IDs
+                                                    event_details = api_client.get_event_details(event_obj.id)
+                                                    if event_details:
+                                                        home_team_id = event_details.get('homeTeam', {}).get('id')
+                                                        away_team_id = event_details.get('awayTeam', {}).get('id')
+                                                        competition_name = event_details.get('tournament', {}).get('uniqueTournament', {}).get('name')
+                                                        competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
+                                                        logger.debug(f"Extracted team IDs from current event: Home={home_team_id}, Away={away_team_id}")
+                                                    else:
+                                                        logger.warning(f"Could not fetch event details for {event_obj.id}")
+                                                except Exception as e:
+                                                    logger.error(f"Error fetching event details for {event_obj.id}: {e}")
+                                                
+                                                # Ensure observations are available for tennis events (needed for ground_type filtering)
+                                                tennis_observations = observations
+                                                if event_obj.sport in ['Tennis', 'Tennis Doubles'] and not tennis_observations:
+                                                    logger.info(f"🎾 Getting observations for tennis event {event_obj.id} for ground_type filtering")
+                                                    if not sport_observations_manager.has_observations_for_event(event_obj.id):
+                                                        # No observations exist, make API call to extract court type
+                                                        tennis_observations = api_client.get_event_results(
+                                                            event_id=event_obj.id,
+                                                            update_court_type=True
+                                                        )
+                                                    else:
+                                                        # Get existing observations from database
+                                                        observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                                                        if observation:
+                                                            tennis_observations = [{'type': 'ground_type', 'value': observation.observation_value}]
+                                                            logger.info(f"🎾 Using existing ground_type observation: {observation.observation_value}")
+                                                
+                                                # Analyze H2H events with team results
+                                                streak_analysis = streak_alert_engine.analyze_h2h_events(
+                                                    event_id=event_obj.id,
+                                                    event_custom_id=event_obj.custom_id,
+                                                    event_start_time=event_obj.start_time_utc,
+                                                    sport=event_obj.sport,
+                                                    discovery_source=event_obj.discovery_source,
+                                                    competition_name=competition_name,
+                                                    competition_slug=competition_slug,
+                                                    observations=tennis_observations,
+                                                    participants=f"{event_obj.home_team} vs {event_obj.away_team}",
+                                                    home_team_name=event_obj.home_team,
+                                                    away_team_name=event_obj.away_team,
+                                                    h2h_events=h2h_events,
+                                                    minutes_until_start=minutes_until_start,
+                                                    home_team_id=home_team_id,
+                                                    away_team_id=away_team_id
+                                                )
+                                                
+                                                if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
+                                                    logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
+                                                else:
+                                                    logger.debug(f"⏭️ No H2H streak alert for event {event_obj.id}")
+                                            else:
+                                                logger.debug(f"No H2H data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
+                                        except Exception as e:
+                                            logger.error(f"Error analyzing H2H streak for event {event_obj.id}: {e}")
                                     else:
-                                        logger.info(f"🎾 No court type found for event {event_obj.id}")
-                                
-                                dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
-                                
-                                # Only add dual report if at least one process has a prediction OR if Process 1 found candidates
-                                # This ensures we show Process 1 findings even when no clear prediction is made
-                                should_send = False
-                                reason = ""
-                                
-                                if dual_report.process1_prediction or dual_report.process2_prediction:
-                                    should_send = True
-                                    reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
-                                elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
-                                    # Process 1 found candidates but no clear prediction - still show the report
-                                    should_send = True
-                                    reason = f"Process1 found candidates (status: {dual_report.process1_status})"
-                                
-                                if should_send:
-                                    dual_reports.append(dual_report)
-                                    logger.info(f"✅ Dual process report added for event {event_obj.id}: {reason}")
-                                else:
-                                    logger.debug(f"⏭️ Skipping dual process report for event {event_obj.id}: No predictions or candidates found")
-                            
-                            if dual_reports:
-                                logger.info(f"📊 Generated {len(dual_reports)} dual process reports")
-                                # Send dual process alerts using enhanced alert system
-                                self._send_dual_process_alerts(dual_reports)
-                                
-                                # Log predictions for successful Process 1 reports
-                                from modules.prediction import prediction_logger
-                                
-                                for dual_report in dual_reports:
-                                    # Only log predictions from Process 1 with success status
-                                    if (dual_report.process1_report and 
-                                        dual_report.process1_report.get('status') == 'success'):
+                                        logger.debug(f"Event {event_obj.id} has no custom_id - skipping H2H streak analysis")
+                                    
+                                    # ========================================
+                                    # DUAL PROCESS ANALYSIS FOR THIS EVENT
+                                    # ========================================
+                                    dual_report = None
+                                    
+                                    try:
+                                        # Enrich event object with court type for Tennis/Tennis Doubles events
+                                        event_obj.court_type = None  # Default value
+                                        if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                            observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                                            if observation:
+                                                event_obj.court_type = observation.observation_value
+                                                logger.info(f"🎾 Court type for event {event_obj.id}: {event_obj.court_type}")
+                                            else:
+                                                logger.info(f"🎾 No court type found for event {event_obj.id}")
                                         
-                                        # Get the event object
-                                        event_obj = self.event_repo.get_event_by_id(dual_report.event_id)
-                                        if event_obj:
+                                        dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                                        
+                                        # Only add dual report if at least one process has a prediction OR if Process 1 found candidates
+                                        # This ensures we show Process 1 findings even when no clear prediction is made
+                                        should_send = False
+                                        reason = ""
+                                        
+                                        if dual_report.process1_prediction or dual_report.process2_prediction:
+                                            should_send = True
+                                            reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
+                                        elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
+                                            # Process 1 found candidates but no clear prediction - still show the report
+                                            should_send = True
+                                            reason = f"Process1 found candidates (status: {dual_report.process1_status})"
+                                        
+                                        if should_send:
+                                            logger.info(f"✅ Dual process report added for event {event_obj.id}: {reason}")
+                                        else:
+                                            logger.debug(f"⏭️ Skipping dual process report for event {event_obj.id}: No predictions or candidates found")
+                                            
+                                    except Exception as e:
+                                        logger.error(f"Error running dual process evaluation for event {event_obj.id}: {e}")
+                                        
+                                        # Fallback to Process 1 only if dual process fails for this event
+                                        logger.info(f"🔄 Falling back to Process 1 only for event {event_obj.id}...")
+                                        try:
+                                            alerts = alert_engine.evaluate_upcoming_events([event_obj])
+                                            if alerts:
+                                                logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback) for event {event_obj.id}")
+                                                alert_engine.send_alerts(alerts)
+                                                
+                                                # Log predictions for successful Process 1 reports (fallback)
+                                                from modules.prediction import prediction_logger
+                                                
+                                                for alert in alerts:
+                                                    # Only log predictions with success status
+                                                    if alert.get('status') == 'success':
+                                                        event_id = alert.get('event_id')
+                                                        if event_id:
+                                                            # Get the event object
+                                                            event_obj_fallback = self.event_repo.get_event_by_id(event_id)
+                                                            if event_obj_fallback:
+                                                                # Check if event is exactly 5 minutes from start
+                                                                minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
+                                                                if minutes_until_start_fallback == 5:
+                                                                    # Log the prediction only at 5 minutes
+                                                                    success = prediction_logger.log_prediction(event_obj_fallback, alert)
+                                                                    if success:
+                                                                        logger.info(f"✅ Prediction logged for Process 1 event {event_id} (5 minutes from start)")
+                                                                    else:
+                                                                        # Check if it's a duplicate (already exists) vs. actual failure
+                                                                        
+                                                                        with db_manager.get_session() as session:
+                                                                            existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
+                                                                            if existing:
+                                                                                logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
+                                                                            else:
+                                                                                logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
+                                                                else:
+                                                                    logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 5 minutes)")
+                                                            else:
+                                                                logger.warning(f"Could not find event {event_id} for prediction logging")
+                                            else:
+                                                logger.debug(f"No Process 1 candidate reports generated (fallback) for event {event_obj.id}")
+                                        except Exception as e2:
+                                            logger.error(f"Error in Process 1 fallback for event {event_obj.id}: {e2}")
+                                    
+                                    # ========================================
+                                    # SEND ALERTS FOR THIS EVENT (H2H + DUAL IN PAIR)
+                                    # ========================================
+                                    
+                                    # Send H2H streak alert if available
+                                    if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
+                                        logger.info(f"📊 Sending H2H streak alert for event {event_obj.id}")
+                                        pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
+                                    
+                                    # Send dual process alert if available
+                                    if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction or 
+                                                      (dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates'])):
+                                        logger.info(f"📊 Sending dual process alert for event {event_obj.id}")
+                                        self._send_dual_process_alerts([dual_report])
+                                        
+                                        # Log predictions for successful Process 1 reports
+                                        from modules.prediction import prediction_logger
+                                        
+                                        # Only log predictions from Process 1 with success status
+                                        if (dual_report.process1_report and 
+                                            dual_report.process1_report.get('status') == 'success'):
+                                            
                                             # Check if event is exactly 5 minutes from start
-                                            minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
                                             if minutes_until_start == 5:
                                                 # Log the prediction only at 5 minutes
                                                 success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
                                                 if success:
-                                                    logger.info(f"✅ Prediction logged for dual process event {dual_report.event_id} (5 minutes from start)")
+                                                    logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (5 minutes from start)")
                                                 else:
                                                     # Check if it's a duplicate (already exists) vs. actual failure
                                                     
                                                     with db_manager.get_session() as session:
-                                                        existing = session.query(PredictionLog).filter_by(event_id=dual_report.event_id).first()
+                                                        existing = session.query(PredictionLog).filter_by(event_id=event_obj.id).first()
                                                         if existing:
-                                                            logger.info(f"ℹ️ Prediction already exists for dual process event {dual_report.event_id} - no action needed")
+                                                            logger.info(f"ℹ️ Prediction already exists for dual process event {event_obj.id} - no action needed")
                                                         else:
-                                                            logger.warning(f"❌ Failed to log prediction for dual process event {dual_report.event_id}")
+                                                            logger.warning(f"❌ Failed to log prediction for dual process event {event_obj.id}")
                                             else:
-                                                logger.info(f"⏭️ Skipping prediction logging for event {dual_report.event_id} - {minutes_until_start} minutes until start (not 5 minutes)")
-                                        else:
-                                            logger.warning(f"Could not find event {dual_report.event_id} for prediction logging")
-                            else:
-                                logger.debug("No dual process reports generated")
+                                                logger.info(f"⏭️ Skipping prediction logging for event {event_obj.id} - {minutes_until_start} minutes until start (not 5 minutes)")
+                                    
+                                    logger.info(f"✅ Completed processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team}")
+                                    
+                                except Exception as e:
+                                    logger.error(f"Error processing event {event_obj.id}: {e}")
+                                    continue
                                 
                         except Exception as e:
-                            logger.error(f"Error running dual process evaluation: {e}")
-                            
-                            # Fallback to Process 1 only if dual process fails
-                            logger.info("🔄 Falling back to Process 1 only...")
-                            alerts = alert_engine.evaluate_upcoming_events(events_for_alerts)
-                            if alerts:
-                                logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback)")
-                                alert_engine.send_alerts(alerts)
-                                
-                                # Log predictions for successful Process 1 reports (fallback)
-                                from modules.prediction import prediction_logger
-                                
-                                for alert in alerts:
-                                    # Only log predictions with success status
-                                    if alert.get('status') == 'success':
-                                        event_id = alert.get('event_id')
-                                        if event_id:
-                                            # Get the event object
-                                            event_obj = self.event_repo.get_event_by_id(event_id)
-                                            if event_obj:
-                                                # Check if event is exactly 5 minutes from start
-                                                minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
-                                                if minutes_until_start == 5:
-                                                    # Log the prediction only at 5 minutes
-                                                    success = prediction_logger.log_prediction(event_obj, alert)
-                                                    if success:
-                                                        logger.info(f"✅ Prediction logged for Process 1 event {event_id} (5 minutes from start)")
-                                                    else:
-                                                        # Check if it's a duplicate (already exists) vs. actual failure
-                                                        
-                                                        with db_manager.get_session() as session:
-                                                            existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
-                                                            if existing:
-                                                                logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
-                                                            else:
-                                                                logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
-                                                else:
-                                                    logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start} minutes until start (not 5 minutes)")
-                                            else:
-                                                logger.warning(f"Could not find event {event_id} for prediction logging")
-                            else:
-                                logger.debug("No Process 1 candidate reports generated (fallback)")
+                            logger.error(f"Error in event processing: {e}")
                     else:
                         logger.debug("No events at key moments found for alert evaluation")
                         
@@ -672,6 +716,58 @@ class JobScheduler:
             
         except Exception as e:
             logger.error(f"Error in Job C: {e}")
+    
+    def _check_recently_started_events_for_timestamp_corrections(self, events_started_recently: List[Dict]):
+        """
+        Check recently started events (within last 5 minutes) for timestamp corrections.
+        This catches late changes that occur after the game starts or right at start time.
+        
+        Args:
+            events_started_recently: List of event dictionaries from get_events_started_recently()
+        """
+        try:
+            corrected_count = 0
+            checked_count = 0
+            
+            for event_data in events_started_recently:
+                try:
+                    event_id = event_data['id']
+                    stored_start_time = event_data['start_time_utc']
+                    
+                    # Calculate how long ago this event started (using stored time)
+                    minutes_since_start = self._minutes_since_start(stored_start_time)
+                    
+                    # Check and update starting time via API
+                    # This returns: True if time is correct, False if time was updated, None if API error
+                    correct_starting_time = api_client.get_event_results(
+                        event_id, 
+                        update_time=True, 
+                        minutes_until_start=minutes_since_start  # Pass negative value for started events
+                    )
+                    
+                    checked_count += 1
+                    
+                    if correct_starting_time is None:
+                        # API error - skip this event
+                        logger.warning(f"⏭️ API error for event {event_id} - skipping timestamp check")
+                        continue
+                    elif not correct_starting_time:
+                        # Starting time was corrected by the API call
+                        corrected_count += 1
+                        logger.info(f"✅ TIMESTAMP CORRECTED for event {event_id} - starting time was updated after game started")
+                        
+                        # Mark as recently processed to avoid duplicate processing
+                        self.recently_rescheduled.add(event_id)
+                    
+                except Exception as e:
+                    logger.error(f"Error checking recently started event {event_data.get('id')}: {e}")
+                    continue
+            
+            if checked_count > 0:
+                logger.info(f"📊 Timestamp correction check completed: {checked_count} events checked, {corrected_count} timestamps corrected")
+            
+        except Exception as e:
+            logger.error(f"Error in _check_recently_started_events_for_timestamp_corrections: {e}")
     
     def _minutes_until_start(self, start_time_utc) -> int:
         """Calculate minutes until event starts"""
@@ -692,6 +788,31 @@ class JobScheduler:
         time_diff = start_local - now
         return round(time_diff.total_seconds() / 60)
     
+    def _minutes_since_start(self, start_time_utc) -> int:
+        """
+        Calculate minutes since event started (returns negative value for consistency).
+        Similar to _minutes_until_start but for events that already started.
+        
+        Args:
+            start_time_utc: Event start time (in local timezone despite column name)
+            
+        Returns:
+            Negative integer representing minutes since start (e.g., -5 means started 5 minutes ago)
+        """
+        from timezone_utils import TIMEZONE
+        if start_time_utc.tzinfo is None:
+            # Make the naive datetime timezone-aware in local timezone
+            start_local = TIMEZONE.localize(start_time_utc)
+        else:
+            start_local = start_time_utc
+
+        # Get local current time (aware)
+        now = get_local_now_aware()
+
+        # Calculate time difference in minutes (negative for past events)
+        time_diff = start_local - now
+        return round(time_diff.total_seconds() / 60)
+    
     def _should_extract_odds_for_event(self, event_id: int, minutes_until_start: int) -> bool:
         """
         Smart logic to determine if odds should be extracted for an event.
@@ -709,28 +830,11 @@ class JobScheduler:
             logger.info(f"🚫 ODDS EXTRACTION DISABLED: Skipping odds extraction for event {event_id} (ENABLE_ODDS_EXTRACTION=false)")
             return False
         
-        # Key moments for odds extraction
-        KEY_MOMENTS = [30, 5, 1]
+        # Key moments for odds extraction (removed 1-minute check - now handled by 5-minutes-after logic)
+        KEY_MOMENTS = [30, 5]
         
         # Check if current time aligns with a key moment
         should_extract = minutes_until_start in KEY_MOMENTS
-        
-        if minutes_until_start == 1:
-            # For 1-minute events, always check and update starting time (no odds extraction)
-            logger.info(f"🕐 1-minute event detected for event {event_id} - checking for final timestamp correction")
-            correct_starting_time = api_client.get_event_results(event_id, update_time=True, minutes_until_start=minutes_until_start)
-            if correct_starting_time is None:
-                logger.warning(f"⏭️ API error for 1-minute event {event_id} - skipping timestamp correction")
-                return False
-            elif not correct_starting_time:
-                # Starting time was updated - check if rescheduled game is now in key moments
-                logger.info(f"🔄 Starting time changed for 1-minute event {event_id} - checking if rescheduled game is in key moments")
-                self.recently_rescheduled.add(event_id)  # Mark immediately to prevent double processing
-                self._check_rescheduled_event(event_id)
-            else:
-                logger.info(f"🟡 No changes made for the starting time of event {event_id}")
-                
-            return False  # Never extract odds at 1 minute, only timestamp correction
         
         # Only check and update starting time if event is in key moments (optimization)
         if not should_extract:
@@ -853,7 +957,6 @@ class JobScheduler:
             # Enrich event object with court type for Tennis/Tennis Doubles events
             event_obj.court_type = None  # Default value
             if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                from repository import ObservationRepository
                 observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
                 if observation:
                     event_obj.court_type = observation.observation_value
