@@ -1,8 +1,8 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.4.5  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS**  
-**Última Actualización:** 29 de Octubre, 2025
+**Versión:** v1.4.6  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKINGS**  
+**Última Actualización:** 30 de Octubre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
@@ -59,6 +59,15 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Cleaner Startup Logs**: Sistema ahora muestra logs únicos sin redundancia
 - **Optimized Flow**: Discovery ejecuta antes del scheduler startup
 - **Code Cleanup**: Removida lógica duplicada de initialize_system()
+
+### ✅ **NUEVO EN v1.4.6 - Late Timestamp Correction**
+- **Late Correction Check**: Sistema que verifica eventos que comenzaron hace 0-5 minutos para detectar correcciones tardías de timestamps
+- **Architecture**: Nueva función `get_events_started_recently()` en `repository.py` que consulta base de datos con ventana de 5 minutos
+- **Microsecond Precision**: Manejo robusto eliminando problemas de microsegundos en comparaciones de datetime
+- **API Integration**: Modificado `get_event_results()` para enviar alertas cuando `minutes_until_start < 0` (eventos ya comenzados)
+- **Scheduler Integration**: Job de pre-start check ahora incluye STEP 1 para verificar eventos recientemente comenzados
+- **Testing**: Validado exitosamente con 2 eventos, 2 correcciones detectadas y 2 alertas enviadas
+- **Production Ready**: Sistema 100% funcional detectando correcciones tardías de timestamps
 
 ### ✅ **NUEVO EN v1.4.5 - Detailed Match Results with Dates**
 - **Individual H2H Match Results**: Muestra cada partido H2H con detalles completos (home, away, scores)
@@ -222,15 +231,18 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Cobertura Final**: 99.0% (700/707 eventos con resultados)
 - **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO CON TIMING FIX**
 
-### ✅ **Sistema de Corrección de Timestamps - COMPLETADO (v1.2.6)**
+### ✅ **Sistema de Corrección de Timestamps - COMPLETADO (v1.2.6 → v1.4.6)**
 - **Detección Automática**: Compara timestamps de la API con la base de datos
 - **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
-- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos)
+- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos antes)
+- **Late Timestamp Correction (v1.4.6)**: Verifica eventos que comenzaron hace 0-5 minutos para detectar correcciones tardías
+- **Microsecond Precision**: Manejo robusto eliminando problemas de microsegundos en comparaciones de datetime
 - **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
 - **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
 - **Logging Detallado**: Registro completo de correcciones de timestamps
+- **Notificaciones Mejoradas**: Mensajes de alerta actualizados para reflejar correcciones tardías
 - **Perfecto para Testing**: Permite desactivar corrección para pruebas con timestamps manuales
-- **Estado**: 🟢 **EN PRODUCCIÓN - NUEVO FEATURE IMPLEMENTADO**
+- **Estado**: 🟢 **EN PRODUCCIÓN - LATE TIMESTAMP CORRECTION IMPLEMENTADO**
 
 ### ✅ **Infraestructura Técnica - COMPLETADO**
 - **Base de Datos**: PostgreSQL 15 en Docker (producción) con SQLAlchemy 2 + psycopg v3; SQLite solo para desarrollo local
@@ -311,6 +323,16 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Testing Friendly**: Permite desactivar corrección para pruebas con timestamps manuales
 - **Logging Detallado**: Registro completo de correcciones y decisiones del sistema
 - **Estado**: 🟢 **EN PRODUCCIÓN - FEATURE NUEVO IMPLEMENTADO**
+
+### **v1.4.6 (Octubre 2025) - LATE TIMESTAMP CORRECTION - DESPLEGADO** ✅
+- **Late Correction Check**: Sistema que verifica eventos que comenzaron hace 0-5 minutos para detectar correcciones tardías
+- **Issue Resuelto**: Correcciones de timestamps que ocurrían después del inicio del juego ahora se detectan
+- **Root Cause**: Sistema anterior solo verificaba timestamps 1 minuto antes del inicio, perdiendo correcciones tardías
+- **Solución**: Nueva función `get_events_started_recently()` con ventana de 5 minutos y manejo robusto de microsegundos
+- **API Integration**: Modificado `get_event_results()` para enviar alertas cuando `minutes_until_start < 0`
+- **Testing**: Validado exitosamente con 2 eventos, 2 correcciones detectadas y 2 alertas enviadas
+- **Production Ready**: Sistema 100% funcional detectando correcciones tardías de timestamps
+- **Estado**: 🟢 **EN PRODUCCIÓN - LATE TIMESTAMP CORRECTION IMPLEMENTADO**
 
 ### **v1.2.1 (Septiembre 2025) - VARIACIONES SIMÉTRICAS - DESPLEGADO** ✅
 - **Variaciones Simétricas**: Filtrado avanzado de candidatos no simétricos en Tier 2
@@ -464,8 +486,8 @@ El **SofaScore Odds System v1.3.1** tiene **Process 1 completamente funcional co
 - 🟢 **Enhanced Reporting**: Reportes separados + veredicto final (AGREE/DISAGREE/PARTIAL/ERROR)
 - 🟢 **Football Formulas**: 11 fórmulas específicas implementadas y funcionando
 
-**El proyecto ha evolucionado de un sistema de notificaciones a un sistema dual process inteligente con Process 1 y Process 2 funcionando en producción, ahora con odds display completo.** 🚀⚽🧠🔬
+**El proyecto ha evolucionado de un sistema de notificaciones a un sistema dual process inteligente con Process 1 y Process 2 funcionando en producción, ahora con odds display completo y late timestamp correction.** 🚀⚽🧠🔬
 
 ---
 
-**Estado Final**: 🟢 **DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO EN PRODUCCIÓN CON ODDS DISPLAY**
+**Estado Final**: 🟢 **DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO EN PRODUCCIÓN CON ODDS DISPLAY Y LATE TIMESTAMP CORRECTION**

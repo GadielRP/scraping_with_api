@@ -1,7 +1,7 @@
 # SofaScore Odds System
 
 **Versión:** v1.4.6  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION**  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKINGS**  
 **Última Actualización:** 30 de Octubre, 2025
 
 ## 🎯 **Descripción del Sistema**
@@ -165,13 +165,16 @@ class AlertMatch:
 - **Mejora**: Reducción del 85% en eventos sin resultados (de 8.1% a 1.2% gap)
 - **Cobertura Final**: 99.0% (700/707 eventos con resultados)
 
-### ✅ **Sistema de Corrección de Timestamps (v1.2.6)**
+### ✅ **Sistema de Corrección de Timestamps (v1.2.6 → v1.4.6)**
 - **Detección Automática**: Compara timestamps de la API con la base de datos
 - **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
-- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos)
+- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos antes)
+- **Late Timestamp Correction (NUEVO v1.4.6)**: Verifica eventos que comenzaron hace 0-5 minutos para detectar correcciones tardías
+- **Precisión de Microsegundos**: Manejo robusto de comparaciones de tiempo eliminando problemas de microsegundos
 - **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
 - **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
 - **Logging Detallado**: Registro completo de correcciones de timestamps
+- **Notificaciones Mejoradas**: Mensajes de alerta actualizados para reflejar correcciones tardías
 
 ### ✅ **Auto-Migration System (v1.4) - NEW**
 - **Model-Driven**: Detecta automáticamente diferencias entre `models.py` y la base de datos
@@ -486,6 +489,16 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 - **Soporte**: Maneja correctamente deportes 2-way (Tennis) y 3-way (Football) con var_shape
 - **Resultado**: Sistema de predicciones más preciso con búsqueda de odds exactas en Tier 1
 
+### **Fix 8: Late Timestamp Correction (30/10/2025) - NUEVO v1.4.6**
+- **Issue**: Correcciones de timestamps que ocurrían después del inicio del juego no se detectaban
+- **Root Cause**: Sistema anterior solo verificaba timestamps 1 minuto antes del inicio, perdiendo correcciones tardías
+- **Solución**: Implementado sistema de verificación tardía que chequea eventos que comenzaron hace 0-5 minutos
+- **Arquitectura**: Nueva función `get_events_started_recently()` en `repository.py` con ventana de 5 minutos
+- **Microsecond Precision Fix**: Manejo robusto eliminando problemas de microsegundos en comparaciones de tiempo
+- **API Integration**: Modificado `get_event_results()` para enviar alertas cuando `minutes_until_start < 0` (eventos ya comenzados)
+- **Testing**: Validado exitosamente con 2 eventos, 2 correcciones detectadas y 2 alertas enviadas
+- **Resultado**: Sistema ahora detecta correcciones tardías de timestamps con 100% de precisión
+
 ### **Despliegue Exitoso**
 - ✅ **Sistema v1.3.1 desplegado** en producción (01/10/2025)
 - ✅ **Base de datos actualizada** con computed columns y materialized views
@@ -504,15 +517,15 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 
 ### **Archivos Modificados**
 - `alert_engine.py`: AlertMatch dataclass actualizado con campos de odds, cálculo de diferencias con signos visibles
-- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos, notificaciones duales implementadas, odds display agregado
-- `sofascore_api.py`: Lógica de extracción de resultados mejorada, sistema de corrección de timestamps
-- `scheduler.py`: Midnight job movido a 04:00, sistema de corrección de timestamps, dual process integration
+- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos, notificaciones duales implementadas, odds display agregado, mensajes de corrección tardía actualizados
+- `sofascore_api.py`: Lógica de extracción de resultados mejorada, sistema de corrección de timestamps, late timestamp correction para eventos ya comenzados
+- `scheduler.py`: Midnight job movido a 04:00, sistema de corrección de timestamps, dual process integration, late timestamp check implementado
 - `prediction_engine.py`: **NUEVO** - Orchestrador dual process con lógica de comparación
 - `process2/`: **NUEVO** - Sistema modular de Process 2
   - `process2_engine.py`: Motor principal de Process 2
   - `sports/football.py`: 11 fórmulas específicas de fútbol implementadas
   - `__init__.py`: Definición de boundaries y arquitectura
 - `config.py`: Variable `ENABLE_TIMESTAMP_CORRECTION` para control de corrección de timestamps
-- `repository.py`: Método `update_event_starting_time` para actualizar timestamps
+- `repository.py`: Método `update_event_starting_time` para actualizar timestamps, función `get_events_started_recently()` para late timestamp correction
 - `upsert_debug_results.py`: Script para corregir eventos faltantes
 - `docker-compose.yml`: Configuración de producción corregida

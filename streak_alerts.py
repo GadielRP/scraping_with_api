@@ -27,6 +27,8 @@ class H2HStreak:
     sport: str
     home_team_name: str  # Upcoming event home team
     away_team_name: str  # Upcoming event away team
+    home_team_ranking: Optional[int]  # Ranking of upcoming event's home team
+    away_team_ranking: Optional[int]  # Ranking of upcoming event's away team
     total_h2h_matches: int
     matches_analyzed: int  # Matches within 2-year window
     home_wins: int  # Wins for upcoming event's home team
@@ -117,6 +119,14 @@ class StreakAlertEngine:
                 elif game.get('role') == 'away':
                     batch_away_net_points += (game['home_score'] - game['away_score'])
             
+            # Calculate net ranking differential (player_ranking - opponent_ranking)
+            batch_net_ranking_differential = 0
+            for game in batch_games:
+                own_ranking = game.get('own_ranking', 0)
+                opponent_ranking = game.get('opponent_ranking', 0)
+                if own_ranking > 0 and opponent_ranking > 0:
+                    batch_net_ranking_differential += (own_ranking - opponent_ranking)
+            
             # Format individual games for display
             formatted_games = []
             for game in batch_games:
@@ -143,7 +153,9 @@ class StreakAlertEngine:
                     'score_against': game['away_score'],
                     'net_score': game['home_score'] - game['away_score'],
                     'startTimestamp': game.get('startTimestamp', 0),  # Include timestamp for date display
-                    'role': team_role  # Track role for display
+                    'role': team_role,  # Track role for display
+                    'opponent_ranking': game.get('opponent_ranking', 0),
+                    'own_ranking': game.get('own_ranking', 0)
                 })
             
             batches.append({
@@ -156,7 +168,8 @@ class StreakAlertEngine:
                 'batch_points_against': batch_points_against,
                 'batch_net_points': batch_net_points,
                 'batch_home_net_points': batch_home_net_points,
-                'batch_away_net_points': batch_away_net_points
+                'batch_away_net_points': batch_away_net_points,
+                'batch_net_ranking_differential': batch_net_ranking_differential
             })
         
         return batches
@@ -183,6 +196,31 @@ class StreakAlertEngine:
         
         # Fallback
         return ('competition', competition_slug)
+    
+    def _extract_ranking_from_team(self, team_data: Dict) -> int:
+        """
+        Extract ranking from team data, handling both singles and doubles teams.
+        
+        Args:
+            team_data: Team data dictionary from event
+            
+        Returns:
+            Ranking as integer (0 if not found)
+        """
+        # First check if team has direct ranking (singles)
+        ranking = team_data.get('ranking', None)
+        if ranking is not None:
+            return ranking
+        
+        # If no direct ranking, check subTeams for doubles teams
+        sub_teams = team_data.get('subTeams', [])
+        if sub_teams:
+            # Get all rankings from subTeams and return the best (lowest) ranking
+            rankings = [sub.get('ranking') for sub in sub_teams if sub.get('ranking') is not None]
+            if rankings:
+                return min(rankings)
+        
+        return 0
 
     def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, observations: Optional[List[Dict]] = None) -> List[Dict]:
         """
@@ -194,7 +232,7 @@ class StreakAlertEngine:
             team_name: Name of the team for context
             competition_slug: Slug of the competition
             sport: Sport type for filtering logic
-            observations: List of observations for sport-specific filtering (e.g., ground_type for tennis)
+            observations: List of dicts containing in order: ground_type, home_ranking, away_ranking
         Returns:
             List of dicts with keys: winner, home_score, away_score, team_name, opponent_name
         """
@@ -220,12 +258,22 @@ class StreakAlertEngine:
                         continue
                     
                     # SPORT-SPECIFIC FILTERING: Apply appropriate filter based on sport
-                    if (sport == 'Tennis' or sport == 'Tennis Doubles') and observations:
-                        # For tennis, filter by ground_type instead of competition
-                        if observations[0].get('type') == 'ground_type':
+                    if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                        # For tennis, filter by ground_type AND singles/doubles
+                        if observations and observations[0].get('type') == 'ground_type':
                             if observations[0].get('value') != event.get('groundType'):
                                 logger.debug(f"Skipping event for {team_name} - different ground type: {observations[0].get('value')} vs {event.get('groundType')}")
                                 continue
+                        
+                        # Filter by singles/doubles match type (use type field from API response)
+                        home_team_type = event.get('homeTeam', {}).get('type', 1)
+                        away_team_type = event.get('awayTeam', {}).get('type', 1)
+                        event_is_doubles = home_team_type == 2 and away_team_type == 2
+                        sport_is_doubles = sport == 'Tennis Doubles'
+                        
+                        if event_is_doubles != sport_is_doubles:
+                            logger.debug(f"Skipping event for {team_name} - different match type (event is {'doubles' if event_is_doubles else 'singles'}, sport is {'doubles' if sport_is_doubles else 'singles'})")
+                            continue
                     else:
                         # For other sports, filter by competition
                         if competition_slug:
@@ -241,26 +289,45 @@ class StreakAlertEngine:
                     # Determine if our team won, lost, or drew
                     winner_position = result_data['winner']  # '1', '2', or 'X'
                     
+                    # Get team data for ranking extraction
+                    home_team_data = event.get('homeTeam', {})
+                    away_team_data = event.get('awayTeam', {})
+                    
                     if winner_position == 'X':
                         # Draw
                         team_result = 'X'
-                        opponent_name = away_team if home_team == team_name else home_team
+                        if home_team == team_name:
+                            opponent_name = away_team
+                            opponent_ranking = self._extract_ranking_from_team(away_team_data)
+                            own_ranking = self._extract_ranking_from_team(home_team_data)
+                        else:
+                            opponent_name = home_team
+                            opponent_ranking = self._extract_ranking_from_team(home_team_data)
+                            own_ranking = self._extract_ranking_from_team(away_team_data)
                     elif winner_position == '1':
                         # Home team won
                         if home_team == team_name:
                             team_result = '1'  # Our team won
                             opponent_name = away_team
+                            opponent_ranking = self._extract_ranking_from_team(away_team_data)
+                            own_ranking = self._extract_ranking_from_team(home_team_data)
                         else:
                             team_result = '2'  # Our team lost
                             opponent_name = home_team
+                            opponent_ranking = self._extract_ranking_from_team(home_team_data)
+                            own_ranking = self._extract_ranking_from_team(away_team_data)
                     else:  # winner_position == '2'
                         # Away team won
                         if away_team == team_name:
                             team_result = '1'  # Our team won
                             opponent_name = home_team
+                            opponent_ranking = self._extract_ranking_from_team(home_team_data)
+                            own_ranking = self._extract_ranking_from_team(away_team_data)
                         else:
                             team_result = '2'  # Our team lost
                             opponent_name = away_team
+                            opponent_ranking = self._extract_ranking_from_team(away_team_data)
+                            own_ranking = self._extract_ranking_from_team(home_team_data)
                     
                     # Map scores to our team's perspective and track role
                     if home_team == team_name:
@@ -278,6 +345,8 @@ class StreakAlertEngine:
                         'away_score': opponent_score,
                         'team_name': team_name,
                         'opponent_name': opponent_name,
+                        'opponent_ranking': opponent_ranking,
+                        'own_ranking': own_ranking,
                         'startTimestamp': event.get('startTimestamp', 0),  # Include for sorting
                         'role': team_role  # Track whether team was home or away
                     })
@@ -293,16 +362,26 @@ class StreakAlertEngine:
             if results:
                 # Get filtering criteria for logging
                 filter_type, filter_value = self._get_filtering_criteria(sport, competition_slug, observations)
-                logger.info(f"📊 Team {team_name} processed {len(results)} results from {filter_type} '{filter_value}':")
+                match_type_info = ""
+                if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                    match_type = "doubles" if sport == 'Tennis Doubles' else "singles"
+                    match_type_info = f" and match_type '{match_type}'"
+                logger.info(f"📊 Team {team_name} processed {len(results)} results from {filter_type} '{filter_value}'{match_type_info}:")
                 for i, result in enumerate(results[:5]):  # Show first 5
                     timestamp = result.get('startTimestamp', 0)
                     from datetime import datetime
                     date_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M') if timestamp > 0 else 'Invalid'
-                    logger.info(f"  {i+1}. {date_str} - Winner: {result.get('winner', 'N/A')} vs {result.get('opponent_name', 'N/A')}")
+                    own_rank = result.get('own_ranking', 0)
+                    opp_rank = result.get('opponent_ranking', 0)
+                    logger.info(f"  {i+1}. {date_str} - Winner: {result.get('winner', 'N/A')} ~{own_rank} vs ~{opp_rank} {result.get('opponent_name', 'N/A')}")
             else:
                 # Get filtering criteria for logging
                 filter_type, filter_value = self._get_filtering_criteria(sport, competition_slug, observations)
-                logger.info(f"📊 Team {team_name} - no results found in {filter_type} '{filter_value}'")
+                match_type_info = ""
+                if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                    match_type = "doubles" if sport == 'Tennis Doubles' else "singles"
+                    match_type_info = f" and match_type '{match_type}'"
+                logger.info(f"📊 Team {team_name} - no results found in {filter_type} '{filter_value}'{match_type_info}")
             
             # Return only the 10 most recent
             return results[:10]
@@ -401,14 +480,31 @@ class StreakAlertEngine:
                     
                     # Only past events within 2-year window
                     if event_timestamp >= cutoff_timestamp and event_timestamp < event_start_time.timestamp():
-                        # COMPETITION FILTERING: Only include H2H events from the same competition
-                        if (sport == 'Tennis' or sport == 'Tennis Doubles') and observations:
-                            if observations[0].get('type') == 'ground_type':
+                        # Extract team data and names for later use in results mapping
+                        hist_home_team_data = event.get('homeTeam', {})
+                        hist_away_team_data = event.get('awayTeam', {})
+                        hist_home = hist_home_team_data.get('name', '')
+                        hist_away = hist_away_team_data.get('name', '')
+                        
+                        # SPORT-SPECIFIC FILTERING: Apply appropriate filter based on sport
+                        if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                            # For tennis, filter by ground_type AND singles/doubles
+                            if observations and observations[0].get('type') == 'ground_type':
                                 if observations[0].get('value') != event.get('groundType'):
                                     logger.debug(f"Skipping H2H event - different ground type: {observations[0].get('value')} vs {event.get('groundType')}")
                                     continue
                             
+                            # Filter by singles/doubles match type (use type field from API response)
+                            hist_home_team_type = hist_home_team_data.get('type', 1)
+                            hist_away_team_type = hist_away_team_data.get('type', 1)
+                            event_is_doubles = hist_home_team_type == 2 and hist_away_team_type == 2
+                            sport_is_doubles = sport == 'Tennis Doubles'
+                            
+                            if event_is_doubles != sport_is_doubles:
+                                logger.debug(f"Skipping H2H event - different match type (event is {'doubles' if event_is_doubles else 'singles'}, sport is {'doubles' if sport_is_doubles else 'singles'})")
+                                continue
                         else: 
+                            # For other sports, filter by competition
                             if competition_slug:
                                 event_competition_slug = event.get('tournament', {}).get('uniqueTournament', {}).get('slug', '')
                                 if event_competition_slug != competition_slug:
@@ -418,10 +514,6 @@ class StreakAlertEngine:
                         # Use proven extraction logic
                         result_data = api_client.extract_results_from_response({'event': event})
                         if result_data:
-                            # Get team names from historical event
-                            hist_home = event.get('homeTeam', {}).get('name', '')
-                            hist_away = event.get('awayTeam', {}).get('name', '')
-                            
                             # Map winner to actual teams (not positions)
                             winner_position = result_data['winner']  # '1', '2', or 'X'
                             
@@ -472,7 +564,11 @@ class StreakAlertEngine:
             # Log H2H filtering results
             filter_type, filter_value = self._get_filtering_criteria(sport, competition_slug, observations)
             if filter_value:
-                logger.info(f"📊 H2H analysis: Found {len(results)} matches in {filter_type} '{filter_value}' (filtered by {filter_type})")
+                match_type_info = ""
+                if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                    match_type = "doubles" if sport == 'Tennis Doubles' else "singles"
+                    match_type_info = f" and match_type '{match_type}'"
+                logger.info(f"📊 H2H analysis: Found {len(results)} matches in {filter_type} '{filter_value}'{match_type_info} (filtered by {filter_type})")
             else:
                 logger.info(f"📊 H2H analysis: Found {len(results)} matches (no filtering)")
             
@@ -559,6 +655,19 @@ class StreakAlertEngine:
             else:
                 logger.info(f"📊 H2H analysis for {participants}: No data available (no H2H matches, no team form, no winning odds)")
             
+            # Extract rankings safely from observations
+            home_team_ranking = None
+            away_team_ranking = None
+            if observations:
+                # Buscar rankings en cualquier posición de la lista (no asumir posición fija)
+                rankings_obs = next((obs for obs in observations if isinstance(obs, dict) and obs.get('type') == 'rankings'), None)
+                if rankings_obs:
+                    home_team_ranking = rankings_obs.get('home_ranking')
+                    away_team_ranking = rankings_obs.get('away_ranking')
+                    logger.debug(f"Extracted rankings from observations: home={home_team_ranking}, away={away_team_ranking}")
+                else:
+                    logger.debug(f"No rankings found in observations for event {event_id}")
+            
             return H2HStreak(
                 event_id=event_id,
                 custom_id=event_custom_id,
@@ -570,6 +679,8 @@ class StreakAlertEngine:
                 sport=sport,
                 home_team_name=home_team_name,
                 away_team_name=away_team_name,
+                home_team_ranking=home_team_ranking,
+                away_team_ranking=away_team_ranking,
                 total_h2h_matches=len(h2h_events),
                 matches_analyzed=total,
                 home_wins=home_wins,

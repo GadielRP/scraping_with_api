@@ -73,12 +73,16 @@ class JobScheduler:
         logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
     
     def _setup_pre_start_jobs(self):
-        """Setup pre-start check jobs every 1 minute at the exact minute mark"""
-        # Schedule jobs at exact minute marks (00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59)
-        for minute in range(60):
+        """Setup pre-start check jobs every N minutes at exact minute marks (configurable via POLL_INTERVAL_MINUTES)"""
+        interval_minutes = Config.POLL_INTERVAL_MINUTES
+        
+        # Schedule jobs at exact minute marks based on interval
+        # For 5 minutes: 00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55
+        # For 1 minute: 00, 01, 02, 03, ..., 59 (all 60 minutes)
+        for minute in range(0, 60, interval_minutes):
             schedule.every().hour.at(f":{minute:02d}").do(self.job_pre_start_check)
         
-        logger.info(f"  - Pre-start check scheduled every 1 minute at exact minute marks (checks upcoming events + timestamp corrections for recently started events)")
+        logger.info(f"  - Pre-start check scheduled every {interval_minutes} minutes at exact minute marks (checks upcoming events + timestamp corrections for recently started events)")
     
     def _cleanup_recently_rescheduled(self):
         """Clean up old entries from recently_rescheduled set to prevent memory leaks"""
@@ -317,8 +321,8 @@ class JobScheduler:
         try:
             observations = None
             
-            # STEP 1: Check recently started events for timestamp corrections (5 minutes after start)
-            events_started_recently = EventRepository.get_events_started_recently(window_minutes=5)
+            # STEP 1: Check recently started events for timestamp corrections (15 minutes after start)
+            events_started_recently = EventRepository.get_events_started_recently(window_minutes=15)
             if events_started_recently:
                 logger.info(f"Found {len(events_started_recently)} events that started recently (checking for late timestamp corrections)")
                 self._check_recently_started_events_for_timestamp_corrections(events_started_recently)
@@ -509,11 +513,35 @@ class JobScheduler:
                                                 away_team_id = None
                                                 competition_slug = None
                                                 competition_name = None
+                                                event_details = None  # Inicializar para evitar errores si falla el try
                                                 
                                                 try:
                                                     # Fetch current event details to get correct team IDs
                                                     event_details = api_client.get_event_details(event_obj.id)
+
                                                     if event_details:
+                                                        # Para Tennis/Tennis Doubles, agregar rankings a observations si no existen
+                                                        if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                                            # Verificar si ya existe rankings en observations
+                                                            has_rankings = False
+                                                            if observations:
+                                                                has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+                                                            
+                                                            # Si no tiene rankings, extraerlos de event_details y agregarlos
+                                                            if not has_rankings:
+                                                                home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                                                away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                                                
+                                                                # Inicializar observations si es None
+                                                                if observations is None:
+                                                                    observations = []
+                                                                
+                                                                observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                                                logger.info(f"✅ Added rankings to observations for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
+                                                            else:
+                                                                logger.debug(f"Rankings already exist in observations for event {event_obj.id}")
+                                                        
+                                                        # Extraer team IDs y otros datos del evento
                                                         home_team_id = event_details.get('homeTeam', {}).get('id')
                                                         away_team_id = event_details.get('awayTeam', {}).get('id')
                                                         competition_name = event_details.get('tournament', {}).get('uniqueTournament', {}).get('name')
@@ -538,8 +566,41 @@ class JobScheduler:
                                                         # Get existing observations from database
                                                         observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
                                                         if observation:
+                                                            # Crear lista con ground_type, preservando rankings si ya existen en observations
                                                             tennis_observations = [{'type': 'ground_type', 'value': observation.observation_value}]
+                                                            # Si observations ya tenía rankings (agregados anteriormente), preservarlos
+                                                            if observations and len(observations) > 1:
+                                                                rankings_obs = next((obs for obs in observations if obs.get('type') == 'rankings'), None)
+                                                                if rankings_obs:
+                                                                    tennis_observations.append(rankings_obs)
+                                                            # Si no hay rankings en observations y tenemos event_details, agregarlos
+                                                            elif event_details:
+                                                                home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                                                away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                                                if home_team_ranking is not None or away_team_ranking is not None:
+                                                                    tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                                                    logger.info(f"✅ Added rankings to tennis_observations from event_details: home={home_team_ranking}, away={away_team_ranking}")
                                                             logger.info(f"🎾 Using existing ground_type observation: {observation.observation_value}")
+                                                elif tennis_observations:
+                                                    # Si tennis_observations ya tiene datos, asegurarse de que tiene rankings
+                                                    if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                                        has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
+                                                        if not has_rankings and event_details:
+                                                            # Agregar rankings si no existen y tenemos event_details
+                                                            home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                                            away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                                            tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                                            logger.info(f"✅ Added rankings to tennis_observations for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
+                                                
+                                                # Log observations antes de pasar a analyze_h2h_events
+                                                if tennis_observations:
+                                                    rankings_info = next((obs for obs in tennis_observations if isinstance(obs, dict) and obs.get('type') == 'rankings'), None)
+                                                    if rankings_info:
+                                                        logger.info(f"📊 Passing observations to analyze_h2h_events for event {event_obj.id}: home_ranking={rankings_info.get('home_ranking')}, away_ranking={rankings_info.get('away_ranking')}")
+                                                    else:
+                                                        logger.warning(f"⚠️ No rankings found in tennis_observations for event {event_obj.id}")
+                                                else:
+                                                    logger.warning(f"⚠️ tennis_observations is None for event {event_obj.id}")
                                                 
                                                 # Analyze H2H events with team results
                                                 streak_analysis = streak_alert_engine.analyze_h2h_events(
@@ -719,8 +780,9 @@ class JobScheduler:
     
     def _check_recently_started_events_for_timestamp_corrections(self, events_started_recently: List[Dict]):
         """
-        Check recently started events (within last 5 minutes) for timestamp corrections.
+        Check recently started events (within last 15 minutes) for timestamp corrections.
         This catches late changes that occur after the game starts or right at start time.
+        Only checks events at specific intervals (5, 10, 15 minutes) to avoid timing precision issues.
         
         Args:
             events_started_recently: List of event dictionaries from get_events_started_recently()
@@ -731,11 +793,24 @@ class JobScheduler:
             
             for event_data in events_started_recently:
                 try:
+                    logger.info(f"Checking recently started event {event_data['slug']} - {event_data['start_time_utc']}")
                     event_id = event_data['id']
                     stored_start_time = event_data['start_time_utc']
                     
                     # Calculate how long ago this event started (using stored time)
                     minutes_since_start = self._minutes_since_start(stored_start_time)
+                    
+                    # Only process events at specific intervals (5, 10, 15 minutes after start)
+                    # This avoids timing precision issues and ensures we only check at key moments
+                    # Convert to positive for easier comparison
+                    minutes_ago = abs(minutes_since_start)
+                    
+                    # Define check intervals (when to actually check for timestamp corrections)
+                    CHECK_INTERVALS = [5, 10, 15]
+                    
+                    if minutes_ago not in CHECK_INTERVALS:
+                        logger.debug(f"⏭️ Skipping event {event_id} - not at check interval ({minutes_ago} minutes ago, checking at {CHECK_INTERVALS})")
+                        continue
                     
                     # Check and update starting time via API
                     # This returns: True if time is correct, False if time was updated, None if API error

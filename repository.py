@@ -268,16 +268,16 @@ class EventRepository:
             return []
     
     @staticmethod
-    def get_events_started_recently(window_minutes: int = 5) -> List[Dict]:
+    def get_events_started_recently(window_minutes: int = 15) -> List[Dict]:
         """
-        Get events that started within the last N minutes (default 5).
+        Get events that started within the last N minutes (default 15).
         Used to catch late timestamp corrections that occur after the game starts.
         Returns a list of dictionaries containing event info.
         """
-        try:
+        try:     
             with db_manager.get_session() as session:
-                # Use local time since SofaScore provides local times
-                now = datetime.now()
+                # Use consistent timezone utility for time calculations
+                now = get_local_now()
                 # Round window_start down to seconds (remove microseconds) to catch events that started exactly at that time
                 window_start = now - timedelta(minutes=window_minutes, seconds=10)
                 window_start = window_start.replace(microsecond=0)  # Round down to second precision

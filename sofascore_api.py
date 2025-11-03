@@ -307,7 +307,12 @@ class SofaScoreAPI:
         """
         try:
             endpoint = f"/event/{event_id}"
-            logger.info(f"Fetching event results for event {event_id}")
+            if update_court_type:
+                logger.info(f"Fetching /event/{event_id} endpoint to update court type")
+            if update_time:
+                logger.info(f"Fetching /event/{event_id} endpoint to update time")
+            else:
+                logger.info(f"Fetching event results for event {event_id}")
             
             response = self._make_request(endpoint)
             if not response:
@@ -321,8 +326,23 @@ class SofaScoreAPI:
                 self.update_event_information_from_response(response)
             
             if update_court_type:
-                return sport_observations_manager.extract_tennis_ground_type(event_id, response)
-                        
+                # Extraer rankings de forma segura
+                event_data = response.get('event', {})
+                home_team_ranking = event_data.get('homeTeam', {}).get('ranking')
+                away_team_ranking = event_data.get('awayTeam', {}).get('ranking')
+                
+                return [
+                            {
+                                "type": "ground_type",
+                                "value": sport_observations_manager.extract_tennis_ground_type(event_id, response)
+                            },
+                            {
+                                "type": "rankings",
+                                "home_ranking": home_team_ranking,
+                                "away_ranking": away_team_ranking
+                            }
+                        ]
+       
             if update_time:
                 event_data = response.get('event', {})
                 # SofaScore uses 'startTimestamp' (camelCase), not 'startTimeStamp'

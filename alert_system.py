@@ -474,6 +474,7 @@ class PreStartNotification:
             elif streak.sport == 'Basketball':
                 message += f"🏀 "
             elif streak.sport == 'Tennis':
+                message += f"⚜️ H~{streak.home_team_ranking} vs A~{streak.away_team_ranking}\n"
                 message += f"🎾 "
             elif streak.sport == 'Hockey':
                 message += f"🏒 "
@@ -594,42 +595,84 @@ class PreStartNotification:
                 if hasattr(streak, 'home_team_batches') and hasattr(streak, 'away_team_batches'):
                     message += f"📈 Historical Form:\n"
                     
-                    # Display home team batches
-                    if streak.home_team_batches:
-                        message += f"<b>{streak.home_team_name}</b>:\n"
-                        for i, batch in enumerate(streak.home_team_batches):
-                            # Calculate game count for this batch (5, 10, 15, etc.)
-                            game_count = (i + 1) * 5
-                            batch_summary = f"{game_count}: {batch['batch_wins']}W-{batch['batch_losses']}L-{batch['batch_draws']}D"
-                            if batch['batch_net_points'] > 0:
-                                batch_summary += f"(+{batch['batch_net_points']})"
-                            elif batch['batch_net_points'] < 0:
-                                batch_summary += f"({batch['batch_net_points']})"
-                            else:
-                                batch_summary += " (0)"
-                            
-                            # Add net points by role
-                            home_net = batch.get('batch_home_net_points', 0)
-                            away_net = batch.get('batch_away_net_points', 0)
-                            # Format with proper sign
-                            home_net_str = f"+{home_net}" if home_net >= 0 else str(home_net)
-                            away_net_str = f"+{away_net}" if away_net >= 0 else str(away_net)
-                            batch_summary += f" [H:{home_net_str}, A:{away_net_str}]"
-                            
-                            message += f"{batch_summary}\n"
-                            
-                            # Show individual games in this batch
-                            for game in batch['games']:
-                                game_date = self._format_game_date(game.get('startTimestamp', 0))
-                                date_prefix = f"{game_date} " if game_date else ""
-                                role_indicator = "🏠" if game.get('role') == 'home' else "✈️"
-                                message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
-                            
-                            # Add break line between batches (except for the last batch)
-                            if i < len(streak.home_team_batches) - 1:
-                                message += "\n"
+                    if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
+                        if streak.home_team_batches:
+                            message += f"<b>{streak.home_team_name}</b>:\n"
+                            for i, batch in enumerate(streak.home_team_batches):
+                                # Calculate game count for this batch (5, 10, 15, etc.)
+                                game_count = (i + 1) * 5
+                                batch_summary = f"{game_count}: {batch['batch_wins']}W-{batch['batch_losses']}L-{batch['batch_draws']}D"
+                                if batch['batch_net_points'] > 0:
+                                    batch_summary += f"(+{batch['batch_net_points']})"
+                                elif batch['batch_net_points'] < 0:
+                                    batch_summary += f"({batch['batch_net_points']})"
+                                else:
+                                    batch_summary += " (0)"
+                                
+                                # Add net points by role
+                                home_net = batch.get('batch_home_net_points', 0)
+                                away_net = batch.get('batch_away_net_points', 0)
+                                # Format with proper sign
+                                home_net_str = f"+{home_net}" if home_net >= 0 else str(home_net)
+                                away_net_str = f"+{away_net}" if away_net >= 0 else str(away_net)
+                                batch_summary += f" [H:{home_net_str}, A:{away_net_str}]"
+                                
+                                # Add net ranking differential
+                                net_ranking_diff = batch.get('batch_net_ranking_differential', 0)
+                                if net_ranking_diff != 0:
+                                    ranking_diff_str = f"+{net_ranking_diff}" if net_ranking_diff >= 0 else str(net_ranking_diff)
+                                    batch_summary += f" [~{ranking_diff_str}]"
+                                
+                                message += f"{batch_summary}\n"
+                                
+                                # Show individual games in this batch
+                                for game in batch['games']:
+                                    game_date = self._format_game_date(game.get('startTimestamp', 0))
+                                    date_prefix = f"{game_date} " if game_date else ""
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                
+                                # Add break line between batches (except for the last batch)
+                                if i < len(streak.home_team_batches) - 1:
+                                    message += "\n"
+                        else:
+                            message += f"<b>{streak.home_team_name}</b>: No recent form data\n"
                     else:
-                        message += f"<b>{streak.home_team_name}</b>: No recent form data\n"
+                        # Display home team batches
+                        if streak.home_team_batches:
+                            message += f"<b>{streak.home_team_name}</b>:\n"
+                            for i, batch in enumerate(streak.home_team_batches):
+                                # Calculate game count for this batch (5, 10, 15, etc.)
+                                game_count = (i + 1) * 5
+                                batch_summary = f"{game_count}: {batch['batch_wins']}W-{batch['batch_losses']}L-{batch['batch_draws']}D"
+                                if batch['batch_net_points'] > 0:
+                                    batch_summary += f"(+{batch['batch_net_points']})"
+                                elif batch['batch_net_points'] < 0:
+                                    batch_summary += f"({batch['batch_net_points']})"
+                                else:
+                                    batch_summary += " (0)"
+                                
+                                # Add net points by role
+                                home_net = batch.get('batch_home_net_points', 0)
+                                away_net = batch.get('batch_away_net_points', 0)
+                                # Format with proper sign
+                                home_net_str = f"+{home_net}" if home_net >= 0 else str(home_net)
+                                away_net_str = f"+{away_net}" if away_net >= 0 else str(away_net)
+                                batch_summary += f" [H:{home_net_str}, A:{away_net_str}]"
+                                
+                                message += f"{batch_summary}\n"
+                                
+                                # Show individual games in this batch
+                                for game in batch['games']:
+                                    game_date = self._format_game_date(game.get('startTimestamp', 0))
+                                    date_prefix = f"{game_date} " if game_date else ""
+                                    role_indicator = "🏠" if game.get('role') == 'home' else "✈️"
+                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                
+                                # Add break line between batches (except for the last batch)
+                                if i < len(streak.home_team_batches) - 1:
+                                    message += "\n"
+                        else:
+                            message += f"<b>{streak.home_team_name}</b>: No recent form data\n"
                     
                     message += "\n"
                     
@@ -655,14 +698,24 @@ class PreStartNotification:
                             away_net_str = f"+{away_net}" if away_net >= 0 else str(away_net)
                             batch_summary += f" [H:{home_net_str}, A:{away_net_str}]"
                             
+                            # Add net ranking differential (only for Tennis/Tennis Doubles)
+                            if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
+                                net_ranking_diff = batch.get('batch_net_ranking_differential', 0)
+                                if net_ranking_diff != 0:
+                                    ranking_diff_str = f"+{net_ranking_diff}" if net_ranking_diff >= 0 else str(net_ranking_diff)
+                                    batch_summary += f" [~{ranking_diff_str}]"
+                            
                             message += f"{batch_summary}\n"
                             
                             # Show individual games in this batch
                             for game in batch['games']:
                                 game_date = self._format_game_date(game.get('startTimestamp', 0))
                                 date_prefix = f"{game_date} " if game_date else ""
-                                role_indicator = "🏠" if game.get('role') == 'home' else "✈️"
-                                message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                else:
+                                    role_indicator = "🏠" if game.get('role') == 'home' else "✈️"
+                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
                             
                             # Add break line between batches (except for the last batch)
                             if i < len(streak.away_team_batches) - 1:
