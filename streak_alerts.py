@@ -6,7 +6,7 @@ to ensure consistency with existing result collection system.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from sofascore_api import api_client
@@ -59,6 +59,13 @@ class H2HStreak:
     away_team_batches: List[Dict]  # Away team results in batches of 5
     # NEW: Winning odds data
     winning_odds_data: Optional[Dict] = None  # Winning odds response data
+    # NEW: Current event odds (for display in H2H streak messages)
+    one_open: Optional[float] = None
+    x_open: Optional[float] = None
+    two_open: Optional[float] = None
+    one_final: Optional[float] = None
+    x_final: Optional[float] = None
+    two_final: Optional[float] = None
 
 
 class StreakAlertEngine:
@@ -462,7 +469,8 @@ class StreakAlertEngine:
                           event_start_time: datetime, sport: str, discovery_source: str, competition_name: str, competition_slug: str,  participants: str,
                           home_team_name: str, away_team_name: str,
                           h2h_events: List[Dict], minutes_until_start: int, observations: Optional[List[Dict]] = None,
-                          home_team_id: int = None, away_team_id: int = None) -> Optional[H2HStreak]:
+                          home_team_id: int = None, away_team_id: int = None,
+                          event_odds: Optional[Any] = None) -> Optional[H2HStreak]:
         """
         Analyze H2H events using proven result extraction from sofascore_api.py.
         Tracks wins relative to ACTUAL TEAMS (not home/away positions which change historically).
@@ -668,6 +676,27 @@ class StreakAlertEngine:
                 else:
                     logger.debug(f"No rankings found in observations for event {event_id}")
             
+            # Extract odds from event_odds if available
+            one_open = None
+            x_open = None
+            two_open = None
+            one_final = None
+            x_final = None
+            two_final = None
+            
+            if event_odds:
+                try:
+                    # Convert Decimal to float for consistency
+                    one_open = float(event_odds.one_open) if event_odds.one_open is not None else None
+                    x_open = float(event_odds.x_open) if event_odds.x_open is not None else None
+                    two_open = float(event_odds.two_open) if event_odds.two_open is not None else None
+                    one_final = float(event_odds.one_final) if event_odds.one_final is not None else None
+                    x_final = float(event_odds.x_final) if event_odds.x_final is not None else None
+                    two_final = float(event_odds.two_final) if event_odds.two_final is not None else None
+                    logger.debug(f"Extracted odds for event {event_id}: 1={one_open}→{one_final}, X={x_open}→{x_final}, 2={two_open}→{two_final}")
+                except (AttributeError, ValueError, TypeError) as e:
+                    logger.warning(f"Error extracting odds from event_odds for event {event_id}: {e}")
+            
             return H2HStreak(
                 event_id=event_id,
                 custom_id=event_custom_id,
@@ -710,7 +739,14 @@ class StreakAlertEngine:
                 home_team_batches=home_team_batches,
                 away_team_batches=away_team_batches,
                 # NEW: Winning odds data
-                winning_odds_data=winning_odds_data
+                winning_odds_data=winning_odds_data,
+                # NEW: Current event odds
+                one_open=one_open,
+                x_open=x_open,
+                two_open=two_open,
+                one_final=one_final,
+                x_final=x_final,
+                two_final=two_final
             )
             
         except Exception as e:

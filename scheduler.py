@@ -321,8 +321,10 @@ class JobScheduler:
         try:
             observations = None
             
-            # STEP 1: Check recently started events for timestamp corrections (15 minutes after start)
-            events_started_recently = EventRepository.get_events_started_recently(window_minutes=15)
+            # STEP 1: Check recently started events for timestamp corrections
+            # Tennis events: 60 minutes window (they change timestamps frequently up to 1 hour after start)
+            # Other sports: 15 minutes window (sufficient for most sports)
+            events_started_recently = EventRepository.get_events_started_recently(window_minutes=60)
             if events_started_recently:
                 logger.info(f"Found {len(events_started_recently)} events that started recently (checking for late timestamp corrections)")
                 self._check_recently_started_events_for_timestamp_corrections(events_started_recently)
@@ -618,7 +620,8 @@ class JobScheduler:
                                                     h2h_events=h2h_events,
                                                     minutes_until_start=minutes_until_start,
                                                     home_team_id=home_team_id,
-                                                    away_team_id=away_team_id
+                                                    away_team_id=away_team_id,
+                                                    event_odds=event_obj.event_odds
                                                 )
                                                 
                                                 if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
@@ -780,9 +783,13 @@ class JobScheduler:
     
     def _check_recently_started_events_for_timestamp_corrections(self, events_started_recently: List[Dict]):
         """
-        Check recently started events (within last 15 minutes) for timestamp corrections.
+        Check recently started events for timestamp corrections with sport-specific windows.
+        
+        Tennis/Tennis Doubles: Checks up to 60 minutes after start (every 5 minutes)
+        Other sports: Checks up to 15 minutes after start (at 5, 10, 15 minutes)
+        
         This catches late changes that occur after the game starts or right at start time.
-        Only checks events at specific intervals (5, 10, 15 minutes) to avoid timing precision issues.
+        Only checks events at specific intervals to avoid timing precision issues.
         
         Args:
             events_started_recently: List of event dictionaries from get_events_started_recently()
@@ -795,19 +802,31 @@ class JobScheduler:
                 try:
                     logger.info(f"Checking recently started event {event_data['slug']} - {event_data['start_time_utc']}")
                     event_id = event_data['id']
+                    sport = event_data['sport']
                     stored_start_time = event_data['start_time_utc']
                     
                     # Calculate how long ago this event started (using stored time)
                     minutes_since_start = self._minutes_since_start(stored_start_time)
                     
-                    # Only process events at specific intervals (5, 10, 15 minutes after start)
-                    # This avoids timing precision issues and ensures we only check at key moments
                     # Convert to positive for easier comparison
                     minutes_ago = abs(minutes_since_start)
                     
-                    # Define check intervals (when to actually check for timestamp corrections)
-                    CHECK_INTERVALS = [5, 10, 15]
+                    # Define check intervals based on sport (when to actually check for timestamp corrections)
+                    # Tennis changes timestamps frequently, even up to 1 hour after scheduled start
+                    if sport in ['Tennis', 'Tennis Doubles']:
+                        # Tennis: Check every 5 minutes up to 60 minutes after start
+                        CHECK_INTERVALS = list(range(5, 65, 5))  # [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
+                        logger.debug(f"🎾 Tennis event {event_id} - using extended check intervals up to 60 minutes")
+                    else:
+                        # Other sports: Check only at 5, 10, 15 minutes after start
+                        CHECK_INTERVALS = [5, 10, 15]
+                        
+                        # Skip non-tennis events that are outside the 15-minute window
+                        if minutes_ago > 15:
+                            logger.debug(f"⏭️ Skipping non-tennis event {event_id} - outside 15-minute window ({minutes_ago} minutes ago)")
+                            continue
                     
+                    # Check if current time aligns with a check interval
                     if minutes_ago not in CHECK_INTERVALS:
                         logger.debug(f"⏭️ Skipping event {event_id} - not at check interval ({minutes_ago} minutes ago, checking at {CHECK_INTERVALS})")
                         continue
@@ -831,8 +850,11 @@ class JobScheduler:
                         corrected_count += 1
                         logger.info(f"✅ TIMESTAMP CORRECTED for event {event_id} - starting time was updated after game started")
                         
-                        # Mark as recently processed to avoid duplicate processing
-                        self.recently_rescheduled.add(event_id)
+                        # Trigger rescheduled event processing to extract odds and run alerts/H2H
+                        # This ensures the event doesn't get lost after timestamp correction
+                        # _check_rescheduled_event will mark the event as processed internally
+                        logger.info(f"🔄 Processing rescheduled event {event_id} after timestamp correction")
+                        self._check_rescheduled_event(event_id)
                     
                 except Exception as e:
                     logger.error(f"Error checking recently started event {event_data.get('id')}: {e}")
@@ -965,10 +987,13 @@ class JobScheduler:
             # Calculate new minutes until start
             new_minutes_until_start = self._minutes_until_start(event.start_time_utc)
             
-            # Check if rescheduled game is now in key moments (30 or 5 minutes) OR has already started (negative minutes)
-            if new_minutes_until_start in [30, 5] or new_minutes_until_start < 0:
-                if new_minutes_until_start >= 0:
+            # Check if rescheduled game is now in key moments (30 or 5 minutes), starting now (0), or has already started (negative)
+            # We always process rescheduled events to catch late corrections
+            if new_minutes_until_start in [30, 5, 0] or new_minutes_until_start < 0:
+                if new_minutes_until_start > 0:
                     logger.info(f"🎯 RESCHEDULED GAME ALERT: Event {event_id} is now starting in {new_minutes_until_start} minutes")
+                elif new_minutes_until_start == 0:
+                    logger.info(f"🎯 RESCHEDULED GAME ALERT: Event {event_id} is starting NOW (0 minutes)")
                 else:
                     logger.info(f"🎯 RESCHEDULED GAME ALERT: Event {event_id} has already started {abs(new_minutes_until_start)} minutes ago - extracting latest odds")
                 
@@ -1007,11 +1032,11 @@ class JobScheduler:
     def _process_alerts_for_rescheduled_event(self, event):
         """
         Process alerts for a rescheduled event that was just updated with new odds.
-        Uses the same dual-process flow as normal events for consistent alert format.
+        Uses the same H2H + dual-process flow as normal events for consistent alert format.
         This completes the pre-start job workflow to prevent infinite loops.
         """
         try:
-            logger.info(f"🔍 Processing dual-process alerts for rescheduled event {event.id}")
+            logger.info(f"🔍 Processing H2H and dual-process alerts for rescheduled event {event.id}")
             
             # Refresh materialized views to ensure latest data for alert evaluation
             logger.info("🔄 Refreshing alert materialized views for rescheduled event...")
@@ -1027,7 +1052,125 @@ class JobScheduler:
             
             # Calculate minutes until start for the rescheduled event using FRESH database time
             minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
-            logger.info(f"🔍 Evaluating rescheduled event {event.id} for dual-process alerts (starts in {minutes_until_start} minutes)...")
+            logger.info(f"🔍 Evaluating rescheduled event {event.id} for H2H and dual-process alerts (starts in {minutes_until_start} minutes)...")
+            
+            # ========================================
+            # H2H STREAK ANALYSIS FOR RESCHEDULED EVENT
+            # ========================================
+            streak_analysis = None
+            observations = None
+            
+            # Check if event has custom_id for H2H analysis
+            if event_obj.custom_id:
+                try:
+                    # Fetch H2H events for this custom_id
+                    h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
+                    if h2h_response and 'events' in h2h_response:
+                        h2h_events = h2h_response['events']
+                        
+                        # Get team IDs and event details
+                        home_team_id = None
+                        away_team_id = None
+                        competition_slug = None
+                        competition_name = None
+                        event_details = None
+                        
+                        try:
+                            # Fetch current event details to get correct team IDs
+                            event_details = api_client.get_event_details(event_obj.id)
+                            
+                            if event_details:
+                                # For Tennis, add rankings to observations
+                                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                    has_rankings = False
+                                    if observations:
+                                        has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+                                    
+                                    if not has_rankings:
+                                        home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                        away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                        
+                                        if observations is None:
+                                            observations = []
+                                        
+                                        observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                        logger.info(f"✅ Added rankings to observations for rescheduled event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
+                                
+                                # Extract team IDs and other event data
+                                home_team_id = event_details.get('homeTeam', {}).get('id')
+                                away_team_id = event_details.get('awayTeam', {}).get('id')
+                                competition_name = event_details.get('tournament', {}).get('uniqueTournament', {}).get('name')
+                                competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
+                            else:
+                                logger.warning(f"Could not fetch event details for rescheduled event {event_obj.id}")
+                        except Exception as e:
+                            logger.error(f"Error fetching event details for rescheduled event {event_obj.id}: {e}")
+                        
+                        # Ensure observations for tennis events
+                        tennis_observations = observations
+                        if event_obj.sport in ['Tennis', 'Tennis Doubles'] and not tennis_observations:
+                            logger.info(f"🎾 Getting observations for tennis rescheduled event {event_obj.id}")
+                            if not sport_observations_manager.has_observations_for_event(event_obj.id):
+                                tennis_observations = api_client.get_event_results(
+                                    event_id=event_obj.id,
+                                    update_court_type=True
+                                )
+                            else:
+                                observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                                if observation:
+                                    tennis_observations = [{'type': 'ground_type', 'value': observation.observation_value}]
+                                    if observations and len(observations) > 1:
+                                        rankings_obs = next((obs for obs in observations if obs.get('type') == 'rankings'), None)
+                                        if rankings_obs:
+                                            tennis_observations.append(rankings_obs)
+                                    elif event_details:
+                                        home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                        away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                        if home_team_ranking is not None or away_team_ranking is not None:
+                                            tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                        elif tennis_observations:
+                            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
+                                if not has_rankings and event_details:
+                                    home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                    away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                    tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                        
+                        # Analyze H2H events with team results
+                        from streak_alerts import streak_alert_engine
+                        streak_analysis = streak_alert_engine.analyze_h2h_events(
+                            event_id=event_obj.id,
+                            event_custom_id=event_obj.custom_id,
+                            event_start_time=event_obj.start_time_utc,
+                            sport=event_obj.sport,
+                            discovery_source=event_obj.discovery_source,
+                            competition_name=competition_name,
+                            competition_slug=competition_slug,
+                            observations=tennis_observations,
+                            participants=f"{event_obj.home_team} vs {event_obj.away_team}",
+                            home_team_name=event_obj.home_team,
+                            away_team_name=event_obj.away_team,
+                            h2h_events=h2h_events,
+                            minutes_until_start=minutes_until_start,
+                            home_team_id=home_team_id,
+                            away_team_id=away_team_id,
+                            event_odds=event_obj.event_odds
+                        )
+                        
+                        if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
+                            logger.info(f"✅ H2H streak analysis completed for rescheduled event {event_obj.id}: {streak_analysis.current_streak}")
+                        else:
+                            logger.debug(f"⏭️ No H2H streak alert for rescheduled event {event_obj.id}")
+                    else:
+                        logger.debug(f"No H2H data found for rescheduled event {event_obj.id}")
+                except Exception as e:
+                    logger.error(f"Error analyzing H2H streak for rescheduled event {event_obj.id}: {e}")
+            else:
+                logger.debug(f"Rescheduled event {event_obj.id} has no custom_id - skipping H2H")
+            
+            # ========================================
+            # DUAL PROCESS ANALYSIS FOR RESCHEDULED EVENT
+            # ========================================
             
             # Enrich event object with court type for Tennis/Tennis Doubles events
             event_obj.court_type = None  # Default value
@@ -1055,8 +1198,21 @@ class JobScheduler:
                 should_send = True
                 reason = f"Process1 found candidates (status: {dual_report.process1_status})"
             
+            # ========================================
+            # SEND ALERTS FOR RESCHEDULED EVENT (H2H + DUAL IN PAIR)
+            # ========================================
+            
+            # Send H2H streak alert if available
+            if streak_analysis:
+                from streak_alerts import streak_alert_engine
+                if streak_alert_engine.should_send_streak_alert(streak_analysis):
+                    logger.info(f"📊 Sending H2H streak alert for rescheduled event {event.id}")
+                    pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
+            
+            # Send dual process alert if available
             if should_send:
                 logger.info(f"✅ Dual process report generated for rescheduled event {event.id}: {reason}")
+                logger.info(f"📊 Sending dual process alert for rescheduled event {event.id}")
                 # Send dual process alerts using the same method as normal events
                 self._send_dual_process_alerts([dual_report])
                 

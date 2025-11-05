@@ -1,7 +1,7 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.4.6  
-**Estado General:** ✅ **MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + CRITICAL FIXES + OPTIMIZATIONS + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + TENNIS RANKINGS**  
+**Versión:** v1.4.7  
+**Estado General:** ✅ **MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + CRITICAL FIXES + OPTIMIZATIONS + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + TENNIS RANKING DIFFERENTIAL**  
 **Última Actualización:** 30 de Octubre, 2025
 
 ## 🎯 **Resumen del Proyecto**
@@ -116,6 +116,15 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Update date formatting to include year in all displays
 - [x] Test complete H2H message with individual match results and dates
  - [x] Compute and display per-team H2H net points by role `[H:+n, A:+n]` (solo victorias del equipo); remover net points de "Total Matches"
+
+### **🎾 Tennis Ranking Features - 100% COMPLETADO (30/10/2025)**
+- [x] Add ranking display for Tennis/Tennis Doubles in historical form with proper formatting
+- [x] Add helper function `_extract_ranking_from_team()` to handle singles and doubles rankings
+- [x] Implement singles/doubles filtering for tennis events in historical results using `type` field
+- [x] Add ranking net differential calculation per batch `[~±n]`
+- [x] Remove role indicators (🏠/✈️) for Tennis events in historical form
+- [x] Display rankings in both home and away team historical form batches
+- [x] Format ranking differential with proper sign indicators
 
 ## ✅ **Estado de Tareas - PROCESS 1 COMPLETADO - PROCESS 2 EN PREPARACIÓN**
 

@@ -492,8 +492,24 @@ class PreStartNotification:
                 message += f"🏟️ {streak.sport}"
             
             message += f"({streak.competition_name})\n"
-            message += f"⏰ {streak.minutes_until_start} minutes\n\n"
+            message += f"⏰ {streak.minutes_until_start} minutes\n"
             
+            # Display current event odds if available (similar to Process 1 format)
+            if streak.one_open is not None and streak.one_final is not None:
+                odds_display = f"1: {streak.one_open}→{streak.one_final}"
+                if streak.x_open is not None and streak.x_final is not None:
+                    odds_display += f", X: {streak.x_open}→{streak.x_final}"
+                odds_display += f", 2: {streak.two_open}→{streak.two_final}"
+                message += f"💰 {odds_display}\n"
+            elif streak.one_final is not None:
+                # Fallback: show final odds only if open odds not available
+                odds_display = f"1: {streak.one_final}"
+                if streak.x_final is not None:
+                    odds_display += f", X: {streak.x_final}"
+                odds_display += f", 2: {streak.two_final}"
+                message += f"💰 {odds_display}\n"
+            
+            message += "\n"
             message += f"📈 H2H (Last 2 Years):\n"
             
             # Total matches only
@@ -598,6 +614,10 @@ class PreStartNotification:
                     if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
                         if streak.home_team_batches:
                             message += f"<b>{streak.home_team_name}</b>:\n"
+                            # Initialize cumulative counters across all batches
+                            cumulative_home_net = 0
+                            cumulative_away_net = 0
+                            
                             for i, batch in enumerate(streak.home_team_batches):
                                 # Calculate game count for this batch (5, 10, 15, etc.)
                                 game_count = (i + 1) * 5
@@ -625,11 +645,25 @@ class PreStartNotification:
                                 
                                 message += f"{batch_summary}\n"
                                 
-                                # Show individual games in this batch
+                                # Show individual games in this batch with cumulative differentials
                                 for game in batch['games']:
                                     game_date = self._format_game_date(game.get('startTimestamp', 0))
                                     date_prefix = f"{game_date} " if game_date else ""
-                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                    
+                                    # Calculate game differential and update cumulative counters
+                                    game_net_score = game.get('net_score', 0)
+                                    game_role = game.get('role', 'home')
+                                    
+                                    if game_role == 'home':
+                                        cumulative_home_net += game_net_score
+                                    else:
+                                        cumulative_away_net += game_net_score
+                                    
+                                    # Format cumulative differentials
+                                    cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
+                                    cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
+                                    
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['score_for']}-{game['score_against']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:
@@ -640,6 +674,10 @@ class PreStartNotification:
                         # Display home team batches
                         if streak.home_team_batches:
                             message += f"<b>{streak.home_team_name}</b>:\n"
+                            # Initialize cumulative counters across all batches
+                            cumulative_home_net = 0
+                            cumulative_away_net = 0
+                            
                             for i, batch in enumerate(streak.home_team_batches):
                                 # Calculate game count for this batch (5, 10, 15, etc.)
                                 game_count = (i + 1) * 5
@@ -661,12 +699,26 @@ class PreStartNotification:
                                 
                                 message += f"{batch_summary}\n"
                                 
-                                # Show individual games in this batch
+                                # Show individual games in this batch with cumulative differentials
                                 for game in batch['games']:
                                     game_date = self._format_game_date(game.get('startTimestamp', 0))
                                     date_prefix = f"{game_date} " if game_date else ""
                                     role_indicator = "🏠" if game.get('role') == 'home' else "✈️"
-                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                    
+                                    # Calculate game differential and update cumulative counters
+                                    game_net_score = game.get('net_score', 0)
+                                    game_role = game.get('role', 'home')
+                                    
+                                    if game_role == 'home':
+                                        cumulative_home_net += game_net_score
+                                    else:
+                                        cumulative_away_net += game_net_score
+                                    
+                                    # Format cumulative differentials
+                                    cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
+                                    cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
+                                    
+                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:
@@ -679,6 +731,10 @@ class PreStartNotification:
                     # Display away team batches
                     if streak.away_team_batches:
                         message += f"<b>{streak.away_team_name}</b>:\n"
+                        # Initialize cumulative counters across all batches
+                        cumulative_home_net = 0
+                        cumulative_away_net = 0
+                        
                         for i, batch in enumerate(streak.away_team_batches):
                             # Calculate game count for this batch (5, 10, 15, etc.)
                             game_count = (i + 1) * 5
@@ -707,15 +763,29 @@ class PreStartNotification:
                             
                             message += f"{batch_summary}\n"
                             
-                            # Show individual games in this batch
+                            # Show individual games in this batch with cumulative differentials
                             for game in batch['games']:
                                 game_date = self._format_game_date(game.get('startTimestamp', 0))
                                 date_prefix = f"{game_date} " if game_date else ""
-                                if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
-                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                
+                                # Calculate game differential and update cumulative counters
+                                game_net_score = game.get('net_score', 0)
+                                game_role = game.get('role', 'home')
+                                
+                                if game_role == 'home':
+                                    cumulative_home_net += game_net_score
                                 else:
-                                    role_indicator = "🏠" if game.get('role') == 'home' else "✈️"
-                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                    cumulative_away_net += game_net_score
+                                
+                                # Format cumulative differentials
+                                cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
+                                cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
+                                
+                                if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['score_for']}-{game['score_against']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
+                                else:
+                                    role_indicator = "🏠" if game_role == 'home' else "✈️"
+                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
                             
                             # Add break line between batches (except for the last batch)
                             if i < len(streak.away_team_batches) - 1:
