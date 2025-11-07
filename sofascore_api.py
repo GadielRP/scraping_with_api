@@ -365,11 +365,15 @@ class SofaScoreAPI:
             return None
     
 
-    def extract_results_from_response(self, response: Dict) -> Optional[Dict]:
+    def extract_results_from_response(self, response: Dict, extract_tennis_points: bool = False) -> Optional[Dict]:
         """
         Extract results data from event API response.
         Works with any sport (football, tennis, etc.) by analyzing the response structure.
         IMPROVED: Handles all finished event status codes, not just status_code=100.
+        
+        Args:
+            response: The API response containing event data
+            extract_tennis_points: If True, extract period points for tennis (period1, period2, period3)
         """
         try:
             if not response or 'event' not in response:
@@ -396,10 +400,15 @@ class SofaScoreAPI:
             
             # Define canceled/postponed status codes (should be skipped)
             CANCELED_STATUS_CODES = {
+                60,   # Postponed (football)
                 70,   # Canceled
                 80,   # Postponed
                 90,   # Suspended
             }
+            # If extract_tennis_points is True and status_code is 92, return None
+            if extract_tennis_points and status_code == 92:
+                logger.info(f"Tennis player retired - status: {status_description}")
+                return None
             
             # Check if event is finished
             if status_code in CANCELED_STATUS_CODES:
@@ -517,6 +526,27 @@ class SofaScoreAPI:
                 'winner': winner,
                 'ended_at': ended_at
             }
+            
+            # Extract tennis period points if requested
+            if extract_tennis_points:
+                # Extract points from each period (set) for tennis
+                home_period1 = home_score_data.get('period1')
+                home_period2 = home_score_data.get('period2')
+                home_period3 = home_score_data.get('period3')  # May be None for 2-set matches
+                
+                away_period1 = away_score_data.get('period1')
+                away_period2 = away_score_data.get('period2')
+                away_period3 = away_score_data.get('period3')  # May be None for 2-set matches
+                
+                # Add period points to result_data
+                result_data['home_period1'] = home_period1
+                result_data['home_period2'] = home_period2
+                result_data['home_period3'] = home_period3
+                result_data['away_period1'] = away_period1
+                result_data['away_period2'] = away_period2
+                result_data['away_period3'] = away_period3
+                
+                logger.debug(f"Extracted tennis period points: Home [{home_period1}, {home_period2}, {home_period3}] vs Away [{away_period1}, {away_period2}, {away_period3}]")
             
             return result_data
             

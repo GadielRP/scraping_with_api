@@ -57,6 +57,9 @@ class H2HStreak:
     # NEW: Batched team form data
     home_team_batches: List[Dict]  # Home team results in batches of 5
     away_team_batches: List[Dict]  # Away team results in batches of 5
+    # NEW: Final real rankings (average of batch real rankings)
+    home_team_final_real_ranking: float = 0  # Final real ranking for home team
+    away_team_final_real_ranking: float = 0  # Final real ranking for away team
     # NEW: Winning odds data
     winning_odds_data: Optional[Dict] = None  # Winning odds response data
     # NEW: Current event odds (for display in H2H streak messages)
@@ -71,6 +74,9 @@ class H2HStreak:
 class StreakAlertEngine:
     """Engine for analyzing H2H streaks and generating alerts"""
     
+    # Default minimum number of results to fetch for team form analysis
+    DEFAULT_MIN_RESULTS = 10
+    
     def __init__(self):
         self.two_year_window = timedelta(days=730)  # 2 years
     
@@ -80,6 +86,8 @@ class StreakAlertEngine:
     def process_team_results_into_batches(self, team_results: List[Dict], team_name: str) -> List[Dict]:
         """
         Process team results into batches of 5 matches with individual game results and batch totals.
+        
+        For tennis, uses period points instead of sets for net differential calculation.
         
         Args:
             team_results: List of team results from get_team_last_10_results_by_id
@@ -92,7 +100,7 @@ class StreakAlertEngine:
             - batch_wins: Number of wins in this batch
             - batch_losses: Number of losses in this batch  
             - batch_draws: Number of draws in this batch
-            - batch_points_for: Total points scored by team in this batch
+            - batch_points_for: Total points scored by team in this batch (sets or total game points)
             - batch_points_against: Total points scored against team in this batch
             - batch_net_points: Net points (for - against) in this batch
         """
@@ -101,6 +109,9 @@ class StreakAlertEngine:
         
         batches = []
         batch_size = 5
+        
+        # Check if this is tennis data (has period points)
+        is_tennis = any('team_period1' in game for game in team_results)
         
         # Process results in batches of 5 (most recent first)
         for i in range(0, len(team_results), batch_size):
@@ -113,26 +124,52 @@ class StreakAlertEngine:
             batch_draws = sum(1 for game in batch_games if game['winner'] == 'X')
             
             # Calculate points totals
-            batch_points_for = sum(game['home_score'] for game in batch_games)
-            batch_points_against = sum(game['away_score'] for game in batch_games)
-            batch_net_points = batch_points_for - batch_points_against
+            if is_tennis:
+                # For tennis, use total points from all periods instead of sets
+                batch_points_for = 0
+                batch_points_against = 0
+                for game in batch_games:
+                    team_total = self._calculate_tennis_total_points(game, is_team=True)
+                    opponent_total = self._calculate_tennis_total_points(game, is_team=False)
+                    batch_points_for += team_total
+                    batch_points_against += opponent_total
+                batch_net_points = batch_points_for - batch_points_against
+            else:
+                # For other sports, use regular scores
+                batch_points_for = sum(game['home_score'] for game in batch_games)
+                batch_points_against = sum(game['away_score'] for game in batch_games)
+                batch_net_points = batch_points_for - batch_points_against
             
             # Calculate net points by role
             batch_home_net_points = 0
             batch_away_net_points = 0
             for game in batch_games:
+                if is_tennis:
+                    # For tennis, calculate net points from period points
+                    team_total = self._calculate_tennis_total_points(game, is_team=True)
+                    opponent_total = self._calculate_tennis_total_points(game, is_team=False)
+                    net = team_total - opponent_total
+                else:
+                    # For other sports, use regular scores
+                    net = game['home_score'] - game['away_score']
+                
                 if game.get('role') == 'home':
-                    batch_home_net_points += (game['home_score'] - game['away_score'])
+                    batch_home_net_points += net
                 elif game.get('role') == 'away':
-                    batch_away_net_points += (game['home_score'] - game['away_score'])
+                    batch_away_net_points += net
             
-            # Calculate net ranking differential (player_ranking - opponent_ranking)
-            batch_net_ranking_differential = 0
+            # Calculate real ranking (average of single rankings)
+            single_rankings = []
             for game in batch_games:
                 own_ranking = game.get('own_ranking', 0)
                 opponent_ranking = game.get('opponent_ranking', 0)
-                if own_ranking > 0 and opponent_ranking > 0:
-                    batch_net_ranking_differential += (own_ranking - opponent_ranking)
+                result = game.get('winner')
+                single_ranking = self._calculate_single_ranking(result, own_ranking, opponent_ranking)
+                if single_ranking > 0:
+                    single_rankings.append(single_ranking)
+            
+            # Calculate average real ranking for this batch
+            batch_real_ranking = round(int(sum(single_rankings)) / len(single_rankings)) if single_rankings else 0
             
             # Format individual games for display
             formatted_games = []
@@ -153,16 +190,36 @@ class StreakAlertEngine:
                 # Get role for this game
                 team_role = game.get('role', 'home')
                 
+                # Calculate score_for and score_against based on sport
+                if is_tennis:
+                    # For tennis, use total points from all periods
+                    score_for = self._calculate_tennis_total_points(game, is_team=True)
+                    score_against = self._calculate_tennis_total_points(game, is_team=False)
+                else:
+                    # For other sports, use regular scores
+                    score_for = game['home_score']
+                    score_against = game['away_score']
+                
+                # Calculate single ranking for this game
+                single_ranking = self._calculate_single_ranking(
+                    game['winner'],
+                    game.get('own_ranking', 0),
+                    game.get('opponent_ranking', 0)
+                )
+                
                 formatted_games.append({
                     'result': result_symbol,
                     'opponent': opponent,
-                    'score_for': game['home_score'],
-                    'score_against': game['away_score'],
-                    'net_score': game['home_score'] - game['away_score'],
+                    'score_for': score_for,
+                    'score_against': score_against,
+                    'net_score': score_for - score_against,
                     'startTimestamp': game.get('startTimestamp', 0),  # Include timestamp for date display
                     'role': team_role,  # Track role for display
                     'opponent_ranking': game.get('opponent_ranking', 0),
-                    'own_ranking': game.get('own_ranking', 0)
+                    'own_ranking': game.get('own_ranking', 0),
+                    'home_score': game.get('home_score'),  # Original sets for tennis display
+                    'away_score': game.get('away_score'),  # Original sets for tennis display
+                    'single_ranking': single_ranking  # Single ranking for this game
                 })
             
             batches.append({
@@ -176,10 +233,75 @@ class StreakAlertEngine:
                 'batch_net_points': batch_net_points,
                 'batch_home_net_points': batch_home_net_points,
                 'batch_away_net_points': batch_away_net_points,
-                'batch_net_ranking_differential': batch_net_ranking_differential
+                'batch_real_ranking': batch_real_ranking
             })
         
         return batches
+    
+    def _calculate_tennis_total_points(self, game: Dict, is_team: bool) -> int:
+        """
+        Calculate total tennis points from all periods (sets) for a game.
+        
+        Args:
+            game: Game dictionary with period point data
+            is_team: True to calculate for team, False for opponent
+            
+        Returns:
+            Total points across all periods
+        """
+        prefix = 'team' if is_team else 'opponent'
+        
+        period1 = game.get(f'{prefix}_period1', 0) or 0
+        period2 = game.get(f'{prefix}_period2', 0) or 0
+        period3 = game.get(f'{prefix}_period3', 0) or 0  # May be 0 for 2-set matches
+        
+        return period1 + period2 + period3
+    
+    def _calculate_single_ranking(self, result: str, own_ranking: int, opponent_ranking: int) -> int:
+        """
+        Calculate the single ranking for a game based on result and rankings.
+        
+        Logic:
+        - Win + opponent lower ranked (higher number): use opponent's ranking
+        - Win + opponent higher ranked (lower number): use player's ranking
+        - Loss + opponent lower ranked (higher number): use player's ranking
+        - Loss + opponent higher ranked (lower number): use opponent's ranking
+        
+        Simplified: Win = min(own, opp), Loss = max(own, opp)
+        
+        Args:
+            result: '1' for win, '2' for loss, 'X' for draw
+            own_ranking: Player's ranking
+            opponent_ranking: Opponent's ranking
+            
+        Returns:
+            Single ranking for this game (0 if rankings not available)
+        """
+        if own_ranking == 0 or opponent_ranking == 0:
+            return 0
+        
+        if result == '1':  # Win
+            return min(own_ranking, opponent_ranking)
+        elif result == '2':  # Loss
+            return max(own_ranking, opponent_ranking)
+        else:  # Draw
+            # For draws, use average of both rankings
+            return (own_ranking + opponent_ranking) // 2
+    
+    def _calculate_final_real_ranking(self, batches: List[Dict]) -> float:
+        """
+        Calculate final real ranking as average of all batch real rankings.
+        Excludes batches with 0 real ranking.
+        
+        Args:
+            batches: List of batch dictionaries with batch_real_ranking
+            
+        Returns:
+            Final real ranking (0 if no valid rankings)
+        """
+        valid_rankings = [b['batch_real_ranking'] for b in batches if b.get('batch_real_ranking', 0) > 0]
+        return float(sum(valid_rankings) / len(valid_rankings)) if valid_rankings else 0
+
 
     def _get_filtering_criteria(self, sport: str, competition_slug: str, observations: Optional[List[Dict]] = None) -> Tuple[str, str]:
         """
@@ -194,14 +316,12 @@ class StreakAlertEngine:
             Tuple of (filter_type, filter_value) for logging
         """
         if (sport == 'Tennis' or sport == 'Tennis Doubles') and observations:
-            # For tennis, use ground_type filtering
-            if observations[0].get('type') == 'ground_type':
-                return ('ground_type', observations[0].get('value', 'unknown'))
-        else:
-            # For other sports, use competition filtering
-            return ('competition', competition_slug)
+            # For tennis, search for ground_type anywhere in observations (not just first item)
+            ground_type_obs = next((obs for obs in observations if obs.get('type') == 'ground_type'), None)
+            if ground_type_obs:
+                return ('ground_type', ground_type_obs.get('value', 'unknown'))
         
-        # Fallback
+        # For other sports, use competition filtering
         return ('competition', competition_slug)
     
     def _extract_ranking_from_team(self, team_data: Dict) -> int:
@@ -229,10 +349,171 @@ class StreakAlertEngine:
         
         return 0
 
-    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, observations: Optional[List[Dict]] = None) -> List[Dict]:
+    def _process_events_into_results(self, events: List[Dict], team_id: int, team_name: str, competition_slug: str, sport: str, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None) -> List[Dict]:
         """
-        Get the last 10 results for a team using team_id.
+        Process events into results list with filtering applied.
+        Helper method to avoid code duplication between first and second fetch.
+        
+        Args:
+            events: List of event dictionaries from API
+            team_id: ID of the team
+            team_name: Name of the team for context
+            competition_slug: Slug of the competition
+            sport: Sport type for filtering logic
+            observations: List of dicts containing filtering observations
+            exclude_event_id: Optional event ID to exclude from results
+            
+        Returns:
+            List of processed result dictionaries
+        """
+        results = []
+        for event in events:
+            try:
+                # Exclude current event if exclude_event_id is provided
+                event_id_from_api = event.get('id')
+                if exclude_event_id and event_id_from_api == exclude_event_id:
+                    logger.debug(f"Skipping event {event_id_from_api} for {team_name} - this is the current/upcoming event being analyzed")
+                    continue
+                
+                # Extract result using proven logic
+                # For tennis, also extract period points for points-based tracking
+                extract_points = sport in ['Tennis', 'Tennis Doubles']
+                result_data = api_client.extract_results_from_response({'event': event}, extract_tennis_points=extract_points)
+                if not result_data:
+                    continue
+                
+                # SPORT-SPECIFIC FILTERING: Apply appropriate filter based on sport
+                if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                    # For tennis, filter by ground_type AND singles/doubles
+                    if observations:
+                        # Search for ground_type anywhere in observations (not just first item)
+                        ground_type_obs = next((obs for obs in observations if obs.get('type') == 'ground_type'), None)
+                        if ground_type_obs:
+                            ground_type_value = ground_type_obs.get('value')
+                            if ground_type_value != event.get('groundType'):
+                                logger.debug(f"Skipping event for {team_name} - different ground type: {ground_type_value} vs {event.get('groundType')}")
+                                continue
+                    
+                    # Filter by singles/doubles match type (use type field from API response)
+                    home_team_type = event.get('homeTeam', {}).get('type', 1)
+                    away_team_type = event.get('awayTeam', {}).get('type', 1)
+                    event_is_doubles = home_team_type == 2 and away_team_type == 2
+                    sport_is_doubles = sport == 'Tennis Doubles'
+                    
+                    if event_is_doubles != sport_is_doubles:
+                        logger.debug(f"Skipping event for {team_name} - different match type (event is {'doubles' if event_is_doubles else 'singles'}, sport is {'doubles' if sport_is_doubles else 'singles'})")
+                        continue
+                else:
+                    # For other sports, filter by competition
+                    if competition_slug:
+                        event_competition_slug = event.get('tournament', {}).get('uniqueTournament', {}).get('slug', '')
+                        if event_competition_slug != competition_slug:
+                            logger.debug(f"Skipping event for {team_name} - different competition: {event_competition_slug} vs {competition_slug}")
+                            continue
+                
+                # Get team names
+                home_team = event.get('homeTeam', {}).get('name', '')
+                away_team = event.get('awayTeam', {}).get('name', '')
+                
+                # Determine if our team won, lost, or drew
+                winner_position = result_data['winner']  # '1', '2', or 'X'
+                
+                # Get team data for ranking extraction
+                home_team_data = event.get('homeTeam', {})
+                away_team_data = event.get('awayTeam', {})
+                
+                if winner_position == 'X':
+                    # Draw
+                    team_result = 'X'
+                    if home_team == team_name:
+                        opponent_name = away_team
+                        opponent_ranking = self._extract_ranking_from_team(away_team_data)
+                        own_ranking = self._extract_ranking_from_team(home_team_data)
+                    else:
+                        opponent_name = home_team
+                        opponent_ranking = self._extract_ranking_from_team(home_team_data)
+                        own_ranking = self._extract_ranking_from_team(away_team_data)
+                elif winner_position == '1':
+                    # Home team won
+                    if home_team == team_name:
+                        team_result = '1'  # Our team won
+                        opponent_name = away_team
+                        opponent_ranking = self._extract_ranking_from_team(away_team_data)
+                        own_ranking = self._extract_ranking_from_team(home_team_data)
+                    else:
+                        team_result = '2'  # Our team lost
+                        opponent_name = home_team
+                        opponent_ranking = self._extract_ranking_from_team(home_team_data)
+                        own_ranking = self._extract_ranking_from_team(away_team_data)
+                else:  # winner_position == '2'
+                    # Away team won
+                    if away_team == team_name:
+                        team_result = '1'  # Our team won
+                        opponent_name = home_team
+                        opponent_ranking = self._extract_ranking_from_team(home_team_data)
+                        own_ranking = self._extract_ranking_from_team(away_team_data)
+                    else:
+                        team_result = '2'  # Our team lost
+                        opponent_name = away_team
+                        opponent_ranking = self._extract_ranking_from_team(away_team_data)
+                        own_ranking = self._extract_ranking_from_team(home_team_data)
+                
+                # Map scores to our team's perspective and track role
+                if home_team == team_name:
+                    team_score = result_data['home_score']
+                    opponent_score = result_data['away_score']
+                    team_role = 'home'  # Team was home
+                else:
+                    team_score = result_data['away_score']
+                    opponent_score = result_data['home_score']
+                    team_role = 'away'  # Team was away
+                
+                result_dict = {
+                    'winner': team_result,
+                    'home_score': team_score,
+                    'away_score': opponent_score,
+                    'team_name': team_name,
+                    'opponent_name': opponent_name,
+                    'opponent_ranking': opponent_ranking,
+                    'own_ranking': own_ranking,
+                    'startTimestamp': event.get('startTimestamp', 0),  # Include for sorting
+                    'role': team_role  # Track whether team was home or away
+                }
+                
+                # Add tennis period points if available (for points-based tracking)
+                if sport in ['Tennis', 'Tennis Doubles'] and 'home_period1' in result_data:
+                    # Map period points to team's perspective
+                    if home_team == team_name:
+                        result_dict['team_period1'] = result_data.get('home_period1')
+                        result_dict['team_period2'] = result_data.get('home_period2')
+                        result_dict['team_period3'] = result_data.get('home_period3')
+                        result_dict['opponent_period1'] = result_data.get('away_period1')
+                        result_dict['opponent_period2'] = result_data.get('away_period2')
+                        result_dict['opponent_period3'] = result_data.get('away_period3')
+                    else:
+                        result_dict['team_period1'] = result_data.get('away_period1')
+                        result_dict['team_period2'] = result_data.get('away_period2')
+                        result_dict['team_period3'] = result_data.get('away_period3')
+                        result_dict['opponent_period1'] = result_data.get('home_period1')
+                        result_dict['opponent_period2'] = result_data.get('home_period2')
+                        result_dict['opponent_period3'] = result_data.get('home_period3')
+                
+                results.append(result_dict)
+                
+            except Exception as e:
+                logger.debug(f"Error processing team result event: {e}")
+                continue
+        
+        # Sort by startTimestamp to get most recent first (API returns inverted order)
+        results.sort(key=lambda x: x.get('startTimestamp', 0), reverse=True)
+        
+        return results
+
+    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None, min_results: int = None) -> List[Dict]:
+        """
+        Get the last N results for a team using team_id.
         Processes team results response and returns standardized format.
+        Makes additional fetches if needed to reach minimum of min_results.
         
         Args:
             team_id: ID of the team
@@ -240,141 +521,125 @@ class StreakAlertEngine:
             competition_slug: Slug of the competition
             sport: Sport type for filtering logic
             observations: List of dicts containing in order: ground_type, home_ranking, away_ranking
+            exclude_event_id: Optional event ID to exclude from results (current/upcoming event)
+            min_results: Minimum number of results to fetch (default: DEFAULT_MIN_RESULTS class constant)
         Returns:
             List of dicts with keys: winner, home_score, away_score, team_name, opponent_name
         """
+        # Use class constant if min_results not provided
+        if min_results is None:
+            min_results = self.DEFAULT_MIN_RESULTS
+        
         try:
-            # Fetch team results from API
-            full_response = api_client.get_team_last_10_results_response(team_id)
-            if not full_response or 'events' not in full_response:
-                logger.debug(f"No team results found for team {team_name} (ID: {team_id})")
-                return []
+            # Log filtering criteria at the start
+            filter_type, filter_value = self._get_filtering_criteria(sport, competition_slug, observations)
+            match_type_info = ""
+            if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                match_type = "doubles" if sport == 'Tennis Doubles' else "singles"
+                match_type_info = f" and match_type '{match_type}'"
             
-            events = full_response['events']
-            if not events:
-                logger.debug(f"No events in team results for team {team_name} (ID: {team_id})")
-                return []
+            # Log detailed filtering information
+            if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                ground_type_obs = next((obs for obs in observations if obs.get('type') == 'ground_type'), None) if observations else None
+                if ground_type_obs:
+                    logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: ground_type='{ground_type_obs.get('value')}'{match_type_info}")
+                else:
+                    logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: NO ground_type filter (ground_type not found in observations){match_type_info}")
+            else:
+                logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: competition='{competition_slug}'")
             
-            # Process events (they are in inverted order - last event is most recent)
-            results = []
-            for event in events:
-                try:
-                    # Extract result using proven logic
-                    result_data = api_client.extract_results_from_response({'event': event})
-                    if not result_data:
-                        continue
+            # Determine tennis parameters
+            is_tennis_singles = sport == 'Tennis'
+            is_tennis_doubles = sport == 'Tennis Doubles'
+            
+            # First fetch
+            logger.debug(f"TEST DEBUG: Sport-> {sport}")
+            full_response = api_client.get_team_last_results_response(
+                team_id, 
+                is_tennis_singles=is_tennis_singles, 
+                is_tennis_doubles=is_tennis_doubles,
+                second_fetch=False
+            )
+            
+            all_results = []
+            seen_event_ids = set()
+            
+            if full_response and 'events' in full_response:
+                events = full_response['events']
+                if events:
+                    logger.info(f"🔍 FILTERING: Processing {len(events)} total events from API (first fetch), filtering by {filter_type} '{filter_value}'{match_type_info}")
+                    first_fetch_results = self._process_events_into_results(
+                        events, team_id, team_name, competition_slug, sport, observations, exclude_event_id
+                    )
                     
-                    # SPORT-SPECIFIC FILTERING: Apply appropriate filter based on sport
-                    if (sport == 'Tennis' or sport == 'Tennis Doubles'):
-                        # For tennis, filter by ground_type AND singles/doubles
-                        if observations and observations[0].get('type') == 'ground_type':
-                            if observations[0].get('value') != event.get('groundType'):
-                                logger.debug(f"Skipping event for {team_name} - different ground type: {observations[0].get('value')} vs {event.get('groundType')}")
-                                continue
+                    # Track seen event IDs to avoid duplicates
+                    for result in first_fetch_results:
+                        # Extract event ID from result if available (we need to track this)
+                        # Since we don't store event_id in result_dict, we'll use a combination of timestamp and opponent
+                        # Actually, we should add event_id to result_dict for deduplication
+                        all_results.append(result)
+                        # Use timestamp + opponent as unique key for now
+                        seen_event_ids.add((result.get('startTimestamp', 0), result.get('opponent_name', '')))
+            
+            # Check if we need additional fetches (less than min_results)
+            # Keep trying until we have at least min_results or no more events available
+            fetch_attempt = 1
+            while len(all_results) < min_results and fetch_attempt < 3:  # Limit to 3 attempts to avoid infinite loops
+                if fetch_attempt == 1:
+                    logger.info(f"📊 Team {team_name} - Only {len(all_results)} results after first fetch, making second fetch to reach minimum of {min_results}")
+                else:
+                    logger.info(f"📊 Team {team_name} - Only {len(all_results)} results after {fetch_attempt} fetches, making another fetch to reach minimum of {min_results}")
+                
+                # Second or subsequent fetch with second_fetch=True
+                additional_response = api_client.get_team_last_results_response(
+                    team_id,
+                    is_tennis_singles=is_tennis_singles,
+                    is_tennis_doubles=is_tennis_doubles,
+                    second_fetch=True
+                )
+                
+                if additional_response and 'events' in additional_response:
+                    additional_events = additional_response['events']
+                    if additional_events:
+                        logger.info(f"🔍 FILTERING: Processing {len(additional_events)} total events from API (fetch {fetch_attempt + 1}), filtering by {filter_type} '{filter_value}'{match_type_info}")
+                        additional_fetch_results = self._process_events_into_results(
+                            additional_events, team_id, team_name, competition_slug, sport, observations, exclude_event_id
+                        )
                         
-                        # Filter by singles/doubles match type (use type field from API response)
-                        home_team_type = event.get('homeTeam', {}).get('type', 1)
-                        away_team_type = event.get('awayTeam', {}).get('type', 1)
-                        event_is_doubles = home_team_type == 2 and away_team_type == 2
-                        sport_is_doubles = sport == 'Tennis Doubles'
+                        # Add results from additional fetch, avoiding duplicates
+                        added_count = 0
+                        for result in additional_fetch_results:
+                            result_key = (result.get('startTimestamp', 0), result.get('opponent_name', ''))
+                            if result_key not in seen_event_ids:
+                                all_results.append(result)
+                                seen_event_ids.add(result_key)
+                                added_count += 1
                         
-                        if event_is_doubles != sport_is_doubles:
-                            logger.debug(f"Skipping event for {team_name} - different match type (event is {'doubles' if event_is_doubles else 'singles'}, sport is {'doubles' if sport_is_doubles else 'singles'})")
-                            continue
+                        if added_count == 0:
+                            # No new results added, break to avoid infinite loop
+                            logger.info(f"📊 Team {team_name} - No new results added in fetch {fetch_attempt + 1}, stopping")
+                            break
                     else:
-                        # For other sports, filter by competition
-                        if competition_slug:
-                            event_competition_slug = event.get('tournament', {}).get('uniqueTournament', {}).get('slug', '')
-                            if event_competition_slug != competition_slug:
-                                logger.debug(f"Skipping event for {team_name} - different competition: {event_competition_slug} vs {competition_slug}")
-                                continue
-                    
-                    # Get team names
-                    home_team = event.get('homeTeam', {}).get('name', '')
-                    away_team = event.get('awayTeam', {}).get('name', '')
-                    
-                    # Determine if our team won, lost, or drew
-                    winner_position = result_data['winner']  # '1', '2', or 'X'
-                    
-                    # Get team data for ranking extraction
-                    home_team_data = event.get('homeTeam', {})
-                    away_team_data = event.get('awayTeam', {})
-                    
-                    if winner_position == 'X':
-                        # Draw
-                        team_result = 'X'
-                        if home_team == team_name:
-                            opponent_name = away_team
-                            opponent_ranking = self._extract_ranking_from_team(away_team_data)
-                            own_ranking = self._extract_ranking_from_team(home_team_data)
-                        else:
-                            opponent_name = home_team
-                            opponent_ranking = self._extract_ranking_from_team(home_team_data)
-                            own_ranking = self._extract_ranking_from_team(away_team_data)
-                    elif winner_position == '1':
-                        # Home team won
-                        if home_team == team_name:
-                            team_result = '1'  # Our team won
-                            opponent_name = away_team
-                            opponent_ranking = self._extract_ranking_from_team(away_team_data)
-                            own_ranking = self._extract_ranking_from_team(home_team_data)
-                        else:
-                            team_result = '2'  # Our team lost
-                            opponent_name = home_team
-                            opponent_ranking = self._extract_ranking_from_team(home_team_data)
-                            own_ranking = self._extract_ranking_from_team(away_team_data)
-                    else:  # winner_position == '2'
-                        # Away team won
-                        if away_team == team_name:
-                            team_result = '1'  # Our team won
-                            opponent_name = home_team
-                            opponent_ranking = self._extract_ranking_from_team(home_team_data)
-                            own_ranking = self._extract_ranking_from_team(away_team_data)
-                        else:
-                            team_result = '2'  # Our team lost
-                            opponent_name = away_team
-                            opponent_ranking = self._extract_ranking_from_team(away_team_data)
-                            own_ranking = self._extract_ranking_from_team(home_team_data)
-                    
-                    # Map scores to our team's perspective and track role
-                    if home_team == team_name:
-                        team_score = result_data['home_score']
-                        opponent_score = result_data['away_score']
-                        team_role = 'home'  # Team was home
-                    else:
-                        team_score = result_data['away_score']
-                        opponent_score = result_data['home_score']
-                        team_role = 'away'  # Team was away
-                    
-                    results.append({
-                        'winner': team_result,
-                        'home_score': team_score,
-                        'away_score': opponent_score,
-                        'team_name': team_name,
-                        'opponent_name': opponent_name,
-                        'opponent_ranking': opponent_ranking,
-                        'own_ranking': own_ranking,
-                        'startTimestamp': event.get('startTimestamp', 0),  # Include for sorting
-                        'role': team_role  # Track whether team was home or away
-                    })
-                    
-                except Exception as e:
-                    logger.debug(f"Error processing team result event: {e}")
-                    continue
+                        # No more events available
+                        break
+                else:
+                    # No more events available
+                    break
+                
+                fetch_attempt += 1
             
-            # Sort by startTimestamp to get most recent first (API returns inverted order)
-            results.sort(key=lambda x: x.get('startTimestamp', 0), reverse=True)
+            # Sort all results by timestamp (most recent first)
+            all_results.sort(key=lambda x: x.get('startTimestamp', 0), reverse=True)
             
             # Debug: Log the results to verify processing
-            if results:
-                # Get filtering criteria for logging
+            if all_results:
                 filter_type, filter_value = self._get_filtering_criteria(sport, competition_slug, observations)
                 match_type_info = ""
                 if (sport == 'Tennis' or sport == 'Tennis Doubles'):
                     match_type = "doubles" if sport == 'Tennis Doubles' else "singles"
                     match_type_info = f" and match_type '{match_type}'"
-                logger.info(f"📊 Team {team_name} processed {len(results)} results from {filter_type} '{filter_value}'{match_type_info}:")
-                for i, result in enumerate(results[:5]):  # Show first 5
+                logger.info(f"📊 Team {team_name} processed {len(all_results)} total results from {filter_type} '{filter_value}'{match_type_info}:")
+                for i, result in enumerate(all_results[:5]):  # Show first 5
                     timestamp = result.get('startTimestamp', 0)
                     from datetime import datetime
                     date_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M') if timestamp > 0 else 'Invalid'
@@ -382,7 +647,6 @@ class StreakAlertEngine:
                     opp_rank = result.get('opponent_ranking', 0)
                     logger.info(f"  {i+1}. {date_str} - Winner: {result.get('winner', 'N/A')} ~{own_rank} vs ~{opp_rank} {result.get('opponent_name', 'N/A')}")
             else:
-                # Get filtering criteria for logging
                 filter_type, filter_value = self._get_filtering_criteria(sport, competition_slug, observations)
                 match_type_info = ""
                 if (sport == 'Tennis' or sport == 'Tennis Doubles'):
@@ -390,8 +654,8 @@ class StreakAlertEngine:
                     match_type_info = f" and match_type '{match_type}'"
                 logger.info(f"📊 Team {team_name} - no results found in {filter_type} '{filter_value}'{match_type_info}")
             
-            # Return only the 10 most recent
-            return results[:10]
+            # Return only the min_results most recent (or all if less than min_results)
+            return all_results[:min_results]
             
         except Exception as e:
             logger.error(f"Error getting team last 10 results for {team_name} (ID: {team_id}): {e}")
@@ -478,12 +742,38 @@ class StreakAlertEngine:
         try:
             # Initialize results list - will be empty if no H2H events or no past events
             results = []
+            
+            # Log filtering criteria at the start
+            filter_type, filter_value = self._get_filtering_criteria(sport, competition_slug, observations)
+            match_type_info = ""
+            if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                match_type = "doubles" if sport == 'Tennis Doubles' else "singles"
+                match_type_info = f" and match_type '{match_type}'"
+            
+            # Log detailed filtering information for H2H
+            if h2h_events:
+                logger.info(f"🔍 FILTERING H2H: Processing {len(h2h_events)} H2H events for {participants}")
+                if (sport == 'Tennis' or sport == 'Tennis Doubles'):
+                    ground_type_obs = next((obs for obs in observations if obs.get('type') == 'ground_type'), None) if observations else None
+                    if ground_type_obs:
+                        logger.info(f"🔍 FILTERING H2H: Applying filters: ground_type='{ground_type_obs.get('value')}'{match_type_info}")
+                    else:
+                        logger.info(f"🔍 FILTERING H2H: Applying filters: NO ground_type filter (ground_type not found in observations){match_type_info}")
+                else:
+                    logger.info(f"🔍 FILTERING H2H: Applying filters: competition='{competition_slug}'")
+            
             if h2h_events:
                 # Filter events within 2-year window
                 cutoff_timestamp = (event_start_time - self.two_year_window).timestamp()
                 
                 # Extract results using proven logic and map to actual teams
                 for event in h2h_events:
+                    # Exclude current event from H2H analysis
+                    h2h_event_id = event.get('id')
+                    if h2h_event_id == event_id:
+                        logger.debug(f"Skipping H2H event {h2h_event_id} - this is the current/upcoming event being analyzed")
+                        continue
+                    
                     event_timestamp = event.get('startTimestamp', 0)
                     
                     # Only past events within 2-year window
@@ -497,10 +787,14 @@ class StreakAlertEngine:
                         # SPORT-SPECIFIC FILTERING: Apply appropriate filter based on sport
                         if (sport == 'Tennis' or sport == 'Tennis Doubles'):
                             # For tennis, filter by ground_type AND singles/doubles
-                            if observations and observations[0].get('type') == 'ground_type':
-                                if observations[0].get('value') != event.get('groundType'):
-                                    logger.debug(f"Skipping H2H event - different ground type: {observations[0].get('value')} vs {event.get('groundType')}")
-                                    continue
+                            if observations:
+                                # Search for ground_type anywhere in observations (not just first item)
+                                ground_type_obs = next((obs for obs in observations if obs.get('type') == 'ground_type'), None)
+                                if ground_type_obs:
+                                    ground_type_value = ground_type_obs.get('value')
+                                    if ground_type_value != event.get('groundType'):
+                                        logger.debug(f"Skipping H2H event - different ground type: {ground_type_value} vs {event.get('groundType')}")
+                                        continue
                             
                             # Filter by singles/doubles match type (use type field from API response)
                             hist_home_team_type = hist_home_team_data.get('type', 1)
@@ -520,7 +814,9 @@ class StreakAlertEngine:
                                     continue
                         
                         # Use proven extraction logic
-                        result_data = api_client.extract_results_from_response({'event': event})
+                        # For tennis, also extract period points for points-based H2H tracking
+                        extract_points = sport in ['Tennis', 'Tennis Doubles']
+                        result_data = api_client.extract_results_from_response({'event': event}, extract_tennis_points=extract_points)
                         if result_data:
                             # Map winner to actual teams (not positions)
                             winner_position = result_data['winner']  # '1', '2', or 'X'
@@ -552,7 +848,7 @@ class StreakAlertEngine:
                             # Determine role of upcoming home team in historical match
                             upcoming_home_role = 'home' if hist_home == home_team_name else 'away'
                             
-                            results.append({
+                            result_entry = {
                                 'winner': winner_relative,
                                 'home_score': upcoming_home_score,
                                 'away_score': upcoming_away_score,
@@ -564,7 +860,18 @@ class StreakAlertEngine:
                                 'winner_position': winner_position,
                                 'startTimestamp': event_timestamp,  # Add timestamp for date display
                                 'upcoming_home_role': upcoming_home_role  # Track role for net points calculation
-                            })
+                            }
+                            
+                            # Add tennis period points if available (for points-based H2H tracking)
+                            if sport in ['Tennis', 'Tennis Doubles'] and 'home_period1' in result_data:
+                                result_entry['hist_home_period1'] = result_data.get('home_period1')
+                                result_entry['hist_home_period2'] = result_data.get('home_period2')
+                                result_entry['hist_home_period3'] = result_data.get('home_period3')
+                                result_entry['hist_away_period1'] = result_data.get('away_period1')
+                                result_entry['hist_away_period2'] = result_data.get('away_period2')
+                                result_entry['hist_away_period3'] = result_data.get('away_period3')
+                            
+                            results.append(result_entry)
             
             # Continue processing even if no H2H results found
             # This allows us to still show team form and winning odds data
@@ -623,26 +930,50 @@ class StreakAlertEngine:
             away_team_batches = []
             
             if home_team_id:
-                home_team_results = self.get_team_last_10_results_by_id(home_team_id, home_team_name, competition_slug, sport, observations)
-                home_team_wins = sum(1 for r in home_team_results if r['winner'] == '1')
-                home_team_losses = sum(1 for r in home_team_results if r['winner'] == '2')
-                home_team_draws = sum(1 for r in home_team_results if r['winner'] == 'X')
-                # Process home team results into batches
-                home_team_batches = self.process_team_results_into_batches(home_team_results, home_team_name)
-                logger.info(f"📊 Home team {home_team_name} form: {home_team_wins}W-{home_team_losses}L-{home_team_draws}D ({len(home_team_batches)} batches)")
+                home_team_results = self.get_team_last_10_results_by_id(home_team_id, home_team_name, competition_slug, sport, observations, exclude_event_id=event_id)
             else:
                 logger.debug(f"No home_team_id provided for {home_team_name}")
             
             if away_team_id:
-                away_team_results = self.get_team_last_10_results_by_id(away_team_id, away_team_name, competition_slug, sport, observations)
+                away_team_results = self.get_team_last_10_results_by_id(away_team_id, away_team_name, competition_slug, sport, observations, exclude_event_id=event_id)
+            else:
+                logger.debug(f"No away_team_id provided for {away_team_name}")
+            
+            # Trim results to match the player with fewer results (for fair ranking comparison)
+            # But try to maintain at least 10 results for each player when possible
+            if home_team_results and away_team_results:
+                home_count = len(home_team_results)
+                away_count = len(away_team_results)
+                min_results = min(home_count, away_count)
+                
+                # Only trim if counts differ, and try to maintain at least 10 results
+                if home_count != away_count:
+                    # If both have 10+, trim to the minimum (but that will be at least 10)
+                    # If one has less than 10, trim to that (but that's necessary for fair comparison)
+                    target_count = min_results
+                    logger.info(f"📊 Trimming results to {target_count} matches (home had {home_count}, away had {away_count})")
+                    home_team_results = home_team_results[:target_count]
+                    away_team_results = away_team_results[:target_count]
+            
+            # Calculate stats and process batches for home team
+            home_team_final_real_ranking = 0
+            if home_team_results:
+                home_team_wins = sum(1 for r in home_team_results if r['winner'] == '1')
+                home_team_losses = sum(1 for r in home_team_results if r['winner'] == '2')
+                home_team_draws = sum(1 for r in home_team_results if r['winner'] == 'X')
+                home_team_batches = self.process_team_results_into_batches(home_team_results, home_team_name)
+                home_team_final_real_ranking = self._calculate_final_real_ranking(home_team_batches)
+                logger.info(f"📊 Home team {home_team_name} form: {home_team_wins}W-{home_team_losses}L-{home_team_draws}D ({len(home_team_batches)} batches, final ranking: {home_team_final_real_ranking})")
+            
+            # Calculate stats and process batches for away team
+            away_team_final_real_ranking = 0
+            if away_team_results:
                 away_team_wins = sum(1 for r in away_team_results if r['winner'] == '1')
                 away_team_losses = sum(1 for r in away_team_results if r['winner'] == '2')
                 away_team_draws = sum(1 for r in away_team_results if r['winner'] == 'X')
-                # Process away team results into batches
                 away_team_batches = self.process_team_results_into_batches(away_team_results, away_team_name)
-                logger.info(f"📊 Away team {away_team_name} form: {away_team_wins}W-{away_team_losses}L-{away_team_draws}D ({len(away_team_batches)} batches)")
-            else:
-                logger.debug(f"No away_team_id provided for {away_team_name}")
+                away_team_final_real_ranking = self._calculate_final_real_ranking(away_team_batches)
+                logger.info(f"📊 Away team {away_team_name} form: {away_team_wins}W-{away_team_losses}L-{away_team_draws}D ({len(away_team_batches)} batches, final ranking: {away_team_final_real_ranking})")
             
             # Fetch winning odds data
             winning_odds_data = self.get_winning_odds_data(event_id)
@@ -738,6 +1069,9 @@ class StreakAlertEngine:
                 # NEW: Batched team form data
                 home_team_batches=home_team_batches,
                 away_team_batches=away_team_batches,
+                # NEW: Final real rankings
+                home_team_final_real_ranking=home_team_final_real_ranking,
+                away_team_final_real_ranking=away_team_final_real_ranking,
                 # NEW: Winning odds data
                 winning_odds_data=winning_odds_data,
                 # NEW: Current event odds

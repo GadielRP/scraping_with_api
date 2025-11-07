@@ -47,6 +47,101 @@ class PreStartNotification:
         except Exception:
             return ""
     
+    def _calculate_h2h_tennis_total_points(self, match: Dict, is_home: bool) -> int:
+        """
+        Calculate total tennis points from all periods for an H2H match.
+        
+        Args:
+            match: Match dictionary with hist_home_periodX and hist_away_periodX data
+            is_home: True to calculate for hist_home team, False for hist_away team
+            
+        Returns:
+            Total points across all periods
+        """
+        prefix = 'hist_home' if is_home else 'hist_away'
+        
+        period1 = match.get(f'{prefix}_period1', 0) or 0
+        period2 = match.get(f'{prefix}_period2', 0) or 0
+        period3 = match.get(f'{prefix}_period3', 0) or 0  # May be 0 for 2-set matches
+        
+        return period1 + period2 + period3
+    
+    def _calculate_ranking_prediction(self, streak) -> Optional[Dict]:
+        """
+        Calculate ranking prediction based on final real rankings and historical form points.
+        
+        Args:
+            streak: H2HStreak object with batches and final real rankings
+            
+        Returns:
+            Dictionary with prediction data or None if insufficient data
+        """
+        # Check if we have both final real rankings
+        home_ranking = streak.home_team_final_real_ranking
+        away_ranking = streak.away_team_final_real_ranking
+        
+        if home_ranking == 0 or away_ranking == 0:
+            return None
+        
+        # Determine best (lowest) and worst (highest) rankings
+        if home_ranking < away_ranking:
+            best_ranking = home_ranking
+            worst_ranking = away_ranking
+            best_team_name = streak.home_team_name
+            worst_team_name = streak.away_team_name
+            best_batches = streak.home_team_batches
+            worst_batches = streak.away_team_batches
+        else:
+            best_ranking = away_ranking
+            worst_ranking = home_ranking
+            best_team_name = streak.away_team_name
+            worst_team_name = streak.home_team_name
+            best_batches = streak.away_team_batches
+            worst_batches = streak.home_team_batches
+        
+        # Calculate ranking advantage
+        ranking_advantage = abs(best_ranking - worst_ranking)
+        
+        # Calculate factors
+        best_ranking_factor = ranking_advantage / best_ranking if best_ranking > 0 else 0
+        worst_ranking_factor = best_ranking / ranking_advantage if worst_ranking > 0 else 0
+        
+        # Sum all [H:x, A:y] points from all batches for best team
+        best_total_points = 0
+        for batch in best_batches:
+            home_net = batch.get('batch_home_net_points', 0)
+            away_net = batch.get('batch_away_net_points', 0)
+            best_total_points += (home_net + away_net)
+        
+        # Sum all [H:x, A:y] points from all batches for worst team
+        worst_total_points = 0
+        for batch in worst_batches:
+            home_net = batch.get('batch_home_net_points', 0)
+            away_net = batch.get('batch_away_net_points', 0)
+            worst_total_points += (home_net + away_net)
+        
+        # Calculate adjusted points
+        best_adjusted_points = round(best_total_points * best_ranking_factor)
+        worst_adjusted_points = round(worst_total_points * worst_ranking_factor)
+        
+        # Calculate prediction (difference)
+        prediction_diff = best_adjusted_points - worst_adjusted_points
+        
+        return {
+            'ranking_advantage': ranking_advantage,
+            'best_ranking': best_ranking,
+            'worst_ranking': worst_ranking,
+            'best_ranking_factor': best_ranking_factor,
+            'worst_ranking_factor': worst_ranking_factor,
+            'best_team_name': best_team_name,
+            'worst_team_name': worst_team_name,
+            'best_total_points': best_total_points,
+            'worst_total_points': worst_total_points,
+            'best_adjusted_points': best_adjusted_points,
+            'worst_adjusted_points': worst_adjusted_points,
+            'prediction_diff': prediction_diff
+        }
+    
     def _load_notification_settings(self):
         """Load notification settings from environment variables"""
         import os
@@ -528,8 +623,15 @@ class PreStartNotification:
                     for m in streak.all_matches:
                         if m.get('winner') == '1':
                             hist_home = m.get('hist_home')
-                            hs = m.get('hist_home_score', 0)
-                            as_ = m.get('hist_away_score', 0)
+                            
+                            # For tennis, use total points from periods instead of sets
+                            if streak.sport in ['Tennis', 'Tennis Doubles'] and 'hist_home_period1' in m:
+                                hs = self._calculate_h2h_tennis_total_points(m, is_home=True)
+                                as_ = self._calculate_h2h_tennis_total_points(m, is_home=False)
+                            else:
+                                hs = m.get('hist_home_score', 0)
+                                as_ = m.get('hist_away_score', 0)
+                            
                             if hist_home == streak.home_team_name:
                                 home_team_home_net += (hs - as_)
                             else:
@@ -558,8 +660,15 @@ class PreStartNotification:
                     for m in streak.all_matches:
                         if m.get('winner') == '2':
                             hist_home = m.get('hist_home')
-                            hs = m.get('hist_home_score', 0)
-                            as_ = m.get('hist_away_score', 0)
+                            
+                            # For tennis, use total points from periods instead of sets
+                            if streak.sport in ['Tennis', 'Tennis Doubles'] and 'hist_home_period1' in m:
+                                hs = self._calculate_h2h_tennis_total_points(m, is_home=True)
+                                as_ = self._calculate_h2h_tennis_total_points(m, is_home=False)
+                            else:
+                                hs = m.get('hist_home_score', 0)
+                                as_ = m.get('hist_away_score', 0)
+                            
                             if hist_home == streak.away_team_name:
                                 away_team_home_net += (hs - as_)
                             else:
@@ -613,7 +722,8 @@ class PreStartNotification:
                     
                     if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
                         if streak.home_team_batches:
-                            message += f"<b>{streak.home_team_name}</b>:\n"
+                            final_ranking_str = f" (~{streak.home_team_final_real_ranking})" if streak.home_team_final_real_ranking > 0 else ""
+                            message += f"<b>{streak.home_team_name}{final_ranking_str}</b>:\n"
                             # Initialize cumulative counters across all batches
                             cumulative_home_net = 0
                             cumulative_away_net = 0
@@ -637,11 +747,10 @@ class PreStartNotification:
                                 away_net_str = f"+{away_net}" if away_net >= 0 else str(away_net)
                                 batch_summary += f" [H:{home_net_str}, A:{away_net_str}]"
                                 
-                                # Add net ranking differential
-                                net_ranking_diff = batch.get('batch_net_ranking_differential', 0)
-                                if net_ranking_diff != 0:
-                                    ranking_diff_str = f"+{net_ranking_diff}" if net_ranking_diff >= 0 else str(net_ranking_diff)
-                                    batch_summary += f" [~{ranking_diff_str}]"
+                                # Add real ranking
+                                real_ranking = batch.get('batch_real_ranking', 0)
+                                if real_ranking > 0:
+                                    batch_summary += f" [~{real_ranking}]"
                                 
                                 message += f"{batch_summary}\n"
                                 
@@ -663,7 +772,10 @@ class PreStartNotification:
                                     cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
                                     cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
                                     
-                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['score_for']}-{game['score_against']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
+                                    # Add single ranking if available
+                                    single_ranking_str = f" = ~{game['single_ranking']}" if game.get('single_ranking', 0) > 0 else ""
+                                    
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']}) [H:{cum_home_str}, A:{cum_away_str}]{single_ranking_str}\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:
@@ -673,7 +785,8 @@ class PreStartNotification:
                     else:
                         # Display home team batches
                         if streak.home_team_batches:
-                            message += f"<b>{streak.home_team_name}</b>:\n"
+                            final_ranking_str = f" (~{streak.home_team_final_real_ranking})" if streak.home_team_final_real_ranking > 0 else ""
+                            message += f"<b>{streak.home_team_name}{final_ranking_str}</b>:\n"
                             # Initialize cumulative counters across all batches
                             cumulative_home_net = 0
                             cumulative_away_net = 0
@@ -730,7 +843,8 @@ class PreStartNotification:
                     
                     # Display away team batches
                     if streak.away_team_batches:
-                        message += f"<b>{streak.away_team_name}</b>:\n"
+                        final_ranking_str = f" (~{streak.away_team_final_real_ranking})" if streak.away_team_final_real_ranking > 0 else ""
+                        message += f"<b>{streak.away_team_name}{final_ranking_str}</b>:\n"
                         # Initialize cumulative counters across all batches
                         cumulative_home_net = 0
                         cumulative_away_net = 0
@@ -754,12 +868,11 @@ class PreStartNotification:
                             away_net_str = f"+{away_net}" if away_net >= 0 else str(away_net)
                             batch_summary += f" [H:{home_net_str}, A:{away_net_str}]"
                             
-                            # Add net ranking differential (only for Tennis/Tennis Doubles)
+                            # Add real ranking (only for Tennis/Tennis Doubles)
                             if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
-                                net_ranking_diff = batch.get('batch_net_ranking_differential', 0)
-                                if net_ranking_diff != 0:
-                                    ranking_diff_str = f"+{net_ranking_diff}" if net_ranking_diff >= 0 else str(net_ranking_diff)
-                                    batch_summary += f" [~{ranking_diff_str}]"
+                                real_ranking = batch.get('batch_real_ranking', 0)
+                                if real_ranking > 0:
+                                    batch_summary += f" [~{real_ranking}]"
                             
                             message += f"{batch_summary}\n"
                             
@@ -782,7 +895,9 @@ class PreStartNotification:
                                 cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
                                 
                                 if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
-                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['score_for']}-{game['score_against']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
+                                    # Add single ranking if available
+                                    single_ranking_str = f" = ~{game['single_ranking']}" if game.get('single_ranking', 0) > 0 else ""
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']}) [H:{cum_home_str}, A:{cum_away_str}]{single_ranking_str}\n"
                                 else:
                                     role_indicator = "🏠" if game_role == 'home' else "✈️"
                                     message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
@@ -794,6 +909,32 @@ class PreStartNotification:
                         message += f"<b>{streak.away_team_name}</b>: No recent form data\n"
                     
                     message += "\n"
+            
+            # NEW: Ranking Prediction Section
+            ranking_prediction = self._calculate_ranking_prediction(streak)
+            if ranking_prediction:
+                message += f"🎯 Ranking Prediction:\n"
+                message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
+                message += f"Best Ranking Factor: {ranking_prediction['best_ranking_factor']:.4f}\n"
+                message += f"Worst Ranking Factor: {ranking_prediction['worst_ranking_factor']:.4f}\n\n"
+                
+                message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
+                message += f"Total Points: {ranking_prediction['best_total_points']}\n"
+                message += f"Adjusted Points: {ranking_prediction['best_adjusted_points']}\n\n"
+                
+                message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
+                message += f"Total Points: {ranking_prediction['worst_total_points']}\n"
+                message += f"Adjusted Points: {ranking_prediction['worst_adjusted_points']}\n\n"
+                
+                # Final prediction
+                if ranking_prediction['prediction_diff'] > 0:
+                    message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {ranking_prediction['prediction_diff']} points\n"
+                elif ranking_prediction['prediction_diff'] < 0:
+                    message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(ranking_prediction['prediction_diff'])} points\n"
+                else:
+                    message += f"🏆 Prediction: Tie (0 point difference)\n"
+                
+                message += "\n"
             
             # NEW: Winning Odds Section
             if hasattr(streak, 'winning_odds_data') and streak.winning_odds_data:

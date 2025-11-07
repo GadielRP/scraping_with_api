@@ -1,8 +1,8 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.4.7  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKING DIFFERENTIAL**  
-**Última Actualización:** 30 de Octubre, 2025
+**Versión:** v1.4.8  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKING DIFFERENTIAL + H2H FILTERING FIXES**  
+**Última Actualización:** 5 de Noviembre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
@@ -68,6 +68,14 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Scheduler Integration**: Job de pre-start check ahora incluye STEP 1 para verificar eventos recientemente comenzados
 - **Testing**: Validado exitosamente con 2 eventos, 2 correcciones detectadas y 2 alertas enviadas
 - **Production Ready**: Sistema 100% funcional detectando correcciones tardías de timestamps
+
+### ✅ **NUEVO EN v1.4.8 - H2H Filtering Fixes & Pre-Start Job Optimization**
+- **Cross-Event Observation Contamination Fix**: Fixed shared `observations` variable causing wrong ground_type filtering for tennis events
+- **Ground Type Search Enhancement**: Updated filtering to search for ground_type anywhere in observations list (not just first item)
+- **Detailed Filtering Logs**: Added comprehensive logging showing exactly what filters are applied (ground_type vs competition)
+- **Pre-Start Job Restructuring**: Captures all timing decisions upfront before API calls to prevent events slipping out of key moment windows
+- **Current Event Exclusion**: Added exclusion of current/upcoming event from H2H analysis and team results to prevent self-referencing
+- **Production Ready**: All fixes validated and working correctly
 
 ### ✅ **NUEVO EN v1.4.5 - Detailed Match Results with Dates**
 - **Individual H2H Match Results**: Muestra cada partido H2H con detalles completos (home, away, scores)
@@ -486,8 +494,8 @@ El **SofaScore Odds System v1.3.1** tiene **Process 1 completamente funcional co
 - 🟢 **Enhanced Reporting**: Reportes separados + veredicto final (AGREE/DISAGREE/PARTIAL/ERROR)
 - 🟢 **Football Formulas**: 11 fórmulas específicas implementadas y funcionando
 
-**El proyecto ha evolucionado de un sistema de notificaciones a un sistema dual process inteligente con Process 1 y Process 2 funcionando en producción, ahora con odds display completo y late timestamp correction.** 🚀⚽🧠🔬
+**El proyecto ha evolucionado de un sistema de notificaciones a un sistema dual process inteligente con Process 1 y Process 2 funcionando en producción, ahora con odds display completo, late timestamp correction, y filtrado H2H optimizado.** 🚀⚽🧠🔬
 
 ---
 
-**Estado Final**: 🟢 **DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO EN PRODUCCIÓN CON ODDS DISPLAY Y LATE TIMESTAMP CORRECTION**
+**Estado Final**: 🟢 **DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO EN PRODUCCIÓN CON ODDS DISPLAY, LATE TIMESTAMP CORRECTION Y H2H FILTERING FIXES**

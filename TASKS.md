@@ -1,8 +1,8 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.4.7  
-**Estado General:** ✅ **MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + CRITICAL FIXES + OPTIMIZATIONS + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + TENNIS RANKING DIFFERENTIAL**  
-**Última Actualización:** 30 de Octubre, 2025
+**Versión:** v1.4.8  
+**Estado General:** ✅ **MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + CRITICAL FIXES + OPTIMIZATIONS + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + TENNIS RANKING DIFFERENTIAL + H2H FILTERING FIXES**  
+**Última Actualización:** 5 de Noviembre, 2025
 
 ## 🎯 **Resumen del Proyecto**
 
@@ -125,6 +125,25 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Remove role indicators (🏠/✈️) for Tennis events in historical form
 - [x] Display rankings in both home and away team historical form batches
 - [x] Format ranking differential with proper sign indicators
+
+### **🔧 H2H Filtering Fixes & Pre-Start Job Optimization - 100% COMPLETADO (05/11/2025)**
+- [x] Fix cross-event observation contamination: Move `observations = None` inside event processing loops
+- [x] Fix ground_type search: Update `_get_filtering_criteria()` to search entire observations list (not just first item)
+- [x] Fix team results filtering: Update filtering code to search for ground_type anywhere in observations
+- [x] Fix H2H event filtering: Update H2H filtering code to search for ground_type anywhere in observations
+- [x] Add detailed filtering logs: Show exactly what filters are applied (ground_type vs competition) with values
+- [x] Add filtering logs at start of `get_team_last_10_results_by_id()` function
+- [x] Add filtering logs at start of `analyze_h2h_events()` function
+- [x] Restructure pre-start job: Capture all timing decisions upfront before any API calls
+- [x] Implement two-phase approach: Phase 1 captures decisions, Phase 2 executes API calls
+- [x] Fix ground_type retrieval: Ensure ground_type is retrieved from DB even when observations already has rankings
+- [x] Update `tennis_observations` logic: Check if ground_type exists, retrieve if missing
+- [x] Apply same fix to rescheduled event processing function
+- [x] Add current event exclusion: Exclude current event ID from H2H analysis
+- [x] Add current event exclusion: Exclude current event ID from team results
+- [x] Update `get_team_last_10_results_by_id()` to accept `exclude_event_id` parameter
+- [x] Update function calls to pass `exclude_event_id=event_id`
+- [x] Test all fixes: Validated with real events, filtering now works correctly at both 30 and 5 minutes
 
 ## ✅ **Estado de Tareas - PROCESS 1 COMPLETADO - PROCESS 2 EN PREPARACIÓN**
 
@@ -623,10 +642,11 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **Odds Display en Notificaciones**: 100% ✅ **NUEVO v1.3.1**
 - **Gender Filtering en Candidate Search**: 100% ✅ **NUEVO v1.3.2**
 - **Tier 1 Exact Odds Search**: 100% ✅ **NUEVO v1.3.3**
+- **H2H Filtering Fixes & Pre-Start Job Optimization**: 100% ✅ **NUEVO v1.4.8**
 
 ### **Estado de Componentes**
 - **main.py**: ✅ Completamente funcional con CLI extendido
-- **scheduler.py**: ✅ Programación robusta con lógica optimizada + sistema de corrección de timestamps + dual process integration
+- **scheduler.py**: ✅ Programación robusta con lógica optimizada + sistema de corrección de timestamps + dual process integration + pre-start job optimization (timing decisions upfront)
 - **alert_engine.py**: ✅ Motor de predicciones basado en patrones (métodos duplicados eliminados, fix crítico de rule activations aplicado, odds display implementado, gender filtering implementado, tier 1 exact odds search implementado)
 - **alert_system.py**: ✅ Notificaciones Telegram inteligentes (métodos obsoletos eliminados) + notificaciones duales + odds display
 - **prediction_engine.py**: ✅ **NUEVO** - Orchestrador dual process con lógica de comparación
@@ -641,7 +661,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - **sofascore_api.py**: ✅ API client con manejo inteligente + sistema de corrección de timestamps
 - **odds_utils.py**: ✅ Utilidades para procesamiento de odds
 - **optimization.py**: ✅ **NUEVO** - Módulo de optimización con funciones modulares para procesamiento eficiente
-- **streak_alerts.py**: ✅ **NUEVO** - Sistema de alertas de rachas H2H reutilizando lógica probada + batched team form display
+- **streak_alerts.py**: ✅ **NUEVO** - Sistema de alertas de rachas H2H reutilizando lógica probada + batched team form display + filtering fixes (ground_type search, detailed logs, current event exclusion)
 
 ## 🎯 **Objetivos Alcanzados**
 
@@ -724,6 +744,8 @@ El **SofaScore Odds System v1.3.1** está **completamente funcional**, **optimiz
 - ✅ **Odds Display**: Muestra odds completas en notificaciones **NUEVO v1.3.1**
 - ✅ **Gender Filtering**: Filtrado por género en búsqueda de candidatos implementado **NUEVO v1.3.2**
 - ✅ **Tier 1 Exact Odds Search**: Búsqueda por odds exactas en Tier 1 implementado **NUEVO v1.3.3**
+- ✅ **H2H Filtering Fixes**: Corrección de contaminación cross-event, búsqueda mejorada de ground_type, logs detallados **NUEVO v1.4.8**
+- ✅ **Pre-Start Job Optimization**: Captura de decisiones de timing upfront, exclusión de evento actual **NUEVO v1.4.8**
 
 ### **🏆 Logros Destacados**
 - **Tiempo de Desarrollo**: ~3 meses
@@ -739,6 +761,7 @@ El **SofaScore Odds System v1.3.1** está **completamente funcional**, **optimiz
 - **Odds Display**: Notificaciones con odds completas implementadas **NUEVO v1.3.1**
 - **Gender Filtering**: Filtrado por género en búsqueda de candidatos implementado **NUEVO v1.3.2**
 - **Tier 1 Exact Odds Search**: Búsqueda por odds exactas en Tier 1 implementado **NUEVO v1.3.3**
+- **H2H Filtering Fixes**: Corrección de contaminación cross-event y optimización de pre-start job **NUEVO v1.4.8**
 
 ---
 
@@ -761,5 +784,5 @@ El **SofaScore Odds System v1.3.1** está **completamente funcional**, **optimiz
 
 ---
 
-**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA DUAL PROCESS INTELIGENTE Y OPTIMIZADO CON ODDS DISPLAY, GENDER FILTERING Y TIER 1 EXACT ODDS SEARCH**  
+**Estado Final**: 🟢 **COMPLETADO AL 100% - EN PRODUCCIÓN - SISTEMA DUAL PROCESS INTELIGENTE Y OPTIMIZADO CON ODDS DISPLAY, GENDER FILTERING, TIER 1 EXACT ODDS SEARCH Y H2H FILTERING FIXES**  
 **Próximo Paso**: Monitoreo continuo y desarrollo de fórmulas para otros deportes (handball, rugby, tennis, basketball)

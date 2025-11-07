@@ -77,9 +77,23 @@ def get_event_details(self, event_id: int) -> Optional[Dict]:
         return None
     return response['event']
 
-def get_team_last_10_results_response(self, team_id: int) -> Optional[Dict]:
+def get_team_last_results_response(self, team_id: int, is_tennis_singles: bool = False, is_tennis_doubles: bool = False, second_fetch: bool = False) -> Optional[Dict]:
     """Fetch the last 10 results for a team from the /team/{id}/events/last/0 endpoint."""
-    endpoint = f"/team/{team_id}/events/last/0"
+    n = 0
+
+    if second_fetch:
+        n = 1
+    
+    if is_tennis_singles:
+        logger.info(f"Fetching for {n+1} time last singles events for player with {team_id}")
+        endpoint = f"/team/{team_id}/events/singles/last/{n}"
+    elif is_tennis_doubles:
+        logger.info(f"Fetching for {n+1} time last singles events for player with {team_id}")
+        endpoint = f"/team/{team_id}/events/doubles/last/{n}"
+    else:
+        logger.info(f"Fetching for {n+1} last events events for team {team_id}")
+        endpoint = f"/team/{team_id}/events/last/{n}"
+
     response = self._make_request(endpoint)
     if not response or 'events' not in response:
         logger.error(f"No results found for team {team_id}")
@@ -166,7 +180,7 @@ SofaScoreAPI.get_nearest_event_for_team = get_nearest_event_for_team
 SofaScoreAPI.get_event_details = get_event_details
 SofaScoreAPI.extract_events_from_high_value_streaks = extract_events_from_high_value_streaks
 SofaScoreAPI.get_h2h_events_for_event = get_h2h_events_for_event
-SofaScoreAPI.get_team_last_10_results_response = get_team_last_10_results_response
+SofaScoreAPI.get_team_last_results_response = get_team_last_results_response
 SofaScoreAPI.get_winning_odds_response = get_winning_odds_response
 
 logger.info("✅ sofascore_api2 methods successfully loaded and attached to SofaScoreAPI")

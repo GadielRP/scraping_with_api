@@ -319,8 +319,6 @@ class JobScheduler:
         
         
         try:
-            observations = None
-            
             # STEP 1: Check recently started events for timestamp corrections
             # Tennis events: 60 minutes window (they change timestamps frequently up to 1 hour after start)
             # Other sports: 15 minutes window (sufficient for most sports)
@@ -337,18 +335,39 @@ class JobScheduler:
             
             logger.info(f"Found {len(events_with_odds)} events starting within {Config.PRE_START_WINDOW_MINUTES} minutes")
             
-            # Process each upcoming event
+            # STEP 2.1: CAPTURE ALL TIMING DECISIONS UPFRONT (before any API calls)
+            # This prevents events from slipping out of key moment windows due to slow API calls
+            events_to_process = []
+            for event_data in events_with_odds:
+                minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
+                logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
+                
+                # Pre-compute timing decision (capture at current time, not after API delays)
+                should_extract_odds = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
+                
+                events_to_process.append({
+                    'event_data': event_data,
+                    'minutes_until_start': minutes_until_start,
+                    'should_extract_odds': should_extract_odds
+                })
+            
+            # STEP 2.2: EXECUTE ALL ODDS EXTRACTIONS (with pre-computed decisions)
             processed_count = 0
             odds_extracted_count = 0
             # Track events with odds extracted to prevent timing drift issues
             events_with_odds_extracted = []
-            for event_data in events_with_odds:
+            
+            for event_info in events_to_process:
                 try:
-                    minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
-                    logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
+                    event_data = event_info['event_data']
+                    minutes_until_start = event_info['minutes_until_start']
+                    should_extract_odds = event_info['should_extract_odds']
+                    
+                    # Initialize observations per event to avoid cross-event contamination
+                    observations = None
                     
                     # SMART ODDS EXTRACTION: Only extract odds at key moments (30 min and 5 min)                  
-                    if self._should_extract_odds_for_event(event_data['id'], minutes_until_start):
+                    if should_extract_odds:
                         logger.info(f"🎯 EXTRACTING ODDS: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start")
                         
                         # Fetch final odds for this upcoming game using specific event endpoint
@@ -492,6 +511,9 @@ class JobScheduler:
                             
                             for event_obj in events_for_alerts:
                                 try:
+                                    # Initialize observations per event to avoid cross-event contamination
+                                    observations = None
+                                    
                                     logger.info(f"🔍 Processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team}")
                                     
                                     # Calculate minutes from FRESH database time, not stale event data
@@ -555,42 +577,40 @@ class JobScheduler:
                                                     logger.error(f"Error fetching event details for {event_obj.id}: {e}")
                                                 
                                                 # Ensure observations are available for tennis events (needed for ground_type filtering)
-                                                tennis_observations = observations
-                                                if event_obj.sport in ['Tennis', 'Tennis Doubles'] and not tennis_observations:
-                                                    logger.info(f"🎾 Getting observations for tennis event {event_obj.id} for ground_type filtering")
-                                                    if not sport_observations_manager.has_observations_for_event(event_obj.id):
-                                                        # No observations exist, make API call to extract court type
-                                                        tennis_observations = api_client.get_event_results(
-                                                            event_id=event_obj.id,
-                                                            update_court_type=True
-                                                        )
-                                                    else:
-                                                        # Get existing observations from database
-                                                        observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
-                                                        if observation:
-                                                            # Crear lista con ground_type, preservando rankings si ya existen en observations
-                                                            tennis_observations = [{'type': 'ground_type', 'value': observation.observation_value}]
-                                                            # Si observations ya tenía rankings (agregados anteriormente), preservarlos
-                                                            if observations and len(observations) > 1:
-                                                                rankings_obs = next((obs for obs in observations if obs.get('type') == 'rankings'), None)
-                                                                if rankings_obs:
-                                                                    tennis_observations.append(rankings_obs)
-                                                            # Si no hay rankings en observations y tenemos event_details, agregarlos
-                                                            elif event_details:
-                                                                home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                                                away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
-                                                                if home_team_ranking is not None or away_team_ranking is not None:
-                                                                    tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                                                    logger.info(f"✅ Added rankings to tennis_observations from event_details: home={home_team_ranking}, away={away_team_ranking}")
-                                                            logger.info(f"🎾 Using existing ground_type observation: {observation.observation_value}")
-                                                elif tennis_observations:
-                                                    # Si tennis_observations ya tiene datos, asegurarse de que tiene rankings
-                                                    if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                                        has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
-                                                        if not has_rankings and event_details:
-                                                            # Agregar rankings si no existen y tenemos event_details
-                                                            home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                                            away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                                # Start with observations if they exist (might already have rankings)
+                                                tennis_observations = observations if observations else []
+                                                
+                                                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                                    # Check if ground_type already exists in tennis_observations
+                                                    has_ground_type = any(obs.get('type') == 'ground_type' for obs in tennis_observations)
+                                                    
+                                                    if not has_ground_type:
+                                                        logger.info(f"🎾 Getting ground_type for tennis event {event_obj.id} for filtering")
+                                                        if not sport_observations_manager.has_observations_for_event(event_obj.id):
+                                                            # No observations exist in DB, make API call to extract court type
+                                                            new_observations = api_client.get_event_results(
+                                                                event_id=event_obj.id,
+                                                                update_court_type=True
+                                                            )
+                                                            if new_observations:
+                                                                # Merge new observations with existing tennis_observations
+                                                                for obs in new_observations:
+                                                                    if obs.get('type') == 'ground_type':
+                                                                        tennis_observations.append(obs)
+                                                        else:
+                                                            # Get existing ground_type from database
+                                                            observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                                                            if observation:
+                                                                tennis_observations.append({'type': 'ground_type', 'value': observation.observation_value})
+                                                                logger.info(f"🎾 Using existing ground_type observation: {observation.observation_value}")
+                                                    
+                                                    # Ensure rankings exist in tennis_observations
+                                                    has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
+                                                    if not has_rankings and event_details:
+                                                        # Add rankings from event_details if available
+                                                        home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                                        away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                                        if home_team_ranking is not None or away_team_ranking is not None:
                                                             tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
                                                             logger.info(f"✅ Added rankings to tennis_observations for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
                                                 
@@ -1036,6 +1056,9 @@ class JobScheduler:
         This completes the pre-start job workflow to prevent infinite loops.
         """
         try:
+            # Initialize observations for this rescheduled event
+            observations = None
+            
             logger.info(f"🔍 Processing H2H and dual-process alerts for rescheduled event {event.id}")
             
             # Refresh materialized views to ensure latest data for alert evaluation
@@ -1107,34 +1130,42 @@ class JobScheduler:
                             logger.error(f"Error fetching event details for rescheduled event {event_obj.id}: {e}")
                         
                         # Ensure observations for tennis events
-                        tennis_observations = observations
-                        if event_obj.sport in ['Tennis', 'Tennis Doubles'] and not tennis_observations:
-                            logger.info(f"🎾 Getting observations for tennis rescheduled event {event_obj.id}")
-                            if not sport_observations_manager.has_observations_for_event(event_obj.id):
-                                tennis_observations = api_client.get_event_results(
-                                    event_id=event_obj.id,
-                                    update_court_type=True
-                                )
-                            else:
-                                observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
-                                if observation:
-                                    tennis_observations = [{'type': 'ground_type', 'value': observation.observation_value}]
-                                    if observations and len(observations) > 1:
-                                        rankings_obs = next((obs for obs in observations if obs.get('type') == 'rankings'), None)
-                                        if rankings_obs:
-                                            tennis_observations.append(rankings_obs)
-                                    elif event_details:
-                                        home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                        away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
-                                        if home_team_ranking is not None or away_team_ranking is not None:
-                                            tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                        elif tennis_observations:
-                            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
-                                if not has_rankings and event_details:
-                                    home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                    away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                        # Start with observations if they exist (might already have rankings)
+                        tennis_observations = observations if observations else []
+                        
+                        if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                            # Check if ground_type already exists in tennis_observations
+                            has_ground_type = any(obs.get('type') == 'ground_type' for obs in tennis_observations)
+                            
+                            if not has_ground_type:
+                                logger.info(f"🎾 Getting ground_type for tennis rescheduled event {event_obj.id}")
+                                if not sport_observations_manager.has_observations_for_event(event_obj.id):
+                                    # No observations exist in DB, make API call to extract court type
+                                    new_observations = api_client.get_event_results(
+                                        event_id=event_obj.id,
+                                        update_court_type=True
+                                    )
+                                    if new_observations:
+                                        # Merge new observations with existing tennis_observations
+                                        for obs in new_observations:
+                                            if obs.get('type') == 'ground_type':
+                                                tennis_observations.append(obs)
+                                else:
+                                    # Get existing ground_type from database
+                                    observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                                    if observation:
+                                        tennis_observations.append({'type': 'ground_type', 'value': observation.observation_value})
+                                        logger.info(f"🎾 Using existing ground_type observation for rescheduled event: {observation.observation_value}")
+                            
+                            # Ensure rankings exist in tennis_observations
+                            has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
+                            if not has_rankings and event_details:
+                                # Add rankings from event_details if available
+                                home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                if home_team_ranking is not None or away_team_ranking is not None:
                                     tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                    logger.info(f"✅ Added rankings to tennis_observations for rescheduled event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
                         
                         # Analyze H2H events with team results
                         from streak_alerts import streak_alert_engine
