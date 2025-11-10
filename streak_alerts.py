@@ -23,6 +23,8 @@ class H2HStreak:
     discovery_source: str
     competition_name: str
     competition_slug: str
+    season_id: Optional[str]
+    season_name: Optional[str]
     observations: Optional[List[Dict]]
     sport: str
     home_team_name: str  # Upcoming event home team
@@ -60,6 +62,9 @@ class H2HStreak:
     # NEW: Final real rankings (average of batch real rankings)
     home_team_final_real_ranking: float = 0  # Final real ranking for home team
     away_team_final_real_ranking: float = 0  # Final real ranking for away team
+    # NEW: Standings snapshots
+    home_team_standing: Optional[Dict] = None
+    away_team_standing: Optional[Dict] = None
     # NEW: Winning odds data
     winning_odds_data: Optional[Dict] = None  # Winning odds response data
     # NEW: Current event odds (for display in H2H streak messages)
@@ -382,6 +387,7 @@ class StreakAlertEngine:
         team_name: str,
         competition_slug: str,
         sport: str,
+        season_id: Optional[str] = None,
         observations: Optional[List[Dict]] = None,
         exclude_event_id: Optional[int] = None,
         apply_filters: bool = True,
@@ -398,6 +404,7 @@ class StreakAlertEngine:
             team_name: Name of the team for context
             competition_slug: Slug of the competition
             sport: Sport type for filtering logic
+            season_id: Season ID for filtering (non-tennis sports)
             observations: List of dicts containing filtering observations
             exclude_event_id: Optional event ID to exclude from results
             apply_filters: Whether to apply sport-specific filters
@@ -481,10 +488,18 @@ class StreakAlertEngine:
                                 logger.debug(f"Skipping event for {team_name} - different match type (event is {'doubles' if event_is_doubles else 'singles'}, sport is {'doubles' if sport_is_doubles else 'singles'})")
                                 passes_filters = False
                     else:
+                        # For non-tennis sports: filter by competition slug AND season_id
                         if competition_slug:
                             event_competition_slug = event.get('tournament', {}).get('uniqueTournament', {}).get('slug', '')
                             if event_competition_slug != competition_slug:
                                 logger.debug(f"Skipping event for {team_name} - different competition: {event_competition_slug} vs {competition_slug}")
+                                passes_filters = False
+                        
+                        # Also filter by season_id if provided
+                        if passes_filters and season_id:
+                            event_season_id = str(event.get('season', {}).get('id', ''))
+                            if event_season_id and event_season_id != season_id:
+                                logger.debug(f"Skipping event for {team_name} - different season: {event_season_id} vs {season_id}")
                                 passes_filters = False
                 
                 result_dict = {
@@ -537,28 +552,41 @@ class StreakAlertEngine:
         
         return results
 
-    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None, min_results: int = None) -> Tuple[List[Dict], int]:
+    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, season_id: Optional[str] = None, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None, min_results: int = None) -> Tuple[List[Dict], int]:
         """
-        Get the last N results for a team using team_id.
-        Processes team results response and returns standardized format.
-        Makes additional fetches if needed to reach minimum of min_results.
+        Get team results using team_id with flexible filtering.
+        
+        Season-based filtering (non-tennis):
+        - When season_id is provided, fetches ALL games from that season (no minimum)
+        - Stops fetching when encountering events from a different season
+        
+        Legacy filtering (tennis or no season):
+        - Uses min_results to fetch a minimum number of games
+        - Applies ground_type filtering for tennis
         
         Args:
             team_id: ID of the team
             team_name: Name of the team for context
             competition_slug: Slug of the competition
             sport: Sport type for filtering logic
-            observations: List of dicts containing in order: ground_type, home_ranking, away_ranking
+            season_id: Season ID for filtering (non-tennis sports only)
+            observations: List of dicts containing filtering observations
             exclude_event_id: Optional event ID to exclude from results (current/upcoming event)
-            min_results: Minimum number of results to fetch (default: DEFAULT_MIN_RESULTS class constant)
+            min_results: Minimum number of results to fetch (ignored when season_id is provided)
         Returns:
             Tuple where:
                 - List of dicts with keys: winner, home_score, away_score, team_name, opponent_name (filtered results)
                 - Integer representing the overall (unfiltered) current win streak
         """
-        # Use class constant if min_results not provided
-        if min_results is None:
+        # Season-based filtering: fetch all games from current season (no minimum)
+        use_season_filtering = season_id and sport not in ['Tennis', 'Tennis Doubles']
+        
+        # Use class constant if min_results not provided and not using season filtering
+        if min_results is None and not use_season_filtering:
             min_results = self.DEFAULT_MIN_RESULTS
+        elif use_season_filtering:
+            # For season filtering, we don't have a minimum - we fetch all available
+            min_results = 0  # Will be ignored in the loop logic
         
         try:
             # Log filtering criteria at the start
@@ -576,7 +604,10 @@ class StreakAlertEngine:
                 else:
                     logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: NO ground_type filter (ground_type not found in observations){match_type_info}")
             else:
-                logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: competition='{competition_slug}'")
+                if use_season_filtering:
+                    logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: competition='{competition_slug}' AND season_id='{season_id}' (fetching all season games)")
+                else:
+                    logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: competition='{competition_slug}'")
             
             # Determine tennis parameters
             is_tennis_singles = sport == 'Tennis'
@@ -588,7 +619,7 @@ class StreakAlertEngine:
                 team_id, 
                 is_tennis_singles=is_tennis_singles, 
                 is_tennis_doubles=is_tennis_doubles,
-                second_fetch=False
+                fetch_index=0
             )
             
             all_results = []
@@ -606,8 +637,9 @@ class StreakAlertEngine:
                         team_name,
                         competition_slug,
                         sport,
-                        observations,
-                        exclude_event_id,
+                        season_id=season_id,
+                        observations=observations,
+                        exclude_event_id=exclude_event_id,
                         apply_filters=True,
                         overall_results=overall_results,
                         overall_seen_event_ids=overall_seen_event_ids
@@ -620,35 +652,42 @@ class StreakAlertEngine:
                             all_results.append(result)
                             seen_event_ids.add(result_key)
             
-            # Check if we need additional fetches (less than min_results)
-            # Keep trying until we have at least min_results or no more events available
-            fetch_attempt = 1
-            while len(all_results) < min_results and fetch_attempt < 3:  # Limit to 3 attempts to avoid infinite loops
-                if fetch_attempt == 1:
-                    logger.info(f"📊 Team {team_name} - Only {len(all_results)} results after first fetch, making second fetch to reach minimum of {min_results}")
+            # Check if we need additional fetches
+            # Season filtering: keep fetching until we exhaust the season (no minimum)
+            # Legacy filtering: fetch until we reach min_results
+            fetch_index = 1
+            MAX_FETCH_INDEX = 5
+            
+            # For season filtering, we continue fetching until we run out of events
+            # For min_results filtering, we stop when we have enough
+            should_continue_fetching = use_season_filtering or len(all_results) < min_results
+            
+            while should_continue_fetching and fetch_index < MAX_FETCH_INDEX:
+                if use_season_filtering:
+                    logger.info(f"📊 Team {team_name} - Collected {len(all_results)} season results so far, fetching more (index {fetch_index})")
                 else:
-                    logger.info(f"📊 Team {team_name} - Only {len(all_results)} results after {fetch_attempt} fetches, making another fetch to reach minimum of {min_results}")
+                    logger.info(f"📊 Team {team_name} - Only {len(all_results)} results after fetch {fetch_index}, requesting additional batch (index {fetch_index}) to reach minimum of {min_results}")
                 
-                # Second or subsequent fetch with second_fetch=True
                 additional_response = api_client.get_team_last_results_response(
                     team_id,
                     is_tennis_singles=is_tennis_singles,
                     is_tennis_doubles=is_tennis_doubles,
-                    second_fetch=True
+                    fetch_index=fetch_index
                 )
                 
                 if additional_response and 'events' in additional_response:
                     additional_events = additional_response['events']
                     if additional_events:
-                        logger.info(f"🔍 FILTERING: Processing {len(additional_events)} total events from API (fetch {fetch_attempt + 1}), filtering by {filter_type} '{filter_value}'{match_type_info}")
+                        logger.info(f"🔍 FILTERING: Processing {len(additional_events)} total events from API (fetch index {fetch_index}), filtering by {filter_type} '{filter_value}'{match_type_info}")
                         additional_fetch_results = self._process_events_into_results(
                             additional_events,
                             team_id,
                             team_name,
                             competition_slug,
                             sport,
-                            observations,
-                            exclude_event_id,
+                            season_id=season_id,
+                            observations=observations,
+                            exclude_event_id=exclude_event_id,
                             apply_filters=True,
                             overall_results=overall_results,
                             overall_seen_event_ids=overall_seen_event_ids
@@ -664,17 +703,16 @@ class StreakAlertEngine:
                                 added_count += 1
                         
                         if added_count == 0:
-                            # No new results added, break to avoid infinite loop
-                            logger.info(f"📊 Team {team_name} - No new results added in fetch {fetch_attempt + 1}, stopping")
-                            break
+                            logger.info(f"📊 Team {team_name} - No new results added in fetch index {fetch_index}, continuing to next fetch (max {MAX_FETCH_INDEX})")
                     else:
-                        # No more events available
-                        break
+                        logger.info(f"📊 Team {team_name} - Fetch index {fetch_index} returned no events, continuing to next fetch (max {MAX_FETCH_INDEX})")
                 else:
-                    # No more events available
-                    break
+                    logger.info(f"📊 Team {team_name} - Fetch index {fetch_index} returned no response, continuing to next fetch (max {MAX_FETCH_INDEX})")
                 
-                fetch_attempt += 1
+                fetch_index += 1
+                
+                # Update loop condition
+                should_continue_fetching = use_season_filtering or len(all_results) < min_results
             
             # Sort results by timestamp (most recent first)
             all_results.sort(key=lambda x: x.get('startTimestamp', 0), reverse=True)
@@ -707,8 +745,11 @@ class StreakAlertEngine:
                     match_type_info = f" and match_type '{match_type}'"
                 logger.info(f"📊 Team {team_name} - no results found in {filter_type} '{filter_value}'{match_type_info}")
             
-            # Return only the min_results most recent (or all if less than min_results)
-            return all_results[:min_results], current_win_streak
+            # Return filtered results:
+            # - Season filtering: all collected season results (no slicing)
+            # - Legacy/min_results filtering: only the most recent min_results entries
+            results_to_return = all_results if use_season_filtering else all_results[:min_results]
+            return results_to_return, current_win_streak
             
         except Exception as e:
             logger.error(f"Error getting team last 10 results for {team_name} (ID: {team_id}): {e}")
@@ -783,7 +824,7 @@ class StreakAlertEngine:
             return None
 
     def analyze_h2h_events(self, event_id: int, event_custom_id: str, 
-                          event_start_time: datetime, sport: str, discovery_source: str, competition_name: str, competition_slug: str,  participants: str,
+                          event_start_time: datetime, sport: str, discovery_source: str, tournament_id: str, competition_name: str, competition_slug: str, season_id: str, season_name: str, participants: str,
                           home_team_name: str, away_team_name: str,
                           h2h_events: List[Dict], minutes_until_start: int, observations: Optional[List[Dict]] = None,
                           home_team_id: int = None, away_team_id: int = None,
@@ -990,7 +1031,8 @@ class StreakAlertEngine:
                     home_team_name,
                     competition_slug,
                     sport,
-                    observations,
+                    season_id=season_id,
+                    observations=observations,
                     exclude_event_id=event_id
                 )
             else:
@@ -1002,7 +1044,8 @@ class StreakAlertEngine:
                     away_team_name,
                     competition_slug,
                     sport,
-                    observations,
+                    season_id=season_id,
+                    observations=observations,
                     exclude_event_id=event_id
                 )
             else:
@@ -1066,6 +1109,31 @@ class StreakAlertEngine:
             # Extract rankings safely from observations
             home_team_ranking = None
             away_team_ranking = None
+
+            home_team_standing = None
+            away_team_standing = None
+
+            if sport not in ['Tennis', 'Tennis Doubles'] and season_id and tournament_id and (home_team_id or away_team_id):
+                raw_standings = api_client.get_standings_response(season_id, tournament_id)
+                home_team_standing, away_team_standing = api_client.process_standings_response(
+                    raw_standings,
+                    home_team_id,
+                    away_team_id
+                )
+
+                if home_team_standing and home_team_ranking is None:
+                    home_team_ranking = home_team_standing.get('position')
+                if away_team_standing and away_team_ranking is None:
+                    away_team_ranking = away_team_standing.get('position')
+
+                if home_team_standing or away_team_standing:
+                    logger.debug(
+                        f"Extracted standings snapshots for event {event_id}: "
+                        f"home={home_team_standing}, away={away_team_standing}"
+                    )
+                else:
+                    logger.debug(f"No standings found for event {event_id}")
+
             if observations:
                 # Buscar rankings en cualquier posición de la lista (no asumir posición fija)
                 rankings_obs = next((obs for obs in observations if isinstance(obs, dict) and obs.get('type') == 'rankings'), None)
@@ -1104,6 +1172,8 @@ class StreakAlertEngine:
                 discovery_source=discovery_source,
                 competition_name=competition_name,
                 competition_slug=competition_slug,
+                season_id=season_id,
+                season_name=season_name,
                 observations=observations,
                 sport=sport,
                 home_team_name=home_team_name,
@@ -1141,6 +1211,9 @@ class StreakAlertEngine:
                 # NEW: Final real rankings
                 home_team_final_real_ranking=home_team_final_real_ranking,
                 away_team_final_real_ranking=away_team_final_real_ranking,
+                # NEW: Standings snapshots
+                home_team_standing=home_team_standing,
+                away_team_standing=away_team_standing,
                 # NEW: Winning odds data
                 winning_odds_data=winning_odds_data,
                 # NEW: Current event odds

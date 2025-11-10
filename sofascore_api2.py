@@ -77,22 +77,22 @@ def get_event_details(self, event_id: int) -> Optional[Dict]:
         return None
     return response['event']
 
-def get_team_last_results_response(self, team_id: int, is_tennis_singles: bool = False, is_tennis_doubles: bool = False, second_fetch: bool = False) -> Optional[Dict]:
-    """Fetch the last 10 results for a team from the /team/{id}/events/last/0 endpoint."""
-    n = 0
-
-    if second_fetch:
-        n = 1
+def get_team_last_results_response(self, team_id: int, is_tennis_singles: bool = False, is_tennis_doubles: bool = False, fetch_index: int = 0) -> Optional[Dict]:
+    """Fetch the last results for a team from the /team/{id}/events/last/{fetch_index} endpoint."""
+    if fetch_index < 0:
+        fetch_index = 0
+    
+    fetch_number_display = fetch_index + 1
     
     if is_tennis_singles:
-        logger.info(f"Fetching for {n+1} time last singles events for player with {team_id}")
-        endpoint = f"/team/{team_id}/events/singles/last/{n}"
+        logger.info(f"Fetching (attempt {fetch_number_display}) last singles events for player with id {team_id}")
+        endpoint = f"/team/{team_id}/events/singles/last/{fetch_index}"
     elif is_tennis_doubles:
-        logger.info(f"Fetching for {n+1} time last singles events for player with {team_id}")
-        endpoint = f"/team/{team_id}/events/doubles/last/{n}"
+        logger.info(f"Fetching (attempt {fetch_number_display}) last doubles events for player with id {team_id}")
+        endpoint = f"/team/{team_id}/events/doubles/last/{fetch_index}"
     else:
-        logger.info(f"Fetching for {n+1} last events events for team {team_id}")
-        endpoint = f"/team/{team_id}/events/last/{n}"
+        logger.info(f"Fetching (attempt {fetch_number_display}) last events for team {team_id}")
+        endpoint = f"/team/{team_id}/events/last/{fetch_index}"
 
     response = self._make_request(endpoint)
     if not response or 'events' not in response:
@@ -111,6 +111,94 @@ def get_winning_odds_response(self, event_id: int) -> Optional[Dict]:
         logger.debug(f"No winning odds found for event {event_id}")
         return None
     return response
+
+def get_standings_response(self, season_id: int, tournament_id: int) -> Optional[Dict]:
+    """Fetch the standings for a season and tournament from the /standings/{season_id}/{tournament_id} endpoint."""
+    endpoint = f"/tournament/{tournament_id}/season/{season_id}/standings/total"
+    response = self._make_request(endpoint)
+    if not response or 'standings' not in response:
+        logger.error(f"No standings found for season {season_id} and tournament {tournament_id}")
+        return None
+    return response['standings']
+
+def process_standings_response(
+    self,
+    standings: Optional[List[Dict]],
+    home_team_id: Optional[int],
+    away_team_id: Optional[int]
+) -> Tuple[Optional[Dict], Optional[Dict]]:
+    """
+    Process the standings response to extract summary data for the provided teams.
+
+    Args:
+        standings: List returned by get_standings_response (contains standings tables).
+        home_team_id: ID of the home team to locate within the standings.
+        away_team_id: ID of the away team to locate within the standings.
+
+    Returns:
+        Tuple (home_team_standing, away_team_standing). Each standing dict contains:
+            team_id, team_name, position, matches, wins, draws, losses, points,
+            goals_for, goals_against, goal_diff (numeric), goal_diff_formatted.
+        If a team cannot be found, its entry will be None.
+    """
+    if not standings or not isinstance(standings, list):
+        logger.debug("process_standings_response called with empty standings data")
+        return None, None
+
+    # Prioritize the 'total' standings table; fallback to the first available table.
+    total_table = next((table for table in standings if table.get('type') == 'total'), None)
+    table_to_use = total_table or standings[0]
+    rows = table_to_use.get('rows', [])
+
+    def _build_team_snapshot(row: Dict) -> Dict:
+        team = row.get('team', {})
+        goals_for = row.get('scoresFor')
+        goals_against = row.get('scoresAgainst')
+        goal_diff_numeric = None
+        if goals_for is not None and goals_against is not None:
+            try:
+                goal_diff_numeric = goals_for - goals_against
+            except TypeError:
+                goal_diff_numeric = None
+
+        return {
+            'team_id': team.get('id'),
+            'team_name': team.get('name'),
+            'position': row.get('position'),
+            'matches': row.get('matches'),
+            'wins': row.get('wins'),
+            'draws': row.get('draws'),
+            'losses': row.get('losses'),
+            'points': row.get('points'),
+            'goals_for': goals_for,
+            'goals_against': goals_against,
+            'goal_diff': goal_diff_numeric,
+            'goal_diff_formatted': row.get('scoreDiffFormatted')
+        }
+
+    home_snapshot = None
+    away_snapshot = None
+
+    for row in rows:
+        team = row.get('team', {})
+        team_id = team.get('id')
+        if team_id is None:
+            continue
+
+        if home_team_id is not None and team_id == home_team_id:
+            home_snapshot = _build_team_snapshot(row)
+        elif away_team_id is not None and team_id == away_team_id:
+            away_snapshot = _build_team_snapshot(row)
+
+        if home_snapshot and away_snapshot:
+            break
+
+    if home_team_id and not home_snapshot:
+        logger.debug(f"Home team id {home_team_id} not found in standings response")
+    if away_team_id and not away_snapshot:
+        logger.debug(f"Away team id {away_team_id} not found in standings response")
+
+    return home_snapshot, away_snapshot
 
 # Event extraction methods
 def extract_events_from_high_value_streaks(self, response: Dict) -> List[Dict]:
@@ -182,5 +270,7 @@ SofaScoreAPI.extract_events_from_high_value_streaks = extract_events_from_high_v
 SofaScoreAPI.get_h2h_events_for_event = get_h2h_events_for_event
 SofaScoreAPI.get_team_last_results_response = get_team_last_results_response
 SofaScoreAPI.get_winning_odds_response = get_winning_odds_response
+SofaScoreAPI.get_standings_response = get_standings_response
+SofaScoreAPI.process_standings_response = process_standings_response
 
 logger.info("✅ sofascore_api2 methods successfully loaded and attached to SofaScoreAPI")

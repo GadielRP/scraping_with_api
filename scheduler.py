@@ -523,137 +523,129 @@ class JobScheduler:
                                     # H2H STREAK ANALYSIS FOR THIS EVENT
                                     # ========================================
                                     streak_analysis = None
-                                    
-                                    # Check if event has custom_id for H2H analysis
-                                    if event_obj.custom_id:
-                                        try:
-                                            # Fetch H2H events for this custom_id
-                                            h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
-                                            if h2h_response and 'events' in h2h_response:
-                                                h2h_events = h2h_response['events']
-                                                
-                                                # Get team IDs from the current event details (not H2H response)
-                                                home_team_id = None
-                                                away_team_id = None
-                                                competition_slug = None
-                                                competition_name = None
-                                                event_details = None  # Inicializar para evitar errores si falla el try
-                                                
-                                                try:
-                                                    # Fetch current event details to get correct team IDs
-                                                    event_details = api_client.get_event_details(event_obj.id)
 
-                                                    if event_details:
-                                                        # Para Tennis/Tennis Doubles, agregar rankings a observations si no existen
-                                                        if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                                            # Verificar si ya existe rankings en observations
-                                                            has_rankings = False
-                                                            if observations:
-                                                                has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
-                                                            
-                                                            # Si no tiene rankings, extraerlos de event_details y agregarlos
-                                                            if not has_rankings:
-                                                                home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                                                away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
-                                                                
-                                                                # Inicializar observations si es None
-                                                                if observations is None:
-                                                                    observations = []
-                                                                
-                                                                observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                                                logger.info(f"✅ Added rankings to observations for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
-                                                            else:
-                                                                logger.debug(f"Rankings already exist in observations for event {event_obj.id}")
-                                                        
-                                                        # Extraer team IDs y otros datos del evento
-                                                        home_team_id = event_details.get('homeTeam', {}).get('id')
-                                                        away_team_id = event_details.get('awayTeam', {}).get('id')
-                                                        competition_name = event_details.get('tournament', {}).get('uniqueTournament', {}).get('name')
-                                                        competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
-                                                        logger.debug(f"Extracted team IDs from current event: Home={home_team_id}, Away={away_team_id}")
-                                                    else:
-                                                        logger.warning(f"Could not fetch event details for {event_obj.id}")
-                                                except Exception as e:
-                                                    logger.error(f"Error fetching event details for {event_obj.id}: {e}")
-                                                
-                                                # Ensure observations are available for tennis events (needed for ground_type filtering)
-                                                # Start with observations if they exist (might already have rankings)
-                                                tennis_observations = observations if observations else []
-                                                
-                                                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                                    # Check if ground_type already exists in tennis_observations
-                                                    has_ground_type = any(obs.get('type') == 'ground_type' for obs in tennis_observations)
-                                                    
-                                                    if not has_ground_type:
-                                                        logger.info(f"🎾 Getting ground_type for tennis event {event_obj.id} for filtering")
-                                                        if not sport_observations_manager.has_observations_for_event(event_obj.id):
-                                                            # No observations exist in DB, make API call to extract court type
-                                                            new_observations = api_client.get_event_results(
-                                                                event_id=event_obj.id,
-                                                                update_court_type=True
-                                                            )
-                                                            if new_observations:
-                                                                # Merge new observations with existing tennis_observations
-                                                                for obs in new_observations:
-                                                                    if obs.get('type') == 'ground_type':
-                                                                        tennis_observations.append(obs)
+                                    if minutes_until_start == 30:
+                                        if event_obj.custom_id:
+                                            try:
+                                                h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
+                                                if h2h_response and 'events' in h2h_response:
+                                                    h2h_events = h2h_response['events']
+
+                                                    home_team_id = None
+                                                    away_team_id = None
+                                                    competition_slug = None
+                                                    competition_name = None
+                                                    tournament_id = None
+                                                    event_details = None
+
+                                                    try:
+                                                        event_details = api_client.get_event_details(event_obj.id)
+
+                                                        if event_details:
+                                                            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                                                has_rankings = False
+                                                                if observations:
+                                                                    has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+
+                                                                if not has_rankings:
+                                                                    home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                                                    away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+
+                                                                    if observations is None:
+                                                                        observations = []
+
+                                                                    observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                                                    logger.info(f"✅ Added rankings to observations for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
+                                                                else:
+                                                                    logger.debug(f"Rankings already exist in observations for event {event_obj.id}")
+
+                                                            home_team_id = event_details.get('homeTeam', {}).get('id')
+                                                            away_team_id = event_details.get('awayTeam', {}).get('id')
+                                                            tournament_id = event_details.get('tournament', {}).get('id')
+                                                            competition_name = event_details.get('tournament', {}).get('uniqueTournament', {}).get('name')
+                                                            competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
+                                                            season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
+                                                            season_name = event_details.get('season', {}).get('name')
+                                                            logger.debug(f"Extracted team IDs from current event: Home={home_team_id}, Away={away_team_id}")
+                                                            logger.debug(f"Extracted season data: season_id={season_id}, season_name={season_name}")
                                                         else:
-                                                            # Get existing ground_type from database
-                                                            observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
-                                                            if observation:
-                                                                tennis_observations.append({'type': 'ground_type', 'value': observation.observation_value})
-                                                                logger.info(f"🎾 Using existing ground_type observation: {observation.observation_value}")
-                                                    
-                                                    # Ensure rankings exist in tennis_observations
-                                                    has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
-                                                    if not has_rankings and event_details:
-                                                        # Add rankings from event_details if available
-                                                        home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                                        away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
-                                                        if home_team_ranking is not None or away_team_ranking is not None:
-                                                            tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                                            logger.info(f"✅ Added rankings to tennis_observations for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
-                                                
-                                                # Log observations antes de pasar a analyze_h2h_events
-                                                if tennis_observations:
-                                                    rankings_info = next((obs for obs in tennis_observations if isinstance(obs, dict) and obs.get('type') == 'rankings'), None)
-                                                    if rankings_info:
-                                                        logger.info(f"📊 Passing observations to analyze_h2h_events for event {event_obj.id}: home_ranking={rankings_info.get('home_ranking')}, away_ranking={rankings_info.get('away_ranking')}")
+                                                            logger.warning(f"Could not fetch event details for {event_obj.id}")
+                                                    except Exception as e:
+                                                        logger.error(f"Error fetching event details for {event_obj.id}: {e}")
+
+                                                    tennis_observations = observations if observations else []
+
+                                                    if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                                        has_ground_type = any(obs.get('type') == 'ground_type' for obs in tennis_observations)
+
+                                                        if not has_ground_type:
+                                                            logger.info(f"🎾 Getting ground_type for tennis event {event_obj.id} for filtering")
+                                                            if not sport_observations_manager.has_observations_for_event(event_obj.id):
+                                                                new_observations = api_client.get_event_results(
+                                                                    event_id=event_obj.id,
+                                                                    update_court_type=True
+                                                                )
+                                                                if new_observations:
+                                                                    for obs in new_observations:
+                                                                        if obs.get('type') == 'ground_type':
+                                                                            tennis_observations.append(obs)
+                                                            else:
+                                                                observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                                                                if observation:
+                                                                    tennis_observations.append({'type': 'ground_type', 'value': observation.observation_value})
+                                                                    logger.info(f"🎾 Using existing ground_type observation: {observation.observation_value}")
+
+                                                        has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
+                                                        if not has_rankings and event_details:
+                                                            home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                                            away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                                            if home_team_ranking is not None or away_team_ranking is not None:
+                                                                tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                                                logger.info(f"✅ Added rankings to tennis_observations for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
+
+                                                    if tennis_observations:
+                                                        rankings_info = next((obs for obs in tennis_observations if isinstance(obs, dict) and obs.get('type') == 'rankings'), None)
+                                                        if rankings_info:
+                                                            logger.info(f"📊 Passing observations to analyze_h2h_events for event {event_obj.id}: home_ranking={rankings_info.get('home_ranking')}, away_ranking={rankings_info.get('away_ranking')}")
+                                                        else:
+                                                            logger.warning(f"⚠️ No rankings found in tennis_observations for event {event_obj.id}")
                                                     else:
-                                                        logger.warning(f"⚠️ No rankings found in tennis_observations for event {event_obj.id}")
+                                                        logger.warning(f"⚠️ tennis_observations is None for event {event_obj.id}")
+
+                                                    streak_analysis = streak_alert_engine.analyze_h2h_events(
+                                                        event_id=event_obj.id,
+                                                        event_custom_id=event_obj.custom_id,
+                                                        event_start_time=event_obj.start_time_utc,
+                                                        sport=event_obj.sport,
+                                                        discovery_source=event_obj.discovery_source,
+                                                        tournament_id=tournament_id,
+                                                        competition_name=competition_name,
+                                                        competition_slug=competition_slug,
+                                                        season_id=season_id,
+                                                        season_name=season_name,
+                                                        observations=tennis_observations,
+                                                        participants=f"{event_obj.home_team} vs {event_obj.away_team}",
+                                                        home_team_name=event_obj.home_team,
+                                                        away_team_name=event_obj.away_team,
+                                                        h2h_events=h2h_events,
+                                                        minutes_until_start=minutes_until_start,
+                                                        home_team_id=home_team_id,
+                                                        away_team_id=away_team_id,
+                                                        event_odds=event_obj.event_odds
+                                                    )
+
+                                                    if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
+                                                        logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
+                                                    else:
+                                                        logger.debug(f"⏭️ No H2H streak alert for event {event_obj.id}")
                                                 else:
-                                                    logger.warning(f"⚠️ tennis_observations is None for event {event_obj.id}")
-                                                
-                                                # Analyze H2H events with team results
-                                                streak_analysis = streak_alert_engine.analyze_h2h_events(
-                                                    event_id=event_obj.id,
-                                                    event_custom_id=event_obj.custom_id,
-                                                    event_start_time=event_obj.start_time_utc,
-                                                    sport=event_obj.sport,
-                                                    discovery_source=event_obj.discovery_source,
-                                                    competition_name=competition_name,
-                                                    competition_slug=competition_slug,
-                                                    observations=tennis_observations,
-                                                    participants=f"{event_obj.home_team} vs {event_obj.away_team}",
-                                                    home_team_name=event_obj.home_team,
-                                                    away_team_name=event_obj.away_team,
-                                                    h2h_events=h2h_events,
-                                                    minutes_until_start=minutes_until_start,
-                                                    home_team_id=home_team_id,
-                                                    away_team_id=away_team_id,
-                                                    event_odds=event_obj.event_odds
-                                                )
-                                                
-                                                if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
-                                                    logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
-                                                else:
-                                                    logger.debug(f"⏭️ No H2H streak alert for event {event_obj.id}")
-                                            else:
-                                                logger.debug(f"No H2H data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
-                                        except Exception as e:
-                                            logger.error(f"Error analyzing H2H streak for event {event_obj.id}: {e}")
+                                                    logger.debug(f"No H2H data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
+                                            except Exception as e:
+                                                logger.error(f"Error analyzing H2H streak for event {event_obj.id}: {e}")
+                                        else:
+                                            logger.debug(f"Event {event_obj.id} has no custom_id - skipping H2H streak analysis")
                                     else:
-                                        logger.debug(f"Event {event_obj.id} has no custom_id - skipping H2H streak analysis")
+                                        logger.debug(f"⏭️ Skipping H2H streak analysis for event {event_obj.id} - minutes_until_start={minutes_until_start} (only run at 30)")
                                     
                                     # ========================================
                                     # DUAL PROCESS ANALYSIS FOR THIS EVENT
@@ -1095,6 +1087,8 @@ class JobScheduler:
                         home_team_id = None
                         away_team_id = None
                         competition_slug = None
+                        season_id = None
+                        season_name = None
                         competition_name = None
                         event_details = None
                         
@@ -1106,6 +1100,9 @@ class JobScheduler:
                                 # For Tennis, add rankings to observations
                                 if event_obj.sport in ['Tennis', 'Tennis Doubles']:
                                     has_rankings = False
+
+                                    season_id = event_details.get('season', {}).get('id')
+                                    season_name = event_details.get('season', {}).get('name')
                                     if observations:
                                         has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
                                     
@@ -1124,6 +1121,7 @@ class JobScheduler:
                                 away_team_id = event_details.get('awayTeam', {}).get('id')
                                 competition_name = event_details.get('tournament', {}).get('uniqueTournament', {}).get('name')
                                 competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
+                                tournament_id = event_details.get('tournament', {}).get('id')
                             else:
                                 logger.warning(f"Could not fetch event details for rescheduled event {event_obj.id}")
                         except Exception as e:
@@ -1175,8 +1173,11 @@ class JobScheduler:
                             event_start_time=event_obj.start_time_utc,
                             sport=event_obj.sport,
                             discovery_source=event_obj.discovery_source,
+                            tournament_id=tournament_id,
                             competition_name=competition_name,
                             competition_slug=competition_slug,
+                            season_id=season_id,
+                            season_name=season_name,
                             observations=tennis_observations,
                             participants=f"{event_obj.home_team} vs {event_obj.away_team}",
                             home_team_name=event_obj.home_team,

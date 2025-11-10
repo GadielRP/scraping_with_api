@@ -1,8 +1,8 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.4.8  
-**Estado General:** ✅ **MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + CRITICAL FIXES + OPTIMIZATIONS + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + TENNIS RANKING DIFFERENTIAL + H2H FILTERING FIXES**  
-**Última Actualización:** 5 de Noviembre, 2025
+**Versión:** v1.4.9  
+**Estado General:** ✅ **MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + CRITICAL FIXES + OPTIMIZATIONS + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + TENNIS RANKING DIFFERENTIAL + H2H FILTERING FIXES + SEASON FORM FILTERING**  
+**Última Actualización:** 10 de Noviembre, 2025
 
 ## 🎯 **Resumen del Proyecto**
 
@@ -144,6 +144,14 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Update `get_team_last_10_results_by_id()` to accept `exclude_event_id` parameter
 - [x] Make the historical results minimum configurable via `DEFAULT_MIN_RESULTS`/`min_results`, performing additional paged fetches until the target count is reached without duplicates.
 - [x] Store final real rankings as floats for higher precision in the ranking prediction section.
+
+### **📊 Season Form Filtering & Overall Win Streaks - 100% COMPLETADO (10/11/2025)**
+- [x] Extender `get_team_last_10_results_by_id()` para aceptar `season_id` y recuperar todos los partidos de la temporada actual (no tennis), deteniéndose cuando cambie la temporada.
+- [x] Mantener listas separadas de resultados filtrados vs. globales para calcular rachas ganadoras consecutivas sin filtros.
+- [x] Actualizar `H2HStreak` y `create_h2h_streak_message()` para mostrar “Overall Win Streaks” sólo cuando existe una racha activa.
+- [x] Simplificar la sección “Last 10 Games” mostrando únicamente el conteo W/L/D con etiqueta dinámica según cantidad de partidos.
+- [x] Refactorizar `sofascore_api2.get_team_last_results_response()` para usar `fetch_index` incremental en lugar de banderas booleanas.
+- [x] Ajustar el pre-start job en `scheduler.py` para que el análisis H2H sólo se ejecute a los 30 minutos antes del evento.
 
 ## ✅ **Estado de Tareas - PROCESS 1 COMPLETADO - PROCESS 2 EN PREPARACIÓN**
 

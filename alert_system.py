@@ -615,6 +615,61 @@ class PreStartNotification:
                 for line in overall_streak_lines:
                     message += f"{line}\n"
 
+            # Standings snapshot if available
+            home_standing = getattr(streak, 'home_team_standing', None)
+            away_standing = getattr(streak, 'away_team_standing', None)
+            if home_standing or away_standing:
+                message += "\n🏆 Standings Snapshot:\n"
+
+                def _format_standing_line(team_name: str, standing: Dict) -> str:
+                    position = standing.get('position')
+                    matches = standing.get('matches')
+                    wins = standing.get('wins')
+                    draws = standing.get('draws')
+                    losses = standing.get('losses')
+                    points = standing.get('points')
+                    goal_diff_formatted = standing.get('goal_diff_formatted')
+                    goal_diff = standing.get('goal_diff')
+
+                    if goal_diff_formatted:
+                        goal_diff_display = goal_diff_formatted
+                    elif goal_diff is not None:
+                        try:
+                            goal_diff_display = f"{goal_diff:+d}"
+                        except (TypeError, ValueError):
+                            goal_diff_display = str(goal_diff)
+                    else:
+                        goal_diff_display = "N/A"
+
+                    parts = []
+                    parts.append(f"{team_name}: ")
+                    parts.append(f"#{position}" if position is not None else "#N/A")
+                    if points is not None:
+                        parts.append(f", {points} pts")
+                    record_parts = []
+                    if wins is not None:
+                        record_parts.append(f"{wins}W")
+                    if draws is not None:
+                        record_parts.append(f"{draws}D")
+                    if losses is not None:
+                        record_parts.append(f"{losses}L")
+                    if record_parts:
+                        parts.append(f" ({'-'.join(record_parts)})")
+                    if matches is not None:
+                        parts.append(f", {matches} played")
+                    parts.append(f", GD {goal_diff_display}")
+                    return "".join(parts)
+
+                if home_standing:
+                    message += f"{_format_standing_line(streak.home_team_name, home_standing)}\n"
+                else:
+                    message += f"{streak.home_team_name}: No standings data\n"
+
+                if away_standing:
+                    message += f"{_format_standing_line(streak.away_team_name, away_standing)}\n"
+                else:
+                    message += f"{streak.away_team_name}: No standings data\n"
+
             message += f"\n📈 H2H (Last 2 Years):\n"
             
             # Total matches only
@@ -722,9 +777,17 @@ class PreStartNotification:
             
             # NEW: Team Results Section - Overall Form + Batched Display
             if hasattr(streak, 'home_team_wins') and hasattr(streak, 'away_team_wins'):
-                message += f"📊 Last 10 Games:\n"
-                message += f"{streak.home_team_name}: {streak.home_team_wins}W-{streak.home_team_losses}L-{streak.home_team_draws}D\n"
-                message += f"{streak.away_team_name}: {streak.away_team_wins}W-{streak.away_team_losses}L-{streak.away_team_draws}D\n\n"
+                # Calculate total games for each team (from results count, not just W+L+D in case of data issues)
+                home_total_games = len(streak.home_team_results) if hasattr(streak, 'home_team_results') else (streak.home_team_wins + streak.home_team_losses + streak.home_team_draws)
+                away_total_games = len(streak.away_team_results) if hasattr(streak, 'away_team_results') else (streak.away_team_wins + streak.away_team_losses + streak.away_team_draws)
+                
+                # Use dynamic labels based on actual game count
+                home_label = f"Last {home_total_games} Games" if home_total_games != 10 else "Last 10 Games"
+                away_label = f"Last {away_total_games} Games" if away_total_games != 10 else "Last 10 Games"
+                
+                message += f"📊 Season Form:\n"
+                message += f"{streak.home_team_name}: {streak.home_team_wins}W-{streak.home_team_losses}L-{streak.home_team_draws}D ({home_total_games} games)\n"
+                message += f"{streak.away_team_name}: {streak.away_team_wins}W-{streak.away_team_losses}L-{streak.away_team_draws}D ({away_total_games} games)\n\n"
                 
                 # Display batched form for historical analysis
                 if hasattr(streak, 'home_team_batches') and hasattr(streak, 'away_team_batches'):
@@ -785,7 +848,7 @@ class PreStartNotification:
                                     # Add single ranking if available
                                     single_ranking_str = f" = ~{game['single_ranking']}" if game.get('single_ranking', 0) > 0 else ""
                                     
-                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']}) [H:{cum_home_str}, A:{cum_away_str}]{single_ranking_str}\n"
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:

@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.4.7  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKING DIFFERENTIAL**  
-**Última Actualización:** 30 de Octubre, 2025
+**Versión:** v1.4.9  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKING DIFFERENTIAL + SEASON FORM FILTERING**  
+**Última Actualización:** 10 de Noviembre, 2025
 
 ## 🎯 **Descripción del Sistema**
 
@@ -232,6 +232,13 @@ class AlertMatch:
 - **Enhanced Telegram Alerts**: Muestra H2H stats + team form batched + winning odds + rachas actuales con emojis
 - **Production Ready**: Validado con data real y manejo robusto de edge cases
  - **Per-team Net Points by Role**: Cada equipo muestra `[H:+n, A:+n]` calculado solo sobre sus propias victorias; la línea "Total Matches" ahora muestra solo el conteo (sin netos)
+
+### ✅ **Season Form Filtering & Overall Win Streaks (v1.4.9) - NEW**
+- **Season-Scoped Team Form**: Los resultados históricos de equipos (no tennis) se filtran simultáneamente por `competition_slug` y `season_id`, realizando fetchs paginados hasta agotar los partidos de la temporada actual.
+- **Iterative Fetching API**: `sofascore_api2.get_team_last_results_response()` adopta `fetch_index` incremental, habilitando múltiples lotes consecutivos sin lógica ad-hoc.
+- **Overall Win Streaks**: El motor calcula rachas ganadoras consecutivas sin filtros (todas las competencias), exponiéndolas en la alerta sólo cuando hay al menos una victoria seguida.
+- **Season Form Messaging**: La sección de forma del equipo muestra únicamente el conteo W/L/D con etiqueta dinámica (p.ej., “Season Form · 14 juegos”), evitando listados extensos.
+- **Scheduler Guardrail**: El análisis H2H del pre-start job ahora se dispara únicamente cuando faltan 30 minutos, lo que reduce recomputos innecesarios a los 5 minutos.
 
 ## 🛠 **Instalación y Configuración**
 

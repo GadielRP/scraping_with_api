@@ -1,8 +1,8 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.4.8  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKING DIFFERENTIAL + H2H FILTERING FIXES**  
-**Última Actualización:** 5 de Noviembre, 2025
+**Versión:** v1.4.9  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKING DIFFERENTIAL + SEASON FORM FILTERING**  
+**Última Actualización:** 10 de Noviembre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
@@ -79,6 +79,14 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Precise Ranking Averages**: Final real rankings now use float precision for more accurate ranking prediction outputs.
 - **Production Ready**: All fixes validated and working correctly
 
+-### ✅ **NUEVO EN v1.4.9 - Season Form Filtering & Overall Win Streaks**
+-**Season-Aware Team Form**: `get_team_last_10_results_by_id()` ahora acepta `season_id` y, para deportes no tennis, recupera todos los partidos de la misma temporada y competencia deteniéndose cuando cambia la temporada.
+-**Flexible Fetching Loop**: Reemplazo del flag `second_fetch` por `fetch_index` en `sofascore_api2.get_team_last_results_response()`, permitiendo múltiples paginaciones consecutivas hasta cubrir toda la temporada.
+-**Overall Win Streak Tracking**: El motor calcula rachas ganadoras consecutivas sin filtros (todas las competencias) en paralelo con los resultados filtrados y las expone como `home_current_win_streak` / `away_current_win_streak`.
+-**Season Form Messaging**: La sección “Last 10 Games” del mensaje H2H ahora muestra únicamente el conteo W/L/D y etiqueta dinámica según la cantidad real de partidos (p.ej. “Season Form · 14 juegos”).
+-**Scheduler Guardrail**: La evaluación de alertas H2H en `job_pre_start_check` sólo se ejecuta cuando faltan exactamente 30 minutos, evitando recomputes innecesarios a los 5 minutos.
+-**Control Logs Actualizados**: Se añadió trazabilidad detallada para los nuevos filtros de temporada y la continuidad de fetchs, facilitando debugging en producción.
+-
 ### ✅ **NUEVO EN v1.4.5 - Detailed Match Results with Dates**
 - **Individual H2H Match Results**: Muestra cada partido H2H con detalles completos (home, away, scores)
 - **Grouped by Winner**: Resultados organizados por equipo ganador preservando orden histórico
