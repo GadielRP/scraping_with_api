@@ -191,20 +191,12 @@ class SofaScoreAPI:
                         break
                 
                 elif response.status_code == 404:
-                    # 404 errors - handle based on no_retry_on_404 flag
+                    # 404 errors - do not retry (per policy)
                     if no_retry_on_404:
-                        logger.debug(f"HTTP 404 for {endpoint} - no retry requested")
-                        return None
+                        logger.debug(f"HTTP 404 for {endpoint} - skipping retry as requested")
                     else:
-                        # Standard 404 retry logic
-                        wait_time = min(5 * (2 ** attempt), 60)  # 5s, 10s, 20s, 40s, max 60s
-                        logger.warning(f"HTTP 404 for {endpoint}, waiting {wait_time}s, attempt {attempt + 1}/{Config.MAX_RETRIES}")
-                        if attempt < Config.MAX_RETRIES - 1:
-                            time.sleep(wait_time)
-                            continue
-                        else:
-                            logger.error(f"HTTP 404 failed after {Config.MAX_RETRIES} attempts for {endpoint}")
-                            break
+                        logger.warning(f"HTTP 404 for {endpoint} - skipping retries")
+                    return None
                 
                 elif response.status_code in [500, 502, 503, 504, 522, 525]:
                     # Server errors - retry with exponential backoff

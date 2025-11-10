@@ -337,7 +337,9 @@ class JobScheduler:
             
             # STEP 2.1: CAPTURE ALL TIMING DECISIONS UPFRONT (before any API calls)
             # This prevents events from slipping out of key moment windows due to slow API calls
+            KEY_MOMENTS = [30, 5]
             events_to_process = []
+            event_meta_lookup = {}
             for event_data in events_with_odds:
                 minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
                 logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
@@ -345,11 +347,15 @@ class JobScheduler:
                 # Pre-compute timing decision (capture at current time, not after API delays)
                 should_extract_odds = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
                 
-                events_to_process.append({
+                event_info = {
+                    'event_id': event_data['id'],
                     'event_data': event_data,
                     'minutes_until_start': minutes_until_start,
-                    'should_extract_odds': should_extract_odds
-                })
+                    'should_extract_odds': should_extract_odds,
+                    'original_start_time': event_data['start_time_utc']
+                }
+                events_to_process.append(event_info)
+                event_meta_lookup[event_data['id']] = event_info
             
             # STEP 2.2: EXECUTE ALL ODDS EXTRACTIONS (with pre-computed decisions)
             processed_count = 0
@@ -393,7 +399,7 @@ class JobScheduler:
                                         events_with_odds_extracted.append({
                                             'event_id': event_data['id'],
                                             'start_time': event_data['start_time_utc'],
-                                            'minutes_until_start': minutes_until_start
+                                            'initial_minutes': minutes_until_start
                                         })
                                 else:
                                     logger.warning(f"Failed to update final odds for event {event_data['id']}")
@@ -436,15 +442,16 @@ class JobScheduler:
             else:
                 logger.info("Pre-start check completed: No games starting soon")
             
-            # Run alert evaluation for events at key moments (30 or 5 minutes)
-            # This ensures alerts are sent when odds are extracted OR when odds extraction is disabled for testing
-            should_evaluate_alerts = events_with_odds and (odds_extracted_count > 0 or not Config.ENABLE_ODDS_EXTRACTION)
+            # Run alert evaluation for events captured at key moments (30 or 5 minutes)
+            target_event_ids = {
+                info['event_id']
+                for info in events_to_process
+                if info['minutes_until_start'] in KEY_MOMENTS
+            }
+            should_evaluate_alerts = bool(target_event_ids)
             if should_evaluate_alerts:
                 try:
-                    if not Config.ENABLE_ODDS_EXTRACTION:
-                        logger.info("🔍 Evaluating upcoming events for pattern alerts (odds extraction disabled for testing)...")
-                    else:
-                        logger.info("🔍 Evaluating upcoming events for pattern alerts...")
+                    logger.info("🔍 Evaluating upcoming events for pattern alerts...")
                     
                     # Refresh materialized views to ensure latest data for alert evaluation
                     logger.info("🔄 Refreshing alert materialized views...")
@@ -456,21 +463,26 @@ class JobScheduler:
                     # Get Event objects with properly loaded event_odds for alert evaluation
                     # Use tracked events with odds extracted to prevent timing drift issues
                     events_for_alerts = []
+                    tracked_event_ids = set()
                     
                     if events_with_odds_extracted:
                         # Use tracked events (events where odds were successfully extracted)
                         logger.info(f"🔍 Using tracked events for alert evaluation ({len(events_with_odds_extracted)} events with odds extracted)")
                         
                         for tracked_event in events_with_odds_extracted:
+                            event_id = tracked_event['event_id']
+                            if event_id not in target_event_ids:
+                                continue
+
                             # Get the Event object to ensure we have fresh DB state
-                            event_obj = self.event_repo.get_event_by_id(tracked_event['event_id'])
+                            event_obj = self.event_repo.get_event_by_id(event_id)
                             if not event_obj:
-                                logger.warning(f"Could not find event {tracked_event['event_id']} for alert evaluation")
+                                logger.warning(f"Could not find event {event_id} for alert evaluation")
                                 continue
                             
                             # CRITICAL: Check if event was rescheduled after odds extraction
                             if event_obj.start_time_utc != tracked_event['start_time']:
-                                logger.warning(f"⏭️ Event {tracked_event['event_id']} was rescheduled after odds extraction - skipping alert evaluation")
+                                logger.warning(f"⏭️ Event {event_id} was rescheduled after odds extraction - skipping alert evaluation")
                                 continue
                             
                             # Skip if already processed as rescheduled in this cycle
@@ -479,12 +491,29 @@ class JobScheduler:
                                 continue
                             
                             # Use the minutes from when odds were extracted (prevents timing drift)
-                            events_for_alerts.append(event_obj)
+                            initial_minutes_snapshot = tracked_event.get('initial_minutes')
+                            if initial_minutes_snapshot is None:
+                                meta = event_meta_lookup.get(event_obj.id)
+                                if meta:
+                                    initial_minutes_snapshot = meta.get('minutes_until_start')
+                            if initial_minutes_snapshot is None:
+                                initial_minutes_snapshot = self._minutes_until_start(event_obj.start_time_utc)
+
+                            events_for_alerts.append({
+                                'event_obj': event_obj,
+                                'initial_minutes': initial_minutes_snapshot
+                            })
+                            tracked_event_ids.add(event_obj.id)
                     else:
                         # Fallback: Use original logic if no events with odds extracted
                         logger.info("🔍 No tracked events found - using fallback logic for alert evaluation")
                         
+                        remaining_target_ids = target_event_ids - tracked_event_ids
+
                         for event_data in events_with_odds:
+                            if event_data['id'] not in remaining_target_ids:
+                                continue
+
                             # Get the Event object first to ensure we have fresh DB state
                             event_obj = self.event_repo.get_event_by_id(event_data['id'])
                             if not event_obj:
@@ -494,11 +523,22 @@ class JobScheduler:
                             if event_obj.id in self.recently_rescheduled:
                                 logger.debug(f"⏭️ Skipping event {event_obj.id} - already rescheduled in this cycle")
                                 continue
+
+                            meta = event_meta_lookup.get(event_data['id'])
+                            original_start = meta.get('original_start_time') if meta else None
+                            if original_start and event_obj.start_time_utc != original_start:
+                                logger.warning(f"⏭️ Event {event_obj.id} start time changed during processing - skipping alert evaluation")
+                                continue
                             
-                            # Calculate minutes from fresh DB time, not stale event_data
-                            minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
-                            if minutes_until_start in [30, 5]:  # Key moments for odds extraction
-                                events_for_alerts.append(event_obj)
+                            initial_minutes_snapshot = meta.get('minutes_until_start') if meta else None
+                            if initial_minutes_snapshot is None:
+                                initial_minutes_snapshot = self._minutes_until_start(event_obj.start_time_utc)
+
+                            events_for_alerts.append({
+                                'event_obj': event_obj,
+                                'initial_minutes': initial_minutes_snapshot
+                            })
+                            tracked_event_ids.add(event_obj.id)
                     
                     if events_for_alerts:
                         logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for H2H and dual process alerts...")
@@ -509,15 +549,23 @@ class JobScheduler:
                         try:
                             from streak_alerts import streak_alert_engine
                             
-                            for event_obj in events_for_alerts:
+                            for event_payload in events_for_alerts:
                                 try:
                                     # Initialize observations per event to avoid cross-event contamination
                                     observations = None
                                     
-                                    logger.info(f"🔍 Processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team}")
+                                    event_obj = event_payload['event_obj']
+                                    initial_minutes = event_payload.get('initial_minutes')
+                                    if initial_minutes is None:
+                                        initial_minutes = self._minutes_until_start(event_obj.start_time_utc)
                                     
-                                    # Calculate minutes from FRESH database time, not stale event data
-                                    minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
+                                    minutes_now = self._minutes_until_start(event_obj.start_time_utc)
+                                    minutes_until_start = initial_minutes if initial_minutes in KEY_MOMENTS else minutes_now
+
+                                    logger.info(
+                                        f"🔍 Processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team} "
+                                        f"(captured {initial_minutes} min, current {minutes_now} min)"
+                                    )
                                     
                                     # ========================================
                                     # H2H STREAK ANALYSIS FOR THIS EVENT
@@ -783,10 +831,8 @@ class JobScheduler:
                         
                 except Exception as e:
                     logger.error(f"Error running alert evaluation: {e}")
-            elif events_with_odds and odds_extracted_count == 0:
-                logger.info("📊 NO ALERT EVALUATION: Events found but no odds extracted (not at key moments)")
             else:
-                logger.debug("No events found for alert evaluation")
+                logger.debug("No events captured at key moments for alert evaluation")
             
             # Note: Prediction logging is handled within the alert evaluation above
             
