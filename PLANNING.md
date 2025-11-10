@@ -75,6 +75,8 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Detailed Filtering Logs**: Added comprehensive logging showing exactly what filters are applied (ground_type vs competition)
 - **Pre-Start Job Restructuring**: Captures all timing decisions upfront before API calls to prevent events slipping out of key moment windows
 - **Current Event Exclusion**: Added exclusion of current/upcoming event from H2H analysis and team results to prevent self-referencing
+- **Configurable Team Form Depth**: Introduced `DEFAULT_MIN_RESULTS` and `min_results` overrides so historical team results keep fetching until the desired count is reached (with duplicate protection).
+- **Precise Ranking Averages**: Final real rankings now use float precision for more accurate ranking prediction outputs.
 - **Production Ready**: All fixes validated and working correctly
 
 ### ✅ **NUEVO EN v1.4.5 - Detailed Match Results with Dates**

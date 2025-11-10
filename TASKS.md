@@ -142,8 +142,8 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Add current event exclusion: Exclude current event ID from H2H analysis
 - [x] Add current event exclusion: Exclude current event ID from team results
 - [x] Update `get_team_last_10_results_by_id()` to accept `exclude_event_id` parameter
-- [x] Update function calls to pass `exclude_event_id=event_id`
-- [x] Test all fixes: Validated with real events, filtering now works correctly at both 30 and 5 minutes
+- [x] Make the historical results minimum configurable via `DEFAULT_MIN_RESULTS`/`min_results`, performing additional paged fetches until the target count is reached without duplicates.
+- [x] Store final real rankings as floats for higher precision in the ranking prediction section.
 
 ## ✅ **Estado de Tareas - PROCESS 1 COMPLETADO - PROCESS 2 EN PREPARACIÓN**
 

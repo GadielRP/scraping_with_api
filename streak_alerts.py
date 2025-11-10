@@ -6,7 +6,7 @@ to ensure consistency with existing result collection system.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Set
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from sofascore_api import api_client
@@ -69,6 +69,9 @@ class H2HStreak:
     one_final: Optional[float] = None
     x_final: Optional[float] = None
     two_final: Optional[float] = None
+    # NEW: Overall win streaks (unfiltered)
+    home_current_win_streak: int = 0
+    away_current_win_streak: int = 0
 
 
 class StreakAlertEngine:
@@ -302,6 +305,29 @@ class StreakAlertEngine:
         valid_rankings = [b['batch_real_ranking'] for b in batches if b.get('batch_real_ranking', 0) > 0]
         return float(sum(valid_rankings) / len(valid_rankings)) if valid_rankings else 0
 
+    def _calculate_current_win_streak(self, results: List[Dict]) -> int:
+        """
+        Calculate the current win streak (no filters) from a chronological list of results.
+        
+        Args:
+            results: List of result dictionaries sorted by most recent first.
+            
+        Returns:
+            Count of consecutive wins from the most recent result.
+        """
+        if not results:
+            return 0
+        
+        streak_count = 0
+        for result in results:
+            winner = result.get('winner')
+            if winner == '1':
+                streak_count += 1
+            else:
+                break
+        
+        return streak_count
+
 
     def _get_filtering_criteria(self, sport: str, competition_slug: str, observations: Optional[List[Dict]] = None) -> Tuple[str, str]:
         """
@@ -349,7 +375,19 @@ class StreakAlertEngine:
         
         return 0
 
-    def _process_events_into_results(self, events: List[Dict], team_id: int, team_name: str, competition_slug: str, sport: str, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None) -> List[Dict]:
+    def _process_events_into_results(
+        self,
+        events: List[Dict],
+        team_id: int,
+        team_name: str,
+        competition_slug: str,
+        sport: str,
+        observations: Optional[List[Dict]] = None,
+        exclude_event_id: Optional[int] = None,
+        apply_filters: bool = True,
+        overall_results: Optional[List[Dict]] = None,
+        overall_seen_event_ids: Optional[Set] = None
+    ) -> List[Dict]:
         """
         Process events into results list with filtering applied.
         Helper method to avoid code duplication between first and second fetch.
@@ -362,6 +400,9 @@ class StreakAlertEngine:
             sport: Sport type for filtering logic
             observations: List of dicts containing filtering observations
             exclude_event_id: Optional event ID to exclude from results
+            apply_filters: Whether to apply sport-specific filters
+            overall_results: Optional list to collect unfiltered results
+            overall_seen_event_ids: Optional set of seen event IDs for overall collection
             
         Returns:
             List of processed result dictionaries
@@ -382,93 +423,72 @@ class StreakAlertEngine:
                 if not result_data:
                     continue
                 
-                # SPORT-SPECIFIC FILTERING: Apply appropriate filter based on sport
-                if (sport == 'Tennis' or sport == 'Tennis Doubles'):
-                    # For tennis, filter by ground_type AND singles/doubles
-                    if observations:
-                        # Search for ground_type anywhere in observations (not just first item)
-                        ground_type_obs = next((obs for obs in observations if obs.get('type') == 'ground_type'), None)
-                        if ground_type_obs:
-                            ground_type_value = ground_type_obs.get('value')
-                            if ground_type_value != event.get('groundType'):
-                                logger.debug(f"Skipping event for {team_name} - different ground type: {ground_type_value} vs {event.get('groundType')}")
-                                continue
-                    
-                    # Filter by singles/doubles match type (use type field from API response)
-                    home_team_type = event.get('homeTeam', {}).get('type', 1)
-                    away_team_type = event.get('awayTeam', {}).get('type', 1)
-                    event_is_doubles = home_team_type == 2 and away_team_type == 2
-                    sport_is_doubles = sport == 'Tennis Doubles'
-                    
-                    if event_is_doubles != sport_is_doubles:
-                        logger.debug(f"Skipping event for {team_name} - different match type (event is {'doubles' if event_is_doubles else 'singles'}, sport is {'doubles' if sport_is_doubles else 'singles'})")
-                        continue
-                else:
-                    # For other sports, filter by competition
-                    if competition_slug:
-                        event_competition_slug = event.get('tournament', {}).get('uniqueTournament', {}).get('slug', '')
-                        if event_competition_slug != competition_slug:
-                            logger.debug(f"Skipping event for {team_name} - different competition: {event_competition_slug} vs {competition_slug}")
-                            continue
-                
-                # Get team names
-                home_team = event.get('homeTeam', {}).get('name', '')
-                away_team = event.get('awayTeam', {}).get('name', '')
-                
-                # Determine if our team won, lost, or drew
-                winner_position = result_data['winner']  # '1', '2', or 'X'
-                
-                # Get team data for ranking extraction
+                # Get team names and data
                 home_team_data = event.get('homeTeam', {})
                 away_team_data = event.get('awayTeam', {})
-                
-                if winner_position == 'X':
-                    # Draw
-                    team_result = 'X'
-                    if home_team == team_name:
-                        opponent_name = away_team
-                        opponent_ranking = self._extract_ranking_from_team(away_team_data)
-                        own_ranking = self._extract_ranking_from_team(home_team_data)
+                home_team_name = home_team_data.get('name', '')
+                away_team_name = away_team_data.get('name', '')
+
+                if home_team_name != team_name and away_team_name != team_name:
+                    logger.debug(f"Skipping event {event_id_from_api} for {team_name} - team not found among participants")
+                    continue
+
+                is_team_home = home_team_name == team_name
+                opponent_name = away_team_name if is_team_home else home_team_name
+                opponent_ranking = self._extract_ranking_from_team(away_team_data if is_team_home else home_team_data)
+                own_ranking = self._extract_ranking_from_team(home_team_data if is_team_home else away_team_data)
+
+                winner_code = event.get('winnerCode')
+                winner_position = result_data.get('winner')
+
+                if winner_code == 1:
+                    team_result = '1' if is_team_home else '2'
+                elif winner_code == 2:
+                    team_result = '1' if not is_team_home else '2'
+                else:
+                    if winner_position == '1':
+                        team_result = '1' if is_team_home else '2'
+                    elif winner_position == '2':
+                        team_result = '1' if not is_team_home else '2'
                     else:
-                        opponent_name = home_team
-                        opponent_ranking = self._extract_ranking_from_team(home_team_data)
-                        own_ranking = self._extract_ranking_from_team(away_team_data)
-                elif winner_position == '1':
-                    # Home team won
-                    if home_team == team_name:
-                        team_result = '1'  # Our team won
-                        opponent_name = away_team
-                        opponent_ranking = self._extract_ranking_from_team(away_team_data)
-                        own_ranking = self._extract_ranking_from_team(home_team_data)
-                    else:
-                        team_result = '2'  # Our team lost
-                        opponent_name = home_team
-                        opponent_ranking = self._extract_ranking_from_team(home_team_data)
-                        own_ranking = self._extract_ranking_from_team(away_team_data)
-                else:  # winner_position == '2'
-                    # Away team won
-                    if away_team == team_name:
-                        team_result = '1'  # Our team won
-                        opponent_name = home_team
-                        opponent_ranking = self._extract_ranking_from_team(home_team_data)
-                        own_ranking = self._extract_ranking_from_team(away_team_data)
-                    else:
-                        team_result = '2'  # Our team lost
-                        opponent_name = away_team
-                        opponent_ranking = self._extract_ranking_from_team(away_team_data)
-                        own_ranking = self._extract_ranking_from_team(home_team_data)
-                
-                # Map scores to our team's perspective and track role
-                if home_team == team_name:
+                        team_result = 'X'
+
+                if is_team_home:
                     team_score = result_data['home_score']
                     opponent_score = result_data['away_score']
-                    team_role = 'home'  # Team was home
+                    team_role = 'home'
                 else:
                     team_score = result_data['away_score']
                     opponent_score = result_data['home_score']
-                    team_role = 'away'  # Team was away
+                    team_role = 'away'
+
+                passes_filters = True
+                if apply_filters:
+                    if sport in ['Tennis', 'Tennis Doubles']:
+                        if observations:
+                            ground_type_obs = next((obs for obs in observations if obs.get('type') == 'ground_type'), None)
+                            if ground_type_obs:
+                                ground_type_value = ground_type_obs.get('value')
+                                if ground_type_value != event.get('groundType'):
+                                    logger.debug(f"Skipping event for {team_name} - different ground type: {ground_type_value} vs {event.get('groundType')}")
+                                    passes_filters = False
+                        if passes_filters:
+                            home_team_type = home_team_data.get('type', 1)
+                            away_team_type = away_team_data.get('type', 1)
+                            event_is_doubles = home_team_type == 2 and away_team_type == 2
+                            sport_is_doubles = sport == 'Tennis Doubles'
+                            if event_is_doubles != sport_is_doubles:
+                                logger.debug(f"Skipping event for {team_name} - different match type (event is {'doubles' if event_is_doubles else 'singles'}, sport is {'doubles' if sport_is_doubles else 'singles'})")
+                                passes_filters = False
+                    else:
+                        if competition_slug:
+                            event_competition_slug = event.get('tournament', {}).get('uniqueTournament', {}).get('slug', '')
+                            if event_competition_slug != competition_slug:
+                                logger.debug(f"Skipping event for {team_name} - different competition: {event_competition_slug} vs {competition_slug}")
+                                passes_filters = False
                 
                 result_dict = {
+                    'event_id': event_id_from_api,
                     'winner': team_result,
                     'home_score': team_score,
                     'away_score': opponent_score,
@@ -476,14 +496,14 @@ class StreakAlertEngine:
                     'opponent_name': opponent_name,
                     'opponent_ranking': opponent_ranking,
                     'own_ranking': own_ranking,
-                    'startTimestamp': event.get('startTimestamp', 0),  # Include for sorting
-                    'role': team_role  # Track whether team was home or away
+                    'startTimestamp': event.get('startTimestamp', 0),
+                    'role': team_role,
+                    'winner_code': winner_code
                 }
                 
                 # Add tennis period points if available (for points-based tracking)
                 if sport in ['Tennis', 'Tennis Doubles'] and 'home_period1' in result_data:
-                    # Map period points to team's perspective
-                    if home_team == team_name:
+                    if is_team_home:
                         result_dict['team_period1'] = result_data.get('home_period1')
                         result_dict['team_period2'] = result_data.get('home_period2')
                         result_dict['team_period3'] = result_data.get('home_period3')
@@ -497,7 +517,15 @@ class StreakAlertEngine:
                         result_dict['opponent_period1'] = result_data.get('home_period1')
                         result_dict['opponent_period2'] = result_data.get('home_period2')
                         result_dict['opponent_period3'] = result_data.get('home_period3')
-                
+
+                if overall_results is not None and overall_seen_event_ids is not None:
+                    if event_id_from_api not in overall_seen_event_ids:
+                        overall_results.append(dict(result_dict))
+                        overall_seen_event_ids.add(event_id_from_api)
+
+                if apply_filters and not passes_filters:
+                    continue
+
                 results.append(result_dict)
                 
             except Exception as e:
@@ -509,7 +537,7 @@ class StreakAlertEngine:
         
         return results
 
-    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None, min_results: int = None) -> List[Dict]:
+    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None, min_results: int = None) -> Tuple[List[Dict], int]:
         """
         Get the last N results for a team using team_id.
         Processes team results response and returns standardized format.
@@ -524,7 +552,9 @@ class StreakAlertEngine:
             exclude_event_id: Optional event ID to exclude from results (current/upcoming event)
             min_results: Minimum number of results to fetch (default: DEFAULT_MIN_RESULTS class constant)
         Returns:
-            List of dicts with keys: winner, home_score, away_score, team_name, opponent_name
+            Tuple where:
+                - List of dicts with keys: winner, home_score, away_score, team_name, opponent_name (filtered results)
+                - Integer representing the overall (unfiltered) current win streak
         """
         # Use class constant if min_results not provided
         if min_results is None:
@@ -563,23 +593,32 @@ class StreakAlertEngine:
             
             all_results = []
             seen_event_ids = set()
+            overall_results: List[Dict] = []
+            overall_seen_event_ids: Set[int] = set()
             
             if full_response and 'events' in full_response:
                 events = full_response['events']
                 if events:
                     logger.info(f"🔍 FILTERING: Processing {len(events)} total events from API (first fetch), filtering by {filter_type} '{filter_value}'{match_type_info}")
                     first_fetch_results = self._process_events_into_results(
-                        events, team_id, team_name, competition_slug, sport, observations, exclude_event_id
+                        events,
+                        team_id,
+                        team_name,
+                        competition_slug,
+                        sport,
+                        observations,
+                        exclude_event_id,
+                        apply_filters=True,
+                        overall_results=overall_results,
+                        overall_seen_event_ids=overall_seen_event_ids
                     )
                     
                     # Track seen event IDs to avoid duplicates
                     for result in first_fetch_results:
-                        # Extract event ID from result if available (we need to track this)
-                        # Since we don't store event_id in result_dict, we'll use a combination of timestamp and opponent
-                        # Actually, we should add event_id to result_dict for deduplication
-                        all_results.append(result)
-                        # Use timestamp + opponent as unique key for now
-                        seen_event_ids.add((result.get('startTimestamp', 0), result.get('opponent_name', '')))
+                        result_key = result.get('event_id')
+                        if result_key not in seen_event_ids:
+                            all_results.append(result)
+                            seen_event_ids.add(result_key)
             
             # Check if we need additional fetches (less than min_results)
             # Keep trying until we have at least min_results or no more events available
@@ -603,13 +642,22 @@ class StreakAlertEngine:
                     if additional_events:
                         logger.info(f"🔍 FILTERING: Processing {len(additional_events)} total events from API (fetch {fetch_attempt + 1}), filtering by {filter_type} '{filter_value}'{match_type_info}")
                         additional_fetch_results = self._process_events_into_results(
-                            additional_events, team_id, team_name, competition_slug, sport, observations, exclude_event_id
+                            additional_events,
+                            team_id,
+                            team_name,
+                            competition_slug,
+                            sport,
+                            observations,
+                            exclude_event_id,
+                            apply_filters=True,
+                            overall_results=overall_results,
+                            overall_seen_event_ids=overall_seen_event_ids
                         )
                         
                         # Add results from additional fetch, avoiding duplicates
                         added_count = 0
                         for result in additional_fetch_results:
-                            result_key = (result.get('startTimestamp', 0), result.get('opponent_name', ''))
+                            result_key = result.get('event_id')
                             if result_key not in seen_event_ids:
                                 all_results.append(result)
                                 seen_event_ids.add(result_key)
@@ -628,9 +676,14 @@ class StreakAlertEngine:
                 
                 fetch_attempt += 1
             
-            # Sort all results by timestamp (most recent first)
+            # Sort results by timestamp (most recent first)
             all_results.sort(key=lambda x: x.get('startTimestamp', 0), reverse=True)
+            overall_results.sort(key=lambda x: x.get('startTimestamp', 0), reverse=True)
             
+            # Calculate overall (unfiltered) win streak
+            current_win_streak = self._calculate_current_win_streak(overall_results)
+            logger.info(f"📈 Overall win streak for {team_name} (ID: {team_id}): {current_win_streak}")
+
             # Debug: Log the results to verify processing
             if all_results:
                 filter_type, filter_value = self._get_filtering_criteria(sport, competition_slug, observations)
@@ -655,11 +708,11 @@ class StreakAlertEngine:
                 logger.info(f"📊 Team {team_name} - no results found in {filter_type} '{filter_value}'{match_type_info}")
             
             # Return only the min_results most recent (or all if less than min_results)
-            return all_results[:min_results]
+            return all_results[:min_results], current_win_streak
             
         except Exception as e:
             logger.error(f"Error getting team last 10 results for {team_name} (ID: {team_id}): {e}")
-            return []
+            return [], 0
 
     def get_winning_odds_data(self, event_id: int) -> Optional[Dict]:
         """
@@ -928,14 +981,30 @@ class StreakAlertEngine:
             away_team_draws = 0
             home_team_batches = []
             away_team_batches = []
+            home_overall_win_streak = 0
+            away_overall_win_streak = 0
             
             if home_team_id:
-                home_team_results = self.get_team_last_10_results_by_id(home_team_id, home_team_name, competition_slug, sport, observations, exclude_event_id=event_id)
+                home_team_results, home_overall_win_streak = self.get_team_last_10_results_by_id(
+                    home_team_id,
+                    home_team_name,
+                    competition_slug,
+                    sport,
+                    observations,
+                    exclude_event_id=event_id
+                )
             else:
                 logger.debug(f"No home_team_id provided for {home_team_name}")
             
             if away_team_id:
-                away_team_results = self.get_team_last_10_results_by_id(away_team_id, away_team_name, competition_slug, sport, observations, exclude_event_id=event_id)
+                away_team_results, away_overall_win_streak = self.get_team_last_10_results_by_id(
+                    away_team_id,
+                    away_team_name,
+                    competition_slug,
+                    sport,
+                    observations,
+                    exclude_event_id=event_id
+                )
             else:
                 logger.debug(f"No away_team_id provided for {away_team_name}")
             
@@ -1080,7 +1149,10 @@ class StreakAlertEngine:
                 two_open=two_open,
                 one_final=one_final,
                 x_final=x_final,
-                two_final=two_final
+                two_final=two_final,
+                # NEW: Overall win streaks
+                home_current_win_streak=home_overall_win_streak,
+                away_current_win_streak=away_overall_win_streak
             )
             
         except Exception as e:

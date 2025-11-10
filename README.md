@@ -226,6 +226,8 @@ class AlertMatch:
 - **404 Error Resilience**: Sistema flexible que continúa funcionando sin datos de odds (404s comunes)
 - **Proven Logic**: Reutiliza `api_client.extract_results_from_response()` para consistencia total
 - **Flexible Results**: Muestra todos los resultados H2H en ventana de 2 años
+- **Configurable Team Form Depth**: `StreakAlertEngine.DEFAULT_MIN_RESULTS` y el parámetro `min_results` permiten ajustar cuántos juegos históricos se intentan recuperar, realizando múltiples fetches sin duplicados cuando sea necesario.
+- **Precise Ranking Averages**: Los promedios de ranking real ahora se calculan en punto flotante para mejorar la sección de ranking prediction.
 - **Integrated Flow**: Se ejecuta en momentos clave (30, 5 min) junto con dual process alerts
 - **Enhanced Telegram Alerts**: Muestra H2H stats + team form batched + winning odds + rachas actuales con emojis
 - **Production Ready**: Validado con data real y manejo robusto de edge cases

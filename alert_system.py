@@ -603,13 +603,23 @@ class PreStartNotification:
                     odds_display += f", X: {streak.x_final}"
                 odds_display += f", 2: {streak.two_final}"
                 message += f"💰 {odds_display}\n"
-            
-            message += "\n"
-            message += f"📈 H2H (Last 2 Years):\n"
+ 
+            # Display overall team win streaks (unfiltered) if available
+            overall_streak_lines = []
+            if getattr(streak, 'home_current_win_streak', 0):
+                overall_streak_lines.append(f"{streak.home_team_name}: {streak.home_current_win_streak} consecutive wins")
+            if getattr(streak, 'away_current_win_streak', 0):
+                overall_streak_lines.append(f"{streak.away_team_name}: {streak.away_current_win_streak} consecutive wins")
+            if overall_streak_lines:
+                message += "\n🎯 Overall Win Streaks:\n"
+                for line in overall_streak_lines:
+                    message += f"{line}\n"
+
+            message += f"\n📈 H2H (Last 2 Years):\n"
             
             # Total matches only
             message += f"Total Matches: {streak.matches_analyzed}\n"
-            
+           
             # Group matches by winner to show results organized by team
             if hasattr(streak, 'all_matches') and streak.all_matches:
                 # Extract results to count wins per team
@@ -914,27 +924,46 @@ class PreStartNotification:
             ranking_prediction = self._calculate_ranking_prediction(streak)
             if ranking_prediction:
                 message += f"🎯 Ranking Prediction:\n"
-                message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
-                message += f"Best Ranking Factor: {ranking_prediction['best_ranking_factor']:.4f}\n"
-                message += f"Worst Ranking Factor: {ranking_prediction['worst_ranking_factor']:.4f}\n\n"
-                
-                message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
-                message += f"Total Points: {ranking_prediction['best_total_points']}\n"
-                message += f"Adjusted Points: {ranking_prediction['best_adjusted_points']}\n\n"
-                
-                message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
-                message += f"Total Points: {ranking_prediction['worst_total_points']}\n"
-                message += f"Adjusted Points: {ranking_prediction['worst_adjusted_points']}\n\n"
-                
-                # Final prediction
-                if ranking_prediction['prediction_diff'] > 0:
-                    message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {ranking_prediction['prediction_diff']} points\n"
-                elif ranking_prediction['prediction_diff'] < 0:
-                    message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(ranking_prediction['prediction_diff'])} points\n"
+                if ranking_prediction['ranking_advantage'] < 100:
+                    message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
+                    message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
+                    message += f"Total Points: {ranking_prediction['best_total_points']}\n"
+
+                    message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
+                    message += f"Total Points: {ranking_prediction['worst_total_points']}\n"
+                    
+                    non_adjusted_prediction_diff = ranking_prediction['best_total_points'] - ranking_prediction['worst_total_points']
+                    if non_adjusted_prediction_diff > 0:
+                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {non_adjusted_prediction_diff} points\n"
+                    elif non_adjusted_prediction_diff < 0:
+                        message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(non_adjusted_prediction_diff)} points\n"
+                    else:
+                        message += f"🏆 Prediction: Tie (0 point difference)\n"
+                    
+                    message += "\n"
                 else:
-                    message += f"🏆 Prediction: Tie (0 point difference)\n"
-                
-                message += "\n"
+
+                    message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
+                    message += f"Best Ranking Factor: {ranking_prediction['best_ranking_factor']:.4f}\n"
+                    message += f"Worst Ranking Factor: {ranking_prediction['worst_ranking_factor']:.4f}\n\n"
+                    
+                    message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
+                    message += f"Total Points: {ranking_prediction['best_total_points']}\n"
+                    message += f"Adjusted Points: {ranking_prediction['best_adjusted_points']}\n\n"
+                    
+                    message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
+                    message += f"Total Points: {ranking_prediction['worst_total_points']}\n"
+                    message += f"Adjusted Points: {ranking_prediction['worst_adjusted_points']}\n\n"
+                    
+                    # Final prediction
+                    if ranking_prediction['prediction_diff'] > 0:
+                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {ranking_prediction['prediction_diff']} points\n"
+                    elif ranking_prediction['prediction_diff'] < 0:
+                        message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(ranking_prediction['prediction_diff'])} points\n"
+                    else:
+                        message += f"🏆 Prediction: Tie (0 point difference)\n"
+                    
+                    message += "\n"
             
             # NEW: Winning Odds Section
             if hasattr(streak, 'winning_odds_data') and streak.winning_odds_data:
