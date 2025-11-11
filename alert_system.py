@@ -66,13 +66,14 @@ class PreStartNotification:
         
         return period1 + period2 + period3
     
-    def _calculate_ranking_prediction(self, streak) -> Optional[Dict]:
+    def _calculate_ranking_prediction(self, streak, home_total_games, away_total_games) -> Optional[Dict]:
         """
         Calculate ranking prediction based on final real rankings and historical form points.
         
         Args:
             streak: H2HStreak object with batches and final real rankings
-            
+            home_total_games: Total games for home team
+            away_total_games: Total games for away team
         Returns:
             Dictionary with prediction data or None if insufficient data
         """
@@ -91,6 +92,8 @@ class PreStartNotification:
             worst_team_name = streak.away_team_name
             best_batches = streak.home_team_batches
             worst_batches = streak.away_team_batches
+            best_total_games = home_total_games
+            worst_total_games = away_total_games
         else:
             best_ranking = away_ranking
             worst_ranking = home_ranking
@@ -98,7 +101,8 @@ class PreStartNotification:
             worst_team_name = streak.home_team_name
             best_batches = streak.away_team_batches
             worst_batches = streak.home_team_batches
-        
+            best_total_games = away_total_games
+            worst_total_games = home_total_games
         # Calculate ranking advantage
         ranking_advantage = abs(best_ranking - worst_ranking)
         
@@ -139,7 +143,10 @@ class PreStartNotification:
             'worst_total_points': worst_total_points,
             'best_adjusted_points': best_adjusted_points,
             'worst_adjusted_points': worst_adjusted_points,
-            'prediction_diff': prediction_diff
+            'prediction_diff': prediction_diff,
+            'best_total_games': best_total_games,
+            'worst_total_games': worst_total_games
+
         }
     
     def _load_notification_settings(self):
@@ -562,6 +569,9 @@ class PreStartNotification:
             Formatted message string for Telegram
         """
         try:
+            # Calculate total games for each team (from results count, not just W+L+D in case of data issues)
+            away_total_games = len(streak.away_team_results) if hasattr(streak, 'away_team_results') else (streak.away_team_wins + streak.away_team_losses + streak.away_team_draws)
+            home_total_games = len(streak.home_team_results) if hasattr(streak, 'home_team_results') else (streak.home_team_wins + streak.home_team_losses + streak.home_team_draws)
             message = f"📊 <b>{streak.discovery_source.title().replace('_', ' ')} Streak Alert</b>\n"
             message += f"🏆 <b>{streak.event_id} {streak.participants}</b>\n"
             if streak.sport == 'Football':
@@ -611,7 +621,7 @@ class PreStartNotification:
             if getattr(streak, 'away_current_win_streak', 0):
                 overall_streak_lines.append(f"{streak.away_team_name}: {streak.away_current_win_streak} consecutive wins")
             if overall_streak_lines:
-                message += "\n🎯 Overall Win Streaks:\n"
+                message += "\n🎯 General Win Streaks:\n"
                 for line in overall_streak_lines:
                     message += f"{line}\n"
 
@@ -777,10 +787,8 @@ class PreStartNotification:
             
             # NEW: Team Results Section - Overall Form + Batched Display
             if hasattr(streak, 'home_team_wins') and hasattr(streak, 'away_team_wins'):
-                # Calculate total games for each team (from results count, not just W+L+D in case of data issues)
-                home_total_games = len(streak.home_team_results) if hasattr(streak, 'home_team_results') else (streak.home_team_wins + streak.home_team_losses + streak.home_team_draws)
-                away_total_games = len(streak.away_team_results) if hasattr(streak, 'away_team_results') else (streak.away_team_wins + streak.away_team_losses + streak.away_team_draws)
                 
+                            
                 # Use dynamic labels based on actual game count
                 home_label = f"Last {home_total_games} Games" if home_total_games != 10 else "Last 10 Games"
                 away_label = f"Last {away_total_games} Games" if away_total_games != 10 else "Last 10 Games"
@@ -984,22 +992,22 @@ class PreStartNotification:
                     message += "\n"
             
             # NEW: Ranking Prediction Section
-            ranking_prediction = self._calculate_ranking_prediction(streak)
+            ranking_prediction = self._calculate_ranking_prediction(streak, home_total_games, away_total_games)
             if ranking_prediction:
                 message += f"🎯 Ranking Prediction:\n"
                 if ranking_prediction['ranking_advantage'] < 100:
                     message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
                     message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['best_total_points']}\n"
+                    message += f"Total Points: {ranking_prediction['best_total_points']} -> {ranking_prediction['best_total_points']/ranking_prediction['best_total_games']:.2f}\n"
 
                     message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['worst_total_points']}\n"
+                    message += f"Total Points: {ranking_prediction['worst_total_points']} -> {ranking_prediction['worst_total_points']/ranking_prediction['worst_total_games']:.2f}\n"
                     
                     non_adjusted_prediction_diff = ranking_prediction['best_total_points'] - ranking_prediction['worst_total_points']
                     if non_adjusted_prediction_diff > 0:
-                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {non_adjusted_prediction_diff} points\n"
+                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {non_adjusted_prediction_diff/ranking_prediction['best_total_games']:.1f} points\n"
                     elif non_adjusted_prediction_diff < 0:
-                        message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(non_adjusted_prediction_diff)} points\n"
+                        message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(non_adjusted_prediction_diff)/ranking_prediction['best_total_games']:.1f} points\n"
                     else:
                         message += f"🏆 Prediction: Tie (0 point difference)\n"
                     
@@ -1012,17 +1020,17 @@ class PreStartNotification:
                     
                     message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
                     message += f"Total Points: {ranking_prediction['best_total_points']}\n"
-                    message += f"Adjusted Points: {ranking_prediction['best_adjusted_points']}\n\n"
+                    message += f"Adjusted Points: {ranking_prediction['best_adjusted_points']} -> {ranking_prediction['best_adjusted_points']/ranking_prediction['best_total_games']:.2f}\n\n"
                     
                     message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
                     message += f"Total Points: {ranking_prediction['worst_total_points']}\n"
-                    message += f"Adjusted Points: {ranking_prediction['worst_adjusted_points']}\n\n"
+                    message += f"Adjusted Points: {ranking_prediction['worst_adjusted_points']} -> {ranking_prediction['worst_adjusted_points']/ranking_prediction['worst_total_games']:.2f}\n\n"
                     
                     # Final prediction
                     if ranking_prediction['prediction_diff'] > 0:
-                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {ranking_prediction['prediction_diff']} points\n"
+                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {ranking_prediction['prediction_diff']/ranking_prediction['best_total_games']:.1f} points\n"
                     elif ranking_prediction['prediction_diff'] < 0:
-                        message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(ranking_prediction['prediction_diff'])} points\n"
+                        message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(ranking_prediction['prediction_diff'])/ranking_prediction['best_total_games']:.1f} points\n"
                     else:
                         message += f"🏆 Prediction: Tie (0 point difference)\n"
                     

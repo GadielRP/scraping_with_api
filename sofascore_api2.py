@@ -145,10 +145,13 @@ def process_standings_response(
         logger.debug("process_standings_response called with empty standings data")
         return None, None
 
-    # Prioritize the 'total' standings table; fallback to the first available table.
-    total_table = next((table for table in standings if table.get('type') == 'total'), None)
-    table_to_use = total_table or standings[0]
-    rows = table_to_use.get('rows', [])
+    # Prioritize 'total' table but search through every table until both teams are found.
+    total_table = next((table for table in standings), None)
+    remaining_tables = [table for table in standings if table is not total_table]
+    tables_to_scan = []
+    if total_table:
+        tables_to_scan.append(total_table)
+    tables_to_scan.extend(remaining_tables or standings)
 
     def _build_team_snapshot(row: Dict) -> Dict:
         team = row.get('team', {})
@@ -179,17 +182,21 @@ def process_standings_response(
     home_snapshot = None
     away_snapshot = None
 
-    for row in rows:
-        team = row.get('team', {})
-        team_id = team.get('id')
-        if team_id is None:
-            continue
-
-        if home_team_id is not None and team_id == home_team_id:
-            home_snapshot = _build_team_snapshot(row)
-        elif away_team_id is not None and team_id == away_team_id:
-            away_snapshot = _build_team_snapshot(row)
-
+    for table in tables_to_scan:
+        rows = table.get('rows', [])
+        for row in rows:
+            team = row.get('team', {})
+            team_id = team.get('id')
+            if team_id is None:
+                continue
+            
+            if home_team_id is not None and team_id == home_team_id and not home_snapshot:
+                home_snapshot = _build_team_snapshot(row)
+            elif away_team_id is not None and team_id == away_team_id and not away_snapshot:
+                away_snapshot = _build_team_snapshot(row)
+            
+            if home_snapshot and away_snapshot:
+                break
         if home_snapshot and away_snapshot:
             break
 
