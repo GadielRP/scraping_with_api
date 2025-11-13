@@ -81,6 +81,10 @@ class PreStartNotification:
         home_ranking = streak.home_team_final_real_ranking
         away_ranking = streak.away_team_final_real_ranking
         
+
+        if streak.sport not in ['Tennis', 'Tennis Doubles']:
+            return None
+
         if home_ranking == 0 or away_ranking == 0:
             return None
         
@@ -107,8 +111,11 @@ class PreStartNotification:
         ranking_advantage = abs(best_ranking - worst_ranking)
         
         # Calculate factors
-        best_ranking_factor = ranking_advantage / best_ranking if best_ranking > 0 else 0
-        worst_ranking_factor = best_ranking / ranking_advantage if worst_ranking > 0 else 0
+        best_best_ranking_factor = ranking_advantage / best_ranking if best_ranking > 0 else 0
+        best_worst_ranking_factor = best_ranking / ranking_advantage if worst_ranking > 0 else 0
+
+        worst_best_ranking_factor = ranking_advantage / worst_ranking if worst_ranking > 0 else 0
+        worst_worst_ranking_factor = worst_ranking / ranking_advantage if best_ranking > 0 else 0
         
         # Sum all [H:x, A:y] points from all batches for best team
         best_total_points = 0
@@ -123,10 +130,11 @@ class PreStartNotification:
             home_net = batch.get('batch_home_net_points', 0)
             away_net = batch.get('batch_away_net_points', 0)
             worst_total_points += (home_net + away_net)
-        
+        best_total_points_per_game = best_total_points / best_total_games
+        worst_total_points_per_game = worst_total_points / worst_total_games
         # Calculate adjusted points
-        best_adjusted_points = round(best_total_points * best_ranking_factor)
-        worst_adjusted_points = round(worst_total_points * worst_ranking_factor)
+        best_adjusted_points = abs(round(best_total_points_per_game * best_best_ranking_factor)-(best_total_points_per_game * best_worst_ranking_factor))
+        worst_adjusted_points = abs(round(worst_total_points_per_game * worst_best_ranking_factor)-(worst_total_points_per_game * worst_worst_ranking_factor))
         
         # Calculate prediction (difference)
         prediction_diff = best_adjusted_points - worst_adjusted_points
@@ -135,8 +143,12 @@ class PreStartNotification:
             'ranking_advantage': ranking_advantage,
             'best_ranking': best_ranking,
             'worst_ranking': worst_ranking,
-            'best_ranking_factor': best_ranking_factor,
-            'worst_ranking_factor': worst_ranking_factor,
+            'best_best_ranking_factor': best_best_ranking_factor,
+            'best_worst_ranking_factor': best_worst_ranking_factor,
+            'worst_best_ranking_factor': worst_best_ranking_factor,
+            'worst_worst_ranking_factor': worst_worst_ranking_factor,
+            'best_total_points_per_game': best_total_points_per_game,
+            'worst_total_points_per_game': worst_total_points_per_game,
             'best_team_name': best_team_name,
             'worst_team_name': worst_team_name,
             'best_total_points': best_total_points,
@@ -853,10 +865,8 @@ class PreStartNotification:
                                     cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
                                     cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
                                     
-                                    # Add single ranking if available
-                                    single_ranking_str = f" = ~{game['single_ranking']}" if game.get('single_ranking', 0) > 0 else ""
                                     
-                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']})\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:
@@ -912,7 +922,7 @@ class PreStartNotification:
                                     cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
                                     cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
                                     
-                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
+                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:
@@ -976,12 +986,10 @@ class PreStartNotification:
                                 cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
                                 
                                 if streak.sport == 'Tennis' or streak.sport == 'Tennis Doubles':
-                                    # Add single ranking if available
-                                    single_ranking_str = f" = ~{game['single_ranking']}" if game.get('single_ranking', 0) > 0 else ""
-                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']}) [H:{cum_home_str}, A:{cum_away_str}]{single_ranking_str}\n"
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']})\n"
                                 else:
                                     role_indicator = "🏠" if game_role == 'home' else "✈️"
-                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']}) [H:{cum_home_str}, A:{cum_away_str}]\n"
+                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
                             
                             # Add break line between batches (except for the last batch)
                             if i < len(streak.away_team_batches) - 1:
@@ -998,16 +1006,16 @@ class PreStartNotification:
                 if ranking_prediction['ranking_advantage'] < 100:
                     message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
                     message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['best_total_points']} -> {ranking_prediction['best_total_points']/ranking_prediction['best_total_games']:.2f}\n"
+                    message += f"Total Points: {ranking_prediction['best_total_points']} -> {ranking_prediction['best_total_points_per_game']:.2f}\n"
 
                     message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['worst_total_points']} -> {ranking_prediction['worst_total_points']/ranking_prediction['worst_total_games']:.2f}\n"
+                    message += f"Total Points: {ranking_prediction['worst_total_points']} -> {ranking_prediction['worst_total_points_per_game']:.2f}\n"
                     
-                    non_adjusted_prediction_diff = ranking_prediction['best_total_points'] - ranking_prediction['worst_total_points']
-                    if non_adjusted_prediction_diff > 0:
-                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {non_adjusted_prediction_diff/ranking_prediction['best_total_games']:.1f} points\n"
-                    elif non_adjusted_prediction_diff < 0:
-                        message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(non_adjusted_prediction_diff)/ranking_prediction['best_total_games']:.1f} points\n"
+                    prediction_diff = abs(ranking_prediction['best_adjusted_points'] - ranking_prediction['worst_adjusted_points'])
+                    if prediction_diff > 0:
+                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {prediction_diff:.2f} points\n"
+                    elif prediction_diff < 0:
+                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {abs(prediction_diff):.2f} points\n"
                     else:
                         message += f"🏆 Prediction: Tie (0 point difference)\n"
                     
@@ -1015,22 +1023,24 @@ class PreStartNotification:
                 else:
 
                     message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
-                    message += f"Best Ranking Factor: {ranking_prediction['best_ranking_factor']:.4f}\n"
-                    message += f"Worst Ranking Factor: {ranking_prediction['worst_ranking_factor']:.4f}\n\n"
+                    message += f"Best Ranking Factor 1: {ranking_prediction['best_best_ranking_factor']:.3f}\n"
+                    message += f"Best Ranking Factor 2: {ranking_prediction['best_worst_ranking_factor']:.3f}\n\n"
+                    message += f"Worst Ranking Factor 1: {ranking_prediction['worst_best_ranking_factor']:.3f}\n"
+                    message += f"Worst Ranking Factor 2: {ranking_prediction['worst_worst_ranking_factor']:.3f}\n\n"
                     
                     message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['best_total_points']}\n"
-                    message += f"Adjusted Points: {ranking_prediction['best_adjusted_points']} -> {ranking_prediction['best_adjusted_points']/ranking_prediction['best_total_games']:.2f}\n\n"
+                    message += f"Total Points: {ranking_prediction['best_total_points']} -> {ranking_prediction['best_total_points_per_game']:.2f}\n"
+                    message += f"Adjusted Points: {ranking_prediction['best_adjusted_points']:.3f}\n\n"
                     
                     message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['worst_total_points']}\n"
-                    message += f"Adjusted Points: {ranking_prediction['worst_adjusted_points']} -> {ranking_prediction['worst_adjusted_points']/ranking_prediction['worst_total_games']:.2f}\n\n"
+                    message += f"Total Points: {ranking_prediction['worst_total_points']} -> {ranking_prediction['worst_total_points_per_game']:.2f}\n"
+                    message += f"Adjusted Points: {ranking_prediction['worst_adjusted_points']:.3f}\n\n"
                     
                     # Final prediction
                     if ranking_prediction['prediction_diff'] > 0:
-                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {ranking_prediction['prediction_diff']/ranking_prediction['best_total_games']:.1f} points\n"
+                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {ranking_prediction['prediction_diff']:.2f} points\n"
                     elif ranking_prediction['prediction_diff'] < 0:
-                        message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(ranking_prediction['prediction_diff'])/ranking_prediction['best_total_games']:.1f} points\n"
+                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {abs(ranking_prediction['prediction_diff']):.2f} points\n"
                     else:
                         message += f"🏆 Prediction: Tie (0 point difference)\n"
                     
