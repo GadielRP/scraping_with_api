@@ -865,8 +865,8 @@ class PreStartNotification:
                                     cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
                                     cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
                                     
-                                    
-                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']})\n"
+                                    # use to include date prefix and single ranking, not anymore. TODO: remove date prefix single ranking for performance reasons.
+                                    message += f" ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']})\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:
@@ -922,7 +922,8 @@ class PreStartNotification:
                                     cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
                                     cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
                                     
-                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                    # use to include date prefix, not anymore. TODO: remove date prefix for performance reasons.
+                                    message += f"{role_indicator}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:
@@ -989,7 +990,8 @@ class PreStartNotification:
                                     message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']})\n"
                                 else:
                                     role_indicator = "🏠" if game_role == 'home' else "✈️"
-                                    message += f"{role_indicator}{date_prefix}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                    # use to include date prefix, not anymore. TODO: remove date prefix for performance reasons.
+                                    message += f"{role_indicator}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
                             
                             # Add break line between batches (except for the last batch)
                             if i < len(streak.away_team_batches) - 1:

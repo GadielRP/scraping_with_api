@@ -420,6 +420,11 @@ class JobScheduler:
                                     event_id=event_data['id'],
                                     update_court_type=True
                                 )
+                                
+                                # Store observations in event_info so they persist to the alert evaluation phase
+                                if observations:
+                                    event_info['observations'] = observations
+                                    logger.info(f"✅ Observations captured for event {event_data['id']} (persisted for alerts)")
                             else:
                                 logger.info(f"🎾 Event {event_data['id']} already has observations - skipping API call")
                             
@@ -499,9 +504,14 @@ class JobScheduler:
                             if initial_minutes_snapshot is None:
                                 initial_minutes_snapshot = self._minutes_until_start(event_obj.start_time_utc)
 
+                            # Retrieve observations from meta lookup
+                            meta_obs = event_meta_lookup.get(event_obj.id)
+                            stored_observations = meta_obs.get('observations') if meta_obs else None
+
                             events_for_alerts.append({
                                 'event_obj': event_obj,
-                                'initial_minutes': initial_minutes_snapshot
+                                'initial_minutes': initial_minutes_snapshot,
+                                'observations': stored_observations
                             })
                             tracked_event_ids.add(event_obj.id)
                     else:
@@ -534,9 +544,13 @@ class JobScheduler:
                             if initial_minutes_snapshot is None:
                                 initial_minutes_snapshot = self._minutes_until_start(event_obj.start_time_utc)
 
+                            # Retrieve observations from meta
+                            stored_observations = meta.get('observations') if meta else None
+
                             events_for_alerts.append({
                                 'event_obj': event_obj,
-                                'initial_minutes': initial_minutes_snapshot
+                                'initial_minutes': initial_minutes_snapshot,
+                                'observations': stored_observations
                             })
                             tracked_event_ids.add(event_obj.id)
                     
@@ -552,7 +566,8 @@ class JobScheduler:
                             for event_payload in events_for_alerts:
                                 try:
                                     # Initialize observations per event to avoid cross-event contamination
-                                    observations = None
+                                    # Use stored observations if available (from Loop 1), otherwise None
+                                    observations = event_payload.get('observations')
                                     
                                     event_obj = event_payload['event_obj']
                                     initial_minutes = event_payload.get('initial_minutes')
@@ -637,6 +652,22 @@ class JobScheduler:
                                                                     for obs in new_observations:
                                                                         if obs.get('type') == 'ground_type':
                                                                             tennis_observations.append(obs)
+                                                                        elif obs.get('type') == 'rankings':
+                                                                            # Check if we have existing rankings in tennis_observations
+                                                                            existing_rankings = next((o for o in tennis_observations if o.get('type') == 'rankings'), None)
+                                                                            
+                                                                            if not existing_rankings:
+                                                                                # No rankings yet, add them
+                                                                                tennis_observations.append(obs)
+                                                                                logger.info(f"✅ Added rankings from results check for event {event_obj.id}: home={obs.get('home_ranking')}, away={obs.get('away_ranking')}")
+                                                                            else:
+                                                                                # We have rankings, check if they are None and new ones are valid
+                                                                                # This handles the case where event_details returned None but get_event_results returns valid rankings
+                                                                                if existing_rankings.get('home_ranking') is None and existing_rankings.get('away_ranking') is None:
+                                                                                    if obs.get('home_ranking') is not None or obs.get('away_ranking') is not None:
+                                                                                        existing_rankings['home_ranking'] = obs.get('home_ranking')
+                                                                                        existing_rankings['away_ranking'] = obs.get('away_ranking')
+                                                                                        logger.info(f"✅ Updated rankings from results check for event {event_obj.id} (overwrote None values)")
                                                             else:
                                                                 observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
                                                                 if observation:
@@ -1194,6 +1225,20 @@ class JobScheduler:
                                         for obs in new_observations:
                                             if obs.get('type') == 'ground_type':
                                                 tennis_observations.append(obs)
+                                            elif obs.get('type') == 'rankings':
+                                                # Check if we have existing rankings
+                                                existing_rankings = next((o for o in tennis_observations if o.get('type') == 'rankings'), None)
+                                                
+                                                if not existing_rankings:
+                                                    tennis_observations.append(obs)
+                                                    logger.info(f"✅ Added rankings from results check for rescheduled event {event_obj.id}")
+                                                else:
+                                                    # Update if existing are None
+                                                    if existing_rankings.get('home_ranking') is None and existing_rankings.get('away_ranking') is None:
+                                                        if obs.get('home_ranking') is not None or obs.get('away_ranking') is not None:
+                                                            existing_rankings['home_ranking'] = obs.get('home_ranking')
+                                                            existing_rankings['away_ranking'] = obs.get('away_ranking')
+                                                            logger.info(f"✅ Updated rankings from results check for rescheduled event {event_obj.id}")
                                 else:
                                     # Get existing ground_type from database
                                     observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
