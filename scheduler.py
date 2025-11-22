@@ -688,8 +688,6 @@ class JobScheduler:
                                                             logger.info(f"📊 Passing observations to analyze_h2h_events for event {event_obj.id}: home_ranking={rankings_info.get('home_ranking')}, away_ranking={rankings_info.get('away_ranking')}")
                                                         else:
                                                             logger.warning(f"⚠️ No rankings found in tennis_observations for event {event_obj.id}")
-                                                    else:
-                                                        logger.warning(f"⚠️ tennis_observations is None for event {event_obj.id}")
 
                                                     streak_analysis = streak_alert_engine.analyze_h2h_events(
                                                         event_id=event_obj.id,

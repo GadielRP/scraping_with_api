@@ -57,14 +57,18 @@ class SportObservationsManager:
             # FAIL-SAFE: If we can't check, assume no observations and proceed with API call
             return False
     
-    def extract_tennis_ground_type(self, event_id: int, api_response: Dict) -> Optional[List[Dict]]:
+    def extract_tennis_ground_type(self, event_id: int, api_response: Dict) -> Optional[str]:
         """
         Extract ground type for tennis events during pre-start check.
+        Returns the ground type value as a string, or None if not found.
         FAIL-SAFE: Logs warnings on error but doesn't break main flow.
         
         Args:
             event_id: ID of the tennis event
             api_response: API response containing event data
+            
+        Returns:
+            str: The ground type value (e.g. 'Hardcourt indoor') or None
         """
         try:
             logger.info(f"🎾 Extracting ground type for tennis event {event_id}")
@@ -79,8 +83,9 @@ class SportObservationsManager:
             if observations:
                 logger.info(f"🎾 Found {len(observations)} observations for tennis event {event_id}")
                 
-                # Process each observation
+                extracted_ground_type = None
                 
+                # Process each observation
                 for observation in observations:
                     obs_type = observation.get('type')
                     obs_value = observation.get('value')
@@ -97,14 +102,18 @@ class SportObservationsManager:
                         
                         if saved_obs:
                             logger.info(f"🎾 ✅ Saved {obs_type}: {obs_value} for event {event_id}")
-                            return observations
+                            # Capture ground type value to return
+                            if obs_type == 'ground_type':
+                                extracted_ground_type = obs_value
                         else:
                             logger.warning(f"🎾 ❌ Failed to save {obs_type} for event {event_id}")
                     else:
                         logger.warning(f"🎾 ❌ Invalid observation data: {observation}")
-                return
+                
+                return extracted_ground_type
             else:
                 logger.info(f"🎾 No observations found for tennis event {event_id}")
+                return None
                 
         except Exception as e:
             logger.warning(f"🎾 Error extracting ground type for tennis event {event_id}: {e}")
