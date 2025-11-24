@@ -625,7 +625,8 @@ class JobScheduler:
                                                             home_team_id = event_details.get('homeTeam', {}).get('id')
                                                             away_team_id = event_details.get('awayTeam', {}).get('id')
                                                             tournament_id = event_details.get('tournament', {}).get('id')
-                                                            competition_name = event_details.get('tournament', {}).get('uniqueTournament', {}).get('name')
+                                                            logger.debug(f"Extracted tournament id from current event: {tournament_id}")
+                                                            competition_name = event_details.get('tournament', {}).get('name')
                                                             competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
                                                             season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
                                                             season_name = event_details.get('season', {}).get('name')
@@ -1194,9 +1195,10 @@ class JobScheduler:
                                 # Extract team IDs and other event data
                                 home_team_id = event_details.get('homeTeam', {}).get('id')
                                 away_team_id = event_details.get('awayTeam', {}).get('id')
-                                competition_name = event_details.get('tournament', {}).get('uniqueTournament', {}).get('name')
+                                competition_name = event_details.get('tournament', {}).get('name')
                                 competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
                                 tournament_id = event_details.get('tournament', {}).get('id')
+                                logger.debug(f"Extracted tournament id from rescheduled event: {tournament_id}")
                             else:
                                 logger.warning(f"Could not fetch event details for rescheduled event {event_obj.id}")
                         except Exception as e:

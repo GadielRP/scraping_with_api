@@ -112,12 +112,12 @@ def get_winning_odds_response(self, event_id: int) -> Optional[Dict]:
         return None
     return response
 
-def get_standings_response(self, season_id: int, tournament_id: int) -> Optional[Dict]:
-    """Fetch the standings for a season and tournament from the /standings/{season_id}/{tournament_id} endpoint."""
-    endpoint = f"/tournament/{tournament_id}/season/{season_id}/standings/total"
+def get_standings_response(self, season_id: int, unique_tournament_id: int) -> Optional[Dict]:
+    """Fetch the standings for a season and unique tournament id from the /standings/{season_id}/{unique_tournament_id} endpoint."""
+    endpoint = f"/tournament/{unique_tournament_id}/season/{season_id}/standings/total"
     response = self._make_request(endpoint)
     if not response or 'standings' not in response:
-        logger.error(f"No standings found for season {season_id} and tournament {tournament_id}")
+        logger.error(f"No standings found for season {season_id} and tournament {unique_tournament_id}")
         return None
     return response['standings']
 
