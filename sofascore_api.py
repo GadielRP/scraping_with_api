@@ -1,4 +1,5 @@
 from curl_cffi import requests
+import re
 import time
 import logging
 import threading
@@ -8,7 +9,7 @@ from config import Config
 from odds_utils import fractional_to_decimal
 from sport_observations import sport_observations_manager
 from alert_system import pre_start_notifier
-from repository import EventRepository
+from repository import EventRepository, SeasonRepository
 from sport_classifier import sport_classifier
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,23 @@ class SofaScoreAPI:
             logger.info(f"Proxy enabled: {self.proxy_endpoint}")
         else:
             logger.info("Proxy disabled - using direct connection")
-            
+
+    def clean_competition(self, competition: str) -> str:
+        if not competition:
+            return competition
+
+        parts = [p.strip() for p in competition.split(',')]
+        seen = set()
+        unique_parts = []
+
+        for p in parts:
+            key = p.lower()
+            if key and key not in seen:
+                seen.add(key)
+                unique_parts.append(p)
+
+        return ', '.join(unique_parts)
+
     def get_gender(self, home_team: Dict, away_team: Dict) -> str:
         """Get the gender of the event from the home and away team"""
         gender_home_team = home_team.get('gender', 'unknown')
@@ -96,6 +113,54 @@ class SofaScoreAPI:
                 away_team=away_team
             )
             
+            # Extract season information if available
+            season_data = event.get('season', {})
+            season_id = season_data.get('id')
+
+            # Extract competition extended text
+            tournament_name = event.get('tournament', {}).get('name')
+            unique_tournament_name = event.get('tournament', {}).get('uniqueTournament', {}).get('name')
+            competition = f"{event.get('tournament', {}).get('category', {}).get('name')}, {tournament_name}, {unique_tournament_name}"
+            competition = self.clean_competition(competition)
+            
+            # Season name (e.g., "NBA 24/25")
+            season_name = season_data.get('name')
+            season_name = SeasonRepository._parse_season_name(season_name, unique_tournament_name)
+
+            # Season year (e.g., "2024/2025")
+            season_year = SeasonRepository._parse_year(season_data.get('year'))
+            
+            # Extract round information
+            round_info = event.get('roundInfo', {})
+            competition_lower = competition.lower()
+            # If roundInfo exists and has slug, use it; otherwise check competition name
+            if any(term in competition_lower for term in ['releg', 'relegation', 'relegations', 'descenso']):
+                round = 'relegation'
+            elif any(term in competition_lower for term in ['qualification', 'qualifier', 'qualif.']):
+                round = 'qualification'
+            elif any(term in competition_lower for term in ['friendly', 'amistoso']):
+                round = 'friendly'
+            elif round_info and round_info.get('slug'):
+                round = round_info.get('slug')
+                if (any(term in round.lower() for term in ['quarterfinal', 'semifinal', 'final', 'playoffs', 'knockout', 'round-of-16',
+                'round-of-32', 'round-of-64', 'round-of-128', 'round-4', 'round-1', 'round-2', 'round-3', 'match-for-3rd-place'])):
+                    round = 'knockouts/playoffs'
+                else:
+                    if (season_name is not None and any(term in season_name.lower() for term in ['cup', 'copa', 'taça', 'coupe'])
+                    or any(term in competition_lower for term in ['cup', 'copa', 'taça', 'coupe'])):
+                        round = 'regular_season'
+                    else: 
+                        round = round
+            elif any(term in competition_lower for term in [
+                'semifinal', 'semi-final', 'semi final', 'semi',
+                'quarterfinal', 'quarter-final', 'quarter final', 'knockout', 'knock-outs', 'knock outs',
+                'playoff', 'play-offs', 'playoffs', 'octavos', 'cuartos', 'round of 16', 'round of 32'
+            ]) or re.search(r'\bfinal(?: round)?\b', competition_lower):
+                round = 'knockouts/playoffs'
+            else:
+                round = 'regular_season'
+           
+            
             # Build structured event data
             event_data = {
                 'id': event.get('id'),
@@ -103,12 +168,16 @@ class SofaScoreAPI:
                 'slug': event.get('slug'),
                 'startTimestamp': event.get('startTimestamp'),
                 'sport': classified_sport,
-                'competition': f"{event.get('tournament', {}).get('category', {}).get('name')}, {event.get('tournament', {}).get('name')}, {event.get('tournament', {}).get('uniqueTournament', {}).get('name')}",
+                'competition': competition,
                 'country': event.get('venue', {}).get('country', {}).get('name') or event.get('tournament', {}).get('category', {}).get('country', {}).get('name'),
                 'homeTeam': home_team,
                 'awayTeam': away_team,
                 'gender': gender,
                 'discovery_source': discovery_source,
+                'season_id': season_id,
+                'season_name': season_name,
+                'season_year': season_year,
+                'round': round,
             }
             
             # Log sport classification if it changed
@@ -268,7 +337,8 @@ class SofaScoreAPI:
             event_response = response['event']
             
             # Extract event information using our refactored function
-            # Note: The response structure from /event/{id} is the same as dropping odds
+            # Note: The /event/{id} endpoint DOES contain season and roundInfo data (unlike dropping odds responses)
+            # This allows us to update season_id and round for events discovered without this information
             event_data = self.get_event_information(event_response, discovery_source='results_sync')
             
             if not event_data or not event_data.get('id'):
@@ -280,9 +350,14 @@ class SofaScoreAPI:
             event_data.pop('discovery_source', None)
             
             # Update event in database (without changing discovery_source)
+            # This will update season_id and round if they are present in the response
             updated_event = EventRepository.upsert_event(event_data)
             if updated_event:
-                logger.info(f"✅ Event information updated for event {event_data['id']} from results sync")
+                # Log if season_id or round were updated
+                if event_data.get('season_id'):
+                    logger.info(f"✅ Event information updated for event {event_data['id']} from results sync (season_id: {event_data.get('season_id')}, round: {event_data.get('round')}, season_year: {event_data.get('season_year')})")
+                else:
+                    logger.info(f"✅ Event information updated for event {event_data['id']} from results sync")
                 return True
             else:
                 logger.warning(f"Failed to update event information for event {event_data.get('id')}")
@@ -292,10 +367,18 @@ class SofaScoreAPI:
             logger.error(f"Error updating event information from response: {e}")
             return False
 
-    def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False, minutes_until_start: int = 0) -> Optional[Dict]:
+    def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False, minutes_until_start: int = 0, update_event_info: bool = True) -> Optional[Dict]:
         """ 
         Fetch event results from /event/{id} endpoint.
         Returns structured result data ready for database upsert.
+        
+        Args:
+            event_id: Event ID to fetch
+            update_time: If True, check and update event start time
+            update_court_type: If True, extract court type for tennis events
+            minutes_until_start: Minutes until event starts (for time checks)
+            update_event_info: If True, update event information (season, round, etc.) from response.
+                              Set to False in test mode to avoid database changes.
         """
         try:
             endpoint = f"/event/{event_id}"
@@ -313,7 +396,7 @@ class SofaScoreAPI:
             
             # Update event information from response (midnight sync optimization)
             # This ensures we always have complete event data from the authoritative /event/{id} endpoint
-            if not update_time and not update_court_type:
+            if update_event_info and not update_time and not update_court_type:
                 # Only update during normal results collection (not during time checks or court type extraction)
                 self.update_event_information_from_response(response)
             
@@ -357,7 +440,105 @@ class SofaScoreAPI:
             return None
     
 
-    def extract_results_from_response(self, response: Dict, extract_tennis_points: bool = False) -> Optional[Dict]:
+    def _build_sets_string(self, score_data: Dict, sport: str) -> Optional[str]:
+        """
+        Build sets string from score data flexibly for any sport.
+        Extracts periods in order (period1, period2, period3, etc.), adds overtime if exists,
+        and appends penalties with '+' if exists.
+        For cricket, extracts scores from innings structure.
+        
+        Format: set-set-set...-(overtime)+penalties
+        Cricket format: score1-score2-...
+        
+        Examples:
+        - Basketball regular: period1=23, period2=23, period3=31, period4=24 → '23-23-31-24'
+        - Basketball overtime: period1=23, period2=23, period3=31, period4=24, overtime=16 → '23-23-31-24-(16)'
+        - Football regular: period1=0, period2=2 → '0-2'
+        - Football overtime+penalties: period1=2, period2=0, overtime=1, penalties=4 → '2-0-(1)+4'
+        - Cricket: innings.inning1.score=142, innings.inning2.score=181 → '142-181'
+        
+        Args:
+            score_data: Dictionary containing score data (homeScore or awayScore)
+            sport: Sport name (e.g., 'Cricket', 'Basketball', 'Football')
+        
+        Returns:
+            Sets string (e.g., '2-0-(1)+4' or '142-181') or None if no data found
+        """
+        if not score_data:
+            return None
+        
+        # Handle cricket: extract scores from innings structure
+        if sport and sport.lower() == 'cricket':
+            innings_data = score_data.get('innings')
+            if not innings_data:
+                return None
+            
+            innings_parts = []
+            
+            # Extract innings in order (inning1, inning2, etc.)
+            inning_num = 1
+            while True:
+                inning_key = f'inning{inning_num}'
+                inning_data = innings_data.get(inning_key)
+                
+                # Stop if inning doesn't exist
+                if inning_data is None:
+                    break
+                
+                # Extract score from this inning
+                inning_score = inning_data.get('score')
+                if inning_score is not None:
+                    innings_parts.append(str(int(inning_score)))
+                
+                inning_num += 1
+            
+            # If no innings found, return None
+            if not innings_parts:
+                return None
+            
+            # Build string with scores joined by '-'
+            return '-'.join(innings_parts)
+        
+        # Handle other sports: extract periods (period1, period2, etc.)
+        period_parts = []
+        
+        # Extract periods in order (period1, period2, period3, period4, etc.)
+        # Keep checking until we find a None or missing period
+        period_num = 1
+        while True:
+            period_key = f'period{period_num}'
+            period_value = score_data.get(period_key)
+            
+            # Stop if period doesn't exist or is None
+            if period_value is None and period_key not in score_data:
+                break
+            
+            # Only add if value is not None (0 is valid)
+            if period_value is not None:
+                period_parts.append(str(int(period_value)))
+            
+            period_num += 1
+        
+        # If no periods found, return None
+        if not period_parts:
+            return None
+        
+        # Build base string with periods joined by '-'
+        sets_string = '-'.join(period_parts)
+        
+        # Add overtime if it exists (format: -(overtime))
+        overtime = score_data.get('overtime')
+        if overtime is not None:
+            sets_string += f'-({int(overtime)})'
+        
+        # Append penalties with '+' if they exist
+        penalties = score_data.get('penalties')
+        if penalties is not None:
+            sets_string += f'+{int(penalties)}'
+        
+        return sets_string
+    
+    def extract_results_from_response(self, response: Dict, extract_tennis_points: bool = False, for_streaks: bool = False) -> Optional[Dict]:
         """
         Extract results data from event API response.
         Works with any sport (football, tennis, etc.) by analyzing the response structure.
@@ -375,6 +556,7 @@ class SofaScoreAPI:
             event_data = response['event']
             
             # Check if event is finished - IMPROVED LOGIC
+            sport = event_data.get('tournament', {}).get('category', {}).get('sport', {}).get('name')
             status = event_data.get('status', {})
             status_code = status.get('code')
             status_type = status.get('type', '').lower()
@@ -413,8 +595,9 @@ class SofaScoreAPI:
             
             # Extract scores
             home_score_data = event_data.get('homeScore', {})
-            away_score_data = event_data.get('awayScore', {})
             
+            away_score_data = event_data.get('awayScore', {})
+           
             if not home_score_data or not away_score_data:
                 logger.warning("Score data not found in response")
                 return None
@@ -422,17 +605,29 @@ class SofaScoreAPI:
             # IMPROVED: Better score extraction logic with penalty handling
             # For penalty shootouts (status code 120), use normaltime instead of current
             # to get only regular time results, not including penalty scores
+            # Initialize penalty variables to None to avoid UnboundLocalError
+            home_penalties = None
+            away_penalties = None
             
-            if status_code == 120:  # AP (After Penalties)
-                logger.info(f"Penalty shootout detected (status 120) - using normaltime scores instead of current")
-                home_score = home_score_data.get('normaltime')
-                away_score = away_score_data.get('normaltime')
+            if sport == 'Football':
+                if for_streaks:
+                    home_score = home_score_data.get('display')
+                    away_score = away_score_data.get('display')
+                    if status_code == 120:  # AP (After Penalties)
+                        logger.info(f"Penalty shootout detected (status 120) - using normaltime scores instead of current")
+                        home_score = home_score_data.get('display')
+                        away_score = away_score_data.get('display')
+                        home_penalties = home_score_data.get('penalties')
+                        away_penalties = away_score_data.get('penalties')
+                else:
+                    home_score = home_score_data.get('normaltime')
+                    away_score = away_score_data.get('normaltime')
             else:
                 # Try multiple score fields in order of preference for non-penalty games
                 # Use 'is not None' to handle 0 scores correctly
                 home_score = (
-                    home_score_data.get('current') if home_score_data.get('current') is not None else
                     home_score_data.get('display') if home_score_data.get('display') is not None else
+                    home_score_data.get('current') if home_score_data.get('current') is not None else
                     home_score_data.get('normaltime') if home_score_data.get('normaltime') is not None else
                     home_score_data.get('overtime') if home_score_data.get('overtime') is not None else
                     home_score_data.get('penalties') if home_score_data.get('penalties') is not None else
@@ -440,8 +635,8 @@ class SofaScoreAPI:
                 )
                 
                 away_score = (
-                    away_score_data.get('current') if away_score_data.get('current') is not None else
                     away_score_data.get('display') if away_score_data.get('display') is not None else
+                    away_score_data.get('current') if away_score_data.get('current') is not None else
                     away_score_data.get('normaltime') if away_score_data.get('normaltime') is not None else
                     away_score_data.get('overtime') if away_score_data.get('overtime') is not None else
                     away_score_data.get('penalties') if away_score_data.get('penalties') is not None else
@@ -480,7 +675,14 @@ class SofaScoreAPI:
             winner = None
             winner_code = event_data.get('winnerCode')
             
-            if status_code == 120:  # AP (After Penalties)
+            if status_code == 120 and for_streaks and sport == 'Football':
+                if home_penalties is not None and away_penalties is not None:
+                    if home_penalties > away_penalties:
+                        winner = '1'
+                    elif home_penalties < away_penalties:
+                        winner = '2'
+
+            if status_code == 120 and sport == 'Football':  # AP (After Penalties)
                 # For penalty shootouts, determine winner based on regular time scores only
                 if home_score == away_score:
                     winner = 'X'  # Draw in regular time (penalties don't count for betting analysis)
@@ -506,17 +708,17 @@ class SofaScoreAPI:
                 else:
                     winner = '2'  # Away team wins
             
-            # Extract end time
-            ended_at = None
-            changes = event_data.get('changes', {})
-            if changes and 'changeTimestamp' in changes:
-                ended_at = datetime.fromtimestamp(changes['changeTimestamp'])
+            # Extract sets (period scores) for both teams separately
+            # Format: '23-23-31-24' for basketball, '0-2' for football, '2-0-1+4' with penalties
+            home_sets = self._build_sets_string(home_score_data, sport)
+            away_sets = self._build_sets_string(away_score_data, sport)
             
             result_data = {
                 'home_score': int(home_score),
                 'away_score': int(away_score),
                 'winner': winner,
-                'ended_at': ended_at
+                'home_sets': home_sets,
+                'away_sets': away_sets
             }
             
             # Extract tennis period points if requested
@@ -540,6 +742,10 @@ class SofaScoreAPI:
                 
                 logger.debug(f"Extracted tennis period points: Home [{home_period1}, {home_period2}, {home_period3}] vs Away [{away_period1}, {away_period2}, {away_period3}]")
             
+            if for_streaks and (home_penalties or away_penalties) and sport == 'Football':
+                result_data['home_penalties'] = home_penalties
+                result_data['away_penalties'] = away_penalties
+
             return result_data
             
         except Exception as e:
@@ -766,7 +972,7 @@ class SofaScoreAPI:
                     # Use the new get_event_information function
                     event_data = self.get_event_information(event, discovery_source)
 
-                    required_fields = ['id', 'slug', 'startTimestamp', 'sport', 'competition', 'homeTeam', 'awayTeam', 'gender']
+                    required_fields = ['id', 'slug', 'startTimestamp', 'sport', 'competition', 'homeTeam', 'awayTeam']
                     if all(event_data.get(field) for field in required_fields):
                         events.append(event_data)
                     else:

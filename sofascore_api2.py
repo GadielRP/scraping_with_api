@@ -28,6 +28,29 @@ def get_h2h_events(self):
     endpoint = f"/odds/1/top-h2h/all"
     return self._make_request(endpoint)
 
+def get_today_basketball_events_response(self, date: str) -> List[Dict]:
+    """fetches list of today's nba events
+    Args:
+        date: The date to fetch events for in the format YYYY-MM-DD
+    Returns:
+        List of event dictionaries
+    """
+    logger.info(f"Fetching today's nba events list for date {date}")
+    endpoint = f"/sport/basketball/scheduled-events/{date}"
+    return self._make_request(endpoint)
+
+def get_today_basketball_events_odds_response(self, date: str) -> List[Dict]:
+    """fetches list of today's nba events odds
+    Args:
+        date: The date to fetch events for in the format YYYY-MM-DD
+    Returns:
+        List of event dictionaries
+    """
+    logger.info(f"Fetching today's nba events odds list for date {date}")
+    endpoint = f"/sport/basketball/odds/1/{date}"
+    return self._make_request(endpoint)
+
+
 def get_winning_odds_events(self):
     """fetches list of top 20 winning odds events"""
     logger.info(f"Fetching top 20 winning odds events list")
@@ -85,15 +108,18 @@ def get_team_last_results_response(self, team_id: int, is_tennis_singles: bool =
     fetch_number_display = fetch_index + 1
     
     if is_tennis_singles:
-        logger.info(f"Fetching (attempt {fetch_number_display}) last singles events for player with id {team_id}")
+        
         endpoint = f"/team/{team_id}/events/singles/last/{fetch_index}"
+        logger.info(f"Fetching {endpoint} (attempt {fetch_number_display}) last singles events for player with id {team_id}")
     elif is_tennis_doubles:
-        logger.info(f"Fetching (attempt {fetch_number_display}) last doubles events for player with id {team_id}")
         endpoint = f"/team/{team_id}/events/doubles/last/{fetch_index}"
+        logger.info(f"Fetching {endpoint} (attempt {fetch_number_display}) last doubles events for player with id {team_id}")
     else:
-        logger.info(f"Fetching (attempt {fetch_number_display}) last events for team {team_id}")
+        endpoint = f"/team/{team_id}/events/last/{fetch_index}"
+        logger.info(f"Fetching {endpoint} (attempt {fetch_number_display}) last events for team {team_id}")
         endpoint = f"/team/{team_id}/events/last/{fetch_index}"
 
+    
     response = self._make_request(endpoint)
     if not response or 'events' not in response:
         logger.error(f"No results found for team {team_id}")
@@ -279,5 +305,7 @@ SofaScoreAPI.get_team_last_results_response = get_team_last_results_response
 SofaScoreAPI.get_winning_odds_response = get_winning_odds_response
 SofaScoreAPI.get_standings_response = get_standings_response
 SofaScoreAPI.process_standings_response = process_standings_response
+SofaScoreAPI.get_today_basketball_events_response = get_today_basketball_events_response
+SofaScoreAPI.get_today_basketball_events_odds_response = get_today_basketball_events_odds_response
 
 logger.info("✅ sofascore_api2 methods successfully loaded and attached to SofaScoreAPI")

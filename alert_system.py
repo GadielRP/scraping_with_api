@@ -733,10 +733,15 @@ class PreStartNotification:
                             hist_away = match.get('hist_away', 'Unknown')
                             hist_home_score = match.get('hist_home_score', 0)
                             hist_away_score = match.get('hist_away_score', 0)
+                            hist_home_penalties = match.get('hist_home_penalties', 0)
+                            hist_away_penalties = match.get('hist_away_penalties', 0)
                             match_timestamp = match.get('startTimestamp', 0)
                             match_date = self._format_game_date(match_timestamp)
                             date_prefix = f"{match_date} " if match_date else ""
-                            message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
+                            if hist_home_penalties or hist_away_penalties:
+                                message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away} (P:{hist_home_penalties}-{hist_away_penalties})\n"
+                            else:
+                                message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
                             match_num += 1
                 
                 # Show away team wins section

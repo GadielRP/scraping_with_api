@@ -23,6 +23,8 @@ class Event(Base):
     away_team = Column(Text, nullable=False)
     gender = Column(String(10), nullable=False, default="unknown")  # 'Men' or 'Women' or 'Mixed'
     discovery_source = Column(String(50), nullable=False, default='dropping_odds')  # 'dropping_odds', 'high_value_streaks', 'h2h', 'winning_odds', 'team_streaks'
+    season_id = Column(Integer, ForeignKey('seasons.id', ondelete='SET NULL'))  # Season ID from SofaScore API (foreign key to seasons table)
+    round = Column(Text)  # Round information (e.g., 'regular_season', 'knockouts/playoffs', 'final')
 
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
@@ -33,6 +35,23 @@ class Event(Base):
     result = relationship("Result", back_populates="event", uselist=False, cascade="all, delete-orphan")
     observations = relationship("EventObservation", back_populates="event", cascade="all, delete-orphan")
     prediction_logs = relationship("PredictionLog", back_populates="event", uselist=False, cascade="all, delete-orphan")
+    season = relationship("Season", back_populates="events")
+
+class Season(Base):
+    __tablename__ = 'seasons'
+    
+    id = Column(Integer, primary_key=True)  # Season ID from SofaScore API
+    name = Column(String(100))  # Season name (e.g., "NBA 24/25", "Erovnuli Liga 2025")
+    year = Column(Integer)  # Season year (e.g., 2025, 2024)
+    sport = Column(String(50))  # Sport name (e.g., "Basketball", "Football", "Ice hockey")
+    
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint('id', name='unique_season_id'),
+    )
+    
+    # Relationships
+    events = relationship("Event", back_populates="season")
 
 class OddsSnapshot(Base):
     __tablename__ = 'odds_snapshot'
@@ -110,8 +129,8 @@ class Result(Base):
     home_score = Column(Integer)
     away_score = Column(Integer)
     winner = Column(Text)  # '1' | 'X' | '2' or NULL
-    ended_at = Column(DateTime)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    home_sets = Column(Text)  # Sets string for home team (e.g., '23-23-31-24' for basketball, '2-0-1+4' for football with penalties)
+    away_sets = Column(Text)  # Sets string for away team (e.g., '19-35-24-31' for basketball, '0-2' for football)
     
     # Relationships
     event = relationship("Event", back_populates="result")

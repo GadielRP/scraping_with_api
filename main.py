@@ -130,6 +130,12 @@ def run_results_collection_all():
     logger.info("Running comprehensive results collection...")
     job_scheduler.run_job_results_collection_all_now()
 
+def run_daily_discovery():
+    """Run daily discovery job (today's scheduled events with odds)"""
+    logger = logging.getLogger(__name__)
+    logger.info("Running daily discovery (today's scheduled events with odds)...")
+    job_scheduler.run_job_daily_discovery_now()
+
 def run_alerts():
     """Run alert evaluation on upcoming events"""
     logger = logging.getLogger(__name__)
@@ -199,6 +205,7 @@ def start_scheduler():
     print("    - Fetches final odds only when games are starting soon")
     
     print("  • Results collection: Daily at 00:05 (collect results from finished games)")
+    print("  • Daily discovery: Daily at 06:00 (today's scheduled events with odds)")
     print("\n⏰ Next Discovery Run:")
     
     # Calculate next discovery time using configurable times
@@ -319,7 +326,7 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='SofaScore Odds Alert System')
     parser.add_argument('command', choices=[
-        'start', 'discovery', 'discovery2', 'pre-start', 'midnight', 'results', 'results-all', 'status', 'events', 'alerts', 'refresh-alerts'
+        'start', 'discovery', 'discovery2', 'pre-start', 'midnight', 'results', 'results-all', 'daily-discovery', 'status', 'events', 'alerts', 'refresh-alerts'
     ], help='Command to run')
     parser.add_argument('--limit', type=int, default=10, help='Limit for events display')
     
@@ -375,7 +382,12 @@ def main():
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)
-        
+        elif args.command == 'daily-discovery':
+            if initialize_system():
+                run_daily_discovery()
+            else:
+                logger.error("Failed to initialize system")
+                sys.exit(1)
         elif args.command == 'status':
             if initialize_system():
                 show_status()

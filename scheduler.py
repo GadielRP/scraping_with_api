@@ -23,14 +23,17 @@ from database import db_manager
 from prediction_engine import prediction_engine
 from database import db_manager
 from models import PredictionLog, refresh_materialized_views
-
+from today_sport_extractor import run_daily_discovery
 # Import optimization utilities
+
 from optimization import (
     parallel_team_event_fetching,
     process_with_batch_cleanup,
     process_with_parallel_db_ops,
     process_events_only
 )
+
+
 
 class JobScheduler:
     """Main job scheduler for the SofaScore odds system"""
@@ -66,11 +69,15 @@ class JobScheduler:
         # Job D - Midnight results collection (at 04:00)
         schedule.every().day.at("04:00").do(self.job_midnight_sync)
         
+        # Job E - Daily discovery (at 06:00) - fetches today's scheduled events with odds
+        schedule.every().day.at("06:00").do(self.job_daily_discovery)
+        
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
         logger.info(f"  - Discovery 2 (streaks, h2h, winning odds): daily at {', '.join(Config.DISCOVERY2_TIMES)}")
         logger.info(f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes")
         logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
+        logger.info("  - Daily discovery: daily at 06:00 (today's scheduled events with odds)")
     
     def _setup_pre_start_jobs(self):
         """Setup pre-start check jobs every N minutes at exact minute marks (configurable via POLL_INTERVAL_MINUTES)"""
@@ -630,8 +637,12 @@ class JobScheduler:
                                                             competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
                                                             season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
                                                             season_name = event_details.get('season', {}).get('name')
+                                                            # Extract season year from season.year field (more reliable than parsing season_name)
+                                                            season_year_raw = event_details.get('season', {}).get('year')
+                                                            from repository import SeasonRepository
+                                                            season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
                                                             logger.debug(f"Extracted team IDs from current event: Home={home_team_id}, Away={away_team_id}")
-                                                            logger.debug(f"Extracted season data: season_id={season_id}, season_name={season_name}")
+                                                            logger.debug(f"Extracted season data: season_id={season_id}, season_name={season_name}, season_year={season_year}")
                                                         else:
                                                             logger.warning(f"Could not fetch event details for {event_obj.id}")
                                                     except Exception as e:
@@ -701,12 +712,13 @@ class JobScheduler:
                                                         competition_slug=competition_slug,
                                                         season_id=season_id,
                                                         season_name=season_name,
-                                                        observations=tennis_observations,
                                                         participants=f"{event_obj.home_team} vs {event_obj.away_team}",
                                                         home_team_name=event_obj.home_team,
                                                         away_team_name=event_obj.away_team,
                                                         h2h_events=h2h_events,
                                                         minutes_until_start=minutes_until_start,
+                                                        season_year=season_year,
+                                                        observations=tennis_observations,
                                                         home_team_id=home_team_id,
                                                         away_team_id=away_team_id,
                                                         event_odds=event_obj.event_odds
@@ -1368,13 +1380,14 @@ class JobScheduler:
         
         try:
             yesterday = datetime.now() - timedelta(days=1)
-            events = EventRepository.get_events_by_date(yesterday.date())
+            events = EventRepository.get_events_by_date(yesterday)
             
             if not events:
                 logger.info("No events found from previous day")
                 return
-            # update final odds for all events, temporal chunk of code. delete when done using it. this is for the midnight sync to get the final odds for all events.
+            #update final odds for all events, temporal chunk of code. delete when done using it. this is for the midnight sync to get the final odds for all events.
             for event_data in events:
+                
                 final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
                 if final_odds_response:
                     final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
@@ -1389,7 +1402,8 @@ class JobScheduler:
                         logger.warning(f"No final odds data extracted for event {event_data.id}")
                 else:
                     logger.warning(f"Failed to fetch final odds for event {event_data.id}")
-            # end of temporal chunk of code. delete when done using it.
+            #end of temporal chunk of code. delete when done using it.
+
             logger.info(f"Processing {len(events)} events from previous day")
             stats = self._collect_results_for_events(events, "Job E")
             logger.info(f"Job E completed: {stats['updated']} updated, {stats['skipped']} skipped, {stats['failed']} failed")
@@ -1404,7 +1418,7 @@ class JobScheduler:
         for event in events:
             try:
                 if ResultRepository.get_result_by_event_id(event.id):
-                    logger.debug(f"Results exist for event {event.id}, skipping")
+                    logger.info(f"Results exist for event {event.id}, skipping")
                     stats['skipped'] += 1
                     continue
                 
@@ -1478,6 +1492,22 @@ class JobScheduler:
         except Exception as e:
             logger.error(f"Error in Job D: {e}")
     
+    def job_daily_discovery(self):
+        """Job E: Daily discovery of today's scheduled events with odds (runs at 06:00)"""
+        logger.info("Starting Job E: Daily discovery of today's scheduled events")
+        
+        try:
+            # Run the daily discovery extractor
+            stats = run_daily_discovery()
+            
+            if stats:
+                logger.info(f"✅ Daily discovery completed successfully: {stats}")
+            else:
+                logger.warning("Daily discovery completed with no results")
+            
+        except Exception as e:
+            logger.error(f"Error in Job E (Daily Discovery): {e}")
+    
     def run_job_discovery_now(self):
         """Run Job A immediately"""
         logger.info("Running Job A immediately")
@@ -1508,6 +1538,11 @@ class JobScheduler:
         logger.info("Running Job E2 immediately")
         self.job_results_collection_all_finished()
     
+    def run_job_daily_discovery_now(self):
+        """Run Job E (Daily Discovery) immediately"""
+        logger.info("Running Job E (Daily Discovery) immediately")
+        self.job_daily_discovery()
+    
     def get_scheduled_jobs(self) -> List[Dict]:
         """Get information about scheduled jobs with enhanced formatting"""
         jobs = []
@@ -1537,6 +1572,11 @@ class JobScheduler:
                     job_info['display'] = f"Midnight sync: Daily at {job.at_time}"
                 else:
                     job_info['display'] = f"Midnight sync: Every {job.interval} {job.unit}"
+            elif job.job_func.__name__ == 'job_daily_discovery':
+                if job.at_time:
+                    job_info['display'] = f"Daily discovery: Daily at {job.at_time}"
+                else:
+                    job_info['display'] = f"Daily discovery: Every {job.interval} {job.unit}"
             else:
                 job_info['display'] = f"{job.job_func.__name__}: Every {job.interval} {job.unit}"
             

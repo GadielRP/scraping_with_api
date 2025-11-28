@@ -5,12 +5,22 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from decimal import Decimal
 
-from models import Event, OddsSnapshot, EventOdds, Result, EventObservation
+from models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season
 from database import db_manager
 from odds_utils import validate_odds_data
 from timezone_utils import get_local_now
 
 logger = logging.getLogger(__name__)
+
+NBA_SEASONS = [
+    {"season_name": "NBA 2020/2021", "season_id": 34951, "year": 2020, "nba_cup_season_id": 0}, 
+    {"season_name": "NBA 2021/2022", "season_id": 38191, "year": 2021, "nba_cup_season_id": 0},
+    {"season_name": "NBA 2022/2023", "season_id": 45096, "year": 2022, "nba_cup_season_id": 0},
+    {"season_name": "NBA 2023/2024", "season_id": 54105, "year": 2023, "nba_cup_season_id": 56094},
+    {"season_name": "NBA 2024/2025", "season_id": 65360, "year": 2024, "nba_cup_season_id": 69143},
+    {"season_name": "NBA 2025/2026", "season_id": 80229, "year": 2025, "nba_cup_season_id": 84238},
+]
+
 
 class EventRepository:
     """Repository for event-related database operations"""
@@ -20,6 +30,36 @@ class EventRepository:
         """Insert or update an event"""
         try:
             with db_manager.get_session() as session:
+                # Initialize round variable outside conditional to avoid UnboundLocalError
+                round = event_data.get('round')
+                
+                # If season data is provided, create/get season first
+                if 'season_id' in event_data and event_data['season_id']:
+                    season_id = event_data['season_id']
+                    season_name = event_data.get('season_name')
+                    season_year = event_data.get('season_year')
+                    sport = event_data.get('sport')
+                    competition_name = event_data.get('competition')
+                    
+                    # Parse year if it's a string (e.g., "2024/2025")
+                    if season_year and isinstance(season_year, str):
+                        year = SeasonRepository._parse_year(season_year)
+                    elif season_year:
+                        year = season_year
+                    else:
+                        year = None
+                    
+                    if season_id in [season['nba_cup_season_id'] for season in NBA_SEASONS] and 'nba cup' in competition_name.lower():
+                        round = 'knockouts/playoffs'
+                    # Create/get season if we have enough info
+                    if season_name and year and sport:
+                        SeasonRepository.get_or_create_season(season_id, season_name, year, sport)
+                    elif season_name and sport:
+                        # Try to parse year from season_name if year not provided
+                        parsed_year = SeasonRepository._parse_year(season_name)
+                        if parsed_year:
+                            SeasonRepository.get_or_create_season(season_id, season_name, parsed_year, sport)
+                
                 # Check if event exists
                 event = session.query(Event).filter(Event.id == event_data['id']).first()
                 
@@ -33,13 +73,24 @@ class EventRepository:
                     event.country = event_data.get('country')
                     event.home_team = event_data['homeTeam']
                     event.away_team = event_data['awayTeam']
-                    event.gender = event_data['gender']
+                    # Ensure gender is valid: not None, max 10 chars, default to "unknown"
+                    gender = event_data.get('gender') or 'unknown'
+                    event.gender = gender[:10] if len(gender) > 10 else gender
                     # Only update discovery_source if explicitly provided (preserve original discovery source)
                     if 'discovery_source' in event_data:
                         event.discovery_source = event_data['discovery_source']
+                    # Only update season_id and round if provided and not None
+                    if 'season_id' in event_data and event_data['season_id'] is not None:
+                        event.season_id = event_data['season_id']
+                    if 'round' in event_data and round is not None:
+                        event.round = round
                     event.updated_at = get_local_now()
                     logger.debug(f"Updated event {event_data['id']}")
                 else:
+                    # Ensure gender is valid: not None, max 10 chars, default to "unknown"
+                    gender = event_data.get('gender') or 'unknown'
+                    gender = gender[:10] if len(gender) > 10 else gender
+                    
                     # Create new event
                     event = Event(
                         id=event_data['id'],
@@ -51,8 +102,10 @@ class EventRepository:
                         country=event_data.get('country'),
                         home_team=event_data['homeTeam'],
                         away_team=event_data['awayTeam'],
-                        gender=event_data['gender'],
-                        discovery_source=event_data.get('discovery_source', 'dropping_odds')
+                        gender=gender,
+                        discovery_source=event_data.get('discovery_source', 'dropping_odds'),
+                        season_id=event_data.get('season_id'),
+                        round=round
                     )
                     session.add(event)
                     logger.debug(f"Created new event {event_data['id']}")
@@ -98,11 +151,14 @@ class EventRepository:
         """Delete an event and all its related data (odds, results, observations)"""
         try:
             with db_manager.get_session() as session:
-                # Get the event first to check if it exists
+                # Get the event first to check if it exists and capture season_id
                 event = session.query(Event).filter(Event.id == event_id).first()
                 if not event:
                     logger.warning(f"Event {event_id} not found for deletion")
                     return False
+                
+                # Capture season_id before deletion for orphaned season cleanup
+                season_id_to_check = event.season_id
                 
                 # Delete related data first (due to foreign key constraints)
                 # Delete odds snapshots
@@ -119,6 +175,16 @@ class EventRepository:
                 
                 # Finally delete the event
                 session.query(Event).filter(Event.id == event_id).delete()
+                
+                # Clean up orphaned season if this was the last event for that season
+                # This handles the case where events are deleted after 404 errors during odds fetching
+                if season_id_to_check:
+                    # Check if any other events exist for this season
+                    remaining_events = session.query(Event).filter(Event.season_id == season_id_to_check).count()
+                    if remaining_events == 0:
+                        # No events left for this season, delete it
+                        session.query(Season).filter(Season.id == season_id_to_check).delete()
+                        logger.info(f"🧹 Cleaned up orphaned season {season_id_to_check} after event deletion")
                 
                 logger.info(f"✅ Deleted event {event_id} and all related data")
                 return True
@@ -161,6 +227,25 @@ class EventRepository:
                 
                 # Finally delete the events
                 deleted_count = session.query(Event).filter(Event.id.in_(event_ids)).delete(synchronize_session=False)
+                
+                # Clean up orphaned seasons (seasons with exactly 0 events)
+                # This handles the case where events are deleted after 404 errors during odds fetching
+                # Get all seasons and check event count for each
+                all_seasons = session.query(Season).all()
+                orphaned_season_ids = []
+                
+                for season in all_seasons:
+                    # Count events for this season - only delete if count is exactly 0
+                    event_count = session.query(Event).filter(Event.season_id == season.id).count()
+                    if event_count == 0:
+                        orphaned_season_ids.append(season.id)
+                
+                # Only delete seasons that have exactly 0 events
+                if orphaned_season_ids:
+                    deleted_seasons_count = session.query(Season).filter(
+                        Season.id.in_(orphaned_season_ids)
+                    ).delete(synchronize_session=False)
+                    logger.info(f"🧹 Cleaned up {deleted_seasons_count} orphaned season(s) with 0 events after batch deletion")
                 
                 logger.info(f"✅ Batch deleted {deleted_count} events and all related data")
                 return deleted_count
@@ -392,6 +477,127 @@ class EventRepository:
             logger.error(f"Error getting finished events: {e}")
             return []
 
+class SeasonRepository:
+    """Repository for season-related database operations"""
+    
+    @staticmethod
+    def _parse_season_name(season_name: str, unique_tournament_name: str) -> str:
+        if not season_name:
+            return season_name  # or return "" if you prefer
+
+        # Check if there is at least one alphabetical character anywhere
+        has_alpha = any(ch.isalpha() for ch in season_name)
+
+        # If there are NO alphabetical characters, prefix the unique_tournament_name
+        if not has_alpha:
+            return f"{unique_tournament_name} {season_name}"
+
+        # Otherwise, leave it as is
+        return season_name
+
+
+    @staticmethod
+    def _parse_year(year_str: str) -> int:
+        if not year_str:
+            return None
+
+        try:
+            import re
+            year_str = str(year_str)
+
+            # First, try to find a 4-digit year pattern (e.g., "2020", "2023", "1999")
+            # Look for patterns like "2020/2021" or "2020-2021" or just "2020"
+            four_digit_pattern = r'\b(19|20)\d{2}\b'
+            four_digit_match = re.search(four_digit_pattern, year_str)
+            
+            if four_digit_match:
+                year_int = int(four_digit_match.group())
+                return year_int
+            
+            # If no 4-digit year found, look for 2-digit years (e.g., "20/21", "24/25")
+            # Extract the first number before a slash or the first number in the string
+            if '/' in year_str:
+                # Split by '/' and get the first part (e.g., "NBA 20" from "NBA 20/21")
+                year_part = year_str.split('/')[0].strip()
+            else:
+                year_part = year_str.strip()
+
+            # Extract all digits from the year_part
+            digits = re.findall(r'\d+', year_part)
+            if digits:
+                year_int = int(digits[0])
+                # Convert 2-digit years to 4-digit years (e.g., 20 -> 2020, 24 -> 2024)
+                if year_int < 100:
+                    # Assume years 00-99 are 2000-2099
+                    return 2000 + year_int
+                # If already 4 digits or more, return as is
+                return year_int
+
+            # Last resort: try to convert the whole year_part to int
+            year_int = int(year_part)
+            if year_int < 100:
+                return 2000 + year_int
+            return year_int
+
+        except (ValueError, TypeError):
+            logger.warning(f"Could not parse year string: {year_str}")
+            return None
+    
+    @staticmethod
+    def get_or_create_season(season_id: int, name: str, year: int, sport: str) -> Optional[Season]:
+        """
+        Get existing season or create new one if it doesn't exist.
+        Updates season info if it changed.
+        
+        Args:
+            season_id: SofaScore season ID (unique identifier)
+            name: Season name (e.g., "NBA 24/25")
+            year: Season year (e.g., 2024)
+            sport: Sport name (e.g., "Basketball")
+            
+        Returns:
+            Season object if successful, None otherwise
+        """
+        if not season_id:
+            return None
+        
+        try:
+            with db_manager.get_session() as session:
+                # Check if season exists
+                season = session.query(Season).filter(Season.id == season_id).first()
+                
+                if season:
+                    # Update existing season if info changed
+                    updated = False
+                    if season.name != name:
+                        season.name = name
+                        updated = True
+                    if season.year != year:
+                        season.year = year
+                        updated = True
+                    if season.sport != sport:
+                        season.sport = sport
+                        updated = True
+                    
+                    if updated:
+                        logger.debug(f"Updated season {season_id}: {name}")
+                    return season
+                else:
+                    # Create new season
+                    season = Season(
+                        id=season_id,
+                        name=name,
+                        year=year,
+                        sport=sport
+                    )
+                    session.add(season)
+                    logger.debug(f"Created new season {season_id}: {name} (Year: {year}, Sport: {sport})")
+                    return season
+                    
+        except Exception as e:
+            logger.error(f"Error getting/creating season {season_id}: {e}")
+            return None
+
 class OddsRepository:
     """Repository for odds-related database operations"""
     
@@ -558,8 +764,8 @@ class ResultRepository:
                     result.home_score = result_data.get('home_score')
                     result.away_score = result_data.get('away_score')
                     result.winner = result_data.get('winner')
-                    result.ended_at = result_data.get('ended_at')
-                    result.updated_at = get_local_now()
+                    result.home_sets = result_data.get('home_sets')
+                    result.away_sets = result_data.get('away_sets')
                 else:
                     # Create new result
                     result = Result(
@@ -567,7 +773,8 @@ class ResultRepository:
                         home_score=result_data.get('home_score'),
                         away_score=result_data.get('away_score'),
                         winner=result_data.get('winner'),
-                        ended_at=result_data.get('ended_at')
+                        home_sets=result_data.get('home_sets'),
+                        away_sets=result_data.get('away_sets')
                     )
                     session.add(result)
                 
@@ -583,7 +790,8 @@ class ResultRepository:
         """Get result by event ID"""
         try:
             with db_manager.get_session() as session:
-                return session.query(Result).filter(Result.event_id == event_id).first()
+                event = session.query(Result).filter(Result.event_id == event_id).first()
+                return event
         except Exception as e:
             logger.error(f"Error getting result for event {event_id}: {e}")
             return None

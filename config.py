@@ -50,7 +50,7 @@ class Config:
     LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     
     # Rate limiting
-    REQUEST_DELAY_SECONDS = float(os.getenv('REQUEST_DELAY_SECONDS', '1.0'))
+    REQUEST_DELAY_SECONDS = float(os.getenv('REQUEST_DELAY_SECONDS', '0.5'))
     MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
     
     # Notification Configuration

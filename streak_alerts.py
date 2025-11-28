@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from sofascore_api import api_client
 import sofascore_api2
 from odds_utils import fractional_to_decimal
+from repository import SeasonRepository
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -84,6 +85,9 @@ class StreakAlertEngine:
     
     # Default minimum number of results to fetch for team form analysis
     DEFAULT_MIN_RESULTS = 10
+    
+    # Enable fallback filtering by season year (e.g. for NBA Regular vs NBA Cup)
+    ENABLE_SEASON_YEAR_FILTERING = True
     
     def __init__(self):
         self.two_year_window = timedelta(days=730)  # 2 years
@@ -388,6 +392,7 @@ class StreakAlertEngine:
         competition_slug: str,
         sport: str,
         season_id: Optional[str] = None,
+        season_year: Optional[int] = None,
         observations: Optional[List[Dict]] = None,
         exclude_event_id: Optional[int] = None,
         apply_filters: bool = True,
@@ -405,6 +410,7 @@ class StreakAlertEngine:
             competition_slug: Slug of the competition
             sport: Sport type for filtering logic
             season_id: Season ID for filtering (non-tennis sports)
+            season_year: Season Year for fallback filtering (e.g. 2023)
             observations: List of dicts containing filtering observations
             exclude_event_id: Optional event ID to exclude from results
             apply_filters: Whether to apply sport-specific filters
@@ -426,7 +432,7 @@ class StreakAlertEngine:
                 # Extract result using proven logic
                 # For tennis, also extract period points for points-based tracking
                 extract_points = sport in ['Tennis', 'Tennis Doubles']
-                result_data = api_client.extract_results_from_response({'event': event}, extract_tennis_points=extract_points)
+                result_data = api_client.extract_results_from_response({'event': event}, extract_tennis_points=extract_points, for_streaks=True)
                 if not result_data:
                     continue
                 
@@ -498,8 +504,26 @@ class StreakAlertEngine:
                         # Also filter by season_id if provided
                         if passes_filters and season_id:
                             event_season_id = str(event.get('season', {}).get('id', ''))
-                            if event_season_id and event_season_id != season_id:
-                                logger.debug(f"Skipping event for {team_name} - different season: {event_season_id} vs {season_id}")
+                            
+                            # ID Check (Primary)
+                            id_match = event_season_id and event_season_id == season_id
+                            
+                            # Year Check (Fallback)
+                            year_match = False
+                            event_year = None
+                            if not id_match and self.ENABLE_SEASON_YEAR_FILTERING and season_year:
+                                raw_year = event.get('season', {}).get('year')
+                                event_year = SeasonRepository._parse_year(raw_year)
+                                if event_year and event_year == season_year:
+                                    year_match = True
+                                    logger.debug(f"✅ Year match for {team_name}: event_year={event_year} == target_season_year={season_year} (ID mismatch: {event_season_id} != {season_id})")
+                            
+                            # Apply filter if neither ID nor Year matches
+                            if not (id_match or year_match):
+                                if self.ENABLE_SEASON_YEAR_FILTERING and season_year:
+                                    logger.debug(f"Skipping event for {team_name} - different season: ID {event_season_id} vs {season_id}, Year {event_year} vs {season_year}")
+                                else:
+                                    logger.debug(f"Skipping event for {team_name} - different season: ID {event_season_id} vs {season_id} (year filtering disabled or no year provided)")
                                 passes_filters = False
                 
                 result_dict = {
@@ -552,7 +576,7 @@ class StreakAlertEngine:
         
         return results
 
-    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, season_id: Optional[str] = None, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None, min_results: int = None) -> Tuple[List[Dict], int]:
+    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, season_id: Optional[str] = None, season_year: Optional[int] = None, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None, min_results: int = None) -> Tuple[List[Dict], int]:
         """
         Get team results using team_id with flexible filtering.
         
@@ -570,6 +594,7 @@ class StreakAlertEngine:
             competition_slug: Slug of the competition
             sport: Sport type for filtering logic
             season_id: Season ID for filtering (non-tennis sports only)
+            season_year: Season Year for fallback filtering (e.g. 2023)
             observations: List of dicts containing filtering observations
             exclude_event_id: Optional event ID to exclude from results (current/upcoming event)
             min_results: Minimum number of results to fetch (ignored when season_id is provided)
@@ -605,7 +630,10 @@ class StreakAlertEngine:
                     logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: NO ground_type filter (ground_type not found in observations){match_type_info}")
             else:
                 if use_season_filtering:
-                    logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: competition='{competition_slug}' AND season_id='{season_id}' (fetching all season games)")
+                    year_filter_info = ""
+                    if self.ENABLE_SEASON_YEAR_FILTERING and season_year:
+                        year_filter_info = f" OR season_year='{season_year}' (fallback)"
+                    logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: competition='{competition_slug}' AND season_id='{season_id}'{year_filter_info} (fetching all season games)")
                 else:
                     logger.info(f"🔍 FILTERING: Team {team_name} - Applying filters: competition='{competition_slug}'")
             
@@ -638,6 +666,7 @@ class StreakAlertEngine:
                         competition_slug,
                         sport,
                         season_id=season_id,
+                        season_year=season_year,
                         observations=observations,
                         exclude_event_id=exclude_event_id,
                         apply_filters=True,
@@ -656,7 +685,7 @@ class StreakAlertEngine:
             # Season filtering: keep fetching until we exhaust the season (no minimum)
             # Legacy filtering: fetch until we reach min_results
             fetch_index = 1
-            MAX_FETCH_INDEX = 5
+            MAX_FETCH_INDEX = 3
             
             # For season filtering, we continue fetching until we run out of events
             # For min_results filtering, we stop when we have enough
@@ -686,6 +715,7 @@ class StreakAlertEngine:
                             competition_slug,
                             sport,
                             season_id=season_id,
+                            season_year=season_year,
                             observations=observations,
                             exclude_event_id=exclude_event_id,
                             apply_filters=True,
@@ -826,7 +856,7 @@ class StreakAlertEngine:
     def analyze_h2h_events(self, event_id: int, event_custom_id: str, 
                           event_start_time: datetime, sport: str, discovery_source: str, tournament_id: str, competition_name: str, competition_slug: str, season_id: str, season_name: str, participants: str,
                           home_team_name: str, away_team_name: str,
-                          h2h_events: List[Dict], minutes_until_start: int, observations: Optional[List[Dict]] = None,
+                          h2h_events: List[Dict], minutes_until_start: int, season_year: Optional[int] = None, observations: Optional[List[Dict]] = None,
                           home_team_id: int = None, away_team_id: int = None,
                           event_odds: Optional[Any] = None) -> Optional[H2HStreak]:
         """
@@ -910,7 +940,7 @@ class StreakAlertEngine:
                         # Use proven extraction logic
                         # For tennis, also extract period points for points-based H2H tracking
                         extract_points = sport in ['Tennis', 'Tennis Doubles']
-                        result_data = api_client.extract_results_from_response({'event': event}, extract_tennis_points=extract_points)
+                        result_data = api_client.extract_results_from_response({'event': event}, extract_tennis_points=extract_points, for_streaks=True)
                         if result_data:
                             # Map winner to actual teams (not positions)
                             winner_position = result_data['winner']  # '1', '2', or 'X'
@@ -951,6 +981,8 @@ class StreakAlertEngine:
                                 'hist_away': hist_away,
                                 'hist_home_score': result_data['home_score'],
                                 'hist_away_score': result_data['away_score'],
+                                'hist_home_penalties': result_data.get('home_penalties', None),
+                                'hist_away_penalties': result_data.get('away_penalties', None),
                                 'winner_position': winner_position,
                                 'startTimestamp': event_timestamp,  # Add timestamp for date display
                                 'upcoming_home_role': upcoming_home_role  # Track role for net points calculation
@@ -1025,6 +1057,14 @@ class StreakAlertEngine:
             home_overall_win_streak = 0
             away_overall_win_streak = 0
             
+            # Use provided season_year, or fallback to parsing season_name if not provided
+            target_season_year = season_year
+            if target_season_year is None and season_name:
+                target_season_year = SeasonRepository._parse_year(season_name)
+            
+            if self.ENABLE_SEASON_YEAR_FILTERING and target_season_year:
+                logger.info(f"📅 Using season year filtering: {target_season_year} (fallback enabled: {self.ENABLE_SEASON_YEAR_FILTERING})")
+            
             if home_team_id:
                 home_team_results, home_overall_win_streak = self.get_team_last_10_results_by_id(
                     home_team_id,
@@ -1032,6 +1072,7 @@ class StreakAlertEngine:
                     competition_slug,
                     sport,
                     season_id=season_id,
+                    season_year=target_season_year,
                     observations=observations,
                     exclude_event_id=event_id
                 )
@@ -1045,6 +1086,7 @@ class StreakAlertEngine:
                     competition_slug,
                     sport,
                     season_id=season_id,
+                    season_year=target_season_year,
                     observations=observations,
                     exclude_event_id=event_id
                 )

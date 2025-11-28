@@ -544,7 +544,7 @@ class AlertEngine:
             params.update({
                 'cur_one_open': current_odds.one_open,
                 'cur_two_open': current_odds.two_open,
-                'odds_tolerance': 0.50  # 0.50 range per odds
+                'odds_tolerance': 0.15  # 0.50 range per odds
             })
             
             # Build initial odds conditions
@@ -1442,10 +1442,10 @@ class AlertEngine:
         
         # Format candidate data for display
         tier1_matches_data = self._format_candidate_data(tier1_candidates)
-        # Limit Tier 2 candidates to 12 to avoid Telegram character limit
-        tier2_candidates_limited = tier2_candidates[:12] if tier2_candidates else []
-        if len(tier2_candidates) > 12:
-            logger.info(f"📊 Limited Tier 2 candidates display to 12 (from {len(tier2_candidates)} total) to avoid Telegram character limit")
+        # Limit Tier 2 candidates to 6 to avoid Telegram character limit
+        tier2_candidates_limited = tier2_candidates[:6] if tier2_candidates else []
+        if len(tier2_candidates) > 16:
+            logger.info(f"📊 Limited Tier 2 candidates display to 16 (from {len(tier2_candidates)} total) to avoid Telegram character limit")
         tier2_matches_data = self._format_candidate_data(tier2_candidates_limited)
         
         return {
