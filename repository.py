@@ -76,9 +76,18 @@ class EventRepository:
                     # Ensure gender is valid: not None, max 10 chars, default to "unknown"
                     gender = event_data.get('gender') or 'unknown'
                     event.gender = gender[:10] if len(gender) > 10 else gender
-                    # Only update discovery_source if explicitly provided (preserve original discovery source)
+                    # Update discovery_source: always overwrite for 'dropping_odds' (highest priority source)
+                    # For other sources, only update if explicitly provided (preserve original discovery source)
                     if 'discovery_source' in event_data:
-                        event.discovery_source = event_data['discovery_source']
+                        if event_data['discovery_source'] == 'dropping_odds':
+                            # Always overwrite with dropping_odds (most important source - takes priority over any existing source)
+                            old_source = event.discovery_source
+                            event.discovery_source = 'dropping_odds'
+                            if old_source != 'dropping_odds':
+                                logger.debug(f"Overwrote discovery_source to 'dropping_odds' for event {event_data['id']} (was: {old_source})")
+                        else:
+                            # For other sources, update if provided (normal behavior)
+                            event.discovery_source = event_data['discovery_source']
                     # Only update season_id and round if provided and not None
                     if 'season_id' in event_data and event_data['season_id'] is not None:
                         event.season_id = event_data['season_id']

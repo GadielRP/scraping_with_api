@@ -24,6 +24,8 @@ from prediction_engine import prediction_engine
 from database import db_manager
 from models import PredictionLog, refresh_materialized_views
 from today_sport_extractor import run_daily_discovery
+# Import set prediction system for in-game alerts
+from set_prediction_system import set_prediction_system
 # Import optimization utilities
 
 from optimization import (
@@ -69,15 +71,15 @@ class JobScheduler:
         # Job D - Midnight results collection (at 04:00)
         schedule.every().day.at("04:00").do(self.job_midnight_sync)
         
-        # Job E - Daily discovery (at 06:00) - fetches today's scheduled events with odds
-        schedule.every().day.at("06:00").do(self.job_daily_discovery)
+        # Job E - Daily discovery (at 05:01) - fetches today's scheduled events with odds
+        schedule.every().day.at("05:01").do(self.job_daily_discovery)
         
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
         logger.info(f"  - Discovery 2 (streaks, h2h, winning odds): daily at {', '.join(Config.DISCOVERY2_TIMES)}")
-        logger.info(f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes")
+        logger.info(f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes (includes tennis timestamp checks + NBA 4th quarter checks)")
         logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
-        logger.info("  - Daily discovery: daily at 06:00 (today's scheduled events with odds)")
+        logger.info("  - Daily discovery: daily at 05:01 (today's scheduled events with odds)")
     
     def _setup_pre_start_jobs(self):
         """Setup pre-start check jobs every N minutes at exact minute marks (configurable via POLL_INTERVAL_MINUTES)"""
@@ -89,7 +91,7 @@ class JobScheduler:
         for minute in range(0, 60, interval_minutes):
             schedule.every().hour.at(f":{minute:02d}").do(self.job_pre_start_check)
         
-        logger.info(f"  - Pre-start check scheduled every {interval_minutes} minutes at exact minute marks (checks upcoming events + timestamp corrections for recently started events)")
+        logger.info(f"  - Pre-start check scheduled every {interval_minutes} minutes at exact minute marks (upcoming events + tennis/NBA in-game checks)")
     
     def _cleanup_recently_rescheduled(self):
         """Clean up old entries from recently_rescheduled set to prevent memory leaks"""
@@ -311,7 +313,7 @@ class JobScheduler:
     
     def job_pre_start_check(self):
         """
-        Job C: Pre-start check for events starting within 30 minutes
+        Job C: Pre-start check for events starting within 30 minutes + in-game checks
         
         SMART ODDS EXTRACTION: Only extracts odds at key moments (30 min and 5 min before start)
         to avoid unnecessary API calls when odds don't change significantly.
@@ -319,8 +321,11 @@ class JobScheduler:
         SMART NOTIFICATIONS: Only sends Telegram notifications when odds are extracted at key moments
         (30 min and 5 min), but includes ALL upcoming games in those notifications to avoid missing games.
         
-        TIMESTAMP CORRECTION: Also checks events that started within the last 5 minutes for late
-        timestamp corrections that may occur after the game starts.
+        TIMESTAMP CORRECTION: Also checks events that started within the last 60 minutes for late
+        timestamp corrections (Tennis: 60 min window, Other sports: 15 min window).
+        
+        IN-GAME CHECKS: Monitors ongoing games for key moments:
+        - NBA Basketball: 4th quarter start (95-115 minutes after start)
         """
         logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
         
@@ -333,6 +338,11 @@ class JobScheduler:
             if events_started_recently:
                 logger.info(f"Found {len(events_started_recently)} events that started recently (checking for late timestamp corrections)")
                 self._check_recently_started_events_for_timestamp_corrections(events_started_recently)
+            
+            # STEP 1.5: Check NBA games for 4th quarter start (in-game alerts)
+            # NBA games that started 95-115 minutes ago - typical time for 4th quarter to begin
+            # (Q1-Q3: ~100-110 min real time + buffer for early/late games)
+            set_prediction_system.check_nba_4th_quarter()
             
             # STEP 2: Get events starting within the next 30 minutes WITH their odds data
             events_with_odds = EventRepository.get_events_starting_soon_with_odds(Config.PRE_START_WINDOW_MINUTES)
@@ -1493,7 +1503,7 @@ class JobScheduler:
             logger.error(f"Error in Job D: {e}")
     
     def job_daily_discovery(self):
-        """Job E: Daily discovery of today's scheduled events with odds (runs at 06:00)"""
+        """Job E: Daily discovery of today's scheduled events with odds (runs at 05:01)"""
         logger.info("Starting Job E: Daily discovery of today's scheduled events")
         
         try:
@@ -1564,7 +1574,7 @@ class JobScheduler:
                     job_info['display'] = f"Discovery: Every {job.interval} {job.unit}"
             elif job.job_func.__name__ == 'job_pre_start_check':
                 if job.at_time:
-                    job_info['display'] = f"Pre-start check: Every 5 minutes at {job.at_time}"
+                    job_info['display'] = f"Pre-start check (+ NBA 4th quarter): Every 5 minutes at {job.at_time}"
                 else:
                     job_info['display'] = f"Pre-start check: Every {job.interval} {job.unit}"
             elif job.job_func.__name__ == 'job_midnight_sync':

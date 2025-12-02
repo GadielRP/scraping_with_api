@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.4.9  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKING DIFFERENTIAL + SEASON FORM FILTERING**  
-**Última Actualización:** 10 de Noviembre, 2025
+**Versión:** v1.4.11  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + DAILY DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS + DROPPING ODDS PRIORITY**  
+**Última Actualización:** Noviembre, 2025
 
 ## 🎯 **Descripción del Sistema**
 
@@ -137,9 +137,17 @@ class AlertMatch:
   - ✅ **Team Streaks**: Eventos de rachas de equipos (con odds completas)
 - **Optimización**: High Value Streaks y H2H procesan solo eventos, odds se obtienen en pre-start checks
   
+#### **Discovery 3 - Daily Discovery (Producción)**
+- **Programación**: Diario a las 05:01
+- **Fuente**: `/sport/{sport}/scheduled-events/{date}` y `/sport/{sport}/odds/1/{date}`
+- **Deportes**: Basketball, Tennis, Baseball, Hockey, American Football, Football
+- **Funcionalidad**: Obtiene todos los eventos programados del día con sus odds iniciales y finales
+- **Procesamiento**: Filtra eventos que tienen odds disponibles y los inserta en la base de datos
+
 #### **Event Tracking**
 - **Discovery Source Field**: Cada evento incluye `discovery_source` para identificar su origen
-- **Valores**: `'dropping_odds'`, `'high_value_streaks'`, `'h2h'`, `'winning_odds'`, `'team_streaks'`
+- **Valores**: `'dropping_odds'`, `'high_value_streaks'`, `'h2h'`, `'winning_odds'`, `'team_streaks'`, `'daily_discovery'`
+- **Dropping Odds Priority**: Eventos de dropping odds siempre sobrescriben `discovery_source` existente (fuente más importante)
 - **Uso**: Permite aplicar lógica de alertas específica según la fuente
 
 ### ✅ **Verificación Pre-Inicio con Extracción Inteligente**
@@ -185,60 +193,16 @@ class AlertMatch:
 - **Zero Downtime**: Migraciones en milisegundos al inicio del sistema
 - **Ejemplo**: `discovery_source` column añadida automáticamente en v1.4
 
-### ✅ **Critical Fixes (v1.4.1) - NEW**
-- **Timezone Fix**: Corregido cálculo de minutos hasta inicio de eventos (eliminados valores negativos)
-- **Discovery 2 Scheduling Fix**: Discovery 2 ahora ejecuta en los mismos horarios que Discovery 1
-- **Synchronized Execution**: Ambos discovery jobs ejecutan simultáneamente cada 2 horas
-- **Production Ready**: Sistema completamente funcional con todas las fuentes de eventos operativas
-
-### ✅ **Performance Optimizations (v1.4.2) - NEW**
-- **Team Streaks 404 Handling**: Eliminación inmediata de eventos sin odds (no más retries innecesarios)
-- **Reduced Logging**: Logging optimizado para mejor rendimiento y menor ruido
-- **Faster Processing**: Procesamiento 35x más rápido para eventos problemáticos
-- **Efficient Cleanup**: Limpieza automática de eventos sin odds disponibles
-- **Event-Only Processing**: Discovery2 procesa solo información de eventos, odds se obtienen en pre-start checks
-- **Optimized Scheduling**: Discovery2 ejecuta en hh:02 para evitar conflictos con pre-start checks
-
-### ✅ **H2H Streak Alerts Enhancements (v1.4.3) - NEW**
-- **Batched Team Form Display**: Forma del equipo mostrada en lotes de 5 partidos con estadísticas individuales
-- **Enhanced Message Format**: Muestra resumen general + lotes detallados con puntos netos por lote
-- **404 Error Resilience**: Sistema flexible que continúa funcionando sin datos de odds (404s comunes)
-- **Improved Error Handling**: 404s para winning odds manejados como DEBUG level (no ERROR)
-- **Flexible System**: Continúa enviando alertas H2H incluso cuando faltan datos de odds
-- **Better User Experience**: Mensajes más informativos con datos históricos detallados
-
-### ✅ **Duplicate Initialization Fix (v1.4.4) - NEW**
-- **Fixed Double Initialization**: Eliminada inicialización duplicada en main.py
-- **Cleaner Startup**: Sistema ahora inicializa una sola vez sin logs duplicados
-- **Optimized Flow**: Discovery ejecuta antes de scheduler startup
-- **Better Logging**: Logs más claros sin redundancia en startup
-
-### ✅ **H2H Streak Alerts (v1.4.5) - DETAILED MATCH RESULTS**
+### ✅ **H2H Streak Alerts**
 - **H2H Analysis**: Analiza head-to-head histórico entre equipos (últimos 2 años)
-- **Individual Match Results**: Muestra resultados detallados de cada partido con fechas (MM/DD/YYYY)
-- **Grouped Display**: Resultados agrupados por equipo ganador con home/away preservado
-- **Team-Relative Tracking**: Sigue victorias por equipo real (no por posición home/away histórica)
 - **Team Form Integration**: Incluye últimos 10 juegos de cada equipo (W-L-D) con formato de lotes de 5
-- **Date Display**: Fechas completas mostradas en todos los resultados (H2H + Historical Form)
-- **Batched Team Form Display**: Muestra forma del equipo en lotes de 5 partidos con estadísticas individuales
-- **Winning Odds Analysis**: Integra análisis de odds ganadoras con expected vs actual performance
-- **Robust Null Handling**: Maneja casos donde home/away odds son null con mensajes flexibles
-- **404 Error Resilience**: Sistema flexible que continúa funcionando sin datos de odds (404s comunes)
-- **Proven Logic**: Reutiliza `api_client.extract_results_from_response()` para consistencia total
-- **Flexible Results**: Muestra todos los resultados H2H en ventana de 2 años
-- **Configurable Team Form Depth**: `StreakAlertEngine.DEFAULT_MIN_RESULTS` y el parámetro `min_results` permiten ajustar cuántos juegos históricos se intentan recuperar, realizando múltiples fetches sin duplicados cuando sea necesario.
-- **Precise Ranking Averages**: Los promedios de ranking real ahora se calculan en punto flotante para mejorar la sección de ranking prediction.
-- **Integrated Flow**: Se ejecuta en momentos clave (30, 5 min) junto con dual process alerts
-- **Enhanced Telegram Alerts**: Muestra H2H stats + team form batched + winning odds + rachas actuales con emojis
-- **Production Ready**: Validado con data real y manejo robusto de edge cases
- - **Per-team Net Points by Role**: Cada equipo muestra `[H:+n, A:+n]` calculado solo sobre sus propias victorias; la línea "Total Matches" ahora muestra solo el conteo (sin netos)
+- **Enhanced Telegram Alerts**: Muestra H2H stats + team form + winning odds con emojis
 
-### ✅ **Season Form Filtering & Overall Win Streaks (v1.4.9) - NEW**
-- **Season-Scoped Team Form**: Los resultados históricos de equipos (no tennis) se filtran simultáneamente por `competition_slug` y `season_id`, realizando fetchs paginados hasta agotar los partidos de la temporada actual.
-- **Iterative Fetching API**: `sofascore_api2.get_team_last_results_response()` adopta `fetch_index` incremental, habilitando múltiples lotes consecutivos sin lógica ad-hoc.
-- **Overall Win Streaks**: El motor calcula rachas ganadoras consecutivas sin filtros (todas las competencias), exponiéndolas en la alerta sólo cuando hay al menos una victoria seguida.
-- **Season Form Messaging**: La sección de forma del equipo muestra únicamente el conteo W/L/D con etiqueta dinámica (p.ej., “Season Form · 14 juegos”), evitando listados extensos.
-- **Scheduler Guardrail**: El análisis H2H del pre-start job ahora se dispara únicamente cuando faltan 30 minutos, lo que reduce recomputos innecesarios a los 5 minutos.
+### ✅ **Dropping Odds Discovery Source Priority (v1.4.10) - NEW**
+- **Priority Overwrite**: Eventos descubiertos por dropping odds (`/odds/1/dropping/all`) siempre sobrescriben `discovery_source` existente
+- **Rationale**: Dropping odds es la fuente más importante - si un evento aparece ahí, debe marcarse como `dropping_odds` independientemente de su origen previo
+- **Implementation**: Lógica en `repository.py` que detecta `discovery_source='dropping_odds'` y siempre actualiza, incluso para eventos existentes
+- **Logging**: Registra cuando se sobrescribe un `discovery_source` diferente a `dropping_odds`
 
 ## 🛠 **Instalación y Configuración**
 
@@ -297,6 +261,8 @@ python main.py start
 
 # Ejecutar trabajos individuales
 python main.py discovery      # Descubrir eventos
+python main.py discovery2     # Descubrir eventos especiales (streaks, h2h, winning odds)
+python main.py daily-discovery # Descubrir eventos programados del día con odds
 python main.py pre-start      # Verificar juegos próximos
 python main.py midnight       # Sincronización nocturna
 python main.py results        # Recolectar resultados de ayer
@@ -318,13 +284,14 @@ python main.py results-all
 ```
 
 ### **Flujo de Trabajo Automático Optimizado**
-1. **00:00-22:00**: Descubrimiento cada 2 horas
-2. **Cada 5 min**: Verificación de juegos próximos
-3. **Momentos Clave**: Extracción de odds a los 30 y 5 minutos
-4. **Corrección de Timestamps**: Verificación y actualización automática (si está habilitada)
-5. **Análisis de Patrones**: Evaluación de alertas basadas en historial
-6. **Notificaciones**: Pre-inicio + Predicciones inteligentes con odds completas
-7. **04:00**: Recolección de resultados (CORREGIDO: era 00:05)
+1. **05:01**: Descubrimiento diario de eventos programados con odds
+2. **00:00-22:00**: Descubrimiento cada 2 horas (dropping odds)
+3. **Cada 5 min**: Verificación de juegos próximos
+4. **Momentos Clave**: Extracción de odds a los 30 y 5 minutos
+5. **Corrección de Timestamps**: Verificación y actualización automática (si está habilitada)
+6. **Análisis de Patrones**: Evaluación de alertas basadas en historial
+7. **Notificaciones**: Pre-inicio + Predicciones inteligentes con odds completas
+8. **04:00**: Recolección de resultados
 
 ### **Sistema de Predicciones - ¿Qué hace un Candidato?**
 
@@ -440,101 +407,9 @@ El sistema está **completamente funcional**, **optimizado** y **listo para prod
 
 **¡Tu sistema dual process inteligente de SofaScore está optimizado y funcionando perfectamente!** 🚀⚽🧠🔬
 
-## 🔧 **Fixes Críticos Aplicados y Desplegados**
+## 🔧 **Fixes Recientes**
 
-### **Fix 1: Extracción de Resultados (10/09/2025)**
-- **Issue**: 8.1% de eventos sin resultados debido a lógica restrictiva en la extracción de resultados
-- **Solución**: Mejorada la lógica para manejar todos los códigos de estado terminados (100, 110, 92, 120, 130, 140)
-- **Resultado**: Reducción del 85% en eventos sin resultados (de 27 a 4 eventos)
-
-### **Fix 2: Timing de Midnight Job (19/09/2025)**
-- **Issue**: Midnight job a las 00:05 causaba eventos faltantes (eventos que empezaban tarde no terminaban antes de 00:05)
-- **Root Cause**: 7 de 17 eventos extractables empezaban a las 23:00 (no terminaban antes de 00:05)
-- **Solución**: Mover midnight job de 00:05 a 04:00 para dar 3-4 horas de buffer
-- **Resultado**: Cobertura mejorada de 96.6% a 99.0% (683 → 700 eventos con resultados)
-
-### **Fix 3: Variation Differences Display (22/09/2025)**
-- **Feature**: Agregado display de diferencias exactas para Tier 2 candidatos
-- **Enhancement**: AlertMatch dataclass actualizado con campo `var_diffs`
-- **Display**: Formato +0.020/-0.015 para mostrar diferencias entre variaciones actuales e históricas con signos visibles
-- **Beneficio**: Mejor debugging y comprensión de simetría en candidatos
-- **Soporte**: Maneja correctamente deportes 2-way y 3-way
-- **Resultado**: Telegram messages más informativos con datos técnicos precisos y dirección de diferencias
-
-### **Fix 4: Sistema de Corrección de Timestamps (22/12/2024)**
-- **Feature**: Sistema automático de corrección de timestamps desactualizados
-- **Optimización**: Solo verifica timestamps en momentos clave (30 y 5 minutos)
-- **Control**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
-- **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
-- **API Efficiency**: Reduce llamadas innecesarias a la API
-- **Testing Friendly**: Permite desactivar corrección para pruebas con timestamps manuales
-- **Captura Completa de Odds**: Extrae odds para eventos futuros Y pasados (cualquier minuto negativo)
-- **Resultado**: Sistema más robusto y eficiente con control total sobre corrección de timestamps
-
-### **Fix 5: Odds Display en Notificaciones (01/10/2025)**
-- **Feature**: Agregado display de odds de apertura y finales en candidatos históricos
-- **Enhancement**: AlertMatch dataclass actualizado con campos de odds (one_open, x_open, two_open, one_final, x_final, two_final)
-- **Display**: Muestra odds completas en notificaciones de Telegram para mejor análisis
-- **Beneficio**: Información completa de odds para cada candidato histórico
-- **Soporte**: Maneja correctamente deportes 2-way y 3-way
-- **Resultado**: Notificaciones más informativas con datos completos de odds
-
-### **Fix 6: Gender Filtering en Candidate Search (21/10/2025)**
-- **Feature**: Implementado filtrado por género en búsqueda de candidatos históricos
-- **Enhancement**: AlertMatch dataclass actualizado con campo `gender` y filtrado en SQL queries
-- **Database Schema**: Materialized view `mv_alert_events` actualizada con columna `gender` e índice optimizado
-- **Filtering Logic**: Candidatos históricos filtrados por mismo deporte, variaciones similares Y mismo género
-- **Beneficio**: Predicciones más precisas al comparar solo eventos del mismo género (M/F)
-- **Soporte**: Maneja correctamente eventos masculinos, femeninos y mixtos
-- **Resultado**: Sistema de predicciones más preciso con filtrado de género implementado
-
-### **Fix 7: Tier 1 Exact Odds Search (21/10/2025)**
-- **Feature**: Cambiado Tier 1 de búsqueda por variaciones exactas a búsqueda por odds exactas
-- **Enhancement**: Tier 1 ahora busca eventos históricos con odds iniciales y finales idénticas
-- **Search Logic**: Tier 1 busca exact odds (one_open, two_open, one_final, two_final) + X odds para deportes 3-way
-- **Tier 2 Unchanged**: Mantiene búsqueda por variaciones similares usando L1 distance
-- **Deduplication**: Sistema de exclusión previene duplicación entre Tier 1 y Tier 2
-- **Beneficio**: Tier 1 más preciso al encontrar eventos con odds exactamente idénticas
-- **Soporte**: Maneja correctamente deportes 2-way (Tennis) y 3-way (Football) con var_shape
-- **Resultado**: Sistema de predicciones más preciso con búsqueda de odds exactas en Tier 1
-
-### **Fix 8: Late Timestamp Correction (30/10/2025) - NUEVO v1.4.6**
-- **Issue**: Correcciones de timestamps que ocurrían después del inicio del juego no se detectaban
-- **Root Cause**: Sistema anterior solo verificaba timestamps 1 minuto antes del inicio, perdiendo correcciones tardías
-- **Solución**: Implementado sistema de verificación tardía que chequea eventos que comenzaron hace 0-5 minutos
-- **Arquitectura**: Nueva función `get_events_started_recently()` en `repository.py` con ventana de 5 minutos
-- **Microsecond Precision Fix**: Manejo robusto eliminando problemas de microsegundos en comparaciones de tiempo
-- **API Integration**: Modificado `get_event_results()` para enviar alertas cuando `minutes_until_start < 0` (eventos ya comenzados)
-- **Testing**: Validado exitosamente con 2 eventos, 2 correcciones detectadas y 2 alertas enviadas
-- **Resultado**: Sistema ahora detecta correcciones tardías de timestamps con 100% de precisión
-
-### **Despliegue Exitoso**
-- ✅ **Sistema v1.3.1 desplegado** en producción (01/10/2025)
-- ✅ **Base de datos actualizada** con computed columns y materialized views
-- ✅ **Timing fix aplicado**: Midnight job movido a 04:00
-- ✅ **Variation Differences Display**: Feature avanzado implementado
-- ✅ **Sistema de Corrección de Timestamps**: Feature nuevo implementado
-- ✅ **Process 2 implementado**: Sistema de reglas específicas por deporte
-- ✅ **Dual Process System**: Orchestrador que compara Process 1 + Process 2
-- ✅ **Fórmulas de Fútbol**: 11 fórmulas específicas implementadas
-- ✅ **Notificaciones duales**: Reportes combinados con veredicto final
-- ✅ **Scripts de upsert**: `upsert_debug_results.py` para corregir eventos faltantes
-- ✅ **Notificaciones optimizadas**: UPCOMING GAMES ALERT deshabilitado, solo DUAL PROCESS REPORTS activos
-- ✅ **Odds Display**: Notificaciones con odds completas implementadas
-- ✅ **Gender Filtering**: Filtrado por género en búsqueda de candidatos implementado
-- ✅ **Tier 1 Exact Odds Search**: Búsqueda por odds exactas en Tier 1 implementado
-
-### **Archivos Modificados**
-- `alert_engine.py`: AlertMatch dataclass actualizado con campos de odds, cálculo de diferencias con signos visibles
-- `alert_system.py`: Display de diferencias de variaciones para Tier 2 candidatos, notificaciones duales implementadas, odds display agregado, mensajes de corrección tardía actualizados
-- `sofascore_api.py`: Lógica de extracción de resultados mejorada, sistema de corrección de timestamps, late timestamp correction para eventos ya comenzados
-- `scheduler.py`: Midnight job movido a 04:00, sistema de corrección de timestamps, dual process integration, late timestamp check implementado
-- `prediction_engine.py`: **NUEVO** - Orchestrador dual process con lógica de comparación
-- `process2/`: **NUEVO** - Sistema modular de Process 2
-  - `process2_engine.py`: Motor principal de Process 2
-  - `sports/football.py`: 11 fórmulas específicas de fútbol implementadas
-  - `__init__.py`: Definición de boundaries y arquitectura
-- `config.py`: Variable `ENABLE_TIMESTAMP_CORRECTION` para control de corrección de timestamps
-- `repository.py`: Método `update_event_starting_time` para actualizar timestamps, función `get_events_started_recently()` para late timestamp correction
-- `upsert_debug_results.py`: Script para corregir eventos faltantes
-- `docker-compose.yml`: Configuración de producción corregida
+### **Dropping Odds Discovery Source Priority (v1.4.10)**
+- **Feature**: Eventos de dropping odds siempre sobrescriben `discovery_source` existente
+- **Rationale**: Dropping odds es la fuente más importante - eventos que aparecen ahí deben marcarse como `dropping_odds`
+- **Implementation**: Lógica en `repository.py` que detecta y siempre actualiza `discovery_source='dropping_odds'`

@@ -24,12 +24,24 @@ Usage:
     
     # Test mode: process first day and show what would be saved/updated (dry-run)
     python extract_historical_results.py --test --days 1
+    
+    # Initialize state file with hardcoded date (2025-10-23)
+    python extract_historical_results.py --init-state
+    
+    # Manual mode: extract from MANUAL_START_DATE to MANUAL_END_DATE
+    python extract_historical_results.py --manual
 
 CLI Arguments:
-    --test    : Test mode - shows what would be processed without saving to database
-                Only processes first day and displays detailed summary
-                Shows CREATE vs UPDATE actions for results
-    --days N  : Limit processing to N days (default: all remaining days)
+    --test       : Test mode - shows what would be processed without saving to database
+                   Only processes first day and displays detailed summary
+                   Shows CREATE vs UPDATE actions for results
+    --days N     : Limit processing to N days (default: all remaining days)
+    --init-state : Initialize state file with hardcoded date (2025-10-23)
+                   Creates file in script directory. Exits after creation.
+    --manual     : Manual mode - extract from MANUAL_START_DATETIME to MANUAL_END_DATETIME
+                   Ignores state file and --days parameter
+                   Uses datetime range defined in constants (MANUAL_START_DATETIME, MANUAL_END_DATETIME)
+                   Can specify both date and time, e.g., datetime(2025, 11, 15, 11, 30) for Nov 15 at 11:30
 
 Note: This script ALWAYS processes events, even if results exist, to ensure
       data is updated with the latest extraction methods and corrections.
@@ -41,7 +53,6 @@ Requirements:
 
 import logging
 import sys
-import json
 import os
 import argparse
 from datetime import datetime, timedelta, date
@@ -82,47 +93,271 @@ NBA_SEASONS_TO_EXCLUDE = [
 # Minimum event ID
 LAST_ID = 269
 
-# State file to track last processed date
-STATE_FILE = 'extract_historical_results_state.json'
+# State file to track last processed date (simple log file with just the date)
+STATE_FILE = 'extract_historical_results_last_date.log'
+
+# Manual mode datetime range constants
+# Can specify both date and time, e.g., datetime(2025, 11, 15, 11, 30) for Nov 15 at 11:30
+MANUAL_START_DATETIME = datetime(2025, 11, 22, 23, 59, 59)  # Start datetime for manual mode
+MANUAL_END_DATETIME = datetime(2025, 11, 25, 23, 59, 59)   # End datetime for manual mode (inclusive)
+
+
+def get_state_file_path() -> str:
+    """
+    Get the absolute path to the state file.
+    Uses the current working directory to ensure we find the file regardless of where the script is run from.
+    """
+    # Get the directory where the script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(script_dir, STATE_FILE)
+
+
+def find_state_file() -> Optional[str]:
+    """
+    Find the state file in multiple possible locations.
+    Returns the first path where the file exists, or None if not found.
+    
+    Priority order:
+    1. Directory where script is located (most reliable)
+    2. Current working directory
+    3. Root directory (/)
+    4. Common server paths
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    cwd = os.getcwd()
+    
+    # List of possible locations to search (prioritize script directory and CWD)
+    search_paths = [
+        # 1. Directory where script is located (most reliable - same dir as script)
+        os.path.join(script_dir, STATE_FILE),
+        # 2. Current working directory
+        os.path.join(cwd, STATE_FILE),
+        # 3. Root directory (/)
+        os.path.join('/', STATE_FILE),
+        # 4. Common server paths (if running in Docker or directly on server)
+        os.path.join('/opt/sofascore', STATE_FILE),
+        os.path.join('/app', STATE_FILE),
+    ]
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_paths = []
+    for path in search_paths:
+        if path not in seen:
+            seen.add(path)
+            unique_paths.append(path)
+    
+    for path in unique_paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
 
 
 def load_last_processed_date() -> Optional[date]:
     """
-    Load the last processed date from state file.
+    Load the last processed date from log file.
+    The file contains only the date in yyyy-mm-dd format.
     
     Returns:
         date object if state file exists, None otherwise
     """
     try:
-        if os.path.exists(STATE_FILE):
-            with open(STATE_FILE, 'r', encoding='utf-8') as f:
-                state = json.load(f)
-                last_date_str = state.get('last_processed_date')
-                if last_date_str:
-                    return datetime.strptime(last_date_str, '%Y-%m-%d').date()
+        # Search for state file in multiple locations
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        logger.info(f"🔍 Searching for state file...")
+        logger.info(f"   Script location: {os.path.abspath(__file__)}")
+        logger.info(f"   Script directory: {script_dir}")
+        
+        # List files in script directory for debugging
+        try:
+            files_in_script_dir = [f for f in os.listdir(script_dir) if os.path.isfile(os.path.join(script_dir, f))]
+            if STATE_FILE in files_in_script_dir:
+                logger.info(f"   ✅ Found {STATE_FILE} in script directory!")
+            else:
+                logger.info(f"   ❌ {STATE_FILE} NOT in script directory")
+                logger.info(f"   Files in script directory: {sorted(files_in_script_dir)[:10]}...")  # Show first 10
+        except Exception as e:
+            logger.debug(f"   Could not list files in script directory: {e}")
+        
+        state_file_path = find_state_file()
+        
+        if state_file_path:
+            logger.info(f"✅ State file found at: {state_file_path}")
+            with open(state_file_path, 'r', encoding='utf-8') as f:
+                # Read all lines
+                lines = f.readlines()
+                logger.info(f"📄 Read {len(lines)} lines from state file")
+                
+                # Log all lines for debugging
+                if lines:
+                    logger.info(f"📋 File contents: {[line.strip() for line in lines]}")
+                
+                if lines:
+                    # Get the last non-empty line
+                    last_line = None
+                    for line in reversed(lines):
+                        line = line.strip()
+                        if line:
+                            last_line = line
+                            break
+                    
+                    if last_line:
+                        logger.info(f"📅 Found last processed date: {last_line}")
+                        # Parse date from yyyy-mm-dd format
+                        parsed_date = datetime.strptime(last_line, '%Y-%m-%d').date()
+                        logger.info(f"📂 Loaded last processed date: {parsed_date.strftime('%Y-%m-%d')}")
+                        return parsed_date
+                    else:
+                        logger.warning("⚠️  State file exists but contains only empty lines")
+                else:
+                    logger.warning("⚠️  State file exists but is empty")
+        else:
+            # Log all search locations for debugging (same logic as find_state_file)
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            cwd = os.getcwd()
+            search_paths = [
+                os.path.join(script_dir, STATE_FILE),
+                os.path.join(cwd, STATE_FILE),
+                os.path.join('/', STATE_FILE),
+                os.path.join('/opt/sofascore', STATE_FILE),
+                os.path.join('/app', STATE_FILE),
+            ]
+            # Remove duplicates
+            seen = set()
+            unique_paths = []
+            for path in search_paths:
+                if path not in seen:
+                    seen.add(path)
+                    unique_paths.append(path)
+            
+            logger.warning(f"⚠️  State file not found in any of these locations:")
+            for path in unique_paths:
+                exists = "✅ EXISTS" if os.path.exists(path) else "❌ NOT FOUND"
+                logger.info(f"   {exists}: {path}")
+            logger.info(f"📂 Current working directory: {cwd}")
+            logger.info(f"📂 Script directory: {script_dir}")
+            logger.info(f"📂 Script file: {os.path.abspath(__file__)}")
+        return None
+    except ValueError as e:
+        logger.warning(f"❌ Error parsing date from state file: {e}")
         return None
     except Exception as e:
-        logger.warning(f"Error loading state file: {e}")
+        logger.warning(f"❌ Error loading state file: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None
+
+
+def init_state_file(initial_date: str = '2025-10-23', force: bool = False) -> bool:
+    """
+    Initialize the state file with a hardcoded date.
+    Creates the file in the script directory (same location as the script).
+    
+    Args:
+        initial_date: The date to write to the file (format: yyyy-mm-dd)
+        force: If True, overwrite existing file without asking (useful for Docker/non-interactive)
+    
+    Returns:
+        True if file was created successfully, False otherwise
+    """
+    try:
+        # Use script directory as the location (most reliable)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        state_file_path = os.path.join(script_dir, STATE_FILE)
+        
+        # Check if file already exists
+        if os.path.exists(state_file_path):
+            logger.warning(f"⚠️  State file already exists at: {state_file_path}")
+            with open(state_file_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                if content:
+                    logger.info(f"   Current content: {content}")
+                else:
+                    logger.info(f"   Current content: (empty)")
+            
+            if not force:
+                # Only ask for confirmation if not forced (interactive mode)
+                try:
+                    response = input(f"   Overwrite? (y/N): ").strip().lower()
+                    if response != 'y':
+                        logger.info("   Skipping file creation.")
+                        return False
+                except (EOFError, KeyboardInterrupt):
+                    # Handle non-interactive mode (Docker, scripts, etc.)
+                    logger.warning("   Non-interactive mode detected. Use --force to overwrite.")
+                    logger.info("   Skipping file creation.")
+                    return False
+            else:
+                logger.info("   Force mode: overwriting existing file.")
+        
+        # Ensure directory exists
+        dir_path = os.path.dirname(state_file_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+        
+        # Create file with the hardcoded date
+        with open(state_file_path, 'w', encoding='utf-8') as f:
+            f.write(f"{initial_date}\n")
+        
+        logger.info(f"✅ Created state file: {state_file_path}")
+        logger.info(f"   Initial date: {initial_date}")
+        logger.info(f"   File location: {state_file_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error creating state file: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
 
 
 def save_last_processed_date(processed_date: date):
     """
-    Save the last processed date to state file.
+    Save the last processed date to log file.
+    Appends the date in yyyy-mm-dd format to the log file.
+    If the file exists, saves to that location. Otherwise, saves to current working directory.
     
     Args:
         processed_date: The date that was just processed
     """
+    date_str = processed_date.strftime('%Y-%m-%d')
+    
+    # Try to find existing file first
+    existing_file = find_state_file()
+    if existing_file:
+        state_file_path = existing_file
+        logger.info(f"💾 Saving state to existing file: {state_file_path}")
+    else:
+        # If no existing file, save to current working directory (most accessible)
+        state_file_path = os.path.join(os.getcwd(), STATE_FILE)
+        logger.info(f"💾 No existing state file found, saving to: {state_file_path}")
+    
     try:
-        state = {
-            'last_processed_date': processed_date.strftime('%Y-%m-%d'),
-            'updated_at': datetime.now().isoformat()
-        }
-        with open(STATE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(state, f, indent=2)
-        logger.info(f"💾 Saved state: Last processed date = {processed_date.strftime('%Y-%m-%d')}")
+        # Ensure directory exists (only if there's a directory component)
+        dir_path = os.path.dirname(state_file_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+        
+        with open(state_file_path, 'a', encoding='utf-8') as f:
+            f.write(f"{date_str}\n")
+        logger.info(f"✅ Saved state: Last processed date = {date_str} (file: {state_file_path})")
     except Exception as e:
-        logger.error(f"Error saving state file: {e}")
+        logger.error(f"❌ Error saving state file: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        # Try fallback to script directory
+        try:
+            script_file = get_state_file_path()
+            logger.info(f"🔄 Trying fallback location: {script_file}")
+            dir_path = os.path.dirname(script_file)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
+            with open(script_file, 'a', encoding='utf-8') as f:
+                f.write(f"{date_str}\n")
+            logger.info(f"✅ Saved state to fallback location: {script_file}")
+        except Exception as e2:
+            logger.error(f"❌ Failed to save to fallback location: {e2}")
 
 
 def get_events_for_date(target_date: date) -> List[Event]:
@@ -165,6 +400,47 @@ def get_events_for_date(target_date: date) -> List[Event]:
             
     except Exception as e:
         logger.error(f"Error querying events for date {target_date}: {e}")
+        return []
+
+
+def get_events_for_datetime_range(start_datetime: datetime, end_datetime: datetime) -> List[Event]:
+    """
+    Get all events within a datetime range matching the query criteria.
+    
+    Query matches:
+    SELECT * FROM events
+    WHERE id > 269
+      AND (season_id IS NULL OR season_id NOT IN (34951, 38191, ...))
+      AND start_time_utc >= start_datetime
+      AND start_time_utc <= end_datetime
+    ORDER BY start_time_utc
+    
+    Args:
+        start_datetime: The start datetime (inclusive)
+        end_datetime: The end datetime (inclusive)
+        
+    Returns:
+        List of Event objects ordered by start_time_utc
+    """
+    try:
+        with db_manager.get_session() as session:
+            # Query matching the criteria with datetime range
+            events = session.query(Event).filter(
+                and_(
+                    Event.id > LAST_ID,
+                    or_(
+                        Event.season_id.is_(None),
+                        ~Event.season_id.in_(NBA_SEASONS_TO_EXCLUDE)
+                    ),
+                    Event.start_time_utc >= start_datetime,
+                    Event.start_time_utc <= end_datetime
+                )
+            ).order_by(Event.start_time_utc).all()
+            
+            return events
+            
+    except Exception as e:
+        logger.error(f"Error querying events for datetime range {start_datetime} to {end_datetime}: {e}")
         return []
 
 
@@ -433,6 +709,8 @@ Examples:
   python extract_historical_results.py --test             # Test mode: show what would be processed
   python extract_historical_results.py --days 5           # Process only 5 days
   python extract_historical_results.py --test --days 1    # Test mode: process first day (dry-run)
+  python extract_historical_results.py --init-state        # Initialize state file with 2025-10-23
+  python extract_historical_results.py --manual           # Manual mode: extract from MANUAL_START_DATE to MANUAL_END_DATE
         """
     )
     parser.add_argument(
@@ -446,21 +724,49 @@ Examples:
         default=None,
         help='Number of days to process (default: all remaining days)'
     )
+    parser.add_argument(
+        '--init-state',
+        action='store_true',
+        help='Initialize state file with hardcoded date (2025-10-23). Creates file in script directory.'
+    )
+    parser.add_argument(
+        '--manual',
+        action='store_true',
+        help='Manual mode: extract from MANUAL_START_DATETIME to MANUAL_END_DATETIME (ignores state file and --days). Supports time specification.'
+    )
     
     args = parser.parse_args()
     test_mode = args.test
     max_days = args.days
+    manual_mode = args.manual
+    
+    # Handle --init-state command
+    if args.init_state:
+        logger.info("=" * 80)
+        logger.info("INITIALIZING STATE FILE")
+        logger.info("=" * 80)
+        if init_state_file(force=True):
+            logger.info("✅ State file initialized successfully!")
+            logger.info("   You can now run the script normally to resume from 2025-10-23")
+        else:
+            logger.error("❌ Failed to initialize state file")
+            sys.exit(1)
+        sys.exit(0)
     
     logger.info("=" * 80)
     logger.info("HISTORICAL RESULTS EXTRACTION SCRIPT")
     if test_mode:
         logger.info("🔍 TEST MODE - No changes will be saved to database")
+    if manual_mode:
+        logger.info("🔧 MANUAL MODE - Using date range from constants")
     logger.info("=" * 80)
     logger.info(f"Minimum event ID: {LAST_ID}")
     logger.info(f"Excluding NBA season IDs: {NBA_SEASONS_TO_EXCLUDE}")
     logger.info("Processing events in daily batches to avoid API rate limiting")
     logger.info("⚠️  ALWAYS updates existing results (upsert) to refresh with new extraction methods")
-    if max_days:
+    if manual_mode:
+        logger.info(f"📅 Manual mode datetime range: {MANUAL_START_DATETIME.strftime('%Y-%m-%d %H:%M:%S')} to {MANUAL_END_DATETIME.strftime('%Y-%m-%d %H:%M:%S')}")
+    elif max_days:
         logger.info(f"⚠️  Limiting to {max_days} day(s)")
     logger.info("=" * 80)
     
@@ -472,6 +778,85 @@ Examples:
         
         logger.info("✅ Database connection successful")
         
+        # Handle manual mode separately (different flow)
+        if manual_mode:
+            logger.info("🔧 MANUAL MODE: Using datetime range from constants")
+            logger.info(f"   Start datetime: {MANUAL_START_DATETIME.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"   End datetime: {MANUAL_END_DATETIME.strftime('%Y-%m-%d %H:%M:%S')} (inclusive)")
+            logger.info("   ⚠️  Ignoring state file and --days parameter")
+            
+            # Get events directly from datetime range
+            logger.info("🔍 Getting events in datetime range...")
+            manual_events = get_events_for_datetime_range(MANUAL_START_DATETIME, MANUAL_END_DATETIME)
+            
+            if not manual_events:
+                logger.warning(f"⚠️  No events found between {MANUAL_START_DATETIME.strftime('%Y-%m-%d %H:%M:%S')} and {MANUAL_END_DATETIME.strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info("Exiting.")
+                sys.exit(0)
+            
+            logger.info(f"📊 Found {len(manual_events)} events in datetime range")
+            logger.info("=" * 80 + "\n")
+            
+            # Process all events from the datetime range
+            total_stats = {'updated': 0, 'skipped': 0, 'failed': 0}
+            all_changes = []
+            
+            # Group events by date for better logging and processing
+            from collections import defaultdict
+            events_by_date = defaultdict(list)
+            for event in manual_events:
+                event_date = event.start_time_utc.date()
+                events_by_date[event_date].append(event)
+            
+            dates_list = sorted(events_by_date.keys())
+            logger.info(f"📅 Processing {len(manual_events)} events across {len(dates_list)} date(s)")
+            if len(dates_list) > 1:
+                logger.info(f"   Date range: {dates_list[0].strftime('%Y-%m-%d')} to {dates_list[-1].strftime('%Y-%m-%d')}")
+            logger.info("=" * 80 + "\n")
+            
+            # Process events grouped by date
+            for day_idx, day_date in enumerate(dates_list, 1):
+                day_events = events_by_date[day_date]
+                logger.info(f"\n{'=' * 80}")
+                mode_text = "🔍 TEST MODE - " if test_mode else ""
+                logger.info(f"{mode_text}📅 Processing Date {day_idx}/{len(dates_list)}: {day_date.strftime('%Y-%m-%d')} ({len(day_events)} events)")
+                logger.info(f"{'=' * 80}")
+                
+                # Process events for this day
+                day_stats, day_changes = collect_results_for_events(day_events, day_date, test_mode=test_mode, update_odds=True)
+                
+                # Accumulate statistics
+                total_stats['updated'] += day_stats['updated']
+                total_stats['skipped'] += day_stats['skipped']
+                total_stats['failed'] += day_stats['failed']
+                all_changes.extend(day_changes)
+                
+                # Collect changes for test mode summary
+                if test_mode and day_idx == 1:
+                    print_test_summary(day_changes, day_date)
+                    if len(dates_list) > 1:
+                        logger.info(f"\n⚠️  TEST MODE: Only processed first day. {len(dates_list) - 1} more day(s) would be processed in normal mode.")
+                    break
+                
+                # Small delay between days to be extra safe with API
+                if day_idx < len(dates_list):
+                    logger.info(f"  ⏸️  Waiting 2 seconds before next day...")
+                    import time
+                    time.sleep(2)
+            
+            # Print final summary
+            logger.info("\n" + "=" * 80)
+            logger.info("FINAL SUMMARY")
+            logger.info("=" * 80)
+            logger.info(f"Total events processed: {len(manual_events)}")
+            logger.info(f"✅ Updated: {total_stats['updated']}")
+            logger.info(f"⏭️  Skipped: {total_stats['skipped']}")
+            logger.info(f"❌ Failed: {total_stats['failed']}")
+            logger.info("=" * 80)
+            
+            sys.exit(0)
+        
+        # Normal mode: continue with date-based processing
         # Step 2: Load last processed date (if exists and not in test mode)
         last_processed_date = None
         if not test_mode:
@@ -495,7 +880,7 @@ Examples:
         
         logger.info(f"📊 Found {len(all_dates)} unique dates with events")
         
-        # Step 4: Filter dates to process (skip already processed dates)
+        # Step 4: Filter dates to process
         if last_processed_date and not test_mode:
             # Find the index of the last processed date
             try:
@@ -519,8 +904,8 @@ Examples:
             logger.info("✅ All dates have been processed. Nothing to do.")
             sys.exit(0)
         
-        # Apply day limit if specified
-        if max_days and max_days > 0:
+        # Apply day limit if specified (only if not in manual mode)
+        if not manual_mode and max_days and max_days > 0:
             dates_to_process = dates_to_process[:max_days]
         
         # Show what will be processed
@@ -549,8 +934,8 @@ Examples:
                 
                 if not day_events:
                     logger.info(f"  ⏭️  No events found for {day_date.strftime('%Y-%m-%d')}, skipping...")
-                    # Still save this date as processed (even if no events) - but not in test mode
-                    if not test_mode:
+                    # Still save this date as processed (even if no events) - but not in test mode or manual mode
+                    if not test_mode and not manual_mode:
                         save_last_processed_date(day_date)
                     continue
                 
@@ -575,8 +960,8 @@ Examples:
                             logger.info(f"\n⚠️  TEST MODE: Only processed first day. {len(dates_to_process) - 1} more day(s) would be processed in normal mode.")
                         break
                 
-                # Save progress after each day (not in test mode)
-                if not test_mode:
+                # Save progress after each day (not in test mode or manual mode)
+                if not test_mode and not manual_mode:
                     save_last_processed_date(day_date)
                     logger.info(f"  💾 Progress saved: {day_date.strftime('%Y-%m-%d')} completed")
                     

@@ -25,7 +25,7 @@ class TodaySportExtractor:
         Process odds response to extract odds data for each event.
         
         Args:
-            odds_response: Response from get_today_basketball_events_odds_response with structure:
+            odds_response: Response from get_today_sport_events_odds_response with structure:
                            {"odds": {"event_id": {"choices": [...], ...}, ...}}
         
         Returns:
@@ -102,7 +102,7 @@ class TodaySportExtractor:
         Filter events list to only include events that have odds data.
         
         Args:
-            events_response: Response from get_today_basketball_events_response
+            events_response: Response from get_today_sport_events_response
             odds_event_ids: Set of event IDs that have odds
         
         Returns:
@@ -193,72 +193,102 @@ class TodaySportExtractor:
         Returns:
             Dict with statistics: {'events_processed': X, 'events_inserted': Y, 'odds_inserted': Z}
         """
+
+        sports = [
+            'basketball',
+            'tennis',
+            'baseball',
+            'hockey',
+            'american-football',
+            'football',
+        ]
+        
+        logger.info(f"🔍 Starting daily discovery for date: {date}")
+        
+        # Aggregate statistics across all sports
+        total_events_processed = 0
+        total_events_inserted = 0
+        total_odds_inserted = 0
+        
         try:
-            logger.info(f"🔍 Starting daily discovery for date: {date}")
+            for sport in sports:
+                try:
+                    logger.info(f"🏀 Processing {sport}...")
+                    
+                    # Step 1: Fetch odds endpoint first to get event IDs with odds
+                    logger.info(f"📊 Fetching today's {sport} odds...")
+                    odds_response = self.api_client.get_today_sport_events_odds_response(date, sport)
+                    
+                    if not odds_response:
+                        logger.warning(f"No odds response for {sport}, skipping")
+                        continue
+                    
+                    # Step 2: Process odds response to extract event IDs and odds data
+                    odds_map = self._process_odds_response(odds_response)
+                    
+                    if not odds_map:
+                        logger.info(f"No events with odds found for {sport}")
+                        continue
+                    
+                    odds_event_ids = set(odds_map.keys())
+                    logger.info(f"Found {len(odds_event_ids)} {sport} events with odds")
+                    
+                    # Step 3: Fetch events endpoint
+                    logger.info(f"📅 Fetching today's {sport} events...")
+                    events_response = self.api_client.get_today_sport_events_response(date, sport)
+                    
+                    if not events_response:
+                        logger.warning(f"No events response for {sport}, skipping")
+                        continue
+                    
+                    # Step 4: Filter events to only those with odds
+                    filtered_events = self._filter_events_with_odds(events_response, odds_event_ids)
+                    
+                    if not filtered_events:
+                        logger.info(f"No matching {sport} events found after filtering")
+                        continue
+                    
+                    # Step 5: Process and insert each event with its odds
+                    logger.info(f"Processing {len(filtered_events)} {sport} events...")
+                    sport_events_inserted = 0
+                    sport_odds_inserted = 0
+                    
+                    for event in filtered_events:
+                        event_id = event.get('id')
+                        if not event_id:
+                            continue
+                        
+                        # Get odds for this event
+                        event_odds = odds_map.get(event_id)
+                        if not event_odds:
+                            logger.warning(f"No odds found for event {event_id}, skipping")
+                            continue
+                        
+                        # Process and insert event with odds
+                        success = self._process_and_insert_event(event, event_odds)
+                        if success:
+                            sport_events_inserted += 1
+                            # Check if odds were actually inserted by validating the odds data
+                            if validate_odds_data(event_odds):
+                                sport_odds_inserted += 1
+                    
+                    logger.info(f"✅ {sport} completed: {sport_events_inserted}/{len(filtered_events)} events inserted, {sport_odds_inserted} with odds")
+                    
+                    # Aggregate statistics
+                    total_events_processed += len(filtered_events)
+                    total_events_inserted += sport_events_inserted
+                    total_odds_inserted += sport_odds_inserted
+                    
+                except Exception as e:
+                    logger.error(f"Error processing {sport}: {e}")
+                    continue  # Continue with next sport even if one fails
             
-            # Step 1: Fetch odds endpoint first to get event IDs with odds
-            logger.info("📊 Fetching today's basketball odds...")
-            odds_response = self.api_client.get_today_basketball_events_odds_response(date)
-            
-            if not odds_response:
-                logger.error("Failed to fetch odds response")
-                return {'events_processed': 0, 'events_inserted': 0, 'odds_inserted': 0}
-            
-            # Step 2: Process odds response to extract event IDs and odds data
-            odds_map = self._process_odds_response(odds_response)
-            
-            if not odds_map:
-                logger.warning("No events with odds found for today")
-                return {'events_processed': 0, 'events_inserted': 0, 'odds_inserted': 0}
-            
-            odds_event_ids = set(odds_map.keys())
-            logger.info(f"Found {len(odds_event_ids)} events with odds")
-            
-            # Step 3: Fetch events endpoint
-            logger.info("📅 Fetching today's basketball events...")
-            events_response = self.api_client.get_today_basketball_events_response(date)
-            
-            if not events_response:
-                logger.error("Failed to fetch events response")
-                return {'events_processed': 0, 'events_inserted': 0, 'odds_inserted': 0}
-            
-            # Step 4: Filter events to only those with odds
-            filtered_events = self._filter_events_with_odds(events_response, odds_event_ids)
-            
-            if not filtered_events:
-                logger.warning("No matching events found after filtering")
-                return {'events_processed': 0, 'events_inserted': 0, 'odds_inserted': 0}
-            
-            # Step 5: Process and insert each event with its odds
-            logger.info(f"Processing {len(filtered_events)} events...")
-            events_inserted = 0
-            odds_inserted = 0
-            
-            for event in filtered_events:
-                event_id = event.get('id')
-                if not event_id:
-                    continue
-                
-                # Get odds for this event
-                event_odds = odds_map.get(event_id)
-                if not event_odds:
-                    logger.warning(f"No odds found for event {event_id}, skipping")
-                    continue
-                
-                # Process and insert event with odds
-                success = self._process_and_insert_event(event, event_odds)
-                if success:
-                    events_inserted += 1
-                    # Check if odds were actually inserted by validating the odds data
-                    if validate_odds_data(event_odds):
-                        odds_inserted += 1
-            
-            logger.info(f"✅ Daily discovery completed: {events_inserted}/{len(filtered_events)} events inserted, {odds_inserted} with odds")
+            logger.info(f"✅ Daily discovery completed for all sports: {total_events_inserted}/{total_events_processed} events inserted, {total_odds_inserted} with odds")
             
             return {
-                'events_processed': len(filtered_events),
-                'events_inserted': events_inserted,
-                'odds_inserted': odds_inserted
+                'events_processed': total_events_processed,
+                'events_inserted': total_events_inserted,
+                'odds_inserted': total_odds_inserted
             }
             
         except Exception as e:

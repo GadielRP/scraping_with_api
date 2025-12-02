@@ -1,14 +1,14 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.4.9  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + LATE TIMESTAMP CORRECTION + TENNIS RANKING DIFFERENTIAL + SEASON FORM FILTERING**  
-**Última Actualización:** 10 de Noviembre, 2025
+**Versión:** v1.4.11  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + DAILY DISCOVERY + AUTO-MIGRATION + OPTIMIZED + ENHANCED H2H STREAKS + DROPPING ODDS PRIORITY**  
+**Última Actualización:** Noviembre, 2025
 
 ## 🎯 **Visión del Proyecto**
 
 Sistema automatizado de monitoreo y predicción de odds deportivos que proporciona **notificaciones inteligentes** y **predicciones basadas en patrones históricos**, permitiendo a los usuarios tomar decisiones informadas usando análisis de datos históricos y **extracción eficiente de odds** solo en momentos clave.
 
-## 🚀 **Estado Actual (v1.4.2)**
+## 🚀 **Estado Actual (v1.4.11)**
 
 ### ✅ **NUEVO EN v1.4.0 - Multi-Source Discovery & Auto-Migration**
 
@@ -79,14 +79,23 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Precise Ranking Averages**: Final real rankings now use float precision for more accurate ranking prediction outputs.
 - **Production Ready**: All fixes validated and working correctly
 
--### ✅ **NUEVO EN v1.4.9 - Season Form Filtering & Overall Win Streaks**
--**Season-Aware Team Form**: `get_team_last_10_results_by_id()` ahora acepta `season_id` y, para deportes no tennis, recupera todos los partidos de la misma temporada y competencia deteniéndose cuando cambia la temporada.
--**Flexible Fetching Loop**: Reemplazo del flag `second_fetch` por `fetch_index` en `sofascore_api2.get_team_last_results_response()`, permitiendo múltiples paginaciones consecutivas hasta cubrir toda la temporada.
--**Overall Win Streak Tracking**: El motor calcula rachas ganadoras consecutivas sin filtros (todas las competencias) en paralelo con los resultados filtrados y las expone como `home_current_win_streak` / `away_current_win_streak`.
--**Season Form Messaging**: La sección “Last 10 Games” del mensaje H2H ahora muestra únicamente el conteo W/L/D y etiqueta dinámica según la cantidad real de partidos (p.ej. “Season Form · 14 juegos”).
--**Scheduler Guardrail**: La evaluación de alertas H2H en `job_pre_start_check` sólo se ejecuta cuando faltan exactamente 30 minutos, evitando recomputes innecesarios a los 5 minutos.
--**Control Logs Actualizados**: Se añadió trazabilidad detallada para los nuevos filtros de temporada y la continuidad de fetchs, facilitando debugging en producción.
--
+### ✅ **NUEVO EN v1.4.10 - Dropping Odds Discovery Source Priority**
+- **Priority Overwrite Logic**: Eventos descubiertos por dropping odds siempre sobrescriben `discovery_source` existente
+- **Implementation**: Modificado `repository.py.upsert_event()` para detectar `discovery_source='dropping_odds'` y siempre actualizar, incluso para eventos existentes
+- **Rationale**: Dropping odds (`/odds/1/dropping/all`) es la fuente más importante - eventos que aparecen ahí deben marcarse como `dropping_odds` independientemente de su origen previo
+- **Logging**: Sistema registra cuando se sobrescribe un `discovery_source` diferente a `dropping_odds` para trazabilidad
+- **Production Ready**: Validado y funcionando correctamente
+
+### ✅ **NUEVO EN v1.4.11 - Daily Discovery System**
+- **Daily Discovery Job**: Nuevo job que ejecuta diariamente a las 05:01
+- **Multi-Sport Support**: Procesa múltiples deportes (Basketball, Tennis, Baseball, Hockey, American Football, Football)
+- **Complete Coverage**: Obtiene todos los eventos programados del día con sus odds iniciales y finales
+- **Smart Filtering**: Solo procesa eventos que tienen odds disponibles
+- **Architecture**: `today_sport_extractor.py` maneja la lógica de extracción multi-deporte
+- **API Methods**: `get_today_sport_events_response()` y `get_today_sport_events_odds_response()` en `sofascore_api2.py`
+- **Discovery Source**: Eventos marcados con `discovery_source='daily_discovery'`
+- **Production Ready**: Implementado y funcionando correctamente
+
 ### ✅ **NUEVO EN v1.4.5 - Detailed Match Results with Dates**
 - **Individual H2H Match Results**: Muestra cada partido H2H con detalles completos (home, away, scores)
 - **Grouped by Winner**: Resultados organizados por equipo ganador preservando orden histórico
@@ -222,6 +231,15 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Archivo**: `sofascore_api2.py` para nuevos métodos de API
 - **Optimización**: Event-only processing para High Value Streaks y H2H
 - **Estado**: 🟢 **COMPLETADO Y OPTIMIZADO**
+
+### ✅ **Discovery 3 - Daily Discovery - COMPLETADO**
+- **Programación**: Diario a las 05:01
+- **Fuente**: `/sport/{sport}/scheduled-events/{date}` y `/sport/{sport}/odds/1/{date}`
+- **Deportes**: Basketball, Tennis, Baseball, Hockey, American Football, Football
+- **Funcionalidad**: Obtiene todos los eventos programados del día con sus odds iniciales y finales
+- **Procesamiento Multi-Deporte**: Procesa múltiples deportes en una sola ejecución
+- **Archivo**: `today_sport_extractor.py` para lógica de extracción
+- **Estado**: 🟢 **COMPLETADO Y FUNCIONANDO**
 
 ### ✅ **Verificación Pre-Inicio con Extracción Inteligente - COMPLETADO**
 - **Frecuencia**: Cada 5 minutos en intervalos de reloj
@@ -508,4 +526,4 @@ El **SofaScore Odds System v1.3.1** tiene **Process 1 completamente funcional co
 
 ---
 
-**Estado Final**: 🟢 **DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO EN PRODUCCIÓN CON ODDS DISPLAY, LATE TIMESTAMP CORRECTION Y H2H FILTERING FIXES**
+**Estado Final**: 🟢 **DUAL PROCESS SYSTEM IMPLEMENTADO - Process 1 + Process 2 FUNCIONANDO EN PRODUCCIÓN CON DROPPING ODDS PRIORITY Y OPTIMIZACIONES**
