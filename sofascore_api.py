@@ -140,10 +140,17 @@ class SofaScoreAPI:
                 round = 'qualification'
             elif any(term in competition_lower for term in ['friendly', 'amistoso']):
                 round = 'friendly'
+            elif any(term in competition_lower for term in ['pre season', 'preseason', 'pre-temporada', 'pré-temporada', 'pretemporada']):
+                round = 'preseason'
             elif round_info and round_info.get('slug'):
                 round = round_info.get('slug')
-                if (any(term in round.lower() for term in ['quarterfinal', 'semifinal', 'final', 'playoffs', 'knockout', 'round-of-16',
-                'round-of-32', 'round-of-64', 'round-of-128', 'round-4', 'round-1', 'round-2', 'round-3', 'match-for-3rd-place'])):
+                if (any(term in round.lower() for term in ['quarterfinal', 'semifinal', 'final', 'playoffs', 'knockout',
+                'round-of-16', 'round-of-32', 'round-of-64', 'round-of-128',
+                'round-1', 'round-2', 'round-3', 'round-4', 'round-5', 'round-6',
+                'first-round', 'second-round', 'third-round',
+                'western-conference', 'eastern-conference',
+                'play-in', 'winnerloser', 'match-for-3rd-place',
+                'in-season-tournament'])):
                     round = 'knockouts/playoffs'
                 else:
                     if (season_name is not None and any(term in season_name.lower() for term in ['cup', 'copa', 'taça', 'coupe'])

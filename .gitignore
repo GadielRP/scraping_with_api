@@ -44,7 +44,7 @@ sofascore_api_backup.py
 .env
 .cursor/
 sofascore.service 
-
+assets/
 
 # old files
 old/
