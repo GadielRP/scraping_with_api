@@ -216,6 +216,75 @@ EVENT_ALL_ODDS_VIEW_SQL = (
 )
 
 # ---------------------------------------------------------------------------
+# Basketball results view - parses quarter scores from sets strings
+# ---------------------------------------------------------------------------
+
+BASKETBALL_RESULTS_VIEW_SQL = (
+    """
+    CREATE OR REPLACE VIEW basketball_results AS
+    SELECT
+        e.id AS event_id,
+        e.home_team,
+        e.away_team,
+        e.round,
+        e.season_id,
+        s.name AS season_name,
+        r.home_score,
+        r.away_score,
+        r.winner,
+        -- Parse home_sets string (format: '23-23-31-24' or '23-23-31-24-(16)' for overtime)
+        -- Remove overtime (parentheses) and penalties (plus signs) before parsing
+        CASE 
+            WHEN r.home_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.home_sets, '\\(.*', ''), '-', 1) ~ '^[0-9]+$'
+            THEN split_part(REGEXP_REPLACE(r.home_sets, '\\(.*', ''), '-', 1)::INTEGER
+            ELSE NULL
+        END AS quarter_1_home,
+        CASE 
+            WHEN r.home_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.home_sets, '\\(.*', ''), '-', 2) ~ '^[0-9]+$'
+            THEN split_part(REGEXP_REPLACE(r.home_sets, '\\(.*', ''), '-', 2)::INTEGER
+            ELSE NULL
+        END AS quarter_2_home,
+        CASE 
+            WHEN r.home_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.home_sets, '\\(.*', ''), '-', 3) ~ '^[0-9]+$'
+            THEN split_part(REGEXP_REPLACE(r.home_sets, '\\(.*', ''), '-', 3)::INTEGER
+            ELSE NULL
+        END AS quarter_3_home,
+        CASE 
+            WHEN r.home_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.home_sets, '\\(.*', ''), '-', 4) ~ '^[0-9]+$'
+            THEN split_part(REGEXP_REPLACE(r.home_sets, '\\(.*', ''), '-', 4)::INTEGER
+            ELSE NULL
+        END AS quarter_4_home,
+        -- Parse away_sets string (format: '19-35-24-31' or '19-35-24-31-(16)' for overtime)
+        CASE 
+            WHEN r.away_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 1) ~ '^[0-9]+$'
+            THEN split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 1)::INTEGER
+            ELSE NULL
+        END AS quarter_1_away,
+        CASE 
+            WHEN r.away_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 2) ~ '^[0-9]+$'
+            THEN split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 2)::INTEGER
+            ELSE NULL
+        END AS quarter_2_away,
+        CASE 
+            WHEN r.away_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 3) ~ '^[0-9]+$'
+            THEN split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 3)::INTEGER
+            ELSE NULL
+        END AS quarter_3_away,
+        CASE 
+            WHEN r.away_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 4) ~ '^[0-9]+$'
+            THEN split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 4)::INTEGER
+            ELSE NULL
+        END AS quarter_4_away
+    FROM events e
+    JOIN results r ON r.event_id = e.id
+    LEFT JOIN seasons s ON s.id = e.season_id
+    WHERE e.sport = 'Basketball'
+      AND r.home_sets IS NOT NULL
+      AND r.away_sets IS NOT NULL
+    """
+)
+
+# ---------------------------------------------------------------------------
 # Materialized view for fast alert processing
 # ---------------------------------------------------------------------------
 
@@ -280,6 +349,9 @@ def create_or_replace_views(engine):
     """Create or replace reporting SQL views. Call this after engine init."""
     with engine.begin() as conn:
         conn.exec_driver_sql(EVENT_ALL_ODDS_VIEW_SQL)
+        # Drop basketball_results view first if it exists (to handle column removal)
+        conn.exec_driver_sql("DROP VIEW IF EXISTS basketball_results CASCADE;")
+        conn.exec_driver_sql(BASKETBALL_RESULTS_VIEW_SQL)
 
 def create_or_replace_materialized_views(engine):
     """Create or replace materialized views for alerts. Call this after engine init."""
@@ -298,5 +370,7 @@ def refresh_materialized_views(engine):
 
 # Register only the regular view for automatic creation
 # Materialized views are created manually in initialize_system() after migrations
+# NOTE: basketball_results view is NOT auto-created here - it's created manually in create_or_replace_views()
+#       to allow dropping the view first when columns change (PostgreSQL doesn't allow CREATE OR REPLACE VIEW to drop columns)
 event.listen(Base.metadata, 'after_create', DDL(EVENT_ALL_ODDS_VIEW_SQL))
 # NOTE: Materialized view is NOT auto-created here - it's created after schema migrations in main.py

@@ -1445,7 +1445,7 @@ class AlertEngine:
         # Limit Tier 2 candidates to 6 to avoid Telegram character limit
         tier2_candidates_limited = tier2_candidates[:6] if tier2_candidates else []
         if len(tier2_candidates) > 16:
-            logger.info(f"📊 Limited Tier 2 candidates display to 16 (from {len(tier2_candidates)} total) to avoid Telegram character limit")
+            logger.info(f"📊 Limited Tier 2 candidates display to 6 (from {len(tier2_candidates)} total) to avoid Telegram character limit")
         tier2_matches_data = self._format_candidate_data(tier2_candidates_limited)
         
         return {
