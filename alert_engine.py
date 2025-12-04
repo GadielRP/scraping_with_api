@@ -911,7 +911,10 @@ class AlertEngine:
                 winner_groups[match.winner_side].append(match)
             if winner_groups:
                 most_common_winner = max(winner_groups.keys(), key=lambda k: len(winner_groups[k]))
-                unique_matching_candidates.update(match.event_id for match in winner_groups[most_common_winner])
+                most_common_matches = winner_groups[most_common_winner]
+                # Require at least 2 candidates with the same winning side (consistent with Rules A and B)
+                if len(most_common_matches) >= 2:
+                    unique_matching_candidates.update(match.event_id for match in most_common_matches)
         
         total_matching_candidates = len(unique_matching_candidates)
         

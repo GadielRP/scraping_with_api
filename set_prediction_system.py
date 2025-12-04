@@ -42,8 +42,9 @@ class SetPredictionSystem:
         self,
         sport: str,
         competition: Optional[str] = None,
-        min_minutes_ago: int = 90,
-        max_minutes_ago: int = 120
+        min_minutes_ago: int = 105,
+        max_minutes_ago: int = 135,
+        alert_sent: Optional[bool] = None
     ) -> List[Dict]:
         """
         Get events that started within a specific minute range for a given sport/competition.
@@ -56,13 +57,15 @@ class SetPredictionSystem:
             competition: Optional competition filter (e.g., 'NBA', 'NHL'). If None, returns all events for sport.
             min_minutes_ago: Minimum minutes since event started (e.g., 80)
             max_minutes_ago: Maximum minutes since event started (e.g., 100)
+            alert_sent: Optional filter for alert_sent flag. If True, only returns events with alert_sent=True.
+                       If False, only returns events with alert_sent=False. If None, returns all events.
             
         Returns:
             List of event dictionaries matching the criteria
             
         Example:
-            # Get NBA games that started 105-135 minutes ago
-            events = get_events_by_sport_and_minutes_range('Basketball', 'NBA', 105, 135)
+            # Get NBA games that started 105-135 minutes ago and haven't sent alert yet
+            events = get_events_by_sport_and_minutes_range('Basketball', 'NBA', 105, 135, alert_sent=False)
         """
         try:
             with db_manager.get_session() as session:
@@ -77,13 +80,17 @@ class SetPredictionSystem:
                 logger.debug(f"Time window: {window_start} to {window_end}")
                 
                 # Build query with sport filter
-                query = session.query(Event).filter(
-                    and_(
-                        Event.sport == sport,
-                        Event.start_time_utc >= window_start,
-                        Event.start_time_utc <= window_end
-                    )
-                )
+                filters = [
+                    Event.sport == sport,
+                    Event.start_time_utc >= window_start,
+                    Event.start_time_utc <= window_end
+                ]
+                
+                # Add alert_sent filter if specified
+                if alert_sent is not None:
+                    filters.append(Event.alert_sent == alert_sent)
+                
+                query = session.query(Event).filter(and_(*filters))
                 
                 # Add competition filter if specified
                 if competition:
@@ -237,22 +244,26 @@ class SetPredictionSystem:
         1. Get all NBA games that started up to 135 minutes ago (max window)
         2. Log all found events (for visibility)
         3. Filter to only events in 105-135 minute window (for API checks)
-        4. For each filtered event, check if already alerted
-        5. Fetch event details from API
-        6. Check if 4th quarter has started using last_quarter_check()
-        7. Send alert if condition is met
-        8. Track alerted events to avoid duplicates
+        4. Fetch live basketball events once from API (optimization: single call instead of N calls)
+        5. Create mapping of event_id -> event_data from live response
+        6. Filter live events to only those matching our DB event IDs
+        7. For each matching event, check if already alerted
+        8. Check if 4th quarter has started using last_quarter_check()
+        9. Send alert if condition is met
+        10. Track alerted events to avoid duplicates
         """
         try:
             logger.info("🏀 Running NBA 4th quarter check...")
             
             # Get ALL NBA games that started up to 135 minutes ago (max window for discovery)
             # This allows us to see all recent NBA games in logs
+            # Filter to only events where alert_sent = False (haven't sent alert yet)
             all_nba_events = self.get_events_by_sport_and_minutes_range(
                 sport='Basketball',
                 competition='NBA',
                 min_minutes_ago=0,  # Start from now
-                max_minutes_ago=135  # Up to 135 minutes ago
+                max_minutes_ago=135,  # Up to 135 minutes ago
+                alert_sent=False  # Only get events that haven't sent alert yet
             )
             
             if not all_nba_events:
@@ -289,8 +300,42 @@ class SetPredictionSystem:
                 logger.info(f"   {idx}. Event {event['id']}: {event['home_team']} vs {event['away_team']} "
                           f"({minutes_since_start} minutes ago)")
             
+            # Fetch live basketball events once (optimization: single API call instead of N calls)
+            logger.info("📡 Fetching live basketball events from API...")
+            live_response = api_client.get_live_events_response_per_sport('basketball')
+            
+            if not live_response or 'events' not in live_response:
+                logger.warning("❌ Could not fetch live basketball events or response is invalid")
+                return
+            
+            # Create a mapping of event_id -> event_data from live response
+            live_events_map = {}
+            for live_event in live_response.get('events', []):
+                event_id = live_event.get('id')
+                if event_id:
+                    live_events_map[event_id] = live_event
+            
+            logger.info(f"📡 Fetched {len(live_events_map)} live basketball event(s) from API")
+            
+            # Create a set of event IDs we need to check (for fast lookup)
+            db_event_ids = {event['id'] for event in nba_events_to_check}
+            
+            # Filter live events to only those in our DB events list
+            matching_live_events = {
+                event_id: event_data 
+                for event_id, event_data in live_events_map.items() 
+                if event_id in db_event_ids
+            }
+            
+            if not matching_live_events:
+                logger.info(f"⏭️ No matching live events found for {len(nba_events_to_check)} DB event(s) in 105-135 minute window")
+                return
+            
+            logger.info(f"✅ Found {len(matching_live_events)} matching live event(s) to check for 4th quarter")
+            
             alerts_sent = 0
             
+            # Process each event from our DB list, using live response data if available
             for event in nba_events_to_check:
                 try:
                     event_id = event['id']
@@ -298,18 +343,19 @@ class SetPredictionSystem:
                     away_team = event['away_team']
                     competition = event['competition']
                     
-                    # Skip if already alerted for this event
+                    # Skip if already alerted for this event (in-memory cache check)
+                    # Note: Database filtering already excludes alert_sent=True events, but this provides extra safety
                     if event_id in self.tracked_events:
-                        logger.debug(f"Event {event_id} already alerted, skipping")
+                        logger.debug(f"Event {event_id} already alerted (cached), skipping")
                         continue
                     
-                    # Fetch event details from API
+                    # Get event data from live response (if available)
+                    if event_id not in matching_live_events:
+                        logger.debug(f"Event {event_id} not found in live events (may have finished or not live)")
+                        continue
+                    
+                    event_response = matching_live_events[event_id]
                     logger.info(f"🔍 Checking 4th quarter for event {event_id}: {home_team} vs {away_team} ({competition})")
-                    event_response = api_client.get_event_details(event_id)
-                    
-                    if not event_response:
-                        logger.warning(f"❌ Could not fetch event details for event {event_id}: {home_team} vs {away_team}")
-                        continue
                     
                     # Check if 4th quarter has started (with detailed score logging)
                     fourth_quarter_started = self.last_quarter_check(event_response, home_team, away_team)
@@ -333,7 +379,9 @@ class SetPredictionSystem:
                         )
                         
                         if success:
-                            # Mark event as alerted to avoid duplicate notifications
+                            # Mark event as alerted in database to avoid duplicate notifications
+                            self._mark_event_alert_sent(event_id)
+                            # Also update in-memory cache for performance
                             self.tracked_events.add(event_id)
                             alerts_sent += 1
                             logger.info(f"✅ Alert sent successfully for event {event_id}: {home_team} vs {away_team} (Score: {home_total} - {away_total})")
@@ -377,6 +425,31 @@ class SetPredictionSystem:
         except Exception as e:
             logger.error(f"Error calculating minutes since start: {e}")
             return 0
+    
+    def _mark_event_alert_sent(self, event_id: int) -> bool:
+        """
+        Mark an event as having sent the 4th quarter alert in the database.
+        
+        Args:
+            event_id: Event ID to mark as alerted
+            
+        Returns:
+            True if successfully updated, False otherwise
+        """
+        try:
+            with db_manager.get_session() as session:
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if event:
+                    event.alert_sent = True
+                    session.commit()
+                    logger.debug(f"Marked event {event_id} as alert_sent=True in database")
+                    return True
+                else:
+                    logger.warning(f"Event {event_id} not found in database when trying to mark as alerted")
+                    return False
+        except Exception as e:
+            logger.error(f"Error marking event {event_id} as alerted: {e}")
+            return False
     
     def _send_4th_quarter_alert(
         self,
@@ -452,8 +525,8 @@ class SetPredictionSystem:
             message += f"🏀 {competition} - {season_stage}\n\n"
             
             message += f"📊 <b>Current Score (Q1-Q3):</b>\n"
-            message += f"   {home_team}: {current_home} ({q1_home}-{q2_home}-{q3_home})\n"
-            message += f"   {away_team}: {current_away} ({q1_away}-{q2_away}-{q3_away})\n\n"
+            message += f"{home_team}: {current_home} ({q1_home}-{q2_home}-{q3_home})\n"
+            message += f"{away_team}: {current_away} ({q1_away}-{q2_away}-{q3_away})\n\n"
             
             message += f"⏰ <b>4th Quarter is LIVE!</b>\n\n"
             
@@ -462,36 +535,36 @@ class SetPredictionSystem:
                 # Calculation overview section
                 message += f"📐 <b>Calculation Overview:</b>\n\n"
                 message += f"<i>Step 1: Historical Analysis</i>\n"
-                message += f"   • Analyzed {prediction['parameters'].get('sample_size_home', 0)} games for {home_team}\n"
-                message += f"   • Analyzed {prediction['parameters'].get('sample_size_away', 0)} games for {away_team}\n"
-                message += f"   • Historical Q4 avg: {home_team} {prediction['parameters']['avg_q4_home']:.1f} pts, {away_team} {prediction['parameters']['avg_q4_away']:.1f} pts\n\n"
+                message += f"• Analyzed {prediction['parameters'].get('sample_size_home', 0)} games for {home_team}\n"
+                message += f"• Analyzed {prediction['parameters'].get('sample_size_away', 0)} games for {away_team}\n"
+                message += f"• Historical Q4 avg: {home_team} {prediction['parameters']['avg_q4_home']:.1f} pts, {away_team} {prediction['parameters']['avg_q4_away']:.1f} pts\n\n"
                 
                 message += f"<i>Step 2: Rhythm Factor</i>\n"
-                message += f"   • Current Q1-Q3 total: {prediction['parameters']['total_q1_q3_combined_current']} pts\n"
-                message += f"   • Historical Q1-Q3 avg: {prediction['parameters']['avg_q1_q3_combined_historical']:.1f} pts\n"
-                message += f"   • Rhythm: {prediction['rhythm_factor']:.2f}x (how fast this game is vs historical)\n"
-                message += f"   → {prediction['rhythm_factor']:.2f}x means this game is {('faster' if prediction['rhythm_factor'] > 1.0 else 'slower')} than average\n\n"
+                message += f"• Current Q1-Q3 total: {prediction['parameters']['total_q1_q3_combined_current']} pts\n"
+                message += f"• Historical Q1-Q3 avg: {prediction['parameters']['avg_q1_q3_combined_historical']:.1f} pts\n"
+                message += f"• Rhythm: {prediction['rhythm_factor']:.2f}x (how fast this game is vs historical)\n"
+                message += f"→ {prediction['rhythm_factor']:.2f}x means this game is {('faster' if prediction['rhythm_factor'] > 1.0 else 'slower')} than average\n\n"
                 
                 message += f"<i>Step 3: Base Q4 Prediction</i>\n"
-                message += f"   • Formula: Historical Q4 avg × Rhythm factor\n"
-                message += f"   • {home_team}: {prediction['base_q4_home']:.1f} pts ({prediction['parameters']['avg_q4_home']:.1f} × {prediction['rhythm_factor']:.2f})\n"
-                message += f"   • {away_team}: {prediction['base_q4_away']:.1f} pts ({prediction['parameters']['avg_q4_away']:.1f} × {prediction['rhythm_factor']:.2f})\n\n"
+                message += f"• Formula: Historical Q4 avg × Rhythm factor\n"
+                message += f"• {home_team}: {prediction['base_q4_home']:.1f} pts ({prediction['parameters']['avg_q4_home']:.1f} × {prediction['rhythm_factor']:.2f})\n"
+                message += f"• {away_team}: {prediction['base_q4_away']:.1f} pts ({prediction['parameters']['avg_q4_away']:.1f} × {prediction['rhythm_factor']:.2f})\n\n"
                 
                 if prediction['parameters']['momentum_applied']:
                     message += f"<i>Step 4: Momentum Adjustment</i>\n"
                     leader = home_team if prediction['score_differential'] > 0 else away_team
                     trailing = away_team if prediction['score_differential'] > 0 else home_team
-                    message += f"   • Score differential: {abs(prediction['score_differential'])} pts ({leader} leading)\n"
-                    message += f"   • Adjustment: {leader} × 0.95 (slow down), {trailing} × 1.06 (speed up)\n"
-                    message += f"   → Leading teams tend to slow down, trailing teams push harder\n\n"
+                    message += f"• Score differential: {abs(prediction['score_differential'])} pts ({leader} leading)\n"
+                    message += f"• Adjustment: {leader} × 0.95 (slow down), {trailing} × 1.06 (speed up)\n"
+                    message += f"→ Leading teams tend to slow down, trailing teams push harder\n\n"
                 
                 message += f"🔮 <b>4Q Prediction:</b>\n"
-                message += f"   {home_team}: {prediction['predicted_q4_home']:.1f} pts\n"
-                message += f"   {away_team}: {prediction['predicted_q4_away']:.1f} pts\n\n"
+                message += f"{home_team}: {prediction['predicted_q4_home']:.1f} pts\n"
+                message += f"{away_team}: {prediction['predicted_q4_away']:.1f} pts\n\n"
                 
                 message += f"🎯 <b>Final Score Projection:</b>\n"
-                message += f"   {home_team}: {prediction['predicted_final_home']:.1f}\n"
-                message += f"   {away_team}: {prediction['predicted_final_away']:.1f}\n\n"
+                message += f"{home_team}: {prediction['predicted_final_home']:.1f}\n"
+                message += f"{away_team}: {prediction['predicted_final_away']:.1f}\n\n"
                 
                 # Confidence indicator
                 confidence_emoji = {
@@ -501,9 +574,9 @@ class SetPredictionSystem:
                 }.get(prediction['confidence_level'], '⚪')
                 
                 message += f"{confidence_emoji} <b>Confidence:</b> {prediction['confidence_level']}\n"
-                message += f"   • Range: {prediction['confidence_range_numeric']:.2f} (lower = more reliable)\n"
-                message += f"   • Z-Score: {prediction['z_score']:.3f} ({prediction['z_confidence']})\n"
-                message += f"   • Explosiveness: {prediction.get('explosiveness', 0):.2f} (volatility measure)\n"
+                message += f"• Range: {prediction['confidence_range_numeric']:.2f} (lower = more reliable)\n"
+                message += f"• Z-Score: {prediction['z_score']:.3f} ({prediction['z_confidence']})\n"
+                message += f"• Explosiveness: {prediction.get('explosiveness', 0):.2f} (volatility measure)\n"
             else:
                 message += f"⚠️ Prediction unavailable (insufficient historical data)\n\n"
             

@@ -317,5 +317,6 @@ SofaScoreAPI.get_standings_response = get_standings_response
 SofaScoreAPI.process_standings_response = process_standings_response
 SofaScoreAPI.get_today_sport_events_response = get_today_sport_events_response
 SofaScoreAPI.get_today_sport_events_odds_response = get_today_sport_events_odds_response
+SofaScoreAPI.get_live_events_response_per_sport = get_live_events_response_per_sport
 
 logger.info("✅ sofascore_api2 methods successfully loaded and attached to SofaScoreAPI")
