@@ -102,6 +102,14 @@ def get_event_details(self, event_id: int) -> Optional[Dict]:
         return None
     return response['event']
 
+def get_live_events_response_per_sport(self, sport: str) -> Optional[Dict]:
+    """Fetch live events response for a specific sport."""
+    endpoint = f"/sport/{sport}/events/live"
+    response = self._make_request(endpoint)
+    if not response or 'events' not in response:
+        return None
+    return response
+
 def get_team_last_results_response(self, team_id: int, is_tennis_singles: bool = False, is_tennis_doubles: bool = False, fetch_index: int = 0) -> Optional[Dict]:
     """Fetch the last results for a team from the /team/{id}/events/last/{fetch_index} endpoint."""
     if fetch_index < 0:

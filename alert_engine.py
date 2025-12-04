@@ -324,7 +324,7 @@ class AlertEngine:
                              "mae.x_open IS NULL AND mae.x_final IS NULL")
         
         sql = f"""
-                    SELECT mae.event_id, mae.participants, mae.result_text, mae.winner_side, mae.point_diff,
+                    SELECT mae.event_id, mae.participants, mae.gender, mae.result_text, mae.winner_side, mae.point_diff,
                            mae.one_open, mae.x_open, mae.two_open, mae.one_final, mae.x_final, mae.two_final,
                            mae.var_one, mae.var_x, mae.var_two, mae.competition,
                            eo.observation_value as court_type
@@ -512,9 +512,9 @@ class AlertEngine:
             result_groups = {}
             for match in candidates:
                 result = match.result_text
-            if result not in result_groups:
-                result_groups[result] = []
-            result_groups[result].append(match)
+                if result not in result_groups:
+                    result_groups[result] = []
+                result_groups[result].append(match)
         
             # Find the result with the most candidates
             most_common_result = max(result_groups.keys(), key=lambda k: len(result_groups[k]))

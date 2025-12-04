@@ -259,16 +259,10 @@ class PreStartNotification:
         message += f"💰 Current Odds:\n"
         message += f"{odds_display}\n\n"
         
-        # Candidate summary with new logic
-        total_candidates_found = tier1_count + tier2_count
-        non_symmetrical_count = report_data.get('non_symmetrical_candidates', 0)
-        
+        # Candidate summary (exact candidates only)
         message += f"🔍Summary:\n"
-        message += f"T1 (exact): {tier1_count}\n"
-        message += f"T2 (similar): {tier2_count}\n"
+        message += f"Candidates (exact): {tier1_count}\n"
         message += f"Confidence: {confidence}\n"
-        if non_symmetrical_count > 0:
-            message += f" ({non_symmetrical_count} non-symmetrical filtered out)"
         message += f"\n"
         
         
@@ -279,14 +273,10 @@ class PreStartNotification:
         if rule_activations:
             message += self._format_rule_activations(rule_activations)
         
-        # Show candidates from all available tiers
+        # Show candidates (exact matches only)
         if tier1_count > 0:
-            message += self._format_tier_candidates("🎯", "Exact Vars", 
+            message += self._format_tier_candidates("🎯", "Exact Matches", 
                                                  tier1_count, tier1_data.get('matches', []), has_draw_odds)
-        if tier2_count > 0:
-            # Always show ALL Tier 2 candidates with symmetrical status indicators
-            message += self._format_tier_candidates("📊", "Similar Vars", 
-                                                 tier2_count, tier2_data.get('matches', []), has_draw_odds)
         
         # Primary prediction
         if primary_prediction:
@@ -305,21 +295,17 @@ class PreStartNotification:
             
         for i, match in enumerate(matches, 1):
             var_display = self._format_variations_display(match.get('variations', {}), has_draw_odds)
-            symmetry_status = ""
-            if 'is_symmetrical' in match:
-                if match['is_symmetrical']:
-                    symmetry_status = " ✅"
-                else:
-                    symmetry_status = " ❌"
+            # All exact matches are symmetrical, no need to display symmetry status
             competition_parts = match.get('competition', 'Unknown').split(',')
             competition = competition_parts[-1].strip() if competition_parts else 'Unknown'
             message += f"\n{i}. {match['participants']} ({competition}):\n"
-            message += f"R: {match['result_text']}{symmetry_status}\n"  
+            message += f"R: {match['result_text']}\n"  
             message += f"Open: {match['one_open']}, {match['x_open']}, {match['two_open']}\n"
             message += f"Final: {match['one_final']}, {match['x_final']}, {match['two_final']}\n"
             message += f"Δ: {var_display}\n"
             
-            # Add variation differences for Tier 2 candidates (similar matches)
+            # Variation differences only exist for similar matches (Tier 2), 
+            # which are no longer used - this code path will never execute for exact matches
             var_diffs = match.get('var_diffs')
             if var_diffs:
                 diff_display = self._format_variation_differences(var_diffs, has_draw_odds)
