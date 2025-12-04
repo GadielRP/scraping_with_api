@@ -12,15 +12,13 @@ Process 1 is the system of odds pattern analysis that evaluates historical event
 to predict future outcomes using variation tiers and result tiers.
 
 PROCESS 1 ARCHITECTURE:
-- Variation Tiers (1, 2): Exact vs Similar odds variations
+- Variation Tier (1): Exact odds variations only
 - Result Tiers (A, B, C): Identical vs Similar vs Same Winner results
-- Tier Selection Logic: Tier 1 prioritized over Tier 2
 - Weighted Confidence: 100%/75%/50% for Tiers A/B/C
 - Status Logic: SUCCESS/NO MATCH/NO CANDIDATES
 
 CURRENT IMPLEMENTATION (Process 1):
 - Tier 1: EXACT identical variations matching (var_one, var_x, var_two must match exactly)
-- Tier 2: SIMILAR variations matching (each variation within ±0.04 tolerance, inclusive)
 - Tier A: All candidates have identical exact results
 - Tier B: All candidates have same winner and point difference
 - Tier C: All candidates have same winning side (with weighted average point diff)
@@ -45,8 +43,6 @@ logger = logging.getLogger(__name__)
 # Constants
 RULE_WEIGHTS = {'A': 4, 'B': 3, 'C': 2}
 MAX_WEIGHT = 4
-TIER2_TOLERANCE = 0.040001  # Slightly higher to handle floating point precision (legacy component-based)
-L1_TAU_DEFAULT = 0.04  # Default L1 distance threshold for similarity search
 MIN_SAMPLES = 1
 
 WINNER_NAMES = {
@@ -63,7 +59,7 @@ CONFIDENCE_LEVELS = {
 
 @dataclass
 class AlertMatch:
-    """Represents a historical match that fits the pattern"""
+    """Represents a historical match with exactly identical odds variations"""
     event_id: int
     participants: str
     gender: str
@@ -80,12 +76,12 @@ class AlertMatch:
     var_x: Optional[float]
     var_two: float
     sport: str = 'Tennis'  # Default sport, will be set from search context
-    is_symmetrical: bool = True  # True for exact matches (Tier 1) and symmetrical similar matches (Tier 2)
+    is_symmetrical: bool = True  # Always True for exact matches
     competition: str = 'Unknown'  # Competition/tournament name
-    # Variation differences from current event (for display purposes)
-    var_diffs: Optional[Dict[str, float]] = None  # {'d1': 0.02, 'dx': 0.01, 'd2': 0.02}
-    # L1 distance from current event (for L1-based similarity search)
-    distance_l1: Optional[float] = None  # Sum of absolute differences: |Δvar_one| + |Δvar_x| + |Δvar_two|
+    # Variation differences (legacy field, always None for exact matches)
+    var_diffs: Optional[Dict[str, float]] = None  # Always None for exact matches
+    # L1 distance (legacy field, always None for exact matches)
+    distance_l1: Optional[float] = None  # Always None for exact matches
     # Court type for Tennis events (for filtering by playing surface)
     court_type: Optional[str] = None  # "Hardcourt indoor", "Red clay", "Grass", etc.
 
@@ -105,7 +101,6 @@ class AlertEngine:
     
     def __init__(self):
         self.MIN_SAMPLES = MIN_SAMPLES
-        self.TIER2_TOLERANCE = TIER2_TOLERANCE
         
     def evaluate_upcoming_events(self, upcoming_events: List) -> List[Dict]:
         """
@@ -175,7 +170,7 @@ class AlertEngine:
             f"shape={'3-way' if var_shape else 'no-draw'}"
         )
         
-        # Find candidates for both tiers, excluding current event
+        # Find exact candidates only, excluding current event
         current_event_id = event.id
         tier1_candidates = self._find_tier1_candidates(
             sport=event.sport,
@@ -185,45 +180,25 @@ class AlertEngine:
             exclude_event_ids=[current_event_id]
         )
         
-        # Extract Tier 1 event IDs to exclude from Tier 2 search, plus current event
-        tier1_event_ids = [candidate.event_id for candidate in tier1_candidates]
-        tier1_event_ids.append(current_event_id)  # Also exclude current event from Tier 2
-        
-        # Use L1 distance-based similarity search with initial odds filtering
-        tier2_candidates = self._find_l1_similar_candidates(
-            sport=event.sport,
-            gender=event.gender,
-            var_shape=var_shape,
-            cur_v1=cur_v1,
-            cur_vx=cur_vx,
-            cur_v2=cur_v2,
-            exclude_event_ids=tier1_event_ids,
-            tau=L1_TAU_DEFAULT,
-            current_odds=event.event_odds
-        )
-        
         # Log candidate findings
-        logger.info(f"Found {len(tier1_candidates)} Tier 1 (exact) candidates for event {event.id}")
-        logger.info(f"Found {len(tier2_candidates)} Tier 2 (L1-similar, τ={L1_TAU_DEFAULT}) candidates for event {event.id}")
+        logger.info(f"Found {len(tier1_candidates)} exact candidates for event {event.id}")
         
         # COURT TYPE FILTERING: Filter candidates by court type for Tennis/Tennis Doubles
         current_court_type = getattr(event, 'court_type', None)
         if current_court_type and event.sport in ['Tennis', 'Tennis Doubles']:
             logger.info(f"🎾 Applying court type filter for {event.sport}: '{current_court_type}'")
             tier1_candidates = self._filter_candidates_by_court_type(tier1_candidates, current_court_type, event.sport)
-            tier2_candidates = self._filter_candidates_by_court_type(tier2_candidates, current_court_type, event.sport)
-            logger.info(f"After court type filter: {len(tier1_candidates)} Tier 1, {len(tier2_candidates)} Tier 2 candidates")
+            logger.info(f"After court type filter: {len(tier1_candidates)} candidates")
         
         # Create comprehensive candidate report
-        if tier1_candidates or tier2_candidates:
+        if tier1_candidates:
             # Pre-evaluate to check if we have valid candidates after filtering
-            evaluation_result = self._evaluate_candidates_with_new_logic(tier1_candidates, tier2_candidates)
+            evaluation_result = self._evaluate_candidates_with_new_logic(tier1_candidates)
             
             # Create report for ALL statuses (including no_candidates)
             candidate_report = self._create_candidate_report(
                 event=event,
                 tier1_candidates=tier1_candidates,
-                tier2_candidates=tier2_candidates,
                 current_vars=(cur_v1, cur_vx, cur_v2),
                 minutes_until_start=minutes_until_start
             )
@@ -264,205 +239,32 @@ class AlertEngine:
             logger.error(f"Error getting sport for event {event_id}: {e}")
             return None
     
-    def _process_l1_candidates(self, candidates, cur_v1: float, cur_vx: Optional[float], 
-                              cur_v2: float, tau: float, sport: str, 
-                              max_candidates: int) -> List[AlertMatch]:
-        """Process candidates that already passed L1 distance filtering in SQL"""
-        matches = []
-        logger.info(f"🔍 DEBUG: Processing {len(candidates)} candidates (already L1-filtered by SQL)")
-        
-        for row in candidates:
-            # Calculate L1 distance for display and sorting
-            cand_v1 = float(row.var_one)
-            cand_vx = float(row.var_x) if row.var_x is not None else None
-            cand_v2 = float(row.var_two)
-            
-            # Calculate component differences
-            dx_1 = abs(cand_v1 - cur_v1)
-            dx_x = abs((0.0 if cand_vx is None else cand_vx) - (0.0 if cur_vx is None else cur_vx))
-            dx_2 = abs(cand_v2 - cur_v2)
-            
-            # Calculate L1 distance
-            dist_l1 = dx_1 + dx_x + dx_2
-            dist_l1 = round(dist_l1, 6)  # Round to avoid floating point precision issues
-            
-            # Calculate signed differences for display
-            d1_diff_signed = cand_v1 - cur_v1
-            d2_diff_signed = cand_v2 - cur_v2
-            dx_diff_signed = (cand_vx if cand_vx is not None else 0.0) - (cur_vx if cur_vx is not None else 0.0)
-            
-            var_diffs = {
-                'd1': round(d1_diff_signed, 3),
-                'd2': round(d2_diff_signed, 3),
-                'dx': round(dx_diff_signed, 3) if cur_vx is not None or cand_vx is not None else None
-            }
-            
-            # Check symmetry for Tennis sports
-            is_symmetrical = True  # Default for non-Tennis sports
-            if sport.lower() == 'tennis':
-                is_symmetrical = self._check_symmetrical_variations(
-                    cur_v1, cur_vx, cur_v2,
-                    cand_v1, cand_vx, cand_v2
-                )
-            
-            # Log match details
-            dx_display = f"{cand_vx:.2f}" if cand_vx is not None else "NULL"
-            dx_diff_display = f"{var_diffs['dx']:.3f}" if var_diffs['dx'] is not None else "0.000"
-            symmetry_status = "SYMMETRICAL" if is_symmetrical else "UNSYMMETRICAL"
-            """ for debugging purposes, take quotes off when need to see the match details
-            logger.info(
-                f"L1 MATCH: event_id={row.event_id} vars=(d1={cand_v1:.2f}, dx={dx_display}, d2={cand_v2:.2f}) "
-                f"| diffs=(d1={var_diffs['d1']:+.3f}, dx={dx_diff_display}, d2={var_diffs['d2']:+.3f}) "
-                f"| L1={dist_l1:.4f} | {symmetry_status} | result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
-            )
-            """
-            
-            matches.append(AlertMatch(
-                event_id=row.event_id,
-                participants=row.participants,
-                gender=getattr(row, 'gender', 'unknown'),  # Get gender from query result
-                result_text=row.result_text,
-                winner_side=row.winner_side,
-                point_diff=row.point_diff,
-                one_open=float(row.one_open) if row.one_open is not None else 0.0,
-                x_open=float(row.x_open) if row.x_open is not None else 0.0,
-                two_open=float(row.two_open) if row.two_open is not None else 0.0,
-                one_final=float(row.one_final) if row.one_final is not None else 0.0,
-                x_final=float(row.x_final) if row.x_final is not None else 0.0,
-                two_final=float(row.two_final) if row.two_final is not None else 0.0,
-                var_one=cand_v1,
-                var_x=cand_vx,
-                var_two=cand_v2,
-                sport=sport,
-                is_symmetrical=is_symmetrical,  # Apply sport-specific symmetry logic
-                competition=row.competition or 'Unknown',
-                var_diffs=var_diffs,
-                distance_l1=dist_l1,
-                court_type=getattr(row, 'court_type', None)  # Get court_type from query result
-            ))
-        
-        # Sort by L1 distance (ascending) and then by component differences for stability
-        matches.sort(key=lambda m: (m.distance_l1, abs(m.var_diffs['d1']), abs(m.var_diffs['d2'])))
-        
-        # Limit results
-        if len(matches) > max_candidates:
-            logger.info(f"Limiting L1 results to top {max_candidates} closest matches")
-            matches = matches[:max_candidates]
-        
-        #logger.info(f"🔍 DEBUG: Final L1 matches returned: {len(matches)}")
-        return matches
-    
     def _find_tier1_candidates(self, sport: str, gender: str, var_shape: bool, 
                                current_odds, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
         """Find historical events with EXACTLY identical odds (initial and final)"""
         return self._find_candidates(sport, gender, var_shape, current_odds, 
                                    is_exact=True, exclude_event_ids=exclude_event_ids)
-    
-    
-    def _find_l1_similar_candidates(self, sport: str, gender: str, var_shape: bool, 
-                                   cur_v1: float, cur_vx: Optional[float], 
-                                   cur_v2: float, exclude_event_ids: List[int] = None,
-                                   tau: float = L1_TAU_DEFAULT,
-                                   current_odds: Optional[object] = None) -> List[AlertMatch]:
-        """Find historical events with SIMILAR variations using L1 distance threshold"""
-        try:
-            with db_manager.get_session() as session:
-                from sqlalchemy import text
-                
-                logger.info(f"Searching for L1 similar variations (τ={tau})...")
-                dx_display = f"{cur_vx:.2f}" if cur_vx is not None else "NULL"
-                logger.info(f"Current variations: d1={cur_v1:.2f}, dx={dx_display}, d2={cur_v2:.2f}")
-                logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
-                
-                # Log initial odds filtering if available
-                if current_odds:
-                    logger.info(f"Initial odds filtering: 1={current_odds.one_open} (±0.50), 2={current_odds.two_open} (±0.50)")
-                    if current_odds.x_open is not None:
-                        logger.info(f"Initial odds filtering: X={current_odds.x_open} (±0.50)")
-                    logger.info(f"Total odds tolerance: 1.50 (0.50 per odds)")
-                
-                if exclude_event_ids:
-                    logger.info(f"Excluding {len(exclude_event_ids)} event IDs: {exclude_event_ids}")
-                
-                # Build SQL query for L1 prefilter with initial odds filtering
-                sql_query, params = self._build_l1_prefilter_sql(
-                    sport=sport,
-                    gender=gender,
-                    var_shape=var_shape,
-                    cur_v1=cur_v1,
-                    cur_vx=cur_vx,
-                    cur_v2=cur_v2,
-                    tau=tau,
-                    by_shape=True,  # Use same var_shape for consistency with existing logic
-                    exclude_event_ids=exclude_event_ids,
-                    max_candidates=500,
-                    current_odds=current_odds
-                )
-                
-                result = session.execute(text(sql_query), params)
-                candidates = result.fetchall()
-                
-                logger.info(f"Found {len(candidates)} L1-similar candidates")
-                
-                # Process matches with L1 distance calculation
-                matches = self._process_l1_candidates(
-                    candidates=candidates,
-                    cur_v1=cur_v1,
-                    cur_vx=cur_vx,
-                    cur_v2=cur_v2,
-                    tau=tau,
-                    sport=sport,
-                    max_candidates=500
-                )
-                
-                if matches:
-                    logger.info(f"SUCCESS: Found {len(matches)} L1-similar matches")
-                else:
-                    logger.info(f"No L1-similar matches found")
-                
-                return matches
-                
-        except Exception as e:
-            logger.error(f"Error finding L1-similar historical matches: {e}")
-            return []
 
     
     def _find_candidates(self, sport: str, gender: str, var_shape: bool, 
-                        search_data, is_exact: bool, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
-        """Unified candidate search for both exact odds and similar variations"""
+                        current_odds, is_exact: bool, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
+        """Find historical events with EXACTLY identical odds"""
         try:
             with db_manager.get_session() as session:
                 from sqlalchemy import text
                 
-                if is_exact:
-                    # Tier 1: Search for exact odds
-                    search_type = "EXACTLY identical odds"
-                    current_odds = search_data
-                    logger.info(f"Searching for {search_type}...")
-                    logger.info(f"Current odds: 1={current_odds.one_open}→{current_odds.one_final}, "
-                               f"X={current_odds.x_open}→{current_odds.x_final if current_odds.x_open else 'N/A'}, "
-                               f"2={current_odds.two_open}→{current_odds.two_final}")
-                    logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
-                    
-                    # Build SQL query for exact odds
-                    sql_query, params = self._build_candidate_sql(
-                        sport, gender, var_shape, current_odds, is_exact, exclude_event_ids
-                    )
-                else:
-                    # Tier 2: Search for similar variations (unchanged)
-                    search_type = "SIMILAR variations"
-                    tolerance_info = f" (tolerance: ±{self.TIER2_TOLERANCE})"
-                    cur_v1, cur_vx, cur_v2 = search_data
-                    logger.info(f"Searching for {search_type}{tolerance_info}...")
-                    
-                    dx_display = f"{cur_vx:.2f}" if cur_vx is not None else "NULL"
-                    logger.info(f"Current variations: d1={cur_v1:.2f}, dx={dx_display}, d2={cur_v2:.2f}")
-                    logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
-                    
-                    # Build SQL query for similar variations
-                    sql_query, params = self._build_candidate_sql(
-                        sport, gender, var_shape, cur_v1, cur_vx, cur_v2, is_exact, exclude_event_ids
-                    )
+                # Search for exact odds
+                search_type = "EXACTLY identical odds"
+                logger.info(f"Searching for {search_type}...")
+                logger.info(f"Current odds: 1={current_odds.one_open}→{current_odds.one_final}, "
+                           f"X={current_odds.x_open}→{current_odds.x_final if current_odds.x_open else 'N/A'}, "
+                           f"2={current_odds.two_open}→{current_odds.two_final}")
+                logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
+                
+                # Build SQL query for exact odds
+                sql_query, params = self._build_candidate_sql(
+                    sport, gender, var_shape, current_odds, is_exact, exclude_event_ids
+                )
                 
                 if exclude_event_ids:
                     logger.info(f"Excluding {len(exclude_event_ids)} event IDs: {exclude_event_ids}")
@@ -472,14 +274,8 @@ class AlertEngine:
                 
                 logger.info(f"Found {len(candidates)} candidates with {search_type.upper()}")
                 
-                # Process matches
-                if is_exact:
-                    # For exact odds, we don't need variation parameters for processing
-                    matches = self._process_candidate_matches(candidates, 0, None, 0, is_exact, sport)
-                else:
-                    # For similar variations, use the variation parameters
-                    cur_v1, cur_vx, cur_v2 = search_data
-                    matches = self._process_candidate_matches(candidates, cur_v1, cur_vx, cur_v2, is_exact, sport)
+                # Process matches (exact odds only, no variation parameters needed)
+                matches = self._process_candidate_matches(candidates, 0, None, 0, is_exact, sport)
                 
                 if matches:
                     logger.info(f"SUCCESS: Found {len(matches)} {search_type.lower()} matches")
@@ -489,106 +285,12 @@ class AlertEngine:
                 return matches
                 
         except Exception as e:
-            error_type = "exact odds" if is_exact else "similar variations"
-            logger.error(f"Error finding {error_type} historical matches: {e}")
+            logger.error(f"Error finding exact odds historical matches: {e}")
             return []
     
-    def _build_l1_prefilter_sql(self, sport: str, gender: str, var_shape: bool, cur_v1: float,
-                              cur_vx: Optional[float], cur_v2: float, tau: float,
-                              by_shape: bool = True, exclude_event_ids: List[int] = None,
-                              max_candidates: int = 500, current_odds: Optional[object] = None) -> Tuple[str, Dict]:
-        """Build SQL query for L1 distance prefiltering using L1 distance constraints"""
-        # Build exclusion clause
-        exclude_clause = ""
-        if exclude_event_ids:
-            exclude_ids_str = ','.join(map(str, exclude_event_ids))
-            exclude_clause = f" AND mae.event_id NOT IN ({exclude_ids_str})"
-        
-        # Base parameters
-        params = {
-            'sport': sport,
-            'gender': gender,
-            'tau': tau,
-            'cur_v1': cur_v1,
-            'cur_v2': cur_v2,
-            'max_candidates': max_candidates
-        }
-        
-        # Build var_shape condition
-        var_shape_condition = ""
-        if by_shape:
-            params['var_shape'] = var_shape
-            var_shape_condition = "AND mae.var_shape = :var_shape"
-        
-        # Build variation conditions for L1 distance prefilter (more accurate than L∞ box)
-        if cur_vx is None:
-            # No-draw sports (Tennis, etc.) - L1 distance: |var_one - cur_v1| + |var_two - cur_v2|
-            if by_shape:
-                var_conditions = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_two - :cur_v2)) <= :tau AND mae.var_x IS NULL"
-            else:
-                # Allow mixing with 3-way sports when by_shape=False
-                var_conditions = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_two - :cur_v2)) <= :tau"
-        else:
-            # 3-way sports (Football, etc.) - L1 distance: |var_one - cur_v1| + |var_x - cur_vx| + |var_two - cur_v2|
-            params['cur_vx'] = cur_vx
-            if by_shape:
-                var_conditions = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_x - :cur_vx) + ABS(mae.var_two - :cur_v2)) <= :tau AND mae.var_x IS NOT NULL"
-            else:
-                # Allow mixing with no-draw sports when by_shape=False
-                var_conditions = "(ABS(mae.var_one - :cur_v1) + ABS(COALESCE(mae.var_x, 0) - COALESCE(:cur_vx, 0)) + ABS(mae.var_two - :cur_v2)) <= :tau"
-        
-        # Build initial odds filtering conditions (0.50 range per odds, total 1.50)
-        initial_odds_conditions = ""
-        if current_odds:
-            # Add initial odds parameters
-            params.update({
-                'cur_one_open': current_odds.one_open,
-                'cur_two_open': current_odds.two_open,
-                'odds_tolerance': 0.15  # 0.50 range per odds
-            })
-            
-            # Build initial odds conditions
-            initial_odds_conditions = "AND ABS(mae.one_open - :cur_one_open) <= :odds_tolerance AND ABS(mae.two_open - :cur_two_open) <= :odds_tolerance"
-            
-            # Add X odds condition for 3-way sports
-            if cur_vx is not None and current_odds.x_open is not None:
-                params['cur_x_open'] = current_odds.x_open
-                initial_odds_conditions += " AND ABS(mae.x_open - :cur_x_open) <= :odds_tolerance"
-            elif cur_vx is None:
-                # For no-draw sports, ensure X odds are NULL
-                initial_odds_conditions += " AND mae.x_open IS NULL"
-        
-        # Build SQL with L1 distance ordering for better candidate selection
-        if cur_vx is None:
-            # For no-draw sports, order by L1 distance: |var_one - cur_v1| + |var_two - cur_v2|
-            order_by_clause = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_two - :cur_v2))"
-        else:
-            # For 3-way sports, order by L1 distance: |var_one - cur_v1| + |var_x - cur_vx| + |var_two - cur_v2|
-            order_by_clause = "(ABS(mae.var_one - :cur_v1) + ABS(mae.var_x - :cur_vx) + ABS(mae.var_two - :cur_v2))"
-        
-        sql = f"""
-                    SELECT mae.event_id, mae.participants, mae.result_text, mae.winner_side, mae.point_diff,
-                           mae.one_open, mae.x_open, mae.two_open, mae.one_final, mae.x_final, mae.two_final,
-                           mae.var_one, mae.var_x, mae.var_two, mae.competition,
-                           eo.observation_value as court_type
-                    FROM mv_alert_events mae
-                    LEFT JOIN event_observations eo ON mae.event_id = eo.event_id 
-                      AND eo.observation_type = 'ground_type'
-                    WHERE mae.sport = :sport
-                      AND mae.gender = :gender
-                      {var_shape_condition}
-                      AND {var_conditions}
-                      {initial_odds_conditions}
-                      {exclude_clause}
-                    ORDER BY {order_by_clause}
-                    LIMIT :max_candidates
-        """
-        
-        return sql, params
-
     def _build_candidate_sql(self, sport: str, gender: str, var_shape: bool, 
-                           search_data, is_exact: bool, exclude_event_ids: List[int] = None) -> Tuple[str, Dict]:
-        """Build SQL query and parameters for candidate search"""
+                           current_odds, is_exact: bool, exclude_event_ids: List[int] = None) -> Tuple[str, Dict]:
+        """Build SQL query and parameters for exact candidate search"""
         # Build exclusion clause
         exclude_clause = ""
         if exclude_event_ids:
@@ -599,52 +301,27 @@ class AlertEngine:
         params = {
             'sport': sport,
             'gender': gender,
-            'var_shape': var_shape
+            'var_shape': var_shape,
+            'cur_one_open': current_odds.one_open,
+            'cur_two_open': current_odds.two_open,
+            'cur_one_final': current_odds.one_final,
+            'cur_two_final': current_odds.two_final
         }
         
-        if is_exact:
-            # Tier 1: Search for exact odds
-            current_odds = search_data
+        if var_shape:
+            # 3-way sports (Football, etc.) - include X odds
             params.update({
-                'cur_one_open': current_odds.one_open,
-                'cur_two_open': current_odds.two_open,
-                'cur_one_final': current_odds.one_final,
-                'cur_two_final': current_odds.two_final
+                'cur_x_open': current_odds.x_open,
+                'cur_x_final': current_odds.x_final
             })
-            
-            if var_shape:
-                # 3-way sports (Football, etc.) - include X odds
-                params.update({
-                    'cur_x_open': current_odds.x_open,
-                    'cur_x_final': current_odds.x_final
-                })
-                odds_conditions = ("mae.one_open = :cur_one_open AND mae.two_open = :cur_two_open AND "
-                                 "mae.one_final = :cur_one_final AND mae.two_final = :cur_two_final AND "
-                                 "mae.x_open = :cur_x_open AND mae.x_final = :cur_x_final")
-            else:
-                # No-draw sports (Tennis, etc.) - exclude X odds
-                odds_conditions = ("mae.one_open = :cur_one_open AND mae.two_open = :cur_two_open AND "
-                                 "mae.one_final = :cur_one_final AND mae.two_final = :cur_two_final AND "
-                                 "mae.x_open IS NULL AND mae.x_final IS NULL")
+            odds_conditions = ("mae.one_open = :cur_one_open AND mae.two_open = :cur_two_open AND "
+                             "mae.one_final = :cur_one_final AND mae.two_final = :cur_two_final AND "
+                             "mae.x_open = :cur_x_open AND mae.x_final = :cur_x_final")
         else:
-            # Tier 2: Search for similar variations (unchanged)
-            cur_v1, cur_vx, cur_v2 = search_data
-            params.update({
-                'cur_v1': cur_v1,
-                'cur_v2': cur_v2
-            })
-            
-            if cur_vx is None:
-                # No-draw sports (Tennis, etc.)
-                params['tolerance'] = self.TIER2_TOLERANCE
-                odds_conditions = "ABS(mae.var_one - :cur_v1) <= :tolerance AND ABS(mae.var_two - :cur_v2) <= :tolerance AND mae.var_x IS NULL"
-            else:
-                # 3-way sports (Football, etc.)
-                params.update({
-                    'cur_vx': cur_vx,
-                    'tolerance': self.TIER2_TOLERANCE
-                })
-                odds_conditions = "ABS(mae.var_one - :cur_v1) <= :tolerance AND ABS(mae.var_two - :cur_v2) <= :tolerance AND mae.var_x IS NOT NULL AND ABS(mae.var_x - :cur_vx) <= :tolerance"
+            # No-draw sports (Tennis, etc.) - exclude X odds
+            odds_conditions = ("mae.one_open = :cur_one_open AND mae.two_open = :cur_two_open AND "
+                             "mae.one_final = :cur_one_final AND mae.two_final = :cur_two_final AND "
+                             "mae.x_open IS NULL AND mae.x_final IS NULL")
         
         sql = f"""
                     SELECT mae.event_id, mae.participants, mae.result_text, mae.winner_side, mae.point_diff,
@@ -665,54 +342,21 @@ class AlertEngine:
     def _process_candidate_matches(self, candidates, cur_v1: float, 
                                  cur_vx: Optional[float], cur_v2: float, 
                                  is_exact: bool, sport: str = 'Tennis') -> List[AlertMatch]:
-        """Process candidate matches into AlertMatch objects"""
+        """Process candidate matches into AlertMatch objects (exact matches only)"""
         matches = []
-        match_type = "EXACT" if is_exact else "SIMILAR"
         
         for row in candidates:
             dx_display = f"{row.var_x:.2f}" if row.var_x is not None else "NULL"
             
-            # Calculate variation differences for display purposes
-            var_diffs = None
-            if not is_exact:  # Only calculate differences for similar matches (Tier 2)
-                # Calculate signed differences for display (preserving sign)
-                d1_diff_signed = float(row.var_one) - cur_v1
-                d2_diff_signed = float(row.var_two) - cur_v2
-                dx_diff_signed = float(row.var_x) - cur_vx if row.var_x is not None and cur_vx is not None else 0
-                
-                # Calculate absolute differences for symmetry logic (unchanged)
-                d1_diff_abs = abs(d1_diff_signed)
-                d2_diff_abs = abs(d2_diff_signed)
-                dx_diff_abs = abs(dx_diff_signed) if row.var_x is not None and cur_vx is not None else 0
-                
-                var_diffs = {
-                    'd1': round(d1_diff_signed, 3),  # Store signed difference for display
-                    'd2': round(d2_diff_signed, 3),  # Store signed difference for display
-                    'dx': round(dx_diff_signed, 3) if row.var_x is not None and cur_vx is not None else None  # Store signed difference for display
-                }
-            
-            # Check if variations are symmetrical (only for Tier 2 similar matches)
-            is_symmetrical = True  # Default to True for exact matches (Tier 1)
-            if not is_exact:
-                is_symmetrical = self._check_symmetrical_variations(
-                    cur_v1, cur_vx, cur_v2,
-                    float(row.var_one), float(row.var_x) if row.var_x is not None else None, float(row.var_two)
-                )
+            # Exact matches don't need variation differences or symmetry checks
+            # is_symmetrical is always True for exact matches
+            is_symmetrical = True
             
             # Log match details
-            if is_exact:
-                logger.info(
-                    f"{match_type} MATCH: event_id={row.event_id} vars=(d1={row.var_one:.2f}, dx={dx_display}, d2={row.var_two:.2f}) "
-                    f"| result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
-                )
-            else:
-                symmetry_status = "SYMMETRICAL" if is_symmetrical else "UNSYMMETRICAL"
-                dx_diff_display = f"{var_diffs['dx']:.3f}" if var_diffs['dx'] is not None else "0.000"
-                logger.info(
-                    f"{match_type} MATCH: event_id={row.event_id} vars=(d1={row.var_one:.2f}, dx={dx_display}, d2={row.var_two:.2f}) "
-                    f"| diffs=(d1={var_diffs['d1']:+.3f}, dx={dx_diff_display}, d2={var_diffs['d2']:+.3f}) "
-                    f"| {symmetry_status} | result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
-                )
+            logger.info(
+                f"EXACT MATCH: event_id={row.event_id} vars=(d1={row.var_one:.2f}, dx={dx_display}, d2={row.var_two:.2f}) "
+                f"| result={row.result_text}, winner={row.winner_side}, point_diff={row.point_diff}"
+            )
             
             matches.append(AlertMatch(
                 event_id=row.event_id,
@@ -731,9 +375,10 @@ class AlertEngine:
                 var_x=float(row.var_x) if row.var_x is not None else None,
                 var_two=float(row.var_two),
                 sport=sport,
-                is_symmetrical=is_symmetrical,
+                is_symmetrical=is_symmetrical,  # Always True for exact matches
                 competition=row.competition or 'Unknown',
-                var_diffs=var_diffs,
+                var_diffs=None,  # No differences for exact matches
+                distance_l1=None,  # No L1 distance for exact matches
                 court_type=getattr(row, 'court_type', None)  # Get court_type from query result
             ))
                 
@@ -1196,75 +841,16 @@ class AlertEngine:
             # FAIL-SAFE: Return all candidates on error
             return candidates
     
-    def _check_symmetrical_variations(self, cur_v1: float, cur_vx: Optional[float], cur_v2: float,
-                                    cand_v1: float, cand_vx: Optional[float], cand_v2: float) -> bool:
+    def _evaluate_candidates_with_new_logic(self, tier1_candidates: List[AlertMatch]) -> Dict:
         """
-        Check if candidate variations are symmetrical to current variations.
-        Symmetrical means all variations move by the same AMOUNT (direction doesn't matter).
-        
-        Example: Current (0.37, -0.30, -1.13) vs Candidate (0.35, -0.32, -1.15)
-        All variations moved by amount 0.02, so they are symmetrical.
-        
-        Args:
-            cur_v1, cur_vx, cur_v2: Current event variations
-            cand_v1, cand_vx, cand_v2: Candidate event variations
-            
-        Returns:
-            True if variations are symmetrical, False otherwise
-        """
-        # Calculate absolute differences for each variation (amount only, ignore direction)
-        d1_abs_diff = abs(abs(cand_v1) - abs(cur_v1))
-        d2_abs_diff = abs(abs(cand_v2) - abs(cur_v2))
-        dx_abs_diff = abs(abs(cand_vx) - abs(cur_vx)) if cand_vx is not None and cur_vx is not None else 0
-        
-        # For 2-way sports (no draw), only check d1 and d2
-        if cur_vx is None and cand_vx is None:
-            # Check if both variations moved by the same amount
-            return abs(d1_abs_diff - d2_abs_diff) < 0.0011  # Slightly higher to handle floating point precision
-        
-        # For 3-way sports (with draw), check all three variations
-        else:
-            # Check if all three variations moved by the same amount
-            return (abs(d1_abs_diff - d2_abs_diff) < 0.0011 and 
-                    abs(d1_abs_diff - dx_abs_diff) < 0.0011 and 
-                    abs(d2_abs_diff - dx_abs_diff) < 0.0011)
-    
-    def _evaluate_candidates_with_new_logic(self, tier1_candidates: List[AlertMatch], 
-                                           tier2_candidates: List[AlertMatch]) -> Dict:
-        """
-        Evaluate candidates using new tier selection and weighted logic
-        
-        TEMPORARY MODIFICATION: Only use Tier 1 candidates for status, confidence, and summary calculations.
-        Tier 2 candidates are still included in the report for display purposes but don't affect evaluation.
+        Evaluate candidates using weighted logic (exact candidates only)
         
         Returns:
-            Dict with evaluation results including tier used, rule matched, prediction, and confidence
+            Dict with evaluation results including rule matched, prediction, and confidence
         """
-        # TEMPORARY: Only use Tier 1 candidates for evaluation calculations
-        # Tier 2 candidates are kept for display but excluded from status/confidence/summary
-        evaluation_candidates = []
-        selected_tier = ""
+        selected_tier = "Exact (Tier 1)"
         
-        # Only include Tier 1 (identical) candidates for evaluation
-        if tier1_candidates:
-            evaluation_candidates.extend(tier1_candidates)
-            selected_tier = "Tier 1 (exact)"
-        
-        # TEMPORARY: Skip Tier 2 candidates for evaluation but keep them for display
-        if tier2_candidates:
-            # Apply symmetry filter to ALL Tier 2 candidates (for display purposes)
-            symmetrical_tier2 = [c for c in tier2_candidates if c.is_symmetrical]
-            logger.info(f"🔍 DEBUG: Tier 2 candidates found: {len(tier2_candidates)} (symmetrical: {len(symmetrical_tier2)})")
-            logger.info(f"⚠️ TEMPORARY: Tier 2 candidates excluded from evaluation - only used for display")
-            
-            # Log non-symmetrical candidates that were filtered out
-            non_symmetrical_tier2 = [c for c in tier2_candidates if not c.is_symmetrical]
-            if non_symmetrical_tier2:
-                logger.info(f"🔍 Filtered out {len(non_symmetrical_tier2)} non-symmetrical Tier 2 candidates")
-                for candidate in non_symmetrical_tier2:
-                    logger.info(f"   ❌ Non-symmetrical: {candidate.participants} (court: {candidate.court_type or 'Unknown'})")
-        
-        if not evaluation_candidates:
+        if not tier1_candidates:
             return {
                 'status': 'no_candidates',
                 'selected_tier': None,
@@ -1273,18 +859,12 @@ class AlertEngine:
                 'confidence': 0,
                 'successful_candidates': 0,
                 'total_candidates': 0,
-                'non_symmetrical_candidates': len([c for c in tier2_candidates if not c.is_symmetrical]),
                 'rule_activations': {},
-                'tier1_candidates': tier1_candidates,
-                'tier2_candidates': tier2_candidates
+                'tier1_candidates': tier1_candidates
             }
         
-        # TEMPORARY: Use only Tier 1 candidates for evaluation calculations
-        selected_candidates = evaluation_candidates
-        logger.info(f"🎯 Using Tier 1 candidates only for evaluation: {len(selected_candidates)} total ({selected_tier})")
-        
-        # Count non-symmetrical candidates that were filtered out
-        non_symmetrical_count = len([c for c in tier2_candidates if not c.is_symmetrical])
+        selected_candidates = tier1_candidates
+        logger.info(f"🎯 Evaluating {len(selected_candidates)} exact candidates ({selected_tier})")
         
         # Evaluate rules in priority order: A (identical) > B (similar) > C (same winning side)
         rule_a_result = self._evaluate_identical_results(selected_candidates)
@@ -1404,8 +984,6 @@ class AlertEngine:
         # Get rule activation details for reporting
         rule_activations = self._get_rule_activations(selected_candidates)
         
-        # Non-symmetrical count already calculated above during filtering
-        
         return {
             'status': status,
             'selected_tier': selected_tier,
@@ -1413,16 +991,13 @@ class AlertEngine:
             'confidence': confidence,
             'successful_candidates': successful_candidates,
             'total_candidates': total_candidates,
-            'non_symmetrical_candidates': non_symmetrical_count,
             'rule_activations': rule_activations,
-            'tier1_candidates': tier1_candidates,
-            'tier2_candidates': tier2_candidates
+            'tier1_candidates': tier1_candidates
         }
     
     def _create_candidate_report(self, event, tier1_candidates: List[AlertMatch], 
-                                tier2_candidates: List[AlertMatch], 
                                 current_vars: Tuple, minutes_until_start: int = None) -> Dict:
-        """Create comprehensive candidate report using new tier selection and weighted logic"""
+        """Create comprehensive candidate report using weighted logic (exact candidates only)"""
         cur_v1, cur_vx, cur_v2 = current_vars
         
         # Format current event variations
@@ -1437,16 +1012,11 @@ class AlertEngine:
             odds_display += f", X: {event.event_odds.x_open}→{event.event_odds.x_final}"
         odds_display += f", 2: {event.event_odds.two_open}→{event.event_odds.two_final}"
         
-        # Use new evaluation logic
-        evaluation_result = self._evaluate_candidates_with_new_logic(tier1_candidates, tier2_candidates)
+        # Use evaluation logic
+        evaluation_result = self._evaluate_candidates_with_new_logic(tier1_candidates)
         
         # Format candidate data for display
         tier1_matches_data = self._format_candidate_data(tier1_candidates)
-        # Limit Tier 2 candidates to 6 to avoid Telegram character limit
-        tier2_candidates_limited = tier2_candidates[:6] if tier2_candidates else []
-        if len(tier2_candidates) > 16:
-            logger.info(f"📊 Limited Tier 2 candidates display to 6 (from {len(tier2_candidates)} total) to avoid Telegram character limit")
-        tier2_matches_data = self._format_candidate_data(tier2_candidates_limited)
         
         return {
             'event_id': event.id,
@@ -1472,8 +1042,8 @@ class AlertEngine:
                 'matches': tier1_matches_data
             },
             'tier2_candidates': {
-                'count': len(tier2_candidates_limited),
-                'matches': tier2_matches_data
+                'count': 0,
+                'matches': []
             }
         }
     
