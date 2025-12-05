@@ -112,10 +112,10 @@ class PreStartNotification:
         
         # Calculate factors
         best_best_ranking_factor = ranking_advantage / best_ranking if best_ranking > 0 else 0
-        best_worst_ranking_factor = best_ranking / ranking_advantage if worst_ranking > 0 else 0
+        best_worst_ranking_factor = best_ranking / ranking_advantage if ranking_advantage > 0 else 0
 
         worst_best_ranking_factor = ranking_advantage / worst_ranking if worst_ranking > 0 else 0
-        worst_worst_ranking_factor = worst_ranking / ranking_advantage if best_ranking > 0 else 0
+        worst_worst_ranking_factor = worst_ranking / ranking_advantage if ranking_advantage > 0 else 0
         
         # Sum all [H:x, A:y] points from all batches for best team
         best_total_points = 0
@@ -130,8 +130,8 @@ class PreStartNotification:
             home_net = batch.get('batch_home_net_points', 0)
             away_net = batch.get('batch_away_net_points', 0)
             worst_total_points += (home_net + away_net)
-        best_total_points_per_game = best_total_points / best_total_games
-        worst_total_points_per_game = worst_total_points / worst_total_games
+        best_total_points_per_game = best_total_points / best_total_games if best_total_games > 0 else 0
+        worst_total_points_per_game = worst_total_points / worst_total_games if worst_total_games > 0 else 0
         # Calculate adjusted points
         best_adjusted_points = abs(round(best_total_points_per_game * best_best_ranking_factor)-(best_total_points_per_game * best_worst_ranking_factor))
         worst_adjusted_points = abs(round(worst_total_points_per_game * worst_best_ranking_factor)-(worst_total_points_per_game * worst_worst_ranking_factor))

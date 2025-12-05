@@ -229,7 +229,7 @@ BASKETBALL_RESULTS_VIEW_SQL = (
         e.away_team,
         e.round,
         e.season_id,
-        s.name AS season_name,
+        e.start_time_utc AS start_time,
         r.home_score,
         r.away_score,
         r.winner,
@@ -255,6 +255,12 @@ BASKETBALL_RESULTS_VIEW_SQL = (
             THEN split_part(REGEXP_REPLACE(r.home_sets, '\\(.*', ''), '-', 4)::INTEGER
             ELSE NULL
         END AS quarter_4_home,
+        -- Extract overtime score from home_sets (format: '23-23-31-24-(16)' where (16) is OT)
+        CASE 
+            WHEN r.home_sets IS NOT NULL AND r.home_sets ~ '\\([0-9]+'
+            THEN (regexp_match(r.home_sets, '\\(([0-9]+)'))[1]::INTEGER
+            ELSE NULL
+        END AS ot_home,
         -- Parse away_sets string (format: '19-35-24-31' or '19-35-24-31-(16)' for overtime)
         CASE 
             WHEN r.away_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 1) ~ '^[0-9]+$'
@@ -275,10 +281,15 @@ BASKETBALL_RESULTS_VIEW_SQL = (
             WHEN r.away_sets IS NOT NULL AND split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 4) ~ '^[0-9]+$'
             THEN split_part(REGEXP_REPLACE(r.away_sets, '\\(.*', ''), '-', 4)::INTEGER
             ELSE NULL
-        END AS quarter_4_away
+        END AS quarter_4_away,
+        -- Extract overtime score from away_sets (format: '19-35-24-31-(16)' where (16) is OT)
+        CASE 
+            WHEN r.away_sets IS NOT NULL AND r.away_sets ~ '\\([0-9]+'
+            THEN (regexp_match(r.away_sets, '\\(([0-9]+)'))[1]::INTEGER
+            ELSE NULL
+        END AS ot_away
     FROM events e
     JOIN results r ON r.event_id = e.id
-    LEFT JOIN seasons s ON s.id = e.season_id
     WHERE e.sport = 'Basketball'
       AND r.home_sets IS NOT NULL
       AND r.away_sets IS NOT NULL

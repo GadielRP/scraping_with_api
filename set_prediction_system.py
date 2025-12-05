@@ -43,7 +43,7 @@ class SetPredictionSystem:
         sport: str,
         competition: Optional[str] = None,
         min_minutes_ago: int = 105,
-        max_minutes_ago: int = 135,
+        max_minutes_ago: int = 140,
         alert_sent: Optional[bool] = None
     ) -> List[Dict]:
         """
@@ -64,8 +64,8 @@ class SetPredictionSystem:
             List of event dictionaries matching the criteria
             
         Example:
-            # Get NBA games that started 105-135 minutes ago and haven't sent alert yet
-            events = get_events_by_sport_and_minutes_range('Basketball', 'NBA', 105, 135, alert_sent=False)
+            # Get NBA games that started 105-140 minutes ago and haven't sent alert yet
+            events = get_events_by_sport_and_minutes_range('Basketball', 'NBA', 105, 140, alert_sent=False)
         """
         try:
             with db_manager.get_session() as session:
@@ -229,21 +229,21 @@ class SetPredictionSystem:
         Check NBA games for 4th quarter start and send alerts.
         
         This method runs every poll interval (5 minutes) and checks NBA games that:
-        - Started up to 135 minutes ago (max window for discovery)
-        - Are within 105-135 minute window (only these get API checks for 4th quarter)
+        - Started up to 140 minutes ago (max window for discovery)
+        - Are within 105-140 minute window (only these get API checks for 4th quarter)
         - Have entered the 4th quarter (period4 exists with score > 0)
-        - Haven't already triggered an alert
+        - Haven't already triggered an alert (filtered by alert_sent=False)
         
         Timing rationale:
         - NBA games: 4 quarters × 12 min = 48 min game clock
         - Real-time duration: ~2.5 hours (150 min) due to timeouts, fouls, breaks
         - Q1-Q3 (36 min game clock) + breaks (2+15+2 min) + stoppages = ~100-110 min
-        - Q4 typically starts between 105-135 minutes after game start
+        - Q4 typically starts between 105-140 minutes after game start
         
         Workflow:
-        1. Get all NBA games that started up to 135 minutes ago (max window)
+        1. Get all NBA games that started up to 140 minutes ago (max window)
         2. Log all found events (for visibility)
-        3. Filter to only events in 105-135 minute window (for API checks)
+        3. Filter to only events in 105-140 minute window (for API checks)
         4. Fetch live basketball events once from API (optimization: single call instead of N calls)
         5. Create mapping of event_id -> event_data from live response
         6. Filter live events to only those matching our DB event IDs
@@ -255,33 +255,33 @@ class SetPredictionSystem:
         try:
             logger.info("🏀 Running NBA 4th quarter check...")
             
-            # Get ALL NBA games that started up to 135 minutes ago (max window for discovery)
+            # Get ALL NBA games that started up to 140 minutes ago (max window for discovery)
             # This allows us to see all recent NBA games in logs
             # Filter to only events where alert_sent = False (haven't sent alert yet)
             all_nba_events = self.get_events_by_sport_and_minutes_range(
                 sport='Basketball',
                 competition='NBA',
                 min_minutes_ago=0,  # Start from now
-                max_minutes_ago=135,  # Up to 135 minutes ago
+                max_minutes_ago=140,  # Up to 140 minutes ago
                 alert_sent=False  # Only get events that haven't sent alert yet
             )
             
             if not all_nba_events:
-                logger.debug("No NBA events found in 0-135 minute window")
+                logger.debug("No NBA events found in 0-140 minute window")
                 return
             
             # Log all found NBA events (for visibility)
-            logger.info(f"📋 Found {len(all_nba_events)} NBA event(s) that started within last 135 minutes:")
+            logger.info(f"📋 Found {len(all_nba_events)} NBA event(s) that started within last 140 minutes:")
             for idx, event in enumerate(all_nba_events, 1):
                 # Calculate minutes since start for logging
                 minutes_since_start = self._calculate_minutes_since_start(event['start_time_utc'])
                 logger.info(f"   {idx}. Event {event['id']}: {event['home_team']} vs {event['away_team']} "
                           f"({event['competition']}) - Started {minutes_since_start} minutes ago")
             
-            # Filter to only events in the 105-135 minute window (these will get API checks)
+            # Filter to only events in the 105-140 minute window (these will get API checks)
             from timezone_utils import get_local_now
             now = get_local_now()
-            check_window_start = now - timedelta(minutes=135)
+            check_window_start = now - timedelta(minutes=140)
             check_window_end = now - timedelta(minutes=105)
             
             nba_events_to_check = []
@@ -291,10 +291,10 @@ class SetPredictionSystem:
                     nba_events_to_check.append(event)
             
             if not nba_events_to_check:
-                logger.info(f"⏭️ No NBA events in 105-135 minute window to check for 4th quarter")
+                logger.info(f"⏭️ No NBA events in 105-140 minute window to check for 4th quarter")
                 return
             
-            logger.info(f"🔍 Filtered to {len(nba_events_to_check)} event(s) in 105-135 minute window (will check for 4th quarter):")
+            logger.info(f"🔍 Filtered to {len(nba_events_to_check)} event(s) in 105-140 minute window (will check for 4th quarter):")
             for idx, event in enumerate(nba_events_to_check, 1):
                 minutes_since_start = self._calculate_minutes_since_start(event['start_time_utc'])
                 logger.info(f"   {idx}. Event {event['id']}: {event['home_team']} vs {event['away_team']} "
@@ -328,7 +328,7 @@ class SetPredictionSystem:
             }
             
             if not matching_live_events:
-                logger.info(f"⏭️ No matching live events found for {len(nba_events_to_check)} DB event(s) in 105-135 minute window")
+                logger.info(f"⏭️ No matching live events found for {len(nba_events_to_check)} DB event(s) in 105-140 minute window")
                 return
             
             logger.info(f"✅ Found {len(matching_live_events)} matching live event(s) to check for 4th quarter")

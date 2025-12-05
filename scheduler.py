@@ -325,7 +325,7 @@ class JobScheduler:
         timestamp corrections (Tennis: 60 min window, Other sports: 15 min window).
         
         IN-GAME CHECKS: Monitors ongoing games for key moments:
-        - NBA Basketball: 4th quarter start (95-115 minutes after start)
+        - NBA Basketball: 4th quarter start (105-140 minutes after start)
         """
         logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
         
@@ -340,8 +340,9 @@ class JobScheduler:
                 self._check_recently_started_events_for_timestamp_corrections(events_started_recently)
             
             # STEP 1.5: Check NBA games for 4th quarter start (in-game alerts)
-            # NBA games that started 95-115 minutes ago - typical time for 4th quarter to begin
+            # NBA games that started 105-140 minutes ago - typical time for 4th quarter to begin
             # (Q1-Q3: ~100-110 min real time + buffer for early/late games)
+            # Only checks events where alert_sent=False to avoid duplicate alerts
             set_prediction_system.check_nba_4th_quarter()
             
             # STEP 2: Get events starting within the next 30 minutes WITH their odds data
