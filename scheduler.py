@@ -840,83 +840,93 @@ class JobScheduler:
                                     # ========================================
                                     dual_report = None
                                     
-                                    try:
-                                        # Enrich event object with court type for Tennis/Tennis Doubles events
-                                        event_obj.court_type = None  # Default value
-                                        if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                            observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
-                                            if observation:
-                                                event_obj.court_type = observation.observation_value
-                                                logger.info(f"🎾 Court type for event {event_obj.id}: {event_obj.court_type}")
-                                            else:
-                                                logger.info(f"🎾 No court type found for event {event_obj.id}")
-                                        
-                                        dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
-                                        
-                                        # Only add dual report if at least one process has a prediction OR if Process 1 found candidates
-                                        # This ensures we show Process 1 findings even when no clear prediction is made
-                                        should_send = False
-                                        reason = ""
-                                        
-                                        if dual_report.process1_prediction or dual_report.process2_prediction:
-                                            should_send = True
-                                            reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
-                                        elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
-                                            # Process 1 found candidates but no clear prediction - still show the report
-                                            should_send = True
-                                            reason = f"Process1 found candidates (status: {dual_report.process1_status})"
-                                        
-                                        if should_send:
-                                            logger.info(f"✅ Dual process report added for event {event_obj.id}: {reason}")
-                                        else:
-                                            logger.debug(f"⏭️ Skipping dual process report for event {event_obj.id}: No predictions or candidates found")
-                                            
-                                    except Exception as e:
-                                        logger.error(f"Error running dual process evaluation for event {event_obj.id}: {e}")
-                                        
-                                        # Fallback to Process 1 only if dual process fails for this event
-                                        logger.info(f"🔄 Falling back to Process 1 only for event {event_obj.id}...")
+                                    # Only process dual process for events with discovery_source='dropping_odds'
+                                    discovery_source = getattr(event_obj, 'discovery_source', None)
+                                    if discovery_source != 'dropping_odds':
+                                        logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - discovery_source='{discovery_source}' (only processing 'dropping_odds')")
+                                    else:
                                         try:
-                                            alerts = alert_engine.evaluate_upcoming_events([event_obj])
-                                            if alerts:
-                                                logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback) for event {event_obj.id}")
-                                                alert_engine.send_alerts(alerts)
-                                                
-                                                # Log predictions for successful Process 1 reports (fallback)
-                                                from modules.prediction import prediction_logger
-                                                
-                                                for alert in alerts:
-                                                    # Only log predictions with success status
-                                                    if alert.get('status') == 'success':
-                                                        event_id = alert.get('event_id')
-                                                        if event_id:
-                                                            # Get the event object
-                                                            event_obj_fallback = self.event_repo.get_event_by_id(event_id)
-                                                            if event_obj_fallback:
-                                                                # Check if event is exactly 5 minutes from start
-                                                                minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
-                                                                if minutes_until_start_fallback == 5:
-                                                                    # Log the prediction only at 5 minutes
-                                                                    success = prediction_logger.log_prediction(event_obj_fallback, alert)
-                                                                    if success:
-                                                                        logger.info(f"✅ Prediction logged for Process 1 event {event_id} (5 minutes from start)")
-                                                                    else:
-                                                                        # Check if it's a duplicate (already exists) vs. actual failure
-                                                                        
-                                                                        with db_manager.get_session() as session:
-                                                                            existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
-                                                                            if existing:
-                                                                                logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
-                                                                            else:
-                                                                                logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
-                                                                else:
-                                                                    logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 5 minutes)")
-                                                            else:
-                                                                logger.warning(f"Could not find event {event_id} for prediction logging")
+                                            # Enrich event object with court type for Tennis/Tennis Doubles events
+                                            event_obj.court_type = None  # Default value
+                                            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                                observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                                                if observation:
+                                                    event_obj.court_type = observation.observation_value
+                                                    logger.info(f"🎾 Court type for event {event_obj.id}: {event_obj.court_type}")
+                                                else:
+                                                    logger.info(f"🎾 No court type found for event {event_obj.id}")
+                                            
+                                            dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                                            
+                                            # Only add dual report if at least one process has a prediction OR if Process 1 found candidates
+                                            # This ensures we show Process 1 findings even when no clear prediction is made
+                                            should_send = False
+                                            reason = ""
+                                            
+                                            if dual_report.process1_prediction or dual_report.process2_prediction:
+                                                should_send = True
+                                                reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
+                                            elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
+                                                # Process 1 found candidates but no clear prediction - still show the report
+                                                should_send = True
+                                                reason = f"Process1 found candidates (status: {dual_report.process1_status})"
+                                            
+                                            if should_send:
+                                                logger.info(f"✅ Dual process report added for event {event_obj.id}: {reason}")
                                             else:
-                                                logger.debug(f"No Process 1 candidate reports generated (fallback) for event {event_obj.id}")
-                                        except Exception as e2:
-                                            logger.error(f"Error in Process 1 fallback for event {event_obj.id}: {e2}")
+                                                logger.debug(f"⏭️ Skipping dual process report for event {event_obj.id}: No predictions or candidates found")
+                                                
+                                        except Exception as e:
+                                            logger.error(f"Error running dual process evaluation for event {event_obj.id}: {e}")
+                                            
+                                            # Fallback to Process 1 only if dual process fails for this event
+                                            # Only fallback if discovery_source is 'dropping_odds'
+                                            if event_obj.discovery_source == 'dropping_odds':
+                                                logger.info(f"🔄 Falling back to Process 1 only for event {event_obj.id}...")
+                                                try:
+                                                    alerts = alert_engine.evaluate_upcoming_events([event_obj])
+                                                    if alerts:
+                                                        logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback) for event {event_obj.id}")
+                                                        alert_engine.send_alerts(alerts)
+                                                        
+                                                        # Log predictions for successful Process 1 reports (fallback)
+                                                        from modules.prediction import prediction_logger
+                                                        
+                                                        for alert in alerts:
+                                                            # Only log predictions with success status
+                                                            if alert.get('status') == 'success':
+                                                                event_id = alert.get('event_id')
+                                                                if event_id:
+                                                                    # Get the event object
+                                                                    event_obj_fallback = self.event_repo.get_event_by_id(event_id)
+                                                                    if event_obj_fallback:
+                                                                        # Check if event is exactly 5 minutes from start
+                                                                        minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
+                                                                        if minutes_until_start_fallback == 5:
+                                                                            # Log the prediction only at 5 minutes
+                                                                            success = prediction_logger.log_prediction(event_obj_fallback, alert)
+                                                                            if success:
+                                                                                logger.info(f"✅ Prediction logged for Process 1 event {event_id} (5 minutes from start)")
+                                                                            else:
+                                                                                # Check if it's a duplicate (already exists) vs. actual failure
+                                                                                
+                                                                                with db_manager.get_session() as session:
+                                                                                    existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
+                                                                                    if existing:
+                                                                                        logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
+                                                                                    else:
+                                                                                        logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
+                                                                        else:
+                                                                            logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 5 minutes)")
+                                                                    else:
+                                                                        logger.warning(f"Could not find event {event_id} for prediction logging")
+                                                    else:
+                                                        logger.debug(f"No Process 1 candidate reports generated (fallback) for event {event_obj.id}")
+                                                except Exception as e2:
+                                                    logger.error(f"Error in Process 1 fallback for event {event_obj.id}: {e2}")
+                                            else:
+                                                discovery_source_fallback = getattr(event_obj, 'discovery_source', None)
+                                                logger.info(f"⏭️ Skipping Process 1 fallback for event {event_obj.id} - discovery_source='{discovery_source_fallback}' (only processing 'dropping_odds')")
                                     
                                     # ========================================
                                     # SEND ALERTS FOR THIS EVENT (H2H + DUAL IN PAIR)
@@ -1405,31 +1415,38 @@ class JobScheduler:
             # DUAL PROCESS ANALYSIS FOR RESCHEDULED EVENT
             # ========================================
             
-            # Enrich event object with court type for Tennis/Tennis Doubles events
-            event_obj.court_type = None  # Default value
-            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
-                if observation:
-                    event_obj.court_type = observation.observation_value
-                    logger.info(f"🎾 Court type for rescheduled event {event_obj.id}: {event_obj.court_type}")
-                else:
-                    logger.info(f"🎾 No court type found for rescheduled event {event_obj.id}")
-            
-            # Use the same dual-process evaluation as normal events with CORRECTED timing
-            from prediction_engine import prediction_engine
-            dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
-            
-            # Only send if at least one process has a prediction OR if Process 1 found candidates
+            # Only process dual process for events with discovery_source='dropping_odds'
+            dual_report = None
             should_send = False
             reason = ""
             
-            if dual_report.process1_prediction or dual_report.process2_prediction:
-                should_send = True
-                reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
-            elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
-                # Process 1 found candidates but no clear prediction - still show the report
-                should_send = True
-                reason = f"Process1 found candidates (status: {dual_report.process1_status})"
+            discovery_source = getattr(event_obj, 'discovery_source', None)
+            if discovery_source != 'dropping_odds':
+                logger.info(f"⏭️ Skipping dual process for rescheduled event {event_obj.id} - discovery_source='{discovery_source}' (only processing 'dropping_odds')")
+            else:
+                # Enrich event object with court type for Tennis/Tennis Doubles events
+                event_obj.court_type = None  # Default value
+                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                    observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                    if observation:
+                        event_obj.court_type = observation.observation_value
+                        logger.info(f"🎾 Court type for rescheduled event {event_obj.id}: {event_obj.court_type}")
+                    else:
+                        logger.info(f"🎾 No court type found for rescheduled event {event_obj.id}")
+                
+                # Use the same dual-process evaluation as normal events with CORRECTED timing
+                from prediction_engine import prediction_engine
+                dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                
+                # Only send if at least one process has a prediction OR if Process 1 found candidates
+                # This ensures we show Process 1 findings even when no clear prediction is made
+                if dual_report.process1_prediction or dual_report.process2_prediction:
+                    should_send = True
+                    reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
+                elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
+                    # Process 1 found candidates but no clear prediction - still show the report
+                    should_send = True
+                    reason = f"Process1 found candidates (status: {dual_report.process1_status})"
             
             # ========================================
             # SEND ALERTS FOR RESCHEDULED EVENT (H2H + DUAL IN PAIR)
