@@ -273,40 +273,127 @@ class JobScheduler:
         """Job A: Discover new events from dropping odds AND process their odds data in one go"""
         logger.info("Starting Job A: Event Discovery with Odds Processing")
         
+        # Define sports to fetch individually (after processing /dropping/all)
+        dropping_sports = ["football", "basketball", "volleyball", "american-football", "ice-hockey", "darts", "baseball", "rugby"]
+        
+        # Track processed event IDs to avoid duplicates
+        processed_event_ids = set()
+        
+        total_processed = 0
+        total_skipped = 0
+        
         try:
-            # Get dropping odds with odds data in a single call
-            response = api_client.get_dropping_odds_with_odds()
-            if not response:
-                logger.error("Failed to get dropping odds with odds data")
-                return
+            # Step 1: Fetch and process /dropping/all endpoint first
+            logger.info("Step 1: Fetching /dropping/all endpoint")
+            response_all = api_client.get_dropping_odds_with_odds_and_events_response()
+            if not response_all:
+                logger.error("Failed to get dropping odds with odds data from /dropping/all")
+            else:
+                # Save API response to JSON file for debugging
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                json_filename = os.path.join("debug", f"debug_discovery_all_{timestamp}.json")
+                try:
+                    os.makedirs("debug", exist_ok=True)  # ensure folder exists
+                    with open(json_filename, 'w', encoding='utf-8') as f:
+                        json.dump(response_all, f, indent=2, ensure_ascii=False)
+                    logger.debug(f"API response saved to {json_filename}")
+                except Exception as e:
+                    logger.warning(f"Failed to save JSON debug file: {e}")
+                
+                # Extract events and odds data with discovery_source
+                events_all, odds_map_all = api_client.extract_events_and_odds_from_dropping_response(
+                    response_all, 
+                    odds_extraction=True, 
+                    discovery_source='dropping_odds'
+                )
+                
+                if events_all:
+                    logger.info(f"Found {len(events_all)} events in /dropping/all endpoint")
+                    
+                    # Process events from /dropping/all
+                    processed_count, skipped_count = process_with_parallel_db_ops(
+                        events_all,
+                        odds_map_all,
+                        discovery_source='dropping_odds',
+                        max_workers=10
+                    )
+                    total_processed += processed_count
+                    total_skipped += skipped_count
+                    
+                    # Track processed event IDs
+                    for event in events_all:
+                        processed_event_ids.add(event['id'])
+                    
+                    logger.info(f"/dropping/all completed: processed {processed_count}/{len(events_all)} events, skipped {skipped_count} events")
+                else:
+                    logger.warning("No events found in /dropping/all endpoint")
             
-            # Save API response to JSON file for debugging
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            json_filename = os.path.join("debug", f"debug_discovery_{timestamp}.json")
-            try:
-                os.makedirs("debug", exist_ok=True)  # ensure folder exists
-                with open(json_filename, 'w', encoding='utf-8') as f:
-                    json.dump(response, f, indent=2, ensure_ascii=False)
-                logger.debug(f"API response saved to {json_filename}")
-            except Exception as e:
-                logger.warning(f"Failed to save JSON debug file: {e}")
+            # Step 2: Fetch and process each sport individually, skipping already processed events
+            logger.info(f"Step 2: Fetching and processing {len(dropping_sports)} individual sports")
             
-            # Extract events and odds data with discovery_source
-            events, odds_map = api_client.extract_events_and_odds_from_dropping_response(response, odds_extraction=True, discovery_source='dropping_odds')
-            if not events:
-                logger.warning("No events found in dropping odds")
-                return
-            logger.info(f"Found {len(events)} events in dropping odds")
-
-            # Use optimized parallel DB ops with 10 workers (odds pre-fetched in odds_map)
-            processed_count, skipped_count = process_with_parallel_db_ops(
-                events,
-                odds_map,
-                discovery_source='dropping_odds',
-                max_workers=10
-            )
-            logger.info(f"Job A completed: processed {processed_count}/{len(events)} events, skipped {skipped_count} events")
+            for sport in dropping_sports:
+                try:
+                    logger.info(f"Fetching dropping odds for sport: {sport}")
+                    response_sport = api_client.get_dropping_odds_with_odds_and_events_response(sport=sport)
+                    
+                    if not response_sport:
+                        logger.warning(f"No response for sport {sport}, skipping")
+                        continue
+                    
+                    # Extract events and odds data
+                    events_sport, odds_map_sport = api_client.extract_events_and_odds_from_dropping_response(
+                        response_sport,
+                        odds_extraction=True,
+                        discovery_source='dropping_odds'
+                    )
+                    
+                    if not events_sport:
+                        logger.info(f"No events found for sport {sport}")
+                        continue
+                    
+                    # Filter out events that were already processed from /dropping/all
+                    new_events = [e for e in events_sport if e['id'] not in processed_event_ids]
+                    skipped_duplicates = len(events_sport) - len(new_events)
+                    
+                    if skipped_duplicates > 0:
+                        logger.info(f"Sport {sport}: Skipping {skipped_duplicates} duplicate events already processed from /dropping/all")
+                    
+                    if not new_events:
+                        logger.info(f"Sport {sport}: All events already processed, skipping")
+                        continue
+                    
+                    # Filter odds_map to only include new events
+                    new_odds_map = {
+                        str(event_id): odds_data 
+                        for event_id, odds_data in odds_map_sport.items() 
+                        if int(event_id) in [e['id'] for e in new_events]
+                    }
+                    
+                    logger.info(f"Sport {sport}: Processing {len(new_events)} new events (skipped {skipped_duplicates} duplicates)")
+                    
+                    # Process new events
+                    processed_count, skipped_count = process_with_parallel_db_ops(
+                        new_events,
+                        new_odds_map,
+                        discovery_source='dropping_odds',
+                        max_workers=10
+                    )
+                    
+                    total_processed += processed_count
+                    total_skipped += skipped_count
+                    
+                    # Track processed event IDs
+                    for event in new_events:
+                        processed_event_ids.add(event['id'])
+                    
+                    logger.info(f"Sport {sport} completed: processed {processed_count}/{len(new_events)} events, skipped {skipped_count} events")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing sport {sport}: {e}")
+                    continue
             
+            logger.info(f"Job A completed: Total processed {total_processed} events, total skipped {total_skipped} events")
+            logger.info(f"Total unique events processed: {len(processed_event_ids)}")
             
         except Exception as e:
             logger.error(f"Error in Job A: {e}")

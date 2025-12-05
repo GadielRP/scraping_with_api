@@ -171,13 +171,15 @@ class AlertEngine:
         )
         
         # Find exact candidates only, excluding current event
+        # Filter by discovery_source='dropping_odds' only
         current_event_id = event.id
         tier1_candidates = self._find_tier1_candidates(
             sport=event.sport,
             gender=event.gender,
             var_shape=var_shape,
             current_odds=event.event_odds,
-            exclude_event_ids=[current_event_id]
+            exclude_event_ids=[current_event_id],
+            discovery_source='dropping_odds'
         )
         
         # Log candidate findings
@@ -240,14 +242,17 @@ class AlertEngine:
             return None
     
     def _find_tier1_candidates(self, sport: str, gender: str, var_shape: bool, 
-                               current_odds, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
+                               current_odds, exclude_event_ids: List[int] = None,
+                               discovery_source: str = 'dropping_odds') -> List[AlertMatch]:
         """Find historical events with EXACTLY identical odds (initial and final)"""
         return self._find_candidates(sport, gender, var_shape, current_odds, 
-                                   is_exact=True, exclude_event_ids=exclude_event_ids)
+                                   is_exact=True, exclude_event_ids=exclude_event_ids,
+                                   discovery_source=discovery_source)
 
     
     def _find_candidates(self, sport: str, gender: str, var_shape: bool, 
-                        current_odds, is_exact: bool, exclude_event_ids: List[int] = None) -> List[AlertMatch]:
+                        current_odds, is_exact: bool, exclude_event_ids: List[int] = None,
+                        discovery_source: str = 'dropping_odds') -> List[AlertMatch]:
         """Find historical events with EXACTLY identical odds"""
         try:
             with db_manager.get_session() as session:
@@ -259,11 +264,11 @@ class AlertEngine:
                 logger.info(f"Current odds: 1={current_odds.one_open}→{current_odds.one_final}, "
                            f"X={current_odds.x_open}→{current_odds.x_final if current_odds.x_open else 'N/A'}, "
                            f"2={current_odds.two_open}→{current_odds.two_final}")
-                logger.info(f"Filtering by sport='{sport}' and gender='{gender}'")
+                logger.info(f"Filtering by sport='{sport}', gender='{gender}', and discovery_source='{discovery_source}'")
                 
                 # Build SQL query for exact odds
                 sql_query, params = self._build_candidate_sql(
-                    sport, gender, var_shape, current_odds, is_exact, exclude_event_ids
+                    sport, gender, var_shape, current_odds, is_exact, exclude_event_ids, discovery_source
                 )
                 
                 if exclude_event_ids:
@@ -289,7 +294,8 @@ class AlertEngine:
             return []
     
     def _build_candidate_sql(self, sport: str, gender: str, var_shape: bool, 
-                           current_odds, is_exact: bool, exclude_event_ids: List[int] = None) -> Tuple[str, Dict]:
+                           current_odds, is_exact: bool, exclude_event_ids: List[int] = None,
+                           discovery_source: str = 'dropping_odds') -> Tuple[str, Dict]:
         """Build SQL query and parameters for exact candidate search"""
         # Build exclusion clause
         exclude_clause = ""
@@ -302,6 +308,7 @@ class AlertEngine:
             'sport': sport,
             'gender': gender,
             'var_shape': var_shape,
+            'discovery_source': discovery_source,
             'cur_one_open': current_odds.one_open,
             'cur_two_open': current_odds.two_open,
             'cur_one_final': current_odds.one_final,
@@ -334,6 +341,7 @@ class AlertEngine:
                     WHERE mae.sport = :sport
                       AND mae.gender = :gender
                       AND mae.var_shape = :var_shape
+                      AND mae.discovery_source = :discovery_source
                       AND {odds_conditions}{exclude_clause}
         """
         

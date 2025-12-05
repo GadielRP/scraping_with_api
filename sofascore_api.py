@@ -310,12 +310,17 @@ class SofaScoreAPI:
         
         return None
     
-    def get_dropping_odds_with_odds(self) -> Optional[Dict]:
+    def get_dropping_odds_with_odds_and_events_response(self, sport: str = None) -> Optional[Dict]:
         """Get dropping odds events AND their odds data in a single call with enhanced browser impersonation"""
-        logger.info("Fetching dropping odds events with odds data using browser impersonation")
-        result = self._make_request("/odds/1/dropping/all")
+        if sport:
+            endpoint = f"/odds/1/dropping/{sport}"
+            logger.info(f"Fetching dropping odds events with odds data using browser impersonation for {sport}")
+        else:
+            endpoint = "/odds/1/dropping/all"
+            logger.info("Fetching dropping odds events with odds data using browser impersonation for all sports")
+        response = self._make_request(endpoint)
 
-        return result
+        return response
     
     def get_event_final_odds(self, id: int, slug: str=None, no_retry_on_404: bool = False) -> Optional[Dict]:
         """Get final odds for a specific event using the dedicated endpoint"""
