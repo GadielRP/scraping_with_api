@@ -110,13 +110,6 @@ class PreStartNotification:
         # Calculate ranking advantage
         ranking_advantage = abs(best_ranking - worst_ranking)
         
-        # Calculate factors
-        best_best_ranking_factor = ranking_advantage / best_ranking if best_ranking > 0 else 0
-        best_worst_ranking_factor = best_ranking / ranking_advantage if ranking_advantage > 0 else 0
-
-        worst_best_ranking_factor = ranking_advantage / worst_ranking if worst_ranking > 0 else 0
-        worst_worst_ranking_factor = worst_ranking / ranking_advantage if ranking_advantage > 0 else 0
-        
         # Sum all [H:x, A:y] points from all batches for best team
         best_total_points = 0
         for batch in best_batches:
@@ -132,33 +125,23 @@ class PreStartNotification:
             worst_total_points += (home_net + away_net)
         best_total_points_per_game = best_total_points / best_total_games if best_total_games > 0 else 0
         worst_total_points_per_game = worst_total_points / worst_total_games if worst_total_games > 0 else 0
-        # Calculate adjusted points
-        best_adjusted_points = abs(round(best_total_points_per_game * best_best_ranking_factor)-(best_total_points_per_game * best_worst_ranking_factor))
-        worst_adjusted_points = abs(round(worst_total_points_per_game * worst_best_ranking_factor)-(worst_total_points_per_game * worst_worst_ranking_factor))
         
-        # Calculate prediction (difference)
-        prediction_diff = best_adjusted_points - worst_adjusted_points
+        # Calculate prediction (simple difference in total points)
+        prediction_diff = best_total_points - worst_total_points
         
         return {
             'ranking_advantage': ranking_advantage,
             'best_ranking': best_ranking,
             'worst_ranking': worst_ranking,
-            'best_best_ranking_factor': best_best_ranking_factor,
-            'best_worst_ranking_factor': best_worst_ranking_factor,
-            'worst_best_ranking_factor': worst_best_ranking_factor,
-            'worst_worst_ranking_factor': worst_worst_ranking_factor,
             'best_total_points_per_game': best_total_points_per_game,
             'worst_total_points_per_game': worst_total_points_per_game,
             'best_team_name': best_team_name,
             'worst_team_name': worst_team_name,
             'best_total_points': best_total_points,
             'worst_total_points': worst_total_points,
-            'best_adjusted_points': best_adjusted_points,
-            'worst_adjusted_points': worst_adjusted_points,
             'prediction_diff': prediction_diff,
             'best_total_games': best_total_games,
             'worst_total_games': worst_total_games
-
         }
     
     def _load_notification_settings(self):
@@ -996,48 +979,23 @@ class PreStartNotification:
             ranking_prediction = self._calculate_ranking_prediction(streak, home_total_games, away_total_games)
             if ranking_prediction:
                 message += f"🎯 Ranking Prediction:\n"
-                if ranking_prediction['ranking_advantage'] < 100:
-                    message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
-                    message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['best_total_points']} -> {ranking_prediction['best_total_points_per_game']:.2f}\n"
-
-                    message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['worst_total_points']} -> {ranking_prediction['worst_total_points_per_game']:.2f}\n"
-                    
-                    prediction_diff = abs(ranking_prediction['best_adjusted_points'] - ranking_prediction['worst_adjusted_points'])
-                    if prediction_diff > 0:
-                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {prediction_diff:.2f} points\n"
-                    elif prediction_diff < 0:
-                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {abs(prediction_diff):.2f} points\n"
-                    else:
-                        message += f"🏆 Prediction: Tie (0 point difference)\n"
-                    
-                    message += "\n"
+                message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
+                message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
+                message += f"Total Points: {ranking_prediction['best_total_points']}\n\n"
+                
+                message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
+                message += f"Total Points: {ranking_prediction['worst_total_points']}\n\n"
+                
+                # Final prediction based on total points difference
+                prediction_diff = ranking_prediction['prediction_diff']
+                if prediction_diff > 0:
+                    message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {prediction_diff} points\n"
+                elif prediction_diff < 0:
+                    message += f"🏆 Prediction: {ranking_prediction['worst_team_name']} wins by {abs(prediction_diff)} points\n"
                 else:
-
-                    message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
-                    message += f"Best Ranking Factor 1: {ranking_prediction['best_best_ranking_factor']:.3f}\n"
-                    message += f"Best Ranking Factor 2: {ranking_prediction['best_worst_ranking_factor']:.3f}\n\n"
-                    message += f"Worst Ranking Factor 1: {ranking_prediction['worst_best_ranking_factor']:.3f}\n"
-                    message += f"Worst Ranking Factor 2: {ranking_prediction['worst_worst_ranking_factor']:.3f}\n\n"
-                    
-                    message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['best_total_points']} -> {ranking_prediction['best_total_points_per_game']:.2f}\n"
-                    message += f"Adjusted Points: {ranking_prediction['best_adjusted_points']:.3f}\n\n"
-                    
-                    message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
-                    message += f"Total Points: {ranking_prediction['worst_total_points']} -> {ranking_prediction['worst_total_points_per_game']:.2f}\n"
-                    message += f"Adjusted Points: {ranking_prediction['worst_adjusted_points']:.3f}\n\n"
-                    
-                    # Final prediction
-                    if ranking_prediction['prediction_diff'] > 0:
-                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {ranking_prediction['prediction_diff']:.2f} points\n"
-                    elif ranking_prediction['prediction_diff'] < 0:
-                        message += f"🏆 Prediction: {ranking_prediction['best_team_name']} wins by {abs(ranking_prediction['prediction_diff']):.2f} points\n"
-                    else:
-                        message += f"🏆 Prediction: Tie (0 point difference)\n"
-                    
-                    message += "\n"
+                    message += f"🏆 Prediction: Tie (0 point difference)\n"
+                
+                message += "\n"
             
             # NEW: Winning Odds Section
             if hasattr(streak, 'winning_odds_data') and streak.winning_odds_data:
