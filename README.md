@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.4.11  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + DAILY DISCOVERY + OPTIMIZED + ENHANCED H2H STREAKS + DROPPING ODDS PRIORITY**  
-**Última Actualización:** Noviembre, 2025
+**Versión:** v1.4.13  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + MULTI-SPORT DROPPING ODDS + DAILY DISCOVERY + ENHANCED H2H STREAKS + DROPPING ODDS FILTERING + ODDS ALERT SYSTEM**  
+**Última Actualización:** Diciembre, 2025
 
 ## 🎯 **Descripción del Sistema**
 
@@ -44,6 +44,7 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 #### **📊 Características Process 1:**
 - **Análisis de Patrones**: Encuentra eventos históricos con variaciones de odds similares
 - **Predicciones Basadas en Datos**: Predice resultados usando patrones históricos
+- **Discovery Source Filtering**: Solo busca candidatos históricos con `discovery_source='dropping_odds'` para mayor precisión
 - **Sistema de Reportes Completo**: SUCCESS/NO MATCH con datos completos
 - **Lógica Deportiva**: Maneja deportes con empate (Fútbol) y sin empate (Tenis)
 - **Mensajes Enriquecidos**: Muestra variaciones Δ1, ΔX, Δ2, confianza y timing
@@ -121,10 +122,26 @@ class AlertMatch:
 - **Lógica Optimizada**: Incluye todos los juegos próximos en una sola notificación
 - **Odds Display**: Muestra odds completas (apertura y finales) en candidatos históricos
 
+### ✅ **Odds Alert System (v1.4.13) - NUEVO**
+- **Extracción Completa de Mercados**: Extrae TODOS los mercados disponibles del response de odds (no solo Full time)
+- **Mercados Soportados**: Full time, Quarter/Period winners, Half time, Point spread, Game total (Over/Under), y cualquier otro mercado disponible
+- **Alertas Agrupadas por Evento**: Envía alertas en orden lógico por evento: Odds → Dual Process → H2H Streak
+- **Nombres Reales de Mercados**: Muestra el nombre real de cada mercado desde la API (no categorías fijas)
+- **Discovery Source Display**: Muestra la fuente de descubrimiento del evento en cada alerta
+- **Formato Enriquecido**: Muestra odds iniciales y finales con indicadores de movimiento (↑↓=)
+- **Integración Transparente**: No afecta el flujo existente, reutiliza la misma respuesta de odds
+- **Archivo**: `odds_alert.py` con clase `OddsAlertProcessor` para procesamiento modular
+
 ### ✅ **Multi-Source Discovery System (v1.4)**
 #### **Discovery 1 - Dropping Odds (Producción)**
 - **Programación**: Cada 2 horas (00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00)
-- **Fuente**: `/odds/1/dropping/all`
+- **Fuente Principal**: `/odds/1/dropping/all` (todos los deportes)
+- **Fuentes Específicas**: `/odds/1/dropping/{sport}` para deportes individuales
+  - Deportes procesados: football, basketball, volleyball, american-football, ice-hockey, darts, baseball, rugby
+- **Lógica de Procesamiento**: 
+  1. Procesa primero `/dropping/all` y registra IDs procesados
+  2. Luego procesa deportes individuales, saltando eventos ya procesados
+  3. Evita duplicación mediante tracking de IDs en memoria
 - **Deportes**: Fútbol, Tenis, Baloncesto, Béisbol y más
 - **Cobertura Global**: Eventos de múltiples ligas y competencias
 
@@ -196,13 +213,23 @@ class AlertMatch:
 ### ✅ **H2H Streak Alerts**
 - **H2H Analysis**: Analiza head-to-head histórico entre equipos (últimos 2 años)
 - **Team Form Integration**: Incluye últimos 10 juegos de cada equipo (W-L-D) con formato de lotes de 5
-- **Enhanced Telegram Alerts**: Muestra H2H stats + team form + winning odds con emojis
+- **Ranking Prediction (Tennis)**: Predicción basada en rankings finales y puntos totales históricos
+  - Muestra ranking advantage (diferencia entre mejor y peor ranking)
+  - Calcula predicción usando diferencia de puntos totales (no puntos por juego)
+  - Solo para eventos de Tennis/Tennis Doubles
+- **Enhanced Telegram Alerts**: Muestra H2H stats + team form + winning odds + ranking prediction con emojis
 
-### ✅ **Dropping Odds Discovery Source Priority (v1.4.10) - NEW**
+### ✅ **Dropping Odds Discovery Source Priority (v1.4.10)**
 - **Priority Overwrite**: Eventos descubiertos por dropping odds (`/odds/1/dropping/all`) siempre sobrescriben `discovery_source` existente
 - **Rationale**: Dropping odds es la fuente más importante - si un evento aparece ahí, debe marcarse como `dropping_odds` independientemente de su origen previo
 - **Implementation**: Lógica en `repository.py` que detecta `discovery_source='dropping_odds'` y siempre actualiza, incluso para eventos existentes
 - **Logging**: Registra cuando se sobrescribe un `discovery_source` diferente a `dropping_odds`
+
+### ✅ **Dropping Odds Filtering for Dual Process (v1.4.12)**
+- **Process 1 Candidate Filtering**: Alert engine solo busca candidatos históricos con `discovery_source='dropping_odds'` para mayor precisión
+- **Dual Process Event Filtering**: Sistema dual process solo evalúa eventos con `discovery_source='dropping_odds'` para mantener consistencia
+- **Rationale**: Dropping odds es la fuente más confiable - solo eventos y candidatos de esta fuente se usan para predicciones
+- **Implementation**: Filtros agregados en `alert_engine.py` (SQL query) y `scheduler.py` (pre-start check)
 
 ## 🛠 **Instalación y Configuración**
 
@@ -290,7 +317,10 @@ python main.py results-all
 4. **Momentos Clave**: Extracción de odds a los 30 y 5 minutos
 5. **Corrección de Timestamps**: Verificación y actualización automática (si está habilitada)
 6. **Análisis de Patrones**: Evaluación de alertas basadas en historial
-7. **Notificaciones**: Pre-inicio + Predicciones inteligentes con odds completas
+7. **Notificaciones Agrupadas por Evento**: Para cada evento en momentos clave (30 o 5 min), se envían alertas en orden:
+   - **Odds Alert**: Todos los mercados disponibles (Full time, Quarters, Spread, Over/Under, etc.)
+   - **Dual Process Alert**: Predicciones Process 1 + Process 2 con veredicto
+   - **H2H Streak Alert**: Análisis histórico head-to-head (solo a los 30 min)
 8. **04:00**: Recolección de resultados
 
 ### **Sistema de Predicciones - ¿Qué hace un Candidato?**
@@ -340,6 +370,7 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 - Base de datos PostgreSQL con SQLAlchemy
 - Programación inteligente de trabajos
 - **Odds Display en Notificaciones**: Muestra odds de apertura y finales en candidatos históricos
+- **Odds Alert System**: Sistema completo de alertas con todos los mercados disponibles **NUEVO v1.4.13**
 
 ### 🎯 **En Producción - Optimizado**
 - **Predicciones**: Análisis de patrones históricos funcionando
@@ -362,6 +393,7 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
   - **`sports/`**: Módulos para otros deportes (en desarrollo)
 - **`prediction_engine.py`**: Orchestrador dual process con lógica de comparación
 - **`alert_system.py`**: Sistema de notificaciones Telegram con reportes duales y odds display
+- **`odds_alert.py`**: Sistema de alertas de odds completas con todos los mercados disponibles (NUEVO v1.4.13)
 - **`database.py`**: Gestión de base de datos
 - **`repository.py`**: Acceso a datos optimizado
 - **`config.py`**: Configuración centralizada
@@ -391,25 +423,21 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 - **Logging**: Registro detallado de todas las operaciones
 - **Recuperación**: Reinicio automático en caso de errores críticos
 
-## 🎉 **¡Listo para Producción - Sistema Dual Process Inteligente!**
+## 🎉 **Sistema Dual Process en Producción**
 
-El sistema está **completamente funcional**, **optimizado** y **listo para producción**:
+El sistema está **completamente funcional** y **listo para producción**:
 - ✅ **Process 1**: Predicciones basadas en patrones históricos
 - ✅ **Process 2**: Sistema de reglas específicas por deporte (fútbol implementado)
 - ✅ **Dual Process**: Orchestrador que compara ambos procesos
 - ✅ **Notificaciones Telegram**: Reportes duales con veredicto final y odds completas
-- ✅ **Descubrimiento automático**: Cada 2 horas
+- ✅ **Descubrimiento automático**: Multi-source discovery system
 - ✅ **Extracción de odds**: Solo en momentos clave
-- ✅ **Sistema de notificaciones**: Optimizado con lógica dual
-- ✅ **Recolección de resultados**: Programada
-- ✅ **Manejo robusto de errores**: Con fallback a Process 1
+- ✅ **Recolección de resultados**: Programada con alta cobertura
 - ✅ **Monitoreo 24/7**: Eficiente y estable
-
-**¡Tu sistema dual process inteligente de SofaScore está optimizado y funcionando perfectamente!** 🚀⚽🧠🔬
 
 ## 🔧 **Fixes Recientes**
 
-### **Dropping Odds Discovery Source Priority (v1.4.10)**
-- **Feature**: Eventos de dropping odds siempre sobrescriben `discovery_source` existente
-- **Rationale**: Dropping odds es la fuente más importante - eventos que aparecen ahí deben marcarse como `dropping_odds`
-- **Implementation**: Lógica en `repository.py` que detecta y siempre actualiza `discovery_source='dropping_odds'`
+### **Basketball Results View Enhancement**
+- **Overtime Scores**: View `basketball_results` ahora incluye columnas `ot_home` y `ot_away` para puntajes de tiempo extra
+- **Start Time**: View muestra `start_time` (desde `start_time_utc`) en lugar de `season_name`
+- **Format Support**: Extrae puntajes de overtime desde formato `'23-23-31-24-(16)'` donde `(16)` es el tiempo extra

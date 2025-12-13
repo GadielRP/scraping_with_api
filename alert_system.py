@@ -997,52 +997,52 @@ class PreStartNotification:
                 
                 message += "\n"
             
-            # NEW: Winning Odds Section
-            if hasattr(streak, 'winning_odds_data') and streak.winning_odds_data:
-                # Check if we have any valid odds data
-                has_home_odds = 'home' in streak.winning_odds_data and streak.winning_odds_data['home'] is not None
-                has_away_odds = 'away' in streak.winning_odds_data and streak.winning_odds_data['away'] is not None
+            # NEW: Winning Odds Section. Turned off for now
+            # if hasattr(streak, 'winning_odds_data') and streak.winning_odds_data:
+            #     # Check if we have any valid odds data
+            #     has_home_odds = 'home' in streak.winning_odds_data and streak.winning_odds_data['home'] is not None
+            #     has_away_odds = 'away' in streak.winning_odds_data and streak.winning_odds_data['away'] is not None
                 
-                if has_home_odds or has_away_odds:
-                    message += f"🎯 Winning Odds:\n"
+            #     if has_home_odds or has_away_odds:
+            #         message += f"🎯 Winning Odds:\n"
                     
-                    # Home team odds
-                    if has_home_odds:
-                        home_odds = streak.winning_odds_data['home']
-                        home_decimal = home_odds.get('decimalValue', 0)
-                        home_expected = home_odds.get('expected', 0)
-                        home_actual = home_odds.get('actual', 0)
+            #         # Home team odds
+            #         if has_home_odds:
+            #             home_odds = streak.winning_odds_data['home']
+            #             home_decimal = home_odds.get('decimalValue', 0)
+            #             home_expected = home_odds.get('expected', 0)
+            #             home_actual = home_odds.get('actual', 0)
                         
-                        message += f"<b>{streak.home_team_name}</b>\n"
-                        message += f"📊 Odds: {home_decimal} (Expected: {home_expected}%, Actual: {home_actual}%)\n"
-                        if home_actual > home_expected:
-                            message += f"✅⬆️ {home_actual - home_expected}%\n"
-                        elif home_actual < home_expected:
-                            message += f"⚠️⬇️ {home_expected - home_actual}%\n"
-                        else:
-                            message += f"⚖️ Meeting expectations\n"
-                    else:
-                        message += f"{streak.home_team_name}: No odds data available\n"
+            #             message += f"<b>{streak.home_team_name}</b>\n"
+            #             message += f"📊 Odds: {home_decimal} (Expected: {home_expected}%, Actual: {home_actual}%)\n"
+            #             if home_actual > home_expected:
+            #                 message += f"✅⬆️ {home_actual - home_expected}%\n"
+            #             elif home_actual < home_expected:
+            #                 message += f"⚠️⬇️ {home_expected - home_actual}%\n"
+            #             else:
+            #                 message += f"⚖️ Meeting expectations\n"
+            #         else:
+            #             message += f"{streak.home_team_name}: No odds data available\n"
                     
-                    # Away team odds
-                    if has_away_odds:
-                        away_odds = streak.winning_odds_data['away']
-                        away_decimal = away_odds.get('decimalValue', 0)
-                        away_expected = away_odds.get('expected', 0)
-                        away_actual = away_odds.get('actual', 0)
+            #         # Away team odds
+            #         if has_away_odds:
+            #             away_odds = streak.winning_odds_data['away']
+            #             away_decimal = away_odds.get('decimalValue', 0)
+            #             away_expected = away_odds.get('expected', 0)
+            #             away_actual = away_odds.get('actual', 0)
                         
-                        message += f"<b>{streak.away_team_name}</b>\n"
-                        message += f"📊 Odds: {away_decimal} (Expected: {away_expected}%, Actual: {away_actual}%)\n"
-                        if away_actual > away_expected:
-                            message += f"✅⬆️ {away_actual - away_expected}%\n"
-                        elif away_actual < away_expected:
-                            message += f"⚠️⬇️ {away_expected - away_actual}%\n"
-                        else:
-                            message += f"⚖️ Meeting expectations\n"
-                    else:
-                        message += f"<b>{streak.away_team_name}</b>: <i>No odds data available</i>\n"
+            #             message += f"<b>{streak.away_team_name}</b>\n"
+            #             message += f"📊 Odds: {away_decimal} (Expected: {away_expected}%, Actual: {away_actual}%)\n"
+            #             if away_actual > away_expected:
+            #                 message += f"✅⬆️ {away_actual - away_expected}%\n"
+            #             elif away_actual < away_expected:
+            #                 message += f"⚠️⬇️ {away_expected - away_actual}%\n"
+            #             else:
+            #                 message += f"⚖️ Meeting expectations\n"
+            #         else:
+            #             message += f"<b>{streak.away_team_name}</b>: <i>No odds data available</i>\n"
                     
-                    message += "\n"
+            #         message += "\n"
             
             
             return message

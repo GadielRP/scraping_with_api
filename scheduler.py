@@ -485,6 +485,9 @@ class JobScheduler:
                         final_odds_response = api_client.get_event_final_odds(event_data['id'], event_data['slug'])
                         
                         if final_odds_response:
+                            # Store odds response for later alert sending (grouped with dual/h2h alerts per event)
+                            event_info['final_odds_response'] = final_odds_response
+                            
                             # Process the final odds data
                             final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
                                                      
@@ -612,11 +615,13 @@ class JobScheduler:
                             # Retrieve observations from meta lookup
                             meta_obs = event_meta_lookup.get(event_obj.id)
                             stored_observations = meta_obs.get('observations') if meta_obs else None
+                            stored_odds_response = meta_obs.get('final_odds_response') if meta_obs else None
 
                             events_for_alerts.append({
                                 'event_obj': event_obj,
                                 'initial_minutes': initial_minutes_snapshot,
-                                'observations': stored_observations
+                                'observations': stored_observations,
+                                'odds_response': stored_odds_response
                             })
                             tracked_event_ids.add(event_obj.id)
                     else:
@@ -651,11 +656,13 @@ class JobScheduler:
 
                             # Retrieve observations from meta
                             stored_observations = meta.get('observations') if meta else None
+                            stored_odds_response = meta.get('final_odds_response') if meta else None
 
                             events_for_alerts.append({
                                 'event_obj': event_obj,
                                 'initial_minutes': initial_minutes_snapshot,
-                                'observations': stored_observations
+                                'observations': stored_observations,
+                                'odds_response': stored_odds_response
                             })
                             tracked_event_ids.add(event_obj.id)
                     
@@ -663,7 +670,7 @@ class JobScheduler:
                         logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for H2H and dual process alerts...")
                         
                         # ========================================
-                        # PROCESS EACH EVENT INDIVIDUALLY (H2H + DUAL ALERTS IN PAIRS)
+                        # PROCESS EACH EVENT INDIVIDUALLY (ODDS + H2H + DUAL ALERTS IN PAIRS)
                         # ========================================
                         try:
                             from streak_alerts import streak_alert_engine
@@ -686,6 +693,30 @@ class JobScheduler:
                                         f"🔍 Processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team} "
                                         f"(captured {initial_minutes} min, current {minutes_now} min)"
                                     )
+                                    
+                                    # ========================================
+                                    # ODDS ALERT FOR THIS EVENT (SENT FIRST)
+                                    # ========================================
+                                    odds_response = event_payload.get('odds_response')
+                                    if odds_response:
+                                        logger.info(f"📊 Sending odds alert for event {event_obj.id} (FIRST in sequence)")
+                                        try:
+                                            from odds_alert import odds_alert_processor
+                                            # Build event_data dict for odds alert
+                                            event_data_for_odds = {
+                                                'id': event_obj.id,
+                                                'home_team': event_obj.home_team,
+                                                'away_team': event_obj.away_team,
+                                                'sport': event_obj.sport,
+                                                'competition': getattr(event_obj, 'competition', ''),
+                                                'slug': event_obj.slug,
+                                                'discovery_source': getattr(event_obj, 'discovery_source', '')
+                                            }
+                                            odds_alert_processor.send_odds_alert(event_data_for_odds, odds_response, minutes_until_start)
+                                        except Exception as e:
+                                            logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
+                                    else:
+                                        logger.debug(f"⏭️ No odds response stored for event {event_obj.id} - skipping odds alert")
                                     
                                     # ========================================
                                     # H2H STREAK ANALYSIS FOR THIS EVENT
