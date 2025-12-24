@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from decimal import Decimal
 
-from models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season
+from models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season, Market, MarketChoice
 from database import db_manager
 from odds_utils import validate_odds_data
 from timezone_utils import get_local_now
@@ -88,13 +88,11 @@ class EventRepository:
                         else:
                             # For other sources, update if provided (normal behavior)
                             event.discovery_source = event_data['discovery_source']
-                    # Only update season_id and round if provided and not None
-                    if 'season_id' in event_data and event_data['season_id'] is not None:
-                        event.season_id = event_data['season_id']
-                    if 'round' in event_data and round is not None:
-                        event.round = round
+                    # IMPORTANT: Do NOT update season_id and round for existing events
+                    # These fields are set on initial insert and should be preserved
+                    # This prevents discovery from overwriting values set during results sync
                     event.updated_at = get_local_now()
-                    logger.debug(f"Updated event {event_data['id']}")
+                    logger.info(f"Updated event {event_data['id']}")
                 else:
                     # Ensure gender is valid: not None, max 10 chars, default to "unknown"
                     gender = event_data.get('gender') or 'unknown'
@@ -904,3 +902,207 @@ class ObservationRepository:
             logger.warning(f"Error getting observations by type {observation_type}: {e}")
             # FAIL-SAFE: Return empty list, don't break main processing
             return []
+
+
+class MarketRepository:
+    """
+    Repository for storing and retrieving dynamic odds markets.
+    
+    Each event can have multiple markets (Full time, Match goals 2.5, Asian handicap, etc.)
+    Each market has multiple choices stored in MarketChoice table.
+    """
+    
+    @staticmethod
+    def _fractional_to_decimal(fractional: str) -> float:
+        """
+        Convert fractional odds to decimal.
+        
+        Examples:
+            "53/100" -> 1.53
+            "27/10" -> 3.7
+            "17/4" -> 5.25
+        """
+        try:
+            if not fractional or '/' not in fractional:
+                return None
+            
+            numerator, denominator = fractional.split('/')
+            # Decimal odds = (numerator / denominator) + 1
+            return round(float(numerator) / float(denominator) + 1, 3)
+        except (ValueError, ZeroDivisionError):
+            return None
+    
+    @staticmethod
+    def save_markets_from_response(event_id: int, odds_response: Dict) -> int:
+        """
+        Save all markets from an odds API response to the database.
+        
+        Args:
+            event_id: Event ID to associate markets with
+            odds_response: Raw API odds response containing 'markets' array
+            
+        Returns:
+            Number of markets saved
+        """
+        try:
+            markets_data = odds_response.get('markets', [])
+            if not markets_data:
+                logger.debug(f"No markets in odds response for event {event_id}")
+                return 0
+            
+            saved_count = 0
+            
+            with db_manager.get_session() as session:
+                for market_data in markets_data:
+                    try:
+                        # Extract market info
+                        sofascore_market_id = market_data.get('marketId')
+                        market_name = market_data.get('marketName')
+                        choice_group = market_data.get('choiceGroup')  # e.g., "2.5" for Over/Under
+                        
+                        if not sofascore_market_id or not market_name:
+                            continue
+                        
+                        # Check if market already exists (upsert)
+                        existing_market = session.query(Market).filter(
+                            and_(
+                                Market.event_id == event_id,
+                                Market.sofascore_market_id == sofascore_market_id,
+                                Market.choice_group == choice_group
+                            )
+                        ).first()
+                        
+                        if existing_market:
+                            # Update existing market
+                            market = existing_market
+                            market.market_group = market_data.get('marketGroup')
+                            market.market_period = market_data.get('marketPeriod')
+                            market.collected_at = get_local_now()
+                        else:
+                            # Create new market
+                            market = Market(
+                                event_id=event_id,
+                                sofascore_market_id=sofascore_market_id,
+                                market_name=market_name,
+                                market_group=market_data.get('marketGroup'),
+                                market_period=market_data.get('marketPeriod'),
+                                choice_group=choice_group,
+                                collected_at=get_local_now()
+                            )
+                            session.add(market)
+                            session.flush()  # Get market_id for choices
+                        
+                        # Process choices for this market
+                        choices_data = market_data.get('choices', [])
+                        for choice_data in choices_data:
+                            choice_name = choice_data.get('name')
+                            if not choice_name:
+                                continue
+                            
+                            # Convert fractional odds to decimal
+                            initial_fractional = choice_data.get('initialFractionalValue')
+                            current_fractional = choice_data.get('fractionalValue')
+                            initial_odds = MarketRepository._fractional_to_decimal(initial_fractional)
+                            current_odds = MarketRepository._fractional_to_decimal(current_fractional)
+                            change = choice_data.get('change', 0)
+                            
+                            # Check if choice already exists (upsert)
+                            existing_choice = session.query(MarketChoice).filter(
+                                and_(
+                                    MarketChoice.market_id == market.market_id,
+                                    MarketChoice.choice_name == choice_name
+                                )
+                            ).first()
+                            
+                            if existing_choice:
+                                # Update existing choice (only current_odds and change)
+                                existing_choice.current_odds = current_odds
+                                existing_choice.change = change
+                            else:
+                                # Create new choice
+                                choice = MarketChoice(
+                                    market_id=market.market_id,
+                                    choice_name=choice_name,
+                                    initial_odds=initial_odds,
+                                    current_odds=current_odds,
+                                    change=change
+                                )
+                                session.add(choice)
+                        
+                        saved_count += 1
+                        
+                    except Exception as e:
+                        logger.warning(f"Error processing market for event {event_id}: {e}")
+                        continue
+                
+                session.commit()
+                logger.info(f"✅ Saved {saved_count} markets for event {event_id}")
+                return saved_count
+                
+        except Exception as e:
+            logger.error(f"Error saving markets for event {event_id}: {e}")
+            return 0
+    
+    @staticmethod
+    def get_markets_for_event(event_id: int) -> List[Market]:
+        """
+        Get all markets for an event with their choices loaded.
+        
+        Args:
+            event_id: Event ID
+            
+        Returns:
+            List of Market objects with choices
+        """
+        try:
+            with db_manager.get_session() as session:
+                from sqlalchemy.orm import joinedload
+                markets = session.query(Market).options(
+                    joinedload(Market.choices)
+                ).filter(Market.event_id == event_id).all()
+                
+                return markets
+        except Exception as e:
+            logger.error(f"Error getting markets for event {event_id}: {e}")
+            return []
+    
+    @staticmethod
+    def get_market_count(event_id: int) -> int:
+        """
+        Get the number of unique markets for an event.
+        
+        Args:
+            event_id: Event ID
+            
+        Returns:
+            Count of markets
+        """
+        try:
+            with db_manager.get_session() as session:
+                count = session.query(Market).filter(Market.event_id == event_id).count()
+                return count
+        except Exception as e:
+            logger.error(f"Error counting markets for event {event_id}: {e}")
+            return 0
+    
+    @staticmethod
+    def delete_markets_for_event(event_id: int) -> bool:
+        """
+        Delete all markets and choices for an event.
+        
+        Args:
+            event_id: Event ID
+            
+        Returns:
+            True if successful
+        """
+        try:
+            with db_manager.get_session() as session:
+                # Choices will be deleted automatically due to CASCADE
+                deleted = session.query(Market).filter(Market.event_id == event_id).delete()
+                session.commit()
+                logger.debug(f"Deleted {deleted} markets for event {event_id}")
+                return True
+        except Exception as e:
+            logger.error(f"Error deleting markets for event {event_id}: {e}")
+            return False

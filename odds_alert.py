@@ -261,6 +261,11 @@ class OddsAlertProcessor:
         
         This is the main entry point called from scheduler.py.
         
+        Smart Alert Filtering:
+        - 0 markets: Log warning (TODO: delete event from database)
+        - 1 market AND marketName="Full time": Mark as low-value, skip alert
+        - 2+ markets: Process normally
+        
         Args:
             event_data: Event information dictionary containing:
                 - id: Event ID
@@ -287,11 +292,31 @@ class OddsAlertProcessor:
             # Extract all markets from the response
             markets = self.extract_all_markets(odds_response)
             
-            if not markets:
-                logger.info(f"No markets to alert for event {event_data.get('id')}")
+            # NOTE: Market saving to DB now happens in scheduler.py during odds extraction
+            # (before alert evaluation), so ALL sports get their markets saved
+
+            
+            # SMART ALERT FILTERING: Handle 0 markets (likely 404 response - event should be deleted)
+            if len(markets) == 0:
+                logger.warning(f"🗑️ NO MARKETS: Event {event_data.get('id')} has 0 markets - should be deleted from database")
+                # TODO: Implement event deletion logic
+                # self._delete_event_from_database(event_data.get('id'))
                 return False
             
-            # Create the formatted message
+            # SMART ALERT FILTERING: Check for low-value events (1 market AND it's "Full time")
+            if len(markets) == 1:
+                market = markets[0]
+                market_name = market.get('market_name', '')
+                # Full time market has marketId=1 and marketName="Full time"
+                if market_name == 'Full time':
+                    logger.info(f"⏭️ LOW-VALUE EVENT: Event {event_data.get('id')} has only 1 market (Full time) - marking alert_sent=True and skipping odds alert")
+                    self._mark_event_alert_sent(event_data.get('id'))
+                    return False  # Don't send alert
+                else:
+                    # Single market but NOT "Full time" - process normally (edge case)
+                    logger.info(f"📊 Event {event_data.get('id')} has 1 market but it's '{market_name}' (not Full time) - processing normally")
+            
+            # Create the formatted message (2+ markets or 1 non-Full-time market)
             message = self.create_odds_alert_message(event_data, markets, minutes_until_start)
             
             # Send via Telegram using the existing alert system
@@ -313,6 +338,56 @@ class OddsAlertProcessor:
         except Exception as e:
             logger.error(f"Error in send_odds_alert for event {event_data.get('id')}: {e}")
             return False
+    
+    def _mark_event_alert_sent(self, event_id: int) -> bool:
+        """
+        Mark event as alert_sent=True in database.
+        
+        This flags the event as "low-value" so other alert processes
+        (Dual Process, 4Q) will skip it.
+        
+        Args:
+            event_id: Event ID to mark
+            
+        Returns:
+            True if successfully marked, False otherwise
+        """
+        try:
+            from database import db_manager
+            from models import Event
+            
+            with db_manager.get_session() as session:
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if event:
+                    event.alert_sent = True
+                    session.commit()
+                    logger.info(f"✅ Marked event {event_id} as alert_sent=True (low-value event)")
+                    return True
+                else:
+                    logger.warning(f"Event {event_id} not found when marking alert_sent")
+                    return False
+        except Exception as e:
+            logger.error(f"Error marking event {event_id} as alert_sent: {e}")
+            return False
+
+    # TODO: Implement when ready
+    # def _delete_event_from_database(self, event_id: int) -> bool:
+    #     """Delete event from database (0 markets = invalid event)."""
+    #     try:
+    #         from database import db_manager
+    #         from models import Event
+    #         
+    #         with db_manager.get_session() as session:
+    #             event = session.query(Event).filter(Event.id == event_id).first()
+    #             if event:
+    #                 session.delete(event)
+    #                 session.commit()
+    #                 logger.info(f"🗑️ Deleted event {event_id} from database (0 markets)")
+    #                 return True
+    #             return False
+    #     except Exception as e:
+    #         logger.error(f"Error deleting event {event_id}: {e}")
+    #         return False
 
 
 # Global instance for easy import

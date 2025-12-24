@@ -37,6 +37,7 @@ class Event(Base):
     observations = relationship("EventObservation", back_populates="event", cascade="all, delete-orphan")
     prediction_logs = relationship("PredictionLog", back_populates="event", uselist=False, cascade="all, delete-orphan")
     season = relationship("Season", back_populates="events")
+    markets = relationship("Market", back_populates="event", cascade="all, delete-orphan")
 
 class Season(Base):
     __tablename__ = 'seasons'
@@ -157,6 +158,84 @@ class EventObservation(Base):
 
     def __repr__(self):
         return f"<EventObservation(event_id={self.event_id}, type='{self.observation_type}', value='{self.observation_value}')>"
+
+
+class Market(Base):
+    """
+    Stores individual betting markets for an event.
+    
+    Each event can have multiple markets (Full time, Match goals 2.5, Asian handicap, etc.)
+    Each market has multiple choices stored in MarketChoice table.
+    """
+    __tablename__ = 'markets'
+    
+    # Primary Key
+    market_id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Foreign Key: links to the parent event
+    event_id = Column(Integer, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
+    
+    # Market identification from SofaScore API
+    sofascore_market_id = Column(Integer, nullable=False)  # marketId from API (e.g., 1, 9, 17)
+    
+    # Market description
+    market_name = Column(Text, nullable=False)  # "Full time", "Match goals", "Asian handicap"
+    market_group = Column(Text)  # "1X2", "Match goals", "Asian Handicap"
+    market_period = Column(Text)  # "Full-time", "1st half"
+    choice_group = Column(Text)  # For Over/Under: "2.5", "3.5", etc. NULL for non-line markets
+    
+    # Timestamps
+    collected_at = Column(DateTime, default=get_local_now, nullable=False)
+    
+    # Constraints
+    __table_args__ = (
+        # Ensure we don't store duplicate markets for same event+marketId+line combination
+        UniqueConstraint('event_id', 'sofascore_market_id', 'choice_group', name='unique_market_per_event'),
+    )
+    
+    # Relationships
+    event = relationship("Event", back_populates="markets")
+    choices = relationship("MarketChoice", back_populates="market", cascade="all, delete-orphan")
+    
+    def __repr__(self):
+        return f"<Market(market_id={self.market_id}, name='{self.market_name}', choice_group='{self.choice_group}')>"
+
+
+class MarketChoice(Base):
+    """
+    Stores individual odds choices for a market.
+    
+    Each market has multiple choices (e.g., "1", "X", "2" for Full time, or "Over", "Under" for Match goals).
+    """
+    __tablename__ = 'market_choices'
+    
+    # Primary Key
+    choice_id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Foreign Key: links to the parent market
+    market_id = Column(Integer, ForeignKey('markets.market_id', ondelete='CASCADE'), nullable=False)
+    
+    # Choice identification
+    choice_name = Column(Text, nullable=False)  # "1", "X", "2", "Over", "Under", team name, etc.
+    
+    # Odds values (stored as decimals for easy math)
+    initial_odds = Column(Numeric(8, 3))  # Opening odds (decimal, e.g., 1.53)
+    current_odds = Column(Numeric(8, 3))  # Current/final odds (decimal, e.g., 1.48)
+    
+    # Movement indicator: -1 = odds dropped, 0 = unchanged, +1 = odds increased
+    change = Column(Integer, default=0)
+    
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint('market_id', 'choice_name', name='unique_choice_per_market'),
+    )
+    
+    # Relationships
+    market = relationship("Market", back_populates="choices")
+    
+    def __repr__(self):
+        return f"<MarketChoice(choice_id={self.choice_id}, name='{self.choice_name}', initial={self.initial_odds}, current={self.current_odds})>"
+
 
 class PredictionLog(Base):
     __tablename__ = 'prediction_logs'

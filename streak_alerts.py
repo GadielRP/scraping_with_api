@@ -1319,7 +1319,10 @@ class StreakAlertEngine:
         """
         Determine if a streak alert should be sent.
         
-        Send alerts if we have:
+        UPDATED: Now requires at least one team to have ≥STREAK_ALERT_MIN_RESULTS past results.
+        This filters out events with insufficient historical data.
+        
+        Send alerts if we have sufficient data AND at least one of:
         1. H2H data (at least 1 match analyzed), OR
         2. Team form data (at least one team has results), OR  
         3. Winning odds data
@@ -1331,8 +1334,22 @@ class StreakAlertEngine:
             streak: H2HStreak object
             
         Returns:
-            True if we have any meaningful data to show
+            True if we have any meaningful data to show AND sufficient historical data
         """
+        from config import Config
+        
+        # Calculate total games for each team
+        home_total_games = len(streak.home_team_results) if hasattr(streak, 'home_team_results') and streak.home_team_results else 0
+        away_total_games = len(streak.away_team_results) if hasattr(streak, 'away_team_results') and streak.away_team_results else 0
+        
+        # NEW REQUIREMENT: At least one team must have ≥STREAK_ALERT_MIN_RESULTS past results
+        min_results_threshold = Config.STREAK_ALERT_MIN_RESULTS
+        has_sufficient_data = home_total_games >= min_results_threshold or away_total_games >= min_results_threshold
+        
+        if not has_sufficient_data:
+            logger.info(f"⏭️ H2H streak alert skipped for {streak.participants}: Insufficient data (home: {home_total_games}, away: {away_total_games}, need ≥{min_results_threshold})")
+            return False
+        
         # Check if we have H2H data
         has_h2h_data = streak.matches_analyzed >= 1
         
@@ -1354,7 +1371,7 @@ class StreakAlertEngine:
                 reasons.append("team form data")
             if has_winning_odds:
                 reasons.append("winning odds data")
-            
+            logger.info(f"✅ H2H streak alert will send for {streak.participants}: {', '.join(reasons)} (data: home={home_total_games}, away={away_total_games})")
         else:
             logger.info(f"⏭️ H2H streak alert skipped for {streak.participants}: No meaningful data (H2H: {streak.matches_analyzed}, Home form: {streak.home_team_wins + streak.home_team_losses + streak.home_team_draws}, Away form: {streak.away_team_wins + streak.away_team_losses + streak.away_team_draws}, Winning odds: {has_winning_odds})")
         

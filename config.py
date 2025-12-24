@@ -1,4 +1,5 @@
 import os
+import ast
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -73,3 +74,23 @@ class Config:
     PROXY_ENDPOINT = os.getenv('PROXY_ENDPOINT', '')
     PROXY_ROTATION_INTERVAL = int(os.getenv('PROXY_ROTATION_INTERVAL', '5'))
     PROXY_MAX_RETRIES = int(os.getenv('PROXY_MAX_RETRIES', '3'))
+    
+    # Smart Alert Filtering Configuration
+    # Minimum number of past results required for at least one team to send streak alerts
+    STREAK_ALERT_MIN_RESULTS = int(os.getenv('STREAK_ALERT_MIN_RESULTS', '15'))
+
+    # Sports to exclude from alert evaluation (but not odds extraction)
+    def _parse_env_list(env_name, default_value):
+        value = os.getenv(env_name)
+        if not value:
+            return default_value
+        try:
+            parsed = ast.literal_eval(value)
+            if isinstance(parsed, list):
+                return parsed
+            return [str(parsed)]
+        except (ValueError, SyntaxError):
+            return [item.strip() for item in value.split(',') if item.strip()]
+
+    EXCLUDED_SPORTS = _parse_env_list('EXCLUDED_SPORTS', ['Table tennis', 'Darts'])
+

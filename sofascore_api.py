@@ -132,19 +132,38 @@ class SofaScoreAPI:
             
             # Extract round information
             round_info = event.get('roundInfo', {})
+            logger.info(f"DEBUG roundInfo present={bool(round_info)} slug={round_info.get('slug')!r}")
             competition_lower = competition.lower()
+
+            
             # If roundInfo exists and has slug, use it; otherwise check competition name
             if any(term in competition_lower for term in ['releg', 'relegation', 'relegations', 'descenso']):
                 round = 'relegation'
+                logger.info(f"Relegation detected for {competition}")
             elif any(term in competition_lower for term in ['qualification', 'qualifier', 'qualif.']):
                 round = 'qualification'
+                logger.info(f"Qualification detected for {competition}")
             elif any(term in competition_lower for term in ['friendly', 'amistoso']):
                 round = 'friendly'
+                logger.info(f"Friendly detected for {competition}")
             elif any(term in competition_lower for term in ['pre season', 'preseason', 'pre-temporada', 'pré-temporada', 'pretemporada']):
                 round = 'preseason'
+                logger.info(f"Preseason detected for {competition}")
             elif round_info and round_info.get('slug'):
                 round = round_info.get('slug')
-                if (any(term in round.lower() for term in ['quarterfinal', 'semifinal', 'final', 'playoffs', 'knockout',
+                logger.info(f"Round info detected for {competition}")
+                slug = round_info.get('slug', '')
+                logger.info(f"DEBUG slug_lower={slug.lower()!r}")
+                is_knockout = any(term in slug.lower() for term in [
+                    'quarterfinal','semifinal','final','playoff','playoffs','knockout','knockouts',
+                    'round-of-16','round-of-32','round-of-64','round-of-128',
+                    'round-1','round-2','round-3','round-4','round-5','round-6',
+                    'first-round','second-round','third-round',
+                    'western-conference','eastern-conference',
+                    'play-in','winnerloser','match-for-3rd-place','in-season-tournament'
+                ])
+                logger.info(f"DEBUG is_knockout={is_knockout}")
+                if (any(term in round.lower() for term in ['quarterfinal', 'semifinal', 'semifinals', 'final', 'finals', 'playoff', 'playoffs', 'knockout', 'knockouts',
                 'round-of-16', 'round-of-32', 'round-of-64', 'round-of-128',
                 'round-1', 'round-2', 'round-3', 'round-4', 'round-5', 'round-6',
                 'first-round', 'second-round', 'third-round',
@@ -152,10 +171,12 @@ class SofaScoreAPI:
                 'play-in', 'winnerloser', 'match-for-3rd-place',
                 'in-season-tournament'])):
                     round = 'knockouts/playoffs'
+                    logger.info(f"Knockouts/playoffs detected for {round}")
                 else:
                     if (season_name is not None and any(term in season_name.lower() for term in ['cup', 'copa', 'taça', 'coupe'])
                     or any(term in competition_lower for term in ['cup', 'copa', 'taça', 'coupe'])):
                         round = 'regular_season'
+                        logger.info(f"Regular season detected for {round}")
                     else: 
                         round = round
             elif any(term in competition_lower for term in [
@@ -164,8 +185,10 @@ class SofaScoreAPI:
                 'playoff', 'play-offs', 'playoffs', 'octavos', 'cuartos', 'round of 16', 'round of 32'
             ]) or re.search(r'\bfinal(?: round)?\b', competition_lower):
                 round = 'knockouts/playoffs'
+                logger.info(f"Knockouts/playoffs detected for {competition}")
             else:
                 round = 'regular_season'
+                logger.info(f"Regular season detected for {competition}")
            
             
             # Build structured event data

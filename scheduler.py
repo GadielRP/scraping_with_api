@@ -503,12 +503,21 @@ class JobScheduler:
                                         logger.info(f"✅ Final odds snapshot created for event {event_data['id']}")
                                         odds_extracted_count += 1
                                         
+                                        # Save all markets to new markets/market_choices tables
+                                        # This runs for ALL sports (including excluded ones)
+                                        try:
+                                            from repository import MarketRepository
+                                            MarketRepository.save_markets_from_response(event_data['id'], final_odds_response)
+                                        except Exception as e:
+                                            logger.warning(f"Error saving markets to DB for event {event_data['id']}: {e}")
+                                        
                                         # Track this event for alert evaluation (capture timing when odds were extracted)
                                         events_with_odds_extracted.append({
                                             'event_id': event_data['id'],
                                             'start_time': event_data['start_time_utc'],
                                             'initial_minutes': minutes_until_start
                                         })
+
                                 else:
                                     logger.warning(f"Failed to update final odds for event {event_data['id']}")
                             else:
@@ -593,6 +602,11 @@ class JobScheduler:
                                 logger.warning(f"Could not find event {event_id} for alert evaluation")
                                 continue
                             
+                            # Filter out excluded sports from alert evaluation
+                            if event_obj.sport in Config.EXCLUDED_SPORTS:
+                                logger.info(f"⏭️ SKIPPING ALERT EVALUATION: Event {event_id} ({event_obj.home_team} vs {event_obj.away_team}) is {event_obj.sport} (excluded)")
+                                continue
+                            
                             # CRITICAL: Check if event was rescheduled after odds extraction
                             if event_obj.start_time_utc != tracked_event['start_time']:
                                 logger.warning(f"⏭️ Event {event_id} was rescheduled after odds extraction - skipping alert evaluation")
@@ -637,6 +651,11 @@ class JobScheduler:
                             # Get the Event object first to ensure we have fresh DB state
                             event_obj = self.event_repo.get_event_by_id(event_data['id'])
                             if not event_obj:
+                                continue
+                            
+                            # Filter out excluded sports from alert evaluation (fallback logic)
+                            if event_obj.sport in Config.EXCLUDED_SPORTS:
+                                logger.info(f"⏭️ SKIPPING ALERT EVALUATION (fallback): Event {event_obj.id} ({event_obj.home_team} vs {event_obj.away_team}) is {event_obj.sport} (excluded)")
                                 continue
                             
                             # Skip if rescheduled in this cycle
@@ -855,6 +874,25 @@ class JobScheduler:
 
                                                     if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
                                                         logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
+                                                        
+                                                        # ========================================
+                                                        # SMART ALERT FILTERING: RESURRECTION LOGIC
+                                                        # ========================================
+                                                        # If streak alert qualifies (≥MIN_RESULTS), event is valuable.
+                                                        # Reset alert_sent=False if it was marked as low-value earlier.
+                                                        from config import Config as AppConfig
+                                                        home_result_count = len(streak_analysis.home_team_results) if streak_analysis.home_team_results else 0
+                                                        away_result_count = len(streak_analysis.away_team_results) if streak_analysis.away_team_results else 0
+                                                        min_threshold = AppConfig.STREAK_ALERT_MIN_RESULTS
+                                                        
+                                                        if home_result_count >= min_threshold or away_result_count >= min_threshold:
+                                                            # Refresh event object to get current DB state
+                                                            fresh_event = self.event_repo.get_event_by_id(event_obj.id)
+                                                            if fresh_event and fresh_event.alert_sent:
+                                                                logger.info(f"🔄 RESURRECTING EVENT: Event {event_obj.id} has sufficient data (home:{home_result_count}, away:{away_result_count}) - resetting alert_sent=False")
+                                                                self._reset_event_alert_sent(event_obj.id)
+                                                                # Update the event_obj reference to reflect the change
+                                                                event_obj = self.event_repo.get_event_by_id(event_obj.id)
                                                     else:
                                                         logger.debug(f"⏭️ No H2H streak alert for event {event_obj.id}")
                                                 else:
@@ -871,9 +909,16 @@ class JobScheduler:
                                     # ========================================
                                     dual_report = None
                                     
+                                    # ========================================
+                                    # SMART ALERT FILTERING: CHECK alert_sent FLAG
+                                    # ========================================
+                                    # Refresh event from DB to get latest alert_sent value (may have been updated by odds_alert)
+                                    fresh_event_for_dual = self.event_repo.get_event_by_id(event_obj.id)
+                                    if fresh_event_for_dual and fresh_event_for_dual.alert_sent:
+                                        logger.info(f"⏭️ EARLY EXIT: Skipping dual process for event {event_obj.id} - marked as low-value (alert_sent=True)")
                                     # Only process dual process for events with discovery_source='dropping_odds'
-                                    discovery_source = getattr(event_obj, 'discovery_source', None)
-                                    if discovery_source != 'dropping_odds':
+                                    elif getattr(event_obj, 'discovery_source', None) != 'dropping_odds':
+                                        discovery_source = getattr(event_obj, 'discovery_source', None)
                                         logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - discovery_source='{discovery_source}' (only processing 'dropping_odds')")
                                     else:
                                         try:
@@ -1149,6 +1194,37 @@ class JobScheduler:
         time_diff = start_local - now
         return round(time_diff.total_seconds() / 60)
     
+    def _reset_event_alert_sent(self, event_id: int) -> bool:
+        """
+        Reset event alert_sent to False (resurrect for future alerts).
+        
+        This is called when an event was initially marked as low-value (1 market)
+        but later found to have sufficient historical data (≥15 results),
+        making it valuable for other alert processes.
+        
+        Args:
+            event_id: Event ID to reset
+            
+        Returns:
+            True if successfully reset, False otherwise
+        """
+        try:
+            from models import Event
+            
+            with db_manager.get_session() as session:
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if event:
+                    event.alert_sent = False
+                    session.commit()
+                    logger.info(f"✅ Reset alert_sent=False for event {event_id} (resurrected)")
+                    return True
+                else:
+                    logger.warning(f"Event {event_id} not found when resetting alert_sent")
+                    return False
+        except Exception as e:
+            logger.error(f"Error resetting alert_sent for event {event_id}: {e}")
+            return False
+    
     def _should_extract_odds_for_event(self, event_id: int, minutes_until_start: int) -> bool:
         """
         Smart logic to determine if odds should be extracted for an event.
@@ -1277,6 +1353,11 @@ class JobScheduler:
         try:
             # Initialize observations for this rescheduled event
             observations = None
+            
+            # Filter out excluded sports from alert evaluation
+            if event.sport in Config.EXCLUDED_SPORTS:
+                logger.info(f"⏭️ SKIPPING ALERT EVALUATION (rescheduled): Event {event.id} ({event.home_team} vs {event.away_team}) is {event.sport} (excluded)")
+                return
             
             logger.info(f"🔍 Processing H2H and dual-process alerts for rescheduled event {event.id}")
             
@@ -1531,23 +1612,23 @@ class JobScheduler:
             if not events:
                 logger.info("No events found from previous day")
                 return
-            #update final odds for all events, temporal chunk of code. delete when done using it. this is for the midnight sync to get the final odds for all events.
-            for event_data in events:
+            # #update final odds for all events, temporal chunk of code. delete when done using it. this is for the midnight sync to get the final odds for all events.
+            # for event_data in events:
                 
-                final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
-                if final_odds_response:
-                    final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
-                    if final_odds_data:
-                        upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
-                        if upserted_id:
-                            snapshot = OddsRepository.create_odds_snapshot(event_data.id, final_odds_data)
-                            logger.info(f"✅ Final odds updated for {event_data.home_team} vs {event_data.away_team}")
-                        else:
-                            logger.warning(f"Failed to update final odds for event {event_data.id}")
-                    else:
-                        logger.warning(f"No final odds data extracted for event {event_data.id}")
-                else:
-                    logger.warning(f"Failed to fetch final odds for event {event_data.id}")
+            #     final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
+            #     if final_odds_response:
+            #         final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
+            #         if final_odds_data:
+            #             upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
+            #             if upserted_id:
+            #                 snapshot = OddsRepository.create_odds_snapshot(event_data.id, final_odds_data)
+            #                 logger.info(f"✅ Final odds updated for {event_data.home_team} vs {event_data.away_team}")
+            #             else:
+            #                 logger.warning(f"Failed to update final odds for event {event_data.id}")
+            #         else:
+            #             logger.warning(f"No final odds data extracted for event {event_data.id}")
+            #     else:
+            #         logger.warning(f"Failed to fetch final odds for event {event_data.id}")
             #end of temporal chunk of code. delete when done using it.
 
             logger.info(f"Processing {len(events)} events from previous day")

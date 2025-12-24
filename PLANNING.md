@@ -1,7 +1,7 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.4.13  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + MULTI-SPORT DROPPING ODDS + DAILY DISCOVERY + ENHANCED H2H STREAKS + DROPPING ODDS FILTERING + ODDS ALERT SYSTEM**  
+**Versión:** v1.5.0  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + SMART ALERT FILTERING + DYNAMIC ODDS STORAGE + MULTI-SOURCE DISCOVERY**  
 **Última Actualización:** Diciembre, 2025
 
 ## 🎯 **Visión del Proyecto**
@@ -9,6 +9,23 @@
 Sistema automatizado de monitoreo y predicción de odds deportivos que proporciona **notificaciones inteligentes** y **predicciones basadas en patrones históricos**, permitiendo a los usuarios tomar decisiones informadas usando análisis de datos históricos y **extracción eficiente de odds** solo en momentos clave.
 
 ## 🚀 **Estado Actual (v1.4.13)**
+
+### ✅ **NUEVO EN v1.5.0 - Dynamic Odds Storage & Smart Filtering**
+
+#### **Dynamic Odds Markets Storage**
+- **Full Market Extraction**: Extrae y almacena TODOS los mercados disponibles (Full time, Spread, Over/Under, etc.)
+- **Relational Schema**: Implementada arquitectura de 3 tablas (`events` → `markets` → `market_choices`) para flexibilidad total.
+- **Decimal Conversion**: Conversión automática de odds fraccionales API a formato decimal (Numeric 8,3).
+- **Storage Efficiency**: Optimizado para no almacenar metadata irrelevante (source_ids, flags de live internos) ahorrando espacio.
+- **Backward Compatibility**: Mantiene la tabla `event_odds` original para asegurar compatibilidad con procesos existentes (Process 1/2).
+- **Architecture**: `MarketRepository` en `repository.py` maneja toda la persistencia de mercados dinámicos.
+
+#### **Smart Alert Filtering System**
+- **Low-Value Event Detection**: Omite alertas de odds para eventos que solo tienen 1 mercado ("Full time").
+- **Automatic Suppression**: Marca `alert_sent=True` para eventos de bajo valor, bloqueando alertas no deseadas.
+- **Streak Resurrection Logic**: Si un evento de bajo valor califica para una racha H2H (mínimo 15 resultados), se "resucita" (`alert_sent=False`) para permitir otras alertas de valor.
+- **Configurable Thresholds**: `STREAK_ALERT_MIN_RESULTS` (default 15) permite ajustar cuándo una racha es suficientemente confiable.
+- **0-Market Handling**: Detecta y loguea eventos sin mercados (posibles 404s/cancelados) para futura depuración.
 
 ### ✅ **NUEVO EN v1.4.0 - Multi-Source Discovery & Auto-Migration**
 
@@ -543,26 +560,10 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Eficiencia**: Solo extrae odds cuando es necesario
 - **Odds Display**: Información completa de odds en notificaciones
 
-## 🎉 **Estado Actual del Sistema**
+### ✅ **v1.5.0 - Dynamic Storage & Smart Filtering - COMPLETADO**
+- Almacenamiento dinámico de todos los mercados conocidos en tablas `markets` y `market_choices`.
+- Sistema de filtrado inteligente que omite eventos de bajo valor (1 mercado).
+- Lógica de resurrección de eventos basada en calidad de datos históricos (mínimo 15 resultados).
+- Optimización de almacenamiento eliminando metadatos redundantes.
 
-**SofaScore Odds System v1.4.13** - Sistema dual process en producción:
-
-### ✅ **Process 1 - COMPLETADO**
-- Sistema de predicciones basado en patrones históricos
-- Arquitectura: Variation Tiers (1,2) + Result Tiers (A,B,C)
-- Filtrado por `discovery_source='dropping_odds'` para mayor precisión
-- Gender filtering y Tier 1 exact odds search implementados
-
-### ✅ **Process 2 - IMPLEMENTADO**
-- Arquitectura modular por deporte (football.py con 11 fórmulas)
-- Dual integration: Orchestrador compara ambos procesos
-- Enhanced reporting con veredicto final (AGREE/DISAGREE/PARTIAL/ERROR)
-
-### ✅ **Infraestructura**
-- Multi-source discovery system (dropping odds, H2H, streaks, daily discovery)
-- Extracción inteligente de odds (30 y 5 minutos antes)
-- Recolección de resultados con alta cobertura (99%+)
-- Sistema robusto de manejo de errores y monitoreo 24/7
-- Odds Alert System con extracción completa de mercados y alertas agrupadas por evento
-
-**Estado Final**: 🟢 **DUAL PROCESS SYSTEM EN PRODUCCIÓN CON DROPPING ODDS FILTERING Y ODDS ALERT SYSTEM**
+**Estado Final**: 🟢 **DYNAMIC ODDS STORAGE & SMART FILTERING SYSTEM EN PRODUCCIÓN**

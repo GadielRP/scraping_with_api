@@ -1,7 +1,7 @@
 # SofaScore Odds System
 
-**Versión:** v1.4.13  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + MULTI-SOURCE DISCOVERY + MULTI-SPORT DROPPING ODDS + DAILY DISCOVERY + ENHANCED H2H STREAKS + DROPPING ODDS FILTERING + ODDS ALERT SYSTEM**  
+**Versión:** v1.5.0  
+**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + SMART ALERT FILTERING + DYNAMIC ODDS STORAGE + MULTI-SOURCE DISCOVERY**  
 **Última Actualización:** Diciembre, 2025
 
 ## 🎯 **Descripción del Sistema**
@@ -122,15 +122,16 @@ class AlertMatch:
 - **Lógica Optimizada**: Incluye todos los juegos próximos en una sola notificación
 - **Odds Display**: Muestra odds completas (apertura y finales) en candidatos históricos
 
-### ✅ **Odds Alert System (v1.4.13) - NUEVO**
-- **Extracción Completa de Mercados**: Extrae TODOS los mercados disponibles del response de odds (no solo Full time)
-- **Mercados Soportados**: Full time, Quarter/Period winners, Half time, Point spread, Game total (Over/Under), y cualquier otro mercado disponible
-- **Alertas Agrupadas por Evento**: Envía alertas en orden lógico por evento: Odds → Dual Process → H2H Streak
-- **Nombres Reales de Mercados**: Muestra el nombre real de cada mercado desde la API (no categorías fijas)
-- **Discovery Source Display**: Muestra la fuente de descubrimiento del evento en cada alerta
-- **Formato Enriquecido**: Muestra odds iniciales y finales con indicadores de movimiento (↑↓=)
-- **Integración Transparente**: No afecta el flujo existente, reutiliza la misma respuesta de odds
-- **Archivo**: `odds_alert.py` con clase `OddsAlertProcessor` para procesamiento modular
+### ✅ **Smart Alert Filtering (v1.5.0) - NUEVO**
+- **Filtrado de Bajo Valor**: Salta alertas de odds para eventos con solo 1 mercado ("Full time").
+- **Resurrección por Rachas**: Reactiva alertas (`alert_sent=False`) si el evento tiene suficientes datos históricos (mínimo 15 partidos).
+- **Umbrales Configurables**: `STREAK_ALERT_MIN_RESULTS` para control fino de calidad.
+
+### ✅ **Dynamic Odds Storage (v1.5.0) - NUEVO**
+- **Extracción Multimercado**: Almacena todos los mercados disponibles (Over/Under, Handicap, etc.).
+- **Esquema Relacional**: Estructura modular `markets` ↔ `market_choices`.
+- **Eficiencia**: Conversión a decimales y eliminación de metadatos API redundantes.
+- **Historial Completo**: Mantiene un registro de todos los mercados detectados en pre-start checks.
 
 ### ✅ **Multi-Source Discovery System (v1.4)**
 #### **Discovery 1 - Dropping Odds (Producción)**
@@ -318,9 +319,9 @@ python main.py results-all
 5. **Corrección de Timestamps**: Verificación y actualización automática (si está habilitada)
 6. **Análisis de Patrones**: Evaluación de alertas basadas en historial
 7. **Notificaciones Agrupadas por Evento**: Para cada evento en momentos clave (30 o 5 min), se envían alertas en orden:
-   - **Odds Alert**: Todos los mercados disponibles (Full time, Quarters, Spread, Over/Under, etc.)
-   - **Dual Process Alert**: Predicciones Process 1 + Process 2 con veredicto
-   - **H2H Streak Alert**: Análisis histórico head-to-head (solo a los 30 min)
+   - **Odds Alert**: Todos los mercados disponibles (si pasa el filtro de bajo valor).
+   - **Dual Process Alert**: Predicciones Process 1 + Process 2.
+   - **H2H Streak Alert**: Análisis histórico head-to-head (puede resucitar eventos filtrados).
 8. **04:00**: Recolección de resultados
 
 ### **Sistema de Predicciones - ¿Qué hace un Candidato?**

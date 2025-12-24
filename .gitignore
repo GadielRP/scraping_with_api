@@ -45,7 +45,7 @@ sofascore_api_backup.py
 .cursor/
 sofascore.service 
 assets/
-agents.mdc
+*.md
 
 # old files
 old/
@@ -63,7 +63,7 @@ db-init/local_backup.dump.gz
 db-init/local.backup.dump.gz
 
 
-*.md
+
 01-restore.sh
 
 
