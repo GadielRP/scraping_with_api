@@ -45,6 +45,7 @@ sofascore_api_backup.py
 .cursor/
 sofascore.service 
 assets/
+agents.mdc
 
 # old files
 old/

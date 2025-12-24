@@ -8,7 +8,7 @@
 
 Sistema automatizado de monitoreo y predicción de odds deportivos que proporciona **notificaciones inteligentes** y **predicciones basadas en patrones históricos**, permitiendo a los usuarios tomar decisiones informadas usando análisis de datos históricos y **extracción eficiente de odds** solo en momentos clave.
 
-## 🚀 **Estado Actual (v1.4.11)**
+## 🚀 **Estado Actual (v1.4.13)**
 
 ### ✅ **NUEVO EN v1.4.0 - Multi-Source Discovery & Auto-Migration**
 
@@ -21,7 +21,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
   - ✅ High Value Streaks (rachas de alto valor)
   - ✅ H2H Events (head-to-head)
   - ✅ Winning Odds (mejores odds de victoria)
-  - ⏸️ Team Streaks (pendiente - estructura incompatible)
+  - ✅ Team Streaks (rachas de equipos)
 - **Event Tracking**: Campo `discovery_source` en cada evento para identificar origen
 - **Arquitectura**: `sofascore_api2.py` extiende API con nuevos métodos
 - **Normalización**: Eventos de todas las fuentes procesados por el mismo pipeline
