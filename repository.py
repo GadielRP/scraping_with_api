@@ -993,12 +993,16 @@ class MarketRepository:
                             session.flush()  # Get market_id for choices
                         
                         # Process choices for this market
+                        # IMPORTANT: Deduplicate choices by name first (API sometimes returns duplicates)
+                        # Keep only the first occurrence of each choice name
                         choices_data = market_data.get('choices', [])
+                        seen_choice_names = {}
                         for choice_data in choices_data:
                             choice_name = choice_data.get('name')
-                            if not choice_name:
-                                continue
-                            
+                            if choice_name and choice_name not in seen_choice_names:
+                                seen_choice_names[choice_name] = choice_data
+                        
+                        for choice_name, choice_data in seen_choice_names.items():
                             # Convert fractional odds to decimal
                             initial_fractional = choice_data.get('initialFractionalValue')
                             current_fractional = choice_data.get('fractionalValue')
@@ -1028,11 +1032,14 @@ class MarketRepository:
                                     change=change
                                 )
                                 session.add(choice)
+                                session.flush()  # Flush to avoid duplicate key errors within same transaction
                         
                         saved_count += 1
                         
                     except Exception as e:
                         logger.warning(f"Error processing market for event {event_id}: {e}")
+                        # Rollback to recover from failed transaction
+                        session.rollback()
                         continue
                 
                 session.commit()

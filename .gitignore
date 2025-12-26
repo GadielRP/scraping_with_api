@@ -51,6 +51,7 @@ assets/
 old/
 csv/
 
+parse_telegram_odds.py
 
 # databases backups/dumps
 *.db
