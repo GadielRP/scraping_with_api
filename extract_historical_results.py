@@ -55,6 +55,7 @@ import logging
 import sys
 import os
 import argparse
+import json
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Optional, Tuple
 from sqlalchemy import and_, or_, func, cast, Date
@@ -62,9 +63,20 @@ from sqlalchemy import and_, or_, func, cast, Date
 # Import existing project modules
 from database import db_manager
 from models import Event, Result
-from repository import ResultRepository
+from repository import ResultRepository, EventRepository
 from sofascore_api import api_client
+try:
+    from sofascore_api import SofaScoreRateLimitException
+except ImportError:
+    # If not available, define a dummy class
+    class SofaScoreRateLimitException(Exception):
+        pass
 from sport_observations import sport_observations_manager
+
+# Custom exception for rate limiting (self-contained, doesn't modify sofascore_api.py)
+class RateLimitDetected(Exception):
+    """Raised when we detect a 403 rate limit error from API responses"""
+    pass
 
 # Setup logging
 logging.basicConfig(
@@ -88,13 +100,73 @@ NBA_SEASONS_TO_EXCLUDE = [
     56094,  # NBA CUP 2023/2024
     69143,  # NBA CUP 2024/2025
     84238,  # NBA CUP 2025/2026
+    # seasons to exclude, not nba seasons but placed here for simplicity
+    77559,  # Laliga 2025
+    61643,  # Laliga 2024
+    52376,  # Laliga 2023
+    42409,  # Laliga 2022
+    37223,  # Laliga 2021
+    32501,  # Laliga 2020
+    # Premier League seasons
+    76986,  # Premier League 2025
+    61627,  # Premier League 2024
+    52186,  # Premier League 2023
+    41886,  # Premier League 2022
+    37036,  # Premier League 2021
+    29415,  # Premier League 2020
+    # NFL seasons
+    75522,  # NFL 2025
+    60592,  # NFL 2024
+    51361,  # NFL 2023
+    46786,  # NFL 2022
+    36422,  # NFL 2021
+    27719,  # NFL 2020
 ]
 
 # Minimum event ID
 LAST_ID = 269
 
-# State file to track last processed date (simple log file with just the date)
-STATE_FILE = 'extract_historical_results_last_date.log'
+# Track consecutive API failures to detect rate limiting
+_consecutive_api_failures = 0
+_last_403_check_time = None
+
+def is_rate_limited() -> bool:
+    """
+    Check if we're being rate limited by looking at recent API behavior.
+    Returns True if we detect 403 errors.
+    
+    This is a self-contained check that doesn't modify sofascore_api.py.
+    We detect rate limiting by:
+    1. Checking for consecutive None responses from API
+    2. Looking for 403 in recent log output (if accessible)
+    """
+    global _consecutive_api_failures
+    
+    # If we have too many consecutive failures, likely rate limited
+    if _consecutive_api_failures >= 3:
+        logger.warning(f"Detected {_consecutive_api_failures} consecutive API failures - likely rate limited")
+        return True
+    
+    return False
+
+def reset_failure_counter():
+    """Reset the API failure counter after a successful call"""
+    global _consecutive_api_failures
+    _consecutive_api_failures = 0
+
+def increment_failure_counter():
+    """Increment the API failure counter"""
+    global _consecutive_api_failures
+    _consecutive_api_failures += 1
+
+# Ensure data directory exists for persistence (relative to /app/ in Docker)
+DATA_DIR = 'data' if os.path.exists('data') else ''
+
+# State file to track last processed date (simple log file with just the date - kept for debugging/visual)
+STATE_FILE = os.path.join(DATA_DIR, 'extract_historical_results_last_date.log')
+
+# JSON state file to track last processed event ID (allows granular resumption within a day)
+STATE_JSON_FILE = os.path.join(DATA_DIR, 'extract_historical_results_state.json')
 
 # Manual mode datetime range constants
 # Can specify both date and time, e.g., datetime(2025, 11, 15, 11, 30) for Nov 15 at 11:30
@@ -360,6 +432,90 @@ def save_last_processed_date(processed_date: date):
             logger.error(f"❌ Failed to save to fallback location: {e2}")
 
 
+def get_json_state_file_path() -> str:
+    """Get the absolute path to the JSON state file."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(script_dir, STATE_JSON_FILE)
+
+
+def load_json_state() -> Dict:
+    """
+    Load the JSON state file containing last processed date and event ID.
+    
+    Returns:
+        Dict with 'last_date' (str, yyyy-mm-dd) and 'last_event_id' (int), or empty dict if not found
+    """
+    try:
+        state_file_path = get_json_state_file_path()
+        
+        if os.path.exists(state_file_path):
+            with open(state_file_path, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+                logger.info(f"📂 Loaded JSON state: date={state.get('last_date')}, event_id={state.get('last_event_id')}")
+                return state
+        else:
+            logger.info(f"📂 No JSON state file found at {state_file_path}")
+            return {}
+            
+    except Exception as e:
+        logger.warning(f"❌ Error loading JSON state file: {e}")
+        return {}
+
+
+def save_json_state(processed_date: date, last_event_id: int):
+    """
+    Save the current progress (date + event_id) to JSON state file.
+    This allows granular resumption within a day.
+    
+    Args:
+        processed_date: The date currently being processed
+        last_event_id: The ID of the last successfully processed event
+    """
+    try:
+        state_file_path = get_json_state_file_path()
+        
+        state = {
+            'last_date': processed_date.strftime('%Y-%m-%d'),
+            'last_event_id': last_event_id,
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        with open(state_file_path, 'w', encoding='utf-8') as f:
+            json.dump(state, f, indent=2)
+        
+        logger.debug(f"💾 Saved JSON state: date={state['last_date']}, event_id={last_event_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error saving JSON state file: {e}")
+
+
+def clear_json_state_event_id():
+    """
+    Clear the event_id from JSON state (when starting a new day).
+    Keeps the date but removes event_id to process from the beginning.
+    """
+    try:
+        state_file_path = get_json_state_file_path()
+        
+        if os.path.exists(state_file_path):
+            with open(state_file_path, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+            
+            # Clear event_id
+            state['last_event_id'] = None
+            state['updated_at'] = datetime.now().isoformat()
+            
+            with open(state_file_path, 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2)
+            
+            logger.debug(f"🔄 Cleared event_id from JSON state (starting new day)")
+            
+    except Exception as e:
+        logger.warning(f"Error clearing JSON state event_id: {e}")
+
+
+
+
 def get_events_for_date(target_date: date) -> List[Event]:
     """
     Get all events for a specific date matching the query criteria.
@@ -475,7 +631,7 @@ def get_all_available_dates() -> List[date]:
         return []
 
 
-def collect_results_for_events(events: List[Event], day_date: date, test_mode: bool = False, update_odds: bool = True) -> Tuple[Dict[str, int], List[Dict]]:
+def collect_results_for_events(events: List[Event], day_date: date, test_mode: bool = False, update_odds: bool = True, skip_until_event_id: Optional[int] = None) -> Tuple[Dict[str, int], List[Dict]]:
     """
     Collect results for a list of events (one day's worth).
     Reuses the proven logic from scheduler.job_results_collection()
@@ -486,6 +642,7 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
         day_date: The date being processed (for logging)
         test_mode: If True, don't save to database, just return what would be saved
         update_odds: If True, also update final odds (like scheduler does)
+        skip_until_event_id: If provided, skip events until we find this event_id (for resumption)
         
     Returns:
         Tuple of (statistics dict, list of changes that would be made)
@@ -496,17 +653,34 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
     changes = []  # Track what would be added/updated
     total = len(events)
     
+    # Handle skip_until_event_id - find the starting index
+    start_idx = 0
+    if skip_until_event_id:
+        for i, event in enumerate(events):
+            if event.id == skip_until_event_id:
+                start_idx = i + 1  # Start from the NEXT event (this one was already processed)
+                logger.info(f"⏩ Resuming from event {skip_until_event_id} - skipping first {start_idx} events")
+                break
+        else:
+            # Event ID not found in list, process all
+            logger.warning(f"⚠️  Resume event_id {skip_until_event_id} not found in today's events - processing all")
+            start_idx = 0
+    
     mode_text = "🔍 TEST MODE - " if test_mode else ""
-    logger.info(f"{mode_text}📅 Processing {total} events for date {day_date.strftime('%Y-%m-%d')}...")
+    if start_idx > 0:
+        logger.info(f"{mode_text}📅 Processing {total - start_idx} events (resuming) for date {day_date.strftime('%Y-%m-%d')}...")
+    else:
+        logger.info(f"{mode_text}📅 Processing {total} events for date {day_date.strftime('%Y-%m-%d')}...")
     
     # Import here to avoid circular imports
-    from repository import OddsRepository
+    from repository import OddsRepository, MarketRepository
     
-    for idx, event in enumerate(events, 1):
+    for idx, event in enumerate(events[start_idx:], start_idx + 1):
         try:
             # Log progress every 10 events or at start
-            if idx % 10 == 0 or idx == 1:
+            if (idx - start_idx) % 10 == 1 or idx == start_idx + 1:
                 logger.info(f"  Progress: {idx}/{total} events ({stats['updated']} updated, {stats['skipped']} skipped, {stats['failed']} failed)")
+
             
             # Check if result already exists (for logging purposes only)
             existing_result = ResultRepository.get_result_by_event_id(event.id)
@@ -517,6 +691,14 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
             if update_odds:
                 try:
                     final_odds_response = api_client.get_event_final_odds(event.id, event.slug)
+                    
+                    # Check if we got rate limited (403)
+                    if final_odds_response is None:
+                        # Could be 404 (no odds) or 403 (rate limited)
+                        # We need to check the last error - but for now, continue
+                        # The real 403 check will happen on get_event_results
+                        pass
+                    
                     if final_odds_response:
                         final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
                         if final_odds_data:
@@ -538,6 +720,13 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
                                     snapshot = OddsRepository.create_odds_snapshot(event.id, final_odds_data)
                                     odds_updated = True
                                     logger.debug(f"  ✅ Final odds updated for event {event.id}")
+                                    
+                                    # Save all markets to markets/market_choices tables (same as scheduler)
+                                    # This runs for ALL sports using the existing odds response (no extra API call)
+                                    try:
+                                        MarketRepository.save_markets_from_response(event.id, final_odds_response)
+                                    except Exception as market_error:
+                                        logger.warning(f"  Error saving markets for event {event.id}: {market_error}")
                                 else:
                                     logger.warning(f"  Failed to update final odds for event {event.id}")
                         else:
@@ -549,10 +738,23 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
             
             # Step 2: Fetch and update results (ALWAYS process, even if exists)
             # In test mode, don't update event information to avoid database changes
-            result_data = api_client.get_event_results(event.id, update_event_info=not test_mode)
+            try:
+                result_data = api_client.get_event_results(event.id, update_event_info=not test_mode)
+            except SofaScoreRateLimitException as e:
+                logger.error(f"\n\n❌ 403 Rate Limit Error detected on event {event.id}")
+                logger.error(f"   Stopping processing to avoid further rate limiting")
+                # Re-raise as our custom exception
+                raise RateLimitDetected(f"403 error on event {event.id}")
+            
             if not result_data:
                 logger.warning(f"  No result data returned for event {event.id}")
                 stats['failed'] += 1
+                increment_failure_counter()
+                
+                # Check if we're being rate limited
+                if is_rate_limited():
+                    logger.error(f"\n\n❌ Rate limiting detected after multiple failures")
+                    raise RateLimitDetected(f"Multiple consecutive failures on event {event.id}")
                 if test_mode:
                     changes.append({
                         'event_id': event.id,
@@ -597,8 +799,12 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
                 # Store/update result in database (upsert always updates if exists)
                 if ResultRepository.upsert_result(event.id, result_data):
                     stats['updated'] += 1
+                    reset_failure_counter()  # Reset on success
                     action_text = "UPDATED" if is_update else "CREATED"
                     logger.info(f"  ✅ {action_text} result for Event {event.id}: {event.home_team} vs {event.away_team} = {result_data['home_score']}-{result_data['away_score']}, Winner: {result_data['winner']}")
+                    
+                    # Save JSON state after each successful event (for granular resumption)
+                    save_json_state(day_date, event.id)
                     
                     # OPTIONAL: Process observations (FAIL-SAFE - doesn't break main flow)
                     try:
@@ -609,6 +815,9 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
                     logger.warning(f"  Failed to store result for event {event.id}")
                     stats['failed'] += 1
         
+        except RateLimitDetected:
+            # Re-raise to stop the entire day processing
+            raise
         except Exception as e:
             logger.error(f"  Error processing event {event.id}: {e}")
             stats['failed'] += 1
@@ -900,6 +1109,31 @@ Examples:
         else:
             dates_to_process = all_dates
         
+        # Load JSON state for mid-day resumption (check for in-progress event)
+        json_state = load_json_state()
+        resume_event_id = None
+        resume_date = None
+        
+        if json_state and not test_mode:
+            resume_date_str = json_state.get('last_date')
+            resume_event_id = json_state.get('last_event_id')
+            
+            if resume_date_str and resume_event_id:
+                try:
+                    resume_date = datetime.strptime(resume_date_str, '%Y-%m-%d').date()
+                    # Check if this date is in our processing list
+                    if resume_date in dates_to_process:
+                        logger.info(f"📂 Found in-progress date {resume_date_str} with last event_id {resume_event_id}")
+                        # Ensure we start from the resume_date, not after it
+                        resume_date_idx = dates_to_process.index(resume_date)
+                        dates_to_process = dates_to_process[resume_date_idx:]
+                    else:
+                        logger.info(f"📂 Resume date {resume_date_str} already completed, starting from next date")
+                        resume_event_id = None  # Don't skip events on new days
+                except ValueError:
+                    logger.warning(f"Could not parse resume date: {resume_date_str}")
+                    resume_event_id = None
+        
         if not dates_to_process:
             logger.info("✅ All dates have been processed. Nothing to do.")
             sys.exit(0)
@@ -941,8 +1175,19 @@ Examples:
                 
                 logger.info(f"  Found {len(day_events)} events for this date")
                 
+                # Determine if we should skip events on this day (mid-day resumption)
+                # Only skip on the FIRST day we process if we have a resume_event_id
+                skip_event_id = None
+                if day_idx == 1 and resume_event_id and resume_date and day_date == resume_date:
+                    skip_event_id = resume_event_id
+                
                 # Process events for this day (always update, even if results exist)
-                day_stats, day_changes = collect_results_for_events(day_events, day_date, test_mode=test_mode, update_odds=True)
+                day_stats, day_changes = collect_results_for_events(
+                    day_events, day_date, 
+                    test_mode=test_mode, 
+                    update_odds=True,
+                    skip_until_event_id=skip_event_id
+                )
                 
                 # Accumulate statistics
                 total_stats['updated'] += day_stats['updated']
@@ -963,6 +1208,8 @@ Examples:
                 # Save progress after each day (not in test mode or manual mode)
                 if not test_mode and not manual_mode:
                     save_last_processed_date(day_date)
+                    # Clear event_id from JSON state since day is complete
+                    clear_json_state_event_id()
                     logger.info(f"  💾 Progress saved: {day_date.strftime('%Y-%m-%d')} completed")
                     
                     # Small delay between days to be extra safe with API
@@ -974,9 +1221,25 @@ Examples:
             except KeyboardInterrupt:
                 logger.warning(f"\n\n⚠️  Script interrupted by user (Ctrl+C) after processing {day_idx} day(s)")
                 if not test_mode:
-                    logger.info(f"💾 Last processed date saved: {day_date.strftime('%Y-%m-%d')}")
-                    logger.info("   You can resume by running the script again.")
+                    # Load latest state to show user
+                    latest_state = load_json_state()
+                    last_event = latest_state.get('last_event_id', 'N/A')
+                    logger.info(f"💾 Last processed date: {day_date.strftime('%Y-%m-%d')}")
+                    logger.info(f"💾 Last processed event_id: {last_event}")
+                    logger.info("   You can resume by running the script again (will continue from last event).")
                 sys.exit(130)
+            except RateLimitDetected as e:
+                logger.error(f"\n\n❌ 403 RATE LIMIT ERROR - Stopping execution")
+                logger.error(f"   Error: {e}")
+                if not test_mode:
+                    # Load latest state to show user
+                    latest_state = load_json_state()
+                    last_event = latest_state.get('last_event_id', 'N/A')
+                    logger.info(f"💾 Last processed date: {day_date.strftime('%Y-%m-%d')}")
+                    logger.info(f"💾 Last processed event_id: {last_event}")
+                    logger.info("   Progress has been saved. You can resume by running the script again.")
+                    logger.info("   The script will continue from the last successfully processed event.")
+                sys.exit(1)
             except Exception as e:
                 logger.error(f"  ❌ Error processing date {day_date.strftime('%Y-%m-%d')}: {e}")
                 import traceback

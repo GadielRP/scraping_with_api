@@ -162,26 +162,71 @@ class PreStartNotification:
             logger.warning("Telegram not configured. Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to .env file")
     
     
-    def _send_telegram_notification(self, message: str) -> bool:
-        """Send notification via Telegram bot"""
-        try:
-            url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
-            data = {
-                'chat_id': self.telegram_chat_id,
-                'text': message,
-                'parse_mode': 'HTML'
-            }
+    def _split_message(self, message: str, limit: int = 4000) -> List[str]:
+        """
+        Split a message into chunks of approximately `limit` characters.
+        Respects line breaks and avoids splitting inside HTML tags.
+        """
+        if len(message) <= limit:
+            return [message]
+
+        chunks = []
+        while message:
+            if len(message) <= limit:
+                chunks.append(message)
+                break
+
+            # Find the best place to split
+            split_at = message.rfind('\n', 0, limit)
+            if split_at == -1:
+                split_at = limit
+
+            # Ensure we don't split inside an HTML tag
+            # Find the last '<' and '>' before split_at
+            last_open = message.rfind('<', 0, split_at)
+            last_close = message.rfind('>', 0, split_at)
+
+            if last_open > last_close:
+                # We are inside a tag, split before the tag starts
+                split_at = last_open
             
-            if self.telegram_test_only:
-                data['chat_id'] = self.personal_chat_id
+            if split_at == 0:
+                # Fallback: if we can't find a good split point, just take the limit
+                split_at = limit
+
+            chunks.append(message[:split_at].strip())
+            message = message[split_at:].strip()
+
+        return chunks
+
+    def _send_telegram_notification(self, message: str) -> bool:
+        """Send notification via Telegram bot, splitting if necessary"""
+        if not message:
+            return False
+
+        try:
+            chunks = self._split_message(message)
+            all_success = True
+
+            for chunk in chunks:
+                url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
+                data = {
+                    'chat_id': self.telegram_chat_id,
+                    'text': chunk,
+                    'parse_mode': 'HTML'
+                }
                 
-            response = requests.post(url, data=data, timeout=10)
-            if response.status_code == 200:
-                logger.info("Telegram notification sent successfully")
-                return True
-            else:
-                logger.error(f"Telegram notification failed: {response.status_code} - {response.text}")
-                return False
+                if self.telegram_test_only:
+                    data['chat_id'] = self.personal_chat_id
+                    
+                response = requests.post(url, data=data, timeout=10)
+                if response.status_code == 200:
+                    logger.info(f"Telegram notification chunk sent successfully ({len(chunk)} chars)")
+                else:
+                    logger.error(f"Telegram notification failed: {response.status_code} - {response.text}")
+                    all_success = False
+            
+            return all_success
                 
         except Exception as e:
             logger.error(f"Error sending Telegram notification: {e}")
@@ -839,8 +884,7 @@ class PreStartNotification:
                                     cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
                                     cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
                                     
-                                    # use to include date prefix and single ranking, not anymore. TODO: remove date prefix single ranking for performance reasons.
-                                    message += f" ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']})\n"
+                                    message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']})\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:
@@ -896,8 +940,15 @@ class PreStartNotification:
                                     cum_home_str = f"+{cumulative_home_net}" if cumulative_home_net >= 0 else str(cumulative_home_net)
                                     cum_away_str = f"+{cumulative_away_net}" if cumulative_away_net >= 0 else str(cumulative_away_net)
                                     
-                                    # use to include date prefix, not anymore. TODO: remove date prefix for performance reasons.
-                                    message += f"{role_indicator}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                    # Format standings prefix (team's position) and suffix (opponent's position)
+                                    team_standings_str = ""
+                                    opponent_standings_str = ""
+                                    if game.get('standings_position') is not None:
+                                        team_standings_str = f"[#{game['standings_position']}] "
+                                    if game.get('opponent_standings_position') is not None:
+                                        opponent_standings_str = f" [#{game['opponent_standings_position']}]"
+                                    
+                                    message += f"{date_prefix}{role_indicator}{team_standings_str}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']}){opponent_standings_str}\n"
                                 
                                 # Add break line between batches (except for the last batch)
                                 if i < len(streak.home_team_batches) - 1:
@@ -964,8 +1015,15 @@ class PreStartNotification:
                                     message += f"{date_prefix} ~{game['own_ranking']} {game['result']} vs ~{game['opponent_ranking']} {game['opponent']} ({game['home_score']}-{game['away_score']})\n"
                                 else:
                                     role_indicator = "🏠" if game_role == 'home' else "✈️"
-                                    # use to include date prefix, not anymore. TODO: remove date prefix for performance reasons.
-                                    message += f"{role_indicator}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']})\n"
+                                    # Format standings prefix (team's position) and suffix (opponent's position)
+                                    team_standings_str = ""
+                                    opponent_standings_str = ""
+                                    if game.get('standings_position') is not None:
+                                        team_standings_str = f"[#{game['standings_position']}] "
+                                    if game.get('opponent_standings_position') is not None:
+                                        opponent_standings_str = f" [#{game['opponent_standings_position']}]"
+                                    
+                                    message += f"{date_prefix}{role_indicator}{team_standings_str}{game['result']} vs {game['opponent']} ({game['score_for']}-{game['score_against']}){opponent_standings_str}\n"
                             
                             # Add break line between batches (except for the last batch)
                             if i < len(streak.away_team_batches) - 1:

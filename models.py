@@ -435,6 +435,33 @@ MV_ALERT_EVENTS_INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_mv_alert_sport_gender ON mv_alert_events (sport, gender);"
 ]
 
+# ---------------------------------------------------------------------------
+# View for historical standings: season events with results
+# Used to compute standings at any point in time for collected seasons
+# ---------------------------------------------------------------------------
+
+SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
+    """
+    CREATE OR REPLACE VIEW season_events_with_results AS
+    SELECT
+        e.id AS event_id,
+        e.season_id,
+        e.start_time_utc,
+        e.home_team,
+        e.away_team,
+        e.sport,
+        e.competition,
+        r.home_score,
+        r.away_score,
+        r.winner
+    FROM events e
+    JOIN results r ON r.event_id = e.id
+    WHERE e.season_id IS NOT NULL
+      AND r.home_score IS NOT NULL
+      AND r.away_score IS NOT NULL;
+    """
+)
+
 
 def create_or_replace_views(engine):
     """Create or replace reporting SQL views. Call this after engine init."""
@@ -443,6 +470,8 @@ def create_or_replace_views(engine):
         # Drop basketball_results view first if it exists (to handle column removal)
         conn.exec_driver_sql("DROP VIEW IF EXISTS basketball_results CASCADE;")
         conn.exec_driver_sql(BASKETBALL_RESULTS_VIEW_SQL)
+        # Create season events with results view for historical standings
+        conn.exec_driver_sql(SEASON_EVENTS_WITH_RESULTS_VIEW_SQL)
 
 def create_or_replace_materialized_views(engine):
     """Create or replace materialized views for alerts. Call this after engine init."""

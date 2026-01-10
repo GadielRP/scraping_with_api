@@ -8,7 +8,7 @@ venv/
 
 
 # Debugging files
-*.json
+
 logs/
 *.log
 debug/
@@ -18,7 +18,7 @@ debug/
 Bets-Hoja24.csv
 exports/
 testjson.py
-test_*.py
+
 test_proxy.py
 tests/
 
@@ -45,7 +45,7 @@ sofascore_api_backup.py
 .cursor/
 sofascore.service 
 assets/
-*.md
+
 
 # old files
 old/
@@ -80,9 +80,9 @@ collect_yesterday_odds.py
 
 
 
-
-
-
+*.md
+test_*.py
+*.json
 
 
 

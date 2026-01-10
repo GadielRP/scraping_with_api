@@ -14,7 +14,31 @@ from sport_classifier import sport_classifier
 
 logger = logging.getLogger(__name__)
 
+
+class SofaScoreNotFoundException(Exception):
+    """
+    Raised when API returns 404 for an event or odds endpoint.
+    Used to signal that the event should be deleted from the database.
+    """
+    def __init__(self, event_id: int, endpoint_type: str = "event"):
+        self.event_id = event_id
+        self.endpoint_type = endpoint_type
+        super().__init__(f"{endpoint_type.capitalize()} endpoint returned 404 for event {event_id}")
+
+
+class SofaScoreRateLimitException(Exception):
+    """
+    Raised when API returns 403 (rate limit/blocked).
+    Used to signal that execution should stop and save progress.
+    """
+    def __init__(self, event_id: int, endpoint_type: str = "event"):
+        self.event_id = event_id
+        self.endpoint_type = endpoint_type
+        super().__init__(f"Rate limited (403) on {endpoint_type} endpoint for event {event_id}")
+
+
 class SofaScoreAPI:
+
     def __init__(self):
         self.base_url = Config.SOFASCORE_BASE_URL
         # Use curl-cffi with Chrome impersonation - THIS IS THE KEY CHANGE!
@@ -140,7 +164,7 @@ class SofaScoreAPI:
             if any(term in competition_lower for term in ['releg', 'relegation', 'relegations', 'descenso']):
                 round = 'relegation'
                 logger.info(f"Relegation detected for {competition}")
-            elif any(term in competition_lower for term in ['qualification', 'qualifier', 'qualif.']):
+            elif any(term in competition_lower for term in ['qualification', 'qualifier', 'qualif.', 'qual.']):
                 round = 'qualification'
                 logger.info(f"Qualification detected for {competition}")
             elif any(term in competition_lower for term in ['friendly', 'amistoso']):
@@ -155,7 +179,7 @@ class SofaScoreAPI:
                 slug = round_info.get('slug', '')
                 logger.info(f"DEBUG slug_lower={slug.lower()!r}")
                 is_knockout = any(term in slug.lower() for term in [
-                    'quarterfinal','semifinal','final','playoff','playoffs','knockout','knockouts',
+                    'quarterfinal','semifinal', 'semifinals', 'final','finals','playoff','playoffs','knockout','knockouts',
                     'round-of-16','round-of-32','round-of-64','round-of-128',
                     'round-1','round-2','round-3','round-4','round-5','round-6',
                     'first-round','second-round','third-round',
@@ -165,7 +189,7 @@ class SofaScoreAPI:
                 logger.info(f"DEBUG is_knockout={is_knockout}")
                 if (any(term in round.lower() for term in ['quarterfinal', 'semifinal', 'semifinals', 'final', 'finals', 'playoff', 'playoffs', 'knockout', 'knockouts',
                 'round-of-16', 'round-of-32', 'round-of-64', 'round-of-128',
-                'round-1', 'round-2', 'round-3', 'round-4', 'round-5', 'round-6',
+                'round-1', 'round-2', 'round-3', 'round-4', 'round-5', 'round-6', 
                 'first-round', 'second-round', 'third-round',
                 'western-conference', 'eastern-conference',
                 'play-in', 'winnerloser', 'match-for-3rd-place',
@@ -182,7 +206,7 @@ class SofaScoreAPI:
             elif any(term in competition_lower for term in [
                 'semifinal', 'semi-final', 'semi final', 'semi',
                 'quarterfinal', 'quarter-final', 'quarter final', 'knockout', 'knock-outs', 'knock outs',
-                'playoff', 'play-offs', 'playoffs', 'octavos', 'cuartos', 'round of 16', 'round of 32'
+                'playoff', 'play-offs', 'playoffs', 'play-in', 'octavos', 'cuartos', 'round of 16', 'round of 32'
             ]) or re.search(r'\bfinal(?: round)?\b', competition_lower):
                 round = 'knockouts/playoffs'
                 logger.info(f"Knockouts/playoffs detected for {competition}")
@@ -235,8 +259,16 @@ class SofaScoreAPI:
             
             self.last_request_time = time.time()
     
-    def _make_request(self, endpoint: str, params: Optional[Dict] = None, no_retry_on_404: bool = False) -> Optional[Dict]:
-        """Make an HTTP request with enhanced browser impersonation and proxy support"""
+    def _make_request(self, endpoint: str, params: Optional[Dict] = None, no_retry_on_404: bool = False, delete_event_on_404: bool = False) -> Optional[Dict]:
+        """
+        Make an HTTP request with enhanced browser impersonation and proxy support.
+        
+        Args:
+            endpoint: API endpoint to call
+            params: Optional query parameters
+            no_retry_on_404: If True, skip retry logging for 404 errors
+            delete_event_on_404: If True, delete event from database when /event/{id} returns 404
+        """
         url = f"{self.base_url}{endpoint}"
         
         headers = {
@@ -295,7 +327,31 @@ class SofaScoreAPI:
                         logger.debug(f"HTTP 404 for {endpoint} - skipping retry as requested")
                     else:
                         logger.warning(f"HTTP 404 for {endpoint} - skipping retries")
+                    
+                    # Optional: Delete event if this is an /event/{id} endpoint
+                    if delete_event_on_404 and endpoint.startswith("/event/"):
+                        # Extract event ID from endpoint (e.g., "/event/12345" or "/event/12345/something")
+                        try:
+                            parts = endpoint.split("/")
+                            if len(parts) >= 3 and parts[1] == "event":
+                                event_id_str = parts[2]
+                                # Check if it's a numeric event ID (not a slug or custom_id)
+                                if event_id_str.isdigit():
+                                    event_id = int(event_id_str)
+                                    logger.warning(f"Event {event_id}: 404 Not Found - deleting from database")
+                                    
+                                    # Delete event from database
+                                    from repository import EventRepository
+                                    deleted = EventRepository.batch_delete_events([event_id])
+                                    if deleted:
+                                        logger.info(f"🗑️ Deleted event {event_id} (404 - no longer exists on SofaScore)")
+                                    else:
+                                        logger.warning(f"Failed to delete event {event_id} from database")
+                        except Exception as e:
+                            logger.error(f"Error deleting event for endpoint {endpoint}: {e}")
+                    
                     return None
+
                 
                 elif response.status_code in [500, 502, 503, 504, 522, 525]:
                     # Server errors - retry with exponential backoff
@@ -424,10 +480,13 @@ class SofaScoreAPI:
             else:
                 logger.info(f"Fetching event results for event {event_id}")
             
-            response = self._make_request(endpoint)
+            # Enable automatic deletion for events that no longer exist (404)
+            # This keeps our database clean by removing events deleted from SofaScore
+            response = self._make_request(endpoint, delete_event_on_404=True)
             if not response:
                 logger.warning(f"No response received for event {event_id}")
                 return None
+
             
             # Update event information from response (midnight sync optimization)
             # This ensures we always have complete event data from the authoritative /event/{id} endpoint
@@ -468,11 +527,27 @@ class SofaScoreAPI:
                 else:
                     # Regular timestamp check for upcoming events
                     return self.check_and_update_starting_time(event_id, start_timestamp)
-            return self.extract_results_from_response(response)
+            
+            # Extract results from response
+            result = self.extract_results_from_response(response)
+            
+            # Check if event was canceled/postponed - if so, delete it
+            if isinstance(result, dict) and result.get('_canceled'):
+                logger.warning(f"Event {event_id}: Canceled/Postponed (status: {result.get('status_description')}) - deleting from database")
+                from repository import EventRepository
+                deleted = EventRepository.batch_delete_events([event_id])
+                if deleted:
+                    logger.info(f"🗑️ Deleted canceled event {event_id}")
+                else:
+                    logger.warning(f"Failed to delete canceled event {event_id}")
+                return None
+            
+            return result
             
         except Exception as e:
             logger.error(f"Error fetching event results for {event_id}: {e}")
             return None
+
     
 
     def _build_sets_string(self, score_data: Dict, sport: str) -> Optional[str]:
@@ -613,6 +688,8 @@ class SofaScoreAPI:
                 70,   # Canceled
                 80,   # Postponed
                 90,   # Suspended
+                91,   # walkover finished
+
             }
             # If extract_tennis_points is True and status_code is 92, return None
             if extract_tennis_points and status_code == 92:
@@ -622,7 +699,9 @@ class SofaScoreAPI:
             # Check if event is finished
             if status_code in CANCELED_STATUS_CODES:
                 logger.info(f"Event canceled/postponed - status: {status_description}")
-                return None
+                # Return special marker so caller can delete canceled event
+                return {"_canceled": True, "status_code": status_code, "status_description": status_description}
+
             
             if status_code not in FINISHED_STATUS_CODES or status_type != 'finished':
                 logger.info(f"Event not finished yet - status: {status_description}")

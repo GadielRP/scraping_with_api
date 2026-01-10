@@ -32,7 +32,8 @@ from optimization import (
     parallel_team_event_fetching,
     process_with_batch_cleanup,
     process_with_parallel_db_ops,
-    process_events_only
+    process_events_only,
+    filter_upcoming_events
 )
 
 
@@ -171,6 +172,11 @@ class JobScheduler:
             normalized_response_h2h = {"events": extracted_events_high_value_streaks_h2h}
             high_value_streaks_events, _ = api_client.extract_events_and_odds_from_dropping_response(normalized_response, odds_extraction=False, discovery_source='high_value_streaks')
             high_value_streaks_events_h2h, _ = api_client.extract_events_and_odds_from_dropping_response(normalized_response_h2h, odds_extraction=False, discovery_source='high_value_streaks_h2h')
+            
+            # Filter high-value streaks events to only include upcoming events (at least 10 min away)
+            high_value_streaks_events = filter_upcoming_events(high_value_streaks_events)
+            high_value_streaks_events_h2h = filter_upcoming_events(high_value_streaks_events_h2h)
+            
             if not high_value_streaks_events:
                 logger.warning("No events found after processing high value streaks events")
                 return
@@ -215,6 +221,10 @@ class JobScheduler:
                 return
 
             h2h_events, _ = api_client.extract_events_and_odds_from_dropping_response(h2h_events_response, odds_extraction=False, discovery_source='top_h2h')
+            
+            # Filter H2H events to only include upcoming events (at least 10 min away)
+            h2h_events = filter_upcoming_events(h2h_events)
+            
             if not h2h_events:
                 logger.warning("No events found in h2h events")
                 return
@@ -226,6 +236,10 @@ class JobScheduler:
                 return
 
             winning_odds_events, winning_odds_events_odds_map = api_client.extract_events_and_odds_from_dropping_response(winning_odds_events_response, odds_extraction=True, discovery_source='winning_odds')
+            
+            # Filter winning odds events to only include upcoming events (at least 10 min away)
+            winning_odds_events = filter_upcoming_events(winning_odds_events)
+            
             if not winning_odds_events:
                 logger.warning("No events found in winning odds events")
                 return
@@ -310,23 +324,30 @@ class JobScheduler:
                 if events_all:
                     logger.info(f"Found {len(events_all)} events in /dropping/all endpoint")
                     
-                    # Process events from /dropping/all
-                    processed_count, skipped_count = process_with_parallel_db_ops(
-                        events_all,
-                        odds_map_all,
-                        discovery_source='dropping_odds',
-                        max_workers=10
-                    )
-                    total_processed += processed_count
-                    total_skipped += skipped_count
+                    # Filter to only upcoming events (at least 10 min away)
+                    events_all = filter_upcoming_events(events_all)
                     
-                    # Track processed event IDs
-                    for event in events_all:
-                        processed_event_ids.add(event['id'])
-                    
-                    logger.info(f"/dropping/all completed: processed {processed_count}/{len(events_all)} events, skipped {skipped_count} events")
+                    if not events_all:
+                        logger.info("No upcoming events found in /dropping/all after filtering")
+                    else:
+                        # Process events from /dropping/all
+                        processed_count, skipped_count = process_with_parallel_db_ops(
+                            events_all,
+                            odds_map_all,
+                            discovery_source='dropping_odds',
+                            max_workers=10
+                        )
+                        total_processed += processed_count
+                        total_skipped += skipped_count
+                        
+                        # Track processed event IDs
+                        for event in events_all:
+                            processed_event_ids.add(event['id'])
+                        
+                        logger.info(f"/dropping/all completed: processed {processed_count}/{len(events_all)} events, skipped {skipped_count} events")
                 else:
                     logger.warning("No events found in /dropping/all endpoint")
+
             
             # Step 2: Fetch and process each sport individually, skipping already processed events
             logger.info(f"Step 2: Fetching and processing {len(dropping_sports)} individual sports")
@@ -349,6 +370,13 @@ class JobScheduler:
                     
                     if not events_sport:
                         logger.info(f"No events found for sport {sport}")
+                        continue
+                    
+                    # Filter to only upcoming events (at least 10 min away)
+                    events_sport = filter_upcoming_events(events_sport)
+                    
+                    if not events_sport:
+                        logger.info(f"No upcoming events for sport {sport} after filtering")
                         continue
                     
                     # Filter out events that were already processed from /dropping/all
@@ -1612,24 +1640,40 @@ class JobScheduler:
             if not events:
                 logger.info("No events found from previous day")
                 return
-            # #update final odds for all events, temporal chunk of code. delete when done using it. this is for the midnight sync to get the final odds for all events.
-            # for event_data in events:
-                
-            #     final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
-            #     if final_odds_response:
-            #         final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
-            #         if final_odds_data:
-            #             upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
-            #             if upserted_id:
-            #                 snapshot = OddsRepository.create_odds_snapshot(event_data.id, final_odds_data)
-            #                 logger.info(f"✅ Final odds updated for {event_data.home_team} vs {event_data.away_team}")
-            #             else:
-            #                 logger.warning(f"Failed to update final odds for event {event_data.id}")
-            #         else:
-            #             logger.warning(f"No final odds data extracted for event {event_data.id}")
-            #     else:
-            #         logger.warning(f"Failed to fetch final odds for event {event_data.id}")
-            #end of temporal chunk of code. delete when done using it.
+            
+            # Update final odds for all events from previous day
+            odds_updated_count = 0
+            for event_data in events:
+                try:
+                    final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
+                    if final_odds_response:
+                        final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
+                        if final_odds_data:
+                            upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
+                            if upserted_id:
+                                snapshot = OddsRepository.create_odds_snapshot(event_data.id, final_odds_data)
+                                if snapshot:
+                                    odds_updated_count += 1
+                                    logger.info(f"✅ Final odds updated for {event_data.home_team} vs {event_data.away_team}")
+                                
+                                # Save all markets to new markets/market_choices tables
+                                # This runs for ALL sports (same as pre-start check)
+                                try:
+                                    from repository import MarketRepository
+                                    MarketRepository.save_markets_from_response(event_data.id, final_odds_response)
+                                except Exception as e:
+                                    logger.warning(f"Error saving markets to DB for event {event_data.id}: {e}")
+                            else:
+                                logger.warning(f"Failed to update final odds for event {event_data.id}")
+                        else:
+                            logger.warning(f"No final odds data extracted for event {event_data.id}")
+                    else:
+                        logger.debug(f"No final odds response for event {event_data.id}")
+                except Exception as e:
+                    logger.warning(f"Error updating odds for event {event_data.id}: {e}")
+                    continue
+            
+            logger.info(f"📊 Final odds updated for {odds_updated_count}/{len(events)} events")
 
             logger.info(f"Processing {len(events)} events from previous day")
             stats = self._collect_results_for_events(events, "Job E")

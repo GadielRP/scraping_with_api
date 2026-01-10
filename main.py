@@ -136,6 +136,23 @@ def run_daily_discovery():
     logger.info("Running daily discovery (today's scheduled events with odds)...")
     job_scheduler.run_job_daily_discovery_now()
 
+def run_backfill_results(limit: int = 100):
+    """Run backfill results script to collect missing data"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Running backfill results (limit: {limit})...")
+    
+    try:
+        from backfill_results import main as backfill_main
+        # Mock sys.argv to pass limit if needed, or call direct
+        # For simplicity, we'll just import and run it
+        # The script handles its own arguments if we use a subprocess or mock sys.argv
+        import subprocess
+        cmd = [sys.executable, "backfill_results.py", "--limit", str(limit)]
+        logger.info(f"Executing: {' '.join(cmd)}")
+        subprocess.run(cmd, check=True)
+    except Exception as e:
+        logger.error(f"Error running backfill results: {e}")
+
 def run_alerts():
     """Run alert evaluation on upcoming events"""
     logger = logging.getLogger(__name__)
@@ -326,7 +343,8 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='SofaScore Odds Alert System')
     parser.add_argument('command', choices=[
-        'start', 'discovery', 'discovery2', 'pre-start', 'midnight', 'results', 'results-all', 'daily-discovery', 'status', 'events', 'alerts', 'refresh-alerts'
+        'start', 'discovery', 'discovery2', 'pre-start', 'midnight', 'results', 'results-all', 'daily-discovery', 
+        'backfill-results', 'status', 'events', 'alerts', 'refresh-alerts'
     ], help='Command to run')
     parser.add_argument('--limit', type=int, default=10, help='Limit for events display')
     
@@ -385,6 +403,12 @@ def main():
         elif args.command == 'daily-discovery':
             if initialize_system():
                 run_daily_discovery()
+            else:
+                logger.error("Failed to initialize system")
+                sys.exit(1)
+        elif args.command == 'backfill-results':
+            if initialize_system():
+                run_backfill_results(args.limit)
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)

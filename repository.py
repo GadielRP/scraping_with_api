@@ -51,6 +51,7 @@ class EventRepository:
                     
                     if season_id in [season['nba_cup_season_id'] for season in NBA_SEASONS] and 'nba cup' in competition_name.lower():
                         round = 'knockouts/playoffs'
+                    
                     # Create/get season if we have enough info
                     if season_name and year and sport:
                         SeasonRepository.get_or_create_season(season_id, season_name, year, sport)
@@ -77,20 +78,28 @@ class EventRepository:
                     gender = event_data.get('gender') or 'unknown'
                     event.gender = gender[:10] if len(gender) > 10 else gender
                     # Update discovery_source: always overwrite for 'dropping_odds' (highest priority source)
-                    # For other sources, only update if explicitly provided (preserve original discovery source)
-                    if 'discovery_source' in event_data:
-                        if event_data['discovery_source'] == 'dropping_odds':
-                            # Always overwrite with dropping_odds (most important source - takes priority over any existing source)
-                            old_source = event.discovery_source
+                    # For other sources, preserve the original discovery source
+                    if event_data.get('discovery_source') == 'dropping_odds':
+                        # Always overwrite with dropping_odds (most important source - takes priority over any existing source)
+                        old_source = event.discovery_source
+                        if old_source != 'dropping_odds':
                             event.discovery_source = 'dropping_odds'
-                            if old_source != 'dropping_odds':
-                                logger.debug(f"Overwrote discovery_source to 'dropping_odds' for event {event_data['id']} (was: {old_source})")
+                            logger.debug(f"Overwrote discovery_source to 'dropping_odds' for event {event_data['id']} (was: {old_source})")
+                    
+                    # Update season_id and round if provided
+                    # This allows the results sync to fill in missing information for existing events
+                    if event_data.get('season_id'):
+                        event.season_id = event_data['season_id']
+                    if round:
+                        existing = (event.round or "").lower()
+                        incoming = str(round).lower()
+
+                        # Prevent downgrade
+                        if existing == "knockouts/playoffs" and incoming == "regular_season":
+                            pass
                         else:
-                            # For other sources, update if provided (normal behavior)
-                            event.discovery_source = event_data['discovery_source']
-                    # IMPORTANT: Do NOT update season_id and round for existing events
-                    # These fields are set on initial insert and should be preserved
-                    # This prevents discovery from overwriting values set during results sync
+                            event.round = round
+
                     event.updated_at = get_local_now()
                     logger.info(f"Updated event {event_data['id']}")
                 else:

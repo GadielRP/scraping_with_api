@@ -102,7 +102,7 @@ class StreakAlertEngine:
         For tennis, uses period points instead of sets for net differential calculation.
         
         Args:
-            team_results: List of team results from get_team_last_10_results_by_id
+            team_results: List of team results from get_team_last_results_by_id
             team_name: Name of the team for context
             
         Returns:
@@ -231,7 +231,10 @@ class StreakAlertEngine:
                     'own_ranking': game.get('own_ranking', 0),
                     'home_score': game.get('home_score'),  # Original sets for tennis display
                     'away_score': game.get('away_score'),  # Original sets for tennis display
-                    'single_ranking': single_ranking  # Single ranking for this game
+                    'single_ranking': single_ranking,  # Single ranking for this game
+                    'standings_position': game.get('standings_position'),  # Position at time of game (from DB)
+                    'standings_points': game.get('standings_points'),  # Points at time of game (from DB)
+                    'opponent_standings_position': game.get('opponent_standings_position')  # Opponent position (from DB)
                 })
             
             batches.append({
@@ -435,6 +438,9 @@ class StreakAlertEngine:
                 result_data = api_client.extract_results_from_response({'event': event}, extract_tennis_points=extract_points, for_streaks=True)
                 if not result_data:
                     continue
+                # Skip canceled/postponed events
+                if result_data.get('_canceled'):
+                    continue
                 
                 # Get team names and data
                 home_team_data = event.get('homeTeam', {})
@@ -576,7 +582,7 @@ class StreakAlertEngine:
         
         return results
 
-    def get_team_last_10_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, season_id: Optional[str] = None, season_year: Optional[int] = None, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None, min_results: int = None) -> Tuple[List[Dict], int]:
+    def get_team_last_results_by_id(self, team_id: int, team_name: str, competition_slug: str, sport: str, season_id: Optional[str] = None, season_year: Optional[int] = None, observations: Optional[List[Dict]] = None, exclude_event_id: Optional[int] = None, min_results: int = None, event_start_timestamp: float = None) -> Tuple[List[Dict], int]:
         """
         Get team results using team_id with flexible filtering.
         
@@ -598,11 +604,32 @@ class StreakAlertEngine:
             observations: List of dicts containing filtering observations
             exclude_event_id: Optional event ID to exclude from results (current/upcoming event)
             min_results: Minimum number of results to fetch (ignored when season_id is provided)
+            event_start_timestamp: Timestamp of the current event (for DB-based filtering)
         Returns:
             Tuple where:
                 - List of dicts with keys: winner, home_score, away_score, team_name, opponent_name (filtered results)
                 - Integer representing the overall (unfiltered) current win streak
         """
+        # =====================================================================
+        # ROUTE 1: DB-based form retrieval for collected seasons
+        # Uses historical_standings module instead of API calls
+        # =====================================================================
+        from historical_standings import is_season_collected, historical_form_processor
+        
+        if season_id and is_season_collected(int(season_id)):
+            logger.info(f"📊 Using DB-based form retrieval for {team_name} (season {season_id} is collected)")
+            return historical_form_processor.get_team_form_from_db(
+                team_name=team_name,
+                season_id=int(season_id),
+                sport=sport,
+                exclude_event_id=exclude_event_id,
+                current_event_timestamp=event_start_timestamp
+            )
+        
+        # =====================================================================
+        # ROUTE 2: API-based form retrieval (existing logic - UNCHANGED)
+        # =====================================================================
+        
         # Season-based filtering: fetch all games from current season (no minimum)
         use_season_filtering = season_id and sport not in ['Tennis', 'Tennis Doubles']
         
@@ -782,7 +809,7 @@ class StreakAlertEngine:
             return results_to_return, current_win_streak
             
         except Exception as e:
-            logger.error(f"Error getting team last 10 results for {team_name} (ID: {team_id}): {e}")
+            logger.error(f"Error getting team last results for {team_name} (ID: {team_id}): {e}")
             return [], 0
 
     def get_winning_odds_data(self, event_id: int) -> Optional[Dict]:
@@ -942,6 +969,11 @@ class StreakAlertEngine:
                         extract_points = sport in ['Tennis', 'Tennis Doubles']
                         result_data = api_client.extract_results_from_response({'event': event}, extract_tennis_points=extract_points, for_streaks=True)
                         if result_data:
+                            # Skip canceled/postponed events in H2H history
+                            if result_data.get('_canceled'):
+                                logger.debug(f"Skipping H2H event {h2h_event_id} - event was canceled/postponed")
+                                continue
+                                
                             # Map winner to actual teams (not positions)
                             winner_position = result_data['winner']  # '1', '2', or 'X'
                             
@@ -1066,7 +1098,7 @@ class StreakAlertEngine:
                 logger.info(f"📅 Using season year filtering: {target_season_year} (fallback enabled: {self.ENABLE_SEASON_YEAR_FILTERING})")
             
             if home_team_id:
-                home_team_results, home_overall_win_streak = self.get_team_last_10_results_by_id(
+                home_team_results, home_overall_win_streak = self.get_team_last_results_by_id(
                     home_team_id,
                     home_team_name,
                     competition_slug,
@@ -1074,13 +1106,14 @@ class StreakAlertEngine:
                     season_id=season_id,
                     season_year=target_season_year,
                     observations=observations,
-                    exclude_event_id=event_id
+                    exclude_event_id=event_id,
+                    event_start_timestamp=event_start_time.timestamp() if event_start_time else None
                 )
             else:
                 logger.debug(f"No home_team_id provided for {home_team_name}")
             
             if away_team_id:
-                away_team_results, away_overall_win_streak = self.get_team_last_10_results_by_id(
+                away_team_results, away_overall_win_streak = self.get_team_last_results_by_id(
                     away_team_id,
                     away_team_name,
                     competition_slug,
@@ -1088,7 +1121,8 @@ class StreakAlertEngine:
                     season_id=season_id,
                     season_year=target_season_year,
                     observations=observations,
-                    exclude_event_id=event_id
+                    exclude_event_id=event_id,
+                    event_start_timestamp=event_start_time.timestamp() if event_start_time else None
                 )
             else:
                 logger.debug(f"No away_team_id provided for {away_team_name}")

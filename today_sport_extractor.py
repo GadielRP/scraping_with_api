@@ -1,12 +1,13 @@
 import logging
 from typing import Dict, List, Optional, Set
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import sofascore_api2  # Import to attach methods to SofaScoreAPI class
 from sofascore_api import api_client
 from repository import EventRepository, OddsRepository
 from odds_utils import fractional_to_decimal, validate_odds_data
+from timezone_utils import get_local_now_aware
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,55 @@ class TodaySportExtractor:
             logger.error(f"Error filtering events: {e}")
             return []
     
+    def _filter_upcoming_events(self, events: List[Dict], min_minutes_away: int = 10) -> List[Dict]:
+        """
+        Filter events to only include those that haven't started yet and are at least min_minutes_away from starting.
+        
+        Args:
+            events: List of event objects with startTimestamp field
+            min_minutes_away: Minimum minutes away from current time (default: 10)
+        
+        Returns:
+            List of upcoming event objects
+        """
+        try:
+            if not events:
+                return []
+            
+            # Get current time (timezone-aware)
+            current_time = get_local_now_aware()
+            current_timestamp = int(current_time.timestamp())
+            
+            # Calculate minimum start timestamp (current time + 10 minutes)
+            min_start_timestamp = current_timestamp + (min_minutes_away * 60)
+            
+            upcoming_events = []
+            filtered_count = 0
+            
+            for event in events:
+                start_timestamp = event.get('startTimestamp')
+                
+                if not start_timestamp:
+                    logger.debug(f"Event {event.get('id', 'unknown')} has no startTimestamp, skipping")
+                    filtered_count += 1
+                    continue
+                
+                # Filter: keep only events starting at least min_minutes_away from now
+                if start_timestamp >= min_start_timestamp:
+                    upcoming_events.append(event)
+                else:
+                    event_id = event.get('id', 'unknown')
+                    time_diff_minutes = (start_timestamp - current_timestamp) / 60
+                    logger.debug(f"Filtered out event {event_id}: starts in {time_diff_minutes:.1f} minutes (< {min_minutes_away} min threshold)")
+                    filtered_count += 1
+            
+            logger.info(f"Filtered {len(upcoming_events)} upcoming events (excluded {filtered_count} events that already started or are starting soon)")
+            return upcoming_events
+            
+        except Exception as e:
+            logger.error(f"Error filtering upcoming events: {e}")
+            return events  # Return original list on error
+    
     def _process_and_insert_event(self, event: Dict, odds_data: Dict) -> bool:
         """
         Process a single event and its odds, then insert into database.
@@ -248,12 +298,19 @@ class TodaySportExtractor:
                         logger.info(f"No matching {sport} events found after filtering")
                         continue
                     
-                    # Step 5: Process and insert each event with its odds
-                    logger.info(f"Processing {len(filtered_events)} {sport} events...")
+                    # Step 5: Filter events to only upcoming ones (not started, at least 10 minutes away)
+                    upcoming_events = self._filter_upcoming_events(filtered_events, min_minutes_away=10)
+                    
+                    if not upcoming_events:
+                        logger.info(f"No upcoming {sport} events found after time filtering")
+                        continue
+                    
+                    # Step 6: Process and insert each event with its odds
+                    logger.info(f"Processing {len(upcoming_events)} {sport} events...")
                     sport_events_inserted = 0
                     sport_odds_inserted = 0
                     
-                    for event in filtered_events:
+                    for event in upcoming_events:
                         event_id = event.get('id')
                         if not event_id:
                             continue
@@ -272,10 +329,10 @@ class TodaySportExtractor:
                             if validate_odds_data(event_odds):
                                 sport_odds_inserted += 1
                     
-                    logger.info(f"✅ {sport} completed: {sport_events_inserted}/{len(filtered_events)} events inserted, {sport_odds_inserted} with odds")
+                    logger.info(f"✅ {sport} completed: {sport_events_inserted}/{len(upcoming_events)} events inserted, {sport_odds_inserted} with odds")
                     
                     # Aggregate statistics
-                    total_events_processed += len(filtered_events)
+                    total_events_processed += len(upcoming_events)
                     total_events_inserted += sport_events_inserted
                     total_odds_inserted += sport_odds_inserted
                     

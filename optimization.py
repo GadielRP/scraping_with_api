@@ -21,6 +21,70 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# EVENT FILTERING UTILITIES
+# ============================================================================
+
+def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> List[Dict]:
+    """
+    Filter events to only include those that haven't started yet and are at least min_minutes_away from starting.
+    
+    This is a shared utility used across all discovery jobs to ensure we only process
+    future events with sufficient lead time for odds extraction and alerts.
+    
+    Args:
+        events: List of event objects with startTimestamp field
+        min_minutes_away: Minimum minutes away from current time (default: 10)
+    
+    Returns:
+        List of upcoming event objects
+    """
+    from timezone_utils import get_local_now_aware
+    
+    if not events:
+        return []
+    
+    try:
+        # Get current time (timezone-aware)
+        current_time = get_local_now_aware()
+        current_timestamp = int(current_time.timestamp())
+        
+        # Calculate minimum start timestamp (current time + min_minutes_away)
+        min_start_timestamp = current_timestamp + (min_minutes_away * 60)
+        
+        upcoming_events = []
+        filtered_count = 0
+        
+        for event in events:
+            start_timestamp = event.get('startTimestamp')
+            
+            if not start_timestamp:
+                logger.debug(f"Event {event.get('id', 'unknown')} has no startTimestamp, skipping")
+                filtered_count += 1
+                continue
+            
+            # Filter: keep only events starting at least min_minutes_away from now
+            if start_timestamp >= min_start_timestamp:
+                upcoming_events.append(event)
+            else:
+                event_id = event.get('id', 'unknown')
+                time_diff_minutes = (start_timestamp - current_timestamp) / 60
+                if time_diff_minutes < 0:
+                    logger.debug(f"Filtered out event {event_id}: already started ({abs(time_diff_minutes):.1f} minutes ago)")
+                else:
+                    logger.debug(f"Filtered out event {event_id}: starts in {time_diff_minutes:.1f} minutes (< {min_minutes_away} min threshold)")
+                filtered_count += 1
+        
+        if filtered_count > 0:
+            logger.info(f"Filtered {len(upcoming_events)} upcoming events (excluded {filtered_count} events that already started or are starting soon)")
+        
+        return upcoming_events
+        
+    except Exception as e:
+        logger.error(f"Error filtering upcoming events: {e}")
+        return events  # Return original list on error
+
+
+# ============================================================================
 # PARALLEL FETCHING UTILITIES
 # ============================================================================
 

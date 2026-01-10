@@ -1,14 +1,42 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.4.9  
-**Estado General:** ✅ **MULTI-SOURCE DISCOVERY + AUTO-MIGRATION + CRITICAL FIXES + OPTIMIZATIONS + ENHANCED H2H STREAKS + DETAILED MATCH RESULTS + TENNIS RANKING DIFFERENTIAL + H2H FILTERING FIXES + SEASON FORM FILTERING**  
-**Última Actualización:** 10 de Noviembre, 2025
+**Versión:** v1.5.4  
+**Estado General:** ✅ **GLOBAL DISCOVERY FILTERING + TELEGRAM MESSAGE SPLITTING + DUAL PROCESS + DYNAMIC ODDS STORAGE**  
+**Última Actualización:** 7 de Enero, 2026
 
 ## 🎯 **Resumen del Proyecto**
 
 Sistema automatizado de monitoreo y predicción de odds deportivos con **predicciones basadas en patrones históricos**, **notificaciones inteligentes** por Telegram, **descubrimiento multi-fuente** de eventos, **auto-migración de base de datos**, **extracción inteligente de odds** solo en momentos clave, y **recolección automática** de resultados.
 
-## ✅ **NUEVO EN v1.4.0 - Multi-Source Discovery & Auto-Migration**
+## ✅ **NUEVO EN v1.5.4 - Global Discovery Filtering**
+
+### **🔍 Global Discovery Filtering - 100% COMPLETADO (07/01/2026)**
+- [x] Implementar `filter_upcoming_events()` en `optimization.py` como utilidad compartida
+- [x] Integrar filtrado en `scheduler.py` -> `job_discovery` (Dropping Odds)
+- [x] Integrar filtrado en `scheduler.py` -> `job_discovery2` (High Value Streaks, H2H, Winning Odds)
+- [x] Mantener filtrado en `today_sport_extractor.py` (Daily Discovery)
+- [x] Validar persistencia de filtros ante eventos inminentes (< 10 min)
+
+## ✅ **NUEVO EN v1.5.3 - Daily Discovery Filtering**
+
+### **🔍 Daily Discovery Filtering - 100% COMPLETADO (06/01/2026)**
+- [x] Implementar `_filter_upcoming_events()` en `today_sport_extractor.py`
+- [x] Aplicar umbral de 10 minutos para eventos próximos
+- [x] Integrar como Paso 5 en el flujo de `extract_todays_events()`
+- [x] Utilizar `get_local_now_aware()` para comparaciones precisas de tiempo
+- [x] Validado con logs de filtrado en ejecución real
+
+## ✅ **NUEVO EN v1.5.1 - Telegram Message Limit Fix**
+
+### **✉️ Telegram Message Limit Fix - 100% COMPLETADO (30/12/2025)**
+- [x] Implementar `_split_message()` en `alert_system.py` para manejar mensajes > 4096 caracteres
+- [x] Respetar saltos de línea (`\n`) al dividir mensajes
+- [x] Garantizar integridad de etiquetas HTML al no dividir en medio de un tag
+- [x] Envío secuencial de fragmentos para mantener el orden de la información
+- [x] Logging detallado del envío de fragmentos
+- [x] Validado con mensajes largos de rachas H2H y reportes detallados
+
+## ✅ **NUEVO EN v1.5.0 - Dynamic Odds Storage & Smart Filtering**
 
 ### **🔍 Multi-Source Event Discovery - 100% COMPLETADO (23/10/2025)**
 - [x] Crear `sofascore_api2.py` para extender API con nuevos endpoints
@@ -132,7 +160,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Fix team results filtering: Update filtering code to search for ground_type anywhere in observations
 - [x] Fix H2H event filtering: Update H2H filtering code to search for ground_type anywhere in observations
 - [x] Add detailed filtering logs: Show exactly what filters are applied (ground_type vs competition) with values
-- [x] Add filtering logs at start of `get_team_last_10_results_by_id()` function
+- [x] Add filtering logs at start of `get_team_last_results_by_id()` function
 - [x] Add filtering logs at start of `analyze_h2h_events()` function
 - [x] Restructure pre-start job: Capture all timing decisions upfront before any API calls
 - [x] Implement two-phase approach: Phase 1 captures decisions, Phase 2 executes API calls
@@ -141,12 +169,12 @@ Sistema automatizado de monitoreo y predicción de odds deportivos con **predicc
 - [x] Apply same fix to rescheduled event processing function
 - [x] Add current event exclusion: Exclude current event ID from H2H analysis
 - [x] Add current event exclusion: Exclude current event ID from team results
-- [x] Update `get_team_last_10_results_by_id()` to accept `exclude_event_id` parameter
+- [x] Update `get_team_last_results_by_id()` to accept `exclude_event_id` parameter
 - [x] Make the historical results minimum configurable via `DEFAULT_MIN_RESULTS`/`min_results`, performing additional paged fetches until the target count is reached without duplicates.
 - [x] Store final real rankings as floats for higher precision in the ranking prediction section.
 
 ### **📊 Season Form Filtering & Overall Win Streaks - 100% COMPLETADO (10/11/2025)**
-- [x] Extender `get_team_last_10_results_by_id()` para aceptar `season_id` y recuperar todos los partidos de la temporada actual (no tennis), deteniéndose cuando cambie la temporada.
+- [x] Extender `get_team_last_results_by_id()` para aceptar `season_id` y recuperar todos los partidos de la temporada actual (no tennis), deteniéndose cuando cambie la temporada.
 - [x] Mantener listas separadas de resultados filtrados vs. globales para calcular rachas ganadoras consecutivas sin filtros.
 - [x] Actualizar `H2HStreak` y `create_h2h_streak_message()` para mostrar “Overall Win Streaks” sólo cuando existe una racha activa.
 - [x] Simplificar la sección “Last 10 Games” mostrando únicamente el conteo W/L/D con etiqueta dinámica según cantidad de partidos.

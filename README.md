@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.5.0  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + SMART ALERT FILTERING + DYNAMIC ODDS STORAGE + MULTI-SOURCE DISCOVERY**  
-**Última Actualización:** Diciembre, 2025
+**Versión:** v1.5.5  
+**Estado:** ✅ **PRODUCCIÓN - AUTOMATED CLEANUP + BACKFILL SYSTEM + GLOBAL DISCOVERY FILTERING**  
+**Última Actualización:** 7 de Enero, 2026
 
 ## 🎯 **Descripción del Sistema**
 
@@ -12,10 +12,17 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Predice resultados** basado en patrones históricos de odds
 - **Extrae odds inteligentemente** solo en momentos clave (30 y 5 minutos antes)
 - **Recolecta resultados** de juegos terminados
+- **Limpieza Automática**: Elimina eventos inexistentes (404) y cancelados automáticamente
+- **Recuperación de Datos**: Sistema de backfill para completar historial de resultados y odds
 - **Funciona 24/7** con programación inteligente y optimizada
 - **Muestra odds completas** en notificaciones (apertura y finales)
 
 ## 🚀 **Características Principales**
+
+### ✅ **Automated Cleanup & Backfill System (v1.5.5) - NUEVO**
+- **404 Auto-Cleanup**: El sistema detecta cuando un evento ya no existe en la API (404) y lo elimina de la base de datos para mantener la higiene de datos.
+- **Canceled Event Deletion**: Los eventos con estados de Cancelado, Pospuesto o Suspendido se eliminan automáticamente durante la recolección de resultados.
+- **Backfill Results**: Nueva herramienta para procesar retroactivamente eventos que no tienen resultados o odds, con capacidad de reanudar progreso.
 
 ### ✅ **PROCESS 1 - Sistema de Predicciones Inteligentes (v1.1) - COMPLETADO**
 **📋 Definición**: Process 1 es el sistema de análisis de patrones de odds que evalúa eventos históricos para predecir resultados futuros.
@@ -114,6 +121,17 @@ class AlertMatch:
 - **Gana visitaεζ**: ε=0, ζ < 1 → Gana Visita
 - **ENA Localγδ**: γ=abs ≥ 0, γ ≤0.1, δ≥0.01, δ≤0.04 → ENA (No Aplica)
 
+### ✅ **Global Discovery Filtering (v1.5.4) - NUEVO**
+- **Filtrado Centralizado**: Aplicado en todos los discovery jobs (Daily, Job A, Job B) para omitir eventos que ya comenzaron o están a menos de 10 minutos de iniciar.
+- **Shared Utility**: Uso de `filter_upcoming_events` en `optimization.py` para consistencia.
+- **Timestamp Comparison**: Compara `startTimestamp` contra la hora local (aware) en segundos Unix.
+- **Integración**: Aplicado a Dropping Odds, High Value Streaks, Top H2H, y Winning Odds.
+
+### ✅ **Upcoming Event Filtering (v1.5.3)**
+- **Filtrado Temporal**: Omite eventos que ya comenzaron o están a menos de 10 minutos de iniciar durante el descubrimiento diario.
+- **Timestamp Comparison**: Compara `startTimestamp` contra la hora local (aware) en segundos Unix.
+- **Integración**: Paso adicional en el pipeline de `today_sport_extractor.py`.
+
 ### ✅ **Sistema de Notificaciones Inteligentes (v1.0)**
 - **Telegram Bot**: Notificaciones automáticas en tiempo real
 - **Timing Inteligente**: Solo notifica cuando se extraen odds en momentos clave
@@ -132,6 +150,12 @@ class AlertMatch:
 - **Esquema Relacional**: Estructura modular `markets` ↔ `market_choices`.
 - **Eficiencia**: Conversión a decimales y eliminación de metadatos API redundantes.
 - **Historial Completo**: Mantiene un registro de todos los mercados detectados en pre-start checks.
+
+### ✅ **Event Enrichment & Midnight Odds Sync (v1.5.2) - NUEVO**
+- **Enriquecimiento de Metadatos**: Actualiza automáticamente `season_id` y `round` para eventos existentes durante la recolección de resultados.
+- **Sincronización de Odds Finales**: Extrae y almacena las odds finales para todos los eventos del día anterior a las 04:00 AM.
+- **Persistencia de Mercados**: Guarda todos los mercados disponibles (Over/Under, Spread, etc.) para eventos finalizados, garantizando un historial completo.
+- **Prioridad de Discovery**: Sistema de protección que preserva la fuente original de descubrimiento, permitiendo que solo `dropping_odds` sobrescriba fuentes de menor prioridad.
 
 ### ✅ **Multi-Source Discovery System (v1.4)**
 #### **Discovery 1 - Dropping Odds (Producción)**
@@ -220,6 +244,18 @@ class AlertMatch:
   - Solo para eventos de Tennis/Tennis Doubles
 - **Enhanced Telegram Alerts**: Muestra H2H stats + team form + winning odds + ranking prediction con emojis
 
+### ✅ **DB-Based Team Form Retrieval (Optimización)**
+- **Collected Seasons**: Para temporadas completamente recolectadas (NBA 25/26, La Liga, Premier League, NFL), el sistema usa consultas a la base de datos local en lugar de llamadas API.
+- **Multi-Season Support**: `COLLECTED_SEASON_IDS` soporta `additional_season_id` para temporadas compuestas (ej: NBA regular + NBA Cup).
+  - El helper `get_all_season_ids()` garantiza que se consulten todos los IDs relacionados.
+  - Pre-computed flat set `_ALL_COLLECTED_IDS` para O(1) lookups.
+- **Dual Route Architecture**: `streak_alerts.py → get_team_last_results_by_id()` detecta automáticamente si usar DB o API basado en `is_season_collected()`
+  - **Ruta 1 (DB)**: `historical_standings.py → get_team_form_from_db()` - Incluye standings históricos y soporte multi-season.
+  - **Ruta 2 (API)**: `api_client.get_team_last_results_response()` - Para temporadas no recolectadas.
+- **PostgreSQL Optimization**: Las consultas DB usan `= ANY(:season_ids)` para buscar múltiples IDs de temporada de forma eficiente.
+- **Standings Integration**: La ruta DB incluye la posición del equipo y su oponente en el momento de cada partido histórico.
+- **Performance**: Reduce significativamente las llamadas API para temporadas populares y optimiza el uso de recursos locales.
+
 ### ✅ **Dropping Odds Discovery Source Priority (v1.4.10)**
 - **Priority Overwrite**: Eventos descubiertos por dropping odds (`/odds/1/dropping/all`) siempre sobrescriben `discovery_source` existente
 - **Rationale**: Dropping odds es la fuente más importante - si un evento aparece ahí, debe marcarse como `dropping_odds` independientemente de su origen previo
@@ -295,6 +331,7 @@ python main.py pre-start      # Verificar juegos próximos
 python main.py midnight       # Sincronización nocturna
 python main.py results        # Recolectar resultados de ayer
 python main.py results-all    # Recolectar TODOS los resultados (RECOMENDADO después del despliegue)
+python main.py backfill-results # Recuperar resultados y odds faltantes (desde 2026-01-01)
 
 # Sistema de predicciones (v1.1)
 python main.py alerts         # Evaluar alertas de patrones
@@ -312,7 +349,7 @@ python main.py results-all
 ```
 
 ### **Flujo de Trabajo Automático Optimizado**
-1. **05:01**: Descubrimiento diario de eventos programados con odds
+1. **05:01**: Descubrimiento diario de eventos programados con odds (con filtrado de eventos inminentes/en juego)
 2. **00:00-22:00**: Descubrimiento cada 2 horas (dropping odds)
 3. **Cada 5 min**: Verificación de juegos próximos
 4. **Momentos Clave**: Extracción de odds a los 30 y 5 minutos
@@ -322,7 +359,7 @@ python main.py results-all
    - **Odds Alert**: Todos los mercados disponibles (si pasa el filtro de bajo valor).
    - **Dual Process Alert**: Predicciones Process 1 + Process 2.
    - **H2H Streak Alert**: Análisis histórico head-to-head (puede resucitar eventos filtrados).
-8. **04:00**: Recolección de resultados
+8. **04:00**: Recolección de resultados, sincronización final de odds/mercados y **limpieza automática de eventos inexistentes/cancelados**.
 
 ### **Sistema de Predicciones - ¿Qué hace un Candidato?**
 

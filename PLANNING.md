@@ -1,14 +1,45 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.5.0  
-**Estado:** ✅ **PRODUCCIÓN - DUAL PROCESS + SMART ALERT FILTERING + DYNAMIC ODDS STORAGE + MULTI-SOURCE DISCOVERY**  
-**Última Actualización:** Diciembre, 2025
+**Versión:** v1.5.5  
+**Estado:** ✅ **PRODUCCIÓN - AUTOMATED CLEANUP + BACKFILL SYSTEM + GLOBAL DISCOVERY FILTERING**  
+**Última Actualización:** Enero 7, 2026
 
 ## 🎯 **Visión del Proyecto**
 
 Sistema automatizado de monitoreo y predicción de odds deportivos que proporciona **notificaciones inteligentes** y **predicciones basadas en patrones históricos**, permitiendo a los usuarios tomar decisiones informadas usando análisis de datos históricos y **extracción eficiente de odds** solo en momentos clave.
 
-## 🚀 **Estado Actual (v1.4.13)**
+## 🚀 **Estado Actual (v1.5.5)**
+
+### ✅ **NUEVO EN v1.5.5 - Automated Cleanup & Backfill System**
+- **404 Event Deletion**: Implementada eliminación automática de eventos que ya no existen en SofaScore (Error 404).
+- **Canceled Event Handling**: El sistema ahora detecta y elimina automáticamente eventos cancelados, pospuestos o suspendidos durante la recolección de resultados.
+- **Opt-in Safety**: El parámetro `delete_event_on_404` asegura que la eliminación solo ocurra en el endpoint `/event/{id}`, protegiendo datos legítimos de odds.
+- **Backfill Results Tool**: Nuevo script `backfill_results.py` integrado en `main.py` para recuperar resultados y odds faltantes desde Jan 1, 2026.
+- **Resume Capability**: El backfill guarda progreso en JSON y maneja errores 403 (Forbidden) deteniendo la ejecución de forma segura para reanudar luego.
+
+### ✅ **NUEVO EN v1.5.4 - Global Discovery Filtering**
+- **Shared Filtering Utility**: Implementada función `filter_upcoming_events` en `optimization.py` para uso centralizado.
+- **Comprehensive Coverage**: El filtro de 10 minutos ahora se aplica a:
+  - **Job Discovery A**: Dropping odds (endpoint `/all` y por deporte).
+  - **Job Discovery B**: High value streaks, Top H2H, y Winning odds.
+  - **Daily Discovery**: Mantenido en `today_sport_extractor.py`.
+- **Performance**: Evita procesar eventos inminentes en todos los flujos de descubrimiento, ahorrando recursos y reduciendo falsas alertas.
+
+### ✅ **NUEVO EN v1.5.3 - Daily Discovery Filtering**
+- **Upcoming Events Filter**: Nuevo paso de filtrado en `today_sport_extractor.py` que omite eventos que ya comenzaron o que están a menos de 10 minutos de empezar.
+- **Timezone Awareness**: Utiliza `timezone_utils.get_local_now_aware()` para comparar el timestamp actual con el `startTimestamp` del evento.
+- **Enhanced Reliability**: Evita procesar y alertar sobre eventos que son inminentes o que ya están en juego durante el descubrimiento diario.
+
+### ✅ **NUEVO EN v1.5.2 - Event Enrichment & Midnight Odds Sync**
+- **Enhanced Event Upsert**: `EventRepository.upsert_event` ahora permite actualizar `season_id` y `round` para eventos existentes.
+- **Discovery Source Priority**: Se preserva la fuente original de descubrimiento para evitar sobrescrituras accidentales, excepto para `dropping_odds` que mantiene prioridad máxima.
+- **Midnight Odds Sync**: La recolección de resultados (04:00 AM) ahora también sincroniza las odds finales y TODOS los mercados disponibles para los eventos finalizados.
+- **Market Integrity**: Asegura que los eventos descubiertos inicialmente con datos parciales (ej. desde dropping odds) se enriquezcan con información completa de temporada y mercados al finalizar.
+
+### ✅ **NUEVO EN v1.5.1 - Telegram Message Limit Fix**
+- **Robust Message Splitting**: Sistema que detecta mensajes que exceden el límite de 4096 caracteres de Telegram.
+- **HTML-Safe Logic**: Evita romper etiquetas HTML y divide los mensajes en saltos de línea naturales.
+- **Sequential Delivery**: Garantiza que los fragmentos se entreguen en el orden correcto.
 
 ### ✅ **NUEVO EN v1.5.0 - Dynamic Odds Storage & Smart Filtering**
 
@@ -169,6 +200,12 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Enhanced Statistics**: H2H stats + team form batched + winning odds + win rates por equipo, avg scores, current streak con nombres
 - **Enhanced Telegram**: Muestra H2H stats + team form batched + winning odds analysis + ranking prediction + all results con emojis
 - **Production Ready**: Validado con data real y manejo robusto de edge cases, null handling implementado
+- **DB-Based Form Retrieval**: Para temporadas recolectadas (NBA, La Liga, Premier League, NFL), usa `historical_standings.py`:
+  - **Multi-Season Support**: `COLLECTED_SEASON_IDS` soporta `additional_season_id` para NBA regular + NBA Cup.
+  - El helper `get_all_season_ids()` garantiza una cobertura completa al consultar todos los IDs relacionados.
+  - **PostgreSQL Optimization**: Uso de `= ANY(:season_ids)` en lugar de `IN` para manejo eficiente de arreglos de IDs de temporada.
+  - **Dual Route**: `get_team_last_results_by_id()` detecta automáticamente si usar DB o API basado en `is_season_collected()`.
+  - **Standings Integration**: Incluye posición en standings al momento de cada partido histórico.
 
 ### ✅ **PROCESS 1 - Sistema de Predicciones Inteligentes - COMPLETADO (v1.1)**
 **📋 Definición**: Process 1 es el sistema de análisis de patrones de odds que evalúa eventos históricos para predecir resultados futuros.

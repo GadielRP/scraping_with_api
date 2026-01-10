@@ -96,11 +96,13 @@ def get_nearest_event_for_team(self, team_id: int) -> Optional[int]:
 def get_event_details(self, event_id: int) -> Optional[Dict]:
     """Fetch full event details from the /event/{id} endpoint."""
     endpoint = f"/event/{event_id}"
-    response = self._make_request(endpoint)
+    # Enable automatic deletion for events that no longer exist (404)
+    response = self._make_request(endpoint, delete_event_on_404=True)
     
     if not response or 'event' not in response:
         return None
     return response['event']
+
 
 def get_live_events_response_per_sport(self, sport: str) -> Optional[Dict]:
     """Fetch live events response for a specific sport."""
