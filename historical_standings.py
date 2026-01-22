@@ -55,6 +55,15 @@ COLLECTED_SEASON_IDS: List[Dict] = [
     {"season_name": "NFL 2022", "season_id": 46786, "additional_season_id": None},
     {"season_name": "NFL 2021", "season_id": 36422, "additional_season_id": None},
     {"season_name": "NFL 2020", "season_id": 27719, "additional_season_id": None},
+    # MLB (Baseball) seasons
+    {"season_name": "MLB 2025", "season_id": 84695, "additional_season_id": None},
+    {"season_name": "MLB 2024", "season_id": 68611, "additional_season_id": None},
+    # NHL (Ice Hockey) seasons
+    {"season_name": "NHL 2025", "season_id": 78476, "additional_season_id": None},
+    # Serie A seasons
+    {"season_name": "Serie A 2025", "season_id": 76457, "additional_season_id": None},
+    # Bundesliga seasons
+    {"season_name": "Bundesliga 2025", "season_id": 77333, "additional_season_id": None},
 ]
 
 # ---------------------------------------------------------------------------
@@ -96,15 +105,62 @@ def get_all_season_ids(season_id: int) -> List[int]:
     return [season_id]
 
 
-# Sport detection based on season ID ranges (approximation)
-# NBA: 132 tournament, Football (La Liga): 8, Football (PL): 17, NFL: 9464
-NBA_SEASON_IDS = {80229, 84238, 65360, 69143, 54105, 56094, 45096, 38191, 34951}  # Includes NBA Cup IDs
-NFL_SEASON_IDS = {75522, 60592, 51361, 46786, 36422, 27719}
-FOOTBALL_SEASON_IDS = {77559, 61643, 52376, 42409, 37223, 32501,  # La Liga
-                       76986, 61627, 52186, 41886, 37036, 29415}  # Premier League
+# Sport detection based on season ID - derived from COLLECTED_SEASON_IDS
+# These sets are used for determining the points system and conference handling
+# They should include ALL seasons we have collected for that sport
+
+# NBA seasons (regular season + NBA Cup/In-Season Tournament)
+# NBA uses wins-only standings with conference splits (Eastern/Western)
+NBA_SEASON_IDS = {
+    80229, 84238,  # NBA 25/26 + NBA Cup 2025
+    65360, 69143,  # NBA 24/25 + NBA Cup 2024
+    54105, 56094,  # NBA 23/24 + NBA Cup 2023
+    45096,         # NBA 22/23
+    38191,         # NBA 21/22
+    34951,         # NBA 20/21
+}
+
+# NFL seasons
+# NFL uses wins-only standings with conference splits (AFC/NFC)
+NFL_SEASON_IDS = {
+    75522,  # NFL 2025
+    60592,  # NFL 2024
+    51361,  # NFL 2023
+    46786,  # NFL 2022
+    36422,  # NFL 2021
+    27719,  # NFL 2020
+}
+
+# Football (Soccer) seasons - La Liga, Premier League, Serie A, Bundesliga
+# Football uses 3pts-win/1pt-draw system with league-wide standings
+FOOTBALL_SEASON_IDS = {
+    # La Liga
+    77559, 61643, 52376, 42409, 37223, 32501,
+    # Premier League
+    76986, 61627, 52186, 41886, 37036, 29415,
+    # Serie A
+    76457,
+    # Bundesliga
+    77333,
+}
+
+# MLB (Baseball) seasons
+# Baseball uses wins-only standings (no divisions/conferences for simplicity)
+BASEBALL_MLB_SEASON_IDS = {
+    84695,  # MLB 2025
+    68611,  # MLB 2024
+}
+
+# NHL (Ice Hockey) seasons
+# Hockey uses wins-only standings (points could vary but wins is the primary metric)
+HOCKEY_NHL_SEASON_IDS = {
+    78476,  # NHL 2025
+}
+
+
 
 # ---------------------------------------------------------------------------
-# Conference/Division Mappings for NBA and NFL
+# Conference/Division Mappings for NBA, NFL, MLB, and NHL
 # ---------------------------------------------------------------------------
 
 NBA_EASTERN_CONFERENCE = {
@@ -135,6 +191,44 @@ NFL_NFC = {
     'San Francisco 49ers', 'Seattle Seahawks', 'Tampa Bay Buccaneers', 'Washington Commanders'
 }
 
+# MLB - American League (AL) and National League (NL)
+MLB_AMERICAN_LEAGUE = {
+    # AL East
+    'Baltimore Orioles', 'Boston Red Sox', 'New York Yankees', 'Tampa Bay Rays', 'Toronto Blue Jays',
+    # AL Central
+    'Chicago White Sox', 'Cleveland Guardians', 'Detroit Tigers', 'Kansas City Royals', 'Minnesota Twins',
+    # AL West
+    'Houston Astros', 'Los Angeles Angels', 'Oakland Athletics', 'Seattle Mariners', 'Texas Rangers'
+}
+
+MLB_NATIONAL_LEAGUE = {
+    # NL East
+    'Atlanta Braves', 'Miami Marlins', 'New York Mets', 'Philadelphia Phillies', 'Washington Nationals',
+    # NL Central
+    'Chicago Cubs', 'Cincinnati Reds', 'Milwaukee Brewers', 'Pittsburgh Pirates', 'St. Louis Cardinals',
+    # NL West
+    'Arizona Diamondbacks', 'Colorado Rockies', 'Los Angeles Dodgers', 'San Diego Padres', 'San Francisco Giants'
+}
+
+# NHL - Eastern and Western Conferences
+NHL_EASTERN_CONFERENCE = {
+    # Atlantic Division
+    'Boston Bruins', 'Buffalo Sabres', 'Detroit Red Wings', 'Florida Panthers',
+    'Montreal Canadiens', 'Ottawa Senators', 'Tampa Bay Lightning', 'Toronto Maple Leafs',
+    # Metropolitan Division
+    'Carolina Hurricanes', 'Columbus Blue Jackets', 'New Jersey Devils', 'New York Islanders',
+    'New York Rangers', 'Philadelphia Flyers', 'Pittsburgh Penguins', 'Washington Capitals'
+}
+
+NHL_WESTERN_CONFERENCE = {
+    # Central Division
+    'Arizona Coyotes', 'Chicago Blackhawks', 'Colorado Avalanche', 'Dallas Stars',
+    'Minnesota Wild', 'Nashville Predators', 'St. Louis Blues', 'Winnipeg Jets',
+    # Pacific Division
+    'Anaheim Ducks', 'Calgary Flames', 'Edmonton Oilers', 'Los Angeles Kings',
+    'San Jose Sharks', 'Seattle Kraken', 'Vancouver Canucks', 'Vegas Golden Knights'
+}
+
 
 def get_team_conference(team_name: str, sport_system: str) -> Optional[str]:
     """
@@ -142,10 +236,10 @@ def get_team_conference(team_name: str, sport_system: str) -> Optional[str]:
     
     Args:
         team_name: Name of the team
-        sport_system: 'nba' or 'nfl' or 'football'
+        sport_system: 'nba', 'nfl', 'mlb', 'nhl', or 'football'
         
     Returns:
-        Conference name or None
+        Conference/League name or None
     """
     if sport_system == 'nba':
         if team_name in NBA_EASTERN_CONFERENCE:
@@ -157,6 +251,16 @@ def get_team_conference(team_name: str, sport_system: str) -> Optional[str]:
             return 'AFC'
         elif team_name in NFL_NFC:
             return 'NFC'
+    elif sport_system == 'mlb':
+        if team_name in MLB_AMERICAN_LEAGUE:
+            return 'AL'
+        elif team_name in MLB_NATIONAL_LEAGUE:
+            return 'NL'
+    elif sport_system == 'nhl':
+        if team_name in NHL_EASTERN_CONFERENCE:
+            return 'Eastern'
+        elif team_name in NHL_WESTERN_CONFERENCE:
+            return 'Western'
     return None
 
 
@@ -187,11 +291,14 @@ def get_sport_points_system(season_id: int, sport: str = None) -> str:
         sport: Optional sport name for fallback
         
     Returns:
-        'wins_only' for NBA/NFL, 'football' for La Liga/Premier League
+        'wins_only' for NBA/NFL/MLB/NHL, 'football' for La Liga/Premier League/Serie A/Bundesliga
     """
     sid = int(season_id) if season_id else 0
     
+    # Check season ID sets in order
     if sid in NBA_SEASON_IDS or sid in NFL_SEASON_IDS:
+        return 'wins_only'
+    elif sid in BASEBALL_MLB_SEASON_IDS or sid in HOCKEY_NHL_SEASON_IDS:
         return 'wins_only'
     elif sid in FOOTBALL_SEASON_IDS:
         return 'football'
@@ -199,9 +306,9 @@ def get_sport_points_system(season_id: int, sport: str = None) -> str:
     # Fallback to sport name
     if sport:
         sport_lower = sport.lower()
-        if 'basketball' in sport_lower or 'american' in sport_lower:
+        if any(kw in sport_lower for kw in ['basketball', 'american football', 'baseball', 'hockey', 'ice hockey']):
             return 'wins_only'
-        elif 'football' in sport_lower or 'soccer' in sport_lower:
+        elif any(kw in sport_lower for kw in ['football', 'soccer']):
             return 'football'
     
     return 'wins_only'  # Default
@@ -272,8 +379,23 @@ class StandingsSimulator:
         # Determine if this is a conference-based sport
         is_nba = int(season_id) in NBA_SEASON_IDS
         is_nfl = int(season_id) in NFL_SEASON_IDS
-        use_conferences = is_nba or is_nfl
-        sport_system = 'nba' if is_nba else ('nfl' if is_nfl else 'football')
+        is_mlb = int(season_id) in BASEBALL_MLB_SEASON_IDS
+        is_nhl = int(season_id) in HOCKEY_NHL_SEASON_IDS
+        
+        # NBA, NFL, MLB, and NHL all use conference/league splits
+        use_conferences = is_nba or is_nfl or is_mlb or is_nhl
+        
+        # Determine sport system for conference lookup
+        if is_nba:
+            sport_system = 'nba'
+        elif is_nfl:
+            sport_system = 'nfl'
+        elif is_mlb:
+            sport_system = 'mlb'
+        elif is_nhl:
+            sport_system = 'nhl'
+        else:
+            sport_system = 'football'
         
         # Query all events in the season before the cutoff
         query = text("""

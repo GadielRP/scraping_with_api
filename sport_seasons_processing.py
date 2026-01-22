@@ -53,7 +53,12 @@ season_to_process = [
     {"season_name": "NFL 2023", "tournament_id": 9464, "season_id": 51361},
     {"season_name": "NFL 2022", "tournament_id": 9464, "season_id": 46786},
     {"season_name": "NFL 2021", "tournament_id": 9464, "season_id": 36422},
-    {"season_name": "NFL 2020", "tournament_id": 9464, "season_id": 27719}
+    {"season_name": "NFL 2020", "tournament_id": 9464, "season_id": 27719},
+    {"season_name": "MLB 2025", "tournament_id": 11205, "season_id": 84695},
+    {"season_name": "MLB 2024", "tournament_id": 11205, "season_id": 68611},
+    {"season_name": "NHL 2025", "tournament_id": 234, "season_id": 78476},
+    {"season_name": "SeriaA 2025", "tournament_id": 23, "season_id": 76457},
+    {"season_name": "Bundesliga 2025", "tournament_id": 35, "season_id": 77333}
 ]
 
 

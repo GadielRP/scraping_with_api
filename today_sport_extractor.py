@@ -248,7 +248,7 @@ class TodaySportExtractor:
             'basketball',
             'tennis',
             'baseball',
-            'hockey',
+            'ice-hockey',
             'american-football',
             'football',
         ]

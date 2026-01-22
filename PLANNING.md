@@ -200,12 +200,27 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Enhanced Statistics**: H2H stats + team form batched + winning odds + win rates por equipo, avg scores, current streak con nombres
 - **Enhanced Telegram**: Muestra H2H stats + team form batched + winning odds analysis + ranking prediction + all results con emojis
 - **Production Ready**: Validado con data real y manejo robusto de edge cases, null handling implementado
-- **DB-Based Form Retrieval**: Para temporadas recolectadas (NBA, La Liga, Premier League, NFL), usa `historical_standings.py`:
+- **DB-Based Form Retrieval**: Para temporadas recolectadas (NBA, La Liga, Premier League, NFL, MLB, NHL, Serie A, Bundesliga), usa `historical_standings.py`:
+  - **Collected Seasons (29 Total)**:
+    - **NBA**: 6 seasons (20/21 - 25/26) + 3 NBA Cup IDs (23-25)
+    - **NFL**: 6 seasons (2020 - 2025)
+    - **La Liga**: 6 seasons (2020 - 2025)
+    - **Premier League**: 6 seasons (2020 - 2025)
+    - **MLB**: 2 seasons (2024 - 2025)
+    - **NHL**: 1 season (2025)
+    - **Serie A / Bundesliga**: 2025 seasons
+  - **Conference/League Standings**: Teams ranked within their conference/league:
+    - **NBA**: Eastern / Western Conference (15 teams each)
+    - **NFL**: AFC / NFC (16 teams each)
+    - **MLB**: American League / National League (15 teams each)
+    - **NHL**: Eastern / Western Conference (16 teams each)
+    - **Football (Soccer)**: League-wide ranking (3pts win, 1pt draw)
   - **Multi-Season Support**: `COLLECTED_SEASON_IDS` soporta `additional_season_id` para NBA regular + NBA Cup.
   - El helper `get_all_season_ids()` garantiza una cobertura completa al consultar todos los IDs relacionados.
   - **PostgreSQL Optimization**: Uso de `= ANY(:season_ids)` en lugar de `IN` para manejo eficiente de arreglos de IDs de temporada.
   - **Dual Route**: `get_team_last_results_by_id()` detecta automáticamente si usar DB o API basado en `is_season_collected()`.
-  - **Standings Integration**: Incluye posición en standings al momento de cada partido histórico.
+  - **Standings Simulation**: `StandingsSimulator` class calcula standings históricos en cualquier punto del tiempo.
+  - **Conference Splits**: Incluye posición en standings dentro de su conferencia/liga al momento de cada partido histórico.
 
 ### ✅ **PROCESS 1 - Sistema de Predicciones Inteligentes - COMPLETADO (v1.1)**
 **📋 Definición**: Process 1 es el sistema de análisis de patrones de odds que evalúa eventos históricos para predecir resultados futuros.

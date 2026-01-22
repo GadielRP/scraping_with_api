@@ -245,15 +245,28 @@ class AlertMatch:
 - **Enhanced Telegram Alerts**: Muestra H2H stats + team form + winning odds + ranking prediction con emojis
 
 ### ✅ **DB-Based Team Form Retrieval (Optimización)**
-- **Collected Seasons**: Para temporadas completamente recolectadas (NBA 25/26, La Liga, Premier League, NFL), el sistema usa consultas a la base de datos local en lugar de llamadas API.
+- **Collected Seasons (29 Total)**: Para temporadas completamente recolectadas, el sistema usa consultas a la base de datos local en lugar de llamadas API:
+  - **NBA**: 6 seasons (20/21 - 25/26) + 3 NBA Cup IDs (23-25)
+  - **NFL**: 6 seasons (2020 - 2025)
+  - **La Liga**: 6 seasons (2020 - 2025)
+  - **Premier League**: 6 seasons (2020 - 2025)
+  - **MLB**: 2 seasons (2024 - 2025)
+  - **NHL**: 1 season (2025)
+  - **Serie A / Bundesliga**: 2025 seasons
+- **Conference/League Standings**: Teams ranked within their conference/league:
+  - **NBA**: Eastern / Western Conference (15 teams each)
+  - **NFL**: AFC / NFC (16 teams each)
+  - **MLB**: American League / National League (15 teams each)
+  - **NHL**: Eastern / Western Conference (16 teams each)
+  - **Football (Soccer)**: League-wide ranking (3pts win, 1pt draw)
 - **Multi-Season Support**: `COLLECTED_SEASON_IDS` soporta `additional_season_id` para temporadas compuestas (ej: NBA regular + NBA Cup).
   - El helper `get_all_season_ids()` garantiza que se consulten todos los IDs relacionados.
   - Pre-computed flat set `_ALL_COLLECTED_IDS` para O(1) lookups.
 - **Dual Route Architecture**: `streak_alerts.py → get_team_last_results_by_id()` detecta automáticamente si usar DB o API basado en `is_season_collected()`
-  - **Ruta 1 (DB)**: `historical_standings.py → get_team_form_from_db()` - Incluye standings históricos y soporte multi-season.
+  - **Ruta 1 (DB)**: `historical_standings.py → get_team_form_from_db()` - Incluye standings históricos con soporte multi-season y conference splits.
   - **Ruta 2 (API)**: `api_client.get_team_last_results_response()` - Para temporadas no recolectadas.
 - **PostgreSQL Optimization**: Las consultas DB usan `= ANY(:season_ids)` para buscar múltiples IDs de temporada de forma eficiente.
-- **Standings Integration**: La ruta DB incluye la posición del equipo y su oponente en el momento de cada partido histórico.
+- **Standings Simulation**: Calcula standings históricos en cualquier punto del tiempo usando `StandingsSimulator` class.
 - **Performance**: Reduce significativamente las llamadas API para temporadas populares y optimiza el uso de recursos locales.
 
 ### ✅ **Dropping Odds Discovery Source Priority (v1.4.10)**
