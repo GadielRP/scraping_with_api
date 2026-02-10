@@ -17,8 +17,58 @@ from datetime import datetime
 from config import Config
 
 # Setup logging early to ensure all modules use the correct configuration
+def _get_log_path():
+    """Build the dynamic log file path based on current local date (timezone-aware).
+    
+    Structure: logs/{MM_MonthName}/week_{N}/sofascore_odds.log
+    Week calculation: days 1-7 → week_1, 8-14 → week_2, 15-21 → week_3, 22-31 → week_4
+    """
+    from timezone_utils import get_local_now_aware
+    
+    MONTH_NAMES = [
+        '', '01_January', '02_February', '03_March', '04_April',
+        '05_May', '06_June', '07_July', '08_August',
+        '09_September', '10_October', '11_November', '12_December'
+    ]
+    
+    now = get_local_now_aware()
+    month_folder = MONTH_NAMES[now.month]
+    week_number = min((now.day - 1) // 7 + 1, 4)
+    
+    log_dir = os.path.join('logs', month_folder, f'week_{week_number}')
+    os.makedirs(log_dir, exist_ok=True)
+    return os.path.join(log_dir, 'sofascore_odds.log')
+
+
+class _WeeklyRotatingFileHandler(logging.FileHandler):
+    """File handler that auto-rotates into weekly/monthly directories.
+    
+    On each emit(), checks if the current local date has moved to a different
+    week/month. If so, closes the old file and opens a new one in the correct
+    directory. Cost is one lightweight date comparison per log line.
+    """
+    
+    def __init__(self, **kwargs):
+        self._current_path = _get_log_path()
+        super().__init__(self._current_path, **kwargs)
+    
+    def emit(self, record):
+        new_path = _get_log_path()
+        if new_path != self._current_path:
+            # Week/month changed — rotate to new file
+            self.close()
+            self._current_path = new_path
+            self.baseFilename = os.path.abspath(new_path)
+            self.stream = self._open()
+        super().emit(record)
+
+
 def setup_logging():
-    """Setup logging configuration"""
+    """Setup logging configuration with weekly-rotated log files.
+    
+    Logs are stored in: logs/{MM_MonthName}/week_{N}/sofascore_odds.log
+    Uses timezone_utils for Mexico City local time to determine the folder.
+    """
     # Clear any existing handlers to ensure clean setup
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:
@@ -32,11 +82,8 @@ def setup_logging():
     console_handler.setLevel(getattr(logging, Config.LOG_LEVEL))
     console_handler.setFormatter(formatter)
     
-    # Create logs directory if it doesn't exist
-    os.makedirs('logs', exist_ok=True)
-    
-    # Create file handler with UTF-8 encoding
-    file_handler = logging.FileHandler('logs/sofascore_odds.log', encoding='utf-8')
+    # Create weekly-rotating file handler with UTF-8 encoding
+    file_handler = _WeeklyRotatingFileHandler(mode='a', encoding='utf-8')
     file_handler.setLevel(getattr(logging, Config.LOG_LEVEL))
     file_handler.setFormatter(formatter)
     
