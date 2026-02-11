@@ -419,7 +419,11 @@ class StandingsSimulator:
                 'cutoff_dt': cutoff_dt
             })
             
-            for row in result:
+            # Fetch all rows to count them for debugging
+            all_rows = result.fetchall()
+            logger.info(f"🔍 STANDINGS DEBUG: Found {len(all_rows)} events in season {season_id} before {cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            for row in all_rows:
                 home_team = row.home_team
                 away_team = row.away_team
                 home_score = row.home_score
@@ -539,13 +543,123 @@ class HistoricalFormProcessor:
     def __init__(self):
         self.standings_simulator = StandingsSimulator()
     
+    def _format_standings_table_for_telegram(self, standings: Dict[str, Dict], title: str) -> str:
+        """Format standings table for Telegram message."""
+        message = f"📊 <b>{title}</b>\n\n"
+        
+        # Sort by position
+        sorted_standings = sorted(
+            standings.items(),
+            key=lambda x: x[1].get('position', 999)
+        )
+        
+        for team_name, stats in sorted_standings:
+            pos = stats.get('position', '?')
+            pts = stats.get('points', 0)
+            wins = stats.get('wins', 0)
+            draws = stats.get('draws', 0)
+            losses = stats.get('losses', 0)
+            gd = stats.get('goal_diff', 0)
+            gd_str = f"+{gd}" if gd > 0 else str(gd)
+            games = stats.get('games_played', 0)
+            
+            message += f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, {games} played) GD:{gd_str}\n"
+        
+        return message
+    
+    def _send_debug_telegram(self, message: str, chat_id: str):
+        """Send debug message to personal Telegram chat."""
+        import requests
+        from config import Config
+        
+        if not Config.TELEGRAM_BOT_TOKEN or not chat_id:
+            logger.debug("Telegram not configured for debug messages")
+            return
+        
+        try:
+            url = f"https://api.telegram.org/bot{Config.TELEGRAM_BOT_TOKEN}/sendMessage"
+            payload = {
+                'chat_id': chat_id,
+                'text': message,
+                'parse_mode': 'HTML'
+            }
+            response = requests.post(url, json=payload, timeout=10)
+            if response.status_code == 200:
+                logger.info(f"✅ Debug standings sent to personal chat")
+            else:
+                logger.warning(f"Failed to send debug standings: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error sending debug Telegram: {e}")
+    
+    def _get_round_cutoff_timestamps(self, season_id: int, rounds: List[int]) -> Dict[int, float]:
+        """
+        Find the timestamp when ALL teams in the season have completed exactly N games.
+        
+        Scans events chronologically, tracks per-team game counts, and records 
+        the timestamp of the event that completes a round (i.e., when the last 
+        team reaches N games played).
+        
+        Args:
+            season_id: Season ID to query
+            rounds: List of round numbers to find (e.g., [5, 10, 15, 20, 25])
+            
+        Returns:
+            Dict mapping round number -> cutoff timestamp (right after the last game of that round)
+        """
+        query = text("""
+            SELECT 
+                home_team, 
+                away_team, 
+                start_time_utc
+            FROM season_events_with_results
+            WHERE season_id = :season_id
+            ORDER BY start_time_utc ASC
+        """)
+        
+        team_game_counts: Dict[str, int] = {}
+        round_cutoffs: Dict[int, float] = {}
+        max_round = max(rounds)
+        
+        with db_manager.get_session() as session:
+            result = session.execute(query, {'season_id': season_id})
+            all_rows = result.fetchall()
+            
+            logger.info(f"🔍 ROUND CUTOFF: Scanning {len(all_rows)} events in season {season_id} for rounds {rounds}")
+            
+            for row in all_rows:
+                home_team = row.home_team
+                away_team = row.away_team
+                event_ts = row.start_time_utc.timestamp()
+                
+                # Increment game counts
+                team_game_counts[home_team] = team_game_counts.get(home_team, 0) + 1
+                team_game_counts[away_team] = team_game_counts.get(away_team, 0) + 1
+                
+                # Check if all teams have reached exactly N games for any pending round
+                if team_game_counts:
+                    min_games = min(team_game_counts.values())
+                    
+                    for round_num in rounds:
+                        if round_num not in round_cutoffs and min_games >= round_num:
+                            # Use timestamp right after this event (+1 second) so
+                            # compute_standings includes this game
+                            round_cutoffs[round_num] = event_ts + 1
+                            logger.info(f"🔍 ROUND CUTOFF: Round {round_num} completed at {row.start_time_utc} ({len(team_game_counts)} teams)")
+                
+                # Stop if we've found all rounds
+                if len(round_cutoffs) == len(rounds):
+                    break
+        
+        return round_cutoffs
+    
     def get_team_form_from_db(
         self,
         team_name: str,
         season_id: int,
         sport: str,
         exclude_event_id: int = None,
-        current_event_timestamp: float = None
+        current_event_timestamp: float = None,
+        send_debug_standings: bool = False
     ) -> Tuple[List[Dict], int]:
         """
         Get team's past results from the database with standings at each game.
@@ -664,6 +778,41 @@ class HistoricalFormProcessor:
                     break
             
             logger.info(f"📊 DB-based form: {team_name} - {len(results)} games from season {season_id}, win streak: {win_streak}")
+            
+            # Send debug standings at 5-game intervals (round-based) and current standings
+            if send_debug_standings:
+                import os
+                personal_chat_id = os.getenv('PERSONAL_CHAT_ID', '')
+                
+                if personal_chat_id:
+                    # Find round-based cutoffs: when ALL teams have played 5, 10, 15, 20, 25 games
+                    rounds_to_check = [5, 10, 15, 20, 25]
+                    round_cutoffs = self._get_round_cutoff_timestamps(season_id, rounds_to_check)
+                    
+                    for round_num in sorted(round_cutoffs.keys()):
+                        cutoff_ts = round_cutoffs[round_num]
+                        cutoff_date = datetime.fromtimestamp(cutoff_ts).strftime('%Y-%m-%d')
+                        
+                        # Compute standings at the round cutoff
+                        standings = self.standings_simulator.compute_standings(
+                            season_id, cutoff_ts, sport
+                        )
+                        
+                        title = f"Round {round_num} Standings ({cutoff_date})"
+                        message = self._format_standings_table_for_telegram(standings, title)
+                        self._send_debug_telegram(message, personal_chat_id)
+                    
+                    # Send current/final standings (at the moment of the upcoming event)
+                    if current_event_timestamp:
+                        current_standings = self.standings_simulator.compute_standings(
+                            season_id, current_event_timestamp, sport
+                        )
+                        current_date = datetime.fromtimestamp(current_event_timestamp).strftime('%Y-%m-%d %H:%M')
+                        title = f"CURRENT Standings (at {current_date})"
+                        message = self._format_standings_table_for_telegram(current_standings, title)
+                        self._send_debug_telegram(message, personal_chat_id)
+                else:
+                    logger.warning("PERSONAL_CHAT_ID not configured - skipping debug standings")
             
             return results, win_streak
             

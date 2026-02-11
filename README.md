@@ -237,7 +237,7 @@ class AlertMatch:
 
 ### ✅ **H2H Streak Alerts**
 - **H2H Analysis**: Analiza head-to-head histórico entre equipos (últimos 2 años)
-- **Team Form Integration**: Incluye últimos 10 juegos de cada equipo (W-L-D) con formato de lotes de 5
+- **Historical Form**: Incluye últimos juegos con resultados de cada equipo (W-L-D) y standing # con formato de lotes de 5 (dependiendo del evento y su season_id recrea tabla de posiciones por cada fecha/evento y muestra el standing de los participiantes *DB-Based Team Form Retrieval (Optimización)* o solo muestra los resultados pasados sin standings )
 - **Ranking Prediction (Tennis)**: Predicción basada en rankings finales y puntos totales históricos
   - Muestra ranking advantage (diferencia entre mejor y peor ranking)
   - Calcula predicción usando diferencia de puntos totales (no puntos por juego)

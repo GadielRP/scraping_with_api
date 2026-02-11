@@ -66,6 +66,7 @@ class Config:
     # Telegram Settings
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
     TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
+    PERSONAL_CHAT_ID = os.getenv('PERSONAL_CHAT_ID', '')  # For debug messages
     
     # Proxy configuration
     PROXY_ENABLED = os.getenv('PROXY_ENABLED', 'false').lower() == 'true'

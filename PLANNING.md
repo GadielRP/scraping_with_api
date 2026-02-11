@@ -182,7 +182,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 ### ✅ **NUEVO EN v1.4.3 - H2H Streak Alerts (ENHANCED)**
 - **H2H Analysis**: Sistema de análisis de rachas head-to-head entre equipos
 - **Team-Relative Tracking**: Sigue victorias por equipo real (no por posición home/away que cambia históricamente)
-- **Team Form Integration**: Incluye últimos 10 juegos de cada equipo (W-L-D) usando `/team/{id}/events/last/0`
+- **Historical Form**: Incluye últimos juegos con resultados de cada equipo (W-L-D) y standing # con formato de lotes de 5 (dependiendo del evento y su season_id recrea tabla de posiciones por cada fecha/evento y muestra el standing de los participiantes *DB-Based Team Form Retrieval (Optimización)* o solo muestra los resultados pasados sin standings ) usando `/team/{id}/events/last/0` e incrementando el 0 final mientras busca mas resultados.
 - **Batched Team Form Display**: Muestra forma del equipo en lotes de 5 partidos con estadísticas individuales
 - **Winning Odds Analysis**: Integra análisis de odds ganadoras con expected vs actual performance
 - **Ranking Prediction (Tennis)**: Sistema de predicción basado en rankings finales y puntos totales históricos

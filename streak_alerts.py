@@ -623,7 +623,8 @@ class StreakAlertEngine:
                 season_id=int(season_id),
                 sport=sport,
                 exclude_event_id=exclude_event_id,
-                current_event_timestamp=event_start_timestamp
+                current_event_timestamp=event_start_timestamp,
+                send_debug_standings=True  # Enable debug mode
             )
         
         # =====================================================================
