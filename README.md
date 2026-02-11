@@ -24,7 +24,7 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Canceled Event Deletion**: Los eventos con estados de Cancelado, Pospuesto o Suspendido se eliminan automáticamente durante la recolección de resultados.
 - **Backfill Results**: Nueva herramienta para procesar retroactivamente eventos que no tienen resultados o odds, con capacidad de reanudar progreso.
 
-### ✅ **PROCESS 1 - Sistema de Predicciones Inteligentes (v1.1) - COMPLETADO**
+### ✅ ** DUAL PROCESS -> PROCESS 1 - Sistema de Predicciones Inteligentes (v1.1) - COMPLETADO**
 **📋 Definición**: Process 1 es el sistema de análisis de patrones de odds que evalúa eventos históricos para predecir resultados futuros.
 
 #### **🏗️ Arquitectura Process 1:**
@@ -87,7 +87,7 @@ class AlertMatch:
     two_final: float = 0.0           # Odds finales away
 ```
 
-### ✅ **PROCESS 2 - Sistema de Reglas Específicas por Deporte - IMPLEMENTADO (v1.3)**
+### ✅ **DUAL PROCESS -> PROCESS 2 - Sistema de Reglas Específicas por Deporte - IMPLEMENTADO (v1.3)**
 **📋 Definición**: Process 2 es un sistema de reglas específicas por deporte que complementa Process 1 con análisis deportivo especializado usando fórmulas matemáticas específicas.
 
 #### **🏗️ Arquitectura Process 2:**
