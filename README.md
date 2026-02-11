@@ -219,7 +219,7 @@ class AlertMatch:
 - **Detección Automática**: Compara timestamps de la API con la base de datos
 - **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
 - **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos antes)
-- **Late Timestamp Correction (NUEVO v1.4.6)**: Verifica eventos que comenzaron hace 0-5 minutos para detectar correcciones tardías
+- **Late Timestamp Correction (NUEVO v1.4.6)**: Verifica eventos recién iniciados para detectar correcciones tardías (Tennis: ventana de 60 min, otros deportes: ventana de 15 min)
 - **Precisión de Microsegundos**: Manejo robusto de comparaciones de tiempo eliminando problemas de microsegundos
 - **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
 - **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
@@ -236,7 +236,7 @@ class AlertMatch:
 - **Ejemplo**: `discovery_source` column añadida automáticamente en v1.4
 
 ### ✅ **H2H Streak Alerts**
-- **H2H Analysis**: Analiza head-to-head histórico entre equipos (últimos 2 años)
+- **H2H Analysis**: Analiza head-to-head histórico entre equipos (últimos 2 años), se ejecuta solo a los 30 minutos antes del inicio (una vez por evento)
 - **Historical Form**: Incluye últimos juegos con resultados de cada equipo (W-L-D) y standing # con formato de lotes de 5 (dependiendo del evento y su season_id recrea tabla de posiciones por cada fecha/evento y muestra el standing de los participiantes *DB-Based Team Form Retrieval (Optimización)* o solo muestra los resultados pasados sin standings )
 - **Ranking Prediction (Tennis)**: Predicción basada en rankings finales y puntos totales históricos
   - Muestra ranking advantage (diferencia entre mejor y peor ranking)
@@ -366,13 +366,14 @@ python main.py results-all
 2. **00:00-22:00**: Descubrimiento cada 2 horas (dropping odds)
 3. **Cada 5 min**: Verificación de juegos próximos
 4. **Momentos Clave**: Extracción de odds a los 30 y 5 minutos
-5. **Corrección de Timestamps**: Verificación y actualización automática (si está habilitada)
-6. **Análisis de Patrones**: Evaluación de alertas basadas en historial
-7. **Notificaciones Agrupadas por Evento**: Para cada evento en momentos clave (30 o 5 min), se envían alertas en orden:
+5. **Corrección de Timestamps**: Verificación y actualización automática (Tennis: 60 min, otros: 15 min después del inicio)
+6. **NBA In-Game Alerts**: Verifica juegos NBA que comenzaron hace 105-140 minutos para detectar el inicio del 4to cuarto
+7. **Análisis de Patrones**: Evaluación de alertas basadas en historial
+8. **Notificaciones Agrupadas por Evento**: Para cada evento en momentos clave (30 o 5 min), se envían alertas en orden:
    - **Odds Alert**: Todos los mercados disponibles (si pasa el filtro de bajo valor).
-   - **Dual Process Alert**: Predicciones Process 1 + Process 2.
-   - **H2H Streak Alert**: Análisis histórico head-to-head (puede resucitar eventos filtrados).
-8. **04:00**: Recolección de resultados, sincronización final de odds/mercados y **limpieza automática de eventos inexistentes/cancelados**.
+   - **H2H Streak Alert**: Análisis histórico head-to-head (solo a los 30 min, puede resucitar eventos filtrados).
+   - **Dual Process Alert**: Predicciones Process 1 + Process 2 (solo para eventos `dropping_odds`).
+9. **04:00**: Recolección de resultados, sincronización final de odds/mercados y **limpieza automática de eventos inexistentes/cancelados**.
 
 ### **Sistema de Predicciones - ¿Qué hace un Candidato?**
 
@@ -445,6 +446,7 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 - **`prediction_engine.py`**: Orchestrador dual process con lógica de comparación
 - **`alert_system.py`**: Sistema de notificaciones Telegram con reportes duales y odds display
 - **`odds_alert.py`**: Sistema de alertas de odds completas con todos los mercados disponibles (NUEVO v1.4.13)
+- **`set_prediction_system.py`**: Sistema de alertas in-game para NBA (detección de 4to cuarto)
 - **`database.py`**: Gestión de base de datos
 - **`repository.py`**: Acceso a datos optimizado
 - **`config.py`**: Configuración centralizada

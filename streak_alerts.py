@@ -624,7 +624,7 @@ class StreakAlertEngine:
                 sport=sport,
                 exclude_event_id=exclude_event_id,
                 current_event_timestamp=event_start_timestamp,
-                send_debug_standings=True  # Enable debug mode
+                send_debug_standings=False  # Toggle: set True to send debug standings to personal chat
             )
         
         # =====================================================================

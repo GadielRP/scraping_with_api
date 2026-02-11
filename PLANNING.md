@@ -112,8 +112,8 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Code Cleanup**: Removida lógica duplicada de initialize_system()
 
 ### ✅ **NUEVO EN v1.4.6 - Late Timestamp Correction**
-- **Late Correction Check**: Sistema que verifica eventos que comenzaron hace 0-5 minutos para detectar correcciones tardías de timestamps
-- **Architecture**: Nueva función `get_events_started_recently()` en `repository.py` que consulta base de datos con ventana de 5 minutos
+- **Late Correction Check**: Sistema que verifica eventos recién iniciados para detectar correcciones tardías (Tennis: 60 min, otros: 15 min)
+- **Architecture**: Función `get_events_started_recently()` en `repository.py` con ventana de 60 minutos y filtrado por deporte
 - **Microsecond Precision**: Manejo robusto eliminando problemas de microsegundos en comparaciones de datetime
 - **API Integration**: Modificado `get_event_results()` para enviar alertas cuando `minutes_until_start < 0` (eventos ya comenzados)
 - **Scheduler Integration**: Job de pre-start check ahora incluye STEP 1 para verificar eventos recientemente comenzados
@@ -195,7 +195,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Proven Logic Reuse**: Importa y reutiliza `api_client.extract_results_from_response()`
 - **2-Year Window**: Analiza matches históricos de los últimos 2 años
 - **Flexible Display**: Muestra todos los resultados dentro de ventana de 2 años
-- **Integrated Flow**: Se ejecuta en momentos clave (30, 5 min) antes de dual process alerts
+- **Integrated Flow**: Se ejecuta solo a los 30 minutos antes del inicio (una vez por evento)
 - **Enhanced Implementation**: ~470 líneas en `streak_alerts.py`, incluye team results + winning odds processing
 - **Enhanced Statistics**: H2H stats + team form batched + winning odds + win rates por equipo, avg scores, current streak con nombres
 - **Enhanced Telegram**: Muestra H2H stats + team form batched + winning odds analysis + ranking prediction + all results con emojis
@@ -369,7 +369,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 ### ✅ **Odds Alert System - COMPLETADO (v1.4.13)**
 - **Complete Market Extraction**: Extrae todos los mercados disponibles del response de odds
 - **Market Types**: Full time, Quarter/Period winners, Half time, Point spread, Game total, y más
-- **Grouped Per Event**: Alertas enviadas en secuencia lógica: Odds → Dual → H2H por evento
+- **Grouped Per Event**: Alertas enviadas en secuencia lógica: Odds → H2H (solo 30 min) → Dual por evento
 - **Real Market Names**: Usa nombres reales de mercados desde la API (no categorías fijas)
 - **Discovery Source**: Muestra fuente de descubrimiento en cada alerta
 - **Movement Indicators**: Muestra cambios de odds con flechas (↑↓=)
@@ -391,7 +391,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Detección Automática**: Compara timestamps de la API con la base de datos
 - **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
 - **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos antes)
-- **Late Timestamp Correction (v1.4.6)**: Verifica eventos que comenzaron hace 0-5 minutos para detectar correcciones tardías
+- **Late Timestamp Correction (v1.4.6)**: Verifica eventos recién iniciados para detectar correcciones tardías (Tennis: 60 min, otros: 15 min)
 - **Microsecond Precision**: Manejo robusto eliminando problemas de microsegundos en comparaciones de datetime
 - **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
 - **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
@@ -481,10 +481,10 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Estado**: 🟢 **EN PRODUCCIÓN - FEATURE NUEVO IMPLEMENTADO**
 
 ### **v1.4.6 (Octubre 2025) - LATE TIMESTAMP CORRECTION - DESPLEGADO** ✅
-- **Late Correction Check**: Sistema que verifica eventos que comenzaron hace 0-5 minutos para detectar correcciones tardías
+- **Late Correction Check**: Sistema que verifica eventos recién iniciados para detectar correcciones tardías (Tennis: 60 min, otros deportes: 15 min)
 - **Issue Resuelto**: Correcciones de timestamps que ocurrían después del inicio del juego ahora se detectan
 - **Root Cause**: Sistema anterior solo verificaba timestamps 1 minuto antes del inicio, perdiendo correcciones tardías
-- **Solución**: Nueva función `get_events_started_recently()` con ventana de 5 minutos y manejo robusto de microsegundos
+- **Solución**: Función `get_events_started_recently()` con ventana de 60 minutos y filtrado por deporte + manejo robusto de microsegundos
 - **API Integration**: Modificado `get_event_results()` para enviar alertas cuando `minutes_until_start < 0`
 - **Testing**: Validado exitosamente con 2 eventos, 2 correcciones detectadas y 2 alertas enviadas
 - **Production Ready**: Sistema 100% funcional detectando correcciones tardías de timestamps
