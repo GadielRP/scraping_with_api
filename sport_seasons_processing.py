@@ -186,6 +186,7 @@ def process_season(tournament_id: int, season_id: int):
     processed_count = 0
     skipped_count = 0
     markets_processed_count = 0
+    markets_skipped_count = 0
     results_processed_count = 0
     
     for event_data in events:
@@ -197,22 +198,30 @@ def process_season(tournament_id: int, season_id: int):
                 processed_count += 1
                 logger.debug(f"✅ Event {event_data['id']} upserted: {event_data.get('homeTeam')} vs {event_data.get('awayTeam')}")
                 
-                # Fetch and save ALL markets using MarketRepository (new flow)
-                try:
-                    final_odds_response = api_client.get_event_final_odds(event_data['id'], event_data.get('slug'))
-                    
-                    if final_odds_response:
-                        # Save all markets using the new market-based flow
-                        saved_markets = MarketRepository.save_markets_from_response(event_data['id'], final_odds_response)
-                        if saved_markets > 0:
-                            markets_processed_count += 1
-                            logger.debug(f"✅ Saved {saved_markets} markets for event {event_data['id']}")
+                # Check if event already has markets stored before fetching odds
+                existing_market_count = MarketRepository.get_market_count(event_data['id'])
+                
+                if existing_market_count > 0:
+                    # Event already has markets stored, skip odds fetching
+                    markets_skipped_count += 1
+                    logger.debug(f"⏭️ Event {event_data['id']} already has {existing_market_count} markets stored, skipping odds fetch")
+                else:
+                    # Fetch and save ALL markets using MarketRepository (new flow)
+                    try:
+                        final_odds_response = api_client.get_event_final_odds(event_data['id'], event_data.get('slug'))
+                        
+                        if final_odds_response:
+                            # Save all markets using the new market-based flow
+                            saved_markets = MarketRepository.save_markets_from_response(event_data['id'], final_odds_response)
+                            if saved_markets > 0:
+                                markets_processed_count += 1
+                                logger.debug(f"✅ Saved {saved_markets} markets for event {event_data['id']}")
+                            else:
+                                logger.debug(f"No markets saved for event {event_data['id']}")
                         else:
-                            logger.debug(f"No markets saved for event {event_data['id']}")
-                    else:
-                        logger.debug(f"No odds response for event {event_data['id']}")
-                except Exception as e:
-                    logger.error(f"Error processing markets for event {event_data['id']}: {e}")
+                            logger.debug(f"No odds response for event {event_data['id']}")
+                    except Exception as e:
+                        logger.error(f"Error processing markets for event {event_data['id']}: {e}")
                 
                 # Extract and upsert results for this event (using already-fetched data)
                 try:
@@ -250,6 +259,7 @@ def process_season(tournament_id: int, season_id: int):
     logger.info(f"Processed: {processed_count}/{len(events)} events")
     logger.info(f"Skipped: {skipped_count} events")
     logger.info(f"Markets processed: {markets_processed_count}/{processed_count} events")
+    logger.info(f"Markets skipped (already stored): {markets_skipped_count}/{processed_count} events")
     logger.info(f"Results processed: {results_processed_count}/{processed_count} events")
     logger.info("=" * 80)
 

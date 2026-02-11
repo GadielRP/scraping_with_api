@@ -177,6 +177,17 @@ def run_results_collection_all():
     logger.info("Running comprehensive results collection...")
     job_scheduler.run_job_results_collection_all_now()
 
+def run_results_for_date(date_str: str):
+    """Run results collection for a specific date (yyyy-mm-dd)"""
+    logger = logging.getLogger(__name__)
+    try:
+        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        logger.error(f"Invalid date format: '{date_str}'. Use yyyy-mm-dd format.")
+        sys.exit(1)
+    logger.info(f"Running results collection for date: {target_date}")
+    job_scheduler.run_job_results_collection_for_date_now(target_date)
+
 def run_daily_discovery():
     """Run daily discovery job (today's scheduled events with odds)"""
     logger = logging.getLogger(__name__)
@@ -390,10 +401,11 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='SofaScore Odds Alert System')
     parser.add_argument('command', choices=[
-        'start', 'discovery', 'discovery2', 'pre-start', 'midnight', 'results', 'results-all', 'daily-discovery', 
+        'start', 'discovery', 'discovery2', 'pre-start', 'midnight', 'results', 'results-date', 'results-all', 'daily-discovery', 
         'backfill-results', 'status', 'events', 'alerts', 'refresh-alerts'
     ], help='Command to run')
     parser.add_argument('--limit', type=int, default=10, help='Limit for events display')
+    parser.add_argument('--date', type=str, default=None, help='Target date in yyyy-mm-dd format (for results-date command)')
     
     args = parser.parse_args()
     
@@ -438,6 +450,15 @@ def main():
         elif args.command == 'results':
             if initialize_system():
                 run_results_collection()
+            else:
+                logger.error("Failed to initialize system")
+                sys.exit(1)
+        elif args.command == 'results-date':
+            if not args.date:
+                logger.error("--date argument is required for results-date command (format: yyyy-mm-dd)")
+                sys.exit(1)
+            if initialize_system():
+                run_results_for_date(args.date)
             else:
                 logger.error("Failed to initialize system")
                 sys.exit(1)

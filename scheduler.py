@@ -1803,6 +1803,62 @@ class JobScheduler:
         """Run Job E immediately"""
         logger.info("Running Job E immediately")
         self.job_results_collection()
+
+    def job_results_collection_for_date(self, target_date):
+        """Job E (date-specific): Collect results for finished events from a specific date"""
+        logger.info(f"Starting results collection for date: {target_date}")
+        
+        try:
+            events = EventRepository.get_events_by_date(target_date)
+            
+            if not events:
+                logger.info(f"No events found for {target_date}")
+                return
+            
+            # Update final odds for all events from the target date
+            odds_updated_count = 0
+            for event_data in events:
+                try:
+                    final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
+                    if final_odds_response:
+                        final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
+                        if final_odds_data:
+                            upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
+                            if upserted_id:
+                                snapshot = OddsRepository.create_odds_snapshot(event_data.id, final_odds_data)
+                                if snapshot:
+                                    odds_updated_count += 1
+                                    logger.info(f"✅ Final odds updated for {event_data.home_team} vs {event_data.away_team}")
+                                
+                                # Save all markets to new markets/market_choices tables
+                                try:
+                                    from repository import MarketRepository
+                                    MarketRepository.save_markets_from_response(event_data.id, final_odds_response)
+                                except Exception as e:
+                                    logger.warning(f"Error saving markets to DB for event {event_data.id}: {e}")
+                            else:
+                                logger.warning(f"Failed to update final odds for event {event_data.id}")
+                        else:
+                            logger.warning(f"No final odds data extracted for event {event_data.id}")
+                    else:
+                        logger.debug(f"No final odds response for event {event_data.id}")
+                except Exception as e:
+                    logger.warning(f"Error updating odds for event {event_data.id}: {e}")
+                    continue
+            
+            logger.info(f"📊 Final odds updated for {odds_updated_count}/{len(events)} events")
+
+            logger.info(f"Processing {len(events)} events from {target_date}")
+            stats = self._collect_results_for_events(events, f"Results Collection ({target_date})")
+            logger.info(f"Results collection for {target_date} completed: {stats['updated']} updated, {stats['skipped']} skipped, {stats['failed']} failed")
+            
+        except Exception as e:
+            logger.error(f"Error in results collection for {target_date}: {e}")
+
+    def run_job_results_collection_for_date_now(self, target_date):
+        """Run date-specific results collection immediately"""
+        logger.info(f"Running results collection for {target_date} immediately")
+        self.job_results_collection_for_date(target_date)
     
     def run_job_results_collection_all_now(self):
         """Run Job E2 immediately"""
