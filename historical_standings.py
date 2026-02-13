@@ -330,7 +330,8 @@ class StandingsSimulator:
         self, 
         season_id: int, 
         cutoff_timestamp: float,
-        sport: str = None
+        sport: str = None,
+        send_debug_standings: bool = False
     ) -> Dict[str, Dict]:
         """
         Compute standings as they were at a specific point in time.
@@ -357,7 +358,7 @@ class StandingsSimulator:
             return self._cache[cache_key]
         
         try:
-            standings = self._compute_standings_internal(season_id, cutoff_timestamp, sport)
+            standings = self._compute_standings_internal(season_id, cutoff_timestamp, sport, send_debug_standings)
             self._cache[cache_key] = standings
             return standings
         except Exception as e:
@@ -368,7 +369,8 @@ class StandingsSimulator:
         self,
         season_id: int,
         cutoff_timestamp: float,
-        sport: str
+        sport: str,
+        send_debug_standings: bool = False
     ) -> Dict[str, Dict]:
         """Internal method to compute standings from database."""
         
@@ -421,7 +423,8 @@ class StandingsSimulator:
             
             # Fetch all rows to count them for debugging
             all_rows = result.fetchall()
-            logger.info(f"🔍 STANDINGS DEBUG: Found {len(all_rows)} events in season {season_id} before {cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+            if send_debug_standings:
+                logger.info(f"🔍 STANDINGS DEBUG: Found {len(all_rows)} events in season {season_id} before {cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')}")
             
             for row in all_rows:
                 home_team = row.home_team
@@ -488,16 +491,29 @@ class StandingsSimulator:
             
             # Rank within each conference
             for conf, teams in conferences.items():
-                sorted_teams = sorted(
-                    teams,
-                    key=lambda x: (x[1]['points'], x[1]['goal_diff'], x[1]['wins']),
-                    reverse=True
-                )
+                # NBA uses PCT (win percentage) as primary ranking metric
+                if is_nba:
+                    sorted_teams = sorted(
+                        teams,
+                        key=lambda x: (
+                            x[1]['wins'] / max(x[1]['games_played'], 1),  # PCT
+                            x[1]['wins'],
+                            x[1]['goal_diff']
+                        ),
+                        reverse=True
+                    )
+                else:
+                    sorted_teams = sorted(
+                        teams,
+                        key=lambda x: (x[1]['points'], x[1]['goal_diff'], x[1]['wins']),
+                        reverse=True
+                    )
                 
                 for position, (team_name, stats) in enumerate(sorted_teams, start=1):
                     standings[team_name] = {
                         'position': position,
                         'points': stats['points'],
+                        'pct': round(stats['wins'] / max(stats['games_played'], 1), 3) if is_nba else None,
                         'wins': stats['wins'],
                         'losses': stats['losses'],
                         'draws': stats['draws'],
@@ -562,8 +578,13 @@ class HistoricalFormProcessor:
             gd = stats.get('goal_diff', 0)
             gd_str = f"+{gd}" if gd > 0 else str(gd)
             games = stats.get('games_played', 0)
+            pct = stats.get('pct')
             
-            message += f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, {games} played) GD:{gd_str}\n"
+            if pct is not None:
+                # NBA-style: .XXX (WW-LL) with point diff
+                message += f"#{pos} {team_name}: .{int(pct*1000):03d} ({wins}W-{losses}L) PD:{gd_str}\n"
+            else:
+                message += f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, {games} played) GD:{gd_str}\n"
         
         return message
     
@@ -743,7 +764,7 @@ class HistoricalFormProcessor:
                     # Get standings at the moment of this game
                     game_timestamp = row.start_time_utc.timestamp()
                     standings = self.standings_simulator.compute_standings(
-                        season_id, game_timestamp, sport
+                        season_id, game_timestamp, sport, send_debug_standings
                     )
                     
                     team_standing = standings.get(team_name, {})

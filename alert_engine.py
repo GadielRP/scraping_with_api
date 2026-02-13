@@ -951,38 +951,61 @@ class AlertEngine:
             # Calculate weighted confidence based on PRIORITY-BASED tier assignments
             tier_assignments = self._get_candidates_by_rule_tiers(selected_candidates)
             
-            # Calculate confidence using each candidate's HIGHEST priority tier only
-            weighted_successes = (len(tier_assignments['A']) * RULE_WEIGHTS['A'] + 
-                                len(tier_assignments['B']) * RULE_WEIGHTS['B'] + 
-                                len(tier_assignments['C']) * RULE_WEIGHTS['C'])
-            max_possible_weight = len(selected_candidates) * MAX_WEIGHT
-            confidence = (weighted_successes / max_possible_weight) * 100 if max_possible_weight > 0 else 0
-            confidence = round(confidence, 1)  # Round to 1 decimal place to avoid precision issues
+            # DIRECTIONAL AGREEMENT CHECK: All activated tiers must agree on winner side
+            # If any activated tier points to a different winner, downgrade to no_match
+            all_activated_winner_sides = set()
+            for tier_name, tier_matches in tier_assignments.items():
+                for m in tier_matches:
+                    all_activated_winner_sides.add(m.winner_side)
             
-            # Use the highest priority rule that has the most matches for prediction
-            if tier_a_matches > 0:
-                # Create prediction based on Tier A matches even if not all candidates match
-                prediction_result = self._create_mixed_prediction(selected_candidates, 'identical', tier_a_matches)
-                logger.info(f"✅ Rule A matched: {tier_a_matches}/{len(selected_candidates)} candidates have identical results")
-            elif tier_b_matches > 0:
-                prediction_result = rule_b_result
-                logger.info(f"✅ Rule B matched: {tier_b_matches}/{len(selected_candidates)} candidates have similar results")
-            elif tier_c_matches > 0:
-                prediction_result = rule_c_result
-                logger.info(f"✅ Rule C matched: {tier_c_matches}/{len(selected_candidates)} candidates have same winning side")
-            
-            successful_candidates = len(selected_candidates)
-            total_candidates = len(selected_candidates)
-            
-            # Check if a prediction was actually generated
-            if prediction_result is not None:
-                status = 'success'
-                logger.info(f"🔍 DEBUG: Status: {status}")
-            else:
-                # All candidates processed but no prediction generated (insufficient candidates for any tier)
-                status = 'partial'
+            if len(all_activated_winner_sides) > 1:
+                # CONFLICT: Activated tiers disagree on winner side - no reliable prediction
+                status = 'no_match'
                 confidence = 0
-                logger.info(f"🔍 DEBUG: Status: {status}")
+                prediction_result = None
+                successful_candidates = 0
+                total_candidates = len(selected_candidates)
+                conflict_sides = ', '.join(
+                    WINNER_NAMES.get(s, s) for s in sorted(all_activated_winner_sides)
+                )
+                logger.info(
+                    f"⚔️ TIER CONFLICT: Activated tiers disagree on winner side "
+                    f"({conflict_sides}) - downgrading to no_match"
+                )
+            else:
+                # All activated tiers agree on winner side - proceed with evaluation
+                # Calculate confidence using each candidate's HIGHEST priority tier only
+                weighted_successes = (len(tier_assignments['A']) * RULE_WEIGHTS['A'] + 
+                                    len(tier_assignments['B']) * RULE_WEIGHTS['B'] + 
+                                    len(tier_assignments['C']) * RULE_WEIGHTS['C'])
+                max_possible_weight = len(selected_candidates) * MAX_WEIGHT
+                confidence = (weighted_successes / max_possible_weight) * 100 if max_possible_weight > 0 else 0
+                confidence = round(confidence, 1)  # Round to 1 decimal place to avoid precision issues
+                
+                # Use the highest priority rule that has the most matches for prediction
+                if tier_a_matches > 0:
+                    # Create prediction based on Tier A matches even if not all candidates match
+                    prediction_result = self._create_mixed_prediction(selected_candidates, 'identical', tier_a_matches)
+                    logger.info(f"✅ Rule A matched: {tier_a_matches}/{len(selected_candidates)} candidates have identical results")
+                elif tier_b_matches > 0:
+                    prediction_result = rule_b_result
+                    logger.info(f"✅ Rule B matched: {tier_b_matches}/{len(selected_candidates)} candidates have similar results")
+                elif tier_c_matches > 0:
+                    prediction_result = rule_c_result
+                    logger.info(f"✅ Rule C matched: {tier_c_matches}/{len(selected_candidates)} candidates have same winning side")
+                
+                successful_candidates = len(selected_candidates)
+                total_candidates = len(selected_candidates)
+                
+                # Check if a prediction was actually generated
+                if prediction_result is not None:
+                    status = 'success'
+                    logger.info(f"🔍 DEBUG: Status: {status}")
+                else:
+                    # All candidates processed but no prediction generated (insufficient candidates for any tier)
+                    status = 'partial'
+                    confidence = 0
+                    logger.info(f"🔍 DEBUG: Status: {status}")
         else:
             # Some candidates failed to match any rule
             status = 'no_match'
