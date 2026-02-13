@@ -40,6 +40,15 @@ class TodaySportExtractor:
             odds_map = {}
             odds_data = odds_response['odds']
             
+            # Handle case where API returns a list (usually empty) instead of a dict
+            if isinstance(odds_data, list):
+                if not odds_data:
+                    logger.debug("Odds data is an empty list, no odds found")
+                    return {}
+                else:
+                    logger.warning(f"Odds data is a list with {len(odds_data)} items, expected dict. First item: {odds_data[0]}")
+                    return {}
+
             for event_id_str, event_odds in odds_data.items():
                 try:
                     event_id = int(event_id_str)
