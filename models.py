@@ -160,11 +160,31 @@ class EventObservation(Base):
         return f"<EventObservation(event_id={self.event_id}, type='{self.observation_type}', value='{self.observation_value}')>"
 
 
+class Bookie(Base):
+    """
+    Stores bookmaker/sportsbook information.
+    
+    Each bookie can have odds for multiple events through the Market table.
+    """
+    __tablename__ = 'bookies'
+    
+    bookie_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(Text, nullable=False, unique=True)   # "Bet365", "1xBet", "Pinnacle", "SofaScore"
+    slug = Column(Text, nullable=False, unique=True)   # "bet365", "1xbet", "pinnacle", "sofascore"
+    
+    # Relationships
+    markets = relationship("Market", back_populates="bookie")
+    
+    def __repr__(self):
+        return f"<Bookie(bookie_id={self.bookie_id}, name='{self.name}')>"
+
+
 class Market(Base):
     """
     Stores individual betting markets for an event.
     
     Each event can have multiple markets (Full time, Match goals 2.5, Asian handicap, etc.)
+    Each market belongs to a specific bookie.
     Each market has multiple choices stored in MarketChoice table.
     """
     __tablename__ = 'markets'
@@ -172,11 +192,9 @@ class Market(Base):
     # Primary Key
     market_id = Column(Integer, primary_key=True, autoincrement=True)
     
-    # Foreign Key: links to the parent event
+    # Foreign Keys
     event_id = Column(Integer, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
-    
-    # Market identification from SofaScore API
-    sofascore_market_id = Column(Integer, nullable=False)  # marketId from API (e.g., 1, 9, 17)
+    bookie_id = Column(Integer, ForeignKey('bookies.bookie_id', ondelete='CASCADE'), nullable=False)
     
     # Market description
     market_name = Column(Text, nullable=False)  # "Full time", "Match goals", "Asian handicap"
@@ -189,12 +207,13 @@ class Market(Base):
     
     # Constraints
     __table_args__ = (
-        # Ensure we don't store duplicate markets for same event+marketId+line combination
-        UniqueConstraint('event_id', 'sofascore_market_id', 'choice_group', name='unique_market_per_event'),
+        # Each bookie can have one market per event+name+line combination
+        UniqueConstraint('event_id', 'bookie_id', 'market_name', 'choice_group', name='unique_market_per_event_bookie'),
     )
     
     # Relationships
     event = relationship("Event", back_populates="markets")
+    bookie = relationship("Bookie", back_populates="markets")
     choices = relationship("MarketChoice", back_populates="market", cascade="all, delete-orphan")
     
     def __repr__(self):

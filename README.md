@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.5.5  
-**Estado:** ✅ **PRODUCCIÓN - AUTOMATED CLEANUP + BACKFILL SYSTEM + GLOBAL DISCOVERY FILTERING**  
-**Última Actualización:** 7 de Enero, 2026
+**Versión:** v1.5.6  
+**Estado:** ✅ **PRODUCCIÓN - MULTI-BOOKIE SUPPORT + COLUMA REORDERING**  
+**Última Actualización:** 12 de Febrero, 2026
 
 ## 🎯 **Descripción del Sistema**
 
@@ -19,7 +19,14 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 
 ## 🚀 **Características Principales**
 
-### ✅ **Automated Cleanup & Backfill System (v1.5.5) - NUEVO**
+### ✅ **Multi-Bookie Support (v1.5.6) - NUEVO**
+- **Soporte Múltiples Casas de Apuestas**: Nueva arquitectura de base de datos que permite almacenar odds de múltiples bookies para el mismo mercado.
+- **Tabla `bookies`**: Catálogo centralizado de casas de apuestas (ID 1 = SofaScore por defecto).
+- **Esquema Relacional**: `markets` ahora referencia a `bookies.bookie_id` en lugar de una columna plana.
+- **Constraint Único Mejorado**: `(event_id, bookie_id, market_name, choice_group)` permite coexistencia de odds de distintos proveedores.
+- **Auto-Migración Inteligente**: Migración automática que preserva datos existentes, asigna bookie por defecto y reordena columnas para mantener higiene del esquema.
+
+### ✅ **Automated Cleanup & Backfill System (v1.5.5)**
 - **404 Auto-Cleanup**: El sistema detecta cuando un evento ya no existe en la API (404) y lo elimina de la base de datos para mantener la higiene de datos.
 - **Canceled Event Deletion**: Los eventos con estados de Cancelado, Pospuesto o Suspendido se eliminan automáticamente durante la recolección de resultados.
 - **Backfill Results**: Nueva herramienta para procesar retroactivamente eventos que no tienen resultados o odds, con capacidad de reanudar progreso.
@@ -233,7 +240,15 @@ class AlertMatch:
 - **Safe Operations**: Solo añade columnas (no elimina, no modifica tipos por seguridad)
 - **Transaction-Based**: Todas las migraciones en transacciones (rollback en error)
 - **Zero Downtime**: Migraciones en milisegundos al inicio del sistema
+### ✅ **Auto-Migration System (v1.4) - NEW**
+- **Model-Driven**: Detecta automáticamente diferencias entre `models.py` y la base de datos
+- **Self-Healing**: Añade columnas faltantes sin intervención manual
+- **Smart Indexing**: Crea índices automáticamente para columnas comunes (source, sport, status, type, gender)
+- **Safe Operations**: Solo añade columnas (no elimina, no modifica tipos por seguridad)
+- **Transaction-Based**: Todas las migraciones en transacciones (rollback en error)
+- **Zero Downtime**: Migraciones en milisegundos al inicio del sistema
 - **Ejemplo**: `discovery_source` column añadida automáticamente en v1.4
+- **Complex Migrations (v1.5.6)**: Soporte para reconstrucción de tablas (`Table Rebuild`) para reordenamiento de columnas y cambios de constraints complejos.
 
 ### ✅ **H2H Streak Alerts**
 - **H2H Analysis**: Analiza head-to-head histórico entre equipos (últimos 2 años), se ejecuta solo a los 30 minutos antes del inicio (una vez por evento)

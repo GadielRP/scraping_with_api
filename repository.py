@@ -942,13 +942,14 @@ class MarketRepository:
             return None
     
     @staticmethod
-    def save_markets_from_response(event_id: int, odds_response: Dict) -> int:
+    def save_markets_from_response(event_id: int, odds_response: Dict, bookie_id: int = 1) -> int:
         """
         Save all markets from an odds API response to the database.
         
         Args:
             event_id: Event ID to associate markets with
             odds_response: Raw API odds response containing 'markets' array
+            bookie_id: Bookie ID to associate markets with (default: 1 = SofaScore)
             
         Returns:
             Number of markets saved
@@ -965,18 +966,18 @@ class MarketRepository:
                 for market_data in markets_data:
                     try:
                         # Extract market info
-                        sofascore_market_id = market_data.get('marketId')
                         market_name = market_data.get('marketName')
                         choice_group = market_data.get('choiceGroup')  # e.g., "2.5" for Over/Under
                         
-                        if not sofascore_market_id or not market_name:
+                        if not market_name:
                             continue
                         
-                        # Check if market already exists (upsert)
+                        # Check if market already exists (upsert by event+bookie+name+line)
                         existing_market = session.query(Market).filter(
                             and_(
                                 Market.event_id == event_id,
-                                Market.sofascore_market_id == sofascore_market_id,
+                                Market.bookie_id == bookie_id,
+                                Market.market_name == market_name,
                                 Market.choice_group == choice_group
                             )
                         ).first()
@@ -991,7 +992,7 @@ class MarketRepository:
                             # Create new market
                             market = Market(
                                 event_id=event_id,
-                                sofascore_market_id=sofascore_market_id,
+                                bookie_id=bookie_id,
                                 market_name=market_name,
                                 market_group=market_data.get('marketGroup'),
                                 market_period=market_data.get('marketPeriod'),

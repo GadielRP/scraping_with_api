@@ -1,14 +1,20 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.5.5  
-**Estado:** ✅ **PRODUCCIÓN - AUTOMATED CLEANUP + BACKFILL SYSTEM + GLOBAL DISCOVERY FILTERING**  
-**Última Actualización:** Enero 7, 2026
+**Versión:** v1.5.6  
+**Estado:** ✅ **PRODUCCIÓN - MULTI-BOOKIE SUPPORT + COLUMN REORDERING**  
+**Última Actualización:** Febrero 12, 2026
 
 ## 🎯 **Visión del Proyecto**
 
 Sistema automatizado de monitoreo y predicción de odds deportivos que proporciona **notificaciones inteligentes** y **predicciones basadas en patrones históricos**, permitiendo a los usuarios tomar decisiones informadas usando análisis de datos históricos y **extracción eficiente de odds** solo en momentos clave.
 
 ## 🚀 **Estado Actual (v1.5.5)**
+
+### ✅ **NUEVO EN v1.5.6 - Multi-Bookie Support & Column Reordering**
+- **Multi-Bookie Architecture**: Soporte completo para múltiples casas de apuestas mediante tabla `bookies` y FK en `markets`.
+- **Constraint Update**: Constraint único actualizado a `(event_id, bookie_id, market_name, choice_group)`.
+- **Advanced Migration**: Implementado `_reorder_markets_columns` en `database.py` para reconstruir la tabla `markets` y asegurar el orden correcto de columnas (`event_id`, `bookie_id`, ...).
+- **Default Bookie**: Asignación automática de SofaScore (ID 1) a todos los registros existentes.
 
 ### ✅ **NUEVO EN v1.5.5 - Automated Cleanup & Backfill System**
 - **404 Event Deletion**: Implementada eliminación automática de eventos que ya no existen en SofaScore (Error 404).
@@ -618,4 +624,10 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - Lógica de resurrección de eventos basada en calidad de datos históricos (mínimo 15 resultados).
 - Optimización de almacenamiento eliminando metadatos redundantes.
 
-**Estado Final**: 🟢 **DYNAMIC ODDS STORAGE & SMART FILTERING SYSTEM EN PRODUCCIÓN**
+### ✅ **v1.5.6 - Multi-Bookie Support - COMPLETADO**
+- Modificación del esquema de base de datos (`bookies` table, `markets` foreign key).
+- Actualización de `models.py`, `repository.py` y `parse_telegram_odds.py`.
+- Auto-migración compleja con reordenamiento de columnas (Table Rebuild).
+- Verificado y en producción.
+
+**Estado Final**: 🟢 **MULTI-BOOKIE SUPPORT EN PRODUCCIÓN**
