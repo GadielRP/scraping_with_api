@@ -11,7 +11,7 @@ venv/
 
 logs/
 *.log
-debug/
+
 
 
 # test files
@@ -83,7 +83,7 @@ collect_yesterday_odds.py
 *.md
 test_*.py
 *.json
-
+debug/
 
 
 

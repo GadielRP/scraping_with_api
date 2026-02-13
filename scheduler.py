@@ -538,6 +538,41 @@ class JobScheduler:
                                             MarketRepository.save_markets_from_response(event_data['id'], final_odds_response)
                                         except Exception as e:
                                             logger.warning(f"Error saving markets to DB for event {event_data['id']}: {e}")
+                                            
+                                        # OddsPortal Integration
+                                        try:
+                                            # Local imports to avoid potential circular dependencies
+                                            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+                                            from oddsportal_scraper import scrape_match_sync
+                                            from repository import MarketRepository
+
+                                            season_id = event_data.get('season_id')
+                                            op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
+                                            
+                                            if op_info:
+                                                # Construct league URL
+                                                # https://www.oddsportal.com/football/england/premier-league/
+                                                league_url = f"https://www.oddsportal.com/{op_info['sport']}/{op_info['country']}/{op_info['league']}/"
+                                                
+                                                logger.info(f"🔍 Attempting OddsPortal scrape for {event_data['home_team']} vs {event_data['away_team']}")
+                                                
+                                                # Call scraper synchronously (will launch browser)
+                                                op_data = scrape_match_sync(
+                                                    league_url=league_url,
+                                                    home_team=event_data['home_team'],
+                                                    away_team=event_data['away_team']
+                                                )
+                                                
+                                                if op_data:
+                                                    saved = MarketRepository.save_markets_from_oddsportal(event_data['id'], op_data)
+                                                    logger.info(f"✅ OddsPortal: Saved {saved} markets/bookies")
+                                                else:
+                                                    logger.warning("⚠️ OddsPortal: No data extracted (match not found or scrape failed)")
+                                            else:
+                                                logger.debug(f"ℹ️ OddsPortal: Season {season_id} not mapped, skipping")
+
+                                        except Exception as e:
+                                            logger.error(f"❌ OddsPortal Integration Error: {e}")
                                         
                                         # Track this event for alert evaluation (capture timing when odds were extracted)
                                         events_with_odds_extracted.append({
