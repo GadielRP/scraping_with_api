@@ -440,55 +440,83 @@ class JobScheduler:
         timestamp corrections (Tennis: 60 min window, Other sports: 15 min window).
         
         IN-GAME CHECKS: Monitors ongoing games for key moments:
-        - NBA Basketball: 4th quarter start (105-140 minutes after start)
         """
         logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
         
-        
         try:
-            # STEP 1: Check recently started events for timestamp corrections
-            # Tennis events: 60 minutes window (they change timestamps frequently up to 1 hour after start)
-            # Other sports: 15 minutes window (sufficient for most sports)
-            events_started_recently = EventRepository.get_events_started_recently(window_minutes=60)
-            if events_started_recently:
-                logger.info(f"Found {len(events_started_recently)} events that started recently (checking for late timestamp corrections)")
-                self._check_recently_started_events_for_timestamp_corrections(events_started_recently)
+            current_time = datetime.now()
+        
+            # 1. FETCH UPCOMING EVENTS FIRST (to lock in timing)
+            upcoming_events = self.event_repo.get_events_starting_soon_with_odds(Config.PRE_START_WINDOW_MINUTES)
+            logger.info(f"Found {len(upcoming_events)} events starting within {Config.PRE_START_WINDOW_MINUTES} minutes (snapshot taken before timestamp checks)")
             
-            # STEP 1.5: Check NBA games for 4th quarter start (in-game alerts)
-            # NBA games that started 105-140 minutes ago - typical time for 4th quarter to begin
-            # (Q1-Q3: ~100-110 min real time + buffer for early/late games)
-            # Only checks events where alert_sent=False to avoid duplicate alerts
-            set_prediction_system.check_nba_4th_quarter()
-            
-            # STEP 2: Get events starting within the next 30 minutes WITH their odds data
-            events_with_odds = EventRepository.get_events_starting_soon_with_odds(Config.PRE_START_WINDOW_MINUTES)
-            if not events_with_odds:
-                logger.debug("No events starting within the next 30 minutes")
-                return
-            
-            logger.info(f"Found {len(events_with_odds)} events starting within {Config.PRE_START_WINDOW_MINUTES} minutes")
-            
-            # STEP 2.1: CAPTURE ALL TIMING DECISIONS UPFRONT (before any API calls)
-            # This prevents events from slipping out of key moment windows due to slow API calls
-            KEY_MOMENTS = [30, 5]
-            events_to_process = []
-            event_meta_lookup = {}
-            for event_data in events_with_odds:
-                minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
-                logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
+            # 1.1 PRE-CALCULATE TIMING DECISIONS (Critical Step!)
+            # We calculate 'minutes_until_start' NOW, before any delays.
+            # We store this in a dictionary/list to be used later.
+            pre_calculated_timings = {}
+            for event in upcoming_events:
+                minutes = self._minutes_until_start(event['start_time_utc'])
+                pre_calculated_timings[event['id']] = minutes
                 
-                # Pre-compute timing decision (capture at current time, not after API delays)
-                should_extract_odds = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
+            # 2. CHECK RECENTLY STARTED EVENTS (Timestamp Correction)
+            # This can take time (e.g., 20-30s)...
+            events_started_recently = self.event_repo.get_events_started_recently(window_minutes=60)
+            logger.info(f"Found {len(events_started_recently)} events that started recently (checking for late timestamp corrections)")
+            
+            # Get set of event IDs that were modified during timestamp correction
+            modified_event_ids = self._check_recently_started_events_for_timestamp_corrections(events_started_recently)
+            
+            # 3. FILTER UPCOMING EVENTS
+            if modified_event_ids:
+                original_count = len(upcoming_events)
+                upcoming_events = [e for e in upcoming_events if e['id'] not in modified_event_ids]
+                filtered_count = len(upcoming_events)
+                if original_count != filtered_count:
+                    logger.info(f"ℹ️ Filtered out {original_count - filtered_count} upcoming events that were just rescheduled/modified")
+
+            # 4. PROCESS UPCOMING EVENTS
+            if not upcoming_events:
+                logger.info(f"No upcoming events to process (after filtering)")
+            else:
+                # Check for NBA 4th quarter
+                set_prediction_system.check_nba_4th_quarter()
                 
-                event_info = {
-                    'event_id': event_data['id'],
-                    'event_data': event_data,
-                    'minutes_until_start': minutes_until_start,
-                    'should_extract_odds': should_extract_odds,
-                    'original_start_time': event_data['start_time_utc']
-                }
-                events_to_process.append(event_info)
-                event_meta_lookup[event_data['id']] = event_info
+                # Use the "smart" odds extraction logic
+                KEY_MOMENTS = [30, 5]
+                events_to_process = []
+                event_meta_lookup = {}
+                
+                for event_data in upcoming_events:
+                    # RETRIEVE PRE-CALCULATED TIMING
+                    if event_data['id'] in pre_calculated_timings:
+                        minutes_until_start = pre_calculated_timings[event_data['id']]
+                        logger.debug(f"Using pre-calculated timing for {event_data['slug']}: {minutes_until_start} mins")
+                    else:
+                        # Fallback (shouldn't happen for original events)
+                        minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
+                    
+                    logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
+                    
+                    should_extract_odds, metadata_snapshot = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
+                    
+                    # ALWAYS refresh from DB after potential timestamp correction in _should_extract_odds_for_event
+                    # This ensures event_info uses the corrected time, avoiding safety-check mismatches later.
+                    refreshed_event = self.event_repo.get_event_by_id(event_data['id'])
+                    if refreshed_event:
+                        event_data['season_id'] = refreshed_event.season_id
+                        event_data['start_time_utc'] = refreshed_event.start_time_utc
+                        logger.debug(f"✅ Refreshed metadata for event {event_data['id']} after timing check")
+                    
+                    event_info = {
+                        'event_id': event_data['id'],
+                        'event_data': event_data,
+                        'minutes_until_start': minutes_until_start,
+                        'should_extract_odds': should_extract_odds,
+                        'original_start_time': event_data['start_time_utc'],
+                        'metadata_snapshot': metadata_snapshot,  # Cached from timing check API call
+                    }
+                    events_to_process.append(event_info)
+                    event_meta_lookup[event_data['id']] = event_info
             
             # STEP 2.2: EXECUTE ALL ODDS EXTRACTIONS (with pre-computed decisions)
             processed_count = 0
@@ -595,16 +623,27 @@ class JobScheduler:
                             # Check if event already has observations before making API call
                             
                             if not sport_observations_manager.has_observations_for_event(event_data['id']):
-                                # No observations exist, proceed with API call to extract court type
-                                observations = api_client.get_event_results(
-                                    event_id=event_data['id'],
-                                    update_court_type=True
-                                )
-                                
-                                # Store observations in event_info so they persist to the alert evaluation phase
-                                if observations:
+                                # Try to use metadata snapshot from timing check first (avoids redundant API call)
+                                snapshot = event_info.get('metadata_snapshot')
+                                if snapshot and snapshot.get('observations'):
+                                    observations = snapshot['observations']
+                                    # Store ground_type in sport_observations_manager if present
+                                    for obs in observations:
+                                        if obs.get('type') == 'ground_type' and obs.get('value'):
+                                            ObservationRepository.upsert_observation(event_data['id'], event_data['sport'], 'ground_type', obs['value'])
                                     event_info['observations'] = observations
-                                    logger.info(f"✅ Observations captured for event {event_data['id']} (persisted for alerts)")
+                                    logger.info(f"✅ Observations from metadata snapshot for event {event_data['id']} (no extra API call)")
+                                else:
+                                    # Fallback: No snapshot available (e.g., timestamp correction disabled), make API call
+                                    observations = api_client.get_event_results(
+                                        event_id=event_data['id'],
+                                        update_court_type=True
+                                    )
+                                    
+                                    # Store observations in event_info so they persist to the alert evaluation phase
+                                    if observations:
+                                        event_info['observations'] = observations
+                                        logger.info(f"✅ Observations captured for event {event_data['id']} via API fallback")
                             else:
                                 logger.info(f"🎾 Event {event_data['id']} already has observations - skipping API call")
                             
@@ -707,7 +746,7 @@ class JobScheduler:
                         
                         remaining_target_ids = target_event_ids - tracked_event_ids
 
-                        for event_data in events_with_odds:
+                        for event_data in upcoming_events:
                             if event_data['id'] not in remaining_target_ids:
                                 continue
 
@@ -817,47 +856,68 @@ class JobScheduler:
                                                     competition_slug = None
                                                     competition_name = None
                                                     tournament_id = None
-                                                    event_details = None
+                                                    season_id = None
+                                                    season_name = None
+                                                    season_year = None
 
-                                                    try:
-                                                        event_details = api_client.get_event_details(event_obj.id)
+                                                    # Use metadata snapshot from timing check (avoids redundant get_event_details call)
+                                                    snapshot = event_info.get('metadata_snapshot')
+                                                    if snapshot:
+                                                        home_team_id = snapshot.get('home_team_id')
+                                                        away_team_id = snapshot.get('away_team_id')
+                                                        tournament_id = snapshot.get('tournament_id')
+                                                        competition_name = snapshot.get('tournament_name')
+                                                        competition_slug = snapshot.get('competition_slug')
+                                                        season_id = snapshot.get('season_id')
+                                                        season_name = snapshot.get('season_name')
+                                                        season_year = snapshot.get('season_year')
+                                                        logger.debug(f"Extracted metadata from snapshot: Home={home_team_id}, Away={away_team_id}, tournament={tournament_id}")
+                                                        logger.debug(f"Extracted season data from snapshot: season_id={season_id}, season_name={season_name}, season_year={season_year}")
 
-                                                        if event_details:
-                                                            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                                                has_rankings = False
-                                                                if observations:
-                                                                    has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
-
-                                                                if not has_rankings:
-                                                                    home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                                                    away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
-
-                                                                    if observations is None:
-                                                                        observations = []
-
-                                                                    observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                                                    logger.info(f"✅ Added rankings to observations for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
-                                                                else:
-                                                                    logger.debug(f"Rankings already exist in observations for event {event_obj.id}")
-
-                                                            home_team_id = event_details.get('homeTeam', {}).get('id')
-                                                            away_team_id = event_details.get('awayTeam', {}).get('id')
-                                                            tournament_id = event_details.get('tournament', {}).get('id')
-                                                            logger.debug(f"Extracted tournament id from current event: {tournament_id}")
-                                                            competition_name = event_details.get('tournament', {}).get('name')
-                                                            competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
-                                                            season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
-                                                            season_name = event_details.get('season', {}).get('name')
-                                                            # Extract season year from season.year field (more reliable than parsing season_name)
-                                                            season_year_raw = event_details.get('season', {}).get('year')
-                                                            from repository import SeasonRepository
-                                                            season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
-                                                            logger.debug(f"Extracted team IDs from current event: Home={home_team_id}, Away={away_team_id}")
-                                                            logger.debug(f"Extracted season data: season_id={season_id}, season_name={season_name}, season_year={season_year}")
-                                                        else:
-                                                            logger.warning(f"Could not fetch event details for {event_obj.id}")
-                                                    except Exception as e:
-                                                        logger.error(f"Error fetching event details for {event_obj.id}: {e}")
+                                                        # Tennis rankings from snapshot
+                                                        if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                                            has_rankings = False
+                                                            if observations:
+                                                                has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+                                                            if not has_rankings:
+                                                                home_team_ranking = snapshot.get('home_team_ranking')
+                                                                away_team_ranking = snapshot.get('away_team_ranking')
+                                                                if observations is None:
+                                                                    observations = []
+                                                                observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                                                logger.info(f"✅ Added rankings from snapshot for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
+                                                            else:
+                                                                logger.debug(f"Rankings already exist in observations for event {event_obj.id}")
+                                                    else:
+                                                        # Fallback: No snapshot (e.g., timestamp correction disabled), use API call
+                                                        try:
+                                                            event_details = api_client.get_event_details(event_obj.id)
+                                                            if event_details:
+                                                                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                                                    has_rankings = False
+                                                                    if observations:
+                                                                        has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+                                                                    if not has_rankings:
+                                                                        home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                                                        away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                                                        if observations is None:
+                                                                            observations = []
+                                                                        observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                                                        logger.info(f"✅ Added rankings from API fallback for event {event_obj.id}")
+                                                                home_team_id = event_details.get('homeTeam', {}).get('id')
+                                                                away_team_id = event_details.get('awayTeam', {}).get('id')
+                                                                tournament_id = event_details.get('tournament', {}).get('id')
+                                                                competition_name = event_details.get('tournament', {}).get('name')
+                                                                competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
+                                                                season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
+                                                                season_name = event_details.get('season', {}).get('name')
+                                                                season_year_raw = event_details.get('season', {}).get('year')
+                                                                from repository import SeasonRepository
+                                                                season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
+                                                            else:
+                                                                logger.warning(f"Could not fetch event details for {event_obj.id}")
+                                                        except Exception as e:
+                                                            logger.error(f"Error fetching event details for {event_obj.id}: {e}")
 
                                                     tennis_observations = observations if observations else []
 
@@ -867,43 +927,47 @@ class JobScheduler:
                                                         if not has_ground_type:
                                                             logger.info(f"🎾 Getting ground_type for tennis event {event_obj.id} for filtering")
                                                             if not sport_observations_manager.has_observations_for_event(event_obj.id):
-                                                                new_observations = api_client.get_event_results(
-                                                                    event_id=event_obj.id,
-                                                                    update_court_type=True
-                                                                )
-                                                                if new_observations:
-                                                                    for obs in new_observations:
+                                                                # Try snapshot observations first
+                                                                if snapshot and snapshot.get('observations'):
+                                                                    for obs in snapshot['observations']:
                                                                         if obs.get('type') == 'ground_type':
                                                                             tennis_observations.append(obs)
-                                                                        elif obs.get('type') == 'rankings':
-                                                                            # Check if we have existing rankings in tennis_observations
-                                                                            existing_rankings = next((o for o in tennis_observations if o.get('type') == 'rankings'), None)
-                                                                            
-                                                                            if not existing_rankings:
-                                                                                # No rankings yet, add them
+                                                                            ObservationRepository.upsert_observation(event_obj.id, event_obj.sport, 'ground_type', obs['value'])
+                                                                            logger.info(f"🎾 Ground type from snapshot: {obs['value']}")
+                                                                else:
+                                                                    new_observations = api_client.get_event_results(
+                                                                        event_id=event_obj.id,
+                                                                        update_court_type=True
+                                                                    )
+                                                                    if new_observations:
+                                                                        for obs in new_observations:
+                                                                            if obs.get('type') == 'ground_type':
                                                                                 tennis_observations.append(obs)
-                                                                                logger.info(f"✅ Added rankings from results check for event {event_obj.id}: home={obs.get('home_ranking')}, away={obs.get('away_ranking')}")
-                                                                            else:
-                                                                                # We have rankings, check if they are None and new ones are valid
-                                                                                # This handles the case where event_details returned None but get_event_results returns valid rankings
-                                                                                if existing_rankings.get('home_ranking') is None and existing_rankings.get('away_ranking') is None:
-                                                                                    if obs.get('home_ranking') is not None or obs.get('away_ranking') is not None:
-                                                                                        existing_rankings['home_ranking'] = obs.get('home_ranking')
-                                                                                        existing_rankings['away_ranking'] = obs.get('away_ranking')
-                                                                                        logger.info(f"✅ Updated rankings from results check for event {event_obj.id} (overwrote None values)")
+                                                                            elif obs.get('type') == 'rankings':
+                                                                                existing_rankings = next((o for o in tennis_observations if o.get('type') == 'rankings'), None)
+                                                                                if not existing_rankings:
+                                                                                    tennis_observations.append(obs)
+                                                                                    logger.info(f"✅ Added rankings from results check for event {event_obj.id}")
+                                                                                else:
+                                                                                    if existing_rankings.get('home_ranking') is None and existing_rankings.get('away_ranking') is None:
+                                                                                        if obs.get('home_ranking') is not None or obs.get('away_ranking') is not None:
+                                                                                            existing_rankings['home_ranking'] = obs.get('home_ranking')
+                                                                                            existing_rankings['away_ranking'] = obs.get('away_ranking')
+                                                                                            logger.info(f"✅ Updated rankings from results check for event {event_obj.id} (overwrote None values)")
                                                             else:
                                                                 observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
                                                                 if observation:
                                                                     tennis_observations.append({'type': 'ground_type', 'value': observation.observation_value})
                                                                     logger.info(f"🎾 Using existing ground_type observation: {observation.observation_value}")
 
+                                                        # Final rankings check using snapshot if still missing
                                                         has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
-                                                        if not has_rankings and event_details:
-                                                            home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                                            away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                                        if not has_rankings and snapshot:
+                                                            home_team_ranking = snapshot.get('home_team_ranking')
+                                                            away_team_ranking = snapshot.get('away_team_ranking')
                                                             if home_team_ranking is not None or away_team_ranking is not None:
                                                                 tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                                                logger.info(f"✅ Added rankings to tennis_observations for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
+                                                                logger.info(f"✅ Added rankings from snapshot for tennis_observations for event {event_obj.id}")
 
                                                     if tennis_observations:
                                                         rankings_info = next((obs for obs in tennis_observations if isinstance(obs, dict) and obs.get('type') == 'rankings'), None)
@@ -1128,7 +1192,7 @@ class JobScheduler:
         except Exception as e:
             logger.error(f"Error in Job C: {e}")
     
-    def _check_recently_started_events_for_timestamp_corrections(self, events_started_recently: List[Dict]):
+    def _check_recently_started_events_for_timestamp_corrections(self, events_started_recently: List[Dict]) -> set:
         """
         Check recently started events for timestamp corrections with sport-specific windows.
         
@@ -1140,7 +1204,11 @@ class JobScheduler:
         
         Args:
             events_started_recently: List of event dictionaries from get_events_started_recently()
+            
+        Returns:
+            set: Set of event IDs that were modified/rescheduled
         """
+        modified_event_ids = set()
         try:
             corrected_count = 0
             checked_count = 0
@@ -1165,8 +1233,8 @@ class JobScheduler:
                         CHECK_INTERVALS = list(range(5, 65, 5))  # [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
                         logger.debug(f"🎾 Tennis event {event_id} - using extended check intervals up to 60 minutes")
                     else:
-                        # Other sports: Check only at 5, 10, 15 minutes after start
-                        CHECK_INTERVALS = [5, 10, 15]
+                        # Other sports: Check only at 15 minutes after start
+                        CHECK_INTERVALS = [15]
                         
                         # Skip non-tennis events that are outside the 15-minute window
                         if minutes_ago > 15:
@@ -1196,13 +1264,16 @@ class JobScheduler:
                         # Starting time was corrected by the API call
                         corrected_count += 1
                         logger.info(f"✅ TIMESTAMP CORRECTED for event {event_id} - starting time was updated after game started")
-                        
-                        # Trigger rescheduled event processing to extract odds and run alerts/H2H
-                        # This ensures the event doesn't get lost after timestamp correction
-                        # _check_rescheduled_event will mark the event as processed internally
-                        logger.info(f"🔄 Processing rescheduled event {event_id} after timestamp correction")
-                        self._check_rescheduled_event(event_id)
                     
+                    # Track this ID as modified
+                    modified_event_ids.add(event_id)
+                    
+                    # Trigger rescheduled event processing to extract odds and run alerts/H2H
+                    # This ensures the event doesn't get lost after timestamp correction
+                    # _check_rescheduled_event will mark the event as processed internally
+                    logger.info(f"🔄 Processing rescheduled event {event_id} after timestamp correction")
+                    self._check_rescheduled_event(event_id)
+                
                 except Exception as e:
                     logger.error(f"Error checking recently started event {event_data.get('id')}: {e}")
                     continue
@@ -1210,8 +1281,11 @@ class JobScheduler:
             if checked_count > 0:
                 logger.info(f"📊 Timestamp correction check completed: {checked_count} events checked, {corrected_count} timestamps corrected")
             
+            return modified_event_ids
+            
         except Exception as e:
             logger.error(f"Error in _check_recently_started_events_for_timestamp_corrections: {e}")
+            return modified_event_ids
     
     def _minutes_until_start(self, start_time_utc) -> int:
         """Calculate minutes until event starts"""
@@ -1288,7 +1362,7 @@ class JobScheduler:
             logger.error(f"Error resetting alert_sent for event {event_id}: {e}")
             return False
     
-    def _should_extract_odds_for_event(self, event_id: int, minutes_until_start: int) -> bool:
+    def _should_extract_odds_for_event(self, event_id: int, minutes_until_start: int) -> tuple:
         """
         Smart logic to determine if odds should be extracted for an event.
         Only extract odds at key moments: 30 minutes and 5 minutes before start.
@@ -1298,12 +1372,15 @@ class JobScheduler:
             minutes_until_start: Minutes until the event starts
             
         Returns:
-            True if odds should be extracted, False otherwise
+            Tuple of (should_extract: bool, metadata_snapshot: Optional[Dict])
+            The metadata_snapshot contains team IDs, rankings, tournament/season info,
+            and observations extracted from the same /event/{id} API response used
+            for the timestamp check, eliminating redundant API calls.
         """
         # Check if odds extraction is enabled (for testing purposes)
         if not Config.ENABLE_ODDS_EXTRACTION:
             logger.info(f"🚫 ODDS EXTRACTION DISABLED: Skipping odds extraction for event {event_id} (ENABLE_ODDS_EXTRACTION=false)")
-            return False
+            return False, None
         
         # Key moments for odds extraction (removed 1-minute check - now handled by 5-minutes-after logic)
         KEY_MOMENTS = [30, 5]
@@ -1314,38 +1391,43 @@ class JobScheduler:
         # Only check and update starting time if event is in key moments (optimization)
         if not should_extract:
             logger.debug(f"⏭️ Not a key moment for event {event_id}: {minutes_until_start} minutes until start - SKIPPING API CALL AND ODDS EXTRACTION")
-            return False
+            return False, None
         
         # Check if timestamp correction is enabled
         if not Config.ENABLE_TIMESTAMP_CORRECTION:
             logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until_start} minutes until start - WILL EXTRACT ODDS (timestamp correction disabled)")
-            return True
+            return True, None
         
         # Check and update starting time only for events in key moments
-        correct_starting_time = api_client.get_event_results(event_id, update_time=True)
+        # return_snapshot=True: extract metadata from the same API response to avoid redundant calls
+        correct_starting_time, metadata_snapshot = api_client.get_event_results(event_id, update_time=True, return_snapshot=True)
         
         if correct_starting_time:
             logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until_start} minutes until start - WILL EXTRACT ODDS")
-            return True
+            return True, metadata_snapshot
         elif correct_starting_time is None:
             # API call failed - skip odds extraction but don't trigger rescheduled logic
             logger.warning(f"⏭️ API error for event {event_id} - skipping odds extraction")
-            return False
+            return False, None
         elif not correct_starting_time:
             # Starting time was actually updated - mark as rescheduled and check if rescheduled game is now in key moments
             logger.info(f"🔄 Starting time changed for event {event_id} - marking as rescheduled and checking if rescheduled game is in key moments")
             self.recently_rescheduled.add(event_id)  # Mark immediately to prevent double processing
-            self._check_rescheduled_event(event_id)
-            return False
+            self._check_rescheduled_event(event_id, metadata_snapshot=metadata_snapshot)
+            return False, None
         else:
             logger.debug(f"⏭️ Starting Time changed for event {event_id} - skipping odds extraction or not a key moment")
-            return False
+            return False, None
     
-    def _check_rescheduled_event(self, event_id: int):
+    def _check_rescheduled_event(self, event_id: int, metadata_snapshot: dict = None):
         """
         Check if a rescheduled event is now within the 30 or 5 minute window.
         If so, extract odds and process alerts for the rescheduled game.
         Includes complete pre-start job workflow to avoid infinite loops.
+        
+        Args:
+            event_id: Event ID to check
+            metadata_snapshot: Optional cached metadata from the timing check API response
         """
         try:
             # Clean up old tracking entries
@@ -1392,7 +1474,7 @@ class JobScheduler:
                             # Only process alerts for future events (betting still possible)
                             if new_minutes_until_start >= 0:
                                 logger.info(f"🔍 Processing alerts for future rescheduled event {event_id}")
-                                self._process_alerts_for_rescheduled_event(event)
+                                self._process_alerts_for_rescheduled_event(event, metadata_snapshot=metadata_snapshot)
                             else:
                                 logger.info(f"⏭️ Skipping alert processing for past event {event_id} (betting no longer possible)")
                         else:
@@ -1407,11 +1489,14 @@ class JobScheduler:
         except Exception as e:
             logger.error(f"Error checking rescheduled event {event_id}: {e}")
     
-    def _process_alerts_for_rescheduled_event(self, event):
+    def _process_alerts_for_rescheduled_event(self, event, metadata_snapshot: dict = None):
         """
-        Process alerts for a rescheduled event that was just updated with new odds.
-        Uses the same H2H + dual-process flow as normal events for consistent alert format.
-        This completes the pre-start job workflow to prevent infinite loops.
+        Process H2H and dual-process alerts for a rescheduled event.
+        This is called after odds have been extracted for the rescheduled game.
+        
+        Args:
+            event: Event database object with start_time_utc, sport, etc.
+            metadata_snapshot: Optional cached metadata from the timing check API response
         """
         try:
             # Initialize observations for this rescheduled event
@@ -1454,88 +1539,107 @@ class JobScheduler:
                     if h2h_response and 'events' in h2h_response:
                         h2h_events = h2h_response['events']
                         
-                        # Get team IDs and event details
+                        # Get team IDs and event details from metadata snapshot (avoids redundant API call)
                         home_team_id = None
                         away_team_id = None
                         competition_slug = None
                         season_id = None
                         season_name = None
+                        season_year = None
                         competition_name = None
-                        event_details = None
+                        tournament_id = None
                         
-                        try:
-                            # Fetch current event details to get correct team IDs
-                            event_details = api_client.get_event_details(event_obj.id)
+                        if metadata_snapshot:
+                            home_team_id = metadata_snapshot.get('home_team_id')
+                            away_team_id = metadata_snapshot.get('away_team_id')
+                            tournament_id = metadata_snapshot.get('tournament_id')
+                            competition_name = metadata_snapshot.get('tournament_name')
+                            competition_slug = metadata_snapshot.get('competition_slug')
+                            season_id = metadata_snapshot.get('season_id')
+                            season_name = metadata_snapshot.get('season_name')
+                            season_year = metadata_snapshot.get('season_year')
+                            logger.debug(f"Extracted metadata from snapshot for rescheduled event: Home={home_team_id}, Away={away_team_id}, tournament={tournament_id}")
                             
-                            if event_details:
-                                # For Tennis, add rankings to observations
-                                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                    has_rankings = False
-
-                                    season_id = event_details.get('season', {}).get('id')
+                            # Tennis rankings from snapshot
+                            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                has_rankings = False
+                                if observations:
+                                    has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+                                if not has_rankings:
+                                    home_team_ranking = metadata_snapshot.get('home_team_ranking')
+                                    away_team_ranking = metadata_snapshot.get('away_team_ranking')
+                                    if observations is None:
+                                        observations = []
+                                    observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                    logger.info(f"✅ Added rankings from snapshot for rescheduled event {event_obj.id}")
+                        else:
+                            # Fallback: No snapshot available, use API call
+                            try:
+                                event_details = api_client.get_event_details(event_obj.id)
+                                if event_details:
+                                    if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                        has_rankings = False
+                                        if observations:
+                                            has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+                                        if not has_rankings:
+                                            home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                            away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                            if observations is None:
+                                                observations = []
+                                            observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                            logger.info(f"✅ Added rankings from API fallback for rescheduled event {event_obj.id}")
+                                    home_team_id = event_details.get('homeTeam', {}).get('id')
+                                    away_team_id = event_details.get('awayTeam', {}).get('id')
+                                    competition_name = event_details.get('tournament', {}).get('name')
+                                    competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
+                                    tournament_id = event_details.get('tournament', {}).get('id')
+                                    season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
                                     season_name = event_details.get('season', {}).get('name')
-                                    if observations:
-                                        has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
-                                    
-                                    if not has_rankings:
-                                        home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                        away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
-                                        
-                                        if observations is None:
-                                            observations = []
-                                        
-                                        observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                        logger.info(f"✅ Added rankings to observations for rescheduled event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
-                                
-                                # Extract team IDs and other event data
-                                home_team_id = event_details.get('homeTeam', {}).get('id')
-                                away_team_id = event_details.get('awayTeam', {}).get('id')
-                                competition_name = event_details.get('tournament', {}).get('name')
-                                competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
-                                tournament_id = event_details.get('tournament', {}).get('id')
-                                logger.debug(f"Extracted tournament id from rescheduled event: {tournament_id}")
-                            else:
-                                logger.warning(f"Could not fetch event details for rescheduled event {event_obj.id}")
-                        except Exception as e:
-                            logger.error(f"Error fetching event details for rescheduled event {event_obj.id}: {e}")
+                                    season_year_raw = event_details.get('season', {}).get('year')
+                                    from repository import SeasonRepository
+                                    season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
+                                else:
+                                    logger.warning(f"Could not fetch event details for rescheduled event {event_obj.id}")
+                            except Exception as e:
+                                logger.error(f"Error fetching event details for rescheduled event {event_obj.id}: {e}")
                         
                         # Ensure observations for tennis events
-                        # Start with observations if they exist (might already have rankings)
                         tennis_observations = observations if observations else []
                         
                         if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                            # Check if ground_type already exists in tennis_observations
                             has_ground_type = any(obs.get('type') == 'ground_type' for obs in tennis_observations)
                             
                             if not has_ground_type:
                                 logger.info(f"🎾 Getting ground_type for tennis rescheduled event {event_obj.id}")
                                 if not sport_observations_manager.has_observations_for_event(event_obj.id):
-                                    # No observations exist in DB, make API call to extract court type
-                                    new_observations = api_client.get_event_results(
-                                        event_id=event_obj.id,
-                                        update_court_type=True
-                                    )
-                                    if new_observations:
-                                        # Merge new observations with existing tennis_observations
-                                        for obs in new_observations:
+                                    # Try snapshot observations first
+                                    if metadata_snapshot and metadata_snapshot.get('observations'):
+                                        for obs in metadata_snapshot['observations']:
                                             if obs.get('type') == 'ground_type':
                                                 tennis_observations.append(obs)
-                                            elif obs.get('type') == 'rankings':
-                                                # Check if we have existing rankings
-                                                existing_rankings = next((o for o in tennis_observations if o.get('type') == 'rankings'), None)
-                                                
-                                                if not existing_rankings:
+                                                ObservationRepository.upsert_observation(event_obj.id, event_obj.sport, 'ground_type', obs['value'])
+                                                logger.info(f"🎾 Ground type from snapshot for rescheduled event: {obs['value']}")
+                                    else:
+                                        new_observations = api_client.get_event_results(
+                                            event_id=event_obj.id,
+                                            update_court_type=True
+                                        )
+                                        if new_observations:
+                                            for obs in new_observations:
+                                                if obs.get('type') == 'ground_type':
                                                     tennis_observations.append(obs)
-                                                    logger.info(f"✅ Added rankings from results check for rescheduled event {event_obj.id}")
-                                                else:
-                                                    # Update if existing are None
-                                                    if existing_rankings.get('home_ranking') is None and existing_rankings.get('away_ranking') is None:
-                                                        if obs.get('home_ranking') is not None or obs.get('away_ranking') is not None:
-                                                            existing_rankings['home_ranking'] = obs.get('home_ranking')
-                                                            existing_rankings['away_ranking'] = obs.get('away_ranking')
-                                                            logger.info(f"✅ Updated rankings from results check for rescheduled event {event_obj.id}")
+                                                elif obs.get('type') == 'rankings':
+                                                    existing_rankings = next((o for o in tennis_observations if o.get('type') == 'rankings'), None)
+                                                    if not existing_rankings:
+                                                        tennis_observations.append(obs)
+                                                        logger.info(f"✅ Added rankings from results check for rescheduled event {event_obj.id}")
+                                                    else:
+                                                        if existing_rankings.get('home_ranking') is None and existing_rankings.get('away_ranking') is None:
+                                                            if obs.get('home_ranking') is not None or obs.get('away_ranking') is not None:
+                                                                existing_rankings['home_ranking'] = obs.get('home_ranking')
+                                                                existing_rankings['away_ranking'] = obs.get('away_ranking')
+                                                                logger.info(f"✅ Updated rankings for rescheduled event {event_obj.id}")
                                 else:
-                                    # Get existing ground_type from database
                                     observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
                                     if observation:
                                         tennis_observations.append({'type': 'ground_type', 'value': observation.observation_value})
@@ -1543,13 +1647,12 @@ class JobScheduler:
                             
                             # Ensure rankings exist in tennis_observations
                             has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
-                            if not has_rankings and event_details:
-                                # Add rankings from event_details if available
-                                home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                            if not has_rankings and metadata_snapshot:
+                                home_team_ranking = metadata_snapshot.get('home_team_ranking')
+                                away_team_ranking = metadata_snapshot.get('away_team_ranking')
                                 if home_team_ranking is not None or away_team_ranking is not None:
                                     tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                    logger.info(f"✅ Added rankings to tennis_observations for rescheduled event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
+                                    logger.info(f"✅ Added rankings from snapshot for rescheduled tennis event {event_obj.id}")
                         
                         # Analyze H2H events with team results
                         from streak_alerts import streak_alert_engine
@@ -1564,6 +1667,7 @@ class JobScheduler:
                             competition_slug=competition_slug,
                             season_id=season_id,
                             season_name=season_name,
+                            season_year=season_year,
                             observations=tennis_observations,
                             participants=f"{event_obj.home_team} vs {event_obj.away_team}",
                             home_team_name=event_obj.home_team,

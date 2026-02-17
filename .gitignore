@@ -50,7 +50,7 @@ assets/
 # old files
 old/
 csv/
-
+verify_betfair_persistence.py
 parse_telegram_odds.py
 
 # databases backups/dumps
@@ -77,13 +77,13 @@ collect_yesterday_odds.py
 
 
 
-
+logs_for_observations_refactor.txt
 
 
 *.md
 test_*.py
 *.json
-debug/
+debug*/
 
 
 

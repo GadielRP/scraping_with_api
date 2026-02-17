@@ -1,12 +1,42 @@
 # SofaScore Odds System - Task Tracking
 
-**Versión:** v1.5.4  
-**Estado General:** ✅ **GLOBAL DISCOVERY FILTERING + TELEGRAM MESSAGE SPLITTING + DUAL PROCESS + DYNAMIC ODDS STORAGE**  
-**Última Actualización:** 7 de Enero, 2026
+**Versión:** v1.6.3-beta
+**Estado General:** ✅ **ODDSPORTAL INTEGRATION (80%) + MULTI-BOOKIE SUPPORT**
+**Última Actualización:** 17 de Febrero, 2026
 
 ## 🎯 **Resumen del Proyecto**
 
 Sistema automatizado de monitoreo y predicción de odds deportivos con **predicciones basadas en patrones históricos**, **notificaciones inteligentes** por Telegram, **descubrimiento multi-fuente** de eventos, **auto-migración de base de datos**, **extracción inteligente de odds** solo en momentos clave, y **recolección automática** de resultados.
+
+## ✅ **NUEVO EN v1.6.3 - API Optimization & Fixes**
+
+### **⚡ API Optimization & Fixes - 100% COMPLETADO (17/02/2026)**
+- [x] **Metadata Snapshot System**: Integrar extracción de rankings y court type en `get_event_results`.
+- [x] **Redundant Call Elimination**: Limpiar `scheduler.py` de llamadas duplicadas a `/details`.
+- [x] **Rescheduled Alert Bug**: Implementar refresco de `start_time_utc` tras corrección de timestamp.
+- [x] **H2H Parameter Fix**: Pasar `season_year` en el flujo de reprogramación.
+- [x] **Observation Repository Fix**: Cambiar `save_observation` por `upsert_observation`.
+
+## ✅ **NUEVO EN v1.6.0 - OddsPortal Integration**
+
+### **🔍 OddsPortal Scraper - 80% COMPLETADO (17/02/2026)**
+- [x] Crear arquitectura básica `oddsportal_scraper.py` con Playwright
+- [x] Implementar rotación de User-Agent y medidas anti-bot
+- [x] Configurar `oddsportal_config.py` con mapeo de ligas y bookies
+- [x] **Final Odds Extraction**: Soportar extracción de todos los odds finales de los bookmakers
+- [x] **Dynamic Market Support**:
+  - [x] Detección automática de 2-way (NBA/Tenis) vs 3-way (Fútbol)
+  - [x] Manejo correcto de `null` para odds de Empate en mercados 2-way
+- [x] **Betfair Exchange Integration**:
+  - [x] Detectar y extraer sección "Exchange"
+  - [x] Parsear Back/Lay odds y liquidez
+  - [x] Fix: `ReferenceError` en variable `exchangeSection`
+- [x] **Integration**:
+  - [x] Hook en `scheduler.py` (Pre-start checks)
+  - [x] Persistencia en DB (`repository.py`) soportando multi-bookie
+- [ ] **Pending**:
+  - [ ] Initial Odds Extraction (requiere hover logic)
+  - [ ] Advanced Error Recovery (DOM changes)
 
 ## ✅ **NUEVO EN v1.5.4 - Global Discovery Filtering**
 

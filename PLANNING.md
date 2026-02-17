@@ -1,14 +1,31 @@
 # SofaScore Odds System - Planning & Architecture
 
-**Versión:** v1.5.6  
-**Estado:** ✅ **PRODUCCIÓN - MULTI-BOOKIE SUPPORT + COLUMN REORDERING**  
-**Última Actualización:** Febrero 12, 2026
+**Versión:** v1.6.3
+**Estado:** ✅ **PRODUCCIÓN (MULTI-BOOKIE)** | 🟢 **ODDSPORTAL INTEGRATION (80%)**
+**Última Actualización:** Febrero 17, 2026
 
 ## 🎯 **Visión del Proyecto**
 
 Sistema automatizado de monitoreo y predicción de odds deportivos que proporciona **notificaciones inteligentes** y **predicciones basadas en patrones históricos**, permitiendo a los usuarios tomar decisiones informadas usando análisis de datos históricos y **extracción eficiente de odds** solo en momentos clave.
 
-## 🚀 **Estado Actual (v1.5.5)**
+## 🚀 **Estado Actual (v1.6.3)**
+
+### ✅ **NUEVO EN v1.6.3 - API Optimization & Quality of Life Fixes**
+- **Metadata Snapshot System**: Implementada arquitectura de snapshot para capturar rankings, tipos de cancha y metadatos de temporada desde la respuesta de `/event/{id}` usada para corregir el timestamp.
+- **Redant API Call Elimination**: Se eliminaron las llamadas redundantes a `/event/{id}/details` y `/event/{id}` (court type) durante el ciclo de pre-inicio, ahorrando hasta 3 llamadas por evento.
+- **Rescheduled Alert Fix**: Resuelto bug donde las correcciones de tiempo causaban que el sistema omitiera alertas por considerar el evento como "reprogramado durante el procesamiento".
+- **H2H Parameter Fix**: Corregido bug en el flujo de reprogramación que omitía el parámetro `season_year` al analizar rachas H2H.
+- **Observation Manager Fix**: Corregida llamada a método inexistente `save_observation` reemplazándola por `upsert_observation` en el repositorio.
+
+### ✅ **NUEVO EN v1.6.2 - Season ID Enrichment**
+- **Season Data Persistence**: Modificada la condición en `get_event_results` para que `update_event_information_from_response` se ejecute también durante el chequeo de timestamps.
+- **Snapshot Refresh**: Implementada lógica de refresco en `scheduler.py` para sincronizar el `event_data` en memoria con la DB justo antes de la integración con OddsPortal.
+- **Bug Fixed**: Resuelto el problema `ℹ️ OddsPortal: Season None not mapped, skipping` para eventos recién descubiertos o reprogramados.
+
+### ✅ **NUEVO EN v1.6.1 - Critical Scheduler Fixes**
+- **Scheduler Indentation Fix**: Solucionado bug crítico en `scheduler.py` donde el bucle de procesamiento de odds solo incluía el último evento debido a un error de indentación.
+- **Timing Logic Optimization**: Implementado pre-cálculo de `minutes_until_start` antes de la corrección de timestamps para asegurar que los eventos no pierdan su ventana de procesamiento (30/5 min).
+- **Reduced API Load**: Ajustado el chequeo de "Late Timestamp Correction" para deportes no-tenis a una única verificación a los 15 minutos (antes ventana de 15 min).
 
 ### ✅ **NUEVO EN v1.5.6 - Multi-Bookie Support & Column Reordering**
 - **Multi-Bookie Architecture**: Soporte completo para múltiples casas de apuestas mediante tabla `bookies` y FK en `markets`.
@@ -360,8 +377,9 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Frecuencia**: Cada 5 minutos en intervalos de reloj
 - **Ventana**: 30 minutos antes del inicio del juego
 - **Extracción Inteligente**: Solo obtiene odds finales en momentos clave:
-  - **30 minutos antes**: Primera extracción de odds finales
-  - **5 minutos antes**: Última extracción de odds finales
+  - **30 minutos antes**: Primera extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
+  - **5 minutos antes**: Última extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
+- **OddsPortal Workflow**: Si el evento tiene `season_id` mapeado, se lanza un navegador headless para extraer odds de múltiples bookies y volumen de Betfair.
 - **Eficiencia**: Evita extracciones innecesarias cuando odds no cambian significativamente
 - **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO**
 

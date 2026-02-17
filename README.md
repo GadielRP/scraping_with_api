@@ -1,8 +1,8 @@
 # SofaScore Odds System
 
-**Versión:** v1.5.6  
-**Estado:** ✅ **PRODUCCIÓN - MULTI-BOOKIE SUPPORT + COLUMA REORDERING**  
-**Última Actualización:** 12 de Febrero, 2026
+**Versión:** v1.6.3
+**Estado:** ✅ **ODDSPORTAL INTEGRATION - BETA**
+**Última Actualización:** 17 de Febrero, 2026
 
 ## 🎯 **Descripción del Sistema**
 
@@ -19,12 +19,25 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 
 ## 🚀 **Características Principales**
 
-### ✅ **Multi-Bookie Support (v1.5.6) - NUEVO**
-- **Soporte Múltiples Casas de Apuestas**: Nueva arquitectura de base de datos que permite almacenar odds de múltiples bookies para el mismo mercado.
-- **Tabla `bookies`**: Catálogo centralizado de casas de apuestas (ID 1 = SofaScore por defecto).
-- **Esquema Relacional**: `markets` ahora referencia a `bookies.bookie_id` en lugar de una columna plana.
-- **Constraint Único Mejorado**: `(event_id, bookie_id, market_name, choice_group)` permite coexistencia de odds de distintos proveedores.
-- **Auto-Migración Inteligente**: Migración automática que preserva datos existentes, asigna bookie por defecto y reordena columnas para mantener higiene del esquema.
+### ✅ **v1.6.3 - API Optimization & Quality of Life Fixes (Febrero 2026)**
+- **Metadata Snapshot System**: Implementada arquitectura de snapshot para capturar rankings, tipos de cancha y metadatos de temporada desde la respuesta de `/event/{id}` usada para corregir el timestamp.
+- **Redant API Call Elimination**: Se eliminaron las llamadas redundantes a `/event/{id}/details` y `/event/{id}` (court type) durante el ciclo de pre-inicio, ahorrando hasta 3 llamadas de red por evento por ciclo.
+- **Rescheduled Alert Fix**: Resuelto bug donde las correcciones de tiempo causaban que el sistema omitiera alertas por considerar el evento como "reprogramado durante el procesamiento".
+- **H2H Parameter Fix**: Corregido bug en el flujo de reprogramación que omitía el parámetro `season_year` al analizar rachas H2H.
+- **Observation Manager Fix**: Corregida llamada a método inexistente `save_observation` reemplazándola por `upsert_observation` en el repositorio.
+
+### ✅ **v1.6.0 - OddsPortal Scraper Integration - COMPLETADO (Fase 1)**
+- **Architecture**: Módulo `oddsportal_scraper.py` con Playwright para scraping seguro y `oddsportal_config.py` para mapeo de ligas.
+- **Completed Features**:
+  - ✅ **Final Odds Extraction**: Extracción exitosa de odds finales de todos los bookies listados en OddsPortal.
+  - ✅ **Smart 2-Way/3-Way Detection**: Soporte automático para mercados de 2 opciones (NBA, Tenis) y 3 opciones (Fútbol), manejando correctamente el "Empate" como `null`.
+  - ✅ **Betfair Exchange**: Detección y extracción de Back/Lay odds desde la pestaña "Exchange" con correcciones de layout.
+  - ✅ **Secure Scraping**: Lógica anti-detección y ejecución síncrona segura (`scrape_match_sync`) dentro del scheduler.
+  - ✅ **Multi-Bookie Storage**: Integración con el sistema multi-bookie para persistir odds de múltiples fuentes.
+- **Pending Features**:
+  - ⏳ **Initial Odds**: La extracción de odds de apertura (requiere hover sobre odds finales) está pendiente.
+
+**Estado Final**: 🟢 **MULTI-BOOKIE SUPPORT EN PRODUCCIÓN** | 🟢 **ODDSPORAL INTEGRATION (80%)**
 
 ### ✅ **Automated Cleanup & Backfill System (v1.5.5)**
 - **404 Auto-Cleanup**: El sistema detecta cuando un evento ya no existe en la API (404) y lo elimina de la base de datos para mantener la higiene de datos.
@@ -203,8 +216,9 @@ class AlertMatch:
 - **Frecuencia**: Cada 5 minutos en intervalos de reloj
 - **Ventana**: 30 minutos antes del inicio del juego
 - **Extracción Inteligente**: Solo obtiene odds finales en momentos clave:
-  - **30 minutos antes**: Primera extracción de odds finales
-  - **5 minutos antes**: Última extracción de odds finales
+  - **30 minutos antes**: Primera extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
+  - **5 minutos antes**: Última extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
+- **OddsPortal Workflow**: Si el evento tiene `season_id` mapeado, se lanza un navegador headless para extraer odds de múltiples bookies y volumen de Betfair.
 - **Eficiencia**: Evita extracciones innecesarias cuando odds no cambian significativamente
 
 ### ✅ **Sistema de Notificaciones Optimizado**
@@ -226,12 +240,22 @@ class AlertMatch:
 - **Detección Automática**: Compara timestamps de la API con la base de datos
 - **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
 - **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos antes)
-- **Late Timestamp Correction (NUEVO v1.4.6)**: Verifica eventos recién iniciados para detectar correcciones tardías (Tennis: ventana de 60 min, otros deportes: ventana de 15 min)
+- **Late Timestamp Correction (NUEVO v1.4.6)**: Verifica eventos recién iniciados para detectar correcciones tardías (Tennis: ventana de 60 min, otros deportes: única verificación a los 15 min)
 - **Precisión de Microsegundos**: Manejo robusto de comparaciones de tiempo eliminando problemas de microsegundos
 - **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
 - **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados
 - **Logging Detallado**: Registro completo de correcciones de timestamps
 - **Notificaciones Mejoradas**: Mensajes de alerta actualizados para reflejar correcciones tardías
+
+### ✅ **v1.6.2 - Season ID Enrichment (Febrero 2026)**
+- **Season Data Persistence**: Corregido bug donde `season_id` se perdía en llamadas de corrección de timestamp. Ahora `get_event_results` persiste siempre la información de la temporada.
+- **In-Memory Enrichment**: El scheduler ahora refresca activamente el snapshot de `event_data` desde la DB si falta el `season_id`, garantizando que OddsPortal siempre genere URLs válidas.
+- **Zero API Overhead**: Implementado mediante reutilización de respuestas existentes y lecturas ligeras de DB (PK lookup).
+
+### ✅ **v1.6.1 - Critical Scheduler Fixes (Febrero 2026)**
+- **Scheduler Indentation Fix**: Corregido bug crítico donde solo se procesaba 1 evento en la extracción de odds (de 50+ detectados) debido a error de indentación.
+- **Timing Logic Hardening**: Pre-cálculo de `minutes_until_start` antes de correcciones de timestamp para evitar "timing drift" y perder ventanas de alerta (30/5 min).
+- **Optimization**: Late Timestamp Correction ajustado para chequear otros deportes solo a los 15 minutos (vs múltiples chequeos), reduciendo carga API.
 
 ### ✅ **Auto-Migration System (v1.4) - NEW**
 - **Model-Driven**: Detecta automáticamente diferencias entre `models.py` y la base de datos

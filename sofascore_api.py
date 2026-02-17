@@ -458,7 +458,7 @@ class SofaScoreAPI:
             logger.error(f"Error updating event information from response: {e}")
             return False
 
-    def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False, minutes_until_start: int = 0, update_event_info: bool = True) -> Optional[Dict]:
+    def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False, minutes_until_start: int = 0, update_event_info: bool = True, return_snapshot: bool = False) -> Optional[Dict]:
         """ 
         Fetch event results from /event/{id} endpoint.
         Returns structured result data ready for database upsert.
@@ -470,6 +470,10 @@ class SofaScoreAPI:
             minutes_until_start: Minutes until event starts (for time checks)
             update_event_info: If True, update event information (season, round, etc.) from response.
                               Set to False in test mode to avoid database changes.
+            return_snapshot: If True and update_time=True, return a tuple (timing_result, metadata_snapshot)
+                            instead of just timing_result. The snapshot contains team IDs, rankings,
+                            tournament info, season info, and observations extracted from the same
+                            API response, eliminating the need for separate get_event_details calls.
         """
         try:
             endpoint = f"/event/{event_id}"
@@ -490,8 +494,9 @@ class SofaScoreAPI:
             
             # Update event information from response (midnight sync optimization)
             # This ensures we always have complete event data from the authoritative /event/{id} endpoint
-            if update_event_info and not update_time and not update_court_type:
-                # Only update during normal results collection (not during time checks or court type extraction)
+            if update_event_info and not update_court_type:
+                # Update event info during normal results collection AND timestamp checks
+                # This ensures we capture season_id and round info from every /event/{id} call
                 self.update_event_information_from_response(response)
             
             if update_court_type:
@@ -519,14 +524,22 @@ class SofaScoreAPI:
                 if start_timestamp is None:
                     logger.warning(f"No startTimestamp found in API response for event {event_id}")
                     logger.debug(f"Available event fields: {list(event_data.keys())}")
+                    if return_snapshot:
+                        return None, None
                     return None  # Return None to indicate API error, not time change
                 
                 # Check if this is for a recently started event (negative minutes) - send alert
                 if minutes_until_start < 0:
-                    return self.check_and_update_starting_time(event_id, start_timestamp, send_alert=True)
+                    timing_result = self.check_and_update_starting_time(event_id, start_timestamp, send_alert=True)
                 else:
                     # Regular timestamp check for upcoming events
-                    return self.check_and_update_starting_time(event_id, start_timestamp)
+                    timing_result = self.check_and_update_starting_time(event_id, start_timestamp)
+                
+                if return_snapshot:
+                    snapshot = self._extract_metadata_snapshot(response)
+                    return timing_result, snapshot
+                
+                return timing_result
             
             # Extract results from response
             result = self.extract_results_from_response(response)
@@ -864,6 +877,78 @@ class SofaScoreAPI:
             
         except Exception as e:
             logger.error(f"Error extracting results from response: {e}")
+            return None
+    
+    def _extract_metadata_snapshot(self, response: Dict) -> Optional[Dict]:
+        """
+        Extract a compact metadata snapshot from a /event/{id} API response.
+        This snapshot contains all the fields the scheduler needs for alert evaluation,
+        eliminating the need for separate get_event_details or get_event_results(update_court_type=True) calls.
+        
+        COMPLETELY FAIL-SAFE: Returns None on any error, doesn't break main processing.
+        
+        Returns:
+            Dict with keys: home_team_id, away_team_id, home_team_ranking, away_team_ranking,
+                           tournament_id, tournament_name, competition_slug, season_id, season_name,
+                           season_year, observations (list of ground_type/rankings dicts)
+        """
+        try:
+            if not response or 'event' not in response:
+                return None
+            
+            event_data = response['event']
+            
+            # Extract team IDs and rankings
+            home_team = event_data.get('homeTeam', {})
+            away_team = event_data.get('awayTeam', {})
+            
+            # Extract tournament and season info
+            tournament = event_data.get('tournament', {})
+            season_data = event_data.get('season', {})
+            
+            # Parse season_year using the shared utility
+            season_year_raw = season_data.get('year')
+            season_year = None
+            if season_year_raw:
+                from repository import SeasonRepository
+                season_year = SeasonRepository._parse_year(season_year_raw)
+            
+            # Build observations list (ground_type + rankings) via existing method
+            observations = self._extract_observations_from_response(response) or []
+            
+            # Always add rankings to observations if available
+            has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+            if not has_rankings:
+                home_ranking = home_team.get('ranking')
+                away_ranking = away_team.get('ranking')
+                if home_ranking is not None or away_ranking is not None:
+                    observations.append({
+                        'type': 'rankings',
+                        'home_ranking': home_ranking,
+                        'away_ranking': away_ranking
+                    })
+            
+            snapshot = {
+                'home_team_id': home_team.get('id'),
+                'away_team_id': away_team.get('id'),
+                'home_team_ranking': home_team.get('ranking'),
+                'away_team_ranking': away_team.get('ranking'),
+                'tournament_id': tournament.get('id'),
+                'tournament_name': tournament.get('name'),
+                'competition_slug': tournament.get('uniqueTournament', {}).get('slug'),
+                'season_id': str(season_data.get('id', '')) if season_data.get('id') else None,
+                'season_name': season_data.get('name'),
+                'season_year': season_year,
+                'observations': observations,
+            }
+            
+            logger.info(f"📸 Metadata snapshot extracted: teams={snapshot['home_team_id']}/{snapshot['away_team_id']}, "
+                       f"tournament={snapshot['tournament_id']}, season={snapshot['season_id']}")
+            
+            return snapshot
+            
+        except Exception as e:
+            logger.warning(f"Error extracting metadata snapshot (FAIL-SAFE): {e}")
             return None
     
     def _extract_observations_from_response(self, response: Dict) -> Optional[List[Dict]]:

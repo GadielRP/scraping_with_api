@@ -194,17 +194,42 @@ class OddsPortalScraper:
                 
                 if h_found and a_found:
                     # Found match row, extract link
-                    link = await row.query_selector("a[href^='/'][href*='-']")
-                    if not link:
-                         # Fallback for any link
-                         link = await row.query_selector("a[href]")
-                         
-                    if link:
+                    # Specific selector: excluded league URL part if possible, or look for specific structure
+                    # Filter out links that are exactly the league URL
+                    links = await row.query_selector_all("a[href]")
+                    
+                    found_link = None
+                    for link in links:
                         href = await link.get_attribute("href")
-                        if href:
-                            logger.info(f"✅ Found match link: {href}")
-                            return f"https://www.oddsportal.com{href}"
-            
+                        if not href:
+                            continue
+                            
+                        # Rule 1: Must contain at least one hyphen (slug structure)
+                        if "-" not in href:
+                            continue
+                            
+                        # Rule 2: Must NOT end with the country/league part (which mimics league URL)
+                        # e.g., /football/italy/serie-a/ is BAD
+                        # e.g., /football/italy/serie-a/cagliari-lecce-Iwx5pDtf/ is GOOD
+                        # Check logic: match URL typically is longer and has keys
+                        
+                        # Rule 3: Should contain part of team name if possible, but slugification is hard to predict
+                        # Let's rely on length > league_url length or specific pattern
+                        
+                        # Simple robust check: specific match URLs usually end with a code (8 chars) or have 2+ parts relative to league
+                        # Example: /football/italy/serie-a/cagliari-lecce-Iwx5pDtf/
+                        
+                        # Filter out the league_url itself if it appears in the row
+                        if href.rstrip('/') in league_url.rstrip('/'):
+                             continue
+                             
+                        found_link = href
+                        break
+                        
+                    if found_link:
+                        logger.info(f"✅ Found match link: {found_link}")
+                        return f"https://www.oddsportal.com{found_link}"
+                        
             logger.warning(f"❌ Match not found: {home_team} vs {away_team}")
             return None
             
@@ -248,6 +273,13 @@ class OddsPortalScraper:
                     await asyncio.sleep(0.5)
             except Exception:
                 pass
+            
+            # Wait for bookie rows to ensure content is loaded
+            try:
+                # 'div.flex.h-9' is the row container for bookies
+                await page.wait_for_selector('div.flex.h-9', timeout=10000)
+            except Exception:
+                logger.warning("⚠️ Bookie rows not found within timeout (page might be empty or blocked)")
             
             # Scroll to load lazy elements
             await page.evaluate("window.scrollTo(0, 500)")
@@ -320,11 +352,12 @@ class OddsPortalScraper:
                         payout = lastChild.textContent.trim();
                     }
                     
+                    const isThreeWay = odds.length >= 3;
                     result.bookies.push({
                         name: bookieName,
                         odds1: odds[0] || '-',
-                        oddsX: odds.length === 3 ? (odds[1] || '-') : '-',
-                        odds2: odds.length === 3 ? (odds[2] || '-') : (odds[1] || '-'),
+                        oddsX: isThreeWay ? (odds[1] || '-') : null,
+                        odds2: isThreeWay ? (odds[2] || '-') : (odds[1] || '-'),
                         payout: payout,
                     });
                 }
@@ -332,20 +365,22 @@ class OddsPortalScraper:
                 // --- Extract Betfair Exchange ---
                 // Search for the section directly
                 const exchangeSection = document.querySelector('div[data-testid="betting-exchanges-section"]');
+
                 if (exchangeSection) {
                     const allOddContainers = exchangeSection.querySelectorAll('div[data-testid="odd-container"]');
                     
-                    if (allOddContainers.length >= 6) {
-                        const extractOddFromContainer = (container) => {
-                            const ps = container.querySelectorAll('p');
-                            for (const p of ps) {
-                                const txt = p.textContent.trim();
-                                if (!txt || txt === '-') continue;
-                                if (/^\d+(\.\d+)?$/.test(txt)) return txt;
-                            }
-                            return null;
-                        };
+                    const extractOddFromContainer = (container) => {
+                        const ps = container.querySelectorAll('p');
+                        for (const p of ps) {
+                            const txt = p.textContent.trim();
+                            if (!txt || txt === '-') continue;
+                            if (/^\d+(\.\d+)?$/.test(txt)) return txt;
+                        }
+                        return null;
+                    };
 
+                    if (allOddContainers.length >= 6) {
+                        // 3-Way Market (1X2)
                         // Back Odds (Indices 0, 1, 2)
                         const back1 = extractOddFromContainer(allOddContainers[0]);
                         const backX = extractOddFromContainer(allOddContainers[1]);
@@ -371,12 +406,37 @@ class OddsPortalScraper:
                                 odds2: lay2 || '-'
                             };
                         }
+                    } else if (allOddContainers.length >= 4) {
+                        // 2-Way Market (Home/Away)
+                        // Back Odds (Indices 0, 1)
+                        const back1 = extractOddFromContainer(allOddContainers[0]);
+                        const back2 = extractOddFromContainer(allOddContainers[1]);
                         
-                        // Extract payout from section text if available
-                        const sectionText = exchangeSection.innerText || '';
-                        const payMatch = sectionText.match(/(\d{2,3}\.\d)%/);
-                        if (payMatch) result.betfairPayout = payMatch[0];
+                        // Lay Odds (Indices 2, 3)
+                        const lay1 = extractOddFromContainer(allOddContainers[2]);
+                        const lay2 = extractOddFromContainer(allOddContainers[3]);
+                        
+                        if (back1 || back2) {
+                            result.betfairBack = {
+                                odds1: back1 || '-',
+                                oddsX: '-',
+                                odds2: back2 || '-'
+                            };
+                        }
+                        
+                        if (lay1 || lay2) {
+                            result.betfairLay = {
+                                odds1: lay1 || '-',
+                                oddsX: '-',
+                                odds2: lay2 || '-'
+                            };
+                        }
                     }
+                        
+                    // Extract payout from section text if available
+                    const sectionText = exchangeSection.innerText || '';
+                    const payMatch = sectionText.match(/(\d{2,3}\.\d)%/);
+                    if (payMatch) result.betfairPayout = payMatch[0];
                 }
                 
                 return result;
