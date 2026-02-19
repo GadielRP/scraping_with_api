@@ -8,3 +8,4 @@ curl-cffi>=0.5.0
 pydantic>=2.4.0
 rich>=13.0.0
 pytz>=2023.3
+playwright>=1.40.0

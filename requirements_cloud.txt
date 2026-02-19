@@ -32,3 +32,4 @@ psycopg[binary]==3.2.9
 
 #migration
 pandas>=1.5.0
+playwright>=1.40.0

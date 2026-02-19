@@ -355,6 +355,7 @@ class AlertMatch:
 ### **Requisitos (local)**
 ```bash
 pip install -r requirements.txt
+playwright install chromium
 ```
 
 ### **Despliegue en la nube (Docker + PostgreSQL)**
