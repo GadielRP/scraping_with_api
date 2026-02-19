@@ -1193,6 +1193,28 @@ class MarketRepository:
                         else:
                             market.collected_at = get_local_now()
                             
+                        # Build initial odds map from hover-extracted opening odds
+                        initial_map = {
+                            "1": None,
+                            "X": None,
+                            "2": None
+                        }
+                        try:
+                            if b_odds.initial_odds_1:
+                                initial_map["1"] = float(b_odds.initial_odds_1)
+                        except (ValueError, TypeError):
+                            pass
+                        try:
+                            if b_odds.initial_odds_x:
+                                initial_map["X"] = float(b_odds.initial_odds_x)
+                        except (ValueError, TypeError):
+                            pass
+                        try:
+                            if b_odds.initial_odds_2:
+                                initial_map["2"] = float(b_odds.initial_odds_2)
+                        except (ValueError, TypeError):
+                            pass
+
                         # Upsert Choices
                         choices_map = {
                             "1": b_odds.odds_1,
@@ -1220,13 +1242,22 @@ class MarketRepository:
                                 if abs(float(choice.current_odds or 0) - current_odds) > 0.001:
                                     choice.change = 1 if current_odds > float(choice.current_odds or 0) else -1
                                     choice.current_odds = current_odds
+                                # Update initial_odds if we now have real opening odds and didn't before
+                                if initial_map.get(choice_name) and not choice.initial_odds:
+                                    choice.initial_odds = initial_map[choice_name]
                             else:
+                                init_val = initial_map.get(choice_name)
+                                # Compute change from opening if we have real initial odds
+                                if init_val and abs(init_val - current_odds) > 0.001:
+                                    computed_change = 1 if current_odds > init_val else -1
+                                else:
+                                    computed_change = 0
                                 choice = MarketChoice(
                                     market_id=market.market_id,
                                     choice_name=choice_name,
-                                    initial_odds=current_odds,
+                                    initial_odds=init_val if init_val else current_odds,
                                     current_odds=current_odds,
-                                    change=0
+                                    change=computed_change
                                 )
                                 session.add(choice)
                                 
@@ -1236,8 +1267,6 @@ class MarketRepository:
                         logger.warning(f"Error saving bookie {b_odds.name} for event {event_id}: {e}")
                         continue
                         
-                # 2. Process Betfair Exchange (if present)
-
                 # 2. Process Betfair Exchange (if present)
                 if odds_data.betfair:
                     try:
@@ -1316,12 +1345,38 @@ class MarketRepository:
                                         choice.change = 1 if current_odds > float(choice.current_odds or 0) else -1
                                         choice.current_odds = current_odds
                                  else:
+                                    # For Betfair, use initial_* if available
+                                    bf = odds_data.betfair
+                                    if group_name == "Back":
+                                        bf_initial_map = {
+                                            "1": bf.initial_back_1,
+                                            "X": bf.initial_back_x,
+                                            "2": bf.initial_back_2
+                                        }
+                                    elif group_name == "Lay":
+                                        bf_initial_map = {
+                                            "1": bf.initial_lay_1,
+                                            "X": bf.initial_lay_x,
+                                            "2": bf.initial_lay_2
+                                        }
+                                    else:
+                                        bf_initial_map = {}
+                                    init_str = bf_initial_map.get(choice_name)
+                                    try:
+                                        init_val = float(init_str) if init_str else None
+                                    except (ValueError, TypeError):
+                                        init_val = None
+                                    # Compute change from opening if we have real initial odds
+                                    if init_val and abs(init_val - current_odds) > 0.001:
+                                        computed_change = 1 if current_odds > init_val else -1
+                                    else:
+                                        computed_change = 0
                                     choice = MarketChoice(
                                         market_id=market.market_id,
                                         choice_name=choice_name,
-                                        initial_odds=current_odds,
+                                        initial_odds=init_val if init_val else current_odds,
                                         current_odds=current_odds,
-                                        change=0
+                                        change=computed_change
                                     )
                                     session.add(choice)
                             

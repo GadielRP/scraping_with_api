@@ -567,40 +567,8 @@ class JobScheduler:
                                         except Exception as e:
                                             logger.warning(f"Error saving markets to DB for event {event_data['id']}: {e}")
                                             
-                                        # OddsPortal Integration
-                                        try:
-                                            # Local imports to avoid potential circular dependencies
-                                            from oddsportal_config import SEASON_ODDSPORTAL_MAP
-                                            from oddsportal_scraper import scrape_match_sync
-                                            from repository import MarketRepository
-
-                                            season_id = event_data.get('season_id')
-                                            op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
-                                            
-                                            if op_info:
-                                                # Construct league URL
-                                                # https://www.oddsportal.com/football/england/premier-league/
-                                                league_url = f"https://www.oddsportal.com/{op_info['sport']}/{op_info['country']}/{op_info['league']}/"
-                                                
-                                                logger.info(f"🔍 Attempting OddsPortal scrape for {event_data['home_team']} vs {event_data['away_team']}")
-                                                
-                                                # Call scraper synchronously (will launch browser)
-                                                op_data = scrape_match_sync(
-                                                    league_url=league_url,
-                                                    home_team=event_data['home_team'],
-                                                    away_team=event_data['away_team']
-                                                )
-                                                
-                                                if op_data:
-                                                    saved = MarketRepository.save_markets_from_oddsportal(event_data['id'], op_data)
-                                                    logger.info(f"✅ OddsPortal: Saved {saved} markets/bookies")
-                                                else:
-                                                    logger.warning("⚠️ OddsPortal: No data extracted (match not found or scrape failed)")
-                                            else:
-                                                logger.debug(f"ℹ️ OddsPortal: Season {season_id} not mapped, skipping")
-
-                                        except Exception as e:
-                                            logger.error(f"❌ OddsPortal Integration Error: {e}")
+                                        # OddsPortal Integration has been moved to a dedicated worker
+                                        # (runs concurrently, see _run_oddsportal_batch below)
                                         
                                         # Track this event for alert evaluation (capture timing when odds were extracted)
                                         events_with_odds_extracted.append({
@@ -656,6 +624,29 @@ class JobScheduler:
                     logger.error(f"Error processing upcoming event {event_data['id']}: {e}")
                     continue
             
+            # ========================================
+            # LAUNCH ODDSPORTAL WORKER CONCURRENTLY
+            # ========================================
+            oddsportal_thread = None
+            
+            # FILTER: Only launch OddsPortal scraping for the 5-minute window (user request)
+            # We filter the list so the worker only processes events close to start time (approx 5 mins)
+            oddsportal_candidates = [
+                e for e in events_to_process 
+                if e.get('minutes_until_start', 30) <= 15
+            ]
+            
+            if oddsportal_candidates:
+                logger.info(f"🚀 Launching OddsPortal concurrent worker for {len(oddsportal_candidates)} events (5 min window)...")
+                oddsportal_thread = threading.Thread(
+                    target=self._run_oddsportal_batch,
+                    args=(oddsportal_candidates,),
+                    name="oddsportal_worker",
+                    daemon=False
+                )
+                oddsportal_thread.start()
+            elif events_to_process:
+                logger.info(f"⏭️ Skipping OddsPortal scraping for {len(events_to_process)} events (30 min window - API odds only)")
             
             if processed_count > 0:
                 logger.info(f"🚨 Pre-start check completed: {processed_count} games starting soon!")
@@ -732,12 +723,14 @@ class JobScheduler:
                             meta_obs = event_meta_lookup.get(event_obj.id)
                             stored_observations = meta_obs.get('observations') if meta_obs else None
                             stored_odds_response = meta_obs.get('final_odds_response') if meta_obs else None
+                            stored_metadata_snapshot = meta_obs.get('metadata_snapshot') if meta_obs else None
 
                             events_for_alerts.append({
                                 'event_obj': event_obj,
                                 'initial_minutes': initial_minutes_snapshot,
                                 'observations': stored_observations,
-                                'odds_response': stored_odds_response
+                                'odds_response': stored_odds_response,
+                                'metadata_snapshot': stored_metadata_snapshot
                             })
                             tracked_event_ids.add(event_obj.id)
                     else:
@@ -778,12 +771,14 @@ class JobScheduler:
                             # Retrieve observations from meta
                             stored_observations = meta.get('observations') if meta else None
                             stored_odds_response = meta.get('final_odds_response') if meta else None
+                            stored_metadata_snapshot = meta.get('metadata_snapshot') if meta else None
 
                             events_for_alerts.append({
                                 'event_obj': event_obj,
                                 'initial_minutes': initial_minutes_snapshot,
                                 'observations': stored_observations,
-                                'odds_response': stored_odds_response
+                                'odds_response': stored_odds_response,
+                                'metadata_snapshot': stored_metadata_snapshot
                             })
                             tracked_event_ids.add(event_obj.id)
                     
@@ -791,391 +786,103 @@ class JobScheduler:
                         logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for H2H and dual process alerts...")
                         
                         # ========================================
-                        # PROCESS EACH EVENT INDIVIDUALLY (ODDS + H2H + DUAL ALERTS IN PAIRS)
+                        # PARALLEL EVENT PROCESSING (2 workers)
                         # ========================================
                         try:
                             from streak_alerts import streak_alert_engine
                             
-                            for event_payload in events_for_alerts:
-                                try:
-                                    # Initialize observations per event to avoid cross-event contamination
-                                    # Use stored observations if available (from Loop 1), otherwise None
-                                    observations = event_payload.get('observations')
+                            n_events = len(events_for_alerts)
+                            
+                            if n_events == 1:
+                                # Single event - no parallelism needed
+                                logger.info("📦 Single event - processing directly (no batching)")
+                                all_results = [self._process_single_event_alerts(events_for_alerts[0], KEY_MOMENTS)]
+                            else:
+                                # Split events into 2 balanced batches for parallel processing
+                                mid = n_events // 2
+                                batch_a = events_for_alerts[:mid]
+                                batch_b = events_for_alerts[mid:]
+                                logger.info(f"📦 Splitting {n_events} events into 2 batches: A={len(batch_a)}, B={len(batch_b)}")
+                                
+                                all_results = []
+                                with ThreadPoolExecutor(max_workers=2, thread_name_prefix="alert_worker") as executor:
+                                    future_a = executor.submit(self._process_event_batch, batch_a, KEY_MOMENTS)
+                                    future_b = executor.submit(self._process_event_batch, batch_b, KEY_MOMENTS)
                                     
-                                    event_obj = event_payload['event_obj']
-                                    initial_minutes = event_payload.get('initial_minutes')
-                                    if initial_minutes is None:
-                                        initial_minutes = self._minutes_until_start(event_obj.start_time_utc)
-                                    
-                                    minutes_now = self._minutes_until_start(event_obj.start_time_utc)
-                                    minutes_until_start = initial_minutes if initial_minutes in KEY_MOMENTS else minutes_now
-
-                                    logger.info(
-                                        f"🔍 Processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team} "
-                                        f"(captured {initial_minutes} min, current {minutes_now} min)"
-                                    )
-                                    
-                                    # ========================================
-                                    # ODDS ALERT FOR THIS EVENT (SENT FIRST)
-                                    # ========================================
-                                    odds_response = event_payload.get('odds_response')
-                                    if odds_response:
-                                        logger.info(f"📊 Sending odds alert for event {event_obj.id} (FIRST in sequence)")
+                                    # Collect results in order (batch A first, then batch B)
+                                    for future_label, future in [("A", future_a), ("B", future_b)]:
                                         try:
-                                            from odds_alert import odds_alert_processor
-                                            # Build event_data dict for odds alert
-                                            event_data_for_odds = {
-                                                'id': event_obj.id,
-                                                'home_team': event_obj.home_team,
-                                                'away_team': event_obj.away_team,
-                                                'sport': event_obj.sport,
-                                                'competition': getattr(event_obj, 'competition', ''),
-                                                'slug': event_obj.slug,
-                                                'discovery_source': getattr(event_obj, 'discovery_source', '')
-                                            }
-                                            odds_alert_processor.send_odds_alert(event_data_for_odds, odds_response, minutes_until_start)
+                                            batch_results = future.result(timeout=300)  # 5 min timeout per batch
+                                            all_results.extend(batch_results)
+                                            logger.info(f"✅ Batch {future_label} completed: {len(batch_results)} events processed")
                                         except Exception as e:
-                                            logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
-                                    else:
-                                        logger.debug(f"⏭️ No odds response stored for event {event_obj.id} - skipping odds alert")
-                                    
-                                    # ========================================
-                                    # H2H STREAK ANALYSIS FOR THIS EVENT
-                                    # ========================================
-                                    streak_analysis = None
-
-                                    if minutes_until_start == 30:
-                                        if event_obj.custom_id:
-                                            try:
-                                                h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
-                                                if h2h_response and 'events' in h2h_response:
-                                                    h2h_events = h2h_response['events']
-
-                                                    home_team_id = None
-                                                    away_team_id = None
-                                                    competition_slug = None
-                                                    competition_name = None
-                                                    tournament_id = None
-                                                    season_id = None
-                                                    season_name = None
-                                                    season_year = None
-
-                                                    # Use metadata snapshot from timing check (avoids redundant get_event_details call)
-                                                    snapshot = event_info.get('metadata_snapshot')
-                                                    if snapshot:
-                                                        home_team_id = snapshot.get('home_team_id')
-                                                        away_team_id = snapshot.get('away_team_id')
-                                                        tournament_id = snapshot.get('tournament_id')
-                                                        competition_name = snapshot.get('tournament_name')
-                                                        competition_slug = snapshot.get('competition_slug')
-                                                        season_id = snapshot.get('season_id')
-                                                        season_name = snapshot.get('season_name')
-                                                        season_year = snapshot.get('season_year')
-                                                        logger.debug(f"Extracted metadata from snapshot: Home={home_team_id}, Away={away_team_id}, tournament={tournament_id}")
-                                                        logger.debug(f"Extracted season data from snapshot: season_id={season_id}, season_name={season_name}, season_year={season_year}")
-
-                                                        # Tennis rankings from snapshot
-                                                        if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                                            has_rankings = False
-                                                            if observations:
-                                                                has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
-                                                            if not has_rankings:
-                                                                home_team_ranking = snapshot.get('home_team_ranking')
-                                                                away_team_ranking = snapshot.get('away_team_ranking')
-                                                                if observations is None:
-                                                                    observations = []
-                                                                observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                                                logger.info(f"✅ Added rankings from snapshot for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
-                                                            else:
-                                                                logger.debug(f"Rankings already exist in observations for event {event_obj.id}")
-                                                    else:
-                                                        # Fallback: No snapshot (e.g., timestamp correction disabled), use API call
-                                                        try:
-                                                            event_details = api_client.get_event_details(event_obj.id)
-                                                            if event_details:
-                                                                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                                                    has_rankings = False
-                                                                    if observations:
-                                                                        has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
-                                                                    if not has_rankings:
-                                                                        home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
-                                                                        away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
-                                                                        if observations is None:
-                                                                            observations = []
-                                                                        observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                                                        logger.info(f"✅ Added rankings from API fallback for event {event_obj.id}")
-                                                                home_team_id = event_details.get('homeTeam', {}).get('id')
-                                                                away_team_id = event_details.get('awayTeam', {}).get('id')
-                                                                tournament_id = event_details.get('tournament', {}).get('id')
-                                                                competition_name = event_details.get('tournament', {}).get('name')
-                                                                competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
-                                                                season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
-                                                                season_name = event_details.get('season', {}).get('name')
-                                                                season_year_raw = event_details.get('season', {}).get('year')
-                                                                from repository import SeasonRepository
-                                                                season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
-                                                            else:
-                                                                logger.warning(f"Could not fetch event details for {event_obj.id}")
-                                                        except Exception as e:
-                                                            logger.error(f"Error fetching event details for {event_obj.id}: {e}")
-
-                                                    tennis_observations = observations if observations else []
-
-                                                    if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                                        has_ground_type = any(obs.get('type') == 'ground_type' for obs in tennis_observations)
-
-                                                        if not has_ground_type:
-                                                            logger.info(f"🎾 Getting ground_type for tennis event {event_obj.id} for filtering")
-                                                            if not sport_observations_manager.has_observations_for_event(event_obj.id):
-                                                                # Try snapshot observations first
-                                                                if snapshot and snapshot.get('observations'):
-                                                                    for obs in snapshot['observations']:
-                                                                        if obs.get('type') == 'ground_type':
-                                                                            tennis_observations.append(obs)
-                                                                            ObservationRepository.upsert_observation(event_obj.id, event_obj.sport, 'ground_type', obs['value'])
-                                                                            logger.info(f"🎾 Ground type from snapshot: {obs['value']}")
-                                                                else:
-                                                                    new_observations = api_client.get_event_results(
-                                                                        event_id=event_obj.id,
-                                                                        update_court_type=True
-                                                                    )
-                                                                    if new_observations:
-                                                                        for obs in new_observations:
-                                                                            if obs.get('type') == 'ground_type':
-                                                                                tennis_observations.append(obs)
-                                                                            elif obs.get('type') == 'rankings':
-                                                                                existing_rankings = next((o for o in tennis_observations if o.get('type') == 'rankings'), None)
-                                                                                if not existing_rankings:
-                                                                                    tennis_observations.append(obs)
-                                                                                    logger.info(f"✅ Added rankings from results check for event {event_obj.id}")
-                                                                                else:
-                                                                                    if existing_rankings.get('home_ranking') is None and existing_rankings.get('away_ranking') is None:
-                                                                                        if obs.get('home_ranking') is not None or obs.get('away_ranking') is not None:
-                                                                                            existing_rankings['home_ranking'] = obs.get('home_ranking')
-                                                                                            existing_rankings['away_ranking'] = obs.get('away_ranking')
-                                                                                            logger.info(f"✅ Updated rankings from results check for event {event_obj.id} (overwrote None values)")
-                                                            else:
-                                                                observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
-                                                                if observation:
-                                                                    tennis_observations.append({'type': 'ground_type', 'value': observation.observation_value})
-                                                                    logger.info(f"🎾 Using existing ground_type observation: {observation.observation_value}")
-
-                                                        # Final rankings check using snapshot if still missing
-                                                        has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
-                                                        if not has_rankings and snapshot:
-                                                            home_team_ranking = snapshot.get('home_team_ranking')
-                                                            away_team_ranking = snapshot.get('away_team_ranking')
-                                                            if home_team_ranking is not None or away_team_ranking is not None:
-                                                                tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
-                                                                logger.info(f"✅ Added rankings from snapshot for tennis_observations for event {event_obj.id}")
-
-                                                    if tennis_observations:
-                                                        rankings_info = next((obs for obs in tennis_observations if isinstance(obs, dict) and obs.get('type') == 'rankings'), None)
-                                                        if rankings_info:
-                                                            logger.info(f"📊 Passing observations to analyze_h2h_events for event {event_obj.id}: home_ranking={rankings_info.get('home_ranking')}, away_ranking={rankings_info.get('away_ranking')}")
-                                                        else:
-                                                            logger.warning(f"⚠️ No rankings found in tennis_observations for event {event_obj.id}")
-
-                                                    streak_analysis = streak_alert_engine.analyze_h2h_events(
-                                                        event_id=event_obj.id,
-                                                        event_custom_id=event_obj.custom_id,
-                                                        event_start_time=event_obj.start_time_utc,
-                                                        sport=event_obj.sport,
-                                                        discovery_source=event_obj.discovery_source,
-                                                        tournament_id=tournament_id,
-                                                        competition_name=competition_name,
-                                                        competition_slug=competition_slug,
-                                                        season_id=season_id,
-                                                        season_name=season_name,
-                                                        participants=f"{event_obj.home_team} vs {event_obj.away_team}",
-                                                        home_team_name=event_obj.home_team,
-                                                        away_team_name=event_obj.away_team,
-                                                        h2h_events=h2h_events,
-                                                        minutes_until_start=minutes_until_start,
-                                                        season_year=season_year,
-                                                        observations=tennis_observations,
-                                                        home_team_id=home_team_id,
-                                                        away_team_id=away_team_id,
-                                                        event_odds=event_obj.event_odds
-                                                    )
-
-                                                    if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
-                                                        logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
-                                                        
-                                                        # ========================================
-                                                        # SMART ALERT FILTERING: RESURRECTION LOGIC
-                                                        # ========================================
-                                                        # If streak alert qualifies (≥MIN_RESULTS), event is valuable.
-                                                        # Reset alert_sent=False if it was marked as low-value earlier.
-                                                        from config import Config as AppConfig
-                                                        home_result_count = len(streak_analysis.home_team_results) if streak_analysis.home_team_results else 0
-                                                        away_result_count = len(streak_analysis.away_team_results) if streak_analysis.away_team_results else 0
-                                                        min_threshold = AppConfig.STREAK_ALERT_MIN_RESULTS
-                                                        
-                                                        if home_result_count >= min_threshold or away_result_count >= min_threshold:
-                                                            # Refresh event object to get current DB state
-                                                            fresh_event = self.event_repo.get_event_by_id(event_obj.id)
-                                                            if fresh_event and fresh_event.alert_sent:
-                                                                logger.info(f"🔄 RESURRECTING EVENT: Event {event_obj.id} has sufficient data (home:{home_result_count}, away:{away_result_count}) - resetting alert_sent=False")
-                                                                self._reset_event_alert_sent(event_obj.id)
-                                                                # Update the event_obj reference to reflect the change
-                                                                event_obj = self.event_repo.get_event_by_id(event_obj.id)
-                                                    else:
-                                                        logger.debug(f"⏭️ No H2H streak alert for event {event_obj.id}")
-                                                else:
-                                                    logger.debug(f"No H2H data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
-                                            except Exception as e:
-                                                logger.error(f"Error analyzing H2H streak for event {event_obj.id}: {e}")
-                                        else:
-                                            logger.debug(f"Event {event_obj.id} has no custom_id - skipping H2H streak analysis")
-                                    else:
-                                        logger.debug(f"⏭️ Skipping H2H streak analysis for event {event_obj.id} - minutes_until_start={minutes_until_start} (only run at 30)")
-                                    
-                                    # ========================================
-                                    # DUAL PROCESS ANALYSIS FOR THIS EVENT
-                                    # ========================================
-                                    dual_report = None
-                                    
-                                    # ========================================
-                                    # SMART ALERT FILTERING: CHECK alert_sent FLAG
-                                    # ========================================
-                                    # Refresh event from DB to get latest alert_sent value (may have been updated by odds_alert)
-                                    fresh_event_for_dual = self.event_repo.get_event_by_id(event_obj.id)
-                                    if fresh_event_for_dual and fresh_event_for_dual.alert_sent:
-                                        logger.info(f"⏭️ EARLY EXIT: Skipping dual process for event {event_obj.id} - marked as low-value (alert_sent=True)")
-                                    # Only process dual process for events with discovery_source='dropping_odds'
-                                    elif getattr(event_obj, 'discovery_source', None) != 'dropping_odds':
-                                        discovery_source = getattr(event_obj, 'discovery_source', None)
-                                        logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - discovery_source='{discovery_source}' (only processing 'dropping_odds')")
-                                    else:
-                                        try:
-                                            # Enrich event object with court type for Tennis/Tennis Doubles events
-                                            event_obj.court_type = None  # Default value
-                                            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                                                observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
-                                                if observation:
-                                                    event_obj.court_type = observation.observation_value
-                                                    logger.info(f"🎾 Court type for event {event_obj.id}: {event_obj.court_type}")
-                                                else:
-                                                    logger.info(f"🎾 No court type found for event {event_obj.id}")
-                                            
-                                            dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
-                                            
-                                            # Only add dual report if at least one process has a prediction OR if Process 1 found candidates
-                                            # This ensures we show Process 1 findings even when no clear prediction is made
-                                            should_send = False
-                                            reason = ""
-                                            
-                                            if dual_report.process1_prediction or dual_report.process2_prediction:
-                                                should_send = True
-                                                reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
-                                            elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
-                                                # Process 1 found candidates but no clear prediction - still show the report
-                                                should_send = True
-                                                reason = f"Process1 found candidates (status: {dual_report.process1_status})"
-                                            
-                                            if should_send:
-                                                logger.info(f"✅ Dual process report added for event {event_obj.id}: {reason}")
-                                            else:
-                                                logger.debug(f"⏭️ Skipping dual process report for event {event_obj.id}: No predictions or candidates found")
-                                                
-                                        except Exception as e:
-                                            logger.error(f"Error running dual process evaluation for event {event_obj.id}: {e}")
-                                            
-                                            # Fallback to Process 1 only if dual process fails for this event
-                                            # Only fallback if discovery_source is 'dropping_odds'
-                                            if event_obj.discovery_source == 'dropping_odds':
-                                                logger.info(f"🔄 Falling back to Process 1 only for event {event_obj.id}...")
-                                                try:
-                                                    alerts = alert_engine.evaluate_upcoming_events([event_obj])
-                                                    if alerts:
-                                                        logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback) for event {event_obj.id}")
-                                                        alert_engine.send_alerts(alerts)
-                                                        
-                                                        # Log predictions for successful Process 1 reports (fallback)
-                                                        from modules.prediction import prediction_logger
-                                                        
-                                                        for alert in alerts:
-                                                            # Only log predictions with success status
-                                                            if alert.get('status') == 'success':
-                                                                event_id = alert.get('event_id')
-                                                                if event_id:
-                                                                    # Get the event object
-                                                                    event_obj_fallback = self.event_repo.get_event_by_id(event_id)
-                                                                    if event_obj_fallback:
-                                                                        # Check if event is exactly 5 minutes from start
-                                                                        minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
-                                                                        if minutes_until_start_fallback == 5:
-                                                                            # Log the prediction only at 5 minutes
-                                                                            success = prediction_logger.log_prediction(event_obj_fallback, alert)
-                                                                            if success:
-                                                                                logger.info(f"✅ Prediction logged for Process 1 event {event_id} (5 minutes from start)")
-                                                                            else:
-                                                                                # Check if it's a duplicate (already exists) vs. actual failure
-                                                                                
-                                                                                with db_manager.get_session() as session:
-                                                                                    existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
-                                                                                    if existing:
-                                                                                        logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
-                                                                                    else:
-                                                                                        logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
-                                                                        else:
-                                                                            logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 5 minutes)")
-                                                                    else:
-                                                                        logger.warning(f"Could not find event {event_id} for prediction logging")
-                                                    else:
-                                                        logger.debug(f"No Process 1 candidate reports generated (fallback) for event {event_obj.id}")
-                                                except Exception as e2:
-                                                    logger.error(f"Error in Process 1 fallback for event {event_obj.id}: {e2}")
-                                            else:
-                                                discovery_source_fallback = getattr(event_obj, 'discovery_source', None)
-                                                logger.info(f"⏭️ Skipping Process 1 fallback for event {event_obj.id} - discovery_source='{discovery_source_fallback}' (only processing 'dropping_odds')")
-                                    
-                                    # ========================================
-                                    # SEND ALERTS FOR THIS EVENT (H2H + DUAL IN PAIR)
-                                    # ========================================
-                                    
-                                    # Send H2H streak alert if available
-                                    if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
-                                        logger.info(f"📊 Sending H2H streak alert for event {event_obj.id}")
-                                        pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
-                                    
-                                    # Send dual process alert if available
-                                    if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction or 
-                                                      (dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates'])):
-                                        logger.info(f"📊 Sending dual process alert for event {event_obj.id}")
-                                        self._send_dual_process_alerts([dual_report])
-                                        
-                                        # Log predictions for successful Process 1 reports
-                                        from modules.prediction import prediction_logger
-                                        
-                                        # Only log predictions from Process 1 with success status
-                                        if (dual_report.process1_report and 
-                                            dual_report.process1_report.get('status') == 'success'):
-                                            
-                                            # Check if event is exactly 5 minutes from start
-                                            if minutes_until_start == 5:
-                                                # Log the prediction only at 5 minutes
-                                                success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
-                                                if success:
-                                                    logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (5 minutes from start)")
-                                                else:
-                                                    # Check if it's a duplicate (already exists) vs. actual failure
-                                                    
-                                                    with db_manager.get_session() as session:
-                                                        existing = session.query(PredictionLog).filter_by(event_id=event_obj.id).first()
-                                                        if existing:
-                                                            logger.info(f"ℹ️ Prediction already exists for dual process event {event_obj.id} - no action needed")
-                                                        else:
-                                                            logger.warning(f"❌ Failed to log prediction for dual process event {event_obj.id}")
-                                            else:
-                                                logger.info(f"⏭️ Skipping prediction logging for event {event_obj.id} - {minutes_until_start} minutes until start (not 5 minutes)")
-                                    
-                                    logger.info(f"✅ Completed processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team}")
-                                    
-                                except Exception as e:
-                                    logger.error(f"Error processing event {event_obj.id}: {e}")
+                                            logger.error(f"❌ Batch {future_label} failed: {e}")
+                            
+                            # ========================================
+                            # SEND ALL ALERTS IN ORDER BY EVENT (after parallel processing)
+                            # Grouped: Odds → H2H → Dual for each event
+                            # ========================================
+                            from odds_alert import odds_alert_processor
+                            
+                            for result in all_results:
+                                if not result.get('success'):
                                     continue
+                                
+                                event_obj = result.get('event_obj')
+                                streak_analysis = result.get('streak_analysis')
+                                dual_report = result.get('dual_report')
+                                odds_response = result.get('odds_response')
+                                minutes_until_start = result.get('minutes_until_start')
+                                
+                                # 1) Send ODDS alert first for this event
+                                if odds_response:
+                                    logger.info(f"📊 Sending odds alert for event {event_obj.id} (1st in group)")
+                                    try:
+                                        event_data_for_odds = {
+                                            'id': event_obj.id,
+                                            'home_team': event_obj.home_team,
+                                            'away_team': event_obj.away_team,
+                                            'sport': event_obj.sport,
+                                            'competition': getattr(event_obj, 'competition', ''),
+                                            'slug': event_obj.slug,
+                                            'discovery_source': getattr(event_obj, 'discovery_source', '')
+                                        }
+                                        odds_alert_processor.send_odds_alert(event_data_for_odds, odds_response, minutes_until_start)
+                                    except Exception as e:
+                                        logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
+                                
+                                # 2) Send H2H streak alert for this event
+                                if streak_analysis:
+                                    logger.info(f"📊 Sending H2H streak alert for event {event_obj.id} (2nd in group)")
+                                    pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
+                                
+                                # 3) Send dual process alert for this event
+                                if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction or 
+                                                  (dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates'])):
+                                    logger.info(f"📊 Sending dual process alert for event {event_obj.id} (3rd in group)")
+                                    self._send_dual_process_alerts([dual_report])
+                                    
+                                    # Log predictions for successful Process 1 reports
+                                    from modules.prediction import prediction_logger
+                                    
+                                    if (dual_report.process1_report and 
+                                        dual_report.process1_report.get('status') == 'success'):
+                                        
+                                        if minutes_until_start == 5:
+                                            success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
+                                            if success:
+                                                logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (5 minutes from start)")
+                                            else:
+                                                with db_manager.get_session() as session:
+                                                    existing = session.query(PredictionLog).filter_by(event_id=event_obj.id).first()
+                                                    if existing:
+                                                        logger.info(f"ℹ️ Prediction already exists for dual process event {event_obj.id} - no action needed")
+                                                    else:
+                                                        logger.warning(f"❌ Failed to log prediction for dual process event {event_obj.id}")
+                                        else:
+                                            logger.info(f"⏭️ Skipping prediction logging for event {event_obj.id} - {minutes_until_start} minutes until start (not 5 minutes)")
+                            
+                            logger.info(f"✅ Parallel alert processing complete: {len(all_results)} events processed, alerts sent grouped by event")
                                 
                         except Exception as e:
                             logger.error(f"Error in event processing: {e}")
@@ -1189,9 +896,409 @@ class JobScheduler:
             
             # Note: Prediction logging is handled within the alert evaluation above
             
+            # ========================================
+            # WAIT FOR ODDSPORTAL WORKER TO FINISH
+            # ========================================
+            if oddsportal_thread and oddsportal_thread.is_alive():
+                logger.info("⏳ Waiting for OddsPortal worker to finish...")
+                oddsportal_thread.join(timeout=180)  # 3 minute timeout
+                if oddsportal_thread.is_alive():
+                    logger.warning("⚠️ OddsPortal worker still running after 3 min timeout - proceeding anyway")
+                else:
+                    logger.info("✅ OddsPortal worker thread finished")
+            
         except Exception as e:
             logger.error(f"Error in Job C: {e}")
     
+    def _process_single_event_alerts(self, event_payload: Dict, KEY_MOMENTS: list) -> Dict:
+        """
+        Process a single event through the full alert pipeline:
+        1) Odds alert (sent first)
+        2) H2H streak analysis
+        3) Dual process evaluation
+        4) Send H2H streak + dual process alerts
+        
+        Returns a dict with keys: event_id, streak_analysis, dual_report, odds_response, success
+        """
+        from streak_alerts import streak_alert_engine
+        from modules.prediction import prediction_logger
+        
+        result = {'event_id': None, 'streak_analysis': None, 'dual_report': None, 'odds_response': None, 'success': False}
+        
+        try:
+            observations = event_payload.get('observations')
+            event_obj = event_payload['event_obj']
+            result['event_id'] = event_obj.id
+            initial_minutes = event_payload.get('initial_minutes')
+            if initial_minutes is None:
+                initial_minutes = self._minutes_until_start(event_obj.start_time_utc)
+            
+            minutes_now = self._minutes_until_start(event_obj.start_time_utc)
+            minutes_until_start = initial_minutes if initial_minutes in KEY_MOMENTS else minutes_now
+
+            logger.info(
+                f"🔍 Processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team} "
+                f"(captured {initial_minutes} min, current {minutes_now} min)"
+            )
+            
+            # ========================================
+            # ODDS RESPONSE (collected for ordered sending later)
+            # ========================================
+            odds_response = event_payload.get('odds_response')
+            if odds_response:
+                logger.info(f"📦 Odds response collected for event {event_obj.id} (will be sent in ordered loop)")
+                result['odds_response'] = odds_response
+            else:
+                logger.debug(f"⏭️ No odds response stored for event {event_obj.id}")
+            
+            # ========================================
+            # H2H STREAK ANALYSIS FOR THIS EVENT
+            # ========================================
+            streak_analysis = None
+
+            if minutes_until_start == 30:
+                if event_obj.custom_id:
+                    try:
+                        h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
+                        if h2h_response and 'events' in h2h_response:
+                            h2h_events = h2h_response['events']
+
+                            home_team_id = None
+                            away_team_id = None
+                            competition_slug = None
+                            competition_name = None
+                            tournament_id = None
+                            season_id = None
+                            season_name = None
+                            season_year = None
+
+                            # Use metadata snapshot from timing check (avoids redundant get_event_details call)
+                            snapshot = event_payload.get('metadata_snapshot')
+                            if snapshot:
+                                home_team_id = snapshot.get('home_team_id')
+                                away_team_id = snapshot.get('away_team_id')
+                                tournament_id = snapshot.get('tournament_id')
+                                competition_name = snapshot.get('tournament_name')
+                                competition_slug = snapshot.get('competition_slug')
+                                season_id = snapshot.get('season_id')
+                                season_name = snapshot.get('season_name')
+                                season_year = snapshot.get('season_year')
+                                logger.debug(f"Extracted metadata from snapshot: Home={home_team_id}, Away={away_team_id}, tournament={tournament_id}")
+                                logger.debug(f"Extracted season data from snapshot: season_id={season_id}, season_name={season_name}, season_year={season_year}")
+
+                                # Tennis rankings from snapshot
+                                if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                    has_rankings = False
+                                    if observations:
+                                        has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+                                    if not has_rankings:
+                                        home_team_ranking = snapshot.get('home_team_ranking')
+                                        away_team_ranking = snapshot.get('away_team_ranking')
+                                        if observations is None:
+                                            observations = []
+                                        observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                        logger.info(f"✅ Added rankings from snapshot for event {event_obj.id}: home={home_team_ranking}, away={away_team_ranking}")
+                                    else:
+                                        logger.debug(f"Rankings already exist in observations for event {event_obj.id}")
+                            else:
+                                # Fallback: No snapshot (e.g., timestamp correction disabled), use API call
+                                try:
+                                    event_details = api_client.get_event_details(event_obj.id)
+                                    if event_details:
+                                        if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                            has_rankings = False
+                                            if observations:
+                                                has_rankings = any(obs.get('type') == 'rankings' for obs in observations)
+                                            if not has_rankings:
+                                                home_team_ranking = event_details.get('homeTeam', {}).get('ranking')
+                                                away_team_ranking = event_details.get('awayTeam', {}).get('ranking')
+                                                if observations is None:
+                                                    observations = []
+                                                observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                                logger.info(f"✅ Added rankings from API fallback for event {event_obj.id}")
+                                        home_team_id = event_details.get('homeTeam', {}).get('id')
+                                        away_team_id = event_details.get('awayTeam', {}).get('id')
+                                        tournament_id = event_details.get('tournament', {}).get('id')
+                                        competition_name = event_details.get('tournament', {}).get('name')
+                                        competition_slug = event_details.get('tournament', {}).get('uniqueTournament', {}).get('slug')
+                                        season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
+                                        season_name = event_details.get('season', {}).get('name')
+                                        season_year_raw = event_details.get('season', {}).get('year')
+                                        from repository import SeasonRepository
+                                        season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
+                                    else:
+                                        logger.warning(f"Could not fetch event details for {event_obj.id}")
+                                except Exception as e:
+                                    logger.error(f"Error fetching event details for {event_obj.id}: {e}")
+
+                            tennis_observations = observations if observations else []
+
+                            if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                                has_ground_type = any(obs.get('type') == 'ground_type' for obs in tennis_observations)
+
+                                if not has_ground_type:
+                                    logger.info(f"🎾 Getting ground_type for tennis event {event_obj.id} for filtering")
+                                    if not sport_observations_manager.has_observations_for_event(event_obj.id):
+                                        # Try snapshot observations first
+                                        if snapshot and snapshot.get('observations'):
+                                            for obs in snapshot['observations']:
+                                                if obs.get('type') == 'ground_type':
+                                                    tennis_observations.append(obs)
+                                                    ObservationRepository.upsert_observation(event_obj.id, event_obj.sport, 'ground_type', obs['value'])
+                                                    logger.info(f"🎾 Ground type from snapshot: {obs['value']}")
+                                        else:
+                                            new_observations = api_client.get_event_results(
+                                                event_id=event_obj.id,
+                                                update_court_type=True
+                                            )
+                                            if new_observations:
+                                                for obs in new_observations:
+                                                    if obs.get('type') == 'ground_type':
+                                                        tennis_observations.append(obs)
+                                                    elif obs.get('type') == 'rankings':
+                                                        existing_rankings = next((o for o in tennis_observations if o.get('type') == 'rankings'), None)
+                                                        if not existing_rankings:
+                                                            tennis_observations.append(obs)
+                                                            logger.info(f"✅ Added rankings from results check for event {event_obj.id}")
+                                                        else:
+                                                            if existing_rankings.get('home_ranking') is None and existing_rankings.get('away_ranking') is None:
+                                                                if obs.get('home_ranking') is not None or obs.get('away_ranking') is not None:
+                                                                    existing_rankings['home_ranking'] = obs.get('home_ranking')
+                                                                    existing_rankings['away_ranking'] = obs.get('away_ranking')
+                                                                    logger.info(f"✅ Updated rankings from results check for event {event_obj.id} (overwrote None values)")
+                                    else:
+                                        observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                                        if observation:
+                                            tennis_observations.append({'type': 'ground_type', 'value': observation.observation_value})
+                                            logger.info(f"🎾 Using existing ground_type observation: {observation.observation_value}")
+
+                                # Final rankings check using snapshot if still missing
+                                has_rankings = any(obs.get('type') == 'rankings' for obs in tennis_observations)
+                                if not has_rankings and snapshot:
+                                    home_team_ranking = snapshot.get('home_team_ranking')
+                                    away_team_ranking = snapshot.get('away_team_ranking')
+                                    if home_team_ranking is not None or away_team_ranking is not None:
+                                        tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
+                                        logger.info(f"✅ Added rankings from snapshot for tennis_observations for event {event_obj.id}")
+
+                            if tennis_observations:
+                                rankings_info = next((obs for obs in tennis_observations if isinstance(obs, dict) and obs.get('type') == 'rankings'), None)
+                                if rankings_info:
+                                    logger.info(f"📊 Passing observations to analyze_h2h_events for event {event_obj.id}: home_ranking={rankings_info.get('home_ranking')}, away_ranking={rankings_info.get('away_ranking')}")
+                                else:
+                                    logger.warning(f"⚠️ No rankings found in tennis_observations for event {event_obj.id}")
+
+                            streak_analysis = streak_alert_engine.analyze_h2h_events(
+                                event_id=event_obj.id,
+                                event_custom_id=event_obj.custom_id,
+                                event_start_time=event_obj.start_time_utc,
+                                sport=event_obj.sport,
+                                discovery_source=event_obj.discovery_source,
+                                tournament_id=tournament_id,
+                                competition_name=competition_name,
+                                competition_slug=competition_slug,
+                                season_id=season_id,
+                                season_name=season_name,
+                                participants=f"{event_obj.home_team} vs {event_obj.away_team}",
+                                home_team_name=event_obj.home_team,
+                                away_team_name=event_obj.away_team,
+                                h2h_events=h2h_events,
+                                minutes_until_start=minutes_until_start,
+                                season_year=season_year,
+                                observations=tennis_observations,
+                                home_team_id=home_team_id,
+                                away_team_id=away_team_id,
+                                event_odds=event_obj.event_odds
+                            )
+
+                            if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
+                                logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
+                                
+                                # SMART ALERT FILTERING: RESURRECTION LOGIC
+                                from config import Config as AppConfig
+                                home_result_count = len(streak_analysis.home_team_results) if streak_analysis.home_team_results else 0
+                                away_result_count = len(streak_analysis.away_team_results) if streak_analysis.away_team_results else 0
+                                min_threshold = AppConfig.STREAK_ALERT_MIN_RESULTS
+                                
+                                if home_result_count >= min_threshold or away_result_count >= min_threshold:
+                                    fresh_event = self.event_repo.get_event_by_id(event_obj.id)
+                                    if fresh_event and fresh_event.alert_sent:
+                                        logger.info(f"🔄 RESURRECTING EVENT: Event {event_obj.id} has sufficient data (home:{home_result_count}, away:{away_result_count}) - resetting alert_sent=False")
+                                        self._reset_event_alert_sent(event_obj.id)
+                                        event_obj = self.event_repo.get_event_by_id(event_obj.id)
+                            else:
+                                logger.debug(f"⏭️ No H2H streak alert for event {event_obj.id}")
+                        else:
+                            logger.debug(f"No H2H data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
+                    except Exception as e:
+                        logger.error(f"Error analyzing H2H streak for event {event_obj.id}: {e}")
+                else:
+                    logger.debug(f"Event {event_obj.id} has no custom_id - skipping H2H streak analysis")
+            else:
+                logger.debug(f"⏭️ Skipping H2H streak analysis for event {event_obj.id} - minutes_until_start={minutes_until_start} (only run at 30)")
+            
+            # ========================================
+            # DUAL PROCESS ANALYSIS FOR THIS EVENT
+            # ========================================
+            dual_report = None
+            
+            # SMART ALERT FILTERING: CHECK alert_sent FLAG
+            fresh_event_for_dual = self.event_repo.get_event_by_id(event_obj.id)
+            if fresh_event_for_dual and fresh_event_for_dual.alert_sent:
+                logger.info(f"⏭️ EARLY EXIT: Skipping dual process for event {event_obj.id} - marked as low-value (alert_sent=True)")
+            elif getattr(event_obj, 'discovery_source', None) != 'dropping_odds':
+                discovery_source = getattr(event_obj, 'discovery_source', None)
+                logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - discovery_source='{discovery_source}' (only processing 'dropping_odds')")
+            else:
+                try:
+                    event_obj.court_type = None
+                    if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                        observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                        if observation:
+                            event_obj.court_type = observation.observation_value
+                            logger.info(f"🎾 Court type for event {event_obj.id}: {event_obj.court_type}")
+                        else:
+                            logger.info(f"🎾 No court type found for event {event_obj.id}")
+                    
+                    dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                    
+                    should_send = False
+                    reason = ""
+                    
+                    if dual_report.process1_prediction or dual_report.process2_prediction:
+                        should_send = True
+                        reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
+                    elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
+                        should_send = True
+                        reason = f"Process1 found candidates (status: {dual_report.process1_status})"
+                    
+                    if should_send:
+                        logger.info(f"✅ Dual process report added for event {event_obj.id}: {reason}")
+                    else:
+                        logger.debug(f"⏭️ Skipping dual process report for event {event_obj.id}: No predictions or candidates found")
+                        
+                except Exception as e:
+                    logger.error(f"Error running dual process evaluation for event {event_obj.id}: {e}")
+                    
+                    # Fallback to Process 1 only if dual process fails
+                    if event_obj.discovery_source == 'dropping_odds':
+                        logger.info(f"🔄 Falling back to Process 1 only for event {event_obj.id}...")
+                        try:
+                            alerts = alert_engine.evaluate_upcoming_events([event_obj])
+                            if alerts:
+                                logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback) for event {event_obj.id}")
+                                alert_engine.send_alerts(alerts)
+                                
+                                for alert in alerts:
+                                    if alert.get('status') == 'success':
+                                        event_id = alert.get('event_id')
+                                        if event_id:
+                                            event_obj_fallback = self.event_repo.get_event_by_id(event_id)
+                                            if event_obj_fallback:
+                                                minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
+                                                if minutes_until_start_fallback == 5:
+                                                    success = prediction_logger.log_prediction(event_obj_fallback, alert)
+                                                    if success:
+                                                        logger.info(f"✅ Prediction logged for Process 1 event {event_id} (5 minutes from start)")
+                                                    else:
+                                                        with db_manager.get_session() as session:
+                                                            existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
+                                                            if existing:
+                                                                logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
+                                                            else:
+                                                                logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
+                                                else:
+                                                    logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 5 minutes)")
+                                            else:
+                                                logger.warning(f"Could not find event {event_id} for prediction logging")
+                            else:
+                                logger.debug(f"No Process 1 candidate reports generated (fallback) for event {event_obj.id}")
+                        except Exception as e2:
+                            logger.error(f"Error in Process 1 fallback for event {event_obj.id}: {e2}")
+                    else:
+                        discovery_source_fallback = getattr(event_obj, 'discovery_source', None)
+                        logger.info(f"⏭️ Skipping Process 1 fallback for event {event_obj.id} - discovery_source='{discovery_source_fallback}' (only processing 'dropping_odds')")
+            
+            # ========================================
+            # COLLECT ALERTS (returned to caller for ordered sending)
+            # ========================================
+            result['streak_analysis'] = streak_analysis
+            result['dual_report'] = dual_report
+            result['minutes_until_start'] = minutes_until_start
+            result['event_obj'] = event_obj
+            result['success'] = True
+            
+            logger.info(f"✅ Completed processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team}")
+            
+        except Exception as e:
+            logger.error(f"Error processing event {result.get('event_id', 'unknown')}: {e}")
+        
+        return result
+    
+    def _process_event_batch(self, batch: list, KEY_MOMENTS: list) -> list:
+        """
+        Process a batch of events sequentially. Called by each parallel worker.
+        Returns a list of result dicts from _process_single_event_alerts.
+        """
+        results = []
+        for event_payload in batch:
+            result = self._process_single_event_alerts(event_payload, KEY_MOMENTS)
+            results.append(result)
+        return results
+    
+    def _run_oddsportal_batch(self, events_to_process: list) -> dict:
+        """
+        Dedicated OddsPortal worker: pre-scans events for eligibility,
+        then scrapes all matches with a single browser session.
+        
+        Returns dict mapping event_id -> number of markets saved (or None on failure).
+        """
+        from oddsportal_config import SEASON_ODDSPORTAL_MAP
+        from oddsportal_scraper import scrape_multiple_matches_sync
+        from repository import MarketRepository
+        
+        op_tasks = []
+        for event_info in events_to_process:
+            event_data = event_info['event_data']
+            season_id = event_data.get('season_id')
+            op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
+            
+            if op_info and event_info.get('should_extract_odds'):
+                league_url = f"https://www.oddsportal.com/{op_info['sport']}/{op_info['country']}/{op_info['league']}/"
+                op_tasks.append({
+                    'event_id': event_data['id'],
+                    'league_url': league_url,
+                    'home_team': event_data['home_team'],
+                    'away_team': event_data['away_team']
+                })
+        
+        if not op_tasks:
+            logger.info("ℹ️ OddsPortal: No eligible events to scrape")
+            return {}
+        
+        logger.info(f"🔍 OddsPortal worker: {len(op_tasks)} events eligible for scraping")
+        
+        # Scrape all matches with one browser
+        op_results = scrape_multiple_matches_sync(op_tasks)
+        
+        # Save results to DB
+        saved_counts = {}
+        for event_id, op_data in op_results.items():
+            if op_data:
+                try:
+                    saved = MarketRepository.save_markets_from_oddsportal(event_id, op_data)
+                    saved_counts[event_id] = saved
+                    logger.info(f"✅ OddsPortal: Saved {saved} markets/bookies for event {event_id}")
+                except Exception as e:
+                    logger.error(f"❌ OddsPortal: Error saving data for event {event_id}: {e}")
+                    saved_counts[event_id] = None
+            else:
+                logger.warning(f"⚠️ OddsPortal: No data for event {event_id}")
+                saved_counts[event_id] = None
+        
+        return saved_counts
+
+
     def _check_recently_started_events_for_timestamp_corrections(self, events_started_recently: List[Dict]) -> set:
         """
         Check recently started events for timestamp corrections with sport-specific windows.

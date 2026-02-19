@@ -6,6 +6,7 @@ to ensure consistency with existing result collection system.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple, Any, Set
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -1098,35 +1099,50 @@ class StreakAlertEngine:
             if self.ENABLE_SEASON_YEAR_FILTERING and target_season_year:
                 logger.info(f"📅 Using season year filtering: {target_season_year} (fallback enabled: {self.ENABLE_SEASON_YEAR_FILTERING})")
             
-            if home_team_id:
-                home_team_results, home_overall_win_streak = self.get_team_last_results_by_id(
-                    home_team_id,
-                    home_team_name,
-                    competition_slug,
-                    sport,
-                    season_id=season_id,
-                    season_year=target_season_year,
-                    observations=observations,
-                    exclude_event_id=event_id,
-                    event_start_timestamp=event_start_time.timestamp() if event_start_time else None
-                )
-            else:
-                logger.debug(f"No home_team_id provided for {home_team_name}")
+            # Fetch both teams' results in PARALLEL (they are independent API calls)
+            # This cuts streak analysis time roughly in half
+            home_future = None
+            away_future = None
+            event_start_ts = event_start_time.timestamp() if event_start_time else None
             
-            if away_team_id:
-                away_team_results, away_overall_win_streak = self.get_team_last_results_by_id(
-                    away_team_id,
-                    away_team_name,
-                    competition_slug,
-                    sport,
-                    season_id=season_id,
-                    season_year=target_season_year,
-                    observations=observations,
-                    exclude_event_id=event_id,
-                    event_start_timestamp=event_start_time.timestamp() if event_start_time else None
-                )
-            else:
-                logger.debug(f"No away_team_id provided for {away_team_name}")
+            with ThreadPoolExecutor(max_workers=2) as team_executor:
+                if home_team_id:
+                    home_future = team_executor.submit(
+                        self.get_team_last_results_by_id,
+                        home_team_id,
+                        home_team_name,
+                        competition_slug,
+                        sport,
+                        season_id=season_id,
+                        season_year=target_season_year,
+                        observations=observations,
+                        exclude_event_id=event_id,
+                        event_start_timestamp=event_start_ts
+                    )
+                else:
+                    logger.debug(f"No home_team_id provided for {home_team_name}")
+                
+                if away_team_id:
+                    away_future = team_executor.submit(
+                        self.get_team_last_results_by_id,
+                        away_team_id,
+                        away_team_name,
+                        competition_slug,
+                        sport,
+                        season_id=season_id,
+                        season_year=target_season_year,
+                        observations=observations,
+                        exclude_event_id=event_id,
+                        event_start_timestamp=event_start_ts
+                    )
+                else:
+                    logger.debug(f"No away_team_id provided for {away_team_name}")
+            
+            # Collect results from parallel execution
+            if home_future:
+                home_team_results, home_overall_win_streak = home_future.result()
+            if away_future:
+                away_team_results, away_overall_win_streak = away_future.result()
             
             # Trim results to match the player with fewer results (for fair ranking comparison)
             # But try to maintain at least 10 results for each player when possible

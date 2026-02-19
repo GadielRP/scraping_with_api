@@ -10,7 +10,7 @@ venv/
 # Debugging files
 
 logs/
-*.log
+
 
 
 
@@ -83,7 +83,9 @@ logs_for_observations_refactor.txt
 *.md
 test_*.py
 *.json
-debug*/
+*debug/
+*.log
 
 
-
+debug_football/
+debug_laliga/
