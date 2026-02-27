@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 import time
+import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
 
@@ -25,6 +26,12 @@ except ImportError:
     PRIORITY_BOOKIES = ["bet365", "Pinnacle", "BettingAsia", "Megapari", "1xBet"]
 
 logger = logging.getLogger(__name__)
+
+DEBUG_TIMING = os.getenv("DEBUG_TIMING", "false").lower() == "true"
+
+def log_timing(msg):
+    if DEBUG_TIMING:
+        print(f"⏱️ [Timing] {msg}")
 
 # ---------------------------------------------------------------------------
 # Data Structures
@@ -181,6 +188,9 @@ class OddsPortalScraper:
             logger.info(f"🌐 Navigating to league: {league_url}")
             t0 = time.perf_counter()
             response = await page.goto(league_url, wait_until="domcontentloaded", timeout=60000)
+            t_goto = time.perf_counter()
+            log_timing(f"League page load ({league_url}) took {t_goto - t0:.2f}s")
+            
             if not response or response.status != 200:
                 logger.error(f"❌ Failed to load league page. Status: {response.status if response else 'N/A'}")
                 return None
@@ -188,6 +198,8 @@ class OddsPortalScraper:
             # Wait for event rows to appear (faster than networkidle which waits for all ads/trackers)
             try:
                 await page.wait_for_selector("div.eventRow", timeout=30000)
+                t_wait = time.perf_counter()
+                log_timing(f"Waiting for 'div.eventRow' selector took {t_wait - t_goto:.2f}s")
             except Exception:
                 pass
                 
@@ -221,6 +233,7 @@ class OddsPortalScraper:
             # Instead of iterating DOM elements (slow), we extract all rows' text and links in ONE payload.
             # Complexity: O(1) network round-trip + O(N) string process in Python (negligible)
             
+            t_js_league = time.perf_counter()
             rows_data = await page.evaluate("""() => {
                 const rows = Array.from(document.querySelectorAll("div.eventRow"));
                 return rows.map(row => {
@@ -230,6 +243,7 @@ class OddsPortalScraper:
                     return { text, links };
                 });
             }""")
+            log_timing(f"Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s")
             
             if not rows_data:
                 logger.warning(f"⚠️ No event rows found on {league_url}")
@@ -356,6 +370,9 @@ class OddsPortalScraper:
                 response = await page.goto(match_url, wait_until="domcontentloaded", timeout=30000)
             except Exception as e:
                 logger.warning(f"⚠️ Initial goto timed out or struggled, but continuing to check for odds rows: {e}")
+            
+            t_goto = time.perf_counter()
+            log_timing(f"Match page load ({match_url}) took {t_goto - t0:.2f}s")
                 
             # Wait strongly for the exact element we need to scrape: the bookmaker rows
             try:
@@ -364,7 +381,11 @@ class OddsPortalScraper:
             except Exception:
                 logger.error(f"❌ Match page did not load bookie rows within 60s timeout: {match_url}")
                 return None
+            
+            t_wait = time.perf_counter()
+            log_timing(f"Waiting for bookmaker rows selector ('div.border-black-borders.flex.h-9') took {t_wait - t_goto:.2f}s")
             # Handle cookie/consent banner — try multiple selectors
+            t_cookie = time.perf_counter()
             for btn_sel in [
                 "#onetrust-accept-btn-handler",
                 "button.onetrust-close-btn-handler",
@@ -381,6 +402,7 @@ class OddsPortalScraper:
                         break
                 except Exception:
                     continue
+            log_timing(f"Dismissing cookie banners took {time.perf_counter() - t_cookie:.2f}s")
             
             # Scroll to load lazy elements
             await page.evaluate("window.scrollTo(0, 500)")
@@ -390,6 +412,7 @@ class OddsPortalScraper:
             t_extract_start = time.perf_counter()
             data = await self._extract_data(page, match_url)
             extract_duration = time.perf_counter() - t_extract_start
+            log_timing(f"Executing JS to extract match data took {extract_duration:.2f}s")
             
             if self.debug_dir:
                 try:
@@ -422,7 +445,9 @@ class OddsPortalScraper:
                 
                 if target_bookie_obj:
                     logger.info(f"🎯 Extracting opening odds via hover for: {target_bookie_obj.name}")
+                    t_hover_bookie = time.perf_counter()
                     opening = await self._extract_opening_odds_for_bookie(page, target_bookie_obj.name)
+                    log_timing(f"Total hover extraction for {target_bookie_obj.name} opening odds took {time.perf_counter() - t_hover_bookie:.2f}s")
                     if opening:
                         target_bookie_obj.initial_odds_1 = opening.get('1')
                         target_bookie_obj.initial_odds_x = opening.get('X')
@@ -436,7 +461,9 @@ class OddsPortalScraper:
                 # Step 2: Extract opening odds for Betfair Exchange
                 if data.betfair:
                     logger.info("🎯 Extracting Betfair Exchange opening odds via hover")
+                    t_hover_betfair = time.perf_counter()
                     bf_opening = await self._extract_opening_odds_betfair(page)
+                    log_timing(f"Total hover extraction for Betfair Exchange opening odds took {time.perf_counter() - t_hover_betfair:.2f}s")
                     if bf_opening:
                         data.betfair.initial_back_1 = bf_opening.get('back_1')
                         data.betfair.initial_back_x = bf_opening.get('back_x')
@@ -451,6 +478,7 @@ class OddsPortalScraper:
                     else:
                         logger.warning("⚠️ Could not extract Betfair Exchange opening odds")
             
+            log_timing(f"Total match scraping process (scrape_match) took {time.perf_counter() - t0:.2f}s")
             return data
             
         except Exception as e:
@@ -575,6 +603,7 @@ class OddsPortalScraper:
                 max_retries = 3
                 got_value = False
                 
+                t_hover_cell = time.perf_counter()
                 for attempt in range(max_retries):
                     try:
                         await odds_block.scroll_into_view_if_needed()
@@ -667,6 +696,11 @@ class OddsPortalScraper:
                             continue
                         logger.warning(f"  Error hovering cell {choice} for {bookie_name}: {e}")
                         result[choice] = None
+                
+                if result.get(choice) is not None:
+                    log_timing(f"Hovering and extracting '{choice}' opening odd for {bookie_name} took {time.perf_counter() - t_hover_cell:.2f}s")
+                else:
+                    log_timing(f"Failed to extract '{choice}' opening odd for {bookie_name} after {time.perf_counter() - t_hover_cell:.2f}s")
             
             return result if result else None
             
@@ -738,6 +772,7 @@ class OddsPortalScraper:
             """)
 
             for choice, container in all_targets:
+                t_hover_bf = time.perf_counter()
                 try:
                     hover_target = await container.query_selector("div.flex-center.flex-col.font-bold")
                     if not hover_target:
@@ -810,6 +845,11 @@ class OddsPortalScraper:
                 except Exception as e:
                     logger.warning(f"  Error hovering Betfair cell {choice}: {e}")
                     result[choice] = None
+                
+                if result.get(choice) is not None:
+                    log_timing(f"Hovering and extracting Betfair '{choice}' opening odd took {time.perf_counter() - t_hover_bf:.2f}s")
+                else:
+                    log_timing(f"Failed to extract Betfair '{choice}' opening odd after {time.perf_counter() - t_hover_bf:.2f}s")
             
             # Log summary
             if result:

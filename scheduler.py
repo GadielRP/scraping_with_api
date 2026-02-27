@@ -430,7 +430,7 @@ class JobScheduler:
         """
         Job C: Pre-start check for events starting within 30 minutes + in-game checks
         
-        SMART ODDS EXTRACTION: Only extracts odds at key moments (30 min and 5 min before start)
+        SMART ODDS EXTRA EXTRACTION: Only extracts odds at key moments (30 min and 5 min before start)
         to avoid unnecessary API calls when odds don't change significantly.
         
         SMART NOTIFICATIONS: Only sends Telegram notifications when odds are extracted at key moments
@@ -445,9 +445,20 @@ class JobScheduler:
         
         try:
             current_time = datetime.now()
+            
+            # Get tracked season IDs from OddsPortal config
+            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+            from config import Config as AppConfig
+            
+            tracked_season_ids = None
+            if AppConfig.TRACKED_SEASONS_ONLY:
+                tracked_season_ids = list(SEASON_ODDSPORTAL_MAP.keys())
+                logger.info(f"Pre-start check restricted to {len(tracked_season_ids)} tracked seasons (TRACKED_SEASONS_ONLY=True)")
+            else:
+                logger.info("Pre-start check processing ALL seasons (TRACKED_SEASONS_ONLY=False)")
         
-            # 1. FETCH UPCOMING EVENTS FIRST (to lock in timing)
-            upcoming_events = self.event_repo.get_events_starting_soon_with_odds(Config.PRE_START_WINDOW_MINUTES)
+            # 1. FETCH UPCOMING EVENTS FIRST (to lock in timing) - Filtered by season_id if enabled
+            upcoming_events = self.event_repo.get_events_starting_soon_with_odds(Config.PRE_START_WINDOW_MINUTES, season_ids=tracked_season_ids)
             logger.info(f"Found {len(upcoming_events)} events starting within {Config.PRE_START_WINDOW_MINUTES} minutes (snapshot taken before timestamp checks)")
             
             # 1.1 PRE-CALCULATE TIMING DECISIONS (Critical Step!)
@@ -458,9 +469,9 @@ class JobScheduler:
                 minutes = self._minutes_until_start(event['start_time_utc'])
                 pre_calculated_timings[event['id']] = minutes
                 
-            # 2. CHECK RECENTLY STARTED EVENTS (Timestamp Correction)
+            # 2. CHECK RECENTLY STARTED EVENTS (Timestamp Correction) - Filtered by season_id if enabled
             # This can take time (e.g., 20-30s)...
-            events_started_recently = self.event_repo.get_events_started_recently(window_minutes=60)
+            events_started_recently = self.event_repo.get_events_started_recently(window_minutes=60, season_ids=tracked_season_ids)
             logger.info(f"Found {len(events_started_recently)} events that started recently (checking for late timestamp corrections)")
             
             # Get set of event IDs that were modified during timestamp correction
@@ -524,7 +535,6 @@ class JobScheduler:
             # ========================================
             # Extract OddsPortal candidates early and start the thread so it runs in background
             # while the main thread sequentially processes the API odds for all events.
-            from oddsportal_config import SEASON_ODDSPORTAL_MAP
             op_candidates = []
             non_op_candidates = []
             

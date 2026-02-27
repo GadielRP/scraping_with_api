@@ -300,7 +300,7 @@ class EventRepository:
             return []
 
     @staticmethod
-    def get_events_starting_soon_with_odds(window_minutes: int = 30) -> List[Dict]:
+    def get_events_starting_soon_with_odds(window_minutes: int = 30, season_ids: Optional[List[int]] = None) -> List[Dict]:
         """
         Get events starting within the specified window WITH their odds data.
         Returns a list of dictionaries containing event info and odds.
@@ -318,14 +318,21 @@ class EventRepository:
                 # JOIN Event with EventOdds to get events with odds data
                 from sqlalchemy.orm import joinedload
                 
-                events_with_odds = session.query(Event).options(
+                query = session.query(Event).options(
                     joinedload(Event.event_odds)
                 ).filter(
                     and_(
                         Event.start_time_utc >= window_start,
                         Event.start_time_utc <= window_end
                     )
-                ).all()
+                )
+                
+                # Apply season filter if provided
+                if season_ids:
+                    query = query.filter(Event.season_id.in_(season_ids))
+                    logger.debug(f"Filtering by {len(season_ids)} season IDs")
+
+                events_with_odds = query.all()
                 
                 # Convert to list of dictionaries with event info and odds
                 result = []
@@ -376,7 +383,7 @@ class EventRepository:
             return []
     
     @staticmethod
-    def get_events_started_recently(window_minutes: int = 15) -> List[Dict]:
+    def get_events_started_recently(window_minutes: int = 15, season_ids: Optional[List[int]] = None) -> List[Dict]:
         """
         Get events that started within the last N minutes (default 15).
         Used to catch late timestamp corrections that occur after the game starts.
@@ -393,12 +400,19 @@ class EventRepository:
                 
                 # Get events that started recently (within the last N minutes)
                 # Use > instead of >= for window_end to avoid catching events that haven't started yet
-                events_started_recently = session.query(Event).filter(
+                query = session.query(Event).filter(
                     and_(
                         Event.start_time_utc >= window_start,
                         Event.start_time_utc < now  # Must have already started (strictly less than now)
                     )
-                ).all()
+                )
+                
+                # Apply season filter if provided
+                if season_ids:
+                    query = query.filter(Event.season_id.in_(season_ids))
+                    logger.debug(f"Filtering recently started events by {len(season_ids)} season IDs")
+
+                events_started_recently = query.all()
                 
                 # Convert to list of dictionaries with event info
                 result = []
@@ -411,7 +425,8 @@ class EventRepository:
                         'start_time_utc': event.start_time_utc,
                         'sport': event.sport,
                         'country': event.country,
-                        'slug': event.slug
+                        'slug': event.slug,
+                        'season_id': event.season_id
                     }
                     result.append(event_data)
                 
