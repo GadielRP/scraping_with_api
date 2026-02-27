@@ -203,6 +203,9 @@ class OddsPortalScraper:
             # Search for match
             # Simple normalization for matching
             def normalize(s):
+                import unicodedata
+                # Strip accents/diacritics (e.g., Montréal -> Montreal)
+                s = unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8')
                 return s.lower().replace("fc", "").replace("cf", "").replace("ud", "").strip()
                 
             home_norm = normalize(home_team)
@@ -299,6 +302,9 @@ class OddsPortalScraper:
                 return None
             
             def normalize(s):
+                import unicodedata
+                # Strip accents/diacritics
+                s = unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8')
                 return s.lower().replace("fc", "").replace("cf", "").replace("ud", "").strip()
             
             home_norm = normalize(home_team)
@@ -344,18 +350,20 @@ class OddsPortalScraper:
             logger.info(f"🌐 Navigating to match: {match_url}")
             t0 = time.perf_counter()
             
-            # Navigate
-            response = await page.goto(match_url, wait_until="domcontentloaded", timeout=60000)
-            if not response or response.status != 200:
-                logger.error(f"❌ Failed to load page. Status: {response.status if response else 'N/A'}")
-                return None
-            
-            # Wait for content
+            # Navigate - we don't strict timeout the goto itself if it's struggling with ads.
+            # We care about the DOM and specifically the odds rows.
             try:
-                await page.wait_for_load_state("networkidle", timeout=15000)
-            except Exception:
-                pass  # Proceed even if network doesn't fully idle
+                response = await page.goto(match_url, wait_until="domcontentloaded", timeout=30000)
+            except Exception as e:
+                logger.warning(f"⚠️ Initial goto timed out or struggled, but continuing to check for odds rows: {e}")
                 
+            # Wait strongly for the exact element we need to scrape: the bookmaker rows
+            try:
+                # 'div.border-black-borders.flex.h-9' is the specific row container for loaded bookies
+                await page.wait_for_selector('div.border-black-borders.flex.h-9', timeout=60000)
+            except Exception:
+                logger.error(f"❌ Match page did not load bookie rows within 60s timeout: {match_url}")
+                return None
             # Handle cookie/consent banner — try multiple selectors
             for btn_sel in [
                 "#onetrust-accept-btn-handler",
@@ -373,13 +381,6 @@ class OddsPortalScraper:
                         break
                 except Exception:
                     continue
-            
-            # Wait for bookie rows to ensure content is loaded
-            try:
-                # 'div.flex.h-9' is the row container for bookies
-                await page.wait_for_selector('div.flex.h-9', timeout=10000)
-            except Exception:
-                logger.warning("⚠️ Bookie rows not found within timeout (page might be empty or blocked)")
             
             # Scroll to load lazy elements
             await page.evaluate("window.scrollTo(0, 500)")
@@ -589,7 +590,8 @@ class OddsPortalScraper:
                         """)
                         # Hover with force=True; fallback to mouse.move() + JS dispatch
                         try:
-                            await odds_block.hover(force=True, timeout=5000)
+                            # Reduced hover timeout to 2000ms
+                            await odds_block.hover(force=True, timeout=2000)
                         except Exception:
                             bbox = await odds_block.bounding_box()
                             if bbox:

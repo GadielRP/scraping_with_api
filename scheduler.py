@@ -474,6 +474,9 @@ class JobScheduler:
                 if original_count != filtered_count:
                     logger.info(f"ℹ️ Filtered out {original_count - filtered_count} upcoming events that were just rescheduled/modified")
 
+            events_to_process = []
+            event_meta_lookup = {}
+
             # 4. PROCESS UPCOMING EVENTS
             if not upcoming_events:
                 logger.info(f"No upcoming events to process (after filtering)")
@@ -483,8 +486,6 @@ class JobScheduler:
                 
                 # Use the "smart" odds extraction logic
                 KEY_MOMENTS = [30, 5]
-                events_to_process = []
-                event_meta_lookup = {}
                 
                 for event_data in upcoming_events:
                     # RETRIEVE PRE-CALCULATED TIMING
@@ -518,7 +519,46 @@ class JobScheduler:
                     events_to_process.append(event_info)
                     event_meta_lookup[event_data['id']] = event_info
             
-            # STEP 2.2: EXECUTE ALL ODDS EXTRACTIONS (with pre-computed decisions)
+            # ========================================
+            # PARTITION AND START ODDSPORTAL (EARLY)
+            # ========================================
+            # Extract OddsPortal candidates early and start the thread so it runs in background
+            # while the main thread sequentially processes the API odds for all events.
+            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+            op_candidates = []
+            non_op_candidates = []
+            
+            for event_info in events_to_process:
+                season_id = event_info['event_data'].get('season_id')
+                minutes_until_start = event_info.get('minutes_until_start')
+                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == 5:
+                    op_candidates.append(event_info)
+                else:
+                    non_op_candidates.append(event_info)
+            
+            # Use threading.Event to coordinate OP scraping with alert delivery
+            op_done_event = threading.Event()
+            op_event_ids = {e['event_id'] for e in op_candidates}
+            
+            if op_candidates:
+                logger.info(f"🚀 Launching OddsPortal scraper in background for {len(op_candidates)} tracked-league events...")
+                
+                # Launch the OP worker: ONLY scrapes + saves to DB, then signals completion.
+                # Main thread handles ALL alert evaluation (including for OP events).
+                oddsportal_thread = threading.Thread(
+                    target=self._oddsportal_worker_wrapper,
+                    args=(op_candidates, op_done_event),
+                    name="oddsportal_worker",
+                    daemon=False
+                )
+                oddsportal_thread.start()
+                self._active_op_thread = oddsportal_thread
+            else:
+                op_done_event.set()  # No OP work needed, signal immediately
+                if events_to_process:
+                    logger.info(f"⏭️ No OddsPortal-tracked events among {len(events_to_process)} events")
+                    
+            # STEP 2.2: EXECUTE ALL REGULAR ODDS EXTRACTIONS (with pre-computed decisions)
             processed_count = 0
             odds_extracted_count = 0
             # Track events with odds extracted to prevent timing drift issues
@@ -623,45 +663,6 @@ class JobScheduler:
                 except Exception as e:
                     logger.error(f"Error processing upcoming event {event_data['id']}: {e}")
                     continue
-            
-            # ========================================
-            # PARTITION EVENTS: ODDSPORTAL VS NON-ODDSPORTAL
-            # ========================================
-            # Partition based on whether event's season_id is tracked for OddsPortal scraping.
-            # Only events in SEASON_ODDSPORTAL_MAP need the browser worker.
-            from oddsportal_config import SEASON_ODDSPORTAL_MAP
-            op_candidates = []
-            non_op_candidates = []
-            
-            for event_info in events_to_process:
-                season_id = event_info['event_data'].get('season_id')
-                minutes_until_start = event_info.get('minutes_until_start')
-                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == 5:
-                    op_candidates.append(event_info)
-                else:
-                    non_op_candidates.append(event_info)
-            
-            # Use threading.Event to coordinate OP scraping with alert delivery
-            op_done_event = threading.Event()
-            op_event_ids = {e['event_id'] for e in op_candidates}
-            
-            if op_candidates:
-                logger.info(f"🚀 Launching OddsPortal scraper for {len(op_candidates)} tracked-league events...")
-                
-                # Launch the OP worker: ONLY scrapes + saves to DB, then signals completion.
-                # Main thread handles ALL alert evaluation (including for OP events).
-                oddsportal_thread = threading.Thread(
-                    target=self._oddsportal_worker_wrapper,
-                    args=(op_candidates, op_done_event),
-                    name="oddsportal_worker",
-                    daemon=False
-                )
-                oddsportal_thread.start()
-                self._active_op_thread = oddsportal_thread
-            else:
-                op_done_event.set()  # No OP work needed, signal immediately
-                if events_to_process:
-                    logger.info(f"⏭️ No OddsPortal-tracked events among {len(events_to_process)} events")
             
             if processed_count > 0:
                 logger.info(f"🚨 Pre-start check completed: {processed_count} games starting soon!")
