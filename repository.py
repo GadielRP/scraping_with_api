@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from decimal import Decimal
 
-from models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season, Market, MarketChoice, Bookie
+from models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season, Market, MarketChoice, Bookie, OddsPortalLeagueCache
 from database import db_manager
 from odds_utils import validate_odds_data
 from timezone_utils import get_local_now
@@ -1091,6 +1091,80 @@ class MarketRepository:
             return []
     
     @staticmethod
+    def get_oddsportal_markets_for_event(event_id: int) -> List[Dict]:
+        """
+        Retrieve OddsPortal-sourced bookie odds for an event, formatted for alert display.
+        
+        Returns only markets saved from OddsPortal (identified by having a bookie association
+        AND a market_name of 'Full time' with provider='oddsportal' OR via the bookie table).
+        Filters out SofaScore markets (those with bookie_id IS NULL / no bookie).
+        
+        Returns:
+            List of dicts, each with:
+                - bookie_name (str): Bookmaker name
+                - choice_group (str | None): 'Back' / 'Lay' for Betfair, None otherwise
+                - choices (list[dict]): [{'name': '1'|'X'|'2', 'initial': float, 'current': float,
+                                          'movement': '↑'|'↓'|'='}]
+        """
+        try:
+            from sqlalchemy.orm import joinedload
+            with db_manager.get_session() as session:
+                # OddsPortal markets always have a bookie_id; SofaScore markets have bookie_id=1
+                # We exclude bookie_id=1 because those are already shown in the main SofaScore section.
+                markets = (
+                    session.query(Market)
+                    .options(joinedload(Market.choices), joinedload(Market.bookie))
+                    .filter(
+                        Market.event_id == event_id,
+                        Market.bookie_id.isnot(None),  # Must have a bookie
+                        Market.bookie_id != 1          # Filter out SofaScore
+                    )
+                    .all()
+                )
+                
+                result = []
+                for market in markets:
+                    bookie_name = market.bookie.name if market.bookie else "Unknown"
+                    choices_data = []
+                    for choice in sorted(market.choices, key=lambda c: c.choice_name):
+                        initial = float(choice.initial_odds) if choice.initial_odds is not None else None
+                        current = float(choice.current_odds) if choice.current_odds is not None else None
+                        if initial is not None and current is not None:
+                            if current > initial:
+                                movement = '↑'
+                            elif current < initial:
+                                movement = '↓'
+                            else:
+                                movement = '='
+                        else:
+                            movement = '='
+                        choices_data.append({
+                            'name': choice.choice_name,
+                            'initial': initial,
+                            'current': current,
+                            'movement': movement
+                        })
+                    
+                    result.append({
+                        'bookie_name': bookie_name,
+                        'choice_group': market.choice_group,  # 'Back'/'Lay' for Betfair, else None
+                        'choices': choices_data
+                    })
+                
+                # Sort: regular bookies first (alphabetically), Betfair Back/Lay last
+                def sort_key(m):
+                    if 'betfair' in m['bookie_name'].lower():
+                        return (1, m['bookie_name'], m.get('choice_group') or '')
+                    return (0, m['bookie_name'], '')
+                
+                result.sort(key=sort_key)
+                return result
+        except Exception as e:
+            logger.error(f"Error getting OddsPortal markets for event {event_id}: {e}")
+            return []
+
+
+    @staticmethod
     def get_market_count(event_id: int) -> int:
         """
         Get the number of unique markets for an event.
@@ -1414,3 +1488,103 @@ class MarketRepository:
         except Exception as e:
             logger.error(f"Error deleting markets for event {event_id}: {e}")
             return False
+
+
+class OddsPortalCacheRepository:
+    """
+    Repository for caching OddsPortal league page match URLs.
+    
+    Stores all match URLs from a league page so subsequent scrapes
+    can skip league page navigation entirely (~14s saved per cache hit).
+    """
+    
+    @staticmethod
+    def save_league_cache(season_id: int, match_urls_dict: Dict) -> bool:
+        """
+        Save or update cached match URLs for a season_id (today's date).
+        Uses upsert: if a row for this season_id already exists, updates it.
+        
+        Args:
+            season_id: Season ID (e.g. 80229 for NBA)
+            match_urls_dict: { relative_url: row_display_text } from league page
+            
+        Returns:
+            True if successful
+        """
+        try:
+            with db_manager.get_session() as session:
+                today = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                existing = session.query(OddsPortalLeagueCache).filter(
+                    OddsPortalLeagueCache.season_id == season_id
+                ).first()
+                
+                if existing:
+                    existing.match_urls = match_urls_dict
+                    existing.cached_date = today
+                    existing.created_at = get_local_now()
+                    logger.debug(f"Updated league cache for season {season_id}: {len(match_urls_dict)} URLs")
+                else:
+                    cache_entry = OddsPortalLeagueCache(
+                        season_id=season_id,
+                        cached_date=today,
+                        match_urls=match_urls_dict
+                    )
+                    session.add(cache_entry)
+                    logger.debug(f"Created league cache for season {season_id}: {len(match_urls_dict)} URLs")
+                
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error saving league cache for season {season_id}: {e}")
+            return False
+    
+    @staticmethod
+    def get_league_cache(season_id: int) -> Optional[Dict]:
+        """
+        Get today's cached match URLs for a season_id.
+        
+        Returns:
+            Dict of { relative_url: row_display_text } or None if not cached today
+        """
+        try:
+            with db_manager.get_session() as session:
+                today = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                cache = session.query(OddsPortalLeagueCache).filter(
+                    OddsPortalLeagueCache.season_id == season_id,
+                    OddsPortalLeagueCache.cached_date >= today
+                ).first()
+                
+                if cache:
+                    return cache.match_urls
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting league cache for season {season_id}: {e}")
+            return None
+    
+    @staticmethod
+    def cleanup_old_caches() -> int:
+        """
+        Delete all cache entries older than today.
+        Should be called daily (e.g. from job_daily_discovery at 05:01).
+        
+        Returns:
+            Number of rows deleted
+        """
+        try:
+            with db_manager.get_session() as session:
+                today = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                deleted = session.query(OddsPortalLeagueCache).filter(
+                    OddsPortalLeagueCache.cached_date < today
+                ).delete()
+                
+                if deleted > 0:
+                    logger.info(f"🧹 Cleaned up {deleted} old OddsPortal league cache entries")
+                return deleted
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up old league caches: {e}")
+            return 0

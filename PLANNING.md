@@ -16,6 +16,8 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 - **Comprehensive Aliases**: Expanded `TEAM_ALIASES` to fully cover Serie A (e.g., "Milan" -> "AC Milan").
 - **Betfair Exchange**: Added support for extracting both **Back** and **Lay** opening odds.
 - **Browser Reusability**: Implemented `scrape_multiple_matches_sync` to process batches of matches with a single browser instance.
+- **Dynamic 2-Way/3-Way Support**: Auto-detects table layout to correctly assign `Away` odds, resolving a bug where basketball odds were stored as `Draw`.
+- **Isolation Testing Framework**: Added `test_oddsportal_process.py` offering live visual browser execution, JSON dumping, and HTML debug dumps to safely patch selectors without risking system states.
 
 ### ✅ **NUEVO EN v1.6.3 - API Optimization & Quality of Life Fixes**
 - **Metadata Snapshot System**: Implementada arquitectura de snapshot para capturar rankings, tipos de cancha y metadatos de temporada desde la respuesta de `/event/{id}` usada para corregir el timestamp.
@@ -134,6 +136,9 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 
 ### Phase 5: Optimization & Parallelization (Completed)
 - [x] **Parallel Event Processing**: Use `ThreadPoolExecutor` to process events in parallel batches (2 workers).
+- [x] **Decoupled OddsPortal Pipeline**: Completely detached the OddsPortal scraper from blocking the main `job_pre_start_check` cycle.
+  - **Why it happened**: Originally, the OP thread was waited on using `thread.join()`, causing the main timer loop to hang for 2-3 minutes while web scraping occurred.
+  - **The Fix**: The scheduler partitions events. Non-OP events check out instantly using the main thread. OP candidates are assigned to a standalone background worker (`daemon=False`). This worker scrapes its match odds and directly evaluates/sends their alerts asynchronously. 
 - [x] **Concurrent Streak Analysis**: Fetch home/away team results concurrently in `streak_alerts.py`.
 - [x] **Alert Grouping**: Collect analysis results from parallel workers and send alerts in a deterministic order (Odds → H2H → Dual) per event.
 - [x] **Performance Tuning**: Reduced processing time by ~30% with parallel architecture.

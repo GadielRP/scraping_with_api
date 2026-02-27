@@ -79,13 +79,19 @@ collect_yesterday_odds.py
 
 logs_for_observations_refactor.txt
 
-
+copies/
 *.md
 test_*.py
 *.json
 *debug/
 *.log
-
+debug*/
 
 debug_football/
 debug_laliga/
+bet_365_away_hovered.html
+bet_365_away_not_hovered.html
+*.html
+
+cache_found.logs
+cache_saved.logs

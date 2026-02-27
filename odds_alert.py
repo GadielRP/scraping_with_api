@@ -201,7 +201,7 @@ class OddsAlertProcessor:
             if not markets:
                 message += "❌ No markets available\n"
                 return message
-            
+            message += f"Sofascore's odds:\n"
             # Display each market with its actual name from the API
             for market in markets:
                 market_name = market.get('market_name', 'Unknown')
@@ -254,6 +254,61 @@ class OddsAlertProcessor:
                 result += f"{indent}{name}: N/A\n"
         
         return result
+    
+    def _format_oddsportal_section(self, op_markets: List[Dict]) -> str:
+        """
+        Format the OddsPortal section of the alert message.
+        
+        Args:
+            op_markets: List of dictionary from MarketRepository.get_oddsportal_markets_for_event
+            
+        Returns:
+            Formatted string for the OddsPortal section
+        """
+        if not op_markets:
+            return ""
+            
+        result = "\n📊 <b>ODDSPORTAL ODDS</b>\n"
+        
+        # Regular bookies first
+        bookie_lines = []
+        betfair_lines = []
+        
+        for m in op_markets:
+            bookie_name = m['bookie_name']
+            choice_group = m.get('choice_group')
+            choices = m['choices']
+            
+            # Format choices: 1.85→1.78 | 3.50→3.60 | 4.20→4.10
+            choice_strs = []
+            for c in choices:
+                initial = c.get('initial')
+                current = c.get('current')
+                movement = c.get('movement', '=')
+                
+                if initial is not None and current is not None:
+                    choice_strs.append(f"{initial:.2f}→{current:.2f}{movement}")
+                elif current is not None:
+                    choice_strs.append(f"{current:.2f}")
+                else:
+                    choice_strs.append("N/A")
+            
+            line_body = " | ".join(choice_strs)
+            
+            if 'betfair' in bookie_name.lower():
+                group_tag = f" ({choice_group})" if choice_group else ""
+                betfair_lines.append(f"  {bookie_name}{group_tag}: {line_body}")
+            else:
+                bookie_lines.append(f"  {bookie_name}: {line_body}")
+                
+        if bookie_lines:
+            result += "\n".join(bookie_lines) + "\n"
+            
+        if betfair_lines:
+            result += "\n".join(betfair_lines) + "\n"
+            
+        return result
+
     
     def send_odds_alert(self, event_data: Dict, odds_response: Dict, minutes_until_start: int = None) -> bool:
         """
@@ -318,6 +373,23 @@ class OddsAlertProcessor:
             
             # Create the formatted message (2+ markets or 1 non-Full-time market)
             message = self.create_odds_alert_message(event_data, markets, minutes_until_start)
+            
+            # --- ODDSPORTAL INTEGRATION ---
+            # If the event's season is tracked in OddsPortal, fetch and append bookie odds
+            try:
+                from oddsportal_config import SEASON_ODDSPORTAL_MAP
+                from repository import MarketRepository
+                
+                season_id = event_data.get('season_id')
+                if season_id and season_id in SEASON_ODDSPORTAL_MAP:
+                    op_markets = MarketRepository.get_oddsportal_markets_for_event(event_data.get('id'))
+                    if op_markets:
+                        op_section = self._format_oddsportal_section(op_markets)
+                        message += op_section
+                        logger.info(f"📊 Added OddsPortal section to alert for event {event_data.get('id')}")
+            except Exception as op_err:
+                logger.error(f"Error adding OddsPortal section to alert: {op_err}")
+
             
             # Send via Telegram using the existing alert system
             from alert_system import pre_start_notifier

@@ -282,6 +282,22 @@ class PredictionLog(Base):
         return f"<PredictionLog(event_id={self.event_id}, prediction_type='{self.prediction_type}', status='{self.status}')>"
 
 
+class OddsPortalLeagueCache(Base):
+    """
+    Caches match URLs scraped from OddsPortal league pages.
+    
+    One row per season_id — cleaned daily so only today's data is stored.
+    The match_urls JSONB maps relative URL paths to row display text for
+    offline team matching without browser navigation.
+    """
+    __tablename__ = 'oddsportal_league_cache'
+    
+    season_id = Column(Integer, primary_key=True)                  # e.g. 80229 (NBA)
+    cached_date = Column(DateTime, nullable=False)                  # Date the cache was populated
+    match_urls = Column(JSONB, nullable=False)                      # { "/basketball/usa/nba/team-a-team-b-xYZ/": "Team A - Team B" }
+    created_at = Column(DateTime, default=get_local_now)
+
+
 # ---------------------------------------------------------------------------
 # SQL view helper – unified odds view (no filtering by var_one)
 # ---------------------------------------------------------------------------

@@ -625,28 +625,43 @@ class JobScheduler:
                     continue
             
             # ========================================
-            # LAUNCH ODDSPORTAL WORKER CONCURRENTLY
+            # PARTITION EVENTS: ODDSPORTAL VS NON-ODDSPORTAL
             # ========================================
-            oddsportal_thread = None
+            # Partition based on whether event's season_id is tracked for OddsPortal scraping.
+            # Only events in SEASON_ODDSPORTAL_MAP need the browser worker.
+            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+            op_candidates = []
+            non_op_candidates = []
             
-            # FILTER: Only launch OddsPortal scraping for the 5-minute window (user request)
-            # We filter the list so the worker only processes events close to start time (approx 5 mins)
-            oddsportal_candidates = [
-                e for e in events_to_process 
-                if e.get('minutes_until_start', 30) <= 15
-            ]
+            for event_info in events_to_process:
+                season_id = event_info['event_data'].get('season_id')
+                minutes_until_start = event_info.get('minutes_until_start')
+                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == 5:
+                    op_candidates.append(event_info)
+                else:
+                    non_op_candidates.append(event_info)
             
-            if oddsportal_candidates:
-                logger.info(f"🚀 Launching OddsPortal concurrent worker for {len(oddsportal_candidates)} events (5 min window)...")
+            # Use threading.Event to coordinate OP scraping with alert delivery
+            op_done_event = threading.Event()
+            op_event_ids = {e['event_id'] for e in op_candidates}
+            
+            if op_candidates:
+                logger.info(f"🚀 Launching OddsPortal scraper for {len(op_candidates)} tracked-league events...")
+                
+                # Launch the OP worker: ONLY scrapes + saves to DB, then signals completion.
+                # Main thread handles ALL alert evaluation (including for OP events).
                 oddsportal_thread = threading.Thread(
-                    target=self._run_oddsportal_batch,
-                    args=(oddsportal_candidates,),
+                    target=self._oddsportal_worker_wrapper,
+                    args=(op_candidates, op_done_event),
                     name="oddsportal_worker",
                     daemon=False
                 )
                 oddsportal_thread.start()
-            elif events_to_process:
-                logger.info(f"⏭️ Skipping OddsPortal scraping for {len(events_to_process)} events (30 min window - API odds only)")
+                self._active_op_thread = oddsportal_thread
+            else:
+                op_done_event.set()  # No OP work needed, signal immediately
+                if events_to_process:
+                    logger.info(f"⏭️ No OddsPortal-tracked events among {len(events_to_process)} events")
             
             if processed_count > 0:
                 logger.info(f"🚨 Pre-start check completed: {processed_count} games starting soon!")
@@ -657,16 +672,18 @@ class JobScheduler:
             else:
                 logger.info("Pre-start check completed: No games starting soon")
             
-            # Run alert evaluation for events captured at key moments (30 or 5 minutes)
-            target_event_ids = {
+            # Get ALL events at key moments for alert evaluation (both OP and non-OP)
+            # Main thread now handles ALL alert evaluation, with OP wait gate for odds alerts
+            all_key_moment_event_ids = {
                 info['event_id']
                 for info in events_to_process
                 if info['minutes_until_start'] in KEY_MOMENTS
             }
-            should_evaluate_alerts = bool(target_event_ids)
+            
+            should_evaluate_alerts = bool(all_key_moment_event_ids)
             if should_evaluate_alerts:
                 try:
-                    logger.info("🔍 Evaluating upcoming events for pattern alerts...")
+                    logger.info(f"🔍 Evaluating {len(all_key_moment_event_ids)} events at key moments for alerts (main thread)...")
                     
                     # Refresh materialized views to ensure latest data for alert evaluation
                     logger.info("🔄 Refreshing alert materialized views...")
@@ -686,7 +703,7 @@ class JobScheduler:
                         
                         for tracked_event in events_with_odds_extracted:
                             event_id = tracked_event['event_id']
-                            if event_id not in target_event_ids:
+                            if event_id not in all_key_moment_event_ids:
                                 continue
 
                             # Get the Event object to ensure we have fresh DB state
@@ -730,14 +747,15 @@ class JobScheduler:
                                 'initial_minutes': initial_minutes_snapshot,
                                 'observations': stored_observations,
                                 'odds_response': stored_odds_response,
-                                'metadata_snapshot': stored_metadata_snapshot
+                                'metadata_snapshot': stored_metadata_snapshot,
+                                'season_id': getattr(event_obj, 'season_id', None)
                             })
                             tracked_event_ids.add(event_obj.id)
                     else:
                         # Fallback: Use original logic if no events with odds extracted
                         logger.info("🔍 No tracked events found - using fallback logic for alert evaluation")
                         
-                        remaining_target_ids = target_event_ids - tracked_event_ids
+                        remaining_target_ids = all_key_moment_event_ids - tracked_event_ids
 
                         for event_data in upcoming_events:
                             if event_data['id'] not in remaining_target_ids:
@@ -778,114 +796,18 @@ class JobScheduler:
                                 'initial_minutes': initial_minutes_snapshot,
                                 'observations': stored_observations,
                                 'odds_response': stored_odds_response,
-                                'metadata_snapshot': stored_metadata_snapshot
+                                'metadata_snapshot': stored_metadata_snapshot,
+                                'season_id': getattr(event_obj, 'season_id', None)
                             })
                             tracked_event_ids.add(event_obj.id)
                     
                     if events_for_alerts:
-                        logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for H2H and dual process alerts...")
-                        
-                        # ========================================
-                        # PARALLEL EVENT PROCESSING (2 workers)
-                        # ========================================
-                        try:
-                            from streak_alerts import streak_alert_engine
-                            
-                            n_events = len(events_for_alerts)
-                            
-                            if n_events == 1:
-                                # Single event - no parallelism needed
-                                logger.info("📦 Single event - processing directly (no batching)")
-                                all_results = [self._process_single_event_alerts(events_for_alerts[0], KEY_MOMENTS)]
-                            else:
-                                # Split events into 2 balanced batches for parallel processing
-                                mid = n_events // 2
-                                batch_a = events_for_alerts[:mid]
-                                batch_b = events_for_alerts[mid:]
-                                logger.info(f"📦 Splitting {n_events} events into 2 batches: A={len(batch_a)}, B={len(batch_b)}")
-                                
-                                all_results = []
-                                with ThreadPoolExecutor(max_workers=2, thread_name_prefix="alert_worker") as executor:
-                                    future_a = executor.submit(self._process_event_batch, batch_a, KEY_MOMENTS)
-                                    future_b = executor.submit(self._process_event_batch, batch_b, KEY_MOMENTS)
-                                    
-                                    # Collect results in order (batch A first, then batch B)
-                                    for future_label, future in [("A", future_a), ("B", future_b)]:
-                                        try:
-                                            batch_results = future.result(timeout=300)  # 5 min timeout per batch
-                                            all_results.extend(batch_results)
-                                            logger.info(f"✅ Batch {future_label} completed: {len(batch_results)} events processed")
-                                        except Exception as e:
-                                            logger.error(f"❌ Batch {future_label} failed: {e}")
-                            
-                            # ========================================
-                            # SEND ALL ALERTS IN ORDER BY EVENT (after parallel processing)
-                            # Grouped: Odds → H2H → Dual for each event
-                            # ========================================
-                            from odds_alert import odds_alert_processor
-                            
-                            for result in all_results:
-                                if not result.get('success'):
-                                    continue
-                                
-                                event_obj = result.get('event_obj')
-                                streak_analysis = result.get('streak_analysis')
-                                dual_report = result.get('dual_report')
-                                odds_response = result.get('odds_response')
-                                minutes_until_start = result.get('minutes_until_start')
-                                
-                                # 1) Send ODDS alert first for this event
-                                if odds_response:
-                                    logger.info(f"📊 Sending odds alert for event {event_obj.id} (1st in group)")
-                                    try:
-                                        event_data_for_odds = {
-                                            'id': event_obj.id,
-                                            'home_team': event_obj.home_team,
-                                            'away_team': event_obj.away_team,
-                                            'sport': event_obj.sport,
-                                            'competition': getattr(event_obj, 'competition', ''),
-                                            'slug': event_obj.slug,
-                                            'discovery_source': getattr(event_obj, 'discovery_source', '')
-                                        }
-                                        odds_alert_processor.send_odds_alert(event_data_for_odds, odds_response, minutes_until_start)
-                                    except Exception as e:
-                                        logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
-                                
-                                # 2) Send H2H streak alert for this event
-                                if streak_analysis:
-                                    logger.info(f"📊 Sending H2H streak alert for event {event_obj.id} (2nd in group)")
-                                    pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
-                                
-                                # 3) Send dual process alert for this event
-                                if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction or 
-                                                  (dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates'])):
-                                    logger.info(f"📊 Sending dual process alert for event {event_obj.id} (3rd in group)")
-                                    self._send_dual_process_alerts([dual_report])
-                                    
-                                    # Log predictions for successful Process 1 reports
-                                    from modules.prediction import prediction_logger
-                                    
-                                    if (dual_report.process1_report and 
-                                        dual_report.process1_report.get('status') == 'success'):
-                                        
-                                        if minutes_until_start == 5:
-                                            success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
-                                            if success:
-                                                logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (5 minutes from start)")
-                                            else:
-                                                with db_manager.get_session() as session:
-                                                    existing = session.query(PredictionLog).filter_by(event_id=event_obj.id).first()
-                                                    if existing:
-                                                        logger.info(f"ℹ️ Prediction already exists for dual process event {event_obj.id} - no action needed")
-                                                    else:
-                                                        logger.warning(f"❌ Failed to log prediction for dual process event {event_obj.id}")
-                                        else:
-                                            logger.info(f"⏭️ Skipping prediction logging for event {event_obj.id} - {minutes_until_start} minutes until start (not 5 minutes)")
-                            
-                            logger.info(f"✅ Parallel alert processing complete: {len(all_results)} events processed, alerts sent grouped by event")
-                                
-                        except Exception as e:
-                            logger.error(f"Error in event processing: {e}")
+                        logger.info(f"🔍 Dispatching {len(events_for_alerts)} events to alert evaluation (H2H ∥ OP scraping)...")
+                        self._evaluate_and_send_alerts_batch(
+                            events_for_alerts, KEY_MOMENTS,
+                            op_done_event=op_done_event,
+                            op_event_ids=op_event_ids
+                        )
                     else:
                         logger.debug("No events at key moments found for alert evaluation")
                         
@@ -893,19 +815,6 @@ class JobScheduler:
                     logger.error(f"Error running alert evaluation: {e}")
             else:
                 logger.debug("No events captured at key moments for alert evaluation")
-            
-            # Note: Prediction logging is handled within the alert evaluation above
-            
-            # ========================================
-            # WAIT FOR ODDSPORTAL WORKER TO FINISH
-            # ========================================
-            if oddsportal_thread and oddsportal_thread.is_alive():
-                logger.info("⏳ Waiting for OddsPortal worker to finish...")
-                oddsportal_thread.join(timeout=180)  # 3 minute timeout
-                if oddsportal_thread.is_alive():
-                    logger.warning("⚠️ OddsPortal worker still running after 3 min timeout - proceeding anyway")
-                else:
-                    logger.info("✅ OddsPortal worker thread finished")
             
         except Exception as e:
             logger.error(f"Error in Job C: {e}")
@@ -1226,6 +1135,7 @@ class JobScheduler:
             result['dual_report'] = dual_report
             result['minutes_until_start'] = minutes_until_start
             result['event_obj'] = event_obj
+            result['season_id'] = event_payload.get('season_id')
             result['success'] = True
             
             logger.info(f"✅ Completed processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team}")
@@ -1245,6 +1155,141 @@ class JobScheduler:
             result = self._process_single_event_alerts(event_payload, KEY_MOMENTS)
             results.append(result)
         return results
+        
+    def _evaluate_and_send_alerts_batch(self, events_for_alerts: list, KEY_MOMENTS: list,
+                                         op_done_event=None, op_event_ids=None):
+        """
+        Helper method that encapsulates the thread-pooled parallel evaluation and sequential grouping of alerts.
+        It evaluates upcoming events through the prediction engine and H2H analyzers, and sends notifications.
+        
+        Args:
+            op_done_event: threading.Event signaled when OP scraping finishes (for wait gate)
+            op_event_ids: set of event IDs that are being scraped by the OP worker
+        """
+        try:
+            logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for H2H and dual process alerts...")
+            
+            n_events = len(events_for_alerts)
+            all_results = []
+            
+            if n_events == 1:
+                # Single event - no parallelism needed
+                logger.info("📦 Single event - processing directly (no batching)")
+                all_results = [self._process_single_event_alerts(events_for_alerts[0], KEY_MOMENTS)]
+            else:
+                # Split events into 2 balanced batches for parallel processing
+                mid = n_events // 2
+                batch_a = events_for_alerts[:mid]
+                batch_b = events_for_alerts[mid:]
+                logger.info(f"📦 Splitting {n_events} events into 2 batches: A={len(batch_a)}, B={len(batch_b)}")
+                
+                with ThreadPoolExecutor(max_workers=2, thread_name_prefix="alert_worker") as executor:
+                    future_a = executor.submit(self._process_event_batch, batch_a, KEY_MOMENTS)
+                    future_b = executor.submit(self._process_event_batch, batch_b, KEY_MOMENTS)
+                    
+                    # Collect results in order (batch A first, then batch B)
+                    for future_label, future in [("A", future_a), ("B", future_b)]:
+                        try:
+                            batch_results = future.result(timeout=300)  # 5 min timeout per batch
+                            all_results.extend(batch_results)
+                            logger.info(f"✅ Batch {future_label} completed: {len(batch_results)} events processed")
+                        except Exception as e:
+                            logger.error(f"❌ Batch {future_label} failed: {e}")
+            
+            # ========================================
+            # SEND ALL ALERTS IN ORDER BY EVENT (after parallel processing)
+            # Grouped: Odds → H2H → Dual for each event
+            # ========================================
+            from odds_alert import odds_alert_processor
+            from alert_system import pre_start_notifier
+            
+            for result in all_results:
+                if not result.get('success'):
+                    continue
+                
+                event_obj = result.get('event_obj')
+                streak_analysis = result.get('streak_analysis')
+                dual_report = result.get('dual_report')
+                odds_response = result.get('odds_response')
+                minutes_until_start = result.get('minutes_until_start')
+                
+                # 1) Send ODDS alert first for this event
+                # If this event is an OP-tracked event, wait for OP scraping to finish
+                # so the odds alert can include OddsPortal bookie data from the DB.
+                if odds_response:
+                    if op_event_ids and event_obj.id in op_event_ids and op_done_event and not op_done_event.is_set():
+                        logger.info(f"⏳ Waiting for OddsPortal scraping to finish before sending odds alert for event {event_obj.id}...")
+                        op_done_event.wait(timeout=180)  # Max 3 min wait
+                        logger.info(f"✅ OddsPortal scraping finished, proceeding with odds alert for event {event_obj.id}")
+                    logger.info(f"📊 Sending odds alert for event {event_obj.id} (1st in group)")
+                    try:
+                        event_data_for_odds = {
+                            'id': event_obj.id,
+                            'home_team': event_obj.home_team,
+                            'away_team': event_obj.away_team,
+                            'sport': event_obj.sport,
+                            'competition': getattr(event_obj, 'competition', ''),
+                            'slug': event_obj.slug,
+                            'discovery_source': getattr(event_obj, 'discovery_source', ''),
+                            'season_id': result.get('season_id')
+                        }
+                        odds_alert_processor.send_odds_alert(event_data_for_odds, odds_response, minutes_until_start)
+                    except Exception as e:
+                        logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
+                
+                # 2) Send H2H streak alert for this event
+                if streak_analysis:
+                    logger.info(f"📊 Sending H2H streak alert for event {event_obj.id} (2nd in group)")
+                    pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
+                
+                # 3) Send dual process alert for this event
+                if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction or 
+                                  (dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates'])):
+                    logger.info(f"📊 Sending dual process alert for event {event_obj.id} (3rd in group)")
+                    self._send_dual_process_alerts([dual_report])
+                    
+                    # Log predictions for successful Process 1 reports
+                    from modules.prediction import prediction_logger
+                    from database import db_manager
+                    from models import PredictionLog
+                    
+                    if (dual_report.process1_report and 
+                        dual_report.process1_report.get('status') == 'success'):
+                        
+                        if minutes_until_start == 5:
+                            success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
+                            if success:
+                                logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (5 minutes from start)")
+                            else:
+                                with db_manager.get_session() as session:
+                                    existing = session.query(PredictionLog).filter_by(event_id=event_obj.id).first()
+                                    if existing:
+                                        logger.info(f"ℹ️ Prediction already exists for dual process event {event_obj.id} - no action needed")
+                                    else:
+                                        logger.warning(f"❌ Failed to log prediction for dual process event {event_obj.id}")
+                        else:
+                            logger.info(f"⏭️ Skipping prediction logging for event {event_obj.id} - {minutes_until_start} minutes until start (not 5 minutes)")
+            
+            logger.info(f"✅ Parallel alert processing complete: {len(all_results)} events processed, alerts sent grouped by event")
+                
+        except Exception as e:
+            logger.error(f"Error in event processing batch: {e}")
+            
+    def _oddsportal_worker_wrapper(self, op_candidates: list, op_done_event):
+        """
+        Background worker that ONLY scrapes OddsPortal and saves to DB.
+        Signals completion via op_done_event so the main thread's alert delivery
+        can include the OP data in odds alerts.
+        """
+        logger.info(f"🔥 OP Worker started: scraping {len(op_candidates)} tracked-league events.")
+        try:
+            self._run_oddsportal_batch(op_candidates)
+        except Exception as e:
+            import traceback
+            logger.error(f"❌ OddsPortal Worker CRASHED: {e}\n{traceback.format_exc()}")
+        finally:
+            op_done_event.set()
+            logger.info("✅ OP Worker finished scraping, main thread unblocked.")
     
     def _run_oddsportal_batch(self, events_to_process: list) -> dict:
         """
@@ -1269,7 +1314,8 @@ class JobScheduler:
                     'event_id': event_data['id'],
                     'league_url': league_url,
                     'home_team': event_data['home_team'],
-                    'away_team': event_data['away_team']
+                    'away_team': event_data['away_team'],
+                    'season_id': season_id
                 })
         
         if not op_tasks:
@@ -1279,7 +1325,9 @@ class JobScheduler:
         logger.info(f"🔍 OddsPortal worker: {len(op_tasks)} events eligible for scraping")
         
         # Scrape all matches with one browser
+        logger.info(f"🌐 OddsPortal: Calling scrape_multiple_matches_sync for {len(op_tasks)} tasks...")
         op_results = scrape_multiple_matches_sync(op_tasks)
+        logger.info(f"🌐 OddsPortal: scrape_multiple_matches_sync returned {len(op_results)} results")
         
         # Save results to DB
         saved_counts = {}
@@ -2013,6 +2061,13 @@ class JobScheduler:
         """Job E: Daily discovery of today's scheduled events with odds (runs at 05:01)"""
         logger.info("Starting Job E: Daily discovery of today's scheduled events")
         
+        # Clean up yesterday's OddsPortal league cache
+        try:
+            from repository import OddsPortalCacheRepository
+            OddsPortalCacheRepository.cleanup_old_caches()
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to cleanup OddsPortal cache: {e}")
+        
         try:
             # Run the daily discovery extractor
             stats = run_daily_discovery()
@@ -2039,6 +2094,12 @@ class JobScheduler:
         """Run Job C immediately"""
         logger.info("Running Job C immediately")
         self.job_pre_start_check()
+        
+        # Wait for the OP worker thread if we are running in one-off execution
+        if hasattr(self, '_active_op_thread') and self._active_op_thread and self._active_op_thread.is_alive():
+            logger.info("⏳ Waiting for OddsPortal background worker to finish before exiting...")
+            self._active_op_thread.join()
+            logger.info("✅ OddsPortal background worker finished.")
     
     def run_job_midnight_sync_now(self):
         """Run Job D immediately"""

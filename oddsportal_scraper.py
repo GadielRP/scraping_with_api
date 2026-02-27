@@ -9,9 +9,16 @@ from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 
 # Import configuration
 try:
+    from config import Config
     from oddsportal_config import SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES
 except ImportError:
     # Fallback/Mock for standalone testing
+    class MockConfig:
+        PROXY_ENABLED = False
+        PROXY_ENDPOINT = None
+        PROXY_USERNAME = None
+        PROXY_PASSWORD = None
+    Config = MockConfig()
     SEASON_ODDSPORTAL_MAP = {}
     BOOKIE_ALIASES = {}
     TEAM_ALIASES = {}
@@ -80,11 +87,15 @@ class OddsPortalScraper:
     Uses Playwright with anti-detection measures.
     """
     
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = True, debug_dir: Optional[str] = None):
         self.headless = headless
+        self.debug_dir = debug_dir
         self.browser: Optional[Browser] = None
         self.playwright = None
         self.context: Optional[BrowserContext] = None
+        if self.debug_dir:
+            import os
+            os.makedirs(self.debug_dir, exist_ok=True)
         
     async def start(self):
         """Start the browser session."""
@@ -93,16 +104,27 @@ class OddsPortalScraper:
             
         self.playwright = await async_playwright().start()
         
-        self.browser = await self.playwright.chromium.launch(
-            headless=self.headless,
-            args=[
+        launch_args = {
+            "headless": self.headless,
+            "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-infobars",
                 "--window-size=1920,1080",
-            ]
-        )
+            ],
+        }
+
+        if getattr(Config, 'PROXY_ENABLED', False) and getattr(Config, 'PROXY_ENDPOINT', None):
+            launch_args["proxy"] = {
+                "server": f"http://{Config.PROXY_ENDPOINT}",
+            }
+            if getattr(Config, 'PROXY_USERNAME', None) and getattr(Config, 'PROXY_PASSWORD', None):
+                launch_args["proxy"]["username"] = Config.PROXY_USERNAME
+                launch_args["proxy"]["password"] = Config.PROXY_PASSWORD
+            logger.info("🛡️ OddsPortalScraper: Launching Playwright with PROXY configuration")
+
+        self.browser = await self.playwright.chromium.launch(**launch_args)
         
         # Create context with anti-detection
         self.context = await self.browser.new_context(
@@ -146,9 +168,10 @@ class OddsPortalScraper:
         self.playwright = None
         logger.info("🛑 OddsPortalScraper: Browser stopped")
 
-    async def find_match_url(self, league_url: str, home_team: str, away_team: str) -> Optional[str]:
+    async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
         """
         Navigate to league page and find match URL by team names.
+        Also populates the DB cache with all match URLs found on the page.
         """
         if not self.context:
             await self.start()
@@ -157,14 +180,14 @@ class OddsPortalScraper:
         try:
             logger.info(f"🌐 Navigating to league: {league_url}")
             t0 = time.perf_counter()
-            response = await page.goto(league_url, wait_until="domcontentloaded", timeout=30000)
+            response = await page.goto(league_url, wait_until="domcontentloaded", timeout=60000)
             if not response or response.status != 200:
                 logger.error(f"❌ Failed to load league page. Status: {response.status if response else 'N/A'}")
                 return None
             
-            # Wait for content
+            # Wait for event rows to appear (faster than networkidle which waits for all ads/trackers)
             try:
-                await page.wait_for_load_state("networkidle", timeout=10000)
+                await page.wait_for_selector("div.eventRow", timeout=30000)
             except Exception:
                 pass
                 
@@ -208,6 +231,21 @@ class OddsPortalScraper:
             if not rows_data:
                 logger.warning(f"⚠️ No event rows found on {league_url}")
                 return None
+            
+            # --- CACHE POPULATION: Save all match URLs for this league ---
+            if season_id:
+                cache_dict = {}
+                for row_data in rows_data:
+                    for href in row_data.get('links', []):
+                        if href and '-' in href:
+                            cache_dict[href] = row_data.get('text', '')
+                if cache_dict:
+                    try:
+                        from repository import OddsPortalCacheRepository
+                        OddsPortalCacheRepository.save_league_cache(season_id, cache_dict)
+                        logger.info(f"💾 Cached {len(cache_dict)} match URLs for season {season_id}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to cache league URLs: {e}")
                 
             logger.info(f"🔎 Scanning {len(rows_data)} rows for {home_team} vs {away_team} (Batch Mode)...")
             
@@ -246,6 +284,50 @@ class OddsPortalScraper:
         finally:
             await page.close()
 
+    def find_match_url_from_cache(self, season_id: int, home_team: str, away_team: str) -> Optional[str]:
+        """
+        Try to find match URL from DB cache (no browser navigation needed).
+        Uses the same normalize + alias matching algorithm as find_match_url.
+        
+        Returns:
+            Full match URL or None if not found in cache
+        """
+        try:
+            from repository import OddsPortalCacheRepository
+            cached = OddsPortalCacheRepository.get_league_cache(season_id)
+            if not cached:
+                return None
+            
+            def normalize(s):
+                return s.lower().replace("fc", "").replace("cf", "").replace("ud", "").strip()
+            
+            home_norm = normalize(home_team)
+            away_norm = normalize(away_team)
+            
+            home_alias = TEAM_ALIASES.get(home_team, home_team)
+            away_alias = TEAM_ALIASES.get(away_team, away_team)
+            home_alias_norm = normalize(home_alias)
+            away_alias_norm = normalize(away_alias)
+            
+            for href, display_text in cached.items():
+                text_norm = normalize(display_text or "")
+                
+                h_found = home_norm in text_norm or home_alias_norm in text_norm
+                a_found = away_norm in text_norm or away_alias_norm in text_norm
+                
+                if h_found and a_found:
+                    # Verify href has slug structure (contains hyphen, not just the league URL)
+                    if '-' in href:
+                        logger.info(f"⚡ Cache hit! Found match URL for {home_team} vs {away_team} (season {season_id})")
+                        return f"https://www.oddsportal.com{href}"
+            
+            logger.debug(f"Cache miss: {home_team} vs {away_team} not in cache for season {season_id} ({len(cached)} URLs checked)")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error checking league cache: {e}")
+            return None
+
     async def scrape_match(self, match_url: str) -> Optional[MatchOddsData]:
 
         """
@@ -263,7 +345,7 @@ class OddsPortalScraper:
             t0 = time.perf_counter()
             
             # Navigate
-            response = await page.goto(match_url, wait_until="domcontentloaded", timeout=30000)
+            response = await page.goto(match_url, wait_until="domcontentloaded", timeout=60000)
             if not response or response.status != 200:
                 logger.error(f"❌ Failed to load page. Status: {response.status if response else 'N/A'}")
                 return None
@@ -274,14 +356,23 @@ class OddsPortalScraper:
             except Exception:
                 pass  # Proceed even if network doesn't fully idle
                 
-            # Handle cookie banner
-            try:
-                accept_btn = await page.query_selector("button:has-text('I Accept'), button:has-text('Accept All')")
-                if accept_btn:
-                    await accept_btn.click()
-                    await asyncio.sleep(0.5)
-            except Exception:
-                pass
+            # Handle cookie/consent banner — try multiple selectors
+            for btn_sel in [
+                "#onetrust-accept-btn-handler",
+                "button.onetrust-close-btn-handler",
+                "button:has-text('I Accept')",
+                "button:has-text('Accept All')",
+                "button:has-text('Accept')",
+            ]:
+                try:
+                    btn = await page.query_selector(btn_sel)
+                    if btn:
+                        await btn.click()
+                        logger.debug(f"🍪 Dismissed consent via: {btn_sel}")
+                        await asyncio.sleep(0.5)
+                        break
+                except Exception:
+                    continue
             
             # Wait for bookie rows to ensure content is loaded
             try:
@@ -299,6 +390,18 @@ class OddsPortalScraper:
             data = await self._extract_data(page, match_url)
             extract_duration = time.perf_counter() - t_extract_start
             
+            if self.debug_dir:
+                try:
+                    import os
+                    screenshot_path = os.path.join(self.debug_dir, "match_page_loaded.png")
+                    await page.screenshot(path=screenshot_path, full_page=True)
+                    html_path = os.path.join(self.debug_dir, "match_page_loaded.html")
+                    with open(html_path, "w", encoding="utf-8") as f:
+                        f.write(await page.content())
+                    logger.info(f"💾 Saved debug info to {self.debug_dir}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to save debug info: {e}")
+
             if data:
                 data.extraction_time_ms = extract_duration * 1000
                 logger.info(f"✅ Extracted odds for {data.home_team} vs {data.away_team} ({len(data.bookie_odds)} bookies)")
@@ -458,55 +561,110 @@ class OddsPortalScraper:
 
             logger.info(f"🖱️ Hovering {len(odds_blocks)} odds cells for {bookie_name}")
 
-            choice_keys = ['1', 'X', '2']
+            is_three_way = len(odds_blocks) >= 3
+            if is_three_way:
+                choice_keys = ['1', 'X', '2']
+            else:
+                choice_keys = ['1', '2']
+                
             result: Dict[str, Optional[str]] = {}
 
-            for i, odds_block in enumerate(odds_blocks[:3]):  # Max 3 cells (1, X, 2)
+            for i, odds_block in enumerate(odds_blocks[:len(choice_keys)]):  # Respect the length of dynamic keys
                 choice = choice_keys[i] if i < len(choice_keys) else str(i)
-                try:
-                    await odds_block.scroll_into_view_if_needed()
-                    # Re-dismiss overlay in case it reappeared after scroll
-                    await page.evaluate("""
-                        () => { document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove()); }
-                    """)
-                    # Hover with force=True; fallback to mouse.move() if it fails
+                max_retries = 3
+                got_value = False
+                
+                for attempt in range(max_retries):
                     try:
-                        await odds_block.hover(force=True, timeout=5000)
-                    except Exception:
-                        bbox = await odds_block.bounding_box()
-                        if bbox:
-                            await page.mouse.move(
-                                bbox['x'] + bbox['width'] / 2,
-                                bbox['y'] + bbox['height'] / 2
+                        await odds_block.scroll_into_view_if_needed()
+                        # Remove overlays that block hover (bookie-modal + consent)
+                        await page.evaluate("""
+                            () => {
+                                document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove());
+                                const onetrust = document.getElementById('onetrust-banner-sdk');
+                                if (onetrust) onetrust.remove();
+                                const shade = document.querySelector('.onetrust-pc-dark-filter');
+                                if (shade) shade.remove();
+                            }
+                        """)
+                        # Hover with force=True; fallback to mouse.move() + JS dispatch
+                        try:
+                            await odds_block.hover(force=True, timeout=5000)
+                        except Exception:
+                            bbox = await odds_block.bounding_box()
+                            if bbox:
+                                await page.mouse.move(
+                                    bbox['x'] + bbox['width'] / 2,
+                                    bbox['y'] + bbox['height'] / 2
+                                )
+                        # Also fire JS hover events to trigger Vue.js tooltip component
+                        await page.evaluate("""
+                            (el) => {
+                                el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));
+                            }
+                        """, odds_block)
+                        # Increasing wait: 2s, 3s, 4s per attempt
+                        wait_ms = 2000 + (attempt * 1000)
+                        await page.wait_for_timeout(wait_ms)
+                        
+                        # Find the modal via 'Odds movement' heading
+                        try:
+                            odds_movement_h3 = await page.wait_for_selector(
+                                "h3:has-text('Odds movement')", timeout=3000
                             )
-                    await page.wait_for_timeout(2000)  # Wait for tooltip to render
-                    
-                    # Find the modal via 'Odds movement' heading
-                    try:
-                        odds_movement_h3 = await page.wait_for_selector(
-                            "h3:has-text('Odds movement')", timeout=3000
-                        )
-                        modal_wrapper = await odds_movement_h3.evaluate_handle(
-                            "node => node.parentElement"
-                        )
-                        modal_el = modal_wrapper.as_element()
-                        if modal_el:
-                            html = await modal_el.inner_html()
-                            opening_val = self._parse_opening_odds_from_modal_html(html)
-                            result[choice] = opening_val
-                            logger.debug(f"  Cell {choice}: opening={opening_val}")
-                        else:
+                            # Verify tooltip is actually visible before parsing
+                            is_visible = await page.is_visible("h3:has-text('Odds movement')")
+                            if not is_visible:
+                                logger.warning(f"  ⚠️ Cell {choice}: tooltip found in DOM but NOT visible (attempt {attempt + 1})")
+                                if attempt < max_retries - 1:
+                                    await page.mouse.move(0, 0)
+                                    await page.wait_for_timeout(500)
+                                    continue
+                                result[choice] = None
+                                break
+                            modal_wrapper = await odds_movement_h3.evaluate_handle(
+                                "node => node.parentElement"
+                            )
+                            modal_el = modal_wrapper.as_element()
+                            if modal_el:
+                                html = await modal_el.inner_html()
+                                opening_val = self._parse_opening_odds_from_modal_html(html)
+                                result[choice] = opening_val
+                                logger.debug(f"  Cell {choice}: opening={opening_val} (attempt {attempt + 1})")
+                                got_value = True
+                            else:
+                                result[choice] = None
+                        except Exception:
+                            if attempt < max_retries - 1:
+                                logger.debug(f"  Cell {choice}: modal not found (attempt {attempt + 1}/{max_retries}), retrying...")
+                                # Move away and wait before retry
+                                await page.mouse.move(0, 0)
+                                await page.wait_for_timeout(500)
+                                continue
                             result[choice] = None
-                    except Exception:
+                        
+                        # Move mouse away to dismiss tooltip before next cell
+                        await page.mouse.move(0, 0)
+                        await page.wait_for_timeout(500)
+                        # Wait for modal to fully detach before hovering the next cell
+                        try:
+                            await page.wait_for_selector(
+                                "h3:has-text('Odds movement')",
+                                state="detached", timeout=2000
+                            )
+                        except Exception:
+                            pass
+                        break  # Exit retry loop (success or final attempt done)
+                        
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            logger.debug(f"  Cell {choice}: hover error (attempt {attempt + 1}), retrying: {e}")
+                            await page.mouse.move(0, 0)
+                            await page.wait_for_timeout(500)
+                            continue
+                        logger.warning(f"  Error hovering cell {choice} for {bookie_name}: {e}")
                         result[choice] = None
-                    
-                    # Move mouse away to dismiss tooltip before next hover
-                    await page.mouse.move(0, 0)
-                    await page.wait_for_timeout(300)
-                    
-                except Exception as e:
-                    logger.warning(f"  Error hovering cell {choice} for {bookie_name}: {e}")
-                    result[choice] = None
             
             return result if result else None
             
@@ -566,9 +724,15 @@ class OddsPortalScraper:
             
             logger.info(f"🖱️ Hovering {len(all_targets)} Betfair cells (Back & Lay)")
 
-            # Dismiss overlay before starting
+            # Dismiss overlays before starting
             await page.evaluate("""
-                () => { document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove()); }
+                () => {
+                    document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove());
+                    const onetrust = document.getElementById('onetrust-banner-sdk');
+                    if (onetrust) onetrust.remove();
+                    const shade = document.querySelector('.onetrust-pc-dark-filter');
+                    if (shade) shade.remove();
+                }
             """)
 
             for choice, container in all_targets:
@@ -579,7 +743,11 @@ class OddsPortalScraper:
 
                     await hover_target.scroll_into_view_if_needed()
                     await page.evaluate("""
-                        () => { document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove()); }
+                        () => {
+                            document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove());
+                            const onetrust = document.getElementById('onetrust-banner-sdk');
+                            if (onetrust) onetrust.remove();
+                        }
                     """)
                     try:
                         await hover_target.hover(force=True, timeout=5000)
@@ -590,12 +758,27 @@ class OddsPortalScraper:
                                 bbox['x'] + bbox['width'] / 2,
                                 bbox['y'] + bbox['height'] / 2
                             )
+                    # Fire JS hover events to trigger Vue.js tooltip
+                    await page.evaluate("""
+                        (el) => {
+                            el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
+                            el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));
+                        }
+                    """, hover_target)
                     await page.wait_for_timeout(2000)
                     
                     try:
                         odds_movement_h3 = await page.wait_for_selector(
                             "h3:has-text('Odds movement')", timeout=3000
                         )
+                        # Verify tooltip is actually visible before parsing
+                        is_visible = await page.is_visible("h3:has-text('Odds movement')")
+                        if not is_visible:
+                            logger.warning(f"  ⚠️ Betfair {choice}: tooltip found in DOM but NOT visible")
+                            result[choice] = None
+                            await page.mouse.move(0, 0)
+                            await page.wait_for_timeout(300)
+                            continue
                         modal_wrapper = await odds_movement_h3.evaluate_handle(
                             "node => node.parentElement"
                         )
@@ -603,6 +786,15 @@ class OddsPortalScraper:
                         if modal_el:
                             html = await modal_el.inner_html()
                             opening_val = self._parse_opening_odds_from_modal_html(html)
+                            
+                            if self.debug_dir:
+                                try:
+                                    import os
+                                    debug_path = os.path.join(self.debug_dir, f"modal_Betfair_{choice}.html")
+                                    with open(debug_path, "w", encoding="utf-8") as f:
+                                        f.write(html)
+                                except Exception as e:
+                                    logger.warning(f"⚠️ Failed to save modal HTML: {e}")
                             result[choice] = opening_val
                             logger.debug(f"  Betfair {choice}: opening={opening_val}")
                         else:
@@ -867,9 +1059,17 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
             finally:
                 await scraper.stop()
                 
-        return asyncio.run(_run())
+        # Use new_event_loop() instead of asyncio.run() for thread-safety
+        # asyncio.run() manages signal handlers that only work on the main thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(_run())
+        finally:
+            loop.close()
     except Exception as e:
-        logger.error(f"Error in scrape_match_sync: {e}")
+        import traceback
+        logger.error(f"Error in scrape_match_sync: {e}\n{traceback.format_exc()}")
         return None
 
 
@@ -877,12 +1077,12 @@ def scrape_multiple_matches_sync(tasks: List[Dict]) -> Dict[int, Optional[MatchO
     """
     Scrape multiple matches using ONE browser session (browser reuse).
     
-    Opens the browser once, scrapes all matches sequentially with a small
-    delay between them, then closes the browser. This saves ~5s of browser
-    startup time per additional match compared to scrape_match_sync.
+    Tries DB cache first for each match URL. On cache hit, skips league page
+    navigation entirely (~14s saved). On cache miss, navigates to the league
+    page (which also populates the cache for subsequent events).
     
     Args:
-        tasks: List of dicts with keys: event_id, league_url, home_team, away_team
+        tasks: List of dicts with keys: event_id, league_url, home_team, away_team, season_id
     
     Returns:
         Dict mapping event_id -> MatchOddsData (or None if scrape failed)
@@ -901,13 +1101,24 @@ def scrape_multiple_matches_sync(tasks: List[Dict]) -> Dict[int, Optional[MatchO
             try:
                 for i, task in enumerate(tasks):
                     event_id = task['event_id']
+                    season_id = task.get('season_id')
                     try:
                         logger.info(f"🔍 OddsPortal [{i+1}/{len(tasks)}]: {task['home_team']} vs {task['away_team']}")
                         
-                        # Find match URL on league page
-                        match_url = await scraper.find_match_url(
-                            task['league_url'], task['home_team'], task['away_team']
-                        )
+                        # Step 1: Try cache first (no browser navigation needed)
+                        match_url = None
+                        if season_id:
+                            match_url = scraper.find_match_url_from_cache(
+                                season_id, task['home_team'], task['away_team']
+                            )
+                        
+                        # Step 2: Fall back to live league page navigation (also populates cache)
+                        if not match_url:
+                            match_url = await scraper.find_match_url(
+                                task['league_url'], task['home_team'], task['away_team'],
+                                season_id=season_id
+                            )
+                        
                         if match_url:
                             data = await scraper.scrape_match(match_url)
                             results[event_id] = data
@@ -930,8 +1141,16 @@ def scrape_multiple_matches_sync(tasks: List[Dict]) -> Dict[int, Optional[MatchO
                 await scraper.stop()  # Browser closes ONCE
             return results
         
-        return asyncio.run(_run())
+        # Use new_event_loop() instead of asyncio.run() for thread-safety
+        # asyncio.run() manages signal handlers that only work on the main thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(_run())
+        finally:
+            loop.close()
         
     except Exception as e:
-        logger.error(f"❌ Error in scrape_multiple_matches_sync: {e}")
+        import traceback
+        logger.error(f"❌ Error in scrape_multiple_matches_sync: {e}\n{traceback.format_exc()}")
         return results

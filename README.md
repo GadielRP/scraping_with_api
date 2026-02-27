@@ -24,6 +24,8 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Hybrid Safety Net**: Advanced team matching strategy using Direct Match -> Substring Match -> Alias Dictionary (covering ~20% of edge cases like "Milan" -> "AC Milan").
 - **Betfair Exchange**: New support for extracting both **Back** and **Lay** opening odds.
 - **Browser Batching**: Reuses a single browser instance for multiple matches (`scrape_multiple_matches_sync`), saving significant startup time.
+- **Dynamic 2-Way/3-Way Odds Support**: Scraper automatically detects market type via HTML structure to correctly assign away odds, avoiding conflicts with 'Draw' fields in sports like Basketball.
+- **Standalone Isolation Testing**: Added `test_oddsportal_process.py` and visual HTML/Image debug dumps to rapidly troubleshoot tooltip parsing selector errors without running the full scheduler.
 
 ### ✅ **v1.6.3 - API Optimization & Quality of Life Fixes (Febrero 2026)**
 - **Metadata Snapshot System**: Implementada arquitectura de snapshot para capturar rankings, tipos de cancha y metadatos de temporada desde la respuesta de `/event/{id}` usada para corregir el timestamp.
@@ -65,7 +67,12 @@ The system now employs a sophisticated parallel processing strategy for the "Pre
 
 1.  **Event Batching**: Upcoming events are split into balanced batches.
 2.  **Concurrent Execution**: A `ThreadPoolExecutor` (2 workers) processes batches in parallel.
-3.  **Background Scraping**: OddsPortal scraping runs in a dedicated daemon-less thread, reusing a single browser instance for maximum speed.
+3.  **Decoupled Background Scraping**: OddsPortal scraping runs in a dedicated, decoupled thread to avoid IO bottlenecks.
+    *   **Previous Bottleneck**: The thread was joined via `thread.join()`, which blocked the main scheduler for up to 3 minutes, causing overlapping jobs and delayed alerts.
+    *   **The New Architecture**: 
+        *   Non-OP events are processed immediately by the main thread.
+        *   OP events (in the 15-minute window) are passed to a non-blocking `daemon=False` background worker. 
+        *   The background worker sequentially scrapes odds, evaluates its own match alerts, and delivers them directly. The main thread loop never waits for it, ensuring <1s turnaround times for schedule checks!
 4.  **Ordered Delivery**: Results are aggregated and alerts are sent sequentially to ensure a clean Telegram UX.
 
 
