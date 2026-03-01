@@ -1326,7 +1326,8 @@ class JobScheduler:
                     'league_url': league_url,
                     'home_team': event_data['home_team'],
                     'away_team': event_data['away_team'],
-                    'season_id': season_id
+                    'season_id': season_id,
+                    'sport': op_info['sport'],
                 })
         
         if not op_tasks:
@@ -1337,7 +1338,7 @@ class JobScheduler:
         
         # Scrape all matches with one browser
         logger.info(f"🌐 OddsPortal: Calling scrape_multiple_matches_sync for {len(op_tasks)} tasks...")
-        op_results = scrape_multiple_matches_sync(op_tasks)
+        op_results = scrape_multiple_matches_sync(op_tasks, debug_dir="oddsportal_debug")
         logger.info(f"🌐 OddsPortal: scrape_multiple_matches_sync returned {len(op_results)} results")
         
         # Save results to DB

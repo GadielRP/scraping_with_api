@@ -12,18 +12,20 @@
 5. [Full Operational Flow](#5-full-operational-flow)
 6. [League URL Cache](#6-league-url-cache)
 7. [Match Page Extraction](#7-match-page-extraction)
-8. [Opening Odds via Hover](#8-opening-odds-via-hover)
-9. [Configuration Reference](#9-configuration-reference)
-10. [Libraries Used](#10-libraries-used)
-11. [Testing](#11-testing)
-12. [Edge Cases & Troubleshooting](#12-edge-cases--troubleshooting)
-13. [Performance Summary](#13-performance-summary)
+8. [Sport-Specific Scraping Routes](#8-sport-specific-scraping-routes)
+9. [Fragment Navigation](#9-fragment-navigation)
+10. [Opening Odds via Hover](#10-opening-odds-via-hover)
+11. [Configuration Reference](#11-configuration-reference)
+12. [Libraries Used](#12-libraries-used)
+13. [Testing](#13-testing)
+14. [Edge Cases & Troubleshooting](#14-edge-cases--troubleshooting)
+15. [Performance Summary](#15-performance-summary)
 
 ---
 
 ## 1. Why OddsPortal?
 
-Our main data source (SofaScore API) provides final odds, but **does not provide opening/historical odds**. OddsPortal tracks odds changes over time and exposes them through a hover tooltip on their frontend. This allows us to extract the **opening odds** for key bookmakers, which is critical for detecting odds movements and generating high-quality alerts.
+Our main data source (SofaScore API) provides opening and final odds, but we need odds from **more bookies**. OddsPortal tracks odds changes over time and exposes them through a hover tooltip on their frontend. This allows us to extract the **opening odds** for key bookmakers, which is critical for detecting odds movements and generating high-quality alerts.
 
 We only scrape OddsPortal for **tracked leagues** (configured in `oddsportal_config.py`). It runs exclusively at the **5-minute pre-start mark**.
 
@@ -35,9 +37,9 @@ We only scrape OddsPortal for **tracked leagues** (configured in `oddsportal_con
 |---|---|
 | `scheduler.py` | Triggers the scraper via `_run_oddsportal_batch` and `_oddsportal_worker_wrapper` |
 | `oddsportal_scraper.py` | Core browser automation and odds extraction logic |
-| `oddsportal_config.py` | Maps `season_id` → OddsPortal URL, team aliases, bookie priority |
+| `oddsportal_config.py` | Maps `season_id` → OddsPortal URL, team aliases, bookie priority, **sport scraping routes** |
 | `models.py` | Defines `OddsPortalLeagueCache` DB table |
-| `repository.py` | `OddsPortalCacheRepository` — save/get/cleanup cache |
+| `repository.py` | `MarketRepository.save_markets_from_oddsportal()` — saves per-period data with correct metadata |
 | `test_oddsportal_process.py` | Isolation test for a single event |
 | `.env` | Must have `PROXY_ENABLED=true` and `PROXY_*` vars |
 
@@ -60,12 +62,22 @@ BetfairExchangeOdds:
   lay_1, lay_x, lay_2: str             # Final Lay odds
   initial_back_1 ... initial_lay_2: Optional[str]  # Opening odds via hover
 
-# Full match output
-MatchOddsData:
-  home_team, away_team: str
+# One period's extraction (e.g. Full-time 1X2, or 1st Half 1X2)
+MarketExtraction:
+  market_group: str    # DB value, e.g. "1X2", "Home/Away"
+  market_period: str   # DB value, e.g. "Full-time", "1st half"
+  market_name: str     # DB value, e.g. "Full time", "1st half"
   bookie_odds: List[BookieOdds]
   betfair: Optional[BetfairExchangeOdds]
+
+# Full match output — wraps multiple period extractions
+MatchOddsData:
+  home_team, away_team: str
+  sport: str
+  extractions: List[MarketExtraction]   # One per scraped period
   extraction_time_ms: float
+  bookie_odds: List[BookieOdds]          # Legacy compat: = extractions[0].bookie_odds
+  betfair: Optional[BetfairExchangeOdds] # Legacy compat: = extractions[0].betfair
 ```
 
 ---
@@ -120,12 +132,19 @@ sequenceDiagram
         W->>W: Find match in extracted URLs
     end
 
-    W->>OP: Navigate match page (30s timeout)
+    W->>W: Resolve SPORT_SCRAPING_ROUTES for this sport
+    W->>OP: Navigate match page with fragment (#group;period)
     OP-->>W: domcontentloaded
     W->>W: wait_for_selector("div.border-black-borders.flex.h-9", 60s)
-    W->>W: _extract_data() → Final odds (DOM parse)
-    W->>W: _extract_opening_odds_for_bookie() → Hover bookie cells
-    W->>W: _extract_opening_odds_betfair() → Hover Betfair cells
+
+    loop For each period in route
+        W->>W: _extract_data() → Final odds (DOM parse)
+        W->>W: _extract_opening_odds_for_bookie() → Hover
+        W->>W: _extract_opening_odds_betfair() → Hover (designated period only)
+        W->>W: Wrap into MarketExtraction
+        W->>OP: Navigate to next fragment (if more periods)
+    end
+
     W->>DB: MarketRepository.save_markets_from_oddsportal()
     W->>S: op_done_event.set()
 
@@ -197,13 +216,169 @@ After navigating to the match page, `scrape_match()` runs these steps in order:
 2. **`wait_for_selector("div.border-black-borders.flex.h-9", 60s)`** — waits strictly for the exact class format used when the bookmaker data actually injects into the UI, ensuring it doesn't fire early on skeleton loaders. Max 60 seconds wait.
 3. **Cookie/Consent banner dismissal** — tries multiple selectors (`#onetrust-accept-btn-handler`, `button:has-text('I Accept')`, etc.).
 4. **`window.scrollTo(0, 500)`** — triggers any lazy-loaded elements.
-5. **`_extract_data()`** — JavaScript-based DOM parse for final odds.
-6. **`_extract_opening_odds_for_bookie()`** — hover-based for priority bookie.
-7. **`_extract_opening_odds_betfair()`** — hover-based for Betfair exchange.
+5. **Multi-period extraction loop** — iterates through configured periods via fragment navigation.
+
+> [!NOTE]
+> If a timeout occurs during `wait_for_selector`, the scraper automatically captures a screenshot and the HTML source to the specified `debug_dir` for investigation.
 
 ---
 
-## 8. Opening Odds via Hover
+## 8. Sport-Specific Scraping Routes
+
+Each sport has a configured **scraping route** in `SPORT_SCRAPING_ROUTES` (`oddsportal_config.py`). The route defines:
+
+- **`primary_group`**: Which market group to scrape (e.g. `"1X2"` for football, `"HOME_AWAY"` for basketball)
+- **`periods`**: A list of `(period_key, db_market_period, db_market_name)` tuples
+- **`db_market_group`**: The DB column value (e.g. `"1X2"`, `"Home/Away"`)
+- **`has_draw`**: Whether the sport has a draw/X column
+- **`betfair_period_index`**: Which period index gets Betfair hover extraction
+
+### Example Routes
+
+| Sport | Group | Periods | Draw? |
+|---|---|---|---|
+| Football | 1X2 | Full Time (inc. OT), Full Time, 1st Half | ✅ |
+| Basketball | Home/Away | Full Time (inc. OT) | ❌ |
+| Hockey | 1X2 | Full Time (inc. OT), Full Time | ✅ |
+| Tennis | Home/Away | Full Time | ❌ |
+
+### Route Fallback
+
+If `sport` is `None` or not found in `SPORT_SCRAPING_ROUTES`, the scraper falls back to **legacy mode**: a single extraction with no fragment navigation, hardcoded to `1X2 / Full-time`.
+
+---
+
+## 9. Fragment Navigation
+
+OddsPortal uses **URL fragment identifiers** to switch between market groups and periods on a match page without a full page reload.
+
+### URL Format
+
+```
+https://www.oddsportal.com/football/.../match-slug/#1X2;2
+                                                    ^^^^  ^
+                                                    group  period
+```
+
+### Fragment Stripping
+
+The scraper handles URL fragments robustly. Before navigation, any existing fragment (or trailing slash) is stripped from the base URL before appending the desired market group and period identifier. This prevents malformed URLs (e.g. `.../#.../#...`) if the input contains stale cache data.
+
+### Fragment Constants
+
+Defined in `oddsportal_config.py`:
+
+```python
+OP_GROUPS = {
+    "1X2": "1X2",
+    "HOME_AWAY": "home-away",
+    "OVER_UNDER": "over-under",
+    "ASIAN_HANDICAP": "ah"
+}
+
+OP_PERIODS = {
+    "FT_INC_OT": 1,    # Full Time including Overtime
+    "FULL_TIME": 2,     # Full Time (regulation only)
+    "1ST_HALF": 3,      # 1st Half
+    "2ND_HALF": 4,      # 2nd Half
+    "1ST_PERIOD": 5,    # 1st Period (hockey)
+    "2ND_PERIOD": 6,    # 2nd Period (hockey)
+    "3RD_PERIOD": 7,    # 3rd Period (hockey)
+    "1ST_QUARTER": 8,   # 1st Quarter (NBA)
+    "2ND_QUARTER": 9,   # 2nd Quarter (NBA)
+    "3RD_QUARTER": 10,  # 3rd Quarter (NBA)
+    "4TH_QUARTER": 11,  # 4rd Quarter (NBA)
+}
+```
+
+### Navigation Flow
+
+```mermaid
+flowchart TD
+    A["scrape_match() starts"] --> B["Build initial URL with fragment\n#group;period_1"]
+    B --> C["page.goto(initial_url)"]
+    C --> D["Wait for bookie rows"]
+    D --> E["Extract Period 1 odds"]
+    E --> F{"More periods?"}
+    F -- Yes --> G["Click period sub-tab\n(e.g. '1st Half')"]
+    G --> H["Wait for odds values\nto actually change"]
+    H --> I["Extract Period N odds"]
+    I --> F
+    F -- No --> J["Build MatchOddsData\nwith all MarketExtractions"]
+```
+
+The first period is loaded with the initial `page.goto()`. Subsequent periods are loaded by **clicking the period sub-tabs** within `data-testid="kickoff-events-nav"`. The scraper snapshots a reference odds value before clicking and waits (up to 10s) for the value to change, ensuring the SPA has finished re-rendering.
+
+> [!IMPORTANT]
+> OddsPortal is a Vue.js SPA. Using `page.goto()` with a fragment URL (`#group;period`) performs a full page reload but the SPA may re-render with its default state before processing the hash. Clicking the tab directly triggers the SPA's internal router, which reliably updates the odds table.
+
+---
+
+## 9b. Match Page HTML Structure (event-container)
+
+The main container on a match page is `event-container`. It does **not** change when the fragment changes — only its child elements update.
+
+### Structure Overview
+
+```
+event-container (stable parent)
+├── flex flex-col (tabs section — does NOT change between fragments)
+│   ├── hide-menu (mobile market group tabs, e.g. "1X2", "Over/Under")
+│   ├── tabs (desktop market group tabs)
+│   │   └── ul.visible-links.odds-tabs (clickable market group tabs)
+│   │       ├── li[data-testid="navigation-active-tab"] (e.g. "1X2")
+│   │       └── li[data-testid="navigation-inactive-tab"] (e.g. "Over/Under")
+│   ├── div[data-testid="bookies-filter-nav"] (All/Classic/Crypto filter)
+│   └── div[data-testid="kickoff-events-nav"] (period sub-tabs ⬅ KEY)
+│       ├── div[data-testid="sub-nav-active-tab"] (e.g. "Full Time")
+│       └── div[data-testid="sub-nav-inactive-tab"] (e.g. "1st Half")
+│
+├── min-md:px-[10px] (odds table + betfair section)
+│   ├── <unnamed div> (odds table — CHANGES between groups, values change between periods)
+│   │   ├── div[data-testid="bookmaker-table-header-line"] (column headers: 1, X, 2, Payout)
+│   │   └── div[data-testid="over-under-expanded-row"] × N (one per bookie)
+│   │       ├── bookie info (logo img[alt], name a[title])
+│   │       ├── div.odds-cell[data-testid="odd-container"] × 3 (odds values)
+│   │       └── div[data-testid="payout-container"] (payout %)
+│   │
+│   └── div[data-testid="betting-exchanges-section"] (Betfair — not always present)
+│       └── div[data-testid="odd-container"] × 6 (Back 1,X,2 + Lay 1,X,2)
+```
+
+### Key Selectors Reference
+
+| Element | Selector | Notes |
+|---|---|---|
+| **Market group tabs** | `ul.visible-links.odds-tabs li` | "1X2", "Over/Under", etc. |
+| **Active market group** | `li[data-testid="navigation-active-tab"]` | Has `active-odds` class |
+| **Period sub-tabs** | `div[data-testid="kickoff-events-nav"]` | Contains "Full Time", "1st Half", etc. |
+| **Active period tab** | `div[data-testid="sub-nav-active-tab"]` | Currently selected period |
+| **Inactive period tab** | `div[data-testid="sub-nav-inactive-tab"]` | Clickable to switch period |
+| **Bookie row** | `div.border-black-borders.flex.h-9` | One row per bookmaker |
+| **Bookie name** | `a[title]` or `img[alt]` inside bookie row | Used for identification |
+| **Odds cell** | `div.odds-cell[data-testid="odd-container"]` | Contains the odds value |
+| **Odds value link** | `a.odds-link` inside odds cell | The numeric odds text |
+| **Payout** | `div[data-testid="payout-container"]` | e.g. "94.7%" |
+| **Betfair section** | `div[data-testid="betting-exchanges-section"]` | Exchange odds |
+| **Table header** | `div[data-testid="bookmaker-table-header-line"]` | Column labels |
+
+### Behavior When Switching
+
+| Action | Table Structure | Odds Values | Selectors |
+|---|---|---|---|
+| **Switch period** (same group) | ❌ No change | ✅ Values change | ❌ Same selectors |
+| **Switch market group** | ✅ Structure changes | ✅ Values change | ⚠️ May change |
+
+### Reference HTML Files
+
+These files contain isolated sections of the match page for reference:
+- `event-container.html` — full event-container parent
+- `market_groups_and_periods_section.html` — tabs section (groups + periods)
+- `odds_betfair_and_extra.html` — odds table + betfair section
+
+---
+
+## 10. Opening Odds via Hover
 
 OddsPortal does not expose opening odds in the DOM directly. They appear in a **Vue.js tooltip** triggered by mouse hover. We simulate this with Playwright.
 
@@ -226,15 +401,23 @@ flowchart TD
 
 ### Betfair Hover Flow
 
-Same pattern, but targets the Betfair exchange row and processes **4 cells**: Back 1, Back 2, Lay 1, Lay 2. (X/draw cells are skipped for non-football sports.)
+Same pattern, but targets the Betfair exchange row and processes **4 cells**: Back 1, Back 2, Lay 1, Lay 2. (X/draw cells are skipped for non-football sports.) Betfair hover only runs on the **designated period** (controlled by `betfair_period_index` in the route config).
 
 ---
 
-## 9. Configuration Reference
+## 11. Configuration Reference
 
 ### `SEASON_ODDSPORTAL_MAP` (oddsportal_config.py)
 
-Maps SofaScore `season_id` to the OddsPortal URL components.
+Maps SofaScore `season_id` to the OddsPortal URL components. Each entry now includes a `sport` key used to resolve the scraping route.
+
+### `SPORT_SCRAPING_ROUTES` (oddsportal_config.py)
+
+Maps each sport string to its scraping configuration (group, periods, draw flag, Betfair index). See [Section 8](#8-sport-specific-scraping-routes).
+
+### `OP_GROUPS` / `OP_PERIODS` (oddsportal_config.py)
+
+Fragment identifier constants used in URL construction for navigating between market groups and periods.
 
 ### `TEAM_ALIASES` (oddsportal_config.py)
 
@@ -246,7 +429,7 @@ The scraper iterates this list and uses the **first bookie found** for opening o
 
 ---
 
-## 10. Libraries Used
+## 12. Libraries Used
 
 | Library | Purpose |
 |---|---|
@@ -255,6 +438,13 @@ The scraper iterates this list and uses the **first bookie found** for opening o
 | `threading` | OP worker runs in a background thread |
 | `SQLAlchemy` | ORM for database operations |
 | `python-dotenv` | Load `.env` variables |
+
+### Browser & Anti-Detection
+
+The scraper implement several measures to avoid detection, especially when running in **headless mode** (standard for scheduler jobs):
+- **User-Agent Rotation**: Randomized choosing from modern, legitimate browser strings.
+- **Deep Property Mocking**: Overwrites `navigator.webdriver` and mocks `navigator.platform` (set to `Win32`) and `window.chrome` to mimic a real visitor.
+- **Stealth Scripts**: Injects standard evasions for permissions, languages, and plugins.
 
 ---
 
@@ -289,11 +479,12 @@ The scraper targets specific elements within the OddsPortal React/Vue-based fron
 
 ### Database Integration
 
-Data is mapped from the `MatchOddsData` dataclass into the SQLAlchemy models via `MarketRepository`:
+Data is mapped from the `MatchOddsData` (via its `extractions` list) dataclass into the SQLAlchemy models via `MarketRepository.save_markets_from_oddsportal()`:
 
 - **`Market` table**: 
-  - `market_name`: "Full time"
-  - `market_group`: "1X2"
+  - `market_name`: From `MarketExtraction.market_name` (e.g. "Full time", "1st half")
+  - `market_group`: From `MarketExtraction.market_group` (e.g. "1X2", "Home/Away")
+  - `market_period`: From `MarketExtraction.market_period` (e.g. "Full-time", "1st half")
   - `choice_group`: `None` (Standard), "Back" or "Lay" (Betfair).
 - **`MarketChoice` table**:
   - `choice_name`: "1", "X", or "2".
@@ -312,7 +503,7 @@ The extracted data is consumed by `odds_alert.py` to enrich Telegram notificatio
 
 ---
 
-## 11. Testing
+## 13. Testing
 
 ### Isolation Test: `test_oddsportal_process.py`
 
@@ -320,19 +511,38 @@ The extracted data is consumed by `odds_alert.py` to enrich Telegram notificatio
 python test_oddsportal_process.py <EVENT_ID>
 ```
 
-Saves full debug info (screenshots, HTML, JSON) to `debug_<slug>/`.
+Saves full debug info (screenshots, HTML, JSON) to `debug_<slug>/`. The JSON output now includes per-period extraction data:
+
+```json
+{
+    "home_team": "...",
+    "away_team": "...",
+    "sport": "football",
+    "extractions": [
+        {
+            "market_group": "1X2",
+            "market_period": "Full-time",
+            "market_name": "Full time",
+            "bookies": [...],
+            "betfair": {...}
+        }
+    ]
+}
+```
 
 ---
 
-## 12. Edge Cases & Troubleshooting
+## 14. Edge Cases & Troubleshooting
 
 - **Proxy not active**: Ensure `.env` is correct.
 - **Team alias missing**: Add to `TEAM_ALIASES`.
-- **Navigation Timeout**: Increase timeout in `oddsportal_scraper.py`.
+- **Fragment not loading**: If a period's fragment yield no bookie rows within 30s, that period is skipped.
+- **Headless Timeout**: If the scraper times out in headless mode, check the `oddsportal_debug/` folder for `match_load_failure.png` to see if a security check or "Access Denied" page was served.
 
 ---
 
-## 13. Performance Summary
+## 15. Performance Summary
 
-- **Cache hit**: ~50s total (skips ~14s league nav).
-- **Cache miss**: ~65s total.
+- **Cache hit, single period**: ~50s total (skips ~14s league nav).
+- **Cache miss, single period**: ~65s total.
+- **Multi-period (e.g. 3 periods)**: Add ~15–25s per additional period (fragment nav + extraction + hover).

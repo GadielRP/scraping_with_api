@@ -1225,6 +1225,13 @@ class MarketRepository:
         """
         Save markets from OddsPortal scraper data.
         
+        Iterates over odds_data.extractions (list of MarketExtraction) to save
+        each period's bookie odds and Betfair data with the correct
+        market_group, market_period, and market_name metadata.
+        
+        Falls back to legacy bookie_odds/betfair fields if extractions is empty
+        (backward compatibility with older scraper output).
+        
         Args:
             event_id: Event ID
             odds_data: MatchOddsData object from scraper
@@ -1233,169 +1240,56 @@ class MarketRepository:
             Number of saved market/bookie combinations
         """
         try:
-            if not odds_data or not odds_data.bookie_odds:
+            if not odds_data:
                 return 0
-                
-            saved_count = 0
             
-            # Debug log to diagnose empty saves
-            bookie_count = len(odds_data.bookie_odds)
-            has_betfair = "Yes" if odds_data.betfair else "No"
-            if bookie_count == 0 and not odds_data.betfair:
+            # Build a list of (market_group, market_period, market_name, bookie_odds, betfair)
+            # tuples to process, either from extractions or legacy fields
+            extraction_tuples = []
+            
+            if hasattr(odds_data, 'extractions') and odds_data.extractions:
+                for ext in odds_data.extractions:
+                    extraction_tuples.append((
+                        ext.market_group,
+                        ext.market_period,
+                        ext.market_name,
+                        ext.bookie_odds,
+                        ext.betfair,
+                    ))
+            elif odds_data.bookie_odds or odds_data.betfair:
+                # Legacy fallback: single extraction with hardcoded metadata
+                extraction_tuples.append((
+                    "1X2",
+                    "Full-time",
+                    "Full time",
+                    odds_data.bookie_odds,
+                    odds_data.betfair,
+                ))
+            
+            if not extraction_tuples:
                 logger.warning(f"⚠️ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
-            else:
-                logger.debug(f"💾 Saving OddsPortal data for event {event_id}: {bookie_count} bookies, Betfair: {has_betfair}")
+                return 0
+            
+            saved_count = 0
+            total_bookies = sum(len(t[3]) for t in extraction_tuples)
+            total_betfair = sum(1 for t in extraction_tuples if t[4])
+            logger.debug(f"💾 Saving OddsPortal data for event {event_id}: {len(extraction_tuples)} period(s), {total_bookies} bookies, {total_betfair} Betfair sections")
 
             with db_manager.get_session() as session:
-                # 1. Process standard bookies
-                for b_odds in odds_data.bookie_odds:
-                    try:
-                        bookie = MarketRepository._get_or_create_bookie(session, b_odds.name)
-                        
-                        # We only get 1X2 market from this scraper for now
-                        market_name = "Full time"
-                        market_group = "1X2"
-                        market_period = "Full-time"
-                        
-                        # Get/Create Market
-                        market = session.query(Market).filter(
-                             and_(
-                                 Market.event_id == event_id,
-                                 Market.bookie_id == bookie.bookie_id,
-                                 Market.market_name == market_name,
-                                 Market.choice_group == None
-                             )
-                        ).first()
-                        
-                        if not market:
-                            market = Market(
-                                event_id=event_id,
-                                bookie_id=bookie.bookie_id,
-                                market_name=market_name,
-                                market_group=market_group,
-                                market_period=market_period,
-                                choice_group=None,
-                                collected_at=get_local_now()
-                            )
-                            session.add(market)
-                            session.flush()
-                        else:
-                            market.collected_at = get_local_now()
+                for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
+                    
+                    # 1. Process standard bookies for this period
+                    for b_odds in bookie_odds_list:
+                        try:
+                            bookie = MarketRepository._get_or_create_bookie(session, b_odds.name)
                             
-                        # Build initial odds map from hover-extracted opening odds
-                        initial_map = {
-                            "1": None,
-                            "X": None,
-                            "2": None
-                        }
-                        try:
-                            if b_odds.initial_odds_1:
-                                initial_map["1"] = float(b_odds.initial_odds_1)
-                        except (ValueError, TypeError):
-                            pass
-                        try:
-                            if b_odds.initial_odds_x:
-                                initial_map["X"] = float(b_odds.initial_odds_x)
-                        except (ValueError, TypeError):
-                            pass
-                        try:
-                            if b_odds.initial_odds_2:
-                                initial_map["2"] = float(b_odds.initial_odds_2)
-                        except (ValueError, TypeError):
-                            pass
-
-                        # Upsert Choices
-                        choices_map = {
-                            "1": b_odds.odds_1,
-                            "X": b_odds.odds_x,
-                            "2": b_odds.odds_2
-                        }
-                        
-                        for choice_name, val_str in choices_map.items():
-                            if not val_str or val_str == '-':
-                                continue
-                                
-                            try:
-                                current_odds = float(val_str)
-                            except ValueError:
-                                continue
-                                
-                            choice = session.query(MarketChoice).filter(
-                                and_(
-                                    MarketChoice.market_id == market.market_id,
-                                    MarketChoice.choice_name == choice_name
-                                )
-                            ).first()
-                            
-                            if choice:
-                                if abs(float(choice.current_odds or 0) - current_odds) > 0.001:
-                                    choice.change = 1 if current_odds > float(choice.current_odds or 0) else -1
-                                    choice.current_odds = current_odds
-                                # Update initial_odds if we now have real opening odds and didn't before
-                                if initial_map.get(choice_name) and not choice.initial_odds:
-                                    choice.initial_odds = initial_map[choice_name]
-                            else:
-                                init_val = initial_map.get(choice_name)
-                                # Compute change from opening if we have real initial odds
-                                if init_val and abs(init_val - current_odds) > 0.001:
-                                    computed_change = 1 if current_odds > init_val else -1
-                                else:
-                                    computed_change = 0
-                                choice = MarketChoice(
-                                    market_id=market.market_id,
-                                    choice_name=choice_name,
-                                    initial_odds=init_val if init_val else current_odds,
-                                    current_odds=current_odds,
-                                    change=computed_change
-                                )
-                                session.add(choice)
-                                
-                        saved_count += 1
-                        
-                    except Exception as e:
-                        logger.warning(f"Error saving bookie {b_odds.name} for event {event_id}: {e}")
-                        continue
-                        
-                # 2. Process Betfair Exchange (if present)
-                if odds_data.betfair:
-                    try:
-                        bookie = MarketRepository._get_or_create_bookie(session, "Betfair Exchange")
-                        
-                        # Define the two types of odds we want to save
-                        exchange_configs = [
-                            {
-                                "group": "Back",
-                                "choices": {
-                                    "1": odds_data.betfair.back_1,
-                                    "X": odds_data.betfair.back_x,
-                                    "2": odds_data.betfair.back_2
-                                }
-                            },
-                            {
-                                "group": "Lay",
-                                "choices": {
-                                    "1": odds_data.betfair.lay_1,
-                                    "X": odds_data.betfair.lay_x,
-                                    "2": odds_data.betfair.lay_2
-                                }
-                            }
-                        ]
-
-                        for config in exchange_configs:
-                            group_name = config["group"]
-                            choices_map = config["choices"]
-
-                            # skip if all empty
-                            if not any(v and v != '-' and v.strip() for v in choices_map.values()):
-                                continue
-
-                            # Get/Create Market with specific choice_group
+                            # Get/Create Market with correct metadata from extraction
                             market = session.query(Market).filter(
                                  and_(
                                      Market.event_id == event_id,
                                      Market.bookie_id == bookie.bookie_id,
-                                     Market.market_name == "Full time",
-                                     Market.choice_group == group_name
+                                     Market.market_name == market_name,
+                                     Market.choice_group == None
                                  )
                             ).first()
                             
@@ -1403,58 +1297,73 @@ class MarketRepository:
                                 market = Market(
                                     event_id=event_id,
                                     bookie_id=bookie.bookie_id,
-                                    market_name="Full time",
-                                    market_group="1X2",
-                                    market_period="Full-time",
-                                    choice_group=group_name,
+                                    market_name=market_name,
+                                    market_group=market_group,
+                                    market_period=market_period,
+                                    choice_group=None,
                                     collected_at=get_local_now()
                                 )
                                 session.add(market)
                                 session.flush()
                             else:
+                                market.market_group = market_group
+                                market.market_period = market_period
                                 market.collected_at = get_local_now()
                                 
+                            # Build initial odds map from hover-extracted opening odds
+                            initial_map = {
+                                "1": None,
+                                "X": None,
+                                "2": None
+                            }
+                            try:
+                                if b_odds.initial_odds_1:
+                                    initial_map["1"] = float(b_odds.initial_odds_1)
+                            except (ValueError, TypeError):
+                                pass
+                            try:
+                                if b_odds.initial_odds_x:
+                                    initial_map["X"] = float(b_odds.initial_odds_x)
+                            except (ValueError, TypeError):
+                                pass
+                            try:
+                                if b_odds.initial_odds_2:
+                                    initial_map["2"] = float(b_odds.initial_odds_2)
+                            except (ValueError, TypeError):
+                                pass
+
+                            # Upsert Choices
+                            choices_map = {
+                                "1": b_odds.odds_1,
+                                "X": b_odds.odds_x,
+                                "2": b_odds.odds_2
+                            }
+                            
                             for choice_name, val_str in choices_map.items():
-                                 if not val_str or val_str == '-' or not val_str.strip():
-                                     continue
-                                 try:
-                                     current_odds = float(val_str)
-                                 except ValueError:
-                                     continue
-                                     
-                                 choice = session.query(MarketChoice).filter(
+                                if not val_str or val_str == '-':
+                                    continue
+                                    
+                                try:
+                                    current_odds = float(val_str)
+                                except ValueError:
+                                    continue
+                                    
+                                choice = session.query(MarketChoice).filter(
                                     and_(
                                         MarketChoice.market_id == market.market_id,
                                         MarketChoice.choice_name == choice_name
                                     )
                                 ).first()
                                 
-                                 if choice:
+                                if choice:
                                     if abs(float(choice.current_odds or 0) - current_odds) > 0.001:
                                         choice.change = 1 if current_odds > float(choice.current_odds or 0) else -1
                                         choice.current_odds = current_odds
-                                 else:
-                                    # For Betfair, use initial_* if available
-                                    bf = odds_data.betfair
-                                    if group_name == "Back":
-                                        bf_initial_map = {
-                                            "1": bf.initial_back_1,
-                                            "X": bf.initial_back_x,
-                                            "2": bf.initial_back_2
-                                        }
-                                    elif group_name == "Lay":
-                                        bf_initial_map = {
-                                            "1": bf.initial_lay_1,
-                                            "X": bf.initial_lay_x,
-                                            "2": bf.initial_lay_2
-                                        }
-                                    else:
-                                        bf_initial_map = {}
-                                    init_str = bf_initial_map.get(choice_name)
-                                    try:
-                                        init_val = float(init_str) if init_str else None
-                                    except (ValueError, TypeError):
-                                        init_val = None
+                                    # Update initial_odds if we now have real opening odds and didn't before
+                                    if initial_map.get(choice_name) and not choice.initial_odds:
+                                        choice.initial_odds = initial_map[choice_name]
+                                else:
+                                    init_val = initial_map.get(choice_name)
                                     # Compute change from opening if we have real initial odds
                                     if init_val and abs(init_val - current_odds) > 0.001:
                                         computed_change = 1 if current_odds > init_val else -1
@@ -1468,11 +1377,132 @@ class MarketRepository:
                                         change=computed_change
                                     )
                                     session.add(choice)
-                            
+                                    
                             saved_count += 1
-                        
-                    except Exception as e:
-                        logger.warning(f"Error saving Betfair Exchange for event {event_id}: {e}")
+                            
+                        except Exception as e:
+                            logger.warning(f"Error saving bookie {b_odds.name} for event {event_id} ({market_period}): {e}")
+                            continue
+                    
+                    # 2. Process Betfair Exchange for this period (if present)
+                    if betfair_data:
+                        try:
+                            bookie = MarketRepository._get_or_create_bookie(session, "Betfair Exchange")
+                            
+                            # Define the two types of odds we want to save
+                            exchange_configs = [
+                                {
+                                    "group": "Back",
+                                    "choices": {
+                                        "1": betfair_data.back_1,
+                                        "X": betfair_data.back_x,
+                                        "2": betfair_data.back_2
+                                    }
+                                },
+                                {
+                                    "group": "Lay",
+                                    "choices": {
+                                        "1": betfair_data.lay_1,
+                                        "X": betfair_data.lay_x,
+                                        "2": betfair_data.lay_2
+                                    }
+                                }
+                            ]
+
+                            for config in exchange_configs:
+                                group_name = config["group"]
+                                choices_map = config["choices"]
+
+                                # skip if all empty
+                                if not any(v and v != '-' and v.strip() for v in choices_map.values()):
+                                    continue
+
+                                # Get/Create Market with correct metadata from extraction
+                                market = session.query(Market).filter(
+                                     and_(
+                                         Market.event_id == event_id,
+                                         Market.bookie_id == bookie.bookie_id,
+                                         Market.market_name == market_name,
+                                         Market.choice_group == group_name
+                                     )
+                                ).first()
+                                
+                                if not market:
+                                    market = Market(
+                                        event_id=event_id,
+                                        bookie_id=bookie.bookie_id,
+                                        market_name=market_name,
+                                        market_group=market_group,
+                                        market_period=market_period,
+                                        choice_group=group_name,
+                                        collected_at=get_local_now()
+                                    )
+                                    session.add(market)
+                                    session.flush()
+                                else:
+                                    market.market_group = market_group
+                                    market.market_period = market_period
+                                    market.collected_at = get_local_now()
+                                    
+                                for choice_name, val_str in choices_map.items():
+                                     if not val_str or val_str == '-' or not val_str.strip():
+                                         continue
+                                     try:
+                                         current_odds = float(val_str)
+                                     except ValueError:
+                                         continue
+                                         
+                                     choice = session.query(MarketChoice).filter(
+                                        and_(
+                                            MarketChoice.market_id == market.market_id,
+                                            MarketChoice.choice_name == choice_name
+                                        )
+                                    ).first()
+                                    
+                                     if choice:
+                                        if abs(float(choice.current_odds or 0) - current_odds) > 0.001:
+                                            choice.change = 1 if current_odds > float(choice.current_odds or 0) else -1
+                                            choice.current_odds = current_odds
+                                     else:
+                                        # For Betfair, use initial_* if available
+                                        bf = betfair_data
+                                        if group_name == "Back":
+                                            bf_initial_map = {
+                                                "1": bf.initial_back_1,
+                                                "X": bf.initial_back_x,
+                                                "2": bf.initial_back_2
+                                            }
+                                        elif group_name == "Lay":
+                                            bf_initial_map = {
+                                                "1": bf.initial_lay_1,
+                                                "X": bf.initial_lay_x,
+                                                "2": bf.initial_lay_2
+                                            }
+                                        else:
+                                            bf_initial_map = {}
+                                        init_str = bf_initial_map.get(choice_name)
+                                        try:
+                                            init_val = float(init_str) if init_str else None
+                                        except (ValueError, TypeError):
+                                            init_val = None
+                                        # Compute change from opening if we have real initial odds
+                                        if init_val and abs(init_val - current_odds) > 0.001:
+                                            computed_change = 1 if current_odds > init_val else -1
+                                        else:
+                                            computed_change = 0
+                                        choice = MarketChoice(
+                                            market_id=market.market_id,
+                                            choice_name=choice_name,
+                                            initial_odds=init_val if init_val else current_odds,
+                                            current_odds=current_odds,
+                                            change=computed_change
+                                        )
+                                        session.add(choice)
+                                
+                                saved_count += 1
+                            
+                        except Exception as e:
+                            logger.warning(f"Error saving Betfair Exchange for event {event_id} ({market_period}): {e}")
 
                 session.commit()
                 return saved_count
@@ -1480,6 +1510,7 @@ class MarketRepository:
         except Exception as e:
             logger.error(f"Error saving OddsPortal markets for event {event_id}: {e}")
             return 0
+
 
     
     @staticmethod

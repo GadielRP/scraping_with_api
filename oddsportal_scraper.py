@@ -11,7 +11,10 @@ from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 # Import configuration
 try:
     from config import Config
-    from oddsportal_config import SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES
+    from oddsportal_config import (
+        SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
+        OP_GROUPS, OP_PERIODS, SPORT_SCRAPING_ROUTES,
+    )
 except ImportError:
     # Fallback/Mock for standalone testing
     class MockConfig:
@@ -24,6 +27,9 @@ except ImportError:
     BOOKIE_ALIASES = {}
     TEAM_ALIASES = {}
     PRIORITY_BOOKIES = ["bet365", "Pinnacle", "BettingAsia", "Megapari", "1xBet"]
+    OP_GROUPS = {"1X2": "1X2", "HOME_AWAY": "home-away"}
+    OP_PERIODS = {"FT_INC_OT": 1, "FULL_TIME": 2, "1ST_HALF": 3}
+    SPORT_SCRAPING_ROUTES = {}
 
 logger = logging.getLogger(__name__)
 
@@ -78,14 +84,26 @@ class BetfairExchangeOdds:
     initial_lay_2: Optional[str] = None
 
 @dataclass
+class MarketExtraction:
+    """Odds extracted for a specific market_group + market_period combination."""
+    market_group: str = ""       # DB value, e.g. "1X2", "Home/Away"
+    market_period: str = ""      # DB value, e.g. "Full-time", "1st half"
+    market_name: str = ""        # DB value, e.g. "Full time", "1st half"
+    bookie_odds: List[BookieOdds] = field(default_factory=list)
+    betfair: Optional[BetfairExchangeOdds] = None
+
+@dataclass
 class MatchOddsData:
-    """Complete structured odds for a match."""
+    """Complete structured odds for a match across all scraped periods."""
     match_url: str = ""
     home_team: str = "Unknown"
     away_team: str = "Unknown"
+    sport: str = ""
+    extractions: List[MarketExtraction] = field(default_factory=list)
+    extraction_time_ms: float = 0
+    # Legacy compat: populated from first extraction for backward compatibility
     bookie_odds: List[BookieOdds] = field(default_factory=list)
     betfair: Optional[BetfairExchangeOdds] = None
-    extraction_time_ms: float = 0
 
 
 class OddsPortalScraper:
@@ -133,14 +151,17 @@ class OddsPortalScraper:
 
         self.browser = await self.playwright.chromium.launch(**launch_args)
         
+        # Common modern User-Agents to rotate
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+        ]
+        
         # Create context with anti-detection
         self.context = await self.browser.new_context(
             viewport={"width": 1920, "height": 1080},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
+            user_agent=random.choice(user_agents),
             locale="en-US",
             timezone_id="America/Chicago",
             java_script_enabled=True,
@@ -148,15 +169,26 @@ class OddsPortalScraper:
         
         # Inject evasion scripts
         await self.context.add_init_script("""
+            // Overwrite webdriver property
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            
+            // Mock permissions
             const originalQuery = window.navigator.permissions.query;
             window.navigator.permissions.query = (parameters) => (
                 parameters.name === 'notifications' ?
                 Promise.resolve({ state: Notification.permission }) :
                 originalQuery(parameters)
             );
+            
+            // Mock plugins and languages
             Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
             Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            
+            // Mock platform
+            Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+            
+            // Mock chrome object
+            window.chrome = { runtime: {} };
         """)
         
         logger.info("✅ OddsPortalScraper: Browser started")
@@ -174,6 +206,106 @@ class OddsPortalScraper:
         self.context = None
         self.playwright = None
         logger.info("🛑 OddsPortalScraper: Browser stopped")
+
+    async def _click_period_tab(self, page: Page, period_display_name: str) -> bool:
+        """
+        Click a market period sub-tab and wait for the odds table to update.
+        
+        Instead of page.goto() with a fragment URL (which reloads the SPA and
+        can result in stale/default data), this clicks the period tab directly,
+        triggering the Vue.js SPA's internal router.
+        
+        Steps:
+          1. Snapshot a reference odds cell value from the current table
+          2. Find and click the target period tab by text content
+          3. Wait for the reference odds cell's value to change (up to 10s)
+        
+        Args:
+            page: Playwright page
+            period_display_name: The text to match in the tab (e.g. "1st Half", "Full Time")
+        
+        Returns:
+            True if the table updated, False if it didn't change within timeout.
+        """
+        try:
+            # Step 1: Snapshot a reference odds value before clicking
+            ref_value = await page.evaluate(r"""
+                () => {
+                    const firstOddsCell = document.querySelector('div.odds-cell a.odds-link');
+                    return firstOddsCell ? firstOddsCell.textContent.trim() : null;
+                }
+            """)
+            logger.info(f"📸 Reference odds value before period switch: {ref_value}")
+            
+            # Step 2: Find and click the target period tab
+            period_nav = await page.query_selector('div[data-testid="kickoff-events-nav"]')
+            if not period_nav:
+                logger.warning("⚠️ Period sub-nav not found (data-testid='kickoff-events-nav')")
+                return False
+            
+            # Get all tab divs inside the period nav
+            tabs = await period_nav.query_selector_all('div[data-testid="sub-nav-active-tab"], div[data-testid="sub-nav-inactive-tab"]')
+            
+            target_tab = None
+            for tab in tabs:
+                text = await tab.text_content()
+                if text and period_display_name.lower().strip() in text.lower().strip():
+                    target_tab = tab
+                    break
+            
+            if not target_tab:
+                logger.warning(f"⚠️ Period tab '{period_display_name}' not found in kickoff-events-nav")
+                # Log available tabs for debugging
+                available = []
+                for tab in tabs:
+                    text = await tab.text_content()
+                    available.append(text.strip() if text else "(empty)")
+                logger.warning(f"   Available tabs: {available}")
+                return False
+            
+            # Check if already active
+            testid = await target_tab.get_attribute('data-testid')
+            if testid == 'sub-nav-active-tab':
+                logger.info(f"ℹ️ Period tab '{period_display_name}' is already active")
+                return True
+            
+            logger.info(f"🖱️ Clicking period tab: '{period_display_name}'")
+            await target_tab.click()
+            
+            # Step 3: Wait for odds table to update (values to change)
+            max_wait_s = 10
+            poll_interval_ms = 300
+            elapsed = 0
+            table_changed = False
+            
+            while elapsed < max_wait_s:
+                await page.wait_for_timeout(poll_interval_ms)
+                elapsed += poll_interval_ms / 1000
+                
+                new_value = await page.evaluate(r"""
+                    () => {
+                        const firstOddsCell = document.querySelector('div.odds-cell a.odds-link');
+                        return firstOddsCell ? firstOddsCell.textContent.trim() : null;
+                    }
+                """)
+                
+                if new_value and new_value != ref_value:
+                    logger.info(f"✅ Odds table updated after {elapsed:.1f}s: {ref_value} → {new_value}")
+                    table_changed = True
+                    break
+            
+            if not table_changed:
+                logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value}). Period data may be identical or tab click failed.")
+            
+            # Brief extra settle to let any remaining DOM mutations finish
+            await asyncio.sleep(0.5)
+            
+            return table_changed
+            
+        except Exception as e:
+            logger.error(f"❌ Error clicking period tab '{period_display_name}': {e}")
+            return False
+
 
     async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
         """
@@ -348,12 +480,18 @@ class OddsPortalScraper:
             logger.warning(f"⚠️ Error checking league cache: {e}")
             return None
 
-    async def scrape_match(self, match_url: str) -> Optional[MatchOddsData]:
-
+    async def scrape_match(self, match_url: str, sport: str = None) -> Optional[MatchOddsData]:
         """
-        Navigate to a match page and extract odds.
-        Also extracts opening/initial odds for the highest-priority available bookie
-        and for Betfair Exchange via hover interactions.
+        Navigate to a match page and extract odds for all configured market periods.
+        
+        Uses URL fragment identifiers (#{group};{period}) to switch between
+        market groups/periods without reloading the page.
+        
+        Args:
+            match_url: Full OddsPortal match URL
+            sport: Sport string from SEASON_ODDSPORTAL_MAP (e.g. "football", "basketball")
+                   Used to determine scraping route from SPORT_SCRAPING_ROUTES.
+                   If None, falls back to legacy single-extraction behavior.
         """
         if not self.context:
             await self.start()
@@ -361,30 +499,77 @@ class OddsPortalScraper:
         page = await self.context.new_page()
         
         try:
-            logger.info(f"🌐 Navigating to match: {match_url}")
             t0 = time.perf_counter()
             
-            # Navigate - we don't strict timeout the goto itself if it's struggling with ads.
-            # We care about the DOM and specifically the odds rows.
+            # Resolve scraping route for this sport
+            route = SPORT_SCRAPING_ROUTES.get(sport) if sport else None
+            if route:
+                group_key = route["primary_group"]
+                periods = route["periods"]
+                db_market_group = route["db_market_group"]
+                betfair_period_idx = route.get("betfair_period_index", 0)
+                logger.info(f"🗺️ Scraping route for '{sport}': group={group_key}, periods={[p[0] for p in periods]}")
+            else:
+                # Legacy fallback: single extraction with no fragment, hardcoded 1X2/Full-time
+                group_key = None
+                periods = [("FULL_TIME", "Full-time", "Full time")]
+                db_market_group = "1X2"
+                betfair_period_idx = 0
+                logger.info(f"⚠️ No scraping route for sport='{sport}', using legacy single-extraction mode")
+            
+            # Build initial URL with fragment for the first period
+            if group_key and periods:
+                period_key = periods[0][0]
+                fragment = f"#{OP_GROUPS[group_key]};{OP_PERIODS[period_key]}"
+                # Robustly strip any existing fragment or trailing slash from base URL
+                base_url = match_url.split('#')[0].rstrip('/')
+                initial_url = f"{base_url}/{fragment}"
+            else:
+                initial_url = match_url
+            
+            logger.info(f"🌐 Navigating to match: {initial_url}")
+            
+            # Navigate to match page
             try:
-                response = await page.goto(match_url, wait_until="domcontentloaded", timeout=30000)
+                response = await page.goto(initial_url, wait_until="domcontentloaded", timeout=30000)
             except Exception as e:
                 logger.warning(f"⚠️ Initial goto timed out or struggled, but continuing to check for odds rows: {e}")
             
             t_goto = time.perf_counter()
-            log_timing(f"Match page load ({match_url}) took {t_goto - t0:.2f}s")
+            log_timing(f"Match page load ({initial_url}) took {t_goto - t0:.2f}s")
                 
-            # Wait strongly for the exact element we need to scrape: the bookmaker rows
+            # Wait for bookmaker rows to load
             try:
-                # 'div.border-black-borders.flex.h-9' is the specific row container for loaded bookies
                 await page.wait_for_selector('div.border-black-borders.flex.h-9', timeout=60000)
             except Exception:
-                logger.error(f"❌ Match page did not load bookie rows within 60s timeout: {match_url}")
+                page_title = "Unknown"
+                try:
+                    page_title = await page.title()
+                except:
+                    pass
+                
+                logger.error(f"❌ Match page did not load bookie rows within 60s timeout.")
+                logger.error(f"   URL: {initial_url}")
+                logger.error(f"   Title: {page_title}")
+                
+                if self.debug_dir:
+                    try:
+                        import os
+                        fail_path = os.path.join(self.debug_dir, "match_load_failure.png")
+                        await page.screenshot(path=fail_path, full_page=True)
+                        fail_html = os.path.join(self.debug_dir, "match_load_failure.html")
+                        with open(fail_html, "w", encoding="utf-8") as f:
+                            f.write(await page.content())
+                        logger.info(f"💾 Saved failure debug info to {self.debug_dir}")
+                    except Exception as se:
+                        logger.warning(f"⚠️ Failed to save failure debug info: {se}")
+                
                 return None
             
             t_wait = time.perf_counter()
-            log_timing(f"Waiting for bookmaker rows selector ('div.border-black-borders.flex.h-9') took {t_wait - t_goto:.2f}s")
-            # Handle cookie/consent banner — try multiple selectors
+            log_timing(f"Waiting for bookmaker rows selector took {t_wait - t_goto:.2f}s")
+            
+            # Handle cookie/consent banner
             t_cookie = time.perf_counter()
             for btn_sel in [
                 "#onetrust-accept-btn-handler",
@@ -408,12 +593,7 @@ class OddsPortalScraper:
             await page.evaluate("window.scrollTo(0, 500)")
             await asyncio.sleep(1.0)
             
-            # Extract final odds via JS
-            t_extract_start = time.perf_counter()
-            data = await self._extract_data(page, match_url)
-            extract_duration = time.perf_counter() - t_extract_start
-            log_timing(f"Executing JS to extract match data took {extract_duration:.2f}s")
-            
+            # Save debug screenshot for the initial page load
             if self.debug_dir:
                 try:
                     import os
@@ -425,18 +605,55 @@ class OddsPortalScraper:
                     logger.info(f"💾 Saved debug info to {self.debug_dir}")
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to save debug info: {e}")
-
-            if data:
-                data.extraction_time_ms = extract_duration * 1000
-                logger.info(f"✅ Extracted odds for {data.home_team} vs {data.away_team} ({len(data.bookie_odds)} bookies)")
+            
+            # ========================================
+            # MULTI-PERIOD EXTRACTION LOOP
+            # ========================================
+            match_data = MatchOddsData(match_url=match_url, sport=sport or "")
+            
+            for period_idx, (period_key, db_market_period, db_market_name) in enumerate(periods):
+                t_period = time.perf_counter()
+                logger.info(f"📊 [{period_idx+1}/{len(periods)}] Extracting: {db_market_group} / {db_market_period}")
                 
-                # --- Extract opening/initial odds via hover ---
-                # Step 1: Find the highest-priority bookie available in the scraped data
+                # Navigate to this period's tab (skip for first period since we already loaded it)
+                if period_idx > 0 and group_key:
+                    logger.info(f"🔀 Switching to period: {db_market_period} (tab click)")
+                    t_frag = time.perf_counter()
+                    
+                    tab_clicked = await self._click_period_tab(page, db_market_period)
+                    
+                    if not tab_clicked:
+                        # Fallback: try using the db_market_name (e.g. "1st half" vs "1st Half")
+                        logger.info(f"🔄 Retrying with market_name: {db_market_name}")
+                        tab_clicked = await self._click_period_tab(page, db_market_name)
+                    
+                    if not tab_clicked:
+                        logger.warning(f"⚠️ Could not switch to period {db_market_period}, skipping")
+                        continue
+                    
+                    log_timing(f"Period tab-click navigation to {period_key} took {time.perf_counter() - t_frag:.2f}s")
+                
+                # Extract current/final odds via JS
+                t_extract = time.perf_counter()
+                period_data = await self._extract_data(page, match_url)
+                log_timing(f"JS extraction for {db_market_period} took {time.perf_counter() - t_extract:.2f}s")
+                
+                if not period_data:
+                    logger.warning(f"⚠️ No data extracted for period {db_market_period}")
+                    continue
+                
+                # Populate match-level team names from first extraction
+                if period_idx == 0:
+                    match_data.home_team = period_data.home_team
+                    match_data.away_team = period_data.away_team
+                
+                logger.info(f"✅ Extracted {len(period_data.bookie_odds)} bookies for {db_market_period}")
+                
+                # --- Opening odds via hover ---
+                # Find highest-priority bookie for hover extraction
                 target_bookie_obj = None
                 for priority_name in PRIORITY_BOOKIES:
-                    norm = priority_name.lower().strip()
-                    # Try exact or partial match
-                    for b in data.bookie_odds:
+                    for b in period_data.bookie_odds:
                         if priority_name.lower() in b.name.lower() or b.name.lower() in priority_name.lower():
                             target_bookie_obj = b
                             break
@@ -444,48 +661,75 @@ class OddsPortalScraper:
                         break
                 
                 if target_bookie_obj:
-                    logger.info(f"🎯 Extracting opening odds via hover for: {target_bookie_obj.name}")
-                    t_hover_bookie = time.perf_counter()
+                    logger.info(f"🎯 Extracting opening odds via hover for: {target_bookie_obj.name} ({db_market_period})")
+                    t_hover = time.perf_counter()
                     opening = await self._extract_opening_odds_for_bookie(page, target_bookie_obj.name)
-                    log_timing(f"Total hover extraction for {target_bookie_obj.name} opening odds took {time.perf_counter() - t_hover_bookie:.2f}s")
+                    log_timing(f"Hover extraction for {target_bookie_obj.name} ({db_market_period}) took {time.perf_counter() - t_hover:.2f}s")
                     if opening:
                         target_bookie_obj.initial_odds_1 = opening.get('1')
                         target_bookie_obj.initial_odds_x = opening.get('X')
                         target_bookie_obj.initial_odds_2 = opening.get('2')
-                        logger.info(f"✅ Opening odds for {target_bookie_obj.name}: 1={opening.get('1')} X={opening.get('X')} 2={opening.get('2')}")
+                        logger.info(f"✅ Opening odds ({db_market_period}): 1={opening.get('1')} X={opening.get('X')} 2={opening.get('2')}")
                     else:
-                        logger.warning(f"⚠️ Could not extract opening odds for {target_bookie_obj.name}")
+                        logger.warning(f"⚠️ Could not extract opening odds for {target_bookie_obj.name} ({db_market_period})")
                 else:
-                    logger.info("ℹ️ No priority bookie found in scraped data, skipping opening odds hover")
+                    logger.info(f"ℹ️ No priority bookie found for {db_market_period}, skipping opening odds hover")
                 
-                # Step 2: Extract opening odds for Betfair Exchange
-                if data.betfair:
-                    logger.info("🎯 Extracting Betfair Exchange opening odds via hover")
-                    t_hover_betfair = time.perf_counter()
+                # Betfair extraction — only on the designated period
+                extraction_betfair = None
+                if period_idx == betfair_period_idx and period_data.betfair:
+                    logger.info(f"🎯 Extracting Betfair Exchange opening odds via hover ({db_market_period})")
+                    t_bf = time.perf_counter()
                     bf_opening = await self._extract_opening_odds_betfair(page)
-                    log_timing(f"Total hover extraction for Betfair Exchange opening odds took {time.perf_counter() - t_hover_betfair:.2f}s")
+                    log_timing(f"Betfair hover extraction ({db_market_period}) took {time.perf_counter() - t_bf:.2f}s")
                     if bf_opening:
-                        data.betfair.initial_back_1 = bf_opening.get('back_1')
-                        data.betfair.initial_back_x = bf_opening.get('back_x')
-                        data.betfair.initial_back_2 = bf_opening.get('back_2')
-                        data.betfair.initial_lay_1 = bf_opening.get('lay_1')
-                        data.betfair.initial_lay_x = bf_opening.get('lay_x')
-                        data.betfair.initial_lay_2 = bf_opening.get('lay_2')
-                        
-                        logger.info(f"✅ Betfair opening odds:")
+                        period_data.betfair.initial_back_1 = bf_opening.get('back_1')
+                        period_data.betfair.initial_back_x = bf_opening.get('back_x')
+                        period_data.betfair.initial_back_2 = bf_opening.get('back_2')
+                        period_data.betfair.initial_lay_1 = bf_opening.get('lay_1')
+                        period_data.betfair.initial_lay_x = bf_opening.get('lay_x')
+                        period_data.betfair.initial_lay_2 = bf_opening.get('lay_2')
+                        logger.info(f"✅ Betfair opening odds ({db_market_period}):")
                         logger.info(f"   Back: 1={bf_opening.get('back_1')} X={bf_opening.get('back_x')} 2={bf_opening.get('back_2')}")
                         logger.info(f"   Lay:  1={bf_opening.get('lay_1')} X={bf_opening.get('lay_x')} 2={bf_opening.get('lay_2')}")
                     else:
-                        logger.warning("⚠️ Could not extract Betfair Exchange opening odds")
+                        logger.warning(f"⚠️ Could not extract Betfair Exchange opening odds ({db_market_period})")
+                    extraction_betfair = period_data.betfair
+                
+                # Wrap into MarketExtraction
+                extraction = MarketExtraction(
+                    market_group=db_market_group,
+                    market_period=db_market_period,
+                    market_name=db_market_name,
+                    bookie_odds=period_data.bookie_odds,
+                    betfair=extraction_betfair,
+                )
+                match_data.extractions.append(extraction)
+                log_timing(f"Total period extraction for {db_market_period} took {time.perf_counter() - t_period:.2f}s")
             
-            log_timing(f"Total match scraping process (scrape_match) took {time.perf_counter() - t0:.2f}s")
-            return data
+            # ========================================
+            # LEGACY COMPAT: populate top-level fields from first extraction
+            # ========================================
+            if match_data.extractions:
+                first = match_data.extractions[0]
+                match_data.bookie_odds = first.bookie_odds
+                match_data.betfair = first.betfair
+            
+            total_duration = time.perf_counter() - t0
+            match_data.extraction_time_ms = total_duration * 1000
+            log_timing(f"Total match scraping process (scrape_match) took {total_duration:.2f}s")
+            
+            total_bookies = sum(len(e.bookie_odds) for e in match_data.extractions)
+            logger.info(f"✅ Completed scraping {match_data.home_team} vs {match_data.away_team}: {len(match_data.extractions)} periods, {total_bookies} bookie entries total")
+            
+            return match_data
             
         except Exception as e:
             logger.error(f"❌ Error scraping match {match_url}: {e}")
             return None
         finally:
             await page.close()
+
 
     def _parse_opening_odds_from_modal_html(self, modal_html: str) -> Optional[str]:
         """
@@ -1080,11 +1324,19 @@ if __name__ == "__main__":
     asyncio.run(main())
 
 def scrape_match_sync(match_url: str = None, league_url: str = None, 
-                      home_team: str = None, away_team: str = None) -> Optional[MatchOddsData]:
+                      home_team: str = None, away_team: str = None,
+                      sport: str = None) -> Optional[MatchOddsData]:
     """
     Synchronous wrapper for scraping a single match.
     Can provide either match_url OR (league_url, home_team, away_team).
     creates a fresh scraper instance to ensure event loop safety.
+    
+    Args:
+        match_url: Direct match URL (optional if league_url + teams provided)
+        league_url: League page URL for finding the match
+        home_team: Home team name
+        away_team: Away team name
+        sport: Sport string for scraping route (e.g. "football", "basketball")
     """
     try:
         async def _run():
@@ -1096,7 +1348,7 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
                     target_url = await scraper.find_match_url(league_url, home_team, away_team)
                     
                 if target_url:
-                    return await scraper.scrape_match(target_url)
+                    return await scraper.scrape_match(target_url, sport=sport)
                 return None
             finally:
                 await scraper.stop()
@@ -1115,7 +1367,7 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
         return None
 
 
-def scrape_multiple_matches_sync(tasks: List[Dict]) -> Dict[int, Optional[MatchOddsData]]:
+def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = None) -> Dict[int, Optional[MatchOddsData]]:
     """
     Scrape multiple matches using ONE browser session (browser reuse).
     
@@ -1125,6 +1377,7 @@ def scrape_multiple_matches_sync(tasks: List[Dict]) -> Dict[int, Optional[MatchO
     
     Args:
         tasks: List of dicts with keys: event_id, league_url, home_team, away_team, season_id
+        debug_dir: Optional directory to save screenshots/HTML on failure
     
     Returns:
         Dict mapping event_id -> MatchOddsData (or None if scrape failed)
@@ -1138,7 +1391,7 @@ def scrape_multiple_matches_sync(tasks: List[Dict]) -> Dict[int, Optional[MatchO
     
     try:
         async def _run():
-            scraper = OddsPortalScraper()
+            scraper = OddsPortalScraper(debug_dir=debug_dir)
             await scraper.start()  # Browser opens ONCE
             try:
                 for i, task in enumerate(tasks):
@@ -1162,10 +1415,17 @@ def scrape_multiple_matches_sync(tasks: List[Dict]) -> Dict[int, Optional[MatchO
                             )
                         
                         if match_url:
-                            data = await scraper.scrape_match(match_url)
+                            # Resolve sport from season_id for scraping route
+                            task_sport = task.get('sport')
+                            if not task_sport and season_id:
+                                op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
+                                if op_info:
+                                    task_sport = op_info.get('sport')
+                            
+                            data = await scraper.scrape_match(match_url, sport=task_sport)
                             results[event_id] = data
                             if data:
-                                logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: Got {len(data.bookie_odds)} bookies")
+                                logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: Got {len(data.extractions)} period(s), {len(data.bookie_odds)} bookies")
                             else:
                                 logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Scrape returned no data")
                         else:
