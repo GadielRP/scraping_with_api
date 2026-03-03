@@ -194,6 +194,13 @@ OP_GROUPS = {
     "ASIAN_HANDICAP": "ah",         # TODO: future implementation
 }
 
+OP_GROUPS_DISPLAY = {
+    "1X2": "1X2",
+    "HOME_AWAY": "Home/Away",
+    "OVER_UNDER": "Over/Under",
+    "ASIAN_HANDICAP": "Asian Handicap",
+}
+
 # Market period integer codes used in URL fragments
 OP_PERIODS = {
     "FT_INC_OT": 1,    # Full Time including Overtime
@@ -212,62 +219,89 @@ OP_PERIODS = {
 # ---------------------------------------------------------------------------
 # Sport-Specific Scraping Routes
 # Defines which market_group and periods to scrape for each sport.
-# "primary_group" = the OP_GROUPS key for the group that includes Betfair.
-# "db_market_group" = the value stored in the Market.market_group DB column.
-# "periods" = list of (period_key, db_market_period, db_market_name) tuples.
-#   - period_key: key into OP_PERIODS for fragment navigation
-#   - db_market_period: value for Market.market_period column
-#   - db_market_name: value for Market.market_name column
-# "has_draw" = whether the market has a draw/X outcome (3-way vs 2-way).
-# "betfair_period_index" = which period index (0-based) has the Betfair section.
 # ---------------------------------------------------------------------------
 
 SPORT_SCRAPING_ROUTES = {
     "football": {
-        "primary_group": "1X2",
-        "db_market_group": "1X2",
-        "periods": [
-            ("FULL_TIME", "Full-time", "Full time"),
-            ("1ST_HALF", "1st half", "1st half")
+        "groups": [
+            {
+                "group_key": "1X2",
+                "db_market_group": "1X2",
+                "has_draw": True,
+                "periods": [
+                    ("FULL_TIME", "Full-time", "Full time"),
+                    ("1ST_HALF", "1st half", "1st half")
+                ],
+                "betfair_period_index": 0,
+                "extract_fn": "standard",
+            },
+            {
+                "group_key": "OVER_UNDER",
+                "db_market_group": "Over/Under",
+                "has_draw": False,
+                "periods": [
+                    ("FULL_TIME", "Full-time", "Over/Under"),
+                ],
+                "betfair_period_index": None,
+                "extract_fn": "over_under",
+            },
         ],
-        "has_draw": True,
-        "betfair_period_index": 0,
     },
     "basketball": {
-        "primary_group": "HOME_AWAY",
-        "db_market_group": "Home/Away",
-        "periods": [
-            ("FT_INC_OT", "Full-time", "Full time"),
+        "groups": [
+            {
+                "group_key": "HOME_AWAY",
+                "db_market_group": "Home/Away",
+                "has_draw": False,
+                "periods": [
+                    ("FT_INC_OT", "Full-time", "Full time"),
+                ],
+                "betfair_period_index": 0,
+                "extract_fn": "standard",
+            },
         ],
-        "has_draw": False,
-        "betfair_period_index": 0,
     },
     "american-football": {
-        "primary_group": "HOME_AWAY",
-        "db_market_group": "Home/Away",
-        "periods": [
-            ("FT_INC_OT", "Full-time", "Full time"),
-            ("1ST_HALF", "1st half", "1st half")
+        "groups": [
+            {
+                "group_key": "HOME_AWAY",
+                "db_market_group": "Home/Away",
+                "has_draw": False,
+                "periods": [
+                    ("FT_INC_OT", "Full-time", "Full time"),
+                    ("1ST_HALF", "1st half", "1st half")
+                ],
+                "betfair_period_index": 0,
+                "extract_fn": "standard",
+            },
         ],
-        "has_draw": False,
-        "betfair_period_index": 0,
     },
     "baseball": {
-        "primary_group": "HOME_AWAY",
-        "db_market_group": "Home/Away",
-        "periods": [
-            ("FT_INC_OT", "Full-time", "Full time"),
+        "groups": [
+            {
+                "group_key": "HOME_AWAY",
+                "db_market_group": "Home/Away",
+                "has_draw": False,
+                "periods": [
+                    ("FT_INC_OT", "Full-time", "Full time"),
+                ],
+                "betfair_period_index": 0,
+                "extract_fn": "standard",
+            },
         ],
-        "has_draw": False,
-        "betfair_period_index": 0,
     },
     "hockey": {
-        "primary_group": "HOME_AWAY",
-        "db_market_group": "Home/Away",
-        "periods": [
-            ("FT_INC_OT", "Full-time", "Full time")
+        "groups": [
+            {
+                "group_key": "HOME_AWAY",
+                "db_market_group": "Home/Away",
+                "has_draw": True,
+                "periods": [
+                    ("FT_INC_OT", "Full-time", "Full time")
+                ],
+                "betfair_period_index": 0,
+                "extract_fn": "standard",
+            },
         ],
-        "has_draw": True,
-        "betfair_period_index": 0,
     },
 }

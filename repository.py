@@ -1289,7 +1289,7 @@ class MarketRepository:
                                      Market.event_id == event_id,
                                      Market.bookie_id == bookie.bookie_id,
                                      Market.market_name == market_name,
-                                     Market.choice_group == None
+                                     Market.choice_group == getattr(b_odds, 'handicap', None)
                                  )
                             ).first()
                             
@@ -1300,7 +1300,7 @@ class MarketRepository:
                                     market_name=market_name,
                                     market_group=market_group,
                                     market_period=market_period,
-                                    choice_group=None,
+                                    choice_group=getattr(b_odds, 'handicap', None),
                                     collected_at=get_local_now()
                                 )
                                 session.add(market)
@@ -1310,15 +1310,19 @@ class MarketRepository:
                                 market.market_period = market_period
                                 market.collected_at = get_local_now()
                                 
+                            is_ou = market_group == "Over/Under"
+                            choice_1_key = "Over" if is_ou else "1"
+                            choice_2_key = "Under" if is_ou else "2"
+                            
                             # Build initial odds map from hover-extracted opening odds
                             initial_map = {
-                                "1": None,
+                                choice_1_key: None,
                                 "X": None,
-                                "2": None
+                                choice_2_key: None
                             }
                             try:
                                 if b_odds.initial_odds_1:
-                                    initial_map["1"] = float(b_odds.initial_odds_1)
+                                    initial_map[choice_1_key] = float(b_odds.initial_odds_1)
                             except (ValueError, TypeError):
                                 pass
                             try:
@@ -1328,15 +1332,15 @@ class MarketRepository:
                                 pass
                             try:
                                 if b_odds.initial_odds_2:
-                                    initial_map["2"] = float(b_odds.initial_odds_2)
+                                    initial_map[choice_2_key] = float(b_odds.initial_odds_2)
                             except (ValueError, TypeError):
                                 pass
 
                             # Upsert Choices
                             choices_map = {
-                                "1": b_odds.odds_1,
+                                choice_1_key: b_odds.odds_1,
                                 "X": b_odds.odds_x,
-                                "2": b_odds.odds_2
+                                choice_2_key: b_odds.odds_2
                             }
                             
                             for choice_name, val_str in choices_map.items():
@@ -1372,7 +1376,7 @@ class MarketRepository:
                                     choice = MarketChoice(
                                         market_id=market.market_id,
                                         choice_name=choice_name,
-                                        initial_odds=init_val if init_val else current_odds,
+                                        initial_odds=init_val,
                                         current_odds=current_odds,
                                         change=computed_change
                                     )
@@ -1389,22 +1393,26 @@ class MarketRepository:
                         try:
                             bookie = MarketRepository._get_or_create_bookie(session, "Betfair Exchange")
                             
+                            is_ou = market_group == "Over/Under"
+                            choice_1_key = "Over" if is_ou else "1"
+                            choice_2_key = "Under" if is_ou else "2"
+                            
                             # Define the two types of odds we want to save
                             exchange_configs = [
                                 {
                                     "group": "Back",
                                     "choices": {
-                                        "1": betfair_data.back_1,
+                                        choice_1_key: betfair_data.back_1,
                                         "X": betfair_data.back_x,
-                                        "2": betfair_data.back_2
+                                        choice_2_key: betfair_data.back_2
                                     }
                                 },
                                 {
                                     "group": "Lay",
                                     "choices": {
-                                        "1": betfair_data.lay_1,
+                                        choice_1_key: betfair_data.lay_1,
                                         "X": betfair_data.lay_x,
-                                        "2": betfair_data.lay_2
+                                        choice_2_key: betfair_data.lay_2
                                     }
                                 }
                             ]
@@ -1418,12 +1426,17 @@ class MarketRepository:
                                     continue
 
                                 # Get/Create Market with correct metadata from extraction
+                                # For Betfair, if there's a handicap, we might append it (e.g. "Back +2.5")
+                                bf_cg = group_name
+                                if getattr(betfair_data, 'handicap', None):
+                                    bf_cg = f"{group_name} {betfair_data.handicap}"
+                                    
                                 market = session.query(Market).filter(
                                      and_(
                                          Market.event_id == event_id,
                                          Market.bookie_id == bookie.bookie_id,
                                          Market.market_name == market_name,
-                                         Market.choice_group == group_name
+                                         Market.choice_group == bf_cg
                                      )
                                 ).first()
                                 
@@ -1434,7 +1447,7 @@ class MarketRepository:
                                         market_name=market_name,
                                         market_group=market_group,
                                         market_period=market_period,
-                                        choice_group=group_name,
+                                        choice_group=bf_cg,
                                         collected_at=get_local_now()
                                     )
                                     session.add(market)
@@ -1468,15 +1481,15 @@ class MarketRepository:
                                         bf = betfair_data
                                         if group_name == "Back":
                                             bf_initial_map = {
-                                                "1": bf.initial_back_1,
+                                                choice_1_key: bf.initial_back_1,
                                                 "X": bf.initial_back_x,
-                                                "2": bf.initial_back_2
+                                                choice_2_key: bf.initial_back_2
                                             }
                                         elif group_name == "Lay":
                                             bf_initial_map = {
-                                                "1": bf.initial_lay_1,
+                                                choice_1_key: bf.initial_lay_1,
                                                 "X": bf.initial_lay_x,
-                                                "2": bf.initial_lay_2
+                                                choice_2_key: bf.initial_lay_2
                                             }
                                         else:
                                             bf_initial_map = {}
@@ -1493,7 +1506,7 @@ class MarketRepository:
                                         choice = MarketChoice(
                                             market_id=market.market_id,
                                             choice_name=choice_name,
-                                            initial_odds=init_val if init_val else current_odds,
+                                            initial_odds=init_val,
                                             current_odds=current_odds,
                                             change=computed_change
                                         )

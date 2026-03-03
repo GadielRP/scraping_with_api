@@ -25,7 +25,7 @@
 
 ## 1. Why OddsPortal?
 
-Our main data source (SofaScore API) provides opening and final odds, but we need odds from **more bookies**. OddsPortal tracks odds changes over time and exposes them through a hover tooltip on their frontend. This allows us to extract the **opening odds** for key bookmakers, which is critical for detecting odds movements and generating high-quality alerts.
+Our main data source (SofaScore API) provides opening and final odds, but we need odds from **more bookies**. OddsPortal tracks odds changes over time and exposes them through a hover tooltip on their frontend. This allows us to extract the **opening odds** for key bookmakers, which is critical for detecting odds movements and generating high-quality alerts. We store the **final odds for all available bookmakers** on the page, but only perform hovers for the top-priority ones to conserve time.
 
 We only scrape OddsPortal for **tracked leagues** (configured in `oddsportal_config.py`). It runs exclusively at the **5-minute pre-start mark**.
 
@@ -138,8 +138,8 @@ sequenceDiagram
     W->>W: wait_for_selector("div.border-black-borders.flex.h-9", 60s)
 
     loop For each period in route
-        W->>W: _extract_data() → Final odds (DOM parse)
-        W->>W: _extract_opening_odds_for_bookie() → Hover
+        W->>W: _extract_data() → Final odds for ALL bookies (DOM parse)
+        W->>W: _extract_opening_odds_for_bookie() → Hover (single priority bookie only)
         W->>W: _extract_opening_odds_betfair() → Hover (designated period only)
         W->>W: Wrap into MarketExtraction
         W->>OP: Navigate to next fragment (if more periods)
@@ -193,10 +193,11 @@ flowchart LR
 
 Both cache lookup and live league scan use the same normalisation + alias strategy:
 
-1. **Normalise**: strip common suffixes (`fc`, `cf`, `ud`), lowercase.
-2. **Alias**: check `TEAM_ALIASES` in `oddsportal_config.py` (e.g. `"Manchester United"` → `"Manchester Utd"`).
-3. **Substring match**: home AND away names (or their aliases) must both be present in the row's display text.
-4. **Slug guard**: URL must contain a hyphen (rejects plain league URLs).
+1. **Normalise**: Uses `_normalize_match_text` to strip accents, common noise (`fc`, `cf`, `ud`, etc.), and all non-alphanumeric characters while collapsing whitespace.
+2. **Alias**: Check `TEAM_ALIASES` in `oddsportal_config.py` (e.g. `"Manchester United"` → `"Manchester Utd"`).
+3. **Substring match**: Home AND away names (or their aliases) must both be present in the row's normalized display text.
+4. **Path Depth Guard**: URL must have at least **4 path segments** (e.g., `/football/england/premier-league/wolves-liverpool-WAZj1LUs/`). This ensures league-level URLs and navigation links are filtered out during both population and retrieval.
+5. **League URL Guard**: Explicitly rejects any URL that matches the current base league path.
 
 ### Daily Cleanup
 
@@ -225,22 +226,23 @@ After navigating to the match page, `scrape_match()` runs these steps in order:
 
 ## 8. Sport-Specific Scraping Routes
 
-Each sport has a configured **scraping route** in `SPORT_SCRAPING_ROUTES` (`oddsportal_config.py`). The route defines:
+Each sport has a configured **scraping route** in `SPORT_SCRAPING_ROUTES` (`oddsportal_config.py`). The route defines a **`groups`** list, where each group specifies:
 
-- **`primary_group`**: Which market group to scrape (e.g. `"1X2"` for football, `"HOME_AWAY"` for basketball)
-- **`periods`**: A list of `(period_key, db_market_period, db_market_name)` tuples
-- **`db_market_group`**: The DB column value (e.g. `"1X2"`, `"Home/Away"`)
-- **`has_draw`**: Whether the sport has a draw/X column
-- **`betfair_period_index`**: Which period index gets Betfair hover extraction
+- **`group_key`**: Which OP_GROUPS key to use, mapping to the tab text (e.g. `"1X2"` for football, `"OVER_UNDER"`)
+- **`periods`**: A list of `(period_key, db_market_period, db_market_name)` tuples to scrape *within* this group
+- **`db_market_group`**: The DB column value (e.g. `"1X2"`, `"Home/Away"`, `"Over/Under"`)
+- **`has_draw`**: Whether the group features a draw/X column
+- **`betfair_period_index`**: Which period index gets Betfair hover extraction (usually `0` for the first period of the main group, `None` otherwise)
+- **`extract_fn`**: Which extraction function string identifier to dispatch to (e.g. `"standard"`, `"over_under"`)
 
 ### Example Routes
 
-| Sport | Group | Periods | Draw? |
-|---|---|---|---|
-| Football | 1X2 | Full Time (inc. OT), Full Time, 1st Half | ✅ |
-| Basketball | Home/Away | Full Time (inc. OT) | ❌ |
-| Hockey | 1X2 | Full Time (inc. OT), Full Time | ✅ |
-| Tennis | Home/Away | Full Time | ❌ |
+| Sport | Groups | Periods | Draw? | Extract Fn |
+|---|---|---|---|---|
+| Football | 1X2 <br> Over/Under | • Full Time, 1st Half <br> • Full Time | ✅ <br> ❌ | standard <br> over_under |
+| Basketball | Home/Away | • Full Time (inc. OT) | ❌ | standard |
+| Hockey | Home/Away | • Full Time (inc. OT) | ✅ | standard |
+| American Football | Home/Away | • Full Time (inc. OT), 1st Half | ❌ | standard |
 
 ### Route Fallback
 
@@ -307,7 +309,11 @@ flowchart TD
     F -- No --> J["Build MatchOddsData\nwith all MarketExtractions"]
 ```
 
-The first period is loaded with the initial `page.goto()`. Subsequent periods are loaded by **clicking the period sub-tabs** within `data-testid="kickoff-events-nav"`. The scraper snapshots a reference odds value before clicking and waits (up to 10s) for the value to change, ensuring the SPA has finished re-rendering.
+The first period is loaded with the initial `page.goto()`. Subsequent groups and periods are loaded by **clicking the tabs directly in the UI**:
+- **Market Groups** (`"1X2"`, `"Over/Under"`): Clicked via the `ul.visible-links.odds-tabs li` tabs.
+- **Periods** (`"1st Half"`, `"Full Time"`): Clicked via the sub-tabs within `data-testid="kickoff-events-nav"`.
+
+The scraper snapshots a reference odds value (either a standard odds cell or an O/U cell) before clicking and waits (up to 10s) for the value to change, ensuring the SPA has finished re-rendering.
 
 > [!IMPORTANT]
 > OddsPortal is a Vue.js SPA. Using `page.goto()` with a fragment URL (`#group;period`) performs a full page reload but the SPA may re-render with its default state before processing the hash. Clicking the tab directly triggers the SPA's internal router, which reliably updates the odds table.
@@ -320,45 +326,93 @@ The main container on a match page is `event-container`. It does **not** change 
 
 ### Structure Overview
 
-```
+```text
 event-container (stable parent)
 ├── flex flex-col (tabs section — does NOT change between fragments)
+│   ├── div.mt-3.flex.gap-2.bg-gray-light (Pre-match vs In-Play selector ⬅ ONLY APPEARS IF EVENT STARTED)
+│   │   └── div[data-testid="kickoff-events-nav"]
+│   │       ├── a (e.g. "Pre-match Odds")
+│   │       └── a (e.g. "In-Play Odds")
+│   │
 │   ├── hide-menu (mobile market group tabs, e.g. "1X2", "Over/Under")
 │   ├── tabs (desktop market group tabs)
 │   │   └── ul.visible-links.odds-tabs (clickable market group tabs)
 │   │       ├── li[data-testid="navigation-active-tab"] (e.g. "1X2")
 │   │       └── li[data-testid="navigation-inactive-tab"] (e.g. "Over/Under")
+│   │
 │   ├── div[data-testid="bookies-filter-nav"] (All/Classic/Crypto filter)
-│   └── div[data-testid="kickoff-events-nav"] (period sub-tabs ⬅ KEY)
-│       ├── div[data-testid="sub-nav-active-tab"] (e.g. "Full Time")
-│       └── div[data-testid="sub-nav-inactive-tab"] (e.g. "1st Half")
+│   │
+│   └── div.mt-2.flex.w-auto.gap-2 (period sub-tabs ⬅ KEY FOR PERIOD NAVIGATION)
+│       └── div[data-testid="kickoff-events-nav"]
+│           ├── div[data-testid="sub-nav-active-tab"] (e.g. "Full Time")
+│           └── div[data-testid="sub-nav-inactive-tab"] (e.g. "1st Half")
 │
 ├── min-md:px-[10px] (odds table + betfair section)
-│   ├── <unnamed div> (odds table — CHANGES between groups, values change between periods)
-│   │   ├── div[data-testid="bookmaker-table-header-line"] (column headers: 1, X, 2, Payout)
-│   │   └── div[data-testid="over-under-expanded-row"] × N (one per bookie)
+│
+│   =============================================================================
+│   [SUPPORTED MARKET GROUPS: 1X2, Home/Away]
+│   These have the standard row/column structure for match winner outcomes.
+│   -----------------------------------------------------------------------------
+│   ├── <unnamed div> (odds table)
+│   │   ├── div[data-testid="bookmaker-table-header-line"] (column headers)
+│   │   └── div.border-black-borders.flex.h-9 × N (one row per bookie)
 │   │       ├── bookie info (logo img[alt], name a[title])
-│   │       ├── div.odds-cell[data-testid="odd-container"] × 3 (odds values)
+│   │       ├── div.odds-cell[data-testid="odd-container"] × [2 or 3] (odds values)
 │   │       └── div[data-testid="payout-container"] (payout %)
 │   │
 │   └── div[data-testid="betting-exchanges-section"] (Betfair — not always present)
-│       └── div[data-testid="odd-container"] × 6 (Back 1,X,2 + Lay 1,X,2)
+│       └── div[data-testid="odd-container"] (Back/Lay odds containers)
+│
+│   =============================================================================
+│   [SUPPORTED MARKET GROUPS: Over/Under]
+│   These have a different HTML structure with collapsed rows containing accordion data
+│   for various lines (e.g. 2.5, 3.5). The scraper calculates the absolute difference
+│   between Over and Under for each row to pick the closest to 50/50 probability,
+│   then clicks that row to expand it, revealing bookmaker odds for that specific line.
+│   │
+│   ├── div[data-testid="over-under-collapsed-row"] (clickable line row e.g. "Total +2.5")
+│   │   ├── p (Over odds)
+│   │   └── p (Under odds)
+│   │
+│   └── div[data-testid="bookmaker-table-header-line"] (revealed upon click)
+│       └── div.border-black-borders.flex.h-9 × N (one row per bookie)
+│           ├── bookie info
+│           ├── div.odds-cell (Over)
+│           ├── div.odds-cell (Under)
+│           └── payout %
+│
+│   =============================================================================
+│   [PLANNED MARKET GROUPS: Asian Handicap] 🚧 TO-DO
+│   Requires similar accordion expansion logic.
+│   =============================================================================
 ```
 
-### Key Selectors Reference
+### Key Selectors Reference (found in every market group and period)
 
 | Element | Selector | Notes |
 |---|---|---|
 | **Market group tabs** | `ul.visible-links.odds-tabs li` | "1X2", "Over/Under", etc. |
 | **Active market group** | `li[data-testid="navigation-active-tab"]` | Has `active-odds` class |
-| **Period sub-tabs** | `div[data-testid="kickoff-events-nav"]` | Contains "Full Time", "1st Half", etc. |
+| **Period sub-tabs wrapper** | `div[data-testid="kickoff-events-nav"]` | Multiple can exist! (e.g., Pre-match/In-play vs periods). Scraper must iterate through all to find the period. |
 | **Active period tab** | `div[data-testid="sub-nav-active-tab"]` | Currently selected period |
 | **Inactive period tab** | `div[data-testid="sub-nav-inactive-tab"]` | Clickable to switch period |
+
+### Odds table values and structure change between market groups, market periods only change odds values.
+> Scraper must change scraping method to handle the changing structure between market_groups when dealing with bookie rows, bookie names, odds cells, odds value links and pay out
+
+| Element | Selector | Notes |
+|---|---|---|
 | **Bookie row** | `div.border-black-borders.flex.h-9` | One row per bookmaker |
 | **Bookie name** | `a[title]` or `img[alt]` inside bookie row | Used for identification |
 | **Odds cell** | `div.odds-cell[data-testid="odd-container"]` | Contains the odds value |
 | **Odds value link** | `a.odds-link` inside odds cell | The numeric odds text |
 | **Payout** | `div[data-testid="payout-container"]` | e.g. "94.7%" |
+
+### Betfair section ###
+> Betfair Section appears just once per match. It usually is avaiable in the primary route set in the scraping routes
+
+| Element | Selector | Notes |
+|---|---|---|
 | **Betfair section** | `div[data-testid="betting-exchanges-section"]` | Exchange odds |
 | **Table header** | `div[data-testid="bookmaker-table-header-line"]` | Column labels |
 
@@ -382,22 +436,42 @@ These files contain isolated sections of the match page for reference:
 
 OddsPortal does not expose opening odds in the DOM directly. They appear in a **Vue.js tooltip** triggered by mouse hover. We simulate this with Playwright.
 
+> [!IMPORTANT]
+> To maintain performance, we **store all bookies' final odds** directly from the DOM, but we only **hover over a single bookie** (the highest priority available) and **Betfair Exchange** (if available) per period. Opening odds for all other bookies remain `null`.
+
+### Hover Mechanics & Optimizations
+
+Because OddsPortal relies on Vue.js to dynamically attach the tooltip to the DOM, naïve hover attempts fail ~10% of the time due to race conditions or UI overlaps. We mitigate this through three specific mechanisms:
+
+1. **Scroll-and-Bump**: Playwright's `scroll_into_view_if_needed()` often aligns cells beneath OddsPortal's sticky top header. We immediately follow it with `window.scrollBy(0, -150)` to bump the page down and guarantee visibility.
+2. **Humanized Mouse Wiggle**: Rather than instantly teleporting the cursor to the dead-center of the element, the cursor is moved just outside the element's bounding box and then pulled inside. This reliably triggers DOM `mouseenter` repaints.
+3. **Dynamic Wait Polling**: Instead of hard-sleeping for 3-4 seconds per cell, the scraper dynamically polls for `h3:has-text('Odds movement')` with `state="visible"`. If the tooltip renders in 100ms, extraction proceeds immediately, saving vast amounts of time per match.
+
 ### Bookie Opening Odds Flow
 
 ```mermaid
 flowchart TD
     A["Find highest-priority\nbookie in scraped data"] --> B["Find bookie row:\ndiv.border-black-borders.flex.h-9"]
     B --> C["Get odds cells:\ndiv.flex-center.flex-col.font-bold"]
-    C --> D["For each cell (1, X, 2):"]
-    D --> E["Remove overlay modals via JS"]
-    E --> F["hover(force=True) + JS mouseenter event"]
-    F --> G["wait 2-4s for tooltip"]
-    G --> H{"is_visible(\nh3:has-text('Odds movement'))?"}
-    H -- No --> I["Retry (up to 3x)\nor log warning"]
-    H -- Yes --> J["Get parent modal HTML"]
+    C --> D["For each cell (1, X, 2 or Over, Under):"]
+    D --> E["Remove overlays (popups, cookie banners) via JS\nScroll up to dodge sticky header"]
+    E --> F["Humanised mouse move ('wiggle') over box"]
+    F --> G["hover(force=True, timeout=1.5s)\n+ JS mouseenter/mouseover dispatch"]
+    G --> H{"page.wait_for_selector(\nh3:has-text('Odds movement'), state='visible')\n(Dynamic wait 3-5s)"}
+    H -- Timeouted --> I["Retry (up to 3x)"]
+    H -- Found --> J["Get parent modal HTML"]
     J --> K["_parse_opening_odds_from_modal_html()"]
     K --> L["Store in BookieOdds.initial_odds_*"]
 ```
+
+### Over/Under Specifics
+
+Over/Under market groups require a separate extraction method (`_extract_data_over_under`) due to their unique HTML structure.
+
+1. **Calculate the closest margin**: The DOM lists all available lines (e.g. +1.5, +2.5, +3). The script parses all `data-testid="over-under-collapsed-row"` elements, extracting the `Over` and `Under` probabilities for each.
+2. **Click to Expand**: The row with the minimum absolute difference `abs(Over - Under)` is selected (closest to 50/50) and clicked.
+3. **Wait for DOM**: The scraper waits for `div[data-testid="bookmaker-table-header-line"]` to appear under the clicked row.
+4. **Extract & Save**: Only the visible bookmaker rows within that expanded block are extracted. The handicap (e.g. "2.5") is saved in the database as the `choice_group`, and the odds are categorized as "Over" and "Under" in `choice_name`.
 
 ### Betfair Hover Flow
 
@@ -472,8 +546,8 @@ The scraper targets specific elements within the OddsPortal React/Vue-based fron
 
 ### Data Points Extracted
 
-1.  **Current Odds**: Scraped directly from the text content of the odds cells on page load.
-2.  **Opening Odds**: Extracted by simulating a hover event on each odds cell, waiting for the "Odds movement" tooltip, and parsing the historical start price.
+1.  **Current Odds**: Scraped directly from the text content of the odds cells for **all available bookmakers** on page load.
+2.  **Opening Odds**: Extracted by simulating a hover event on the cells of the **top-priority bookie** (and Betfair), waiting for the "Odds movement" tooltip, and parsing the historical start price. All other bookies have this value set to `null`.
 3.  **Trend**: Calculated by comparing the opening odds vs. current odds.
 4.  **Betfair Depth**: Extracts both **Back** and **Lay** prices to visualize the exchange gap.
 
