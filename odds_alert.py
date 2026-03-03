@@ -255,12 +255,13 @@ class OddsAlertProcessor:
         
         return result
     
-    def _format_oddsportal_section(self, op_markets: List[Dict]) -> str:
+    def _format_oddsportal_section(self, op_markets: List[Dict], event_data: Dict = None) -> str:
         """
         Format the OddsPortal section of the alert message.
         
         Args:
             op_markets: List of dictionary from MarketRepository.get_oddsportal_markets_for_event
+            event_data: Event dictionary to extract team names for formatting
             
         Returns:
             Formatted string for the OddsPortal section
@@ -268,44 +269,77 @@ class OddsAlertProcessor:
         if not op_markets:
             return ""
             
-        result = "\n📊 <b>ODDSPORTAL ODDS</b>\n"
+        result = "\n🟡 <b>ODDSPORTAL ODDS</b>\n\n"
         
-        # Regular bookies first
-        bookie_lines = []
-        betfair_lines = []
+        home_team = event_data.get('home_team', 'Home') if event_data else 'Home'
+        away_team = event_data.get('away_team', 'Away') if event_data else 'Away'
         
+        # Group markets by (market_group, market_period)
+        from collections import defaultdict
+        grouped_markets = defaultdict(list)
+        
+        # op_markets is already sorted by group -> period -> choice_group -> bookie
+        # Group them logically
         for m in op_markets:
-            bookie_name = m['bookie_name']
-            choice_group = m.get('choice_group')
-            choices = m['choices']
+            market_group = m.get('market_group', 'Unknown')
+            market_period = m.get('market_period', 'Unknown')
+            grouped_markets[(market_group, market_period)].append(m)
             
-            # Format choices: 1.85→1.78 | 3.50→3.60 | 4.20→4.10
-            choice_strs = []
-            for c in choices:
-                initial = c.get('initial')
-                current = c.get('current')
-                movement = c.get('movement', '=')
-                
-                if initial is not None and current is not None:
-                    choice_strs.append(f"{initial:.2f}→{current:.2f}{movement}")
-                elif current is not None:
-                    choice_strs.append(f"{current:.2f}")
-                else:
-                    choice_strs.append("N/A")
-            
-            line_body = " | ".join(choice_strs)
-            
-            if 'betfair' in bookie_name.lower():
-                group_tag = f" ({choice_group})" if choice_group else ""
-                betfair_lines.append(f"  {bookie_name}{group_tag}: {line_body}")
+        for (market_group, market_period), markets in grouped_markets.items():
+            # Format the header
+            if market_group == '1X2':
+                display_group = "Full time" if market_period == 'Full-time' else market_period
             else:
-                bookie_lines.append(f"  {bookie_name}: {line_body}")
+                display_group = f"{market_group} - {market_period}"
                 
-        if bookie_lines:
-            result += "\n".join(bookie_lines) + "\n"
+            result += f"📊 <b>{display_group}</b>\n"
             
-        if betfair_lines:
-            result += "\n".join(betfair_lines) + "\n"
+            for m in markets:
+                bookie_name = m['bookie_name']
+                choice_group = m.get('choice_group')
+                choices = m['choices']
+                
+                # If Betfair, add Back/Lay info
+                if 'betfair' in bookie_name.lower() and choice_group:
+                    bookie_display = f"{bookie_name} ({choice_group})"
+                # For Asian Handicap or Over/Under, optionally show the line next to the bookie name or inside if appropriate.
+                elif market_group in ['Asian Handicap', 'Over/Under'] and choice_group:
+                    bookie_display = f"{bookie_name} [{choice_group}]"
+                else:
+                    bookie_display = bookie_name
+
+                # Format choices for this bookie
+                choice_strs = []
+                for c in choices:
+                    name = c.get('name', '?')
+                    initial = c.get('initial')
+                    current = c.get('current')
+                    movement = c.get('movement', '=')
+                    
+                    # Optionally format name if it's Asian Handicap
+                    if market_group == 'Asian Handicap':
+                        if name == '1':
+                            name = home_team
+                        elif name == '2':
+                            name = away_team
+                            
+                    # Remove the choice name if it's 1X2 or Over/Under. For AH, include name to distinguish home/away.
+                    if market_group in ['1X2']:
+                        prefix = "" # "1: ", "X: " would go here, but let's just make it compact like original code
+                    else:
+                        prefix = ""
+                        
+                    if initial is not None and current is not None:
+                        choice_strs.append(f"{initial:.2f}→{current:.2f}{movement}")
+                    elif current is not None:
+                        choice_strs.append(f"{current:.2f}")
+                    else:
+                        choice_strs.append("N/A")
+                
+                line_body = " | ".join(choice_strs)
+                result += f"  {bookie_display}: {line_body}\n"
+                
+            result += "\n"
             
         return result
 
@@ -384,7 +418,7 @@ class OddsAlertProcessor:
                 if season_id and season_id in SEASON_ODDSPORTAL_MAP:
                     op_markets = MarketRepository.get_oddsportal_markets_for_event(event_data.get('id'))
                     if op_markets:
-                        op_section = self._format_oddsportal_section(op_markets)
+                        op_section = self._format_oddsportal_section(op_markets, event_data)
                         message += op_section
                         logger.info(f"📊 Added OddsPortal section to alert for event {event_data.get('id')}")
             except Exception as op_err:

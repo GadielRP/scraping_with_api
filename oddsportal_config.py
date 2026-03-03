@@ -190,8 +190,8 @@ PRIORITY_BOOKIES = ["bet365", "Pinnacle", "BettingAsia", "Megapari", "1xBet"]
 OP_GROUPS = {
     "1X2": "1X2",
     "HOME_AWAY": "home-away",
-    "OVER_UNDER": "over-under",     # TODO: future implementation
-    "ASIAN_HANDICAP": "ah",         # TODO: future implementation
+    "OVER_UNDER": "over-under",
+    "ASIAN_HANDICAP": "ah",
 }
 
 OP_GROUPS_DISPLAY = {
@@ -244,6 +244,16 @@ SPORT_SCRAPING_ROUTES = {
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "over_under",
+            },
+            {
+                "group_key": "ASIAN_HANDICAP",
+                "db_market_group": "Asian Handicap",
+                "has_draw": False,
+                "periods": [
+                    ("FULL_TIME", "Full-time", "Asian Handicap"),
+                ],
+                "betfair_period_index": None,
+                "extract_fn": "asian_handicap",
             },
         ],
     },

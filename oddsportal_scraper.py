@@ -811,6 +811,8 @@ class OddsPortalScraper:
                     t_extract = time.perf_counter()
                     if extract_fn == "over_under":
                         period_data = await self._extract_data_over_under(page, match_url)
+                    elif extract_fn == "asian_handicap":
+                        period_data = await self._extract_data_asian_handicap(page, match_url)
                     else:
                         period_data = await self._extract_data(page, match_url)
                     log_timing(f"JS extraction for {db_market_period} took {time.perf_counter() - t_extract:.2f}s")
@@ -1633,6 +1635,167 @@ class OddsPortalScraper:
         clean_hc = raw_data.get('handicap')
         if clean_hc:
             clean_hc = clean_hc.replace('Over/Under', '').replace('O/U', '').replace('+', '').strip()
+            
+        for b in raw_data.get('bookies', []):
+            match_data.bookie_odds.append(BookieOdds(
+                name=b['name'],
+                odds_1=b['odds1'],
+                odds_x=b['oddsX'],
+                odds_2=b['odds2'],
+                payout=b['payout'],
+                handicap=clean_hc
+            ))
+            
+        return match_data
+
+    async def _extract_data_asian_handicap(self, page: Page, match_url: str) -> MatchOddsData:
+        """
+        Extracts Asian Handicap market data from the current page.
+        Identifies the handicap value, Home (1) and Away (2) odds for each bookmaker.
+        """
+        logger.info("  🔄 Finding main Asian Handicap line (closest odds)...")
+        # Extract all row values to Python for debugging and identifying the main line
+        rows_data = await page.evaluate("""
+            () => {
+                const rows = Array.from(document.querySelectorAll('div[data-testid="over-under-collapsed-row"]'));
+                return rows.map((row, index) => {
+                    let odd1 = null;
+                    let odd2 = null;
+                    let handicapText = "";
+                    
+                    const optionBox = row.querySelector('div[data-testid="over-under-collapsed-option-box"] p');
+                    if (optionBox) {
+                        handicapText = optionBox.innerText.trim();
+                    }
+
+                    const containers = row.querySelectorAll('.flex-center.border-black-main');
+                    if (containers.length >= 2) {
+                        odd1 = parseFloat(containers[0].innerText.trim());
+                        odd2 = parseFloat(containers[1].innerText.trim());
+                    }
+                    return { index, handicapText, odd1, odd2 };
+                });
+            }
+        """)
+
+        min_diff = float('inf')
+        target_index = -1
+        target_handicap = None
+        
+        logger.info(f"  📊 Evaluating {len(rows_data)} Asian Handicap rows for the closest odds...")
+        for row in rows_data:
+            idx = row.get('index')
+            hc = row.get('handicapText', 'Unknown')
+            odd1 = row.get('odd1')
+            odd2 = row.get('odd2')
+            
+            if isinstance(odd1, (int, float)) and isinstance(odd2, (int, float)):
+                diff = abs(odd1 - odd2)
+                logger.info(f"    - Row {idx} ({hc}): 1={odd1}, 2={odd2} => Diff={diff:.2f}")
+                if diff < min_diff:
+                    min_diff = diff
+                    target_index = idx
+                    target_handicap = hc
+            else:
+                logger.debug(f"    - Row {idx} ({hc}): Invalid odds 1={odd1}, 2={odd2}")
+
+        if target_index != -1:
+            logger.info(f"  👉 Selecting row {target_index} ({target_handicap}) with min difference {min_diff:.2f}")
+            # Click the target row using Nth match
+            await page.locator('div[data-testid="over-under-collapsed-row"]').nth(target_index).click()
+        else:
+            logger.warning("  ⚠️ Could not determine main line Asian Handicap row")
+        # Wait for the row to expand
+        await page.wait_for_timeout(1500)
+        
+        raw_data = await page.evaluate("""
+            (hc) => {
+                const result = {
+                    homeTeam: 'Unknown',
+                    awayTeam: 'Unknown',
+                    bookies: [],
+                    handicap: hc
+                };
+                
+                // --- Team Names ---
+                const h1 = document.querySelector('h1');
+                if (h1) {
+                    let h1Text = h1.textContent.trim();
+                    const dashIdx = h1Text.indexOf(' - ');
+                    if (dashIdx > 0) h1Text = h1Text.substring(0, dashIdx);
+                    const vsSplit = h1Text.split(' vs ');
+                    if (vsSplit.length >= 2) {
+                        result.homeTeam = vsSplit[0].trim();
+                        result.awayTeam = vsSplit[1].trim();
+                    }
+                }
+                
+                // --- Bookmakers ---
+                const allRows = document.querySelectorAll('div[data-testid="over-under-expanded-row"]');
+                for (const row of allRows) {
+                    let bookieName = null;
+                    const namePara = row.querySelector('[data-testid="outrights-expanded-bookmaker-name"]');
+                    if (namePara) bookieName = namePara.textContent.trim();
+                    if (!bookieName) {
+                        const img = row.querySelector('[data-testid="outrights-expanded-bookmaker-logo"] img');
+                        if (img) bookieName = img.getAttribute('alt') || img.getAttribute('title');
+                    }
+                    if (!bookieName || ['Oddsportal', 'Search'].includes(bookieName)) continue;
+                    
+                    // Handicap (from arguments since it's not visible in the expanded row)
+                    let handicap = hc;
+                    
+                    // Odds extractor
+                    const cleanOdd = (container) => {
+                        const p = container.querySelector('p.odds-text') || container.querySelector('p');
+                        if (p) return p.textContent.trim();
+                        return container.textContent.trim(); // fallback
+                    };
+                    
+                    // Odds
+                    const oddContainers = row.querySelectorAll('[data-testid="odd-container"]');
+                    let odds1 = '-', odds2 = '-';
+                    if (oddContainers.length >= 2) {
+                        // 1 is first, 2 is second
+                        odds1 = cleanOdd(oddContainers[0]);
+                        odds2 = cleanOdd(oddContainers[1]);
+                    }
+                    
+                    // Payout
+                    let payout = '-';
+                    const payoutContainer = row.querySelector('[data-testid="payout-container"]');
+                    if (payoutContainer) payout = payoutContainer.textContent.trim();
+                    else {
+                         // Backup payout finder
+                         const lastChild = row.children[row.children.length - 1];
+                         if (lastChild && lastChild.textContent.includes('%')) {
+                             payout = lastChild.textContent.trim();
+                         }
+                    }
+                    
+                    result.bookies.push({
+                        name: bookieName,
+                        handicap: handicap,
+                        odds1: odds1 || '-',
+                        oddsX: '-',
+                        odds2: odds2 || '-',
+                        payout: payout,
+                    });
+                }
+                
+                return result;
+            }
+        """, target_handicap)
+
+        # Convert to Python Objects
+        match_data = MatchOddsData(match_url=match_url)
+        match_data.home_team = raw_data.get('homeTeam', 'Unknown')
+        match_data.away_team = raw_data.get('awayTeam', 'Unknown')
+        
+        # Clean up handicap string (e.g. "Asian Handicap -2.5" -> "-2.5", "AH -1.5" -> "-1.5")
+        clean_hc = raw_data.get('handicap')
+        if clean_hc:
+            clean_hc = clean_hc.replace('Asian Handicap', '').replace('AH', '').strip()
             
         for b in raw_data.get('bookies', []):
             match_data.bookie_odds.append(BookieOdds(

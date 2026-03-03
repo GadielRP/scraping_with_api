@@ -382,8 +382,9 @@ event-container (stable parent)
 │           └── payout %
 │
 │   =============================================================================
-│   [PLANNED MARKET GROUPS: Asian Handicap] 🚧 TO-DO
-│   Requires similar accordion expansion logic.
+│   [SUPPORTED MARKET GROUPS: Asian Handicap]
+│   Follows the same accordion expansion logic and HTML test IDs as Over/Under.
+│   The main difference is the text labels (AH / Asian Handicap) and the columns (1, 2).
 │   =============================================================================
 ```
 

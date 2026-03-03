@@ -1151,6 +1151,8 @@ class MarketRepository:
                                 movement = '↓'
                             else:
                                 movement = '='
+                        elif current is not None:
+                            movement = '='
                         else:
                             movement = '='
                         choices_data.append({
@@ -1163,14 +1165,27 @@ class MarketRepository:
                     result.append({
                         'bookie_name': bookie_name,
                         'choice_group': market.choice_group,  # 'Back'/'Lay' for Betfair, else None
+                        'market_name': market.market_name,
+                        'market_group': market.market_group,
+                        'market_period': market.market_period,
                         'choices': choices_data
                     })
                 
-                # Sort: regular bookies first (alphabetically), Betfair Back/Lay last
+                # Sort: market_group -> market_period -> choice_group -> bookie_name
                 def sort_key(m):
-                    if 'betfair' in m['bookie_name'].lower():
-                        return (1, m['bookie_name'], m.get('choice_group') or '')
-                    return (0, m['bookie_name'], '')
+                    # Define order for market groups
+                    group_order = {'1X2': 1, 'Asian Handicap': 2, 'Over/Under': 3}
+                    mg_order = group_order.get(m.get('market_group', ''), 4)
+                    
+                    # Define order for market periods
+                    period_order = {'Full-time': 1, '1st half': 2, '2nd half': 3}
+                    mp_order = period_order.get(m.get('market_period', ''), 4)
+                    
+                    # Put Betfair Back/Lay slightly after regular bookies with the same market
+                    bookie_is_betfair = 1 if 'betfair' in m['bookie_name'].lower() else 0
+                    
+                    cg = m.get('choice_group') or ''
+                    return (mg_order, mp_order, cg, bookie_is_betfair, m['bookie_name'])
                 
                 result.sort(key=sort_key)
                 return result
