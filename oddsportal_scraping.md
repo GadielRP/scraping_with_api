@@ -324,10 +324,11 @@ OddsPortal is a complex SPA. Sometimes a tab click may be "received" but the tab
 
 1.  **Reference Snapshot**: Before clicking, it captures a `ref_value` (the text of the first odds cell).
 2.  **State Verification**: Even if the tab is detected as `active-odds` (already active), the scraper verifies that the table contains actual rows (e.g., `div.odds-cell` or `data-testid="over-under-collapsed-row"`).
-3.  **Dynamic Change Detection**: It polls the table (up to 10s) until:
+3.  **Dynamic Change Detection**: It polls the table (up to `ODDSPORTAL_TAB_WAIT_TIMEOUT`, default 20s) until:
     - The value changes from `ref_value` to something new.
-    - If `ref_value` was `None`, it waits for the *first* visible data to render.
-4.  **Fallback Sync**: If the click fails to trigger an update, it manually synchronizes the URL hash (`window.location.hash`) as a last resort and restarts the wait logic.
+    - If `ref_value` was `None` (e.g. switching from Asian Handicap), it waits for the *first* visible data to render.
+    - **Structural Fallback**: If odds values don't change across periods, it checks if the underlying DOM structures (`div.odds-cell`, `over-under-collapsed-row`) are fully present.
+4.  **Page Reload Recovery**: If the click fails to trigger an update after the timeout, it initiates a full `page.goto()` to the target URL fragment as a last resort, clearing any poisoned SPA state.
 
 > [!IMPORTANT]
 > This "Smart Wait" ensures near 100% reliability for Over/Under and Asian Handicap extractions, which are highly sensitive to SPA rendering states.
@@ -558,6 +559,7 @@ The scraper iterates this list and uses the **first bookie found** for opening o
 |---|---|---|
 | `ODDSPORTAL_PARALLEL_BROWSERS` | `1` | Number of concurrent browser instances to use. |
 | `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` | `120` | Max seconds to wait for a lagging previous cycle. |
+| `ODDSPORTAL_TAB_WAIT_TIMEOUT` | `20` | Max seconds to poll for table changes after clicking a tab. |
 | `ODDSPORTAL_BLOCK_RESOURCES` | `true` | Set to `false` if page rendering fails. |
 
 ---
@@ -671,7 +673,7 @@ Saves full debug info (screenshots, HTML, JSON) to `debug_<slug>/`. The JSON out
 - **Network Navigation Failure**: Handled by **Immediate Network Failure Check**. If the browser returns `ERR_TIMED_OUT` or similar, the scraper fails fast instantly to avoid wasting time on a dead connection.
 - **Proxy Blocked / Cloudflare Banned**: Handled by **Fast Fail Check #1**. Detects blocks via page title, kills the browser, and triggers a **Session-Aware Retry**.
 - **SPA Render Failure (Empty Container)**: Handled by **Fast Fail Check #2**. Sometimes the page loads but the Vue.js app fails to hydrate/render the odds table. A `MutationObserver` detects this state and triggers a fast fail after 15s of empty content, avoiding the full 60s timeout.
-- **Tab Switching Failure**: If the SPA router hangs and the odds table doesn't update after clicking a tab, the scraper triggers a **Fragment Navigation Fallback** by manually updating the URL hash.
+- **Tab Switching Failure**: If the SPA router hangs and the odds table doesn't update after clicking a tab within the timeout, the scraper triggers a **Page Reload Recovery** by performing a full navigation to the specific fragment URL (e.g. `#over-under;2`). This breaks cascading failures where one timed-out tab prevents all subsequent tabs from loading.
 - **"Already Active" Race Condition**: Fixed by the **Smart Wait** mechanism. Prevents extraction from starting immediately after a fragment change if the table rows haven't rendered yet, even if the tab UI shows as "active".
 - **Session-Aware Retry**: Implemented in `scrape_multiple_matches_sync`. When a scrape fails, the scraper calls `await self.stop()` and `await self.start()`. This generates a fresh `_session_id` and restarts the Playwright process, which forces a new TCP connection and a clean proxy IP from the rotation endpoint (e.g., Webshare).
 - **Headless Timeout**: If the scraper times out waiting for rows without hitting Fast Fail, it still triggers the Session-Aware Retry to seamlessly attempt the extraction once more with a new IP.

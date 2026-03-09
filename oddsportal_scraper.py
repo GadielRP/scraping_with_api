@@ -14,7 +14,7 @@ try:
     from config import Config
     from oddsportal_config import (
         SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
-        OP_GROUPS, OP_PERIODS, SPORT_SCRAPING_ROUTES,
+        OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
     )
 except ImportError:
     # Fallback/Mock for standalone testing
@@ -307,6 +307,8 @@ class OddsPortalScraper:
                     if (oddsVal) return oddsVal;
                     const ouVal = getFirstVisibleText('div[data-testid="over-under-collapsed-row"] p');
                     if (ouVal) return ouVal;
+                    const ahVal = getFirstVisibleText('div[data-testid="asian-handicap-collapsed-row"] p');
+                    if (ahVal) return ahVal;
                     return null;
                 }
             """)
@@ -364,7 +366,7 @@ class OddsPortalScraper:
                 await target_tab.click()
             
             # Step 3: Wait for odds table to update (values to change)
-            max_wait_s = 10
+            max_wait_s = int(os.environ.get("ODDSPORTAL_TAB_WAIT_TIMEOUT", 20))
             poll_interval_ms = 300
             elapsed = 0
             table_changed = False
@@ -397,10 +399,23 @@ class OddsPortalScraper:
                     break
             
             if not table_changed:
-                if is_active:
-                    logger.warning(f"⚠️ Period tab '{period_display_name}' was already active but content never rendered after {max_wait_s}s.")
+                # Secondary check: verify if structural DOM elements exist (handles identical-odds edge case)
+                content_present = await page.evaluate(r"""
+                    () => {
+                        const hasOdds = document.querySelectorAll('div.odds-cell').length > 0;
+                        const hasOU = document.querySelectorAll('div[data-testid="over-under-collapsed-row"]').length > 0;
+                        const hasAH = document.querySelectorAll('div[data-testid="asian-handicap-collapsed-row"]').length > 0;
+                        return hasOdds || hasOU || hasAH;
+                    }
+                """)
+                if content_present:
+                    logger.info(f"ℹ️ Odds text unchanged after {max_wait_s}s but DOM content is present — treating as success (odds may be identical across periods).")
+                    table_changed = True
                 else:
-                    logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value}). Period data may be identical or tab click failed.")
+                    if is_active:
+                        logger.warning(f"⚠️ Period tab '{period_display_name}' was already active but content never rendered after {max_wait_s}s.")
+                    else:
+                        logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value}). Period data may be identical or tab click failed.")
             
             # Brief extra settle to let any remaining DOM mutations finish
             await asyncio.sleep(0.5)
@@ -429,6 +444,8 @@ class OddsPortalScraper:
                     if (oddsVal) return oddsVal;
                     const ouVal = getFirstVisibleText('div[data-testid="over-under-collapsed-row"] p');
                     if (ouVal) return ouVal;
+                    const ahVal = getFirstVisibleText('div[data-testid="asian-handicap-collapsed-row"] p');
+                    if (ahVal) return ahVal;
                     return null;
                 }
             """)
@@ -480,7 +497,7 @@ class OddsPortalScraper:
                 await target_tab.click()
             
             # Wait for table to update
-            max_wait_s = 10
+            max_wait_s = int(os.environ.get("ODDSPORTAL_TAB_WAIT_TIMEOUT", 20))
             poll_interval_ms = 300
             elapsed = 0
             table_changed = False
@@ -514,10 +531,23 @@ class OddsPortalScraper:
                     break
             
             if not table_changed:
-                if is_active:
-                    logger.warning(f"⚠️ Tab '{group_display_name}' was already active but content never rendered after {max_wait_s}s.")
+                # Secondary check: verify if structural DOM elements exist (handles identical-odds edge case)
+                content_present = await page.evaluate(r"""
+                    () => {
+                        const hasOdds = document.querySelectorAll('div.odds-cell').length > 0;
+                        const hasOU = document.querySelectorAll('div[data-testid="over-under-collapsed-row"]').length > 0;
+                        const hasAH = document.querySelectorAll('div[data-testid="asian-handicap-collapsed-row"]').length > 0;
+                        return hasOdds || hasOU || hasAH;
+                    }
+                """)
+                if content_present:
+                    logger.info(f"ℹ️ Odds text unchanged after {max_wait_s}s but DOM content is present — treating as success.")
+                    table_changed = True
                 else:
-                    logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value})")
+                    if is_active:
+                        logger.warning(f"⚠️ Tab '{group_display_name}' was already active but content never rendered after {max_wait_s}s.")
+                    else:
+                        logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value})")
                 
             await asyncio.sleep(0.5)
             return table_changed
@@ -960,20 +990,24 @@ class OddsPortalScraper:
                 
                 # Switch to market group tab (skip for the first group, it is already loaded via initial URL fragment)
                 if group_idx > 0 and group_key:
-                    from oddsportal_config import OP_GROUPS_DISPLAY
                     tab_label = OP_GROUPS_DISPLAY.get(group_key, group_key)
                     success = await self._click_market_group_tab(page, tab_label)
                     
                     if not success:
-                        logger.warning(f"⚠️ Tab click failed for {group_key}, trying fragment navigation fallback...")
+                        # Last resort: full page reload to the target group's URL fragment
+                        logger.warning(f"⚠️ Tab click failed for {group_key}. Attempting full page reload recovery...")
                         try:
-                            # Directly update the URL fragment — this often forces the SPA to sync
-                            await page.evaluate(f"window.location.hash = '#{group_key}'")
+                            fragment = OP_GROUPS.get(group_key, group_key)
+                            first_period_key = periods[0][0] if periods else "FULL_TIME"
+                            period_code = OP_PERIODS.get(first_period_key, 2)
+                            reload_url = f"{match_url}/#{fragment};{period_code}"
+                            await page.goto(reload_url, wait_until="domcontentloaded", timeout=30000)
+                            await page.wait_for_selector("div.border-black-borders.flex.h-9", state="visible", timeout=15000)
                             await asyncio.sleep(1)
-                            # One more try at clicking/waiting
-                            success = await self._click_market_group_tab(page, tab_label)
-                        except Exception as fe:
-                            logger.error(f"❌ Fallback navigation failed for {group_key}: {fe}")
+                            success = True
+                            logger.info(f"✅ Page reload recovery succeeded for {group_key}")
+                        except Exception as re:
+                            logger.error(f"❌ Page reload recovery failed for {group_key}: {re}")
                     
                     if not success:
                         logger.warning(f"⚠️ Could not switch to group {group_key}, skipping")
@@ -991,9 +1025,19 @@ class OddsPortalScraper:
                         tab_clicked = await self._click_period_tab(page, db_market_period)
                     
                         if not tab_clicked:
-                            # Fallback: try using the db_market_name (e.g. "1st half" vs "1st Half")
-                            logger.info(f"🔄 Retrying with market_name: {db_market_name}")
-                            tab_clicked = await self._click_period_tab(page, db_market_name)
+                            # Fallback: full page reload to the exact group+period fragment URL
+                            logger.warning(f"⚠️ Period tab click failed for {db_market_period}. Attempting page reload recovery...")
+                            try:
+                                fragment = OP_GROUPS.get(group_key, group_key)
+                                period_code = OP_PERIODS.get(period_key, 2)
+                                reload_url = f"{match_url}/#{fragment};{period_code}"
+                                await page.goto(reload_url, wait_until="domcontentloaded", timeout=30000)
+                                await page.wait_for_selector("div.border-black-borders.flex.h-9", state="visible", timeout=15000)
+                                await asyncio.sleep(1)
+                                tab_clicked = True
+                                logger.info(f"✅ Page reload recovery succeeded for period {db_market_period}")
+                            except Exception as re:
+                                logger.error(f"❌ Page reload recovery failed for period {db_market_period}: {re}")
                     
                         if not tab_clicked:
                             logger.warning(f"⚠️ Could not switch to period {db_market_period}, skipping")
