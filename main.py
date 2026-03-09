@@ -40,6 +40,29 @@ def _get_log_path():
     return os.path.join(log_dir, 'sofascore_odds.log')
 
 
+def _get_oddsportal_log_path():
+    """Build the OddsPortal-specific log file path.
+    
+    Structure: logs/oddsportal/{MM_MonthName}/week_{N}/oddsportal.log
+    Mirrors the same month/week logic as the main log.
+    """
+    from timezone_utils import get_local_now_aware
+    
+    MONTH_NAMES = [
+        '', '01_January', '02_February', '03_March', '04_April',
+        '05_May', '06_June', '07_July', '08_August',
+        '09_September', '10_October', '11_November', '12_December'
+    ]
+    
+    now = get_local_now_aware()
+    month_folder = MONTH_NAMES[now.month]
+    week_number = min((now.day - 1) // 7 + 1, 4)
+    
+    log_dir = os.path.join('logs', 'oddsportal', month_folder, f'week_{week_number}')
+    os.makedirs(log_dir, exist_ok=True)
+    return os.path.join(log_dir, 'oddsportal.log')
+
+
 class _WeeklyRotatingFileHandler(logging.FileHandler):
     """File handler that auto-rotates into weekly/monthly directories.
     
@@ -48,12 +71,13 @@ class _WeeklyRotatingFileHandler(logging.FileHandler):
     directory. Cost is one lightweight date comparison per log line.
     """
     
-    def __init__(self, **kwargs):
-        self._current_path = _get_log_path()
+    def __init__(self, path_fn=None, **kwargs):
+        self._path_fn = path_fn or _get_log_path
+        self._current_path = self._path_fn()
         super().__init__(self._current_path, **kwargs)
     
     def emit(self, record):
-        new_path = _get_log_path()
+        new_path = self._path_fn()
         if new_path != self._current_path:
             # Week/month changed — rotate to new file
             self.close()
@@ -91,6 +115,20 @@ def setup_logging():
     root_logger.setLevel(getattr(logging, Config.LOG_LEVEL))
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
+    
+    # Dedicated OddsPortal log file — routes oddsportal_scraper output to a
+    # separate logs/oddsportal/{month}/{week}/oddsportal.log file.
+    # propagate=True so the root handler (console + main log) still gets messages.
+    op_file_handler = _WeeklyRotatingFileHandler(
+        path_fn=_get_oddsportal_log_path,
+        mode='a', encoding='utf-8'
+    )
+    op_file_handler.setLevel(getattr(logging, Config.LOG_LEVEL))
+    op_file_handler.setFormatter(formatter)
+    
+    op_logger = logging.getLogger('oddsportal_scraper')
+    op_logger.addHandler(op_file_handler)
+    # propagate=True (default) — messages still flow up to console + main log file
     
     # Force immediate flush for console output
     console_handler.flush()

@@ -3,6 +3,7 @@ import logging
 import random
 import time
 import os
+import uuid
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
 
@@ -137,7 +138,7 @@ class OddsPortalScraper:
         s = unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8')
         s = s.lower()
         # Remove team suffixes/prefixes that vary between Sofa and OP
-        for noise in ["fc", "cf", "ud"]:
+        for noise in ["fc", "cf", "ud", "afc", "rc", "as", "sc"]:
             if f" {noise}" in s or s.startswith(f"{noise} "):
                 s = s.replace(noise, "")
         # Remove all non-alphanumeric characters, keep space
@@ -170,7 +171,9 @@ class OddsPortalScraper:
             if getattr(Config, 'PROXY_USERNAME', None) and getattr(Config, 'PROXY_PASSWORD', None):
                 launch_args["proxy"]["username"] = Config.PROXY_USERNAME
                 launch_args["proxy"]["password"] = Config.PROXY_PASSWORD
-            logger.info("🛡️ OddsPortalScraper: Launching Playwright with PROXY configuration")
+            # Track session restarts for retry logging
+            self._session_id = uuid.uuid4().hex[:8]
+            logger.info(f"🛡️ OddsPortalScraper: Launching Playwright with PROXY (session-{self._session_id})")
 
         self.browser = await self.playwright.chromium.launch(**launch_args)
         
@@ -214,7 +217,42 @@ class OddsPortalScraper:
             window.chrome = { runtime: {} };
         """)
         
+        # Intercept and block unnecessary resources (toggleable via .env)
+        if getattr(Config, 'ODDSPORTAL_BLOCK_RESOURCES', True):
+            await self.context.route("**/*", self._intercept_route)
+            logger.info("🚫 Resource blocking ENABLED (ODDSPORTAL_BLOCK_RESOURCES=true)")
+        else:
+            logger.info("✅ Resource blocking DISABLED (ODDSPORTAL_BLOCK_RESOURCES=false)")
+        
         logger.info("✅ OddsPortalScraper: Browser started")
+
+    async def _intercept_route(self, route):
+        """Intercept network requests to block heavy assets and known trackers to save proxy bandwidth."""
+        request = route.request
+        url = request.url.lower()
+        
+        # 1. Block heavy unused resource types. 
+        # Only block image to be safe. Sometimes fonts/media blocking can stall modern JS frameworks from firing DOMContentLoaded.
+        if request.resource_type in ["image", "media"]:
+            await route.abort()
+            return
+            
+        # 2. Block known tracking / 3rd party domains
+        blocked_domains = [
+            "cookielaw.org",
+            "googletagmanager.com",
+            "google-analytics.com",
+            "clarity.ms",
+            "surveygizmo.eu",
+            "onetrust.com",
+            "googlesyndication.com"
+        ]
+        
+        if any(d in url for d in blocked_domains):
+            await route.abort()
+            return
+            
+        await route.continue_()
 
     async def stop(self):
         """Stop the browser session."""
@@ -305,12 +343,25 @@ class OddsPortalScraper:
             
             # Check if already active
             testid = await target_tab.get_attribute('data-testid')
-            if testid == 'sub-nav-active-tab':
-                logger.info(f"ℹ️ Period tab '{period_display_name}' is already active")
-                return True
-            
-            logger.info(f"🖱️ Clicking period tab: '{period_display_name}'")
-            await target_tab.click()
+            is_active = (testid == 'sub-nav-active-tab')
+
+            if is_active:
+                logger.info(f"ℹ️ Period tab '{period_display_name}' is already active. Verifying content...")
+                content_ready = await page.evaluate(r"""
+                    () => {
+                        const hasOdds = document.querySelectorAll('div.odds-cell').length > 0;
+                        const hasOU = document.querySelectorAll('div[data-testid="over-under-collapsed-row"]').length > 0;
+                        const hasAH = document.querySelectorAll('div[data-testid="asian-handicap-collapsed-row"]').length > 0;
+                        return hasOdds || hasOU || hasAH;
+                    }
+                """)
+                if content_ready:
+                    return True
+                logger.info("  ⏳ Period tab is active but content is missing. Waiting for render...")
+
+            if not is_active:
+                logger.info(f"🖱️ Clicking period tab: '{period_display_name}'")
+                await target_tab.click()
             
             # Step 3: Wait for odds table to update (values to change)
             max_wait_s = 10
@@ -334,17 +385,22 @@ class OddsPortalScraper:
                         if (oddsVal) return oddsVal;
                         const ouVal = getFirstVisibleText('div[data-testid="over-under-collapsed-row"] p');
                         if (ouVal) return ouVal;
+                        const ahVal = getFirstVisibleText('div[data-testid="asian-handicap-collapsed-row"] p');
+                        if (ahVal) return ahVal;
                         return null;
                     }
                 """)
                 
-                if new_value and new_value != ref_value:
+                if new_value and (ref_value is None or new_value != ref_value):
                     logger.info(f"✅ Odds table updated after {elapsed:.1f}s: {ref_value} → {new_value}")
                     table_changed = True
                     break
             
             if not table_changed:
-                logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value}). Period data may be identical or tab click failed.")
+                if is_active:
+                    logger.warning(f"⚠️ Period tab '{period_display_name}' was already active but content never rendered after {max_wait_s}s.")
+                else:
+                    logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value}). Period data may be identical or tab click failed.")
             
             # Brief extra settle to let any remaining DOM mutations finish
             await asyncio.sleep(0.5)
@@ -402,12 +458,26 @@ class OddsPortalScraper:
                 
             # Check if active
             is_active = await target_tab.evaluate("el => el.classList.contains('active-odds')")
+            
             if is_active:
-                logger.info(f"ℹ️ Market group tab '{group_display_name}' is already active")
-                return True
-                
-            logger.info(f"🖱️ Clicking market group tab: '{group_display_name}'")
-            await target_tab.click()
+                logger.info(f"ℹ️ Market group tab '{group_display_name}' is already active. Verifying content...")
+                # Even if active, the content might be loading (especially after a fragment/hash fallback)
+                # We check if there are any odds rows or over/under rows visible.
+                content_ready = await page.evaluate(r"""
+                    () => {
+                        const hasOdds = document.querySelectorAll('div.odds-cell').length > 0;
+                        const hasOU = document.querySelectorAll('div[data-testid="over-under-collapsed-row"]').length > 0;
+                        const hasAH = document.querySelectorAll('div[data-testid="asian-handicap-collapsed-row"]').length > 0;
+                        return hasOdds || hasOU || hasAH;
+                    }
+                """)
+                if content_ready:
+                    return True
+                logger.info("  ⏳ Tab is active but content is missing. Waiting for render...")
+
+            if not is_active:
+                logger.info(f"🖱️ Clicking market group tab: '{group_display_name}'")
+                await target_tab.click()
             
             # Wait for table to update
             max_wait_s = 10
@@ -431,17 +501,23 @@ class OddsPortalScraper:
                         if (oddsVal) return oddsVal;
                         const ouVal = getFirstVisibleText('div[data-testid="over-under-collapsed-row"] p');
                         if (ouVal) return ouVal;
+                        const ahVal = getFirstVisibleText('div[data-testid="asian-handicap-collapsed-row"] p');
+                        if (ahVal) return ahVal;
                         return null;
                     }
                 """)
                 
-                if new_value and new_value != ref_value:
+                # If ref_value was None (e.g. initial load failure), any valid new_value is a "change"
+                if new_value and (ref_value is None or new_value != ref_value):
                     logger.info(f"✅ Odds table updated after {elapsed:.1f}s: {ref_value} → {new_value}")
                     table_changed = True
                     break
             
             if not table_changed:
-                logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value})")
+                if is_active:
+                    logger.warning(f"⚠️ Tab '{group_display_name}' was already active but content never rendered after {max_wait_s}s.")
+                else:
+                    logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value})")
                 
             await asyncio.sleep(0.5)
             return table_changed
@@ -689,28 +765,133 @@ class OddsPortalScraper:
             try:
                 response = await page.goto(initial_url, wait_until="domcontentloaded", timeout=30000)
             except Exception as e:
-                logger.warning(f"⚠️ Initial goto timed out or struggled, but continuing to check for odds rows: {e}")
+                error_str = str(e).lower()
+                # If the page navigation completely failed (timeout or network error), fast fail immediately
+                if any(err in error_str for err in ["err_timed_out", "err_connection", "err_name_not_resolved"]):
+                    logger.error(f"🚨 FAST FAIL (Network): Page navigation completely failed: {str(e).split(chr(10))[0]}")
+                    await page.close()
+                    return None
+                # Non-fatal: domcontentloaded might have partially loaded, let Check #1 and #2 decide
+                logger.warning(f"⚠️ Initial goto struggled, but continuing to check for odds: {e}")
             
             t_goto = time.perf_counter()
             log_timing(f"Match page load ({initial_url}) took {t_goto - t0:.2f}s")
-                
-            # Wait for bookmaker rows to load
+            
+            # --- Fast Fail & Smart Wait Implementation ---
+            fast_fail_event = asyncio.Event()
+            fast_fail_reason = "Unknown"
+
+            async def on_fast_fail_signal(reason: str):
+                nonlocal fast_fail_reason
+                fast_fail_reason = reason
+                fast_fail_event.set()
+
+            # Fast Fail Check 1: Quickly detect Cloudflare blocks via Title
             try:
-                await page.wait_for_selector('div.border-black-borders.flex.h-9', timeout=60000)
+                page_title = await page.title()
+                if any(blocked in page_title for blocked in ["Access Denied", "Just a moment...", "Attention Required!", "Security check", "Cloudflare"]):
+                    logger.error(f"🚨 FAST FAIL (Title): Proxy IP blocked by Cloudflare. Title: '{page_title}'")
+                    await page.close()
+                    return None
             except Exception:
-                page_title = "Unknown"
+                pass
+
+            # Fast Fail Check 2: Event-driven detection of unrendered SPA content
+            # Expose a function for the browser to signal failure back to Python
+            await page.expose_function('__signalFastFail', on_fast_fail_signal)
+
+            # Inject MutationObserver to watch the event-container
+            await page.evaluate("""
+                () => {
+                    const EMPTY_TIMEOUT_MS = 15000; // 15s of empty container = fast fail
+                    const container = document.querySelector('div.event-container');
+                    
+                    if (!container) {
+                        // If container is missing entirely after navigation, give it a bit of head start
+                        // but schedule a fail if it never appears.
+                        setTimeout(() => window.__signalFastFail("Missing event-container"), EMPTY_TIMEOUT_MS);
+                        return;
+                    }
+                    
+                    // If container already has real content (odds rows), do nothing
+                    // Check for actual child elements, ignoring the Vue placeholder comment
+                    const isActuallyEmpty = () => {
+                        return container.children.length === 0 || 
+                               (container.children.length === 1 && container.innerHTML.trim() === '<!---->');
+                    };
+
+                    if (!isActuallyEmpty()) {
+                        return; // Already loaded!
+                    }
+                    
+                    // Container is empty: start a timer to fail if it stays empty
+                    let failTimer = setTimeout(() => {
+                        window.__signalFastFail("Event container stayed empty (SPA render failure)");
+                    }, EMPTY_TIMEOUT_MS);
+                    
+                    // Watch for mutations — if real content appears, cancel the fail timer
+                    const observer = new MutationObserver((mutations) => {
+                        if (!isActuallyEmpty()) {
+                            clearTimeout(failTimer);
+                            observer.disconnect();
+                        }
+                    });
+                    
+                    observer.observe(container, { childList: true, subtree: true });
+                }
+            """)
+
+            # Race: wait for rows (success) vs fast fail event (timeout/error)
+            async def wait_for_rows():
                 try:
-                    page_title = await page.title()
-                except:
+                    await page.wait_for_selector('div.border-black-borders.flex.h-9', timeout=60000)
+                    return "success"
+                except asyncio.TimeoutError:
+                    return "timeout"
+                except Exception as e:
+                    return f"error: {str(e)}"
+
+            async def wait_for_fail():
+                await fast_fail_event.wait()
+                return "fast_fail"
+
+            # Create tasks
+            rows_task = asyncio.create_task(wait_for_rows())
+            fail_task = asyncio.create_task(wait_for_fail())
+
+            done, pending = await asyncio.wait(
+                [rows_task, fail_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # Cancel whichever task is still running
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
                     pass
+
+            # Determine results
+            finished_task = done.pop()
+            task_result = finished_task.result()
+
+            if task_result != "success":
+                # Failure path (either fast fail or 60s timeout)
+                page_title = "Unknown"
+                try: page_title = await page.title()
+                except: pass
                 
-                logger.error(f"❌ Match page did not load bookie rows within 60s timeout.")
+                if task_result == "fast_fail":
+                    logger.error(f"🚨 FAST FAIL: {fast_fail_reason}")
+                else:
+                    logger.error(f"❌ Match page failure: {task_result}")
+                
                 logger.error(f"   URL: {initial_url}")
                 logger.error(f"   Title: {page_title}")
                 
                 if self.debug_dir:
                     try:
-                        import os
                         fail_path = os.path.join(self.debug_dir, "match_load_failure.png")
                         await page.screenshot(path=fail_path, full_page=True)
                         fail_html = os.path.join(self.debug_dir, "match_load_failure.html")
@@ -720,7 +901,9 @@ class OddsPortalScraper:
                     except Exception as se:
                         logger.warning(f"⚠️ Failed to save failure debug info: {se}")
                 
+                await page.close()
                 return None
+            # --- End Fast Fail & Smart Wait ---
             
             t_wait = time.perf_counter()
             log_timing(f"Waiting for bookmaker rows selector took {t_wait - t_goto:.2f}s")
@@ -752,7 +935,6 @@ class OddsPortalScraper:
             # Save debug screenshot for the initial page load
             if self.debug_dir:
                 try:
-                    import os
                     screenshot_path = os.path.join(self.debug_dir, "match_page_loaded.png")
                     await page.screenshot(path=screenshot_path, full_page=True)
                     html_path = os.path.join(self.debug_dir, "match_page_loaded.html")
@@ -780,8 +962,20 @@ class OddsPortalScraper:
                 if group_idx > 0 and group_key:
                     from oddsportal_config import OP_GROUPS_DISPLAY
                     tab_label = OP_GROUPS_DISPLAY.get(group_key, group_key)
-                    clicked = await self._click_market_group_tab(page, tab_label)
-                    if not clicked:
+                    success = await self._click_market_group_tab(page, tab_label)
+                    
+                    if not success:
+                        logger.warning(f"⚠️ Tab click failed for {group_key}, trying fragment navigation fallback...")
+                        try:
+                            # Directly update the URL fragment — this often forces the SPA to sync
+                            await page.evaluate(f"window.location.hash = '#{group_key}'")
+                            await asyncio.sleep(1)
+                            # One more try at clicking/waiting
+                            success = await self._click_market_group_tab(page, tab_label)
+                        except Exception as fe:
+                            logger.error(f"❌ Fallback navigation failed for {group_key}: {fe}")
+                    
+                    if not success:
                         logger.warning(f"⚠️ Could not switch to group {group_key}, skipping")
                         continue
                 
@@ -906,6 +1100,44 @@ class OddsPortalScraper:
             
             total_bookies = sum(len(e.bookie_odds) for e in match_data.extractions)
             logger.info(f"✅ Completed scraping {match_data.home_team} vs {match_data.away_team}: {len(match_data.extractions)} periods, {total_bookies} bookie entries total")
+            
+            # ── Structured Recap Log ──────────────────────────────────────
+            match_label = f"{match_data.home_team} vs {match_data.away_team}"
+            logger.info(f"📋 ── ODDS RECAP: {match_label} ──")
+            for ext in match_data.extractions:
+                handicap_str = f" [{ext.bookie_odds[0].handicap}]" if ext.bookie_odds and getattr(ext.bookie_odds[0], 'handicap', None) else ""
+                logger.info(f"   📌 {ext.market_group} | {ext.market_period} | {ext.market_name}{handicap_str}")
+                
+                # Determine column labels based on market group
+                is_ou = ext.market_group == "Over/Under"
+                is_ah = ext.market_group == "Asian Handicap"
+                if is_ou:
+                    col_labels = ("Over", "Under")
+                elif is_ah:
+                    col_labels = ("1", "2")
+                else:
+                    col_labels = ("1", "X", "2")
+                
+                for b in ext.bookie_odds:
+                    if is_ou or is_ah:
+                        current = f"{col_labels[0]}={b.odds_1 or '-'} {col_labels[-1]}={b.odds_2 or '-'}"
+                        opening = f"{col_labels[0]}={b.initial_odds_1 or '-'} {col_labels[-1]}={b.initial_odds_2 or '-'}"
+                    else:
+                        current = f"1={b.odds_1 or '-'} X={b.odds_x or '-'} 2={b.odds_2 or '-'}"
+                        opening = f"1={b.initial_odds_1 or '-'} X={b.initial_odds_x or '-'} 2={b.initial_odds_2 or '-'}"
+                    logger.info(f"      {b.name}: {current} (open: {opening})")
+                
+                # Betfair recap
+                if ext.betfair:
+                    bf = ext.betfair
+                    if is_ou or is_ah:
+                        back_str = f"{col_labels[0]}={bf.back_1 or '-'} {col_labels[-1]}={bf.back_2 or '-'}"
+                        lay_str  = f"{col_labels[0]}={bf.lay_1 or '-'} {col_labels[-1]}={bf.lay_2 or '-'}"
+                    else:
+                        back_str = f"1={bf.back_1 or '-'} X={bf.back_x or '-'} 2={bf.back_2 or '-'}"
+                        lay_str  = f"1={bf.lay_1 or '-'} X={bf.lay_x or '-'} 2={bf.lay_2 or '-'}"
+                    logger.info(f"      Betfair Back: {back_str} | Lay: {lay_str}")
+            logger.info(f"📋 ── END RECAP: {match_label} ──")
             
             return match_data
             
@@ -1146,59 +1378,68 @@ class OddsPortalScraper:
             logger.error(f"Error in _extract_opening_odds_for_bookie({bookie_name}): {e}")
             return None
 
+
     async def _extract_opening_odds_betfair(self, page: Page) -> Optional[Dict[str, Optional[str]]]:
         """
         Extract opening/initial odds for Betfair Exchange by hovering over its odds cells.
-        
-        Betfair Exchange cells use a different structure (data-v-1580f19d) but the same
-        tooltip pattern. The section is identified by data-testid='betting-exchanges-section'.
-        
+
+        Uses the same retry pattern as _extract_opening_odds_for_bookie:
+          - 3 attempts per cell with escalating wait (3s → 4s → 5s)
+          - Mouse reset to (0, 0) between retries so Vue.js sees a fresh mouseenter
+          - Tooltip detach wait between cells to avoid stale DOM interference
+
+        A 500ms pre-wait is applied after finding the exchange section to let Vue.js
+        fully render all columns (including the X/Draw column) before committing to a
+        2-way or 3-way container count.
+
         Returns:
-            Dict with keys 'back_1', 'back_x', 'back_2' for opening back odds.
+            Dict with keys 'back_1'/'back_x'/'back_2' and 'lay_1'/'lay_x'/'lay_2'
+            mapping to opening odds strings, or None on failure.
         """
         try:
             exchange_section = await page.query_selector("div[data-testid='betting-exchanges-section']")
             if not exchange_section:
                 logger.warning("⚠️ Betfair Exchange section not found for hover extraction")
                 return None
-            
+
+            # FIX 2: Give Vue.js time to fully render all columns (incl. the X/Draw column)
+            # before counting containers, to avoid a race condition that silently drops back_x/lay_x.
+            await page.wait_for_timeout(500)
+
             # Get all odd containers in the exchange section
-            # Back odds are the first 2 (2-way) or 3 (3-way) containers
             odd_containers = await exchange_section.query_selector_all("div[data-testid='odd-container']")
             if not odd_containers:
                 logger.warning("⚠️ No odd containers found in Betfair Exchange section")
                 return None
-            
-            # Determine if 2-way or 3-way market
+
+            # Determine if 2-way or 3-way market based on rendered container count
             is_three_way = len(odd_containers) >= 6
-            back_count = 3 if is_three_way else 2
-            
-            # Identify Back and Lay containers
+            logger.debug(f"  Betfair: {len(odd_containers)} containers detected -> {'3-way' if is_three_way else '2-way'}")
+
             if is_three_way:
                 # Indices 0,1,2 = Back; 3,4,5 = Lay
                 back_containers = odd_containers[:3]
                 lay_containers = odd_containers[3:6]
                 choice_keys_back = ['back_1', 'back_x', 'back_2']
-                choice_keys_lay = ['lay_1', 'lay_x', 'lay_2']
+                choice_keys_lay  = ['lay_1', 'lay_x', 'lay_2']
             else:
                 # Indices 0,1 = Back; 2,3 = Lay
                 back_containers = odd_containers[:2]
-                lay_containers = odd_containers[2:4]
+                lay_containers  = odd_containers[2:4]
                 choice_keys_back = ['back_1', 'back_2']
-                choice_keys_lay = ['lay_1', 'lay_2']
-            
+                choice_keys_lay  = ['lay_1', 'lay_2']
+
             result: Dict[str, Optional[str]] = {}
-            
-            # Combine for iteration
+
             all_targets = []
             for i, c in enumerate(back_containers):
                 all_targets.append((choice_keys_back[i], c))
             for i, c in enumerate(lay_containers):
                 all_targets.append((choice_keys_lay[i], c))
-            
+
             logger.info(f"🖱️ Hovering {len(all_targets)} Betfair cells (Back & Lay)")
 
-            # Dismiss overlays before starting
+            # Dismiss overlays before starting the hover loop
             await page.evaluate("""
                 () => {
                     document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove());
@@ -1211,104 +1452,122 @@ class OddsPortalScraper:
 
             for choice, container in all_targets:
                 t_hover_bf = time.perf_counter()
-                try:
-                    hover_target = await container.query_selector("div.flex-center.flex-col.font-bold")
-                    if not hover_target:
-                        hover_target = container
+                max_retries = 3
+                got_value = False
 
-                    await hover_target.scroll_into_view_if_needed()
-                    # Scroll window up to avoid sticky header
-                    await page.evaluate("window.scrollBy(0, -150)")
-                    await page.wait_for_timeout(200)
-
-                    await page.evaluate("""
-                        () => {
-                            document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove());
-                            const onetrust = document.getElementById('onetrust-banner-sdk');
-                            if (onetrust) onetrust.remove();
-                            const shade = document.querySelector('.onetrust-pc-dark-filter');
-                            if (shade) shade.remove();
-                        }
-                    """)
-                    
-                    # Humanized mouse movement (wiggle)
-                    bbox = await hover_target.bounding_box()
-                    if bbox:
-                        cx = bbox['x'] + bbox['width'] / 2
-                        cy = bbox['y'] + bbox['height'] / 2
-                        await page.mouse.move(cx - 15, cy - 15)
-                        await page.wait_for_timeout(50)
-                        await page.mouse.move(cx, cy)
-                        await page.wait_for_timeout(50)
-
+                for attempt in range(max_retries):
                     try:
-                        await hover_target.hover(force=True, timeout=2000)
-                    except Exception:
-                        pass
-                        
-                    # Fire JS hover events to trigger Vue.js tooltip
-                    await page.evaluate("""
-                        (el) => {
-                            el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
-                            el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));
-                        }
-                    """, hover_target)
-                    
-                    try:
+                        hover_target = await container.query_selector("div.flex-center.flex-col.font-bold")
+                        if not hover_target:
+                            hover_target = container
+
+                        await hover_target.scroll_into_view_if_needed()
+                        await page.evaluate("window.scrollBy(0, -150)")
+                        await page.wait_for_timeout(200)
+
+                        # Clear overlays before every attempt
+                        await page.evaluate("""
+                            () => {
+                                document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove());
+                                const onetrust = document.getElementById('onetrust-banner-sdk');
+                                if (onetrust) onetrust.remove();
+                                const shade = document.querySelector('.onetrust-pc-dark-filter');
+                                if (shade) shade.remove();
+                            }
+                        """)
+
+                        # Humanized mouse movement (wiggle) to trigger Vue.js mouseenter
+                        bbox = await hover_target.bounding_box()
+                        if bbox:
+                            cx = bbox['x'] + bbox['width'] / 2
+                            cy = bbox['y'] + bbox['height'] / 2
+                            await page.mouse.move(cx - 15, cy - 15)
+                            await page.wait_for_timeout(50)
+                            await page.mouse.move(cx, cy)
+                            await page.wait_for_timeout(50)
+
+                        try:
+                            await hover_target.hover(force=True, timeout=2000)
+                        except Exception:
+                            pass
+
+                        # Fire JS hover events to guarantee Vue.js tooltip trigger
+                        await page.evaluate("""
+                            (el) => {
+                                el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new MouseEvent('mouseover',  {bubbles: true, cancelable: true}));
+                            }
+                        """, hover_target)
+
+                        # FIX 1: Escalating wait per attempt (3s → 4s → 5s)
+                        wait_ms = 3000 + (attempt * 1000)
                         odds_movement_h3 = await page.wait_for_selector(
-                            "h3:has-text('Odds movement')", state="visible", timeout=4000
+                            "h3:has-text('Odds movement')", state="visible", timeout=wait_ms
                         )
-                        # Verify tooltip is actually visible before parsing
+
+                        # Extra visibility check — tooltip can be in DOM but still animating in
                         is_visible = await page.is_visible("h3:has-text('Odds movement')")
                         if not is_visible:
-                            logger.warning(f"  ⚠️ Betfair {choice}: tooltip found in DOM but NOT visible")
+                            logger.warning(f"  ⚠️ Betfair {choice}: tooltip in DOM but NOT visible (attempt {attempt + 1})")
+                            if attempt < max_retries - 1:
+                                await page.mouse.move(0, 0)
+                                await page.wait_for_timeout(500)
+                                continue
                             result[choice] = None
-                            await page.mouse.move(0, 0)
-                            await page.wait_for_timeout(300)
-                            continue
-                        modal_wrapper = await odds_movement_h3.evaluate_handle(
-                            "node => node.parentElement"
-                        )
+                            break
+
+                        modal_wrapper = await odds_movement_h3.evaluate_handle("node => node.parentElement")
                         modal_el = modal_wrapper.as_element()
                         if modal_el:
                             html = await modal_el.inner_html()
                             opening_val = self._parse_opening_odds_from_modal_html(html)
-                            
+
                             if self.debug_dir:
                                 try:
-                                    import os
                                     debug_path = os.path.join(self.debug_dir, f"modal_Betfair_{choice}.html")
                                     with open(debug_path, "w", encoding="utf-8") as f:
                                         f.write(html)
                                 except Exception as e:
                                     logger.warning(f"⚠️ Failed to save modal HTML: {e}")
+
                             result[choice] = opening_val
-                            logger.debug(f"  Betfair {choice}: opening={opening_val}")
+                            logger.debug(f"  Betfair {choice}: opening={opening_val} (attempt {attempt + 1})")
+                            got_value = True
                         else:
                             result[choice] = None
+
                     except Exception:
+                        if attempt < max_retries - 1:
+                            logger.debug(f"  Betfair {choice}: modal not found (attempt {attempt + 1}/{max_retries}), retrying...")
+                            await page.mouse.move(0, 0)
+                            await page.wait_for_timeout(500)
+                            continue
                         result[choice] = None
-                    
+
+                    # Dismiss tooltip and wait for it to fully detach before the next cell
                     await page.mouse.move(0, 0)
                     await page.wait_for_timeout(300)
-                    
-                except Exception as e:
-                    logger.warning(f"  Error hovering Betfair cell {choice}: {e}")
-                    result[choice] = None
-                
-                if result.get(choice) is not None:
+                    try:
+                        await page.wait_for_selector(
+                            "h3:has-text('Odds movement')", state="detached", timeout=2000
+                        )
+                    except Exception:
+                        pass
+                    break  # exit retry loop (success or final attempt done)
+
+                if got_value:
                     log_timing(f"Hovering and extracting Betfair '{choice}' opening odd took {time.perf_counter() - t_hover_bf:.2f}s")
                 else:
                     log_timing(f"Failed to extract Betfair '{choice}' opening odd after {time.perf_counter() - t_hover_bf:.2f}s")
-            
+
             # Log summary
             if result:
                 back_str = f"Back: 1={result.get('back_1')} X={result.get('back_x')} 2={result.get('back_2')}"
-                lay_str = f"Lay: 1={result.get('lay_1')} X={result.get('lay_x')} 2={result.get('lay_2')}"
+                lay_str  = f"Lay: 1={result.get('lay_1')} X={result.get('lay_x')} 2={result.get('lay_2')}"
                 logger.info(f"✅ Betfair opening odds: {back_str} | {lay_str}")
-            
+
             return result if result else None
-            
+
         except Exception as e:
             logger.error(f"Error in _extract_opening_odds_betfair: {e}")
             return None
@@ -1867,7 +2126,27 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
                     target_url = await scraper.find_match_url(league_url, home_team, away_team)
                     
                 if target_url:
-                    return await scraper.scrape_match(target_url, sport=sport)
+                    data = await scraper.scrape_match(target_url, sport=sport)
+                    
+                    # Session-aware retry: if scrape failed (likely timeout/bad IP),
+                    # restart browser with a fresh proxy session and retry once.
+                    if data is None:
+                        logger.warning(f"🔄 scrape_match_sync: No data — restarting browser with new proxy session and retrying...")
+                        await scraper.stop()
+                        await scraper.start()  # Fresh session ID = new IP
+                        
+                        # Re-find match URL if needed
+                        retry_url = target_url
+                        if not retry_url and league_url and home_team and away_team:
+                            retry_url = await scraper.find_match_url(league_url, home_team, away_team)
+                        if retry_url:
+                            data = await scraper.scrape_match(retry_url, sport=sport)
+                            if data:
+                                logger.info(f"✅ scrape_match_sync: RETRY SUCCEEDED with new session-{scraper._session_id}")
+                            else:
+                                logger.warning("⚠️ scrape_match_sync: Retry also returned no data")
+                    
+                    return data
                 return None
             finally:
                 await scraper.stop()
@@ -1942,6 +2221,32 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                                     task_sport = op_info.get('sport')
                             
                             data = await scraper.scrape_match(match_url, sport=task_sport)
+                            
+                            # Session-aware retry: if scrape returned None (likely timeout),
+                            # restart browser with a fresh proxy IP and retry once.
+                            if data is None:
+                                logger.warning(f"🔄 OddsPortal [{i+1}/{len(tasks)}]: Scrape returned no data — restarting browser with new proxy session and retrying...")
+                                await scraper.stop()
+                                await scraper.start()  # Generates a fresh session ID = new IP
+                                
+                                # Re-find match URL (cache may still have it)
+                                retry_url = match_url
+                                if not retry_url and season_id:
+                                    retry_url = scraper.find_match_url_from_cache(
+                                        season_id, task['home_team'], task['away_team']
+                                    )
+                                if not retry_url:
+                                    retry_url = await scraper.find_match_url(
+                                        task['league_url'], task['home_team'], task['away_team'],
+                                        season_id=season_id
+                                    )
+                                if retry_url:
+                                    data = await scraper.scrape_match(retry_url, sport=task_sport)
+                                    if data:
+                                        logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: RETRY SUCCEEDED with new session-{scraper._session_id}")
+                                    else:
+                                        logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Retry also returned no data")
+                            
                             results[event_id] = data
                             if data:
                                 logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: Got {len(data.extractions)} period(s), {len(data.bookie_odds)} bookies")
@@ -1975,3 +2280,47 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
         import traceback
         logger.error(f"❌ Error in scrape_multiple_matches_sync: {e}\n{traceback.format_exc()}")
         return results
+
+def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None) -> Dict[int, Optional[MatchOddsData]]:
+    """
+    Distribute scrape tasks across multiple concurrent Playwright browsers.
+    If num_browsers == 1, delegates directly to scrape_multiple_matches_sync.
+    Otherwise, splits tasks and processes them in a ThreadPoolExecutor.
+    """
+    if not tasks:
+        return {}
+        
+    if num_browsers <= 1 or len(tasks) == 1:
+        return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir)
+        
+    logger.info(f"🚀 OddsPortal Parallel: Splitting {len(tasks)} tasks across {num_browsers} browsers")
+    
+    # Determine chunks (simple round-robin distribution to balance leagues)
+    chunks = [[] for _ in range(num_browsers)]
+    for i, task in enumerate(tasks):
+        chunks[i % num_browsers].append(task)
+        
+    # Remove empty chunks if tasks < num_browsers
+    chunks = [c for c in chunks if c]
+    
+    all_results = {}
+    
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    with ThreadPoolExecutor(max_workers=len(chunks)) as executor:
+        future_to_chunk = {
+            executor.submit(scrape_multiple_matches_sync, chunk, debug_dir): i 
+            for i, chunk in enumerate(chunks)
+        }
+        
+        for future in as_completed(future_to_chunk):
+            chunk_idx = future_to_chunk[future]
+            try:
+                chunk_result = future.result()
+                all_results.update(chunk_result)
+                logger.info(f"✅ OddsPortal Parallel: Browser {chunk_idx + 1}/{len(chunks)} completed successfully")
+            except Exception as e:
+                import traceback
+                logger.error(f"❌ OddsPortal Parallel: Browser {chunk_idx + 1} failed: {e}\n{traceback.format_exc()}")
+                
+    return all_results

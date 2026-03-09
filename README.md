@@ -10,7 +10,7 @@ Sistema automatizado de monitoreo y predicción de odds de SofaScore que:
 - **Descubre eventos deportivos** automáticamente cada 2 horas
 - **Notifica por Telegram** sobre juegos que empiezan en los próximos 30 minutos
 - **Predice resultados** basado en patrones históricos de odds
-- **Extrae odds inteligentemente** solo en momentos clave (30 y 5 minutos antes)
+- **Extrae odds inteligentemente** solo en momentos clave (30 y 0 minutos antes)
 - **Recolecta resultados** de juegos terminados
 - **Limpieza Automática**: Elimina eventos inexistentes (404) y cancelados automáticamente
 - **Recuperación de Datos**: Sistema de backfill para completar historial de resultados y odds
@@ -254,7 +254,7 @@ class AlertMatch:
 - **Ventana**: 30 minutos antes del inicio del juego
 - **Extracción Inteligente**: Solo obtiene odds finales en momentos clave:
   - **30 minutos antes**: Primera extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
-  - **5 minutos antes**: Última extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
+  - **0 minutos antes (Exactamente al iniciar)**: Última extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
 - **OddsPortal Workflow**: Si el evento tiene `season_id` mapeado, se lanza un navegador headless para extraer odds de múltiples bookies y volumen de Betfair.
 - **Eficiencia**: Evita extracciones innecesarias cuando odds no cambian significativamente
 
@@ -276,7 +276,7 @@ class AlertMatch:
 ### ✅ **Sistema de Corrección de Timestamps (v1.2.6 → v1.4.6)**
 - **Detección Automática**: Compara timestamps de la API con la base de datos
 - **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
-- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos antes)
+- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 0 minutos antes)
 - **Late Timestamp Correction (NUEVO v1.4.6)**: Verifica eventos recién iniciados para detectar correcciones tardías (Tennis: ventana de 60 min, otros deportes: única verificación a los 15 min)
 - **Precisión de Microsegundos**: Manejo robusto de comparaciones de tiempo eliminando problemas de microsegundos
 - **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
@@ -291,7 +291,7 @@ class AlertMatch:
 
 ### ✅ **v1.6.1 - Critical Scheduler Fixes (Febrero 2026)**
 - **Scheduler Indentation Fix**: Corregido bug crítico donde solo se procesaba 1 evento en la extracción de odds (de 50+ detectados) debido a error de indentación.
-- **Timing Logic Hardening**: Pre-cálculo de `minutes_until_start` antes de correcciones de timestamp para evitar "timing drift" y perder ventanas de alerta (30/5 min).
+- **Timing Logic Hardening**: Pre-cálculo de `minutes_until_start` antes de correcciones de timestamp para evitar "timing drift" y perder ventanas de alerta (30/0 min).
 - **Optimization**: Late Timestamp Correction ajustado para chequear otros deportes solo a los 15 minutos (vs múltiples chequeos), reduciendo carga API.
 
 ### ✅ **Auto-Migration System (v1.4) - NEW**
@@ -442,11 +442,11 @@ python main.py results-all
 1. **05:01**: Descubrimiento diario de eventos programados con odds (con filtrado de eventos inminentes/en juego)
 2. **00:00-22:00**: Descubrimiento cada 2 horas (dropping odds)
 3. **Cada 5 min**: Verificación de juegos próximos
-4. **Momentos Clave**: Extracción de odds a los 30 y 5 minutos
+4. **Momentos Clave**: Extracción de odds a los 30 y 0 minutos
 5. **Corrección de Timestamps**: Verificación y actualización automática (Tennis: 60 min, otros: 15 min después del inicio)
 6. **NBA In-Game Alerts**: Verifica juegos NBA que comenzaron hace 105-140 minutos para detectar el inicio del 4to cuarto
 7. **Análisis de Patrones**: Evaluación de alertas basadas en historial
-8. **Notificaciones Agrupadas por Evento**: Para cada evento en momentos clave (30 o 5 min), se envían alertas en orden:
+8. **Notificaciones Agrupadas por Evento**: Para cada evento en momentos clave (30 o 0 min), se envían alertas en orden:
    - **Odds Alert**: Todos los mercados disponibles (si pasa el filtro de bajo valor).
    - **H2H Streak Alert**: Análisis histórico head-to-head (solo a los 30 min, puede resucitar eventos filtrados).
    - **Dual Process Alert**: Predicciones Process 1 + Process 2 (solo para eventos `dropping_odds`).
@@ -505,7 +505,7 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 - **Predicciones**: Análisis de patrones históricos funcionando
 - **Notificaciones**: Funcionando con lógica inteligente y odds completas
 - **Descubrimiento**: Programado cada 2 horas
-- **Extracción de Odds**: Solo en momentos clave (30 y 5 minutos)
+- **Extracción de Odds**: Solo en momentos clave (30 y 0 minutos)
 - **Corrección de Timestamps**: Automática y configurable **NUEVO v1.2.6**
 - **Resultados**: Recolectándose automáticamente
 - **Monitoreo**: Sistema estable y eficiente 24/7
@@ -543,7 +543,7 @@ Si un evento actual tiene variaciones `Δ1: +0.15, ΔX: -0.08, Δ2: -0.07`, el s
 ### **Rendimiento**
 - **Descubrimiento**: ~2-3 segundos por ejecución
 - **Verificación Pre-Inicio**: ~1-2 segundos por ejecución
-- **Extracción de Odds**: Solo en momentos clave (30 y 5 minutos)
+- **Extracción de Odds**: Solo en momentos clave (30 y 0 minutos)
 - **Notificaciones**: ~500ms por mensaje
 - **Base de Datos**: Respuesta <100ms
 

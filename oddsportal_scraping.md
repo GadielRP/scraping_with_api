@@ -15,11 +15,13 @@
 8. [Sport-Specific Scraping Routes](#8-sport-specific-scraping-routes)
 9. [Fragment Navigation](#9-fragment-navigation)
 10. [Opening Odds via Hover](#10-opening-odds-via-hover)
-11. [Configuration Reference](#11-configuration-reference)
-12. [Libraries Used](#12-libraries-used)
-13. [Testing](#13-testing)
-14. [Edge Cases & Troubleshooting](#14-edge-cases--troubleshooting)
-15. [Performance Summary](#15-performance-summary)
+11. [Concurrency & Parallelism](#11-concurrency--parallelism)
+12. [Dedicated Logging](#12-dedicated-logging)
+13. [Configuration Reference](#13-configuration-reference)
+14. [Libraries Used](#14-libraries-used)
+15. [Testing](#15-testing)
+16. [Edge Cases & Troubleshooting](#16-edge-cases--troubleshooting)
+17. [Performance Summary](#17-performance-summary)
 
 ---
 
@@ -41,7 +43,8 @@ We only scrape OddsPortal for **tracked leagues** (configured in `oddsportal_con
 | `models.py` | Defines `OddsPortalLeagueCache` DB table |
 | `repository.py` | `MarketRepository.save_markets_from_oddsportal()` — saves per-period data with correct metadata |
 | `test_oddsportal_process.py` | Isolation test for a single event |
-| `.env` | Must have `PROXY_ENABLED=true` and `PROXY_*` vars |
+| `.env` | Must have `PROXY_ENABLED=true` and concurrency toggles (`ODDSPORTAL_PARALLEL_BROWSERS`) |
+| `logs/oddsportal/` | Dedicated directory for OddsPortal-only logs, mirrored by month/week |
 
 ---
 
@@ -213,11 +216,13 @@ This deletes any rows where `cached_date < today`. The cache resets fresh each d
 
 After navigating to the match page, `scrape_match()` runs these steps in order:
 
-1. **`domcontentloaded`** — proceeds as soon as HTML is parsed (30s max timeout). It does not wait for ads/JS bundles.
-2. **`wait_for_selector("div.border-black-borders.flex.h-9", 60s)`** — waits strictly for the exact class format used when the bookmaker data actually injects into the UI, ensuring it doesn't fire early on skeleton loaders. Max 60 seconds wait.
-3. **Cookie/Consent banner dismissal** — tries multiple selectors (`#onetrust-accept-btn-handler`, `button:has-text('I Accept')`, etc.).
-4. **`window.scrollTo(0, 500)`** — triggers any lazy-loaded elements.
-5. **Multi-period extraction loop** — iterates through configured periods via fragment navigation.
+1. **Immediate Network Failure Check** — Detects catastrophic navigation failures (e.g., `net::ERR_TIMED_OUT`, `net::ERR_CONNECTION_REFUSED`) during the initial `page.goto()`. If the network connection fails completely, the scraper returns `None` immediately without waiting for a browser-side timeout.
+2. **Fast Fail Check #1 (Title)** — Quickly checks the page title for known Cloudflare blocks (`"Access Denied"`, `"Just a moment..."`, `"Cloudflare"`). If blocked, returns `None` instantly.
+3. **Fast Fail Check #2 (MutationObserver)** — An event-driven listener (browser-side `MutationObserver` with a 15s timer) is injected to watch the `event-container` div. If the container remains empty (`<!---->`) for 15s, it signals Python to fail fast. If real content appears, the timer is cancelled.
+4. **Smart Wait Race** — The scraper races a 60s `wait_for_selector("div.border-black-borders.flex.h-9")` against the Fast Fail event. This ensures we either succeed as soon as data appears or fail as soon as we know it won't (usually within 15-18s total).
+5. **Cookie/Consent banner dismissal** — tries multiple selectors (`#onetrust-accept-btn-handler`, `button:has-text('I Accept')`, etc.).
+6. **`window.scrollTo(0, 500)`** — triggers any lazy-loaded elements.
+7. **Multi-period extraction loop** — iterates through configured periods via fragment navigation.
 
 > [!NOTE]
 > If a timeout occurs during `wait_for_selector`, the scraper automatically captures a screenshot and the HTML source to the specified `debug_dir` for investigation.
@@ -239,9 +244,9 @@ Each sport has a configured **scraping route** in `SPORT_SCRAPING_ROUTES` (`odds
 
 | Sport | Groups | Periods | Draw? | Extract Fn |
 |---|---|---|---|---|
-| Football | 1X2 <br> Over/Under | • Full Time, 1st Half <br> • Full Time | ✅ <br> ❌ | standard <br> over_under |
-| Basketball | Home/Away | • Full Time (inc. OT) | ❌ | standard |
-| Hockey | Home/Away | • Full Time (inc. OT) | ✅ | standard |
+| Football | 1X2 <br> Over/Under <br> Asian Handicap | • Full Time, 1st Half <br> • Full Time, 1st Half <br> • Full Time, 1st Half | ✅ <br> ❌ <br> ❌ | standard <br> over_under <br> asian_handicap |
+| Basketball | Home/Away <br> Over/Under <br> Asian Handicap | • Full Time (inc. OT), 1st Half <br> • Full Time (inc. OT), 1st Half <br> • Full Time (inc. OT), 1st Half | ❌ <br> ❌ <br> ❌ | standard <br> over_under <br> asian_handicap |
+| Hockey | Home/Away <br> Over/Under <br> Asian Handicap | • Full Time (inc. OT), 1st Half <br> • Full Time (inc. OT), 1st Half <br> • Full Time (inc. OT), 1st Half | ❌ <br> ❌ <br> ❌ | standard <br> over_under <br> asian_handicap |
 | American Football | Home/Away | • Full Time (inc. OT), 1st Half | ❌ | standard |
 
 ### Route Fallback
@@ -313,10 +318,19 @@ The first period is loaded with the initial `page.goto()`. Subsequent groups and
 - **Market Groups** (`"1X2"`, `"Over/Under"`): Clicked via the `ul.visible-links.odds-tabs li` tabs.
 - **Periods** (`"1st Half"`, `"Full Time"`): Clicked via the sub-tabs within `data-testid="kickoff-events-nav"`.
 
-The scraper snapshots a reference odds value (either a standard odds cell or an O/U cell) before clicking and waits (up to 10s) for the value to change, ensuring the SPA has finished re-rendering.
+### Smart Wait for Render (Race Condition Fix)
+
+OddsPortal is a complex SPA. Sometimes a tab click may be "received" but the table rendering is delayed, or a fragment fallback makes a tab appear "already active" before the previous data has cleared. To prevent extracting stale or empty data, the scraper implements a **Smart Wait**:
+
+1.  **Reference Snapshot**: Before clicking, it captures a `ref_value` (the text of the first odds cell).
+2.  **State Verification**: Even if the tab is detected as `active-odds` (already active), the scraper verifies that the table contains actual rows (e.g., `div.odds-cell` or `data-testid="over-under-collapsed-row"`).
+3.  **Dynamic Change Detection**: It polls the table (up to 10s) until:
+    - The value changes from `ref_value` to something new.
+    - If `ref_value` was `None`, it waits for the *first* visible data to render.
+4.  **Fallback Sync**: If the click fails to trigger an update, it manually synchronizes the URL hash (`window.location.hash`) as a last resort and restarts the wait logic.
 
 > [!IMPORTANT]
-> OddsPortal is a Vue.js SPA. Using `page.goto()` with a fragment URL (`#group;period`) performs a full page reload but the SPA may re-render with its default state before processing the hash. Clicking the tab directly triggers the SPA's internal router, which reliably updates the odds table.
+> This "Smart Wait" ensures near 100% reliability for Over/Under and Asian Handicap extractions, which are highly sensitive to SPA rendering states.
 
 ---
 
@@ -442,11 +456,13 @@ OddsPortal does not expose opening odds in the DOM directly. They appear in a **
 
 ### Hover Mechanics & Optimizations
 
-Because OddsPortal relies on Vue.js to dynamically attach the tooltip to the DOM, naïve hover attempts fail ~10% of the time due to race conditions or UI overlaps. We mitigate this through three specific mechanisms:
+Because OddsPortal relies on Vue.js to dynamically attach the tooltip to the DOM, naïve hover attempts can fail due to race conditions or UI overlaps. We mitigate this through four specific mechanisms:
 
-1. **Scroll-and-Bump**: Playwright's `scroll_into_view_if_needed()` often aligns cells beneath OddsPortal's sticky top header. We immediately follow it with `window.scrollBy(0, -150)` to bump the page down and guarantee visibility.
-2. **Humanized Mouse Wiggle**: Rather than instantly teleporting the cursor to the dead-center of the element, the cursor is moved just outside the element's bounding box and then pulled inside. This reliably triggers DOM `mouseenter` repaints.
-3. **Dynamic Wait Polling**: Instead of hard-sleeping for 3-4 seconds per cell, the scraper dynamically polls for `h3:has-text('Odds movement')` with `state="visible"`. If the tooltip renders in 100ms, extraction proceeds immediately, saving vast amounts of time per match.
+1. **Resource Blocking (Critical)**: By setting `ODDSPORTAL_BLOCK_RESOURCES=true`, the scraper intercepts and blocks heavy ad networks and tracking scripts. This prevents ad overlays from stealing Playwright's pointer events, ensuring near 100% hover success rates while significantly reducing bandwidth.
+2. **Scroll-and-Bump**: Playwright's `scroll_into_view_if_needed()` often aligns cells beneath OddsPortal's sticky top header. We immediately follow it with `window.scrollBy(0, -150)` to bump the page down and guarantee visibility.
+3. **Humanized Mouse Wiggle**: Rather than instantly teleporting the cursor to the dead-center of the element, the cursor is moved just outside the element's bounding box and then pulled inside. This reliably triggers DOM `mouseenter` repaints.
+4. **Dynamic Wait Polling with Escalating Retry**: Instead of hard-sleeping for 3-4 seconds per cell, the scraper dynamically polls for `h3:has-text('Odds movement')` with `state="visible"`. If the tooltip fails to appear, the scraper resets the mouse to `(0, 0)` and retries up to 3 times with escalating timeouts (3s → 4s → 5s).
+5. **Tooltip Detach Wait**: Between sequential hovers, the scraper waits for the previous tooltip to fully `detach` from the DOM. This prevented a common bug where Playwright would sometimes "see" the previous modal's HTML for the current cell.
 
 ### Bookie Opening Odds Flow
 
@@ -476,11 +492,45 @@ Over/Under market groups require a separate extraction method (`_extract_data_ov
 
 ### Betfair Hover Flow
 
-Same pattern, but targets the Betfair exchange row and processes **4 cells**: Back 1, Back 2, Lay 1, Lay 2. (X/draw cells are skipped for non-football sports.) Betfair hover only runs on the **designated period** (controlled by `betfair_period_index` in the route config).
+Betfair extraction follows the same high-reliability pattern as standard bookies but with additional logic for exchange liquidity cells.
+
+1. **Stabilization Pre-Wait**: Immediately after finding the `betting-exchanges-section`, the scraper waits **500ms**. This ensures the Vue.js components (especially the `X` / Draw column) have fully rendered before the scraper counts containers to determine if the market is 2-way or 3-way.
+2. **Back & Lay Extraction**: Processes up to **6 cells** in 3-way markets (Back 1, Back X, Back 2, Lay 1, Lay X, Lay 2) or **4 cells** in 2-way markets.
+3. **Unified Retry Pattern**: Each Betfair cell implements a 3-attempt retry loop with mouse resetting. If the "Odds movement" modal isn't found or isn't visible within the escalating timeout (3s/4s/5s), the mouse moves to `(0, 0)` to "reset" the hover state before the next attempt.
+4. **Designated Period Limitation**: To conserve time and proxy bandwidth, Betfair hover only runs on the specific period designated by `betfair_period_index` in the route config (usually Full Time).
 
 ---
 
-## 11. Configuration Reference
+## 11. Concurrency & Parallelism
+
+To handle multiple simultaneous events (e.g., Saturday at 18:00) without delaying alerts or exhausting resources, the system implements a hybrid concurrency solution.
+
+### 11.1 Guard Lock (Timed Wait)
+In `scheduler.py`, before launching a new OddsPortal worker, the system checks if a thread from the *previous* 5-minute cycle is still alive.
+- **Wait**: It waits up to `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` (default 120s) for the old thread to `.join()`.
+- **Success**: If it finishes, the new cycle starts cleanly.
+- **Overlap**: If it times out, the new cycle proceeds anyway. This allows two cycles to briefly coexist rather than skipping a full cycle.
+
+### 11.2 Parallel Browsers
+The worker can split a batch of matches across multiple independent browser instances using `scrape_multiple_matches_parallel_sync`.
+- **Distribution**: Tasks are assigned to browsers using a **round-robin** strategy (to balance heavy leagues).
+- **Isolation**: Each browser runs in its own `ThreadPoolExecutor` worker with a dedicated `asyncio` loop and Playwright instance.
+- **Config**: Controlled by `ODDSPORTAL_PARALLEL_BROWSERS`. (1 = Legacy sequential, >1 = Parallel).
+
+---
+
+## 12. Dedicated Logging
+
+Since OddsPortal logs are verbose, they are routed to a dedicated directory for cleaner debugging while still appearing in the main log.
+
+- **Path**: `logs/oddsportal/{MM_MonthName}/week_{N}/oddsportal.log`
+- **Structure**: Mirrors the main application's monthly/weekly rotating structure.
+- **Routing**: Handled in `main.py` via a second `_WeeklyRotatingFileHandler` attached to the `oddsportal_scraper` logger.
+- **Console**: All OddsPortal logs still print to stdout/console in real-time.
+
+---
+
+## 13. Configuration Reference
 
 ### `SEASON_ODDSPORTAL_MAP` (oddsportal_config.py)
 
@@ -502,9 +552,17 @@ Corrects naming mismatches between SofaScore and OddsPortal.
 
 The scraper iterates this list and uses the **first bookie found** for opening odds extraction.
 
+### Environment Variables (.env)
+
+| Variable | Default | Description |
+|---|---|---|
+| `ODDSPORTAL_PARALLEL_BROWSERS` | `1` | Number of concurrent browser instances to use. |
+| `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` | `120` | Max seconds to wait for a lagging previous cycle. |
+| `ODDSPORTAL_BLOCK_RESOURCES` | `true` | Set to `false` if page rendering fails. |
+
 ---
 
-## 12. Libraries Used
+## 14. Libraries Used
 
 | Library | Purpose |
 |---|---|
@@ -578,7 +636,7 @@ The extracted data is consumed by `odds_alert.py` to enrich Telegram notificatio
 
 ---
 
-## 13. Testing
+## 15. Testing
 
 ### Isolation Test: `test_oddsportal_process.py`
 
@@ -607,16 +665,20 @@ Saves full debug info (screenshots, HTML, JSON) to `debug_<slug>/`. The JSON out
 
 ---
 
-## 14. Edge Cases & Troubleshooting
+## 16. Edge Cases & Troubleshooting
 
 - **Proxy not active**: Ensure `.env` is correct.
-- **Team alias missing**: Add to `TEAM_ALIASES`.
-- **Fragment not loading**: If a period's fragment yield no bookie rows within 30s, that period is skipped.
-- **Headless Timeout**: If the scraper times out in headless mode, check the `oddsportal_debug/` folder for `match_load_failure.png` to see if a security check or "Access Denied" page was served.
+- **Network Navigation Failure**: Handled by **Immediate Network Failure Check**. If the browser returns `ERR_TIMED_OUT` or similar, the scraper fails fast instantly to avoid wasting time on a dead connection.
+- **Proxy Blocked / Cloudflare Banned**: Handled by **Fast Fail Check #1**. Detects blocks via page title, kills the browser, and triggers a **Session-Aware Retry**.
+- **SPA Render Failure (Empty Container)**: Handled by **Fast Fail Check #2**. Sometimes the page loads but the Vue.js app fails to hydrate/render the odds table. A `MutationObserver` detects this state and triggers a fast fail after 15s of empty content, avoiding the full 60s timeout.
+- **Tab Switching Failure**: If the SPA router hangs and the odds table doesn't update after clicking a tab, the scraper triggers a **Fragment Navigation Fallback** by manually updating the URL hash.
+- **"Already Active" Race Condition**: Fixed by the **Smart Wait** mechanism. Prevents extraction from starting immediately after a fragment change if the table rows haven't rendered yet, even if the tab UI shows as "active".
+- **Session-Aware Retry**: Implemented in `scrape_multiple_matches_sync`. When a scrape fails, the scraper calls `await self.stop()` and `await self.start()`. This generates a fresh `_session_id` and restarts the Playwright process, which forces a new TCP connection and a clean proxy IP from the rotation endpoint (e.g., Webshare).
+- **Headless Timeout**: If the scraper times out waiting for rows without hitting Fast Fail, it still triggers the Session-Aware Retry to seamlessly attempt the extraction once more with a new IP.
 
 ---
 
-## 15. Performance Summary
+## 17. Performance Summary
 
 - **Cache hit, single period**: ~50s total (skips ~14s league nav).
 - **Cache miss, single period**: ~65s total.

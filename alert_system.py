@@ -463,7 +463,9 @@ class PreStartNotification:
             else:
                 message += f"🏟️ {dual_report.sport} ({competition})"
             
-            if dual_report.minutes_until_start is not None:
+            if dual_report.minutes_until_start is not None and dual_report.minutes_until_start == 0:
+                message += f"\n🕒 Event is startig now!"
+            elif dual_report.minutes_until_start is not None:
                 message += f"\n🕒 {dual_report.minutes_until_start} min."
             
             # Add court type observation for Tennis/Tennis Doubles events
@@ -623,7 +625,10 @@ class PreStartNotification:
                 message += f"🏟️ {streak.sport}"
             
             message += f"({streak.competition_name})\n"
-            message += f"⏰ {streak.minutes_until_start} minutes\n"
+            if streak.minutes_until_start == 0:
+                message += f"\n🕒 Event is startig now!"
+            else:
+                message += f"\n🕒 {streak.minutes_until_start} minutes\n"
             
             # Display current event odds if available (similar to Process 1 format)
             if streak.one_open is not None and streak.one_final is not None:

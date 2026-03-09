@@ -286,12 +286,14 @@ class EventRepository:
                 
                 # Use local time since SofaScore provides local times (despite column name)
                 now = datetime.now()
+                # Remove seconds logic and give a wider 5 min grace period for delayed crons
+                window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=5)
                 start_window = now + timedelta(minutes=window_minutes)
                 
                 events = session.query(Event).options(
                     joinedload(Event.event_odds)
                 ).filter(
-                    Event.start_time_utc.between(now, start_window)
+                    Event.start_time_utc.between(window_start, start_window)
                 ).all()
                 
                 return events
@@ -309,7 +311,8 @@ class EventRepository:
             with db_manager.get_session() as session:
                 # Use local time since SofaScore provides local times
                 now = datetime.now()
-                window_start = now
+                # Remove seconds logic and give a wider 5 min grace period for delayed crons
+                window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=5)
                 window_end = now + timedelta(minutes=window_minutes)
                 
                 # Debug logging

@@ -76,8 +76,18 @@ class Config:
     PROXY_USERNAME = os.getenv('PROXY_USERNAME', '')
     PROXY_PASSWORD = os.getenv('PROXY_PASSWORD', '')
     PROXY_ENDPOINT = os.getenv('PROXY_ENDPOINT', '')
+    
     PROXY_ROTATION_INTERVAL = int(os.getenv('PROXY_ROTATION_INTERVAL', '5'))
     PROXY_MAX_RETRIES = int(os.getenv('PROXY_MAX_RETRIES', '3'))
+    
+    # OddsPortal resource blocking toggle (disable if it causes scraping instability)
+    ODDSPORTAL_BLOCK_RESOURCES = os.getenv('ODDSPORTAL_BLOCK_RESOURCES', 'true').lower() == 'true'
+    
+    # OddsPortal parallel scraping (requires 2GB+ RAM)
+    ODDSPORTAL_PARALLEL_BROWSERS = int(os.getenv('ODDSPORTAL_PARALLEL_BROWSERS', '1'))
+    
+    # Max seconds to wait for a previous OP cycle to finish before proceeding
+    ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT = int(os.getenv('ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT', '120'))
     
     # Smart Alert Filtering Configuration
     # Minimum number of past results required for at least one team to send streak alerts

@@ -430,11 +430,11 @@ class JobScheduler:
         """
         Job C: Pre-start check for events starting within 30 minutes + in-game checks
         
-        SMART ODDS EXTRA EXTRACTION: Only extracts odds at key moments (30 min and 5 min before start)
+        SMART ODDS EXTRA EXTRACTION: Only extracts odds at key moments (30 min and 0 min before start)
         to avoid unnecessary API calls when odds don't change significantly.
         
         SMART NOTIFICATIONS: Only sends Telegram notifications when odds are extracted at key moments
-        (30 min and 5 min), but includes ALL upcoming games in those notifications to avoid missing games.
+        (30 min and 0 min), but includes ALL upcoming games in those notifications to avoid missing games.
         
         TIMESTAMP CORRECTION: Also checks events that started within the last 60 minutes for late
         timestamp corrections (Tennis: 60 min window, Other sports: 15 min window).
@@ -484,6 +484,14 @@ class JobScheduler:
                 filtered_count = len(upcoming_events)
                 if original_count != filtered_count:
                     logger.info(f"ℹ️ Filtered out {original_count - filtered_count} upcoming events that were just rescheduled/modified")
+                    
+            logger.info(f"After checking modified events, {len(upcoming_events)} events remain")
+            
+            # Filter out recently rescheduled events
+            before_rescheduled = len(upcoming_events)
+            upcoming_events = [e for e in upcoming_events if e['id'] not in self.recently_rescheduled]
+            if before_rescheduled != len(upcoming_events):
+                logger.info(f"Filtered {before_rescheduled - len(upcoming_events)} recently rescheduled. {len(upcoming_events)} remain")
 
             events_to_process = []
             event_meta_lookup = {}
@@ -496,7 +504,7 @@ class JobScheduler:
                 set_prediction_system.check_nba_4th_quarter()
                 
                 # Use the "smart" odds extraction logic
-                KEY_MOMENTS = [30, 5]
+                KEY_MOMENTS = [30, 0]
                 
                 for event_data in upcoming_events:
                     # RETRIEVE PRE-CALCULATED TIMING
@@ -541,7 +549,7 @@ class JobScheduler:
             for event_info in events_to_process:
                 season_id = event_info['event_data'].get('season_id')
                 minutes_until_start = event_info.get('minutes_until_start')
-                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == 5:
+                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == 0:
                     op_candidates.append(event_info)
                 else:
                     non_op_candidates.append(event_info)
@@ -551,6 +559,16 @@ class JobScheduler:
             op_event_ids = {e['event_id'] for e in op_candidates}
             
             if op_candidates:
+                # Guard: wait for previous OP cycle if still running
+                if hasattr(self, '_active_op_thread') and self._active_op_thread.is_alive():
+                    timeout = AppConfig.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT
+                    logger.warning(f"⏳ Previous OP worker still running — waiting up to {timeout}s for it to finish...")
+                    self._active_op_thread.join(timeout=timeout)
+                    if self._active_op_thread.is_alive():
+                        logger.warning(f"⚠️ Previous OP worker did NOT finish after {timeout}s — proceeding with new cycle anyway")
+                    else:
+                        logger.info("✅ Previous OP worker finished within timeout — proceeding with new cycle")
+                        
                 logger.info(f"🚀 Launching OddsPortal scraper in background for {len(op_candidates)} tracked-league events...")
                 
                 # Launch the OP worker: ONLY scrapes + saves to DB, then signals completion.
@@ -583,7 +601,7 @@ class JobScheduler:
                     # Initialize observations per event to avoid cross-event contamination
                     observations = None
                     
-                    # SMART ODDS EXTRACTION: Only extract odds at key moments (30 min and 5 min)                  
+                    # SMART ODDS EXTRACTION: Only extract odds at key moments (30 min and 0 min)                  
                     if should_extract_odds:
                         logger.info(f"🎯 EXTRACTING ODDS: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start")
                         
@@ -679,7 +697,7 @@ class JobScheduler:
                 if odds_extracted_count > 0:
                     logger.info(f"🎯 Odds extracted for {odds_extracted_count} games (smart extraction active)")
                 else:
-                    logger.info(f"⏭️ No odds extracted (smart extraction: only at 30min and 5min)")
+                    logger.info(f"⏭️ No odds extracted (smart extraction: only at 30min and 0min)")
             else:
                 logger.info("Pre-start check completed: No games starting soon")
             
@@ -1116,10 +1134,10 @@ class JobScheduler:
                                             event_obj_fallback = self.event_repo.get_event_by_id(event_id)
                                             if event_obj_fallback:
                                                 minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
-                                                if minutes_until_start_fallback == 5:
+                                                if minutes_until_start_fallback == 0:
                                                     success = prediction_logger.log_prediction(event_obj_fallback, alert)
                                                     if success:
-                                                        logger.info(f"✅ Prediction logged for Process 1 event {event_id} (5 minutes from start)")
+                                                        logger.info(f"✅ Prediction logged for Process 1 event {event_id} (0 minutes from start)")
                                                     else:
                                                         with db_manager.get_session() as session:
                                                             existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
@@ -1128,7 +1146,7 @@ class JobScheduler:
                                                             else:
                                                                 logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
                                                 else:
-                                                    logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 5 minutes)")
+                                                    logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 0 minutes)")
                                             else:
                                                 logger.warning(f"Could not find event {event_id} for prediction logging")
                             else:
@@ -1267,10 +1285,10 @@ class JobScheduler:
                     if (dual_report.process1_report and 
                         dual_report.process1_report.get('status') == 'success'):
                         
-                        if minutes_until_start == 5:
+                        if minutes_until_start == 0:
                             success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
                             if success:
-                                logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (5 minutes from start)")
+                                logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (0 minutes from start)")
                             else:
                                 with db_manager.get_session() as session:
                                     existing = session.query(PredictionLog).filter_by(event_id=event_obj.id).first()
@@ -1279,7 +1297,7 @@ class JobScheduler:
                                     else:
                                         logger.warning(f"❌ Failed to log prediction for dual process event {event_obj.id}")
                         else:
-                            logger.info(f"⏭️ Skipping prediction logging for event {event_obj.id} - {minutes_until_start} minutes until start (not 5 minutes)")
+                            logger.info(f"⏭️ Skipping prediction logging for event {event_obj.id} - {minutes_until_start} minutes until start (not 0 minutes)")
             
             logger.info(f"✅ Parallel alert processing complete: {len(all_results)} events processed, alerts sent grouped by event")
                 
@@ -1310,8 +1328,9 @@ class JobScheduler:
         Returns dict mapping event_id -> number of markets saved (or None on failure).
         """
         from oddsportal_config import SEASON_ODDSPORTAL_MAP
-        from oddsportal_scraper import scrape_multiple_matches_sync
+        from oddsportal_scraper import scrape_multiple_matches_parallel_sync
         from repository import MarketRepository
+        from config import Config as AppConfig
         
         op_tasks = []
         for event_info in events_to_process:
@@ -1336,10 +1355,15 @@ class JobScheduler:
         
         logger.info(f"🔍 OddsPortal worker: {len(op_tasks)} events eligible for scraping")
         
-        # Scrape all matches with one browser
-        logger.info(f"🌐 OddsPortal: Calling scrape_multiple_matches_sync for {len(op_tasks)} tasks...")
-        op_results = scrape_multiple_matches_sync(op_tasks, debug_dir="oddsportal_debug")
-        logger.info(f"🌐 OddsPortal: scrape_multiple_matches_sync returned {len(op_results)} results")
+        # Scrape all matches (parallel if configured)
+        num_browsers = AppConfig.ODDSPORTAL_PARALLEL_BROWSERS
+        logger.info(f"🌐 OddsPortal: Calling scrape_multiple_matches_parallel_sync for {len(op_tasks)} tasks with {num_browsers} browser(s)...")
+        op_results = scrape_multiple_matches_parallel_sync(
+            op_tasks, 
+            num_browsers=num_browsers, 
+            debug_dir="oddsportal_debug"
+        )
+        logger.info(f"🌐 OddsPortal: scrape_multiple_matches_parallel_sync returned {len(op_results)} results")
         
         # Save results to DB
         saved_counts = {}
@@ -1532,7 +1556,7 @@ class JobScheduler:
     def _should_extract_odds_for_event(self, event_id: int, minutes_until_start: int) -> tuple:
         """
         Smart logic to determine if odds should be extracted for an event.
-        Only extract odds at key moments: 30 minutes and 5 minutes before start.
+        Only extract odds at key moments: 30 minutes and 0 minutes before start.
         
         Args:
             event_id: Event ID
@@ -1550,7 +1574,7 @@ class JobScheduler:
             return False, None
         
         # Key moments for odds extraction (removed 1-minute check - now handled by 5-minutes-after logic)
-        KEY_MOMENTS = [30, 5]
+        KEY_MOMENTS = [30, 0]
         
         # Check if current time aligns with a key moment
         should_extract = minutes_until_start in KEY_MOMENTS
@@ -1614,9 +1638,9 @@ class JobScheduler:
             # Calculate new minutes until start
             new_minutes_until_start = self._minutes_until_start(event.start_time_utc)
             
-            # Check if rescheduled game is now in key moments (30 or 5 minutes), starting now (0), or has already started (negative)
+            # Check if rescheduled game is now in key moments (30 or 0 minutes), starting now (0), or has already started (negative)
             # We always process rescheduled events to catch late corrections
-            if new_minutes_until_start in [30, 5, 0] or new_minutes_until_start < 0:
+            if new_minutes_until_start in [30, 0] or new_minutes_until_start < 0:
                 if new_minutes_until_start > 0:
                     logger.info(f"🎯 RESCHEDULED GAME ALERT: Event {event_id} is now starting in {new_minutes_until_start} minutes")
                 elif new_minutes_until_start == 0:
@@ -1916,10 +1940,10 @@ class JobScheduler:
                 from modules.prediction import prediction_logger
                 if (dual_report.process1_report and 
                     dual_report.process1_report.get('status') == 'success' and
-                    minutes_until_start == 5):  # Only log at 5 minutes
+                    minutes_until_start == 0):  # Only log at 0 minutes
                     success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
                     if success:
-                        logger.info(f"✅ Prediction logged for rescheduled event {event.id} (5 minutes from start)")
+                        logger.info(f"✅ Prediction logged for rescheduled event {event.id} (0 minutes from start)")
                     else:
                         # Check if it's a duplicate (already exists) vs. actual failure
                         from models import PredictionLog

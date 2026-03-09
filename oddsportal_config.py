@@ -22,6 +22,10 @@ SEASON_ODDSPORTAL_MAP = {
     84695: {"sport": "baseball", "country": "usa", "league": "mlb"},
     # NHL
     78476: {"sport": "hockey", "country": "usa", "league": "nhl"},
+    # League 1
+    77356: {"sport": "football", "country": "france", "league": "ligue-1"},
+    # Saudi Pro League
+    80443: {"sport": "football", "country": "saudi-arabia", "league": "saudi-professional-league"},
 }
 
 # Normalize bookie names to match DB exact names
@@ -174,6 +178,65 @@ TEAM_ALIASES = {
     "Frosinone": "Frosinone",
     "Internazionale": "Inter", # Just in case DB uses full name
     "Inter": "Inter",
+
+    # --- League 1 / French Teams ---
+    "Paris Saint-Germain": "PSG",
+    "AS Monaco": "Monaco",
+    "Olympique Lyonnais": "Lyon",
+    "Olympique Marseille": "Marseille",
+    "Stade Rennais FC": "Rennes",
+    "Lille OSC": "Lille",
+    "RC Strasbourg Alsace": "Strasbourg",
+    "OGC Nice": "Nice",
+    "FC Nantes": "Nantes",
+    "FC Metz": "Metz",
+    "FC Lorient": "Lorient",
+    "Stade Brestois 29": "Brest",
+    "Montpellier HSC": "Montpellier",
+    "Angers SCO": "Angers",
+    "AS Saint-Étienne": "St-Etienne",
+    "Toulouse FC": "Toulouse",
+    "RC Lens": "Lens",
+    "Girondins de Bordeaux": "Bordeaux",
+    "AS Monaco": "Monaco",
+    "AS Monaco": "Monaco",
+
+    # --- Saudi Professional League / Saudi Arabian Teams ---
+    "Al-Hilal": "Al Hilal",
+    "Al-Nassr": "Al Nassr",
+    "Al-Ittihad": "Al Ittihad",
+    "Al-Ahli": "Al Ahli",
+    "Al-Shabab": "Al Shabab",
+    "Al-Fateh": "Al Fateh",
+    "Al-Raed": "Al Raed",
+    "Al-Taawoun": "Al Taawoun",
+    "Al-Fayha": "Al Fayha",
+    "Al-Khaleej": "Al Khaleej",
+    "Al-Okhdood": "Al Okhdood",
+    "Al-Wehda": "Al Wehda",
+    "Al-Tai": "Al Tai",
+    "Al-Hazem": "Al Hazem",
+    "Al-Riyadh": "Al Riyadh",
+    "Al-Najma": "Al Najma",
+    "Al-Qadsiah": "Al Qadsiah",
+    "Al-Jabalain": "Al Jabalain",
+    "Al-Orobah": "Al Orobah",
+    "Al-Ahli": "Al Ahli",
+    "Al-Shabab": "Al Shabab",
+    "Al-Fateh": "Al Fateh",
+    "Al-Raed": "Al Raed",
+    "Al-Taawoun": "Al Taawoun",
+    "Al-Fayha": "Al Fayha",
+    "Al-Khaleej": "Al Khaleej",
+    "Al-Okhdood": "Al Okhdood",
+    "Al-Wehda": "Al Wehda",
+    "Al-Tai": "Al Tai",
+    "Al-Hazem": "Al Hazem",
+    "Al-Riyadh": "Al Riyadh",
+    "Al-Najma": "Al Najma",
+    "Al-Qadsiah": "Al Qadsiah",
+    "Al-Jabalain": "Al Jabalain",
+    "Al-Orobah": "Al Orobah",
 }
 
 # Priority order for single-bookie initial odds extraction
@@ -229,8 +292,8 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "1X2",
                 "has_draw": True,
                 "periods": [
-                    ("FULL_TIME", "Full-time", "Full time"),
-                    ("1ST_HALF", "1st half", "1st half")
+                    ("FULL_TIME", "Full Time", "Full time"),
+                    ("1ST_HALF", "1st Half", "1st half")
                 ],
                 "betfair_period_index": 0,
                 "extract_fn": "standard",
@@ -240,7 +303,8 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "Over/Under",
                 "has_draw": False,
                 "periods": [
-                    ("FULL_TIME", "Full-time", "Over/Under"),
+                    ("FULL_TIME", "Full Time", "Over/Under"),
+                    ("1ST_HALF", "1st Half", "1st half Over/Under")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "over_under",
@@ -250,7 +314,8 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "Asian Handicap",
                 "has_draw": False,
                 "periods": [
-                    ("FULL_TIME", "Full-time", "Asian Handicap"),
+                    ("FULL_TIME", "Full Time", "Asian Handicap"),
+                    ("1ST_HALF", "1st Half", "1st half Asian Handicap")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "asian_handicap",
@@ -264,10 +329,33 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "Home/Away",
                 "has_draw": False,
                 "periods": [
-                    ("FT_INC_OT", "Full-time", "Full time"),
+                    ("FT_INC_OT", "Full Time", "Full time"),
+                    ("1ST_HALF", "1st Half", "1st half")
                 ],
                 "betfair_period_index": 0,
                 "extract_fn": "standard",
+            },
+            {
+                "group_key": "OVER_UNDER",
+                "db_market_group": "Over/Under",
+                "has_draw": False,
+                "periods": [
+                    ("FT_INC_OT", "Full Time", "Over/Under"),
+                    ("1ST_HALF", "1st Half", "1st half Over/Under")
+                ],
+                "betfair_period_index": None,
+                "extract_fn": "over_under",
+            },
+            {
+                "group_key": "ASIAN_HANDICAP",
+                "db_market_group": "Asian Handicap",
+                "has_draw": False,
+                "periods": [
+                    ("FT_INC_OT", "Full Time", "Asian Handicap"),
+                    ("1ST_HALF", "1st Half", "1st half Asian Handicap")
+                ],
+                "betfair_period_index": None,
+                "extract_fn": "asian_handicap",
             },
         ],
     },
@@ -278,11 +366,33 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "Home/Away",
                 "has_draw": False,
                 "periods": [
-                    ("FT_INC_OT", "Full-time", "Full time"),
-                    ("1ST_HALF", "1st half", "1st half")
+                    ("FT_INC_OT", "Full Time", "Full time"),
+                    ("1ST_HALF", "1st Half", "1st half")
                 ],
                 "betfair_period_index": 0,
                 "extract_fn": "standard",
+            },
+            {
+                "group_key": "OVER_UNDER",
+                "db_market_group": "Over/Under",
+                "has_draw": False,
+                "periods": [
+                    ("FT_INC_OT", "Full Time", "Over/Under"),
+                    ("1ST_HALF", "1st Half", "1st half Over/Under")
+                ],
+                "betfair_period_index": None,
+                "extract_fn": "over_under",
+            },
+            {
+                "group_key": "ASIAN_HANDICAP",
+                "db_market_group": "Asian Handicap",
+                "has_draw": False,
+                "periods": [
+                    ("FT_INC_OT", "Full Time", "Asian Handicap"),
+                    ("1ST_HALF", "1st Half", "1st half Asian Handicap")
+                ],
+                "betfair_period_index": None,
+                "extract_fn": "asian_handicap",
             },
         ],
     },
@@ -293,7 +403,7 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "Home/Away",
                 "has_draw": False,
                 "periods": [
-                    ("FT_INC_OT", "Full-time", "Full time"),
+                    ("FT_INC_OT", "Full Time", "Full time"),
                 ],
                 "betfair_period_index": 0,
                 "extract_fn": "standard",
@@ -305,12 +415,32 @@ SPORT_SCRAPING_ROUTES = {
             {
                 "group_key": "HOME_AWAY",
                 "db_market_group": "Home/Away",
-                "has_draw": True,
+                "has_draw": False,
                 "periods": [
-                    ("FT_INC_OT", "Full-time", "Full time")
+                    ("FT_INC_OT", "Full Time", "Full time")
                 ],
                 "betfair_period_index": 0,
                 "extract_fn": "standard",
+            },
+            {
+                "group_key": "OVER_UNDER",
+                "db_market_group": "Over/Under",
+                "has_draw": False,
+                "periods": [
+                    ("FT_INC_OT", "Full Time", "Over/Under"),
+                ],
+                "betfair_period_index": None,
+                "extract_fn": "over_under",
+            },
+            {
+                "group_key": "ASIAN_HANDICAP",
+                "db_market_group": "Asian Handicap",
+                "has_draw": False,
+                "periods": [
+                    ("FT_INC_OT", "Full Time", "Asian Handicap"),
+                ],
+                "betfair_period_index": None,
+                "extract_fn": "asian_handicap",
             },
         ],
     },

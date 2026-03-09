@@ -33,7 +33,7 @@ Sistema automatizado de monitoreo y predicción de odds deportivos que proporcio
 
 ### ✅ **NUEVO EN v1.6.1 - Critical Scheduler Fixes**
 - **Scheduler Indentation Fix**: Solucionado bug crítico en `scheduler.py` donde el bucle de procesamiento de odds solo incluía el último evento debido a un error de indentación.
-- **Timing Logic Optimization**: Implementado pre-cálculo de `minutes_until_start` antes de la corrección de timestamps para asegurar que los eventos no pierdan su ventana de procesamiento (30/5 min).
+- **Timing Logic Optimization**: Implementado pre-cálculo de `minutes_until_start` antes de la corrección de timestamps para asegurar que los eventos no pierdan su ventana de procesamiento (30/0 min).
 - **Reduced API Load**: Ajustado el chequeo de "Late Timestamp Correction" para deportes no-tenis a una única verificación a los 15 minutos (antes ventana de 15 min).
 
 ### ✅ **NUEVO EN v1.5.6 - Multi-Bookie Support & Column Reordering**
@@ -409,7 +409,7 @@ sin odds disponibles
 - **Ventana**: 30 minutos antes del inicio del juego
 - **Extracción Inteligente**: Solo obtiene odds finales en momentos clave:
   - **30 minutos antes**: Primera extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
-  - **5 minutos antes**: Última extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
+  - **0 minutos antes (Exactamente al iniciar)**: Última extracción de odds finales desde API principal + Scraping OddsPortal/Betfair.
 - **OddsPortal Workflow**: Si el evento tiene `season_id` mapeado, se lanza un navegador headless para extraer odds de múltiples bookies y volumen de Betfair.
 - **Eficiencia**: Evita extracciones innecesarias cuando odds no cambian significativamente
 - **Estado**: 🟢 **EN PRODUCCIÓN - OPTIMIZADO**
@@ -445,7 +445,7 @@ sin odds disponibles
 ### ✅ **Sistema de Corrección de Timestamps - COMPLETADO (v1.2.6 → v1.4.6)**
 - **Detección Automática**: Compara timestamps de la API con la base de datos
 - **Actualización Inteligente**: Actualiza automáticamente timestamps desactualizados
-- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos antes)
+- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 0 minutos antes)
 - **Late Timestamp Correction (v1.4.6)**: Verifica eventos recién iniciados para detectar correcciones tardías (Tennis: 60 min, otros: 15 min)
 - **Microsecond Precision**: Manejo robusto eliminando problemas de microsegundos en comparaciones de datetime
 - **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
@@ -527,7 +527,7 @@ sin odds disponibles
 
 ### **v1.2.6 (Diciembre 2024) - SISTEMA DE CORRECCIÓN DE TIMESTAMPS - DESPLEGADO** ✅
 - **Sistema de Corrección de Timestamps**: Detección y corrección automática de timestamps desactualizados
-- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 5 minutos antes del inicio)
+- **Optimización de API**: Solo verifica timestamps en momentos clave (30 y 0 minutos antes del inicio)
 - **Control de Configuración**: Variable `ENABLE_TIMESTAMP_CORRECTION` para activar/desactivar
 - **Prevención de Loops**: Sistema anti-bucle para eventos reprogramados con tracking de eventos recientes
 - **API Efficiency**: Reduce llamadas innecesarias a la API manteniendo precisión
@@ -571,7 +571,7 @@ sin odds disponibles
 - **Sistema de Notificaciones Inteligente**: Telegram funcionando con lógica optimizada
 - **Descubrimiento Automático**: Programado cada 2 horas y optimizado
 - **Verificación Pre-Inicio**: Cada 5 minutos, con extracción inteligente de odds
-- **Extracción de Odds**: Solo en momentos clave (30 y 5 minutos antes)
+- **Extracción de Odds**: Solo en momentos clave (30 y 0 minutos antes)
 - **Sistema de Notificaciones**: Solo cuando es necesario, pero incluye todos los juegos
 - **Recolección de Resultados**: Automática e inteligente
 - **Infraestructura**: Robusta, confiable y optimizada
@@ -655,7 +655,7 @@ sin odds disponibles
 ### **Técnicas**
 - **Uptime**: 99.9% (sistema estable 24/7)
 - **Tiempo de Respuesta**: <2 segundos para descubrimiento
-- **Extracción de Odds**: Solo en momentos clave (30 y 5 minutos)
+- **Extracción de Odds**: Solo en momentos clave (30 y 0 minutos)
 - **Notificaciones**: 100% de entrega exitosa
 - **Base de Datos**: <100ms para consultas
 
