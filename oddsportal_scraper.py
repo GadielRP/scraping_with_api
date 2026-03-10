@@ -1347,8 +1347,11 @@ class OddsPortalScraper:
                         # Also fire JS hover events to trigger Vue.js tooltip component
                         await page.evaluate("""
                             (el) => {
-                                el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new PointerEvent('pointerover', {bubbles: true, cancelable: true, pointerId: 1}));
+                                el.dispatchEvent(new PointerEvent('pointerenter', {bubbles: true, cancelable: true, pointerId: 1}));
                                 el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, cancelable: true}));
                             }
                         """, odds_block)
                         
@@ -1538,8 +1541,11 @@ class OddsPortalScraper:
                         # Fire JS hover events to guarantee Vue.js tooltip trigger
                         await page.evaluate("""
                             (el) => {
-                                el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new PointerEvent('pointerover', {bubbles: true, cancelable: true, pointerId: 1}));
+                                el.dispatchEvent(new PointerEvent('pointerenter', {bubbles: true, cancelable: true, pointerId: 1}));
                                 el.dispatchEvent(new MouseEvent('mouseover',  {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new MouseEvent('mousemove',  {bubbles: true, cancelable: true}));
                             }
                         """, hover_target)
 
@@ -1833,13 +1839,14 @@ class OddsPortalScraper:
             
             if isinstance(over, (int, float)) and isinstance(under, (int, float)):
                 diff = abs(over - under)
-                logger.info(f"    - Row {idx} ({hc}): Over={over}, Under={under} => Diff={diff:.2f}")
+                #logger.info(f"    - Row {idx} ({hc}): Over={over}, Under={under} => Diff={diff:.2f}")
                 if diff < min_diff:
                     min_diff = diff
                     target_index = idx
                     target_handicap = hc
             else:
-                logger.debug(f"    - Row {idx} ({hc}): Invalid odds Over={over}, Under={under}")
+                #logger.debug(f"    - Row {idx} ({hc}): Invalid odds Over={over}, Under={under}")
+                pass
 
         if target_index != -1:
             logger.info(f"  👉 Selecting row {target_index} ({target_handicap}) with min difference {min_diff:.2f}")
@@ -1994,13 +2001,14 @@ class OddsPortalScraper:
             
             if isinstance(odd1, (int, float)) and isinstance(odd2, (int, float)):
                 diff = abs(odd1 - odd2)
-                logger.info(f"    - Row {idx} ({hc}): 1={odd1}, 2={odd2} => Diff={diff:.2f}")
+                #logger.info(f"    - Row {idx} ({hc}): 1={odd1}, 2={odd2} => Diff={diff:.2f}")
                 if diff < min_diff:
                     min_diff = diff
                     target_index = idx
                     target_handicap = hc
             else:
-                logger.debug(f"    - Row {idx} ({hc}): Invalid odds 1={odd1}, 2={odd2}")
+                #logger.debug(f"    - Row {idx} ({hc}): Invalid odds 1={odd1}, 2={odd2}")
+                pass
 
         if target_index != -1:
             logger.info(f"  👉 Selecting row {target_index} ({target_handicap}) with min difference {min_diff:.2f}")
@@ -2209,7 +2217,7 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
         return None
 
 
-def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = None) -> Dict[int, Optional[MatchOddsData]]:
+def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
     """
     Scrape multiple matches using ONE browser session (browser reuse).
     
@@ -2296,9 +2304,20 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                                 logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: Got {len(data.extractions)} period(s), {len(data.bookie_odds)} bookies")
                             else:
                                 logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Scrape returned no data")
+                            # Invoke callback immediately so caller can save/signal per event
+                            if on_result:
+                                try:
+                                    on_result(event_id, data)
+                                except Exception as cb_err:
+                                    logger.error(f"❌ on_result callback error for event {event_id}: {cb_err}")
                         else:
                             logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Match not found on league page")
                             results[event_id] = None
+                            if on_result:
+                                try:
+                                    on_result(event_id, None)
+                                except Exception as cb_err:
+                                    logger.error(f"❌ on_result callback error for event {event_id}: {cb_err}")
                         
                         # Small delay between scrapes to be respectful to OddsPortal
                         if i < len(tasks) - 1:
@@ -2307,6 +2326,11 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                     except Exception as e:
                         logger.error(f"❌ OddsPortal scrape failed for event {event_id}: {e}")
                         results[event_id] = None
+                        if on_result:
+                            try:
+                                on_result(event_id, None)
+                            except Exception as cb_err:
+                                logger.error(f"❌ on_result callback error for event {event_id}: {cb_err}")
             finally:
                 await scraper.stop()  # Browser closes ONCE
             return results
@@ -2325,7 +2349,7 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
         logger.error(f"❌ Error in scrape_multiple_matches_sync: {e}\n{traceback.format_exc()}")
         return results
 
-def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None) -> Dict[int, Optional[MatchOddsData]]:
+def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
     """
     Distribute scrape tasks across multiple concurrent Playwright browsers.
     If num_browsers == 1, delegates directly to scrape_multiple_matches_sync.
@@ -2335,7 +2359,7 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
         return {}
         
     if num_browsers <= 1 or len(tasks) == 1:
-        return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir)
+        return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir, on_result=on_result)
         
     logger.info(f"🚀 OddsPortal Parallel: Splitting {len(tasks)} tasks across {num_browsers} browsers")
     
@@ -2353,7 +2377,7 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
     
     with ThreadPoolExecutor(max_workers=len(chunks)) as executor:
         future_to_chunk = {
-            executor.submit(scrape_multiple_matches_sync, chunk, debug_dir): i 
+            executor.submit(scrape_multiple_matches_sync, chunk, debug_dir, on_result): i 
             for i, chunk in enumerate(chunks)
         }
         
