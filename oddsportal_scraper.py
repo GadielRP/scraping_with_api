@@ -121,6 +121,8 @@ class OddsPortalScraper:
         self.browser: Optional[Browser] = None
         self.playwright = None
         self.context: Optional[BrowserContext] = None
+        # Safe default so retry logging never crashes when proxy is disabled.
+        self._session_id = "no-proxy"
         if self.debug_dir:
             import os
             os.makedirs(self.debug_dir, exist_ok=True)
@@ -273,28 +275,118 @@ class OddsPortalScraper:
             self.playwright = None
             logger.info("🛑 OddsPortalScraper: Browser stopped")
 
+    def _normalize_base_match_url(self, match_url: str) -> str:
+        """Remove fragment/trailing slash and return canonical match base URL."""
+        return (match_url or "").split("#")[0].rstrip("/")
+
+    async def _remove_interaction_overlays(self, page: Page):
+        """Best-effort cleanup of UI elements that can block clicks/hovers."""
+        try:
+            await page.evaluate("""
+                () => {
+                    document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove());
+                    const onetrust = document.getElementById('onetrust-banner-sdk');
+                    if (onetrust) onetrust.remove();
+                    const shade = document.querySelector('.onetrust-pc-dark-filter');
+                    if (shade) shade.remove();
+                }
+            """)
+        except Exception:
+            pass
+
+    async def _has_market_content(self, page: Page) -> bool:
+        """Return True when any known market data container is present."""
+        try:
+            return await page.evaluate(r"""
+                () => {
+                    const hasRows = document.querySelectorAll('div.border-black-borders.flex.h-9').length > 0;
+                    const hasOUCollapsed = document.querySelectorAll('div[data-testid="over-under-collapsed-row"]').length > 0;
+                    const hasAHCollapsed = document.querySelectorAll('div[data-testid="asian-handicap-collapsed-row"]').length > 0;
+                    const hasOUExpanded = document.querySelectorAll('div[data-testid="over-under-expanded-row"]').length > 0;
+                    return hasRows || hasOUCollapsed || hasAHCollapsed || hasOUExpanded;
+                }
+            """)
+        except Exception:
+            return False
+
+    async def _get_active_period_labels(self, page: Page) -> List[str]:
+        """Collect active period labels from all kickoff-events-nav blocks."""
+        try:
+            labels = await page.evaluate(r"""
+                () => {
+                    const out = [];
+                    const navs = Array.from(document.querySelectorAll('div[data-testid="kickoff-events-nav"]'));
+                    for (const nav of navs) {
+                        const active = nav.querySelector('div[data-testid="sub-nav-active-tab"]');
+                        const txt = active ? active.textContent.trim() : '';
+                        if (txt) out.push(txt);
+                    }
+                    return out;
+                }
+            """)
+            return labels or []
+        except Exception:
+            return []
+
+    async def _is_target_period_active(self, page: Page, period_display_name: str) -> bool:
+        target = (period_display_name or "").strip().lower()
+        if not target:
+            return False
+        labels = await self._get_active_period_labels(page)
+        return any((lbl or "").strip().lower() == target for lbl in labels)
+
+    async def _get_active_group_label(self, page: Page) -> str:
+        """Return active market group tab label (e.g. '1X2', 'Over/Under')."""
+        try:
+            return (await page.evaluate(r"""
+                () => {
+                    const active = document.querySelector('ul.visible-links.odds-tabs li.active-odds')
+                        || document.querySelector('li[data-testid="navigation-active-tab"]');
+                    return active ? active.textContent.trim() : '';
+                }
+            """)) or ""
+        except Exception:
+            return ""
+
+    async def _is_target_group_active(self, page: Page, group_display_name: str) -> bool:
+        target = (group_display_name or "").strip().lower()
+        if not target:
+            return False
+        active_label = (await self._get_active_group_label(page)).strip().lower()
+        return active_label == target
+
+    async def _wait_for_market_render(self, page: Page, extract_fn: str, timeout_ms: int = 15000) -> bool:
+        """
+        Wait for selectors appropriate for the extraction mode.
+        standard: bookmaker rows
+        over_under/asian_handicap: collapsed/expanded accordion rows (or standard fallback)
+        """
+        try:
+            if extract_fn == "standard":
+                await page.wait_for_selector("div.border-black-borders.flex.h-9", state="visible", timeout=timeout_ms)
+            else:
+                await page.wait_for_selector(
+                    "div[data-testid='over-under-collapsed-row'], "
+                    "div[data-testid='asian-handicap-collapsed-row'], "
+                    "div[data-testid='over-under-expanded-row'], "
+                    "div.border-black-borders.flex.h-9",
+                    state="visible",
+                    timeout=timeout_ms,
+                )
+            return True
+        except Exception:
+            return False
     async def _click_period_tab(self, page: Page, period_display_name: str) -> bool:
         """
         Click a market period sub-tab and wait for the odds table to update.
-        
-        Instead of page.goto() with a fragment URL (which reloads the SPA and
-        can result in stale/default data), this clicks the period tab directly,
-        triggering the Vue.js SPA's internal router.
-        
-        Steps:
-          1. Snapshot a reference odds cell value from the current table
-          2. Find and click the target period tab by text content
-          3. Wait for the reference odds cell's value to change (up to 10s)
-        
-        Args:
-            page: Playwright page
-            period_display_name: The text to match in the tab (e.g. "1st Half", "Full Time")
-        
-        Returns:
-            True if the table updated, False if it didn't change within timeout.
+
+        Success criteria are strict to prevent stale-data extraction:
+        - target period tab must be active, and
+        - market content must be present, and
+        - either odds changed OR active-tab state transitioned to target.
         """
         try:
-            # Step 1: Snapshot a reference odds value before clicking
+            # Snapshot reference odds value before clicking
             ref_value = await page.evaluate(r"""
                 () => {
                     const getFirstVisibleText = (selector) => {
@@ -313,18 +405,19 @@ class OddsPortalScraper:
                 }
             """)
             logger.info(f"📸 Reference odds value before period switch: {ref_value}")
-            
-            # Step 2: Find and click the target period tab
+
+            before_active_labels = await self._get_active_period_labels(page)
+            period_target_norm = (period_display_name or "").strip().lower()
+            before_active_has_target = any((lbl or "").strip().lower() == period_target_norm for lbl in before_active_labels)
+
+            # Find target period tab
             period_navs = await page.query_selector_all('div[data-testid="kickoff-events-nav"]')
             if not period_navs:
                 logger.warning("⚠️ Period sub-nav not found (data-testid='kickoff-events-nav')")
                 return False
-            
+
             target_tab = None
             available_tabs = []
-            
-            # Since there might be multiple kickoff-events-nav blocks (e.g. for Pre-match/In-Play vs periods),
-            # we check all of them to find our target period tab.
             for nav in period_navs:
                 tabs = await nav.query_selector_all('div[data-testid="sub-nav-active-tab"], div[data-testid="sub-nav-inactive-tab"]')
                 for tab in tabs:
@@ -332,49 +425,44 @@ class OddsPortalScraper:
                     text_stripped = text.strip() if text else ""
                     if text_stripped:
                         available_tabs.append(text_stripped)
-                        if period_display_name.lower().strip() == text_stripped.lower():
+                        if period_target_norm == text_stripped.lower().strip():
                             target_tab = tab
                             break
                 if target_tab:
                     break
-            
+
             if not target_tab:
                 logger.warning(f"⚠️ Period tab '{period_display_name}' not found in any kickoff-events-nav block")
                 logger.warning(f"   Available tabs: {available_tabs}")
                 return False
-            
-            # Check if already active
+
             testid = await target_tab.get_attribute('data-testid')
             is_active = (testid == 'sub-nav-active-tab')
 
             if is_active:
                 logger.info(f"ℹ️ Period tab '{period_display_name}' is already active. Verifying content...")
-                content_ready = await page.evaluate(r"""
-                    () => {
-                        const hasOdds = document.querySelectorAll('div.odds-cell').length > 0;
-                        const hasOU = document.querySelectorAll('div[data-testid="over-under-collapsed-row"]').length > 0;
-                        const hasAH = document.querySelectorAll('div[data-testid="asian-handicap-collapsed-row"]').length > 0;
-                        return hasOdds || hasOU || hasAH;
-                    }
-                """)
-                if content_ready:
+                if await self._has_market_content(page):
                     return True
                 logger.info("  ⏳ Period tab is active but content is missing. Waiting for render...")
 
             if not is_active:
+                await self._remove_interaction_overlays(page)
                 logger.info(f"🖱️ Clicking period tab: '{period_display_name}'")
-                await target_tab.click()
-            
-            # Step 3: Wait for odds table to update (values to change)
+                try:
+                    await target_tab.scroll_into_view_if_needed()
+                    await target_tab.click(timeout=3000)
+                except Exception:
+                    await target_tab.click(force=True, timeout=3000)
+
             max_wait_s = int(os.environ.get("ODDSPORTAL_TAB_WAIT_TIMEOUT", 20))
             poll_interval_ms = 300
             elapsed = 0
             table_changed = False
-            
+
             while elapsed < max_wait_s:
                 await page.wait_for_timeout(poll_interval_ms)
                 elapsed += poll_interval_ms / 1000
-                
+
                 new_value = await page.evaluate(r"""
                     () => {
                         const getFirstVisibleText = (selector) => {
@@ -392,46 +480,42 @@ class OddsPortalScraper:
                         return null;
                     }
                 """)
-                
-                if new_value and (ref_value is None or new_value != ref_value):
+
+                active_now = await self._is_target_period_active(page, period_display_name)
+                if active_now and new_value and (ref_value is None or new_value != ref_value):
                     logger.info(f"✅ Odds table updated after {elapsed:.1f}s: {ref_value} → {new_value}")
                     table_changed = True
                     break
-            
+
             if not table_changed:
-                # Secondary check: verify if structural DOM elements exist (handles identical-odds edge case)
-                content_present = await page.evaluate(r"""
-                    () => {
-                        const hasOdds = document.querySelectorAll('div.odds-cell').length > 0;
-                        const hasOU = document.querySelectorAll('div[data-testid="over-under-collapsed-row"]').length > 0;
-                        const hasAH = document.querySelectorAll('div[data-testid="asian-handicap-collapsed-row"]').length > 0;
-                        return hasOdds || hasOU || hasAH;
-                    }
-                """)
-                if content_present:
-                    logger.info(f"ℹ️ Odds text unchanged after {max_wait_s}s but DOM content is present — treating as success (odds may be identical across periods).")
+                content_present = await self._has_market_content(page)
+                active_now = await self._is_target_period_active(page, period_display_name)
+
+                # Identical-odds edge case: accept only if the target tab is truly active.
+                if active_now and content_present and (not before_active_has_target or is_active):
+                    logger.info(
+                        f"ℹ️ No odds-text delta after {max_wait_s}s, but target period is active and content is present — treating as success."
+                    )
                     table_changed = True
                 else:
-                    if is_active:
-                        logger.warning(f"⚠️ Period tab '{period_display_name}' was already active but content never rendered after {max_wait_s}s.")
-                    else:
-                        logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value}). Period data may be identical or tab click failed.")
-            
-            # Brief extra settle to let any remaining DOM mutations finish
+                    logger.warning(
+                        f"⚠️ Period switch validation failed for '{period_display_name}' "
+                        f"(active_now={active_now}, content_present={content_present}, before_active_has_target={before_active_has_target}, ref={ref_value})"
+                    )
+
             await asyncio.sleep(0.5)
-            
             return table_changed
-            
+
         except Exception as e:
             logger.error(f"❌ Error clicking period tab '{period_display_name}': {e}")
             return False
-
     async def _click_market_group_tab(self, page: Page, group_display_name: str) -> bool:
         """
-        Click a market group tab (e.g. "Over/Under", "1X2") and wait for the odds table to update.
+        Click a market group tab (e.g. "Over/Under", "1X2") and wait for the table to update.
+
+        Success criteria are strict to avoid false positives that can cause stale extractions.
         """
         try:
-            # Snapshot reference value
             ref_value = await page.evaluate(r"""
                 () => {
                     const getFirstVisibleText = (selector) => {
@@ -451,12 +535,15 @@ class OddsPortalScraper:
             """)
             logger.info(f"📸 Reference value before group switch: {ref_value}")
 
-            # Find and click the target group tab
+            before_active_group = await self._get_active_group_label(page)
+            group_target_norm = (group_display_name or "").strip().lower()
+            before_active_is_target = before_active_group.strip().lower() == group_target_norm
+
             tabs = await page.query_selector_all('ul.visible-links.odds-tabs li')
             if not tabs:
                 logger.warning("⚠️ Market group tabs not found")
                 return False
-                
+
             target_tab = None
             available_tabs = []
             for tab in tabs:
@@ -464,48 +551,41 @@ class OddsPortalScraper:
                 text_stripped = text.strip() if text else ""
                 if text_stripped:
                     available_tabs.append(text_stripped)
-                    if group_display_name.lower().strip() == text_stripped.lower():
+                    if group_target_norm == text_stripped.lower().strip():
                         target_tab = tab
                         break
-                        
+
             if not target_tab:
                 logger.warning(f"⚠️ Market group tab '{group_display_name}' not found")
                 logger.warning(f"   Available tabs: {available_tabs}")
                 return False
-                
-            # Check if active
+
             is_active = await target_tab.evaluate("el => el.classList.contains('active-odds')")
-            
+
             if is_active:
                 logger.info(f"ℹ️ Market group tab '{group_display_name}' is already active. Verifying content...")
-                # Even if active, the content might be loading (especially after a fragment/hash fallback)
-                # We check if there are any odds rows or over/under rows visible.
-                content_ready = await page.evaluate(r"""
-                    () => {
-                        const hasOdds = document.querySelectorAll('div.odds-cell').length > 0;
-                        const hasOU = document.querySelectorAll('div[data-testid="over-under-collapsed-row"]').length > 0;
-                        const hasAH = document.querySelectorAll('div[data-testid="asian-handicap-collapsed-row"]').length > 0;
-                        return hasOdds || hasOU || hasAH;
-                    }
-                """)
-                if content_ready:
+                if await self._has_market_content(page):
                     return True
                 logger.info("  ⏳ Tab is active but content is missing. Waiting for render...")
 
             if not is_active:
+                await self._remove_interaction_overlays(page)
                 logger.info(f"🖱️ Clicking market group tab: '{group_display_name}'")
-                await target_tab.click()
-            
-            # Wait for table to update
+                try:
+                    await target_tab.scroll_into_view_if_needed()
+                    await target_tab.click(timeout=3000)
+                except Exception:
+                    await target_tab.click(force=True, timeout=3000)
+
             max_wait_s = int(os.environ.get("ODDSPORTAL_TAB_WAIT_TIMEOUT", 20))
             poll_interval_ms = 300
             elapsed = 0
             table_changed = False
-            
+
             while elapsed < max_wait_s:
                 await page.wait_for_timeout(poll_interval_ms)
                 elapsed += poll_interval_ms / 1000
-                
+
                 new_value = await page.evaluate(r"""
                     () => {
                         const getFirstVisibleText = (selector) => {
@@ -523,39 +603,35 @@ class OddsPortalScraper:
                         return null;
                     }
                 """)
-                
-                # If ref_value was None (e.g. initial load failure), any valid new_value is a "change"
-                if new_value and (ref_value is None or new_value != ref_value):
+
+                active_now = await self._is_target_group_active(page, group_display_name)
+                if active_now and new_value and (ref_value is None or new_value != ref_value):
                     logger.info(f"✅ Odds table updated after {elapsed:.1f}s: {ref_value} → {new_value}")
                     table_changed = True
                     break
-            
+
             if not table_changed:
-                # Secondary check: verify if structural DOM elements exist (handles identical-odds edge case)
-                content_present = await page.evaluate(r"""
-                    () => {
-                        const hasOdds = document.querySelectorAll('div.odds-cell').length > 0;
-                        const hasOU = document.querySelectorAll('div[data-testid="over-under-collapsed-row"]').length > 0;
-                        const hasAH = document.querySelectorAll('div[data-testid="asian-handicap-collapsed-row"]').length > 0;
-                        return hasOdds || hasOU || hasAH;
-                    }
-                """)
-                if content_present:
-                    logger.info(f"ℹ️ Odds text unchanged after {max_wait_s}s but DOM content is present — treating as success.")
+                content_present = await self._has_market_content(page)
+                active_now = await self._is_target_group_active(page, group_display_name)
+
+                # Identical-odds edge case: accept only if target group is active.
+                if active_now and content_present and (not before_active_is_target or is_active):
+                    logger.info(
+                        f"ℹ️ No odds-text delta after {max_wait_s}s, but target group is active and content is present — treating as success."
+                    )
                     table_changed = True
                 else:
-                    if is_active:
-                        logger.warning(f"⚠️ Tab '{group_display_name}' was already active but content never rendered after {max_wait_s}s.")
-                    else:
-                        logger.warning(f"⚠️ Odds table did NOT change after {max_wait_s}s wait (ref={ref_value})")
-                
+                    logger.warning(
+                        f"⚠️ Group switch validation failed for '{group_display_name}' "
+                        f"(active_now={active_now}, content_present={content_present}, before_active_is_target={before_active_is_target}, ref={ref_value})"
+                    )
+
             await asyncio.sleep(0.5)
             return table_changed
-            
+
         except Exception as e:
             logger.error(f"❌ Error clicking market group tab '{group_display_name}': {e}")
             return False
-
     async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
         """
         Navigate to league page and find match URL by team names.
@@ -792,18 +868,49 @@ class OddsPortalScraper:
             logger.info(f"🌐 Navigating to match: {initial_url}")
             
             # Navigate to match page
+            response = None
             try:
                 response = await page.goto(initial_url, wait_until="domcontentloaded", timeout=30000)
             except Exception as e:
                 error_str = str(e).lower()
-                # If the page navigation completely failed (timeout or network error), fast fail immediately
-                if any(err in error_str for err in ["err_timed_out", "err_connection", "err_name_not_resolved"]):
+
+                # Immediate network/proxy failures should short-circuit quickly.
+                immediate_network_markers = [
+                    "err_timed_out",
+                    "err_connection",
+                    "err_name_not_resolved",
+                    "err_tunnel_connection_failed",
+                    "err_proxy_connection_failed",
+                    "err_socks_connection_failed",
+                    "net::err_failed",
+                    "timeout 30000ms exceeded",
+                    "navigation timeout",
+                ]
+                if any(err in error_str for err in immediate_network_markers):
                     logger.error(f"🚨 FAST FAIL (Network): Page navigation completely failed: {str(e).split(chr(10))[0]}")
                     await page.close()
                     return None
-                # Non-fatal: domcontentloaded might have partially loaded, let Check #1 and #2 decide
+
+                # Non-fatal: domcontentloaded might have partially loaded; continue to fast-fail checks.
                 logger.warning(f"⚠️ Initial goto struggled, but continuing to check for odds: {e}")
-            
+
+            # If we received a hard HTTP error, fail fast.
+            if response and response.status >= 400:
+                logger.error(f"🚨 FAST FAIL (HTTP): Match page returned status {response.status} for {initial_url}")
+                await page.close()
+                return None
+
+            # Blank-shell safety: if navigation yielded no response and no useful page context, fail early.
+            if response is None:
+                try:
+                    title_now = (await page.title() or "").strip()
+                    url_now = (page.url or "").strip().lower()
+                    if not title_now and (not url_now or url_now == "about:blank"):
+                        logger.error("🚨 FAST FAIL (Blank shell): navigation produced empty page context")
+                        await page.close()
+                        return None
+                except Exception:
+                    pass
             t_goto = time.perf_counter()
             log_timing(f"Match page load ({initial_url}) took {t_goto - t0:.2f}s")
             
@@ -826,58 +933,79 @@ class OddsPortalScraper:
             except Exception:
                 pass
 
-            # Fast Fail Check 2: Event-driven detection of unrendered SPA content
+            # Fast Fail Check 2: Event-driven detection of unrendered or shell-only SPA pages
             # Expose a function for the browser to signal failure back to Python
             await page.expose_function('__signalFastFail', on_fast_fail_signal)
 
-            # Inject MutationObserver to watch the event-container
-            await page.evaluate("""
-                () => {
-                    const EMPTY_TIMEOUT_MS = 15000; // 15s of empty container = fast fail
-                    const container = document.querySelector('div.event-container');
-                    
-                    if (!container) {
-                        // If container is missing entirely after navigation, give it a bit of head start
-                        // but schedule a fail if it never appears.
-                        setTimeout(() => window.__signalFastFail("Missing event-container"), EMPTY_TIMEOUT_MS);
-                        return;
-                    }
-                    
-                    // If container already has real content (odds rows), do nothing
-                    // Check for actual child elements, ignoring the Vue placeholder comment
-                    const isActuallyEmpty = () => {
-                        return container.children.length === 0 || 
-                               (container.children.length === 1 && container.innerHTML.trim() === '<!---->');
+            empty_timeout_ms = int(os.environ.get("ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS", "15000"))
+
+            # Inject observer-based fast-fail logic
+            await page.evaluate(r"""
+                (EMPTY_TIMEOUT_MS) => {
+                    if (window.__opFastFailInstalled) return;
+                    window.__opFastFailInstalled = true;
+
+                    let signaled = false;
+                    const signalOnce = (reason) => {
+                        if (signaled) return;
+                        signaled = true;
+                        window.__signalFastFail(reason);
                     };
 
-                    if (!isActuallyEmpty()) {
-                        return; // Already loaded!
+                    const hasOddsMarkers = () => {
+                        return !!(
+                            document.querySelector('div.border-black-borders.flex.h-9') ||
+                            document.querySelector('div[data-testid="over-under-collapsed-row"]') ||
+                            document.querySelector('div[data-testid="asian-handicap-collapsed-row"]') ||
+                            document.querySelector('div[data-testid="over-under-expanded-row"]') ||
+                            document.querySelector('ul.visible-links.odds-tabs li') ||
+                            document.querySelector('div[data-testid="kickoff-events-nav"]')
+                        );
+                    };
+
+                    const container = document.querySelector('div.event-container');
+                    const isContainerEmpty = () => {
+                        if (!container) return true;
+                        return container.children.length === 0 ||
+                            (container.children.length === 1 && container.innerHTML.trim() === '<!---->');
+                    };
+
+                    if (hasOddsMarkers()) {
+                        return;
                     }
-                    
-                    // Container is empty: start a timer to fail if it stays empty
+
                     let failTimer = setTimeout(() => {
-                        window.__signalFastFail("Event container stayed empty (SPA render failure)");
+                        if (hasOddsMarkers()) return;
+                        if (!container) {
+                            signalOnce('Missing event-container');
+                        } else if (isContainerEmpty()) {
+                            signalOnce('Event container stayed empty (SPA render failure)');
+                        } else {
+                            signalOnce('No odds UI markers loaded');
+                        }
                     }, EMPTY_TIMEOUT_MS);
-                    
-                    // Watch for mutations — if real content appears, cancel the fail timer
-                    const observer = new MutationObserver((mutations) => {
-                        if (!isActuallyEmpty()) {
+
+                    const observer = new MutationObserver(() => {
+                        if (hasOddsMarkers()) {
                             clearTimeout(failTimer);
                             observer.disconnect();
                         }
                     });
-                    
-                    observer.observe(container, { childList: true, subtree: true });
-                }
-            """)
 
-            # Race: wait for rows (success) vs fast fail event (timeout/error)
+                    const target = document.body || document.documentElement;
+                    if (target) {
+                        observer.observe(target, { childList: true, subtree: true });
+                    }
+                }
+            """, empty_timeout_ms)
+
+            # Race: wait for initial market render (success) vs fast-fail event.
+            first_extract_fn = (first_group or {}).get("extract_fn", "standard")
+
             async def wait_for_rows():
                 try:
-                    await page.wait_for_selector('div.border-black-borders.flex.h-9', timeout=60000)
-                    return "success"
-                except asyncio.TimeoutError:
-                    return "timeout"
+                    rendered = await self._wait_for_market_render(page, first_extract_fn, timeout_ms=60000)
+                    return "success" if rendered else "timeout"
                 except Exception as e:
                     return f"error: {str(e)}"
 
@@ -1000,9 +1128,12 @@ class OddsPortalScraper:
                             fragment = OP_GROUPS.get(group_key, group_key)
                             first_period_key = periods[0][0] if periods else "FULL_TIME"
                             period_code = OP_PERIODS.get(first_period_key, 2)
-                            reload_url = f"{match_url}/#{fragment};{period_code}"
+                            base_url = self._normalize_base_match_url(match_url)
+                            reload_url = f"{base_url}/#{fragment};{period_code}"
                             await page.goto(reload_url, wait_until="domcontentloaded", timeout=30000)
-                            await page.wait_for_selector("div.border-black-borders.flex.h-9", state="visible", timeout=15000)
+                            rendered = await self._wait_for_market_render(page, extract_fn, timeout_ms=15000)
+                            if not rendered:
+                                raise TimeoutError("market render wait timed out after group reload")
                             await asyncio.sleep(1)
                             success = True
                             logger.info(f"✅ Page reload recovery succeeded for {group_key}")
@@ -1030,9 +1161,12 @@ class OddsPortalScraper:
                             try:
                                 fragment = OP_GROUPS.get(group_key, group_key)
                                 period_code = OP_PERIODS.get(period_key, 2)
-                                reload_url = f"{match_url}/#{fragment};{period_code}"
+                                base_url = self._normalize_base_match_url(match_url)
+                                reload_url = f"{base_url}/#{fragment};{period_code}"
                                 await page.goto(reload_url, wait_until="domcontentloaded", timeout=30000)
-                                await page.wait_for_selector("div.border-black-borders.flex.h-9", state="visible", timeout=15000)
+                                rendered = await self._wait_for_market_render(page, extract_fn, timeout_ms=15000)
+                                if not rendered:
+                                    raise TimeoutError("market render wait timed out after period reload")
                                 await asyncio.sleep(1)
                                 tab_clicked = True
                                 logger.info(f"✅ Page reload recovery succeeded for period {db_market_period}")
@@ -1796,7 +1930,7 @@ class OddsPortalScraper:
             
         return match_data
 
-    async def _extract_data_over_under(self, page: Page, match_url: str) -> MatchOddsData:
+    async def _extract_data_over_under(self, page: Page, match_url: str) -> Optional[MatchOddsData]:
         """
         Extracts Over/Under market data from the current page.
         Identifies the handicap value, Home (Over), and Away (Under) odds for each bookmaker.
@@ -1854,6 +1988,7 @@ class OddsPortalScraper:
             await page.locator('div[data-testid="over-under-collapsed-row"]').nth(target_index).click()
         else:
             logger.warning("  ⚠️ Could not determine main line Over/Under row")
+            return None
         # Wait for the row to expand
         await page.wait_for_timeout(1500)
         
@@ -1958,7 +2093,7 @@ class OddsPortalScraper:
             
         return match_data
 
-    async def _extract_data_asian_handicap(self, page: Page, match_url: str) -> MatchOddsData:
+    async def _extract_data_asian_handicap(self, page: Page, match_url: str) -> Optional[MatchOddsData]:
         """
         Extracts Asian Handicap market data from the current page.
         Identifies the handicap value, Home (1) and Away (2) odds for each bookmaker.
@@ -2016,6 +2151,7 @@ class OddsPortalScraper:
             await page.locator('div[data-testid="over-under-collapsed-row"]').nth(target_index).click()
         else:
             logger.warning("  ⚠️ Could not determine main line Asian Handicap row")
+            return None
         # Wait for the row to expand
         await page.wait_for_timeout(1500)
         

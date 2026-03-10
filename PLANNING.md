@@ -1,4 +1,4 @@
-﻿# Planning & Technical Map
+# Planning & Technical Map
 
 This file is the implementation planning and operating guide for the SofaScore automation platform.
 It complements `README.md` by focusing on execution model, ownership boundaries, maintenance priorities, and next engineering steps.
@@ -86,7 +86,7 @@ Build and operate a reliable, always-on pipeline that transforms live SofaScore 
 4. **Alert evaluation and delivery**
 - Refresh MV.
 - Evaluate each event for odds alert + H2H/streak + dual/pattern report.
-- Send grouped event messages in deterministic order.
+- Send grouped event messages concurrently (via thread pool). Each event has its own thread, preventing slower OP scrapes from blocking faster events.
 
 5. **Post-match reconciliation**
 - Daily results pull updates `results`.

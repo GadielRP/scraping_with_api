@@ -1,4 +1,4 @@
-﻿# SofaScore Automation Platform
+# SofaScore Automation Platform
 
 This project is an automated sports-data and odds intelligence platform built around SofaScore APIs, historical pattern analysis, and Telegram alerts.
 
@@ -88,8 +88,7 @@ Daily jobs pull completed match results, refresh odds/markets for finished event
 - apply timestamp correction pass,
 - extract odds for 30/0 minute events,
 - refresh MV,
-- evaluate alerts in batches,
-- send event-grouped notifications.
+- evaluate and send event-grouped notifications in parallel (per-event thread pool).
 5. Midnight flow updates results + prediction outcomes.
 
 ## Entry Commands (`main.py`)

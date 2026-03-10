@@ -140,27 +140,31 @@ sequenceDiagram
     OP-->>W: domcontentloaded
     W->>W: wait_for_selector("div.border-black-borders.flex.h-9", 60s)
 
-    loop For each period in route
-        W->>W: _extract_data() → Final odds for ALL bookies (DOM parse)
-        W->>W: _extract_opening_odds_for_bookie() → Hover (single priority bookie only)
-        W->>W: _extract_opening_odds_betfair() → Hover (designated period only)
-        W->>W: Wrap into MarketExtraction
-        W->>OP: Navigate to next fragment (if more periods)
+    loop For each event in batch
+        loop For each period in route
+            W->>W: _extract_data() → Final odds for ALL bookies
+            W->>W: _extract_opening_odds_for_bookie() → Hover
+            W->>W: _extract_opening_odds_betfair() → Hover
+            W->>W: Wrap into MarketExtraction
+            W->>OP: Navigate to next fragment (if more periods)
+        end
+        W->>DB: on_result callback → MarketRepository.save() inline
+        W->>S: op_done_event[event_id].set() inline
     end
 
-    W->>DB: MarketRepository.save_markets_from_oddsportal()
-    W->>S: op_done_event.set()
-
-    S->>S: Wait for op_done_event (blocking odds alert)
-    S->>S: Merge OP data into Telegram alert
-    S->>S: Send alert
+    note over S: MEANWHILE (Parallel Thread Pool per Event)
+    S->>S: Alert Thread 1 waits for op_done_event[event_A]
+    S->>S: Alert Thread 2 waits for op_done_event[event_B]
+    S->>S: Alert Thread 1 sends Event A alert (immediately when A completes)
+    S->>S: Alert Thread 2 sends Event B alert (immediately when B completes)
 ```
 
 ### Key Design Decisions
 
-- **Worker runs in a background thread**, never the main thread. `scrape_multiple_matches_sync` spins up its own `asyncio` event loop via `loop.run_until_complete()`.
-- **Main thread waits** for the worker only once, immediately before sending the odds alert. H2H and dual-process evaluations run concurrently.
-- **One browser instance** is reused for all matches in the batch, minimising startup overhead.
+- **Worker runs in a background thread**. `scrape_multiple_matches_sync` / `parallel_sync` spin up their own `asyncio` event loops.
+- **Immediate Inline Saving (v2 Callback)**: The scraper accepts an `on_result` callback. As soon as a single match finishes scraping, it is persisted to the DB and its specific `threading.Event` is signalled, before the scraper even moves to the next match.
+- **Parallel Alert Sending (v3 Thread Pool)**: The scheduler evaluates and sends alerts using a `ThreadPoolExecutor` where every event runs in its own thread. This ensures that one slow-scraping event does not block the Telegram alerts for faster events.
+- **One browser instance** is reused for all matches in a sequential batch (or split across browsers in parallel mode), minimising startup overhead.
 
 ---
 
