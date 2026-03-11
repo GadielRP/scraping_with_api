@@ -504,7 +504,7 @@ class JobScheduler:
                 set_prediction_system.check_nba_4th_quarter()
                 
                 # Use the "smart" odds extraction logic
-                KEY_MOMENTS = [30, 0]
+                KEY_MOMENTS = [120, 30, 5, 0]
                 
                 for event_data in upcoming_events:
                     # RETRIEVE PRE-CALCULATED TIMING
@@ -1251,9 +1251,24 @@ class JobScheduler:
                     if op_event_ids and event_obj.id in op_event_ids and op_done_events:
                         per_event = op_done_events.get(event_obj.id)
                         if per_event and not per_event.is_set():
-                            logger.info(f"⏳ Waiting for OddsPortal scraping to finish before sending odds alert for event {event_obj.id}...")
-                            per_event.wait(timeout=180)  # Max 3 min wait for THIS event only
-                            logger.info(f"✅ OddsPortal scraping finished, proceeding with odds alert for event {event_obj.id}")
+                            timeout_s = getattr(Config, "ODDSPORTAL_ALERT_WAIT_TIMEOUT", 180)
+                            logger.info(f"[OP] Waiting for OddsPortal signal (up to {timeout_s}s) before sending odds alert for event {event_obj.id}...")
+                            signaled = per_event.wait(timeout=timeout_s)
+                            if signaled:
+                                logger.info(f"[OP] Worker signaled completion for event {event_obj.id}. Verifying DB availability...")
+                            else:
+                                logger.warning(f"[OP] Timed out after {timeout_s}s waiting for OddsPortal for event {event_obj.id}. Sending odds alert now (OddsPortal section may be missing).")
+
+                            # Log whether OP section will actually be included (based on DB availability)
+                            try:
+                                from repository import MarketRepository
+                                op_markets = MarketRepository.get_oddsportal_markets_for_event(event_obj.id)
+                                if op_markets:
+                                    logger.info(f"[OP] OddsPortal data is available for event {event_obj.id} ({len(op_markets)} rows) - OddsPortal section should be included.")
+                                else:
+                                    logger.info(f"[OP] OddsPortal data is NOT available for event {event_obj.id} - OddsPortal section will NOT be included.")
+                            except Exception as op_check_err:
+                                logger.warning(f"[OP] Could not verify OddsPortal DB availability for event {event_obj.id}: {op_check_err}")
                     logger.info(f"📊 Sending odds alert for event {event_obj.id} (1st in group)")
                     try:
                         event_data_for_odds = {
@@ -1607,7 +1622,7 @@ class JobScheduler:
             return False, None
         
         # Key moments for odds extraction (removed 1-minute check - now handled by 5-minutes-after logic)
-        KEY_MOMENTS = [30, 0]
+        KEY_MOMENTS = [120, 30, 5, 0]
         
         # Check if current time aligns with a key moment
         should_extract = minutes_until_start in KEY_MOMENTS

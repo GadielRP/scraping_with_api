@@ -2313,29 +2313,29 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
                 if not target_url and league_url and home_team and away_team:
                     target_url = await scraper.find_match_url(league_url, home_team, away_team)
                     
+                data = None
                 if target_url:
                     data = await scraper.scrape_match(target_url, sport=sport)
                     
-                    # Session-aware retry: if scrape failed (likely timeout/bad IP),
-                    # restart browser with a fresh proxy session and retry once.
-                    if data is None:
-                        logger.warning(f"🔄 scrape_match_sync: No data — restarting browser with new proxy session and retrying...")
-                        await scraper.stop()
-                        await scraper.start()  # Fresh session ID = new IP
-                        
-                        # Re-find match URL if needed
-                        retry_url = target_url
-                        if not retry_url and league_url and home_team and away_team:
-                            retry_url = await scraper.find_match_url(league_url, home_team, away_team)
-                        if retry_url:
-                            data = await scraper.scrape_match(retry_url, sport=sport)
-                            if data:
-                                logger.info(f"✅ scrape_match_sync: RETRY SUCCEEDED with new session-{scraper._session_id}")
-                            else:
-                                logger.warning("⚠️ scrape_match_sync: Retry also returned no data")
+                # Session-aware retry: if scrape OR discovery failed (likely bad proxy/IP),
+                # restart browser with a fresh proxy session and retry once.
+                if data is None:
+                    logger.warning(f"🔄 scrape_match_sync: No data (or match discovery failed) — restarting browser with new proxy session and retrying...")
+                    await scraper.stop()
+                    await scraper.start()  # Fresh session ID = new IP
                     
-                    return data
-                return None
+                    # Re-find match URL if needed
+                    retry_url = match_url
+                    if not retry_url and league_url and home_team and away_team:
+                        retry_url = await scraper.find_match_url(league_url, home_team, away_team)
+                    if retry_url:
+                        data = await scraper.scrape_match(retry_url, sport=sport)
+                        if data:
+                            logger.info(f"✅ scrape_match_sync: RETRY SUCCEEDED with new session-{scraper._session_id}")
+                        else:
+                            logger.warning("⚠️ scrape_match_sync: Retry also returned no data")
+                
+                return data
             finally:
                 await scraper.stop()
                 
@@ -2400,64 +2400,58 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                                 season_id=season_id
                             )
                         
+                        # Resolve sport from season_id for scraping route
+                        task_sport = task.get('sport')
+                        if not task_sport and season_id:
+                            op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
+                            if op_info:
+                                task_sport = op_info.get('sport')
+                        
+                        data = None
                         if match_url:
-                            # Resolve sport from season_id for scraping route
-                            task_sport = task.get('sport')
-                            if not task_sport and season_id:
-                                op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
-                                if op_info:
-                                    task_sport = op_info.get('sport')
-                            
                             data = await scraper.scrape_match(match_url, sport=task_sport)
+                        
+                        # Session-aware retry: if scrape OR discovery failed (likely bad proxy/IP),
+                        # restart browser with a fresh proxy session and retry once.
+                        if data is None:
+                            logger.warning(f"🔄 OddsPortal [{i+1}/{len(tasks)}]: No data (or match discovery failed) — restarting browser with new proxy session and retrying...")
+                            await scraper.stop()
+                            await scraper.start()  # Generates a fresh session ID = new IP
                             
-                            # Session-aware retry: if scrape returned None (likely timeout),
-                            # restart browser with a fresh proxy IP and retry once.
-                            if data is None:
-                                logger.warning(f"🔄 OddsPortal [{i+1}/{len(tasks)}]: Scrape returned no data — restarting browser with new proxy session and retrying...")
-                                await scraper.stop()
-                                await scraper.start()  # Generates a fresh session ID = new IP
-                                
-                                # Re-find match URL (cache may still have it)
-                                retry_url = match_url
-                                if not retry_url and season_id:
-                                    retry_url = scraper.find_match_url_from_cache(
-                                        season_id, task['home_team'], task['away_team']
-                                    )
-                                if not retry_url:
-                                    retry_url = await scraper.find_match_url(
-                                        task['league_url'], task['home_team'], task['away_team'],
-                                        season_id=season_id
-                                    )
-                                if retry_url:
-                                    data = await scraper.scrape_match(retry_url, sport=task_sport)
-                                    if data:
-                                        logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: RETRY SUCCEEDED with new session-{scraper._session_id}")
-                                    else:
-                                        logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Retry also returned no data")
-                            
-                            results[event_id] = data
-                            if data:
-                                logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: Got {len(data.extractions)} period(s), {len(data.bookie_odds)} bookies")
-                            else:
-                                logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Scrape returned no data")
-                            # Invoke callback immediately so caller can save/signal per event
-                            if on_result:
-                                try:
-                                    on_result(event_id, data)
-                                except Exception as cb_err:
-                                    logger.error(f"❌ on_result callback error for event {event_id}: {cb_err}")
+                            # Re-find match URL (cache may still have it)
+                            retry_url = match_url
+                            if not retry_url and season_id:
+                                retry_url = scraper.find_match_url_from_cache(
+                                    season_id, task['home_team'], task['away_team']
+                                )
+                            if not retry_url:
+                                retry_url = await scraper.find_match_url(
+                                    task['league_url'], task['home_team'], task['away_team'],
+                                    season_id=season_id
+                                )
+                            if retry_url:
+                                data = await scraper.scrape_match(retry_url, sport=task_sport)
+                                if data:
+                                    logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: RETRY SUCCEEDED with new session-{scraper._session_id}")
+                                else:
+                                    logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Retry also returned no data")
+                        
+                        results[event_id] = data
+                        if data:
+                            logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: Got {len(data.extractions)} period(s), {len(data.bookie_odds)} bookies")
                         else:
-                            logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Match not found on league page")
-                            results[event_id] = None
-                            if on_result:
-                                try:
-                                    on_result(event_id, None)
-                                except Exception as cb_err:
-                                    logger.error(f"❌ on_result callback error for event {event_id}: {cb_err}")
+                            logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Scrape failed (Match not found or navigation error)")
+                        
+                        # Invoke callback immediately so caller can save/signal per event
+                        if on_result:
+                            try:
+                                on_result(event_id, data)
+                            except Exception as cb_err:
+                                logger.error(f"❌ on_result callback error for event {event_id}: {cb_err}")
                         
                         # Small delay between scrapes to be respectful to OddsPortal
                         if i < len(tasks) - 1:
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(1)
                         
                     except Exception as e:
                         logger.error(f"❌ OddsPortal scrape failed for event {event_id}: {e}")

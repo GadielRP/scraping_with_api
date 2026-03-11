@@ -95,3 +95,7 @@ bet_365_away_not_hovered.html
 
 cache_found.logs
 cache_saved.logs
+create_view.py
+list_of_sports_theodds_api.py
+theoddsapi_test.py
+verify_snapshots.py

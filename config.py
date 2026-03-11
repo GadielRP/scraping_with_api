@@ -88,7 +88,10 @@ class Config:
     
     # Max seconds to wait for a previous OP cycle to finish before proceeding
     ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT = int(os.getenv('ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT', '120'))
-    
+
+    # Max seconds an odds alert thread will wait for OddsPortal scraping to finish for a specific event
+    # before proceeding without the OddsPortal section.
+    ODDSPORTAL_ALERT_WAIT_TIMEOUT = int(os.getenv('ODDSPORTAL_ALERT_WAIT_TIMEOUT', '180'))    
     # Smart Alert Filtering Configuration
     # Minimum number of past results required for at least one team to send streak alerts
     STREAK_ALERT_MIN_RESULTS = int(os.getenv('STREAK_ALERT_MIN_RESULTS', '15'))

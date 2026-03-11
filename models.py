@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Numeric, DateTime, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Computed, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, Numeric, DateTime, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Computed, Boolean, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import event, DDL, text
 from sqlalchemy.orm import sessionmaker, relationship
@@ -251,9 +251,31 @@ class MarketChoice(Base):
     
     # Relationships
     market = relationship("Market", back_populates="choices")
+    snapshots = relationship("MarketChoiceSnapshot", back_populates="choice", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<MarketChoice(choice_id={self.choice_id}, name='{self.choice_name}', initial={self.initial_odds}, current={self.current_odds})>"
+
+
+class MarketChoiceSnapshot(Base):
+    """
+    Append-only snapshots of market choice odds at specific points in time.
+    Used for historical graph generation.
+    """
+    __tablename__ = 'market_choice_snapshots'
+    
+    snapshot_id = Column(Integer, primary_key=True, autoincrement=True)
+    choice_id = Column(Integer, ForeignKey('market_choices.choice_id', ondelete='CASCADE'), nullable=False)
+    odds_value = Column(Numeric(8, 3), nullable=False)
+    collected_at = Column(DateTime, default=get_local_now, nullable=False)
+    
+    # Constraints & Indexes
+    __table_args__ = (
+        Index('idx_choice_collected', 'choice_id', 'collected_at'),
+    )
+    
+    # Relationships
+    choice = relationship("MarketChoice", back_populates="snapshots")
 
 
 class PredictionLog(Base):
@@ -498,6 +520,30 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
 )
 
 
+MARKET_CHOICE_TRAJECTORY_VIEW_SQL = (
+    """
+    CREATE OR REPLACE VIEW v_market_choice_trajectory AS
+    SELECT 
+        e.id AS event_id,
+        e.start_time_utc,
+        m.market_name,
+        m.market_group,
+        m.market_period,
+        m.choice_group,
+        b.name AS bookie_name,
+        mc.choice_name,
+        mcs.odds_value,
+        mcs.collected_at,
+        ROUND(EXTRACT(EPOCH FROM (e.start_time_utc - mcs.collected_at)) / 60) AS minutes_before_start
+    FROM market_choice_snapshots mcs
+    JOIN market_choices mc ON mc.choice_id = mcs.choice_id
+    JOIN markets m ON m.market_id = mc.market_id
+    JOIN events e ON e.id = m.event_id
+    JOIN bookies b ON b.bookie_id = m.bookie_id;
+    """
+)
+
+
 def create_or_replace_views(engine):
     """Create or replace reporting SQL views. Call this after engine init."""
     with engine.begin() as conn:
@@ -507,6 +553,8 @@ def create_or_replace_views(engine):
         conn.exec_driver_sql(BASKETBALL_RESULTS_VIEW_SQL)
         # Create season events with results view for historical standings
         conn.exec_driver_sql(SEASON_EVENTS_WITH_RESULTS_VIEW_SQL)
+        # Create market choice trajectory view
+        conn.exec_driver_sql(MARKET_CHOICE_TRAJECTORY_VIEW_SQL)
 
 def create_or_replace_materialized_views(engine):
     """Create or replace materialized views for alerts. Call this after engine init."""
@@ -528,4 +576,5 @@ def refresh_materialized_views(engine):
 # NOTE: basketball_results view is NOT auto-created here - it's created manually in create_or_replace_views()
 #       to allow dropping the view first when columns change (PostgreSQL doesn't allow CREATE OR REPLACE VIEW to drop columns)
 event.listen(Base.metadata, 'after_create', DDL(EVENT_ALL_ODDS_VIEW_SQL))
+event.listen(Base.metadata, 'after_create', DDL(MARKET_CHOICE_TRAJECTORY_VIEW_SQL))
 # NOTE: Materialized view is NOT auto-created here - it's created after schema migrations in main.py

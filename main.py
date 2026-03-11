@@ -139,6 +139,18 @@ def setup_logging():
 # Initialize logging before importing other modules
 setup_logging()
 
+# Log effective OddsPortal-related config at startup (useful in container runs to confirm env wiring)
+logging.getLogger(__name__).info(
+    "OddsPortal config: parallel_browsers=%s block_resources=%s previous_cycle_timeout_s=%s alert_wait_timeout_s=%s proxy_enabled=%s proxy_endpoint_set=%s",
+    Config.ODDSPORTAL_PARALLEL_BROWSERS,
+    Config.ODDSPORTAL_BLOCK_RESOURCES,
+    Config.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT,
+    getattr(Config, 'ODDSPORTAL_ALERT_WAIT_TIMEOUT', 180),
+    Config.PROXY_ENABLED,
+    bool(getattr(Config, 'PROXY_ENDPOINT', '')),
+)
+
+
 from database import db_manager
 from models import create_or_replace_views, create_or_replace_materialized_views, refresh_materialized_views
 from scheduler import job_scheduler

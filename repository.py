@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from decimal import Decimal
 
-from models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season, Market, MarketChoice, Bookie, OddsPortalLeagueCache
+from models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season, Market, MarketChoice, MarketChoiceSnapshot, Bookie, OddsPortalLeagueCache
 from database import db_manager
 from odds_utils import validate_odds_data
 from timezone_utils import get_local_now
@@ -1057,6 +1057,7 @@ class MarketRepository:
                                 # Update existing choice (only current_odds and change)
                                 existing_choice.current_odds = current_odds
                                 existing_choice.change = change
+                                choice = existing_choice
                             else:
                                 # Create new choice
                                 choice = MarketChoice(
@@ -1068,6 +1069,15 @@ class MarketRepository:
                                 )
                                 session.add(choice)
                                 session.flush()  # Flush to avoid duplicate key errors within same transaction
+                            
+                            # CREATE SNAPSHOT for historical tracking
+                            if current_odds is not None:
+                                snapshot = MarketChoiceSnapshot(
+                                    choice_id=choice.choice_id,
+                                    odds_value=current_odds,
+                                    collected_at=market.collected_at
+                                )
+                                session.add(snapshot)
                         
                         saved_count += 1
                         
@@ -1399,6 +1409,15 @@ class MarketRepository:
                                         change=computed_change
                                     )
                                     session.add(choice)
+                                    session.flush()
+
+                                # CREATE SNAPSHOT for historical tracking
+                                snapshot = MarketChoiceSnapshot(
+                                    choice_id=choice.choice_id,
+                                    odds_value=current_odds,
+                                    collected_at=market.collected_at
+                                )
+                                session.add(snapshot)
                                     
                             saved_count += 1
                             
@@ -1529,6 +1548,15 @@ class MarketRepository:
                                             change=computed_change
                                         )
                                         session.add(choice)
+                                        session.flush()
+                                        
+                                     # CREATE SNAPSHOT for historical tracking
+                                     snapshot = MarketChoiceSnapshot(
+                                         choice_id=choice.choice_id,
+                                         odds_value=current_odds,
+                                         collected_at=market.collected_at
+                                     )
+                                     session.add(snapshot)
                                 
                                 saved_count += 1
                             
