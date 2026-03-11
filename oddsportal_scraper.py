@@ -35,6 +35,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 DEBUG_TIMING = os.getenv("DEBUG_TIMING", "false").lower() == "true"
+ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS", "15000"))
+ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS", "10000"))
 
 def log_timing(msg):
     if DEBUG_TIMING:
@@ -644,21 +646,48 @@ class OddsPortalScraper:
         try:
             logger.info(f"🌐 Navigating to league: {league_url}")
             t0 = time.perf_counter()
-            response = await page.goto(league_url, wait_until="domcontentloaded", timeout=60000)
+            try:
+                response = await page.goto(
+                    league_url,
+                    wait_until="domcontentloaded",
+                    timeout=ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS,
+                )
+            except Exception as e:
+                error_str = str(e).lower()
+                if "timeout" in error_str or "err_" in error_str or "net::" in error_str:
+                    logger.error(
+                        "🚨 FAST FAIL (League goto): navigation failed quickly "
+                        f"after {ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS}ms: {str(e).split(chr(10))[0]}"
+                    )
+                    return None
+                raise
             t_goto = time.perf_counter()
             log_timing(f"League page load ({league_url}) took {t_goto - t0:.2f}s")
             
             if not response or response.status != 200:
                 logger.error(f"❌ Failed to load league page. Status: {response.status if response else 'N/A'}")
                 return None
+
+            # Quick anti-bot/block detection to avoid lingering on a poisoned session.
+            try:
+                page_title = await page.title()
+                if any(blocked in page_title for blocked in ["Access Denied", "Just a moment...", "Attention Required!", "Security check", "Cloudflare"]):
+                    logger.error(f"🚨 FAST FAIL (League title): Proxy IP blocked. Title: '{page_title}'")
+                    return None
+            except Exception:
+                pass
             
             # Wait for event rows to appear (faster than networkidle which waits for all ads/trackers)
             try:
-                await page.wait_for_selector("div.eventRow", timeout=30000)
+                await page.wait_for_selector("div.eventRow", timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS)
                 t_wait = time.perf_counter()
                 log_timing(f"Waiting for 'div.eventRow' selector took {t_wait - t_goto:.2f}s")
             except Exception:
-                pass
+                logger.error(
+                    "🚨 FAST FAIL (League rows): no event rows loaded "
+                    f"within {ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS}ms on {league_url}"
+                )
+                return None
                 
             # Handle cookie banner
             try:
