@@ -58,12 +58,14 @@ BookieOdds:
   name: str
   odds_1, odds_x, odds_2: str           # Final odds (e.g. "1.85")
   initial_odds_1, initial_odds_x, initial_odds_2: Optional[str]  # Opening odds via hover
+  movement_odds_time: Optional[str]     # Timestamp of the odds movement (extracted from hover)
 
 # Betfair Exchange (Back and Lay)
 BetfairExchangeOdds:
   back_1, back_x, back_2: str           # Final Back odds
   lay_1, lay_x, lay_2: str             # Final Lay odds
   initial_back_1 ... initial_lay_2: Optional[str]  # Opening odds via hover
+  movement_odds_time: Optional[str]     # Timestamp of the odds movement (extracted from hover)
 
 # One period's extraction (e.g. Full-time 1X2, or 1st Half 1X2)
 MarketExtraction:
@@ -483,7 +485,7 @@ flowchart TD
     H -- Timeouted --> I["Retry (up to 3x)"]
     H -- Found --> J["Get parent modal HTML"]
     J --> K["_parse_opening_odds_from_modal_html()"]
-    K --> L["Store in BookieOdds.initial_odds_*"]
+    K --> L["Store in BookieOdds.initial_odds_* & movement_odds_time"]
 ```
 
 ### Over/Under Specifics
@@ -613,8 +615,9 @@ The scraper targets specific elements within the OddsPortal React/Vue-based fron
 
 1.  **Current Odds**: Scraped directly from the text content of the odds cells for **all available bookmakers** on page load.
 2.  **Opening Odds**: Extracted by simulating a hover event on the cells of the **top-priority bookie** (and Betfair), waiting for the "Odds movement" tooltip, and parsing the historical start price. All other bookies have this value set to `null`.
-3.  **Trend**: Calculated by comparing the opening odds vs. current odds.
-4.  **Betfair Depth**: Extracts both **Back** and **Lay** prices to visualize the exchange gap.
+3.  **Odds Movement Time**: While hovering for opening odds, the system also extracts the top timestamp (`movement_odds_time`) which indicates the time of the final/current odds value update. This is passed strictly **in-memory** through a cache dict in `scheduler.py`, completely bypassing the database schema to avoid migrations.
+4.  **Trend**: Calculated by comparing the opening odds vs. current odds.
+5.  **Betfair Depth**: Extracts both **Back** and **Lay** prices to visualize the exchange gap.
 
 ### Database Integration
 
@@ -635,9 +638,9 @@ Data is mapped from the `MatchOddsData` (via its `extractions` list) dataclass i
 
 The extracted data is consumed by `odds_alert.py` to enrich Telegram notifications:
 
-- **Logic**: When an event alert is generated, the system checks if OddsPortal data exists in the DB for that `event_id`.
+- **Logic**: When an event alert is generated, the system checks if OddsPortal data exists in the DB for that `event_id` and references the memory cache `op_data_cache` in the scheduler to retrieve the `movement_odds_time`.
 - **Display**: A dedicated `📊 ODDSPORTAL ODDS` section is appended to the message.
-- **Format**: `Bookie: Opening → Current [Trend]`.
+- **Format**: `Bookie: Opening → Current [Trend]` alongside an inline `🕒 HH:MM` extracted from the memory structure timestamp.
 - **Purpose**: Provides immediate visual context on how the market has moved since opening, helping users spot value or dropping odds before kickoff.
 
 ---

@@ -5,7 +5,7 @@ import time
 import os
 import uuid
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional, Tuple, Dict
 
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 
@@ -60,6 +60,7 @@ class BookieOdds:
     initial_odds_1: Optional[str] = None
     initial_odds_x: Optional[str] = None
     initial_odds_2: Optional[str] = None
+    movement_odds_time: Optional[str] = None
     handicap: Optional[str] = None
 
 @dataclass
@@ -86,6 +87,7 @@ class BetfairExchangeOdds:
     initial_lay_1: Optional[str] = None
     initial_lay_x: Optional[str] = None
     initial_lay_2: Optional[str] = None
+    movement_odds_time: Optional[str] = None
     handicap: Optional[str] = None
 
 @dataclass
@@ -193,7 +195,7 @@ class OddsPortalScraper:
             viewport={"width": 1920, "height": 1080},
             user_agent=random.choice(user_agents),
             locale="en-US",
-            timezone_id="America/Chicago",
+            timezone_id="America/Mexico_City",
             java_script_enabled=True,
         )
         
@@ -1252,10 +1254,19 @@ class OddsPortalScraper:
                         lbl_x = "X=" + str(opening.get('X')) + " " if opening and not is_ou else ""
                         
                         if opening:
-                            target_bookie_obj.initial_odds_1 = opening.get('1')
-                            target_bookie_obj.initial_odds_x = opening.get('X')
-                            target_bookie_obj.initial_odds_2 = opening.get('2')
-                            logger.info(f"✅ Opening odds ({db_market_period}): {lbl_1}={opening.get('1')} {lbl_x}{lbl_2}={opening.get('2')}")
+                            if opening.get('1'):
+                                target_bookie_obj.initial_odds_1 = opening['1'][0]
+                                target_bookie_obj.movement_odds_time = opening['1'][1]
+                            if opening.get('X'):
+                                target_bookie_obj.initial_odds_x = opening['X'][0]
+                                if not getattr(target_bookie_obj, 'movement_odds_time', None) and opening['X'][1]:
+                                    target_bookie_obj.movement_odds_time = opening['X'][1]
+                            if opening.get('2'):
+                                target_bookie_obj.initial_odds_2 = opening['2'][0]
+                                if not getattr(target_bookie_obj, 'movement_odds_time', None) and opening['2'][1]:
+                                    target_bookie_obj.movement_odds_time = opening['2'][1]
+                            
+                            logger.info(f"✅ Opening odds ({db_market_period}): {lbl_1}={target_bookie_obj.initial_odds_1} {lbl_x}{lbl_2}={target_bookie_obj.initial_odds_2} (Time: {target_bookie_obj.movement_odds_time})")
                         else:
                             logger.warning(f"⚠️ Could not extract opening odds for {target_bookie_obj.name} ({db_market_period})")
                     else:
@@ -1269,15 +1280,26 @@ class OddsPortalScraper:
                         bf_opening = await self._extract_opening_odds_betfair(page)
                         log_timing(f"Betfair hover extraction ({db_market_period}) took {time.perf_counter() - t_bf:.2f}s")
                         if bf_opening:
-                            period_data.betfair.initial_back_1 = bf_opening.get('back_1')
-                            period_data.betfair.initial_back_x = bf_opening.get('back_x')
-                            period_data.betfair.initial_back_2 = bf_opening.get('back_2')
-                            period_data.betfair.initial_lay_1 = bf_opening.get('lay_1')
-                            period_data.betfair.initial_lay_x = bf_opening.get('lay_x')
-                            period_data.betfair.initial_lay_2 = bf_opening.get('lay_2')
+                            # Update back odds
+                            if bf_opening.get('back_1'):
+                                period_data.betfair.initial_back_1 = bf_opening['back_1'][0]
+                                period_data.betfair.movement_odds_time = bf_opening['back_1'][1]
+                            if bf_opening.get('back_x'):
+                                period_data.betfair.initial_back_x = bf_opening['back_x'][0]
+                            if bf_opening.get('back_2'):
+                                period_data.betfair.initial_back_2 = bf_opening['back_2'][0]
+                                
+                            # Update lay odds
+                            if bf_opening.get('lay_1'):
+                                period_data.betfair.initial_lay_1 = bf_opening['lay_1'][0]
+                            if bf_opening.get('lay_x'):
+                                period_data.betfair.initial_lay_x = bf_opening['lay_x'][0]
+                            if bf_opening.get('lay_2'):
+                                period_data.betfair.initial_lay_2 = bf_opening['lay_2'][0]
+                                
                             logger.info(f"✅ Betfair opening odds ({db_market_period}):")
-                            logger.info(f"   Back: 1={bf_opening.get('back_1')} X={bf_opening.get('back_x')} 2={bf_opening.get('back_2')}")
-                            logger.info(f"   Lay:  1={bf_opening.get('lay_1')} X={bf_opening.get('lay_x')} 2={bf_opening.get('lay_2')}")
+                            logger.info(f"   Back: 1={period_data.betfair.initial_back_1} X={period_data.betfair.initial_back_x} 2={period_data.betfair.initial_back_2} (Time: {period_data.betfair.movement_odds_time})")
+                            logger.info(f"   Lay:  1={period_data.betfair.initial_lay_1} X={period_data.betfair.initial_lay_x} 2={period_data.betfair.initial_lay_2}")
                         else:
                             logger.warning(f"⚠️ Could not extract Betfair Exchange opening odds ({db_market_period})")
                         extraction_betfair = period_data.betfair
@@ -1355,47 +1377,71 @@ class OddsPortalScraper:
             await page.close()
 
 
-    def _parse_opening_odds_from_modal_html(self, modal_html: str) -> Optional[str]:
+    def _parse_opening_odds_from_modal_html(self, modal_html: str) -> Optional[Tuple[str, str]]:
         """
         Parse the opening odds value from the tooltip modal HTML.
         
-        The modal HTML (from OddsHarvester hover pattern) contains:
-          <div class="mt-2 gap-1">
-            <div class="font-bold">Opening odds:</div>
-            <div class="flex gap-1">
-              <div>15 Feb, 19:47</div>
-              <div class="font-bold">1.69</div>   ← this is the opening odds
-            </div>
-          </div>
+        The modal HTML contains a movement odds time in the '<div class="text-[10px] font-normal">' 
+        and the opening odds in the 'Opening odds:' section.
         """
         try:
-            # Look for 'Opening odds:' text, then find the bold value after the date
-            if 'Opening odds' not in modal_html:
-                return None
-            
-            # Find the section after 'Opening odds:'
-            idx = modal_html.find('Opening odds')
-            section = modal_html[idx:idx + 500]  # Take a reasonable chunk
-            
-            # Find all font-bold divs in this section and get the numeric one
             import re
-            # Match <div class="font-bold">NUMBER</div> or <div class="font-bold" ...>NUMBER</div>
-            matches = re.findall(r'<div[^>]*font-bold[^>]*>([\d.]+)</div>', section)
-            for val in matches:
+            movement_time = None
+            
+            # Extract movement time (final/current odds time)
+            time_matches = re.findall(r'<div[^>]*text-\[10px\][^>]*font-normal[^>]*>\s*([^<]+)\s*</div>', modal_html)
+            if time_matches:
+                movement_time = time_matches[0].strip()
+            else:
+                idx_opening = modal_html.find('Opening odds')
+                if idx_opening != -1:
+                    pre_section = modal_html[:idx_opening]
+                    date_matches = re.findall(r'(?:>|^\s*)(\d{1,2}\s+[A-Za-z]{3},\s+\d{2}:\d{2})(?:<|\s*$)', pre_section)
+                    if date_matches:
+                        movement_time = date_matches[0].strip()
+
+            if 'Opening odds' not in modal_html:
+                return (None, movement_time) if movement_time else None
+
+            idx = modal_html.find('Opening odds')
+            section = modal_html[idx:idx + 500]
+            
+            # Find opening odds value (the bold number in 'Opening odds' section)
+            # e.g.: <div>15 Feb, 19:47</div><div class="font-bold">1.69</div>
+            matches = re.findall(r'<div[^>]*>\s*([^<]+)\s*</div>\s*<div[^>]*font-bold[^>]*>([\d.]+)</div>', section)
+            extracted_val = None
+            for _, val in matches:
                 try:
                     f = float(val)
-                    if 1.0 <= f <= 1001.0:  # Sanity check: valid odds range (Lay odds can be high)
-                        return val
+                    if 1.0 <= f <= 1001.0:
+                        extracted_val = val
+                        break
                 except ValueError:
                     continue
-            return None
+                    
+            if not extracted_val:
+                matches = re.findall(r'<div[^>]*font-bold[^>]*>([\d.]+)</div>', section)
+                for val in matches:
+                    try:
+                        f = float(val)
+                        if 1.0 <= f <= 1001.0:
+                            extracted_val = val
+                            break
+                    except ValueError:
+                        continue
+                        
+            if extracted_val:
+                return (extracted_val, movement_time)
+            
+            return (None, movement_time) if movement_time else None
+            
         except Exception as e:
             logger.warning(f"Error parsing opening odds from modal: {e}")
             return None
 
     async def _extract_opening_odds_for_bookie(
         self, page: Page, bookie_name: str
-    ) -> Optional[Dict[str, Optional[str]]]:
+    ) -> Optional[Dict[str, Optional[Tuple[str, str]]]]:
         """
         Hover over each odds cell for a specific bookie to trigger the tooltip,
         then extract the opening odds from the 'Odds movement' modal.
@@ -1408,7 +1454,7 @@ class OddsPortalScraper:
           5. Parse opening odds from the modal
         
         Returns:
-            Dict with keys '1', 'X', '2' mapping to opening odds strings, or None on failure.
+            Dict with keys '1', 'X', '2' mapping to tuples (opening_odds, timestamp) or None on failure.
         """
         try:
             await page.wait_for_timeout(500)
@@ -1464,7 +1510,7 @@ class OddsPortalScraper:
             else:
                 choice_keys = ['1', '2']
                 
-            result: Dict[str, Optional[str]] = {}
+            result: Dict[str, Optional[Tuple[str, str]]] = {}
 
             for i, odds_block in enumerate(odds_blocks[:len(choice_keys)]):  # Respect the length of dynamic keys
                 choice = choice_keys[i] if i < len(choice_keys) else str(i)
@@ -1540,9 +1586,13 @@ class OddsPortalScraper:
                             modal_el = modal_wrapper.as_element()
                             if modal_el:
                                 html = await modal_el.inner_html()
-                                opening_val = self._parse_opening_odds_from_modal_html(html)
-                                result[choice] = opening_val
-                                logger.debug(f"  Cell {choice}: opening={opening_val} (attempt {attempt + 1})")
+                                parsed = self._parse_opening_odds_from_modal_html(html)
+                                if parsed:
+                                    opening_val, opening_time = parsed
+                                    result[choice] = (opening_val, opening_time)
+                                    logger.debug(f"  Cell {choice}: opening={opening_val} at {opening_time} (attempt {attempt + 1})")
+                                else:
+                                    result[choice] = None
                                 got_value = True
                             else:
                                 result[choice] = None
@@ -1589,7 +1639,7 @@ class OddsPortalScraper:
             return None
 
 
-    async def _extract_opening_odds_betfair(self, page: Page) -> Optional[Dict[str, Optional[str]]]:
+    async def _extract_opening_odds_betfair(self, page: Page) -> Optional[Dict[str, Optional[Tuple[str, str]]]]:
         """
         Extract opening/initial odds for Betfair Exchange by hovering over its odds cells.
 
@@ -1604,7 +1654,7 @@ class OddsPortalScraper:
 
         Returns:
             Dict with keys 'back_1'/'back_x'/'back_2' and 'lay_1'/'lay_x'/'lay_2'
-            mapping to opening odds strings, or None on failure.
+            mapping to (opening_odds, timestamp) tuples, or None on failure.
         """
         try:
             exchange_section = await page.query_selector("div[data-testid='betting-exchanges-section']")
@@ -1639,7 +1689,7 @@ class OddsPortalScraper:
                 choice_keys_back = ['back_1', 'back_2']
                 choice_keys_lay  = ['lay_1', 'lay_2']
 
-            result: Dict[str, Optional[str]] = {}
+            result: Dict[str, Optional[Tuple[str, str]]] = {}
 
             all_targets = []
             for i, c in enumerate(back_containers):
@@ -1733,7 +1783,7 @@ class OddsPortalScraper:
                         modal_el = modal_wrapper.as_element()
                         if modal_el:
                             html = await modal_el.inner_html()
-                            opening_val = self._parse_opening_odds_from_modal_html(html)
+                            parsed = self._parse_opening_odds_from_modal_html(html)
 
                             if self.debug_dir:
                                 try:
@@ -1743,8 +1793,12 @@ class OddsPortalScraper:
                                 except Exception as e:
                                     logger.warning(f"⚠️ Failed to save modal HTML: {e}")
 
-                            result[choice] = opening_val
-                            logger.debug(f"  Betfair {choice}: opening={opening_val} (attempt {attempt + 1})")
+                            if parsed:
+                                opening_val, opening_time = parsed
+                                result[choice] = (opening_val, opening_time)
+                                logger.debug(f"  Betfair {choice}: opening={opening_val} at {opening_time} (attempt {attempt + 1})")
+                            else:
+                                result[choice] = None
                             got_value = True
                         else:
                             result[choice] = None
@@ -1775,8 +1829,8 @@ class OddsPortalScraper:
 
             # Log summary
             if result:
-                back_str = f"Back: 1={result.get('back_1')} X={result.get('back_x')} 2={result.get('back_2')}"
-                lay_str  = f"Lay: 1={result.get('lay_1')} X={result.get('lay_x')} 2={result.get('lay_2')}"
+                back_str = f"Back: 1={result.get('back_1', (None,))[0]} X={result.get('back_x', (None,))[0]} 2={result.get('back_2', (None,))[0]}"
+                lay_str  = f"Lay: 1={result.get('lay_1', (None,))[0]} X={result.get('lay_x', (None,))[0]} 2={result.get('lay_2', (None,))[0]}"
                 logger.info(f"✅ Betfair opening odds: {back_str} | {lay_str}")
 
             return result if result else None
@@ -2522,11 +2576,47 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
         
     logger.info(f"🚀 OddsPortal Parallel: Splitting {len(tasks)} tasks across {num_browsers} browsers")
     
-    # Determine chunks (simple round-robin distribution to balance leagues)
+    # --- Two-Phase Season-Aware Distribution ---
+    # Phase 1 (Cache Seeding): One "seed" event per unique season_id.
+    #   These navigate the league page and populate the DB cache.
+    # Phase 2 (Cache Benefiting): Remaining events distributed freely.
+    #   By the time any browser reaches these, the seed browser has
+    #   already populated the cache (~65s earlier).
+    
+    from collections import defaultdict
+    
+    season_groups = defaultdict(list)
+    no_season_tasks = []
+    for task in tasks:
+        sid = task.get('season_id')
+        if sid:
+            season_groups[sid].append(task)
+        else:
+            no_season_tasks.append(task)
+    
+    # Phase 1: Pick one seed per season
+    seeds = []
+    remaining = []
+    for sid, group in season_groups.items():
+        seeds.append(group[0])
+        remaining.extend(group[1:])
+    
+    # Assign seeds + no-season tasks (all need league page navigation)
     chunks = [[] for _ in range(num_browsers)]
-    for i, task in enumerate(tasks):
-        chunks[i % num_browsers].append(task)
-        
+    for task in seeds + no_season_tasks:
+        smallest = min(range(len(chunks)), key=lambda i: len(chunks[i]))
+        chunks[smallest].append(task)
+    
+    # Phase 2: Distribute remaining tasks (will get cache hits)
+    for task in remaining:
+        smallest = min(range(len(chunks)), key=lambda i: len(chunks[i]))
+        chunks[smallest].append(task)
+    
+    logger.info(f"📦 Season-aware distribution: {len(seeds)} seed(s) + {len(no_season_tasks)} no-season + {len(remaining)} cache-benefiting across {num_browsers} browsers")
+    for idx, chunk in enumerate(chunks):
+        season_ids_in_chunk = [t.get('season_id', '?') for t in chunk]
+        logger.info(f"  Browser {idx}: {len(chunk)} tasks — seasons: {season_ids_in_chunk}")
+    
     # Remove empty chunks if tasks < num_browsers
     chunks = [c for c in chunks if c]
     

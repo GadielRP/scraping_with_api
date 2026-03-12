@@ -558,6 +558,10 @@ class JobScheduler:
             op_done_events = {e['event_id']: threading.Event() for e in op_candidates}
             op_event_ids = set(op_done_events.keys())
             
+            # Shared dictionary for holding extracted OP MatchOddsData objects in-memory
+            # so that odds_alert_processor can access movement_odds_time without needing the DB.
+            op_data_cache = {}
+            
             if op_candidates:
                 # Guard: wait for previous OP cycle if still running
                 if hasattr(self, '_active_op_thread') and self._active_op_thread.is_alive():
@@ -575,7 +579,7 @@ class JobScheduler:
                 # Main thread handles ALL alert evaluation (including for OP events).
                 oddsportal_thread = threading.Thread(
                     target=self._oddsportal_worker_wrapper,
-                    args=(op_candidates, op_done_events),
+                    args=(op_candidates, op_done_events, op_data_cache),
                     name="oddsportal_worker",
                     daemon=False
                 )
@@ -851,7 +855,8 @@ class JobScheduler:
                         self._evaluate_and_send_alerts_batch(
                             events_for_alerts, KEY_MOMENTS,
                             op_done_events=op_done_events,
-                            op_event_ids=op_event_ids
+                            op_event_ids=op_event_ids,
+                            op_data_cache=op_data_cache
                         )
                     else:
                         logger.debug("No events at key moments found for alert evaluation")
@@ -1202,7 +1207,7 @@ class JobScheduler:
         return results
         
     def _evaluate_and_send_alerts_batch(self, events_for_alerts: list, KEY_MOMENTS: list,
-                                         op_done_events=None, op_event_ids=None):
+                                         op_done_events=None, op_event_ids=None, op_data_cache=None):
         """
         Helper method that encapsulates the thread-pooled parallel evaluation and sequential grouping of alerts.
         It evaluates upcoming events through the prediction engine and H2H analyzers, and sends notifications.
@@ -1297,7 +1302,9 @@ class JobScheduler:
                             'discovery_source': getattr(event_obj, 'discovery_source', ''),
                             'season_id': result.get('season_id')
                         }
-                        odds_alert_processor.send_odds_alert(event_data_for_odds, odds_response, minutes_until_start)
+                        
+                        op_data = op_data_cache.get(event_obj.id) if op_data_cache else None
+                        odds_alert_processor.send_odds_alert(event_data_for_odds, odds_response, minutes_until_start, op_data=op_data)
                     except Exception as e:
                         logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
                 
@@ -1354,7 +1361,7 @@ class JobScheduler:
         except Exception as e:
             logger.error(f"Error in event processing batch: {e}")
             
-    def _oddsportal_worker_wrapper(self, op_candidates: list, op_done_events: dict):
+    def _oddsportal_worker_wrapper(self, op_candidates: list, op_done_events: dict, op_data_cache: dict):
         """
         Background worker that ONLY scrapes OddsPortal and saves to DB.
         Signals completion in the op_done_events dict so the main thread's alert delivery
@@ -1362,7 +1369,7 @@ class JobScheduler:
         """
         logger.info(f"🔥 OP Worker started: scraping {len(op_candidates)} tracked-league events.")
         try:
-            self._run_oddsportal_batch(op_candidates, op_done_events)
+            self._run_oddsportal_batch(op_candidates, op_done_events, op_data_cache)
         except Exception as e:
             import traceback
             logger.error(f"❌ OddsPortal Worker CRASHED: {e}\n{traceback.format_exc()}")
@@ -1375,7 +1382,7 @@ class JobScheduler:
                         logger.warning(f"⚠️ OP Worker: force-signaled event {eid} (wasn't finished before worker exit)")
             logger.info("✅ OP Worker finished scraping, main thread unblocked.")
     
-    def _run_oddsportal_batch(self, events_to_process: list, op_done_events: dict = None) -> dict:
+    def _run_oddsportal_batch(self, events_to_process: list, op_done_events: dict = None, op_data_cache: dict = None) -> dict:
         """
         Dedicated OddsPortal worker: pre-scans events for eligibility,
         then scrapes all matches with a single browser session.
@@ -1418,6 +1425,9 @@ class JobScheduler:
         def _on_event_scraped(event_id, op_data):
             if op_data:
                 try:
+                    if op_data_cache is not None:
+                        op_data_cache[event_id] = op_data
+                    
                     saved = MarketRepository.save_markets_from_oddsportal(event_id, op_data)
                     saved_counts[event_id] = saved
                     logger.info(f"✅ OddsPortal: Saved {saved} markets/bookies for event {event_id}")

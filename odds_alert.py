@@ -257,13 +257,14 @@ class OddsAlertProcessor:
         
         return result
     
-    def _format_oddsportal_section(self, op_markets: List[Dict], event_data: Dict = None) -> str:
+    def _format_oddsportal_section(self, op_markets: List[Dict], event_data: Dict = None, op_data=None) -> str:
         """
         Format the OddsPortal section of the alert message.
         
         Args:
             op_markets: List of dictionary from MarketRepository.get_oddsportal_markets_for_event
             event_data: Event dictionary to extract team names for formatting
+            op_data: Optional MatchOddsData object holding scraped initial odds timestamps in memory
             
         Returns:
             Formatted string for the OddsPortal section
@@ -301,14 +302,37 @@ class OddsAlertProcessor:
                 choice_group = m.get('choice_group')
                 choices = m['choices']
                 
+                # Reorder choices to 1, X, 2 (or standard order)
+                order_map = {'1': 1, '1X': 2, 'X': 3, 'X2': 4, '2': 5, '12': 6, 'Over': 7, 'Under': 8, 'Yes': 9, 'No': 10}
+                choices = sorted(choices, key=lambda c: order_map.get(c.get('name', ''), 99))
+                
+                # If we have in-memory op_data, try to grab the movement_odds_time from it for this specific bookie & market
+                bookie_time = None
+                if op_data and hasattr(op_data, 'extractions'):
+                    for ext in op_data.extractions:
+                        if ext.market_group == market_group and ext.market_period == market_period:
+                            # Check standard bookies
+                            for bo in ext.bookie_odds:
+                                if bo.name == bookie_name and getattr(bo, 'movement_odds_time', None):
+                                    bookie_time = bo.movement_odds_time
+                                    break
+                            
+                            # Check betfair exchange
+                            if not bookie_time and ext.betfair and 'betfair' in bookie_name.lower():
+                                if getattr(ext.betfair, 'movement_odds_time', None):
+                                    bookie_time = ext.betfair.movement_odds_time
+                            break
+                        
+                time_str = f" 🕒 {bookie_time}" if bookie_time else ""
+                
                 # If Betfair, add Back/Lay info
                 if 'betfair' in bookie_name.lower() and choice_group:
-                    bookie_display = f"{bookie_name} ({choice_group})"
+                    bookie_display = f"{bookie_name} ({choice_group}){time_str}"
                 # For Asian Handicap or Over/Under, optionally show the line next to the bookie name or inside if appropriate.
                 elif market_group in ['Asian Handicap', 'Over/Under'] and choice_group:
-                    bookie_display = f"{bookie_name} [{choice_group}]"
+                    bookie_display = f"{bookie_name} [{choice_group}]{time_str}"
                 else:
-                    bookie_display = bookie_name
+                    bookie_display = f"{bookie_name}{time_str}"
 
                 # Format choices for this bookie
                 choice_strs = []
@@ -325,12 +349,6 @@ class OddsAlertProcessor:
                         elif name == '2':
                             name = away_team
                             
-                    # Remove the choice name if it's 1X2 or Over/Under. For AH, include name to distinguish home/away.
-                    if market_group in ['1X2']:
-                        prefix = "" # "1: ", "X: " would go here, but let's just make it compact like original code
-                    else:
-                        prefix = ""
-                        
                     if initial is not None and current is not None:
                         choice_strs.append(f"{initial:.2f}→{current:.2f}{movement}")
                     elif current is not None:
@@ -346,7 +364,7 @@ class OddsAlertProcessor:
         return result
 
     
-    def send_odds_alert(self, event_data: Dict, odds_response: Dict, minutes_until_start: int = None) -> bool:
+    def send_odds_alert(self, event_data: Dict, odds_response: Dict, minutes_until_start: int = None, op_data=None) -> bool:
         """
         Process odds response and send alert via Telegram.
         
@@ -367,6 +385,7 @@ class OddsAlertProcessor:
                 - discovery_source: Discovery source (optional, e.g., "dropping_odds", "high_value_streaks")
             odds_response: Raw API odds response from get_event_final_odds()
             minutes_until_start: Minutes until event starts (optional)
+            op_data: Optional MatchOddsData object to extract initial OP odds timestamp from memory
             
         Returns:
             True if alert sent successfully, False otherwise
@@ -420,7 +439,7 @@ class OddsAlertProcessor:
                 if season_id and season_id in SEASON_ODDSPORTAL_MAP:
                     op_markets = MarketRepository.get_oddsportal_markets_for_event(event_data.get('id'))
                     if op_markets:
-                        op_section = self._format_oddsportal_section(op_markets, event_data)
+                        op_section = self._format_oddsportal_section(op_markets, event_data, op_data=op_data)
                         message += op_section
                         logger.info(f"📊 Added OddsPortal section to alert for event {event_data.get('id')}")
             except Exception as op_err:
