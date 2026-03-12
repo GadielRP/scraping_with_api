@@ -565,6 +565,11 @@ class PreStartNotification:
         success_count = 0
         
         for dual_report in dual_reports:
+            # Skip sending if Process 1 status is not success
+            if dual_report.process1_status != 'success':
+                logger.info(f"Skipping dual process alert for event {dual_report.event_id} because Process 1 status is not success ({dual_report.process1_status})")
+                continue
+                
             try:
                 # Create enhanced message for dual process report
                 message = self.create_dual_process_message(dual_report)
