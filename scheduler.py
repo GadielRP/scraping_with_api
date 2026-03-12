@@ -831,7 +831,23 @@ class JobScheduler:
                             tracked_event_ids.add(event_obj.id)
                     
                     if events_for_alerts:
-                        logger.info(f"🔍 Dispatching {len(events_for_alerts)} events to alert evaluation (H2H ∥ OP scraping)...")
+                        # FILTER: Only process alerts for dropping_odds OR tracked seasons
+                        filtered_events = []
+                        for payload in events_for_alerts:
+                            event_obj = payload['event_obj']
+                            is_dropping = event_obj.discovery_source == 'dropping_odds'
+                            is_tracked = event_obj.season_id in SEASON_ODDSPORTAL_MAP
+                            
+                            if is_dropping or is_tracked:
+                                filtered_events.append(payload)
+                            else:
+                                logger.info(f"⏭️ SKIPPING ALERT: Event {event_obj.id} ({event_obj.home_team} vs {event_obj.away_team}) "
+                                            f"is neither dropping_odds nor a tracked season (Source: {event_obj.discovery_source}, Season: {event_obj.season_id})")
+                        
+                        events_for_alerts = filtered_events
+
+                    if events_for_alerts:
+                        logger.info(f"🔍 Dispatching {len(events_for_alerts)} filtered events to alert evaluation (H2H ∥ OP scraping)...")
                         self._evaluate_and_send_alerts_batch(
                             events_for_alerts, KEY_MOMENTS,
                             op_done_events=op_done_events,
