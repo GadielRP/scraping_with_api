@@ -111,7 +111,8 @@ class SetPredictionSystem:
                         'sport': event.sport,
                         'country': event.country,
                         'slug': event.slug,
-                        'custom_id': event.custom_id
+                        'custom_id': event.custom_id,
+                        'season_id': event.season_id
                     }
                     result.append(event_data)
                 
@@ -284,9 +285,17 @@ class SetPredictionSystem:
             check_window_start = now - timedelta(minutes=140)
             check_window_end = now - timedelta(minutes=105)
             
+            from config import Config
+            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+            
             nba_events_to_check = []
             for event in all_nba_events:
                 event_start = event['start_time_utc']
+                # Check filter
+                if Config.FILTER_ALERTS_BY_OP_SEASON and event.get('season_id') not in SEASON_ODDSPORTAL_MAP:
+                    logger.debug(f"Skipping event {event['id']} due to OP season filter.")
+                    continue
+                
                 if check_window_start <= event_start <= check_window_end:
                     nba_events_to_check.append(event)
             

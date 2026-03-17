@@ -5,6 +5,22 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Helper to parse environment lists
+def _parse_env_list(env_name, default_value):
+    value = os.getenv(env_name)
+    if not value:
+        return default_value
+    try:
+        parsed = ast.literal_eval(value)
+        if isinstance(parsed, list):
+            return parsed
+        return [str(parsed)]
+    except (ValueError, SyntaxError):
+        return [item.strip() for item in value.split(',') if item.strip()]
+
+# Discovery sources to allow for alert sending
+DISCOVERY_SOURCES_FOR_ALERTS = _parse_env_list('DISCOVERY_SOURCES_FOR_ALERTS', ['dropping_odds'])
+
 class Config:
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///sofascore_odds.db')
@@ -23,6 +39,7 @@ class Config:
     
     # Discovery Schedule Times (dynamically generated based on DISCOVERY_INTERVAL_HOURS)
     # Runs at exact hours: 00:00, 06:00, 12:00, 18:00 (if interval is 6)
+    @staticmethod
     def _generate_discovery_times():
         interval_hours = int(os.getenv('DISCOVERY_INTERVAL_HOURS', '6'))
         times = []
@@ -30,10 +47,11 @@ class Config:
             times.append(f"{hour:02d}:00")
         return times
     
-    DISCOVERY_TIMES = _generate_discovery_times()
+    DISCOVERY_TIMES = _generate_discovery_times.__func__() if hasattr(_generate_discovery_times, "__func__") else _generate_discovery_times()
     
     # Discovery2 Schedule Times (runs at hh:02 to avoid blocking pre-start checks at hh:00)
     # Runs at 2 minutes past the hour: 00:02, 06:02, 12:02, 18:02 (if interval is 6)
+    @staticmethod
     def _generate_discovery2_times():
         interval_hours = int(os.getenv('DISCOVERY2_INTERVAL_HOURS', '6'))
         times = []
@@ -41,7 +59,7 @@ class Config:
             times.append(f"{hour:02d}:02")  # Run at hh:02 instead of hh:00
         return times
     
-    DISCOVERY2_TIMES = _generate_discovery2_times()
+    DISCOVERY2_TIMES = _generate_discovery2_times.__func__() if hasattr(_generate_discovery2_times, "__func__") else _generate_discovery2_times()
     
     # Timezone
     TIMEZONE = os.getenv('TIMEZONE', 'America/Mexico_City')
@@ -65,6 +83,9 @@ class Config:
     
     # Filter by tracked seasons only (OddsPortal leagues)
     TRACKED_SEASONS_ONLY = os.getenv('TRACKED_SEASONS_TOGGLE', 'true').lower() == 'true'
+
+    # Filter alerts by OP Season ID
+    FILTER_ALERTS_BY_OP_SEASON = os.getenv('FILTER_ALERTS_BY_OP_SEASON', 'false').lower() == 'true'
     
     # Telegram Settings
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
@@ -97,17 +118,7 @@ class Config:
     STREAK_ALERT_MIN_RESULTS = int(os.getenv('STREAK_ALERT_MIN_RESULTS', '15'))
 
     # Sports to exclude from alert evaluation (but not odds extraction)
-    def _parse_env_list(env_name, default_value):
-        value = os.getenv(env_name)
-        if not value:
-            return default_value
-        try:
-            parsed = ast.literal_eval(value)
-            if isinstance(parsed, list):
-                return parsed
-            return [str(parsed)]
-        except (ValueError, SyntaxError):
-            return [item.strip() for item in value.split(',') if item.strip()]
-
     EXCLUDED_SPORTS = _parse_env_list('EXCLUDED_SPORTS', ['Table tennis', 'Darts'])
 
+    # Discovery sources to allow for alert sending
+    DISCOVERY_SOURCES_FOR_ALERTS = DISCOVERY_SOURCES_FOR_ALERTS

@@ -564,7 +564,21 @@ class PreStartNotification:
             
         success_count = 0
         
+        try:
+            from config import Config
+            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+            from repository import EventRepository
+        except ImportError:
+            Config = None
+
         for dual_report in dual_reports:
+            # Check OP Season filter
+            if Config and Config.FILTER_ALERTS_BY_OP_SEASON:
+                event = EventRepository.get_event_by_id(dual_report.event_id)
+                if not event or event.season_id not in SEASON_ODDSPORTAL_MAP:
+                    logger.debug(f"Skipping dual process alert for event {dual_report.event_id} due to OP season filter.")
+                    continue
+
             # Skip sending if Process 1 status is not success
             if dual_report.process1_status != 'success':
                 logger.info(f"Skipping dual process alert for event {dual_report.event_id} because Process 1 status is not success ({dual_report.process1_status})")
@@ -1134,7 +1148,21 @@ class PreStartNotification:
             
         success_count = 0
         
+        try:
+            from config import Config
+            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+            from repository import EventRepository
+        except ImportError:
+            Config = None
+
         for streak in streak_reports:
+            # Check OP Season filter
+            if Config and Config.FILTER_ALERTS_BY_OP_SEASON:
+                event = EventRepository.get_event_by_id(streak.event_id)
+                if not event or event.season_id not in SEASON_ODDSPORTAL_MAP:
+                    logger.debug(f"Skipping H2H streak alert for event {streak.event_id} due to OP season filter.")
+                    continue
+
             try:
                 # Create message for streak report
                 message = self.create_h2h_streak_message(streak)

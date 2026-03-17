@@ -26,6 +26,13 @@ SEASON_ODDSPORTAL_MAP = {
     77356: {"sport": "football", "country": "france", "league": "ligue-1"},
     # Saudi Pro League
     80443: {"sport": "football", "country": "saudi-arabia", "league": "saudi-professional-league"},
+    # Swedish Hockey League
+    75679: {"sport": "hockey", "country": "sweden", "league": "shl"},
+    # Philippines Football League
+    81520: {"sport": "football", "country": "philippines", "league": "pfl"},
+    # Chinese Basketball Association
+    85375: {"sport": "basketball", "country": "china", "league": "cba"},
+
 }
 
 # Normalize bookie names to match DB exact names
@@ -237,6 +244,57 @@ TEAM_ALIASES = {
     "Al-Qadsiah": "Al Qadsiah",
     "Al-Jabalain": "Al Jabalain",
     "Al-Orobah": "Al Orobah",
+
+    # --- CBA / Chinese Teams ---
+    "Shanghai Sharks": "Shanghai",
+    "Guangsha": "Zhejiang Guangsha",
+    "Guangdong Southern Tigers": "Guangdong",
+    "Shandong Heroes": "Shandong",
+    "Shenzhen Leopards": "Shenzhen",
+    "Qingdao Eagles": "Qingdao",
+    "Beijing Ducks": "Beijing",
+    "Flying Leopards": "Liaoning",
+    "Shanxi Loongs": "Shanxi Zhongyu",
+    "Ningbo Rockets": "Ningbo Rockets",
+    "Zhejiang Golden Bulls": "Zhejiang Chouzhou",
+    "Beijing Royal Fighters": "Beijing Royal Fighters",
+    "Flying Tigers": "Xinjiang",
+    "Northeast Tigers": "Jilin",
+    "Guangzhou": "Guangzhou",
+    "Tianjin Pioneers": "Tianjin",
+    "Fujian Sturgeons": "Fujian",
+    "Nanjing Monkey Kings": "Nanjing Tongxi",
+    "Jiangsu Dragons": "Jiangsu Dragons",
+    "Sichuan Blue Whales": "Sichuan",
+
+    # --- PFL / Philippines Teams ---
+    "Taguig FC": "One Taguig",
+    "DH Cebu FC": "Cebu FC",
+    "Kaya": "Kaya",
+    "Manila Digger FC": "Manila Digger",
+    "Aguilas-UMak": "Davao Aguilas",
+    "Stallion Laguna": "Stallion",
+    "Maharlika Manila FC": "Maharlika",
+    "Tuloy FC": "Tuloy",
+    "Don Bosco Garelli United": "Don Bosco Garelli",
+    "Valenzuela PB-Mendiola": "Mendiola FC 1991",
+    "Philippine Army": "Philippine Army",
+
+    # --- SHL / Swedish Hockey League Teams ---
+    "Skellefteå": "Skelleftea",
+    "Frölunda": "Frolunda",
+    "Växjö": "Vaxjo",
+    "Rögle": "Rogle",
+    "Brynäs": "Brynas",
+    "Färjestad": "Farjestad",
+    "Luleå": "Lulea",
+    "Malmö": "Malmo",
+    "Djurgården": "Djurgarden",
+    "Örebro": "Orebro",
+    "Timrå": "Timra",
+    "Linköping": "Linkoping",
+    "Leksand": "Leksand",
+    "HV71": "HV 71",
 }
 
 # Priority order for single-bookie initial odds extraction

@@ -391,6 +391,14 @@ class OddsAlertProcessor:
             True if alert sent successfully, False otherwise
         """
         try:
+            from config import Config
+            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+            
+            # Check OP Season filter
+            if Config.FILTER_ALERTS_BY_OP_SEASON and event_data.get('season_id') not in SEASON_ODDSPORTAL_MAP:
+                logger.debug(f"Skipping odds alert for event {event_data.get('id')} due to OP season filter.")
+                return False
+
             if not self.enabled:
                 logger.debug("Odds alert processor is disabled")
                 return False

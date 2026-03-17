@@ -28,6 +28,9 @@ from today_sport_extractor import run_daily_discovery
 from set_prediction_system import set_prediction_system
 # Import optimization utilities
 
+from config import DISCOVERY_SOURCES_FOR_ALERTS
+from oddsportal_config import SEASON_ODDSPORTAL_MAP
+
 from optimization import (
     parallel_team_event_fetching,
     process_with_batch_cleanup,
@@ -835,18 +838,18 @@ class JobScheduler:
                             tracked_event_ids.add(event_obj.id)
                     
                     if events_for_alerts:
-                        # FILTER: Only process alerts for dropping_odds OR tracked seasons
+                        # FILTER: Only process alerts for set discovery source in .env OR tracked seasons
                         filtered_events = []
                         for payload in events_for_alerts:
                             event_obj = payload['event_obj']
-                            is_dropping = event_obj.discovery_source == 'dropping_odds'
+                            is_selected_discovery_source = event_obj.discovery_source in DISCOVERY_SOURCES_FOR_ALERTS
                             is_tracked = event_obj.season_id in SEASON_ODDSPORTAL_MAP
                             
-                            if is_dropping or is_tracked:
+                            if is_selected_discovery_source or is_tracked:
                                 filtered_events.append(payload)
                             else:
                                 logger.info(f"⏭️ SKIPPING ALERT: Event {event_obj.id} ({event_obj.home_team} vs {event_obj.away_team}) "
-                                            f"is neither dropping_odds nor a tracked season (Source: {event_obj.discovery_source}, Season: {event_obj.season_id})")
+                                            f"is neither a tracked discovery_source nor a tracked season (Source: {event_obj.discovery_source}, Season: {event_obj.season_id})")
                         
                         events_for_alerts = filtered_events
 
@@ -1105,78 +1108,83 @@ class JobScheduler:
             fresh_event_for_dual = self.event_repo.get_event_by_id(event_obj.id)
             if fresh_event_for_dual and fresh_event_for_dual.alert_sent:
                 logger.info(f"⏭️ EARLY EXIT: Skipping dual process for event {event_obj.id} - marked as low-value (alert_sent=True)")
-            elif getattr(event_obj, 'discovery_source', None) != 'dropping_odds':
-                discovery_source = getattr(event_obj, 'discovery_source', None)
-                logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - discovery_source='{discovery_source}' (only processing 'dropping_odds')")
             else:
-                try:
-                    event_obj.court_type = None
-                    if event_obj.sport in ['Tennis', 'Tennis Doubles']:
-                        observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
-                        if observation:
-                            event_obj.court_type = observation.observation_value
-                            logger.info(f"🎾 Court type for event {event_obj.id}: {event_obj.court_type}")
-                        else:
-                            logger.info(f"🎾 No court type found for event {event_obj.id}")
-                    
-                    dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
-                    
-                    should_send = False
-                    reason = ""
-                    
-                    if dual_report.process1_prediction or dual_report.process2_prediction:
-                        should_send = True
-                        reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
-                    elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
-                        should_send = True
-                        reason = f"Process1 found candidates (status: {dual_report.process1_status})"
-                    
-                    if should_send:
-                        logger.info(f"✅ Dual process report added for event {event_obj.id}: {reason}")
-                    else:
-                        logger.debug(f"⏭️ Skipping dual process report for event {event_obj.id}: No predictions or candidates found")
-                        
-                except Exception as e:
-                    logger.error(f"Error running dual process evaluation for event {event_obj.id}: {e}")
-                    
-                    # Fallback to Process 1 only if dual process fails
-                    if event_obj.discovery_source == 'dropping_odds':
-                        logger.info(f"🔄 Falling back to Process 1 only for event {event_obj.id}...")
-                        try:
-                            alerts = alert_engine.evaluate_upcoming_events([event_obj])
-                            if alerts:
-                                logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback) for event {event_obj.id}")
-                                alert_engine.send_alerts(alerts)
-                                
-                                for alert in alerts:
-                                    if alert.get('status') == 'success':
-                                        event_id = alert.get('event_id')
-                                        if event_id:
-                                            event_obj_fallback = self.event_repo.get_event_by_id(event_id)
-                                            if event_obj_fallback:
-                                                minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
-                                                if minutes_until_start_fallback == 0:
-                                                    success = prediction_logger.log_prediction(event_obj_fallback, alert)
-                                                    if success:
-                                                        logger.info(f"✅ Prediction logged for Process 1 event {event_id} (0 minutes from start)")
-                                                    else:
-                                                        with db_manager.get_session() as session:
-                                                            existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
-                                                            if existing:
-                                                                logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
-                                                            else:
-                                                                logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
-                                                else:
-                                                    logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 0 minutes)")
-                                            else:
-                                                logger.warning(f"Could not find event {event_id} for prediction logging")
+                discovery_source = getattr(event_obj, 'discovery_source', None)
+                season_id = getattr(event_obj, 'season_id', None)
+                is_selected_source = discovery_source in DISCOVERY_SOURCES_FOR_ALERTS
+                is_tracked_season = season_id in SEASON_ODDSPORTAL_MAP
+                
+                if not (is_selected_source or is_tracked_season):
+                    logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - source='{discovery_source}' not in {DISCOVERY_SOURCES_FOR_ALERTS} and not a tracked season")
+                else:
+                    try:
+                        event_obj.court_type = None
+                        if event_obj.sport in ['Tennis', 'Tennis Doubles']:
+                            observation = ObservationRepository.get_observation(event_obj.id, 'ground_type')
+                            if observation:
+                                event_obj.court_type = observation.observation_value
+                                logger.info(f"🎾 Court type for event {event_obj.id}: {event_obj.court_type}")
                             else:
-                                logger.debug(f"No Process 1 candidate reports generated (fallback) for event {event_obj.id}")
-                        except Exception as e2:
-                            logger.error(f"Error in Process 1 fallback for event {event_obj.id}: {e2}")
-                    else:
-                        discovery_source_fallback = getattr(event_obj, 'discovery_source', None)
-                        logger.info(f"⏭️ Skipping Process 1 fallback for event {event_obj.id} - discovery_source='{discovery_source_fallback}' (only processing 'dropping_odds')")
+                                logger.info(f"🎾 No court type found for event {event_obj.id}")
+                        
+                        dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                        
+                        should_send = False
+                        reason = ""
+                        
+                        if dual_report.process1_prediction or dual_report.process2_prediction:
+                            should_send = True
+                            reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
+                        elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
+                            should_send = True
+                            reason = f"Process1 found candidates (status: {dual_report.process1_status})"
+                        
+                        if should_send:
+                            logger.info(f"✅ Dual process report added for event {event_obj.id}: {reason}")
+                        else:
+                            logger.debug(f"⏭️ Skipping dual process report for event {event_obj.id}: No predictions or candidates found")
+                        
+                    except Exception as e:
+                        logger.error(f"Error running dual process evaluation for event {event_obj.id}: {e}")
+                        
+                        # Fallback to Process 1 only if dual process fails
+                        if event_obj.discovery_source in DISCOVERY_SOURCES_FOR_ALERTS or event_obj.season_id in SEASON_ODDSPORTAL_MAP:
+                            logger.info(f"🔄 Falling back to Process 1 only for event {event_obj.id}...")
+                            try:
+                                alerts = alert_engine.evaluate_upcoming_events([event_obj])
+                                if alerts:
+                                    logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback) for event {event_obj.id}")
+                                    alert_engine.send_alerts(alerts)
+                                    
+                                    for alert in alerts:
+                                        if alert.get('status') == 'success':
+                                            event_id = alert.get('event_id')
+                                            if event_id:
+                                                event_obj_fallback = self.event_repo.get_event_by_id(event_id)
+                                                if event_obj_fallback:
+                                                    minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
+                                                    if minutes_until_start_fallback == 0:
+                                                        success = prediction_logger.log_prediction(event_obj_fallback, alert)
+                                                        if success:
+                                                            logger.info(f"✅ Prediction logged for Process 1 event {event_id} (0 minutes from start)")
+                                                        else:
+                                                            with db_manager.get_session() as session:
+                                                                existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
+                                                                if existing:
+                                                                    logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
+                                                                else:
+                                                                    logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
+                                                    else:
+                                                        logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 0 minutes)")
+                                                else:
+                                                    logger.warning(f"Could not find event {event_id} for prediction logging")
+                                else:
+                                    logger.debug(f"No Process 1 candidate reports generated (fallback) for event {event_obj.id}")
+                            except Exception as e2:
+                                logger.error(f"Error in Process 1 fallback for event {event_obj.id}: {e2}")
+                        else:
+                            discovery_source_fallback = getattr(event_obj, 'discovery_source', None)
+                            logger.info(f"⏭️ Skipping Process 1 fallback for event {event_obj.id} - source='{discovery_source_fallback}' not allowed and not a tracked season")
             
             # ========================================
             # COLLECT ALERTS (returned to caller for ordered sending)
@@ -1965,8 +1973,9 @@ class JobScheduler:
             reason = ""
             
             discovery_source = getattr(event_obj, 'discovery_source', None)
-            if discovery_source != 'dropping_odds':
-                logger.info(f"⏭️ Skipping dual process for rescheduled event {event_obj.id} - discovery_source='{discovery_source}' (only processing 'dropping_odds')")
+            season_id = getattr(event_obj, 'season_id', None)
+            if discovery_source not in DISCOVERY_SOURCES_FOR_ALERTS and season_id not in SEASON_ODDSPORTAL_MAP:
+                logger.info(f"⏭️ Skipping dual process for rescheduled event {event_obj.id} - source='{discovery_source}' not allowed and not a tracked season")
             else:
                 # Enrich event object with court type for Tennis/Tennis Doubles events
                 event_obj.court_type = None  # Default value
@@ -2370,7 +2379,7 @@ class JobScheduler:
             if success:
                 logger.info(f"✅ Dual process alerts sent successfully")
             else:
-                logger.warning(f"❌ Failed to send dual process alerts")
+                logger.warning(f"💔 Failed to send dual process alerts")
                     
         except Exception as e:
             logger.error(f"Error in _send_dual_process_alerts: {e}")

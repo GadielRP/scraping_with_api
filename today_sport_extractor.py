@@ -260,6 +260,7 @@ class TodaySportExtractor:
             'ice-hockey',
             'american-football',
             'football',
+            'handball',
         ]
         
         logger.info(f"🔍 Starting daily discovery for date: {date}")
