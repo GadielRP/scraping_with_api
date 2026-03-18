@@ -39,6 +39,7 @@ We only scrape OddsPortal for **tracked leagues** (configured in `oddsportal_con
 |---|---|
 | `scheduler.py` | Triggers the scraper via `_run_oddsportal_batch` and `_oddsportal_worker_wrapper` |
 | `oddsportal_scraper.py` | Core browser automation and odds extraction logic |
+| `team_matcher.py` | **Entity Resolution Engine**: Robust normalization and scoring (Jaccard, Aliases, etc.) |
 | `oddsportal_config.py` | Maps `season_id` → OddsPortal URL, team aliases, bookie priority, **sport scraping routes** |
 | `models.py` | Defines `OddsPortalLeagueCache` DB table |
 | `repository.py` | `MarketRepository.save_markets_from_oddsportal()` — saves per-period data with correct metadata |
@@ -125,16 +126,17 @@ sequenceDiagram
     S->>W: Thread.start(_oddsportal_worker_wrapper)
     S->>S: Continue: SofaScore odds extraction + H2H alerts (parallel)
 
-    W->>DB: find_match_url_from_cache(season_id, home, away)
+    W->>W: start() -> launch Playwright
+    W->>W: find_match_url(home, away, season_id)
+    W->>W: find_match_url_from_cache(season_id, home, away)
     alt Cache Hit
-        DB-->>W: {relative_url}
-        W->>W: Build full match URL (skip league page)
+        W->>W: return URL (skip navigation)
     else Cache Miss
         W->>OP: Navigate league page (30s timeout)
-        OP-->>W: domcontentloaded
-        W->>W: wait_for_selector("div.eventRow", 30s)
-        W->>W: Extract ALL visible match URLs → save to DB cache
-        W->>W: Find match in extracted URLs
+        W->>W: Extract link-text and row-text from <a> and <div>
+        W->>W: Filter out noise (dates, "Play Offs", tournament info)
+        W->>W: team_matcher.find_best_match(candidates)
+        W->>DB: save_league_cache(season_id, structured_results)
     end
 
     W->>W: Resolve SPORT_SCRAPING_ROUTES for this sport
@@ -170,7 +172,7 @@ sequenceDiagram
 
 ---
 
-## 6. League URL Cache
+## 6. League URL Cache & Entity Resolution
 
 Navigating to a league page costs ~9–14 seconds (even with `domcontentloaded`). To avoid this for every event in the same league, we cache all visible match URLs after the first navigation.
 
@@ -180,41 +182,73 @@ Navigating to a league page costs ~9–14 seconds (even with `domcontentloaded`)
 |---|---|---|
 | `season_id` | `INTEGER` (PK) | One row per tracked league |
 | `cached_date` | `TIMESTAMP` | Set to midnight of the current day |
-| `match_urls` | `JSONB` | `{ "/hockey/usa/nhl/home-away-XXXX/": "Home Team Away Team" }` |
+| `match_urls` | `JSONB` | Structured payload of matches found |
 | `created_at` | `TIMESTAMP` | Last write time |
 
 ### Cache Hit vs Miss
 
 ```mermaid
 flowchart LR
-    A["scrape_multiple_matches_sync"] --> B["find_match_url_from_cache(season_id)"]
+    A["scrape_batch"] --> B["find_match_url_from_cache(season_id)"]
     B --> C{"Row exists\nfor today?"}
     C -- Yes --> D["Match name in JSONB?"]
     D -- Yes --> E["⚡ Return full URL\n~0s — skip browser nav"]
     D -- No --> F["Cache miss:\nNavigate league page"]
     C -- No --> F
-    F --> G["Scrape ALL match URLs\nfrom current page"]
-    G --> H["save_league_cache()\nupsert JSONB to DB"]
+    F --> G["Extract CANDIDATES\nfrom current page"]
+    G --> H["save_league_cache()\nupsert structured JSONB"]
     H --> E
 ```
 
-### Team Name Matching
+### 6.1 Entity Resolution Pipeline (find_match_url)
 
-Both cache lookup and live league scan use the same normalisation + alias strategy:
+Finding a match URL on a league page is not a simple string search. It is an **Entity Resolution** problem.
 
-1. **Normalise**: Uses `_normalize_match_text` to strip accents, common noise (`fc`, `cf`, `ud`, etc.), and all non-alphanumeric characters while collapsing whitespace.
-2. **Alias**: Check `TEAM_ALIASES` in `oddsportal_config.py` (e.g. `"Manchester United"` → `"Manchester Utd"`).
-3. **Substring match**: Home AND away names (or their aliases) must both be present in the row's normalized display text.
-4. **Path Depth Guard**: URL must have at least **4 path segments** (e.g., `/football/england/premier-league/wolves-liverpool-WAZj1LUs/`). This ensures league-level URLs and navigation links are filtered out during both population and retrieval.
-5. **League URL Guard**: Explicitly rejects any URL that matches the current base league path.
+1.  **Extraction (Candidate Generation)**:
+    -   The scraper extracts **all** event rows (`div.eventRow`).
+    -   For each row, it attempts to extract a `home`, `away`, and `href` pair.
+    -   Priority 1: Extract from link text (`<a>`). This is clean (e.g., "Team A - Team B").
+    -   Priority 2: Fallback to full row text (`innerText`) if links are ambiguous.
+    -   Result: A list of `Candidate` dicts: `[ {home: "...", away: "...", href: "...", raw_text: "..."}, ... ]`.
 
-### Daily Cleanup
+2.  **Scoring (TeamMatcher)**:
+    -   The `TeamMatcher` class (in `team_matcher.py`) receives the SofaScore names and the list of candidates.
+    -   It computes a score (0.0 to 100.0) for every candidate using:
+        -   **Normalization**: Strips accents, lowers case, removes institutional noise (FC, SC, etc.).
+        -   **Alias Lookup**: Checks `TEAM_ALIASES` in `oddsportal_config.py` (supports list aliases).
+        -   **Jaccard Token Similarity**: Intersection vs. Union of name tokens.
+        -   **Containment Bonus**: Boosts scores if one name is a subset (e.g., "Lulea" in "Lulea Hockey").
+        -   **Fuzzy Fallback**: Uses `SequenceMatcher` for character-level similarity.
 
-Every day at **05:01**, `job_daily_discovery` calls:
-```python
-OddsPortalCacheRepository.cleanup_old_caches()
+3.  **Selection**:
+    -   The candidate with the highest score is selected if it meets the **threshold (>= 80)**.
+
+### 6.2 Structured Caching (The Rationale)
+
+Previously, the system stored cache entries as simple strings: `"Team A vs Team B"`. This caused **information degradation**. Upon reading the cache later, the system had to try and re-parse those names using regex, which was fragile if team names contained hyphens or "vs".
+
+**Now**, we store a structured dictionary:
+```json
+{
+  "/football/mexico/liga-mx/puebla-queretaro/abcdef/": {
+    "home": "Puebla",
+    "away": "Queretaro",
+    "raw_text": "22:00 Puebla - Queretaro 2.10 3.20 3.50"
+  }
+}
 ```
-This deletes any rows where `cached_date < today`. The cache resets fresh each day.
+**Benefits:**
+-   **No Redundant Parsing**: We preserve the perfect extraction we had in memory.
+-   **TeamMatcher Consistency**: The cache reader can feed the `home/away` fields directly into the `TeamMatcher`, ensuring identical scoring logic for both live-scraped and cached events.
+-   **Robustness**: Handles names with special characters or complex layouts.
+
+### 6.3 Cache Backward Compatibility
+
+The `find_match_url_from_cache` method is designed to handle both formats:
+-   **Dict**: (New) Uses `home`/`away` fields directly.
+-   **String**: (Legacy) Attempts a robust multi-separator regex split to recover names.
+
+Every day at **05:01**, `job_daily_discovery` calls `cleanup_old_caches()` to reset the cache.
 
 ---
 
@@ -681,9 +715,11 @@ Saves full debug info (screenshots, HTML, JSON) to `debug_<slug>/`. The JSON out
 - **Proxy Blocked / Cloudflare Banned**: Handled by **Fast Fail Check #1**. Detects blocks via page title, kills the browser, and triggers a **Session-Aware Retry**.
 - **SPA Render Failure (Empty Container)**: Handled by **Fast Fail Check #2**. Sometimes the page loads but the Vue.js app fails to hydrate/render the odds table. A `MutationObserver` detects this state and triggers a fast fail after 15s of empty content, avoiding the full 60s timeout.
 - **Tab Switching Failure**: If the SPA router hangs and the odds table doesn't update after clicking a tab within the timeout, the scraper triggers a **Page Reload Recovery** by performing a full navigation to the specific fragment URL (e.g. `#over-under;2`). This breaks cascading failures where one timed-out tab prevents all subsequent tabs from loading.
-- **"Already Active" Race Condition**: Fixed by the **Smart Wait** mechanism. Prevents extraction from starting immediately after a fragment change if the table rows haven't rendered yet, even if the tab UI shows as "active".
+- **Already Active" Race Condition**: Fixed by the **Smart Wait** mechanism. Prevents extraction from starting immediately after a fragment change if the table rows haven't rendered yet, even if the tab UI shows as "active".
 - **Session-Aware Retry**: Implemented in `scrape_multiple_matches_sync`. When a scrape fails, the scraper calls `await self.stop()` and `await self.start()`. This generates a fresh `_session_id` and restarts the Playwright process, which forces a new TCP connection and a clean proxy IP from the rotation endpoint (e.g., Webshare).
 - **Headless Timeout**: If the scraper times out waiting for rows without hitting Fast Fail, it still triggers the Session-Aware Retry to seamlessly attempt the extraction once more with a new IP.
+- **Legacy Duplication Cleanup**: The scraper module was refactored from ~8,000 lines down to **2,523 lines**, removing three complete copies of the class that were causing maintenance overhead and regex bugs.
+- **Universal Logging**: The entire subsystem (Scraper and Matcher) has been migrated to use the standard Python `logging` library (`logging.getLogger(__name__)`) for better integration with the system-wide weekly rotating loggers.
 
 ---
 

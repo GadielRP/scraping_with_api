@@ -4,6 +4,7 @@ import random
 import time
 import os
 import uuid
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Dict
 
@@ -15,7 +16,9 @@ try:
     from oddsportal_config import (
         SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
         OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
+        INSTITUTIONAL_NOISE
     )
+    from team_matcher import TeamMatcher
 except ImportError:
     # Fallback/Mock for standalone testing
     class MockConfig:
@@ -127,31 +130,18 @@ class OddsPortalScraper:
         self.context: Optional[BrowserContext] = None
         # Safe default so retry logging never crashes when proxy is disabled.
         self._session_id = "no-proxy"
+        
+        # Initialize Team Matcher
+        self.team_matcher = TeamMatcher(
+            team_aliases=TEAM_ALIASES, 
+            noise_list=INSTITUTIONAL_NOISE
+        )
+        
         if self.debug_dir:
             import os
             os.makedirs(self.debug_dir, exist_ok=True)
 
-    def _normalize_match_text(self, s: str) -> str:
-        """
-        Normalize team or row text for matching.
-        Strips accents, 'fc/cf/ud', non-alphanumeric noise, and collapses whitespace.
-        """
-        if not s:
-            return ""
-        import unicodedata
-        import re
-        # Strip accents/diacritics (e.g., Montréal -> Montreal)
-        s = unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8')
-        s = s.lower()
-        # Remove team suffixes/prefixes that vary between Sofa and OP
-        for noise in ["fc", "cf", "ud", "afc", "rc", "as", "sc"]:
-            if f" {noise}" in s or s.startswith(f"{noise} "):
-                s = s.replace(noise, "")
-        # Remove all non-alphanumeric characters, keep space
-        s = re.sub(r'[^a-z0-9\s]', ' ', s)
-        # Collapse spaces and strip
-        return " ".join(s.split())
-        
+
     async def start(self):
         """Start the browser session."""
         if self.browser:
@@ -636,11 +626,19 @@ class OddsPortalScraper:
         except Exception as e:
             logger.error(f"❌ Error clicking market group tab '{group_display_name}': {e}")
             return False
+            
     async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
         """
         Navigate to league page and find match URL by team names.
         Also populates the DB cache with all match URLs found on the page.
         """
+        # 1. Try cache first
+        if season_id:
+            cached_url = self.find_match_url_from_cache(season_id, home_team, away_team)
+            if cached_url:
+                logger.info(f"⚡ Cache hit (internal): {cached_url}")
+                return cached_url
+
         if not self.context:
             await self.start()
             
@@ -700,16 +698,7 @@ class OddsPortalScraper:
             except Exception:
                 pass
                 
-            # Search for match
-            home_norm = self._normalize_match_text(home_team)
-            away_norm = self._normalize_match_text(away_team)
-            
-            # Check aliases if available
-            home_alias = TEAM_ALIASES.get(home_team, home_team)
-            away_alias = TEAM_ALIASES.get(away_team, away_team)
-            home_alias_norm = self._normalize_match_text(home_alias)
-            away_alias_norm = self._normalize_match_text(away_alias)
-            
+
             # --- OPTIMIZED SEARCH ALGORITHM ---
             # Instead of iterating DOM elements (slow), we extract all rows' text and links in ONE payload.
             # Complexity: O(1) network round-trip + O(N) string process in Python (negligible)
@@ -720,7 +709,10 @@ class OddsPortalScraper:
                 return rows.map(row => {
                     const text = row.innerText;
                     // Get all links in the row
-                    const links = Array.from(row.querySelectorAll("a[href]")).map(a => a.getAttribute("href"));
+                    const links = Array.from(row.querySelectorAll("a[href]")).map(a => ({
+                        href: a.getAttribute("href"),
+                        text: a.innerText.trim()
+                    }));
                     return { text, links };
                 });
             }""")
@@ -730,60 +722,93 @@ class OddsPortalScraper:
                 logger.warning(f"⚠️ No event rows found on {league_url}")
                 return None
             
-            # --- CACHE POPULATION: Save all match URLs for this league ---
-            if season_id:
-                cache_dict = {}
-                league_path = league_url.rstrip('/')
-                for row_data in rows_data:
-                    for href in row_data.get('links', []):
-                        if not href:
-                            continue
-                        # Only store genuine match slugs: must have ≥ 4 path segments
-                        # (e.g. /football/italy/serie-a/pisa-bologna-Qy7EzcEL/)
-                        # This excludes league URLs (/football/italy/serie-a/) and nav links.
-                        parts = [p for p in href.strip('/').split('/') if p]
-                        if len(parts) < 4:
-                            continue
-                        # Also exclude the league URL itself as a safety net
-                        if href.rstrip('/') == league_path.replace('https://www.oddsportal.com', ''):
-                            continue
-                        cache_dict[href] = row_data.get('text', '')
-                if cache_dict:
-                    try:
-                        from repository import OddsPortalCacheRepository
-                        OddsPortalCacheRepository.save_league_cache(season_id, cache_dict)
-                        logger.info(f"💾 Cached {len(cache_dict)} match URLs for season {season_id}")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Failed to cache league URLs: {e}")
-                
-            logger.info(f"🔎 Scanning {len(rows_data)} rows for {home_team} vs {away_team} (Batch Mode)...")
+            # --- PREPARE CANDIDATES FOR TeamMatcher ---
+            candidates = []
+            league_path = league_url.replace('https://www.oddsportal.com', '').rstrip('/')
             
-            for row_data in rows_data:
-                text_norm = self._normalize_match_text(row_data['text'] or "")
+            for row in rows_data:
+                row_text = row.get('text', '')
+                links = row.get('links', [])
                 
-                # Check for both teams
-                h_found = home_norm in text_norm or home_alias_norm in text_norm
-                a_found = away_norm in text_norm or away_alias_norm in text_norm
+                p1, p2, href = None, None, None
                 
-                if h_found and a_found:
-                    # Found match row, finding correct link
-                    found_link = None
-                    for href in row_data['links']:
-                        if not href: continue
-                        
-                        # Rule 1: Must contain hyphen (slug structure)
-                        if "-" not in href: continue
-                        
-                        # Rule 2: Must NOT be the league URL itself
-                        if href.rstrip('/') in league_url.rstrip('/'): continue
-                        
-                        found_link = href
+                # 1. Primary: Try to extract from links (cleanest source)
+                for link in links:
+                    l_href = link.get('href', '')
+                    # Must be a match-like URL and not just the league URL
+                    if not l_href or '-' not in l_href: continue
+                    if l_href.rstrip('/') in league_path: continue
+                    
+                    link_text = link.get('text', '')
+                    # Split by possible separators
+                    # link_text often "Team A - Team B" or "12:00 Team A - Team B 2.50"
+                    parts = re.split(r'\s+[–-]\s+', link_text)
+                    if len(parts) >= 2:
+                        p1 = parts[0].strip()
+                        p2 = parts[1].strip()
+                        # Remove time prefix from p1 (e.g. "12:00 Team Name")
+                        p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
+                        # Remove odds suffix from p2 (e.g. "Team Name 2.50")
+                        p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
+                        href = l_href
                         break
-                        
-                    if found_link:
-                        logger.info(f"✅ Found match link: {found_link}")
-                        return f"https://www.oddsportal.com{found_link}"
 
+                # 2. Fallback: Parse row text if links didn't give a clear pair
+                if not (p1 and p2):
+                    # Split row text into lines
+                    lines = [line.strip() for line in row_text.split('\n') if line.strip()]
+                    for line in lines:
+                        # Skip probability/date lines
+                        if any(k in line for k in ["Today", "Tomorrow", "Mar", "Apr", "Play Offs", "Play Out"]):
+                            continue
+                        # Try to find a dash separator in a likely team line
+                        if " – " in line or " - " in line:
+                            parts = re.split(r'\s+[–-]\s+', line)
+                            if len(parts) >= 2:
+                                p1 = parts[0].strip()
+                                p2 = parts[1].strip()
+                                p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
+                                p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
+                                # Pick first good link as href if not set
+                                if not href and links:
+                                    href = links[0].get('href')
+                                break
+
+                if p1 and p2 and href:
+                    candidates.append({
+                        'home': p1, 'away': p2,
+                        'href': href, 'raw_text': row_text
+                    })
+
+            # --- CACHE POPULATION ---
+            if season_id and candidates:
+                try:
+                    from repository import OddsPortalCacheRepository
+                    # Use structured format for consistency with find_match_url_from_cache reader
+                    cache_dict = {
+                        c["href"]: {
+                            "home": c["home"],
+                            "away": c["away"],
+                            "raw_text": c.get("raw_text", "")
+                        }
+                        for c in candidates
+                    }
+                    OddsPortalCacheRepository.save_league_cache(season_id, cache_dict)
+                    logger.info(f"📦 Cached {len(cache_dict)} match URLs for season {season_id}")
+                except Exception as cache_err:
+                    logger.warning(f"⚠️ Cache save failed: {cache_err}")
+
+            # --- TEAM MATCHER SCORING ---
+            logger.info(f"🔎 Scanning {len(candidates)} candidates for {home_team} vs {away_team}...")
+            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
+            
+            if best_match:
+                logger.info(
+                    f"✅ Match found: {best_match['home']} vs {best_match['away']} "
+                    f"(Score: {best_match['max_score']:.1f}, Reversed: {best_match['is_reversed']})"
+                )
+                return f"https://www.oddsportal.com{best_match['href']}"
+            
             logger.warning(f"❌ Match not found: {home_team} vs {away_team}")
             return None
             
@@ -796,7 +821,7 @@ class OddsPortalScraper:
     def find_match_url_from_cache(self, season_id: int, home_team: str, away_team: str) -> Optional[str]:
         """
         Try to find match URL from DB cache (no browser navigation needed).
-        Uses the same normalize + alias matching algorithm as find_match_url.
+        Uses TeamMatcher for robust scoring.
         
         Returns:
             Full match URL or None if not found in cache
@@ -807,34 +832,60 @@ class OddsPortalScraper:
             if not cached:
                 return None
             
-            home_norm = self._normalize_match_text(home_team)
-            away_norm = self._normalize_match_text(away_team)
+            candidates = []
+            for href, data in cached.items():
+                if isinstance(data, dict):
+                    # Structured data (new format)
+                    candidates.append({
+                        "home": data.get("home", ""),
+                        "away": data.get("away", ""),
+                        "href": href,
+                        "raw_text": data.get("raw_text", "")
+                    })
+                else:
+                    # Legacy format (string)
+                    row_text = data or ""
+                    
+                    # Split logic for various separators (vs, hyphen, en-dash)
+                    # We use a broad split for robustness
+                    parts = re.split(r'\s+(?:vs|–|-)\s+', row_text)
+                    if len(parts) >= 2:
+                        p1, p2 = parts[0], parts[1]
+                    else:
+                        # Fallback to regex for more complex cases (newlines, etc)
+                        match = re.search(r'([^\n–\-]+)[\s\n]+(?:vs|[–v\-])[\s\n]+([^\n\d]+)', row_text)
+                        if match:
+                            p1, p2 = match.group(1), match.group(2)
+                        else:
+                            p1, p2 = None, None
+                    
+                    if p1 and p2:
+                        # Clean up
+                        home = p1.split("\n")[-1].strip()
+                        away = p2.split("\n")[0].strip()
+                        # Final noise removal
+                        home = re.sub(r'(^.*?\d{2}:\d{2}\s+|^\w+,\s+\d{1,2}\s+\w+\s+[–-]\s+|^.*?\d{1,2}:\d{2}\s+)', '', home)
+                        away = re.sub(r'\s+\d+\.\d+.*', '', away)
+                        if home and away:
+                            candidates.append({"home": home, "away": away, "href": href})
+                    else:
+                        candidates.append({"home": row_text, "away": "", "href": href})
             
-            home_alias = TEAM_ALIASES.get(home_team, home_team)
-            away_alias = TEAM_ALIASES.get(away_team, away_team)
-            home_alias_norm = self._normalize_match_text(home_alias)
-            away_alias_norm = self._normalize_match_text(away_alias)
+            if not candidates:
+                logger.debug(f"⚠️ No valid candidates parsed from cache for season {season_id}")
+                return None
             
-            for href, display_text in cached.items():
-                text_norm = self._normalize_match_text(display_text or "")
-                
-                h_found = home_norm in text_norm or home_alias_norm in text_norm
-                a_found = away_norm in text_norm or away_alias_norm in text_norm
-                
-                if h_found and a_found:
-                    # Verify href is a genuine match slug: must have ≥ 4 path segments
-                    # (e.g. /football/italy/serie-a/pisa-bologna-Qy7EzcEL/)
-                    # This prevents league URLs (/football/italy/serie-a/) from matching.
-                    parts = [p for p in href.strip('/').split('/') if p]
-                    if len(parts) >= 4:
-                        logger.info(f"⚡ Cache hit! Found match URL for {home_team} vs {away_team} (season {season_id})")
-                        return f"https://www.oddsportal.com{href}"
-            
-            logger.debug(f"Cache miss: {home_team} vs {away_team} not in cache for season {season_id} ({len(cached)} URLs checked)")
+            logger.debug(f"🔎 Scanning {len(candidates)} cached candidates for {home_team} vs {away_team}...")
+            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
+            if best_match and best_match['max_score'] >= 80:
+                logger.info(
+                    f"✅ Cache hit: {best_match['home']} vs {best_match['away']} "
+                    f"(Score: {best_match['max_score']:.1f})"
+                )
+                return f"https://www.oddsportal.com{best_match['href']}"
             return None
-            
         except Exception as e:
-            logger.warning(f"⚠️ Error checking league cache: {e}")
+            logger.debug(f"Cache lookup failed: {e}")
             return None
 
     async def scrape_match(self, match_url: str, sport: str = None) -> Optional[MatchOddsData]:
