@@ -157,7 +157,7 @@ class PreStartNotification:
         self.telegram_test_only = os.getenv('TEST_ONLY_MODE', 'false').lower() == 'true'
         self.personal_chat_id = os.getenv('PERSONAL_CHAT_ID', '')
         
-        logger.info(f"Telegram notification: {'âœ… Enabled' if self.telegram_enabled else 'âŒ Disabled'}")
+        logger.info(f"Telegram notification: {'✅ Enabled' if self.telegram_enabled else '❌ Disabled'}")
         if not self.telegram_enabled:
             logger.warning("Telegram not configured. Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to .env file")
     

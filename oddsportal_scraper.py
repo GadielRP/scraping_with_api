@@ -5,8 +5,10 @@ import time
 import os
 import uuid
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Dict
+from threading import local
+from typing import Any, Dict, List, Optional, Tuple
 
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 
@@ -36,14 +38,86 @@ except ImportError:
     SPORT_SCRAPING_ROUTES = {}
 
 logger = logging.getLogger(__name__)
+_LOG_CONTEXT = local()
 
 DEBUG_TIMING = os.getenv("DEBUG_TIMING", "false").lower() == "true"
 ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS", "18000"))
 ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS", "15000"))
+EN_DASH = "\u2013"
+TEAM_SEPARATOR_PATTERN = rf"\s+(?:vs|[{EN_DASH}-])\s+"
+LEGACY_CACHE_MATCH_PATTERN = rf"([^\n{EN_DASH}\-]+)[\s\n]+(?:vs|[{EN_DASH}v\-])[\s\n]+([^\n\d]+)"
+TEAM_PREFIX_CLEAN_PATTERN = rf"(^.*?\d{{2}}:\d{{2}}\s+|^\w+,\s+\d{{1,2}}\s+\w+\s+[{EN_DASH}-]\s+|^.*?\d{{1,2}}:\d{{2}}\s+)"
 
 def log_timing(msg):
     if DEBUG_TIMING:
         print(f"⏱️ [Timing] {msg}")
+
+def _normalize_league_url(league_url: Optional[str]) -> Optional[str]:
+    """Normalize league URLs so grouping and cache keys stay stable."""
+    if not league_url:
+        return None
+    normalized = league_url.strip()
+    if not normalized:
+        return None
+    return normalized.rstrip("/")
+
+
+def _build_league_group_key(season_id: Optional[int], league_url: Optional[str]) -> Optional[Tuple[int, str]]:
+    normalized_league_url = _normalize_league_url(league_url)
+    if not season_id or not normalized_league_url:
+        return None
+    return (season_id, normalized_league_url)
+
+
+def _build_structured_league_cache(candidates: List[Dict[str, str]]) -> Dict[str, Dict[str, str]]:
+    return {
+        candidate["href"]: {
+            "home": candidate["home"],
+            "away": candidate["away"],
+            "raw_text": candidate.get("raw_text", ""),
+        }
+        for candidate in candidates
+        if candidate.get("href")
+    }
+
+
+def _format_group_key(group_key: Optional[Tuple[int, str]]) -> str:
+    if not group_key:
+        return "(non-primable)"
+    season_id, league_url = group_key
+    return f"(season_id={season_id}, league_url={league_url})"
+
+
+class _OddsPortalLogPrefixFilter(logging.Filter):
+    """Prefix this module's logs with the active worker/priming label."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        prefix = getattr(_LOG_CONTEXT, "prefix", None)
+        if prefix and not getattr(record, "_op_prefix_applied", False):
+            record.msg = f"{prefix} {record.msg}"
+            record._op_prefix_applied = True
+        return True
+
+
+if not any(isinstance(existing_filter, _OddsPortalLogPrefixFilter) for existing_filter in logger.filters):
+    logger.addFilter(_OddsPortalLogPrefixFilter())
+
+
+@contextmanager
+def _log_prefix(prefix: Optional[str]):
+    previous_prefix = getattr(_LOG_CONTEXT, "prefix", None)
+    _LOG_CONTEXT.prefix = prefix
+    try:
+        yield
+    finally:
+        if previous_prefix is None:
+            try:
+                delattr(_LOG_CONTEXT, "prefix")
+            except AttributeError:
+                pass
+        else:
+            _LOG_CONTEXT.prefix = previous_prefix
+
 
 # ---------------------------------------------------------------------------
 # Data Structures
@@ -681,17 +755,259 @@ class OddsPortalScraper:
             logger.error(f"❌ Error clicking market group tab '{group_display_name}': {e}")
             return False
             
-    async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
+    def _load_cached_candidates(
+        self,
+        season_id: int,
+        league_url: Optional[str] = None,
+    ) -> List[Dict[str, str]]:
+        """Load structured league candidates from the DB cache."""
+        from repository import OddsPortalCacheRepository
+        cached = OddsPortalCacheRepository.get_league_cache(season_id)
+
+        if not cached:
+            return []
+
+        candidates = []
+        for href, data in cached.items():
+            if not href:
+                continue
+
+            if isinstance(data, dict):
+                candidates.append({
+                    "home": data.get("home", ""),
+                    "away": data.get("away", ""),
+                    "href": href,
+                    "raw_text": data.get("raw_text", ""),
+                })
+                continue
+
+            row_text = data or ""
+            parts = re.split(TEAM_SEPARATOR_PATTERN, row_text)
+            if len(parts) >= 2:
+                p1, p2 = parts[0], parts[1]
+            else:
+                match = re.search(LEGACY_CACHE_MATCH_PATTERN, row_text)
+                if match:
+                    p1, p2 = match.group(1), match.group(2)
+                else:
+                    p1, p2 = None, None
+
+            if p1 and p2:
+                home = p1.split("\n")[-1].strip()
+                away = p2.split("\n")[0].strip()
+                home = re.sub(TEAM_PREFIX_CLEAN_PATTERN, '', home)
+                away = re.sub(r'\s+\d+\.\d+.*', '', away)
+                if home and away:
+                    candidates.append({"home": home, "away": away, "href": href})
+                    continue
+
+            candidates.append({"home": row_text, "away": "", "href": href})
+
+        return candidates
+
+    async def _extract_league_candidates(self, league_url: str, season_id: Optional[int]) -> List[Dict[str, str]]:
         """
-        Navigate to league page and find match URL by team names.
-        Also populates the DB cache with all match URLs found on the page.
+        Navigate to a league page, extract candidates once, and populate cache if available.
+        This shared path is reused by both priming and cache-miss discovery.
         """
-        # 1. Try cache first
+        if not self.context:
+            await self.start()
+
+        page = await self.context.new_page()
+        navigation_league_url = league_url
+        normalized_league_url = _normalize_league_url(league_url) or league_url
+        try:
+            logger.info(f"🌐 Navigating to league: {navigation_league_url}")
+            t0 = time.perf_counter()
+            try:
+                response = await page.goto(
+                    navigation_league_url,
+                    wait_until="domcontentloaded",
+                    timeout=ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS,
+                )
+            except Exception as e:
+                error_str = str(e).lower()
+                if "timeout" in error_str or "err_" in error_str or "net::" in error_str:
+                    logger.error(
+                        "🔄 FAST FAIL (League goto): navigation failed quickly "
+                        f"after {ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS}ms: {str(e).split(chr(10))[0]}"
+                    )
+                    return []
+                raise
+
+            t_goto = time.perf_counter()
+            log_timing(f"League page load ({navigation_league_url}) took {t_goto - t0:.2f}s")
+
+            if not response or response.status != 200:
+                logger.error(f"âŒ Failed to load league page. Status: {response.status if response else 'N/A'}")
+                return []
+
+            try:
+                page_title = await page.title()
+                if any(blocked in page_title for blocked in ["Access Denied", "Just a moment...", "Attention Required!", "Security check", "Cloudflare"]):
+                    logger.error(f"🔄 FAST FAIL (League title): Proxy IP blocked. Title: '{page_title}'")
+                    return []
+            except Exception:
+                pass
+
+            try:
+                await page.wait_for_selector("div.eventRow", timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS)
+                t_wait = time.perf_counter()
+                log_timing(f"Waiting for 'div.eventRow' selector took {t_wait - t_goto:.2f}s")
+            except Exception:
+                logger.error(
+                    "🔄 FAST FAIL (League rows): no event rows loaded "
+                    f"within {ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS}ms on {navigation_league_url}"
+                )
+                return []
+
+            try:
+                accept_btn = await page.query_selector("button:has-text('I Accept'), button:has-text('Accept All')")
+                if accept_btn:
+                    await accept_btn.click()
+                    await asyncio.sleep(0.5)
+            except Exception:
+                pass
+
+            t_js_league = time.perf_counter()
+            rows_data = await page.evaluate("""() => {
+                const rows = Array.from(document.querySelectorAll("div.eventRow"));
+                return rows.map(row => {
+                    const text = row.innerText;
+                    const links = Array.from(row.querySelectorAll("a[href]")).map(a => ({
+                        href: a.getAttribute("href"),
+                        text: a.innerText.trim()
+                    }));
+                    return { text, links };
+                });
+            }""")
+            log_timing(f"Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s")
+
+            if not rows_data:
+                logger.warning(f"âš ï¸ No event rows found on {navigation_league_url}")
+                return []
+
+            candidates = []
+            league_path = navigation_league_url.replace("https://www.oddsportal.com", "").rstrip("/")
+
+            for row in rows_data:
+                row_text = row.get("text", "")
+                links = row.get("links", [])
+                p1, p2, href = None, None, None
+
+                for link in links:
+                    l_href = link.get("href", "")
+                    if not l_href or "-" not in l_href:
+                        continue
+                    if l_href.rstrip("/") in league_path:
+                        continue
+
+                    link_text = link.get("text", "")
+                    parts = re.split(TEAM_SEPARATOR_PATTERN, link_text)
+                    if len(parts) >= 2:
+                        p1 = parts[0].strip()
+                        p2 = parts[1].strip()
+                        p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
+                        p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
+                        href = l_href
+                        break
+
+                if not (p1 and p2):
+                    lines = [line.strip() for line in row_text.split('\n') if line.strip()]
+                    for line in lines:
+                        if any(k in line for k in ["Today", "Tomorrow", "Mar", "Apr", "Play Offs", "Play Out"]):
+                            continue
+                        if f" {EN_DASH} " in line or " - " in line:
+                            parts = re.split(TEAM_SEPARATOR_PATTERN, line)
+                            if len(parts) >= 2:
+                                p1 = parts[0].strip()
+                                p2 = parts[1].strip()
+                                p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
+                                p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
+                                if not href and links:
+                                    href = links[0].get("href")
+                                break
+
+                if p1 and p2 and href:
+                    candidates.append({
+                        "home": p1,
+                        "away": p2,
+                        "href": href,
+                        "raw_text": row_text,
+                    })
+
+            if season_id and candidates:
+                try:
+                    from repository import OddsPortalCacheRepository
+                    cache_dict = _build_structured_league_cache(candidates)
+                    if cache_dict and OddsPortalCacheRepository.save_league_cache(season_id, cache_dict):
+                        logger.info(f"⚡¦ Cached {len(cache_dict)} match URLs for season {season_id}")
+                    elif cache_dict:
+                        logger.warning(f"âš ï¸ Cache save returned False for season {season_id}")
+                except Exception as cache_err:
+                    logger.warning(f"âš ï¸ Cache save failed: {cache_err}")
+
+            return candidates
+        finally:
+            await page.close()
+
+    async def prime_league_cache(self, league_url: str, season_id: int) -> bool:
+        """Prime league discovery/cache without resolving a specific event."""
+        if not season_id:
+            return False
+
+        candidates = await self._extract_league_candidates(league_url, season_id)
+        if not candidates:
+            logger.warning(
+                f"OddsPortal Stage 1: no candidates extracted for "
+                f"{_format_group_key(_build_league_group_key(season_id, league_url))}"
+            )
+            return False
+
+        cached_candidates = self._load_cached_candidates(season_id, league_url=league_url)
+        if not cached_candidates:
+            logger.warning(
+                f"OddsPortal Stage 1: extracted candidates but cache was not ready for "
+                f"{_format_group_key(_build_league_group_key(season_id, league_url))}"
+            )
+        return bool(cached_candidates)
+
+    async def _legacy_find_match_url_refactor_artifact(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
+        """
+        Resolve a match URL by team names.
+        Cache hits return immediately; cache misses reuse the shared league extraction path.
+        """
         if season_id:
-            cached_url = self.find_match_url_from_cache(season_id, home_team, away_team)
+            cached_url = self.find_match_url_from_cache(
+                season_id,
+                home_team,
+                away_team,
+                league_url=league_url,
+            )
             if cached_url:
                 logger.info(f"⚡ Cache hit (internal): {cached_url}")
                 return cached_url
+
+        try:
+            candidates = await self._extract_league_candidates(league_url, season_id)
+            if not candidates:
+                logger.warning(f"OddsPortal discovery returned no candidates for {league_url}")
+                return None
+
+            logger.info(f"🔍 Scanning {len(candidates)} candidates for {home_team} vs {away_team}...")
+            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
+            if best_match:
+                logger.info(
+                    f"✅ Match found: {best_match['home']} vs {best_match['away']} "
+                    f"(Score: {best_match['max_score']:.1f}, Reversed: {best_match['is_reversed']})"
+                )
+                return f"https://www.oddsportal.com{best_match['href']}"
+
+            logger.warning(f"âŒ Match not found: {home_team} vs {away_team}")
+            return None
+        except Exception as e:
+            logger.error(f"Error finding match on {league_url}: {e}")
+            return None
 
         if not self.context:
             await self.start()
@@ -872,15 +1188,36 @@ class OddsPortalScraper:
         finally:
             await page.close()
 
-    def find_match_url_from_cache(self, season_id: int, home_team: str, away_team: str) -> Optional[str]:
+    def _legacy_find_match_url_from_cache_refactor_artifact(
+        self,
+        season_id: int,
+        home_team: str,
+        away_team: str,
+        league_url: Optional[str] = None,
+    ) -> Optional[str]:
         """
-        Try to find match URL from DB cache (no browser navigation needed).
+        Try to find a match URL from the primed in-memory cache or the DB cache.
         Uses TeamMatcher for robust scoring.
-        
-        Returns:
-            Full match URL or None if not found in cache
         """
         try:
+            candidates = self._load_cached_candidates(
+                season_id,
+                league_url=league_url,
+            )
+            if not candidates:
+                logger.debug(f"âš ï¸ No valid candidates parsed from cache for season {season_id}")
+                return None
+
+            logger.debug(f"ðŸ”Ž Scanning {len(candidates)} cached candidates for {home_team} vs {away_team}...")
+            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
+            if best_match and best_match['max_score'] >= 80:
+                logger.info(
+                    f"⚡ Cache hit: {best_match['home']} vs {best_match['away']} "
+                    f"(Score: {best_match['max_score']:.1f})"
+                )
+                return f"https://www.oddsportal.com{best_match['href']}"
+            return None
+
             from repository import OddsPortalCacheRepository
             cached = OddsPortalCacheRepository.get_league_cache(season_id)
             if not cached:
@@ -934,6 +1271,70 @@ class OddsPortalScraper:
             if best_match and best_match['max_score'] >= 80:
                 logger.info(
                     f"✅ Cache hit: {best_match['home']} vs {best_match['away']} "
+                    f"(Score: {best_match['max_score']:.1f})"
+                )
+                return f"https://www.oddsportal.com{best_match['href']}"
+            return None
+        except Exception as e:
+            logger.debug(f"Cache lookup failed: {e}")
+            return None
+
+    async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
+        """
+        Resolve a match URL by team names.
+        Cache hits return immediately; cache misses reuse the shared league extraction path.
+        """
+        if season_id:
+            cached_url = self.find_match_url_from_cache(
+                season_id,
+                home_team,
+                away_team,
+                league_url=league_url,
+            )
+            if cached_url:
+                logger.info(f"Cache hit (internal): {cached_url}")
+                return cached_url
+
+        try:
+            candidates = await self._extract_league_candidates(league_url, season_id)
+            if not candidates:
+                logger.warning(f"OddsPortal discovery returned no candidates for {league_url}")
+                return None
+
+            logger.info(f"Scanning {len(candidates)} candidates for {home_team} vs {away_team}...")
+            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
+            if best_match:
+                logger.info(
+                    f"Match found: {best_match['home']} vs {best_match['away']} "
+                    f"(Score: {best_match['max_score']:.1f}, Reversed: {best_match['is_reversed']})"
+                )
+                return f"https://www.oddsportal.com{best_match['href']}"
+
+            logger.warning(f"Match not found: {home_team} vs {away_team}")
+            return None
+        except Exception as e:
+            logger.error(f"Error finding match on {league_url}: {e}")
+            return None
+
+    def find_match_url_from_cache(
+        self,
+        season_id: int,
+        home_team: str,
+        away_team: str,
+        league_url: Optional[str] = None,
+    ) -> Optional[str]:
+        """Try to find a match URL from the DB-backed league cache."""
+        try:
+            candidates = self._load_cached_candidates(season_id, league_url=league_url)
+            if not candidates:
+                logger.debug(f"No valid candidates parsed from cache for season {season_id}")
+                return None
+
+            logger.debug(f"Scanning {len(candidates)} cached candidates for {home_team} vs {away_team}...")
+            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
+            if best_match and best_match["max_score"] >= 80:
+                logger.info(
+                    f"Cache hit: {best_match['home']} vs {best_match['away']} "
                     f"(Score: {best_match['max_score']:.1f})"
                 )
                 return f"https://www.oddsportal.com{best_match['href']}"
@@ -2577,14 +2978,21 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                     try:
                         logger.info(f"🔍 OddsPortal [{i+1}/{len(tasks)}]: {task['home_team']} vs {task['away_team']}")
                         
-                        # Step 1: Try cache first (no browser navigation needed)
-                        match_url = None
-                        if season_id:
+                        # Step 1: Use a primed direct match URL when available.
+                        match_url = task.get("match_url")
+                        if match_url:
+                            logger.info(f"Using primed match URL for event {event_id}: {match_url}")
+
+                        # Step 2: Try DB cache (no browser navigation needed)
+                        if not match_url and season_id:
                             match_url = scraper.find_match_url_from_cache(
-                                season_id, task['home_team'], task['away_team']
+                                season_id,
+                                task['home_team'],
+                                task['away_team'],
+                                league_url=task.get('league_url'),
                             )
                         
-                        # Step 2: Fall back to live league page navigation (also populates cache)
+                        # Step 3: Fall back to live league page navigation (also populates cache)
                         if not match_url:
                             match_url = await scraper.find_match_url(
                                 task['league_url'], task['home_team'], task['away_team'],
@@ -2611,10 +3019,13 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                             await scraper.start()  # Generates a fresh session ID = new IP
                             
                             # Re-find match URL (cache may still have it)
-                            retry_url = match_url
+                            retry_url = task.get("match_url") or match_url
                             if not retry_url and season_id:
                                 retry_url = scraper.find_match_url_from_cache(
-                                    season_id, task['home_team'], task['away_team']
+                                    season_id,
+                                    task['home_team'],
+                                    task['away_team'],
+                                    league_url=task.get('league_url'),
                                 )
                             if not retry_url:
                                 retry_url = await scraper.find_match_url(
@@ -2671,11 +3082,204 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
         logger.error(f"❌ Error in scrape_multiple_matches_sync: {e}\n{traceback.format_exc()}")
         return results
 
+def _build_priming_groups(tasks: List[Dict]) -> Tuple[Dict[Tuple[int, str], List[Dict]], List[Dict]]:
+    """Group primable tasks by (season_id, league_url) and collect the rest separately."""
+    primable_groups: Dict[Tuple[int, str], List[Dict]] = {}
+    non_primable_tasks: List[Dict] = []
+
+    for task in tasks:
+        group_key = _build_league_group_key(task.get("season_id"), task.get("league_url"))
+        if not group_key:
+            non_primable_tasks.append(task)
+            continue
+        primable_groups.setdefault(group_key, []).append(task)
+
+    return primable_groups, non_primable_tasks
+
+
+def _resolve_group_match_urls(
+    scraper: OddsPortalScraper,
+    group_tasks: List[Dict[str, Any]],
+) -> Dict[int, str]:
+    """Resolve event match URLs from an already-primed candidate set."""
+    resolved_urls: Dict[int, str] = {}
+
+    for task in group_tasks:
+        event_id = task.get("event_id")
+        season_id = task.get("season_id")
+        league_url = task.get("league_url")
+        home_team = task.get("home_team")
+        away_team = task.get("away_team")
+        if not event_id or not season_id or not league_url or not home_team or not away_team:
+            continue
+
+        match_url = scraper.find_match_url_from_cache(
+            season_id,
+            home_team,
+            away_team,
+            league_url=league_url,
+        )
+        if match_url:
+            resolved_urls[event_id] = match_url
+
+    return resolved_urls
+
+
+def _prime_single_group_sync(
+    group_key: Tuple[int, str],
+    group_tasks: List[Dict[str, Any]],
+    worker_label: str,
+    debug_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Prime one league/season group in its own browser session and event loop."""
+    logger.info(f"{worker_label} OddsPortal Stage 1: priming start for {_format_group_key(group_key)}")
+    representative_task = group_tasks[0]
+
+    async def _run() -> Dict[str, Any]:
+        scraper = OddsPortalScraper(debug_dir=debug_dir)
+        await scraper.start()
+        try:
+            success = False
+            resolved_match_urls: Dict[int, str] = {}
+
+            for attempt in range(1, 3):
+                success = await scraper.prime_league_cache(
+                    representative_task["league_url"],
+                    representative_task["season_id"],
+                )
+                resolved_match_urls = _resolve_group_match_urls(scraper, group_tasks)
+                logger.info(
+                    f"OddsPortal Stage 1: resolved {len(resolved_match_urls)}/{len(group_tasks)} "
+                    f"match URL(s) for {_format_group_key(group_key)} on attempt {attempt}"
+                )
+                if success or resolved_match_urls or attempt == 2:
+                    break
+
+                logger.warning(
+                    f"OddsPortal Stage 1: priming produced no reusable cache for "
+                    f"{_format_group_key(group_key)}; restarting browser and retrying once"
+                )
+                await scraper.stop()
+                await scraper.start()
+
+            return {
+                "success": success,
+                "resolved_match_urls": resolved_match_urls,
+            }
+        finally:
+            await scraper.stop()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        with _log_prefix(worker_label):
+            priming_data = loop.run_until_complete(_run())
+        success = priming_data.get("success", False)
+        logger.info(
+            f"{worker_label} OddsPortal Stage 1: priming end for {_format_group_key(group_key)} "
+            f"(success={success})"
+        )
+        return {
+            "group_key": group_key,
+            "success": success,
+            "resolved_match_urls": priming_data.get("resolved_match_urls", {}),
+            "error": None,
+        }
+    except Exception as e:
+        logger.error(f"{worker_label} OddsPortal Stage 1: priming exception for {_format_group_key(group_key)}: {e}")
+        return {
+            "group_key": group_key,
+            "success": False,
+            "resolved_match_urls": {},
+            "error": str(e),
+        }
+    finally:
+        loop.close()
+
+
+def _run_stage2_chunk_sync(
+    chunk_index: int,
+    chunk_count: int,
+    chunk: List[Dict],
+    debug_dir: Optional[str] = None,
+    on_result=None,
+) -> Dict[int, Optional[MatchOddsData]]:
+    """Run one stage-2 worker chunk under a stable log prefix."""
+    worker_label = f"[Browser {chunk_index}/{chunk_count}]"
+    with _log_prefix(worker_label):
+        return scrape_multiple_matches_sync(chunk, debug_dir=debug_dir, on_result=on_result)
+
+
+def _summarize_chunk_groups(
+    chunk: List[Dict],
+    primed_success_groups: set,
+    primed_failed_groups: set,
+) -> str:
+    if not chunk:
+        return "empty"
+
+    counts: Dict[str, int] = {}
+    for task in chunk:
+        group_key = _build_league_group_key(task.get("season_id"), task.get("league_url"))
+        if group_key in primed_success_groups:
+            label = f"primed {_format_group_key(group_key)}"
+        elif group_key in primed_failed_groups:
+            label = f"unprimed {_format_group_key(group_key)}"
+        elif group_key:
+            label = f"primable {_format_group_key(group_key)}"
+        else:
+            label = "non-primable"
+        counts[label] = counts.get(label, 0) + 1
+
+    return ", ".join(f"{label} x{count}" for label, count in counts.items())
+
+
+def _build_stage2_chunks(
+    tasks: List[Dict],
+    primed_success_groups: set,
+    primed_failed_groups: set,
+    num_browsers: int,
+) -> List[List[Dict]]:
+    """Build stage-2 worker chunks after priming has completed."""
+    if not tasks:
+        return []
+
+    primable_groups, non_primable_tasks = _build_priming_groups(tasks)
+    chunk_count = max(1, min(num_browsers, len(tasks)))
+    chunks: List[List[Dict]] = [[] for _ in range(chunk_count)]
+
+    def assign_block(block: List[Dict]) -> None:
+        smallest_idx = min(range(len(chunks)), key=lambda i: len(chunks[i]))
+        chunks[smallest_idx].extend(block)
+
+    handled_groups = set()
+
+    for group_key, group_tasks in primable_groups.items():
+        if group_key in primed_failed_groups:
+            assign_block(group_tasks)
+            handled_groups.add(group_key)
+
+    for task in non_primable_tasks:
+        assign_block([task])
+
+    for group_key, group_tasks in primable_groups.items():
+        if group_key in primed_success_groups:
+            for task in group_tasks:
+                assign_block([task])
+            handled_groups.add(group_key)
+
+    for group_key, group_tasks in primable_groups.items():
+        if group_key not in handled_groups:
+            assign_block(group_tasks)
+
+    return [chunk for chunk in chunks if chunk]
+
+
 def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
     """
-    Distribute scrape tasks across multiple concurrent Playwright browsers.
-    If num_browsers == 1, delegates directly to scrape_multiple_matches_sync.
-    Otherwise, splits tasks and processes them in a ThreadPoolExecutor.
+    Run real two-stage scraping:
+    1. Prime one browser per (season_id, league_url) group.
+    2. Fan out actual event scrapes only after priming completes.
     """
     if not tasks:
         return {}
@@ -2685,6 +3289,107 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
         
     logger.info(f"🚀 OddsPortal Parallel: Splitting {len(tasks)} tasks across {num_browsers} browsers")
     
+    primable_groups, non_primable_tasks = _build_priming_groups(tasks)
+    logger.info(
+        f"OddsPortal Parallel: total_tasks={len(tasks)}, "
+        f"primable_groups={len(primable_groups)}, non_primable_tasks={len(non_primable_tasks)}, "
+        f"num_browsers={num_browsers}"
+    )
+
+    primed_success_groups = set()
+    primed_failed_groups = set()
+    primed_match_urls: Dict[int, str] = {}
+
+    logger.info("OddsPortal Stage 1: start")
+    if primable_groups:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        stage1_workers = min(num_browsers, len(primable_groups))
+        stage1_group_items = list(primable_groups.items())
+        with ThreadPoolExecutor(max_workers=stage1_workers) as executor:
+            future_to_group = {
+                executor.submit(
+                    _prime_single_group_sync,
+                    group_key,
+                    group_tasks,
+                    f"[Prime {idx}/{len(stage1_group_items)}]",
+                    debug_dir,
+                ): group_key
+                for idx, (group_key, group_tasks) in enumerate(stage1_group_items, start=1)
+            }
+
+            for future in as_completed(future_to_group):
+                group_key = future_to_group[future]
+                try:
+                    priming_result = future.result()
+                except Exception as e:
+                    logger.error(f"OddsPortal Stage 1: unexpected future failure for {_format_group_key(group_key)}: {e}")
+                    primed_failed_groups.add(group_key)
+                    continue
+
+                resolved_match_urls = priming_result.get("resolved_match_urls", {})
+                if resolved_match_urls:
+                    primed_match_urls.update(resolved_match_urls)
+                    logger.info(
+                        f"OddsPortal Stage 1: reusable match URLs ready for "
+                        f"{_format_group_key(group_key)} ({len(resolved_match_urls)})"
+                    )
+
+                if priming_result.get("success"):
+                    primed_success_groups.add(group_key)
+                    logger.info(f"OddsPortal Stage 1: priming success for {_format_group_key(group_key)}")
+                else:
+                    primed_failed_groups.add(group_key)
+                    logger.warning(f"OddsPortal Stage 1: priming failed for {_format_group_key(group_key)}")
+    logger.info("OddsPortal Stage 1: end")
+
+    stage2_tasks = []
+    for task in tasks:
+        stage2_task = dict(task)
+        resolved_match_url = primed_match_urls.get(task.get("event_id"))
+        if resolved_match_url:
+            stage2_task["match_url"] = resolved_match_url
+        stage2_tasks.append(stage2_task)
+
+    logger.info(
+        f"OddsPortal Stage 2: prepared {len(primed_match_urls)} primed match URL(s) "
+        f"for {len(stage2_tasks)} task(s)"
+    )
+
+    chunks = _build_stage2_chunks(stage2_tasks, primed_success_groups, primed_failed_groups, num_browsers)
+    logger.info(f"OddsPortal Stage 2: chunk_count={len(chunks)}")
+    for idx, chunk in enumerate(chunks, start=1):
+        logger.info(
+            f"OddsPortal Stage 2: chunk {idx}/{len(chunks)} has {len(chunk)} task(s) "
+            f"-> {_summarize_chunk_groups(chunk, primed_success_groups, primed_failed_groups)}"
+        )
+
+    all_results = {}
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    with ThreadPoolExecutor(max_workers=len(chunks)) as executor:
+        future_to_chunk = {
+            executor.submit(_run_stage2_chunk_sync, i + 1, len(chunks), chunk, debug_dir, on_result): i
+            for i, chunk in enumerate(chunks)
+        }
+
+        for future in as_completed(future_to_chunk):
+            chunk_idx = future_to_chunk[future]
+            try:
+                chunk_result = future.result()
+                all_results.update(chunk_result)
+                logger.info(f"✅ OddsPortal Parallel: Browser {chunk_idx + 1}/{len(chunks)} completed successfully")
+            except Exception as e:
+                import traceback
+                logger.error(f"âŒ OddsPortal Parallel: Browser {chunk_idx + 1} failed: {e}\n{traceback.format_exc()}")
+
+    logger.info(
+        f"OddsPortal Parallel summary: primed_groups_succeeded={len(primed_success_groups)}, "
+        f"primed_groups_failed={len(primed_failed_groups)}, stage2_tasks_scraped={len(tasks)}"
+    )
+    return all_results
+
     # --- Two-Phase Season-Aware Distribution ---
     # Phase 1 (Cache Seeding): One "seed" event per unique season_id.
     #   These navigate the league page and populate the DB cache.
