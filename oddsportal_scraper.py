@@ -269,6 +269,60 @@ class OddsPortalScraper:
             self.playwright = None
             logger.info("🛑 OddsPortalScraper: Browser stopped")
 
+    async def _goto_fresh(self, page: Page, url: str, **kwargs) -> object:
+        """Cache-defeating wrapper around page.goto().
+
+        1. Sets no-cache/no-store HTTP headers for this navigation only.
+        2. Appends a _t=<timestamp> cache-buster to the URL (before the fragment).
+        """
+        # --- Build cache-busted URL ---
+        # Split on '#' first so the fragment stays at the end.
+        if '#' in url:
+            base_part, fragment = url.split('#', 1)
+        else:
+            base_part, fragment = url, None
+
+        cache_buster = f"_t={int(time.time())}"
+        if '?' in base_part:
+            base_part = f"{base_part}&{cache_buster}"
+        else:
+            base_part = f"{base_part}?{cache_buster}"
+
+        fresh_url = f"{base_part}#{fragment}" if fragment else base_part
+        logger.debug(f"🔄 _goto_fresh: {fresh_url}")
+
+        # --- Apply anti-cache headers for this navigation only ---
+        try:
+            await page.set_extra_http_headers({
+                "Cache-Control": "no-cache, no-store",
+                "Pragma": "no-cache",
+            })
+            response = await page.goto(fresh_url, **kwargs)
+            return response
+        finally:
+            # Reset headers so they don't bleed into subsequent XHRs/fetches.
+            await page.set_extra_http_headers({})
+
+    async def _clear_browser_state(self) -> None:
+        """Clear cookies and web storage from the active browser context."""
+        try:
+            # 1. Clear cookies
+            await self.context.clear_cookies()
+
+            # 2. Clear localStorage / sessionStorage via a temporary page
+            try:
+                tmp_page = await self.context.new_page()
+                await tmp_page.goto("about:blank")
+                await tmp_page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
+                await tmp_page.close()
+            except Exception as storage_err:
+                logger.debug(f"⚠️ Storage clear on about:blank failed (non-fatal): {storage_err}")
+
+            logger.info("🧹 OddsPortalScraper: Browser state cleared (cookies + storage)")
+        except Exception as e:
+            logger.warning(f"⚠️ _clear_browser_state failed (non-fatal): {e}")
+
+
     def _normalize_base_match_url(self, match_url: str) -> str:
         """Remove fragment/trailing slash and return canonical match base URL."""
         return (match_url or "").split("#")[0].rstrip("/")
@@ -888,7 +942,7 @@ class OddsPortalScraper:
             logger.debug(f"Cache lookup failed: {e}")
             return None
 
-    async def scrape_match(self, match_url: str, sport: str = None) -> Optional[MatchOddsData]:
+    async def scrape_match(self, match_url: str, sport: str = None, clear_state: bool = False) -> Optional[MatchOddsData]:
         """
         Navigate to a match page and extract odds for all configured market periods.
         
@@ -903,7 +957,10 @@ class OddsPortalScraper:
         """
         if not self.context:
             await self.start()
-            
+
+        if clear_state and self.context:
+            await self._clear_browser_state()
+
         page = await self.context.new_page()
         
         try:
@@ -952,7 +1009,7 @@ class OddsPortalScraper:
             # Navigate to match page
             response = None
             try:
-                response = await page.goto(initial_url, wait_until="domcontentloaded", timeout=30000)
+                response = await self._goto_fresh(page, initial_url, wait_until="domcontentloaded", timeout=30000)
             except Exception as e:
                 error_str = str(e).lower()
 
@@ -1212,7 +1269,7 @@ class OddsPortalScraper:
                             period_code = OP_PERIODS.get(first_period_key, 2)
                             base_url = self._normalize_base_match_url(match_url)
                             reload_url = f"{base_url}/#{fragment};{period_code}"
-                            await page.goto(reload_url, wait_until="domcontentloaded", timeout=30000)
+                            await self._goto_fresh(page, reload_url, wait_until="domcontentloaded", timeout=30000)
                             rendered = await self._wait_for_market_render(page, extract_fn, timeout_ms=15000)
                             if not rendered:
                                 raise TimeoutError("market render wait timed out after group reload")
@@ -1245,7 +1302,7 @@ class OddsPortalScraper:
                                 period_code = OP_PERIODS.get(period_key, 2)
                                 base_url = self._normalize_base_match_url(match_url)
                                 reload_url = f"{base_url}/#{fragment};{period_code}"
-                                await page.goto(reload_url, wait_until="domcontentloaded", timeout=30000)
+                                await self._goto_fresh(page, reload_url, wait_until="domcontentloaded", timeout=30000)
                                 rendered = await self._wait_for_market_render(page, extract_fn, timeout_ms=15000)
                                 if not rendered:
                                     raise TimeoutError("market render wait timed out after period reload")
@@ -2543,7 +2600,8 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                         
                         data = None
                         if match_url:
-                            data = await scraper.scrape_match(match_url, sport=task_sport)
+                            clear_state = task.get('clear_state', False)
+                            data = await scraper.scrape_match(match_url, sport=task_sport, clear_state=clear_state)
                         
                         # Session-aware retry: if scrape OR discovery failed (likely bad proxy/IP),
                         # restart browser with a fresh proxy session and retry once.
@@ -2564,7 +2622,7 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                                     season_id=season_id
                                 )
                             if retry_url:
-                                data = await scraper.scrape_match(retry_url, sport=task_sport)
+                                data = await scraper.scrape_match(retry_url, sport=task_sport, clear_state=clear_state)
                                 if data:
                                     logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: RETRY SUCCEEDED with new session-{scraper._session_id}")
                                 else:
