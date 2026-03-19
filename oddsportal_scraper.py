@@ -41,8 +41,8 @@ logger = logging.getLogger(__name__)
 _LOG_CONTEXT = local()
 
 DEBUG_TIMING = os.getenv("DEBUG_TIMING", "false").lower() == "true"
-ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS", "18000"))
-ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS", "15000"))
+ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS", "21000"))
+ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS", "18000"))
 EN_DASH = "\u2013"
 TEAM_SEPARATOR_PATTERN = rf"\s+(?:vs|[{EN_DASH}-])\s+"
 LEGACY_CACHE_MATCH_PATTERN = rf"([^\n{EN_DASH}\-]+)[\s\n]+(?:vs|[{EN_DASH}v\-])[\s\n]+([^\n\d]+)"
@@ -3125,6 +3125,55 @@ def _resolve_group_match_urls(
     return resolved_urls
 
 
+def _split_recovery_seed_tasks(
+    tasks: List[Dict[str, Any]],
+    recovery_groups: set,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Select exactly one unresolved seed task per recovery group, then leave the
+    rest for balanced fan-out after that seed has had a chance to repopulate cache.
+    """
+    recovery_seeds: List[Dict[str, Any]] = []
+    remaining_tasks: List[Dict[str, Any]] = []
+    seeded_groups: set = set()
+
+    for task in tasks:
+        group_key = _build_league_group_key(task.get("season_id"), task.get("league_url"))
+        if (
+            group_key in recovery_groups
+            and not task.get("match_url")
+            and group_key not in seeded_groups
+        ):
+            recovery_seeds.append(task)
+            seeded_groups.add(group_key)
+            continue
+        remaining_tasks.append(task)
+
+    return recovery_seeds, remaining_tasks
+
+
+def _attach_cached_match_urls(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Refresh task match URLs from the DB-backed cache without opening a browser."""
+    if not tasks:
+        return []
+
+    scraper = OddsPortalScraper()
+    refreshed_tasks: List[Dict[str, Any]] = []
+    for task in tasks:
+        refreshed_task = dict(task)
+        if not refreshed_task.get("match_url") and refreshed_task.get("season_id") and refreshed_task.get("league_url"):
+            cached_url = scraper.find_match_url_from_cache(
+                refreshed_task["season_id"],
+                refreshed_task["home_team"],
+                refreshed_task["away_team"],
+                league_url=refreshed_task["league_url"],
+            )
+            if cached_url:
+                refreshed_task["match_url"] = cached_url
+        refreshed_tasks.append(refreshed_task)
+    return refreshed_tasks
+
+
 def _prime_single_group_sync(
     group_key: Tuple[int, str],
     group_tasks: List[Dict[str, Any]],
@@ -3135,36 +3184,52 @@ def _prime_single_group_sync(
     logger.info(f"{worker_label} OddsPortal Stage 1: priming start for {_format_group_key(group_key)}")
     representative_task = group_tasks[0]
 
+    cache_probe_scraper = OddsPortalScraper(debug_dir=debug_dir)
+    cached_candidates = cache_probe_scraper._load_cached_candidates(
+        representative_task["season_id"],
+        league_url=representative_task["league_url"],
+    )
+    pre_resolved_match_urls = _resolve_group_match_urls(cache_probe_scraper, group_tasks)
+    if cached_candidates:
+        success = len(pre_resolved_match_urls) == len(group_tasks)
+        logger.info(
+            f"{worker_label} OddsPortal Stage 1: existing DB cache found for "
+            f"{_format_group_key(group_key)} ({len(cached_candidates)} candidate(s)); skipping priming navigation"
+        )
+        logger.info(
+            f"{worker_label} OddsPortal Stage 1: resolved {len(pre_resolved_match_urls)}/{len(group_tasks)} "
+            f"match URL(s) from existing DB cache for {_format_group_key(group_key)}"
+        )
+        logger.info(
+            f"{worker_label} OddsPortal Stage 1: priming end for {_format_group_key(group_key)} "
+            f"(success={success})"
+        )
+        return {
+            "group_key": group_key,
+            "success": success,
+            "resolved_match_urls": pre_resolved_match_urls,
+            "needs_recovery_seed": not success,
+            "error": None,
+        }
+
     async def _run() -> Dict[str, Any]:
         scraper = OddsPortalScraper(debug_dir=debug_dir)
         await scraper.start()
         try:
-            success = False
-            resolved_match_urls: Dict[int, str] = {}
-
-            for attempt in range(1, 3):
-                success = await scraper.prime_league_cache(
-                    representative_task["league_url"],
-                    representative_task["season_id"],
-                )
-                resolved_match_urls = _resolve_group_match_urls(scraper, group_tasks)
-                logger.info(
-                    f"OddsPortal Stage 1: resolved {len(resolved_match_urls)}/{len(group_tasks)} "
-                    f"match URL(s) for {_format_group_key(group_key)} on attempt {attempt}"
-                )
-                if success or resolved_match_urls or attempt == 2:
-                    break
-
-                logger.warning(
-                    f"OddsPortal Stage 1: priming produced no reusable cache for "
-                    f"{_format_group_key(group_key)}; restarting browser and retrying once"
-                )
-                await scraper.stop()
-                await scraper.start()
-
+            success = await scraper.prime_league_cache(
+                representative_task["league_url"],
+                representative_task["season_id"],
+            )
+            resolved_match_urls = _resolve_group_match_urls(scraper, group_tasks)
+            success = success or len(resolved_match_urls) == len(group_tasks)
+            logger.info(
+                f"OddsPortal Stage 1: resolved {len(resolved_match_urls)}/{len(group_tasks)} "
+                f"match URL(s) for {_format_group_key(group_key)} on attempt 1"
+            )
             return {
                 "success": success,
                 "resolved_match_urls": resolved_match_urls,
+                "needs_recovery_seed": len(resolved_match_urls) < len(group_tasks),
             }
         finally:
             await scraper.stop()
@@ -3183,6 +3248,7 @@ def _prime_single_group_sync(
             "group_key": group_key,
             "success": success,
             "resolved_match_urls": priming_data.get("resolved_match_urls", {}),
+            "needs_recovery_seed": priming_data.get("needs_recovery_seed", False),
             "error": None,
         }
     except Exception as e:
@@ -3191,6 +3257,7 @@ def _prime_single_group_sync(
             "group_key": group_key,
             "success": False,
             "resolved_match_urls": {},
+            "needs_recovery_seed": True,
             "error": str(e),
         }
     finally:
@@ -3213,7 +3280,7 @@ def _run_stage2_chunk_sync(
 def _summarize_chunk_groups(
     chunk: List[Dict],
     primed_success_groups: set,
-    primed_failed_groups: set,
+    recovery_groups: set,
 ) -> str:
     if not chunk:
         return "empty"
@@ -3223,8 +3290,8 @@ def _summarize_chunk_groups(
         group_key = _build_league_group_key(task.get("season_id"), task.get("league_url"))
         if group_key in primed_success_groups:
             label = f"primed {_format_group_key(group_key)}"
-        elif group_key in primed_failed_groups:
-            label = f"unprimed {_format_group_key(group_key)}"
+        elif group_key in recovery_groups:
+            label = f"recovery {_format_group_key(group_key)}"
         elif group_key:
             label = f"primable {_format_group_key(group_key)}"
         else:
@@ -3237,45 +3304,27 @@ def _summarize_chunk_groups(
 def _build_stage2_chunks(
     tasks: List[Dict],
     primed_success_groups: set,
-    primed_failed_groups: set,
+    recovery_groups: set,
     num_browsers: int,
 ) -> List[List[Dict]]:
-    """Build stage-2 worker chunks after priming has completed."""
+    """Build balanced stage-2 worker chunks after priming/recovery has completed."""
     if not tasks:
         return []
 
-    primable_groups, non_primable_tasks = _build_priming_groups(tasks)
     chunk_count = max(1, min(num_browsers, len(tasks)))
     chunks: List[List[Dict]] = [[] for _ in range(chunk_count)]
 
-    def assign_block(block: List[Dict]) -> None:
+    def assign_task(task: Dict) -> None:
         smallest_idx = min(range(len(chunks)), key=lambda i: len(chunks[i]))
-        chunks[smallest_idx].extend(block)
+        chunks[smallest_idx].append(task)
 
-    handled_groups = set()
-
-    for group_key, group_tasks in primable_groups.items():
-        if group_key in primed_failed_groups:
-            assign_block(group_tasks)
-            handled_groups.add(group_key)
-
-    for task in non_primable_tasks:
-        assign_block([task])
-
-    for group_key, group_tasks in primable_groups.items():
-        if group_key in primed_success_groups:
-            for task in group_tasks:
-                assign_block([task])
-            handled_groups.add(group_key)
-
-    for group_key, group_tasks in primable_groups.items():
-        if group_key not in handled_groups:
-            assign_block(group_tasks)
+    for task in tasks:
+        assign_task(task)
 
     return [chunk for chunk in chunks if chunk]
 
 
-def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
+def _legacy_scrape_multiple_matches_parallel_sync_refactor_artifact(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
     """
     Run real two-stage scraping:
     1. Prime one browser per (season_id, league_url) group.
@@ -3297,7 +3346,7 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
     )
 
     primed_success_groups = set()
-    primed_failed_groups = set()
+    recovery_groups = set()
     primed_match_urls: Dict[int, str] = {}
 
     logger.info("OddsPortal Stage 1: start")
@@ -3324,7 +3373,7 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
                     priming_result = future.result()
                 except Exception as e:
                     logger.error(f"OddsPortal Stage 1: unexpected future failure for {_format_group_key(group_key)}: {e}")
-                    primed_failed_groups.add(group_key)
+                    recovery_groups.add(group_key)
                     continue
 
                 resolved_match_urls = priming_result.get("resolved_match_urls", {})
@@ -3339,8 +3388,10 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
                     primed_success_groups.add(group_key)
                     logger.info(f"OddsPortal Stage 1: priming success for {_format_group_key(group_key)}")
                 else:
-                    primed_failed_groups.add(group_key)
-                    logger.warning(f"OddsPortal Stage 1: priming failed for {_format_group_key(group_key)}")
+                    logger.warning(f"OddsPortal Stage 1: priming did not fully resolve {_format_group_key(group_key)}")
+                if priming_result.get("needs_recovery_seed"):
+                    recovery_groups.add(group_key)
+                    logger.info(f"OddsPortal Stage 1: recovery seed required for {_format_group_key(group_key)}")
     logger.info("OddsPortal Stage 1: end")
 
     stage2_tasks = []
@@ -3356,12 +3407,12 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
         f"for {len(stage2_tasks)} task(s)"
     )
 
-    chunks = _build_stage2_chunks(stage2_tasks, primed_success_groups, primed_failed_groups, num_browsers)
+    chunks = _build_stage2_chunks(stage2_tasks, primed_success_groups, recovery_groups, num_browsers)
     logger.info(f"OddsPortal Stage 2: chunk_count={len(chunks)}")
     for idx, chunk in enumerate(chunks, start=1):
         logger.info(
             f"OddsPortal Stage 2: chunk {idx}/{len(chunks)} has {len(chunk)} task(s) "
-            f"-> {_summarize_chunk_groups(chunk, primed_success_groups, primed_failed_groups)}"
+            f"-> {_summarize_chunk_groups(chunk, primed_success_groups, recovery_groups)}"
         )
 
     all_results = {}
@@ -3386,7 +3437,167 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
 
     logger.info(
         f"OddsPortal Parallel summary: primed_groups_succeeded={len(primed_success_groups)}, "
-        f"primed_groups_failed={len(primed_failed_groups)}, stage2_tasks_scraped={len(tasks)}"
+        f"recovery_groups={len(recovery_groups)}, stage2_tasks_scraped={len(tasks)}"
+    )
+    return all_results
+
+
+def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
+    """
+    Run real multi-stage scraping:
+    1. Prime one browser per (season_id, league_url) group at most once.
+    2. Run one recovery seed scrape for any unresolved group.
+    3. Fan out the remaining actual event scrapes after cache is ready.
+    """
+    if not tasks:
+        return {}
+
+    if num_browsers <= 1 or len(tasks) == 1:
+        return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir, on_result=on_result)
+
+    logger.info(f"🚀 OddsPortal Parallel: Splitting {len(tasks)} tasks across {num_browsers} browsers")
+
+    primable_groups, non_primable_tasks = _build_priming_groups(tasks)
+    logger.info(
+        f"OddsPortal Parallel: total_tasks={len(tasks)}, "
+        f"primable_groups={len(primable_groups)}, non_primable_tasks={len(non_primable_tasks)}, "
+        f"num_browsers={num_browsers}"
+    )
+
+    primed_success_groups = set()
+    recovery_groups = set()
+    primed_match_urls: Dict[int, str] = {}
+
+    logger.info("OddsPortal Stage 1: start")
+    if primable_groups:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        stage1_workers = min(num_browsers, len(primable_groups))
+        stage1_group_items = list(primable_groups.items())
+        with ThreadPoolExecutor(max_workers=stage1_workers) as executor:
+            future_to_group = {
+                executor.submit(
+                    _prime_single_group_sync,
+                    group_key,
+                    group_tasks,
+                    f"[Prime {idx}/{len(stage1_group_items)}]",
+                    debug_dir,
+                ): group_key
+                for idx, (group_key, group_tasks) in enumerate(stage1_group_items, start=1)
+            }
+
+            for future in as_completed(future_to_group):
+                group_key = future_to_group[future]
+                try:
+                    priming_result = future.result()
+                except Exception as e:
+                    logger.error(f"OddsPortal Stage 1: unexpected future failure for {_format_group_key(group_key)}: {e}")
+                    recovery_groups.add(group_key)
+                    continue
+
+                resolved_match_urls = priming_result.get("resolved_match_urls", {})
+                if resolved_match_urls:
+                    primed_match_urls.update(resolved_match_urls)
+                    logger.info(
+                        f"OddsPortal Stage 1: reusable match URLs ready for "
+                        f"{_format_group_key(group_key)} ({len(resolved_match_urls)})"
+                    )
+
+                if priming_result.get("success"):
+                    primed_success_groups.add(group_key)
+                    logger.info(f"OddsPortal Stage 1: priming success for {_format_group_key(group_key)}")
+                else:
+                    logger.warning(f"OddsPortal Stage 1: priming did not fully resolve {_format_group_key(group_key)}")
+
+                if priming_result.get("needs_recovery_seed"):
+                    recovery_groups.add(group_key)
+                    logger.info(f"OddsPortal Stage 1: recovery seed required for {_format_group_key(group_key)}")
+    logger.info("OddsPortal Stage 1: end")
+
+    stage2_tasks: List[Dict[str, Any]] = []
+    for task in tasks:
+        stage2_task = dict(task)
+        resolved_match_url = primed_match_urls.get(task.get("event_id"))
+        if resolved_match_url:
+            stage2_task["match_url"] = resolved_match_url
+        stage2_tasks.append(stage2_task)
+
+    logger.info(
+        f"OddsPortal Stage 2: prepared {len(primed_match_urls)} primed match URL(s) "
+        f"for {len(stage2_tasks)} task(s)"
+    )
+
+    all_results: Dict[int, Optional[MatchOddsData]] = {}
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    recovery_seed_tasks, remaining_stage2_tasks = _split_recovery_seed_tasks(stage2_tasks, recovery_groups)
+    if recovery_seed_tasks:
+        logger.info(
+            f"OddsPortal Stage 2A: running {len(recovery_seed_tasks)} recovery seed task(s) "
+            f"for {len(recovery_groups)} group(s)"
+        )
+        seed_chunks = [[task] for task in recovery_seed_tasks]
+        with ThreadPoolExecutor(max_workers=min(num_browsers, len(seed_chunks))) as executor:
+            future_to_seed = {
+                executor.submit(_run_stage2_chunk_sync, i + 1, len(seed_chunks), chunk, debug_dir, on_result): i
+                for i, chunk in enumerate(seed_chunks)
+            }
+
+            for future in as_completed(future_to_seed):
+                chunk_idx = future_to_seed[future]
+                try:
+                    chunk_result = future.result()
+                    all_results.update(chunk_result)
+                    logger.info(
+                        f"OddsPortal Stage 2A: recovery seed browser "
+                        f"{chunk_idx + 1}/{len(seed_chunks)} completed successfully"
+                    )
+                except Exception as e:
+                    import traceback
+                    logger.error(
+                        f"OddsPortal Stage 2A: recovery seed browser {chunk_idx + 1} failed: "
+                        f"{e}\n{traceback.format_exc()}"
+                    )
+    else:
+        logger.info("OddsPortal Stage 2A: no recovery seeds required")
+
+    remaining_stage2_tasks = [
+        task for task in remaining_stage2_tasks
+        if task.get("event_id") not in all_results
+    ]
+    remaining_stage2_tasks = _attach_cached_match_urls(remaining_stage2_tasks)
+
+    chunks = _build_stage2_chunks(remaining_stage2_tasks, primed_success_groups, recovery_groups, num_browsers)
+    logger.info(f"OddsPortal Stage 2B: chunk_count={len(chunks)}")
+    for idx, chunk in enumerate(chunks, start=1):
+        logger.info(
+            f"OddsPortal Stage 2B: chunk {idx}/{len(chunks)} has {len(chunk)} task(s) "
+            f"-> {_summarize_chunk_groups(chunk, primed_success_groups, recovery_groups)}"
+        )
+
+    if chunks:
+        with ThreadPoolExecutor(max_workers=len(chunks)) as executor:
+            future_to_chunk = {
+                executor.submit(_run_stage2_chunk_sync, i + 1, len(chunks), chunk, debug_dir, on_result): i
+                for i, chunk in enumerate(chunks)
+            }
+
+            for future in as_completed(future_to_chunk):
+                chunk_idx = future_to_chunk[future]
+                try:
+                    chunk_result = future.result()
+                    all_results.update(chunk_result)
+                    logger.info(f"âœ… OddsPortal Parallel: Browser {chunk_idx + 1}/{len(chunks)} completed successfully")
+                except Exception as e:
+                    import traceback
+                    logger.error(f"Ã¢ÂÅ’ OddsPortal Parallel: Browser {chunk_idx + 1} failed: {e}\n{traceback.format_exc()}")
+    else:
+        logger.info("OddsPortal Stage 2B: no remaining tasks after recovery seeds")
+
+    logger.info(
+        f"OddsPortal Parallel summary: primed_groups_succeeded={len(primed_success_groups)}, "
+        f"recovery_groups={len(recovery_groups)}, stage2_tasks_scraped={len(tasks)}"
     )
     return all_results
 
