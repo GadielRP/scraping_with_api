@@ -75,15 +75,20 @@ class JobScheduler:
         # Job D - Midnight results collection (at 04:00)
         schedule.every().day.at("04:00").do(self.job_midnight_sync)
         
-        # Job E - Daily discovery (at 05:01) - fetches today's scheduled events with odds
-        schedule.every().day.at("05:01").do(self.job_daily_discovery)
+        # Job E - Daily discovery (at 05:21) - fetches today's scheduled events with odds
+        schedule.every().day.at("05:21").do(self.job_daily_discovery)
+        
+        # Job E_Retry - Daily discovery retry check
+        retry_interval = getattr(Config, 'DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES', 60)
+        schedule.every(retry_interval).minutes.do(self.job_daily_discovery_retry)
         
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
         logger.info(f"  - Discovery 2 (streaks, h2h, winning odds): daily at {', '.join(Config.DISCOVERY2_TIMES)}")
         logger.info(f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes (includes tennis timestamp checks + NBA 4th quarter checks)")
         logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
-        logger.info("  - Daily discovery: daily at 05:01 (today's scheduled events with odds)")
+        logger.info("  - Daily discovery: daily at 05:21 (today's scheduled events with odds)")
+        logger.info(f"  - Daily discovery retry: every {retry_interval} minutes")
     
     def _setup_pre_start_jobs(self):
         """Setup pre-start check jobs every N minutes at exact minute marks (configurable via POLL_INTERVAL_MINUTES)"""
@@ -1453,14 +1458,14 @@ class JobScheduler:
         
         # Scrape all matches (parallel if configured) — callback fires per event
         num_browsers = AppConfig.ODDSPORTAL_PARALLEL_BROWSERS
-        logger.info(f"🌐 OddsPortal: Calling scrape_multiple_matches_parallel_sync for {len(op_tasks)} tasks with {num_browsers} browser(s)...")
+        logger.info(f"🌐 OddsPortal: Dispatching {len(op_tasks)} tasks to Tiered Orchestrator with {num_browsers} browser(s)...")
         op_results = scrape_multiple_matches_parallel_sync(
             op_tasks, 
             num_browsers=num_browsers, 
             debug_dir="oddsportal_debug",
             on_result=_on_event_scraped
         )
-        logger.info(f"🌐 OddsPortal: scrape_multiple_matches_parallel_sync returned {len(op_results)} results")
+        logger.info(f"🌐 OddsPortal: Tiered Orchestrator returned {len(op_results)} results")
         
         return saved_counts
 
@@ -2177,7 +2182,7 @@ class JobScheduler:
             logger.error(f"Error in Job D: {e}")
     
     def job_daily_discovery(self):
-        """Job E: Daily discovery of today's scheduled events with odds (runs at 05:01)"""
+        """Job E: Daily discovery of today's scheduled events with odds (runs at 05:21)"""
         logger.info("Starting Job E: Daily discovery of today's scheduled events")
         
         # Clean up yesterday's OddsPortal league cache
@@ -2186,18 +2191,59 @@ class JobScheduler:
             OddsPortalCacheRepository.cleanup_old_caches()
         except Exception as e:
             logger.warning(f"⚠️ Failed to cleanup OddsPortal cache: {e}")
+            
+        # Clean up old DailyDiscovery logs
+        try:
+            from repository import DailyDiscoveryRepository
+            days_to_keep = getattr(Config, 'DAILY_DISCOVERY_DAYS_TO_KEEP', 1)
+            DailyDiscoveryRepository.cleanup_old_logs(days_to_keep)
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to cleanup DailyDiscovery logs: {e}")
         
         try:
+            # Initialize logs for today
+            from repository import DailyDiscoveryRepository
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            sports = ['basketball', 'tennis', 'baseball', 'ice-hockey', 'american-football', 'football', 'handball']
+            DailyDiscoveryRepository.initialize_sports_for_date(today_str, sports)
+
+            # Get pending sports to avoid re-running completed ones
+            pending_sports = DailyDiscoveryRepository.get_pending_sports(today_str)
+            if not pending_sports:
+                logger.info("✅ All sports already completed for daily discovery.")
+                return
+
             # Run the daily discovery extractor
-            stats = run_daily_discovery()
+            stats = run_daily_discovery(sports=pending_sports)
             
             if stats:
                 logger.info(f"✅ Daily discovery completed successfully: {stats}")
             else:
                 logger.warning("Daily discovery completed with no results")
-            
+                
         except Exception as e:
             logger.error(f"Error in Job E (Daily Discovery): {e}")
+
+    def job_daily_discovery_retry(self):
+        """Job E_Retry: Retries failed daily discovery sports"""
+        logger.info("Starting Job E_Retry: Checking for failed daily discovery sports")
+        try:
+            from repository import DailyDiscoveryRepository
+            from today_sport_extractor import run_daily_discovery
+            today = datetime.now().strftime('%Y-%m-%d')
+            failed_sports = DailyDiscoveryRepository.get_pending_sports(today)
+            if not failed_sports:
+                logger.info("✅ All sports completed for daily discovery. No retry needed.")
+                return
+            
+            logger.info(f"🔄 Retrying daily discovery for sports: {failed_sports}")
+            stats = run_daily_discovery(sports=failed_sports)
+            if stats:
+                logger.info(f"✅ Daily discovery retry completed: {stats}")
+            else:
+                logger.warning("Daily discovery retry completed with no results")
+        except Exception as e:
+            logger.error(f"Error in Job E_Retry: {e}")
     
     def run_job_discovery_now(self):
         """Run Job A immediately"""

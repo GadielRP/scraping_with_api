@@ -330,7 +330,7 @@ def start_scheduler():
     print("    - Fetches final odds only when games are starting soon")
     
     print("  • Results collection: Daily at 00:05 (collect results from finished games)")
-    print("  • Daily discovery: Daily at 05:01 (today's scheduled events with odds)")
+    print("  • Daily discovery: Daily at 05:21 (today's scheduled events with odds)")
     print("\n⏰ Next Discovery Run:")
     
     # Calculate next discovery time using configurable times

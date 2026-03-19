@@ -320,6 +320,27 @@ class OddsPortalLeagueCache(Base):
     created_at = Column(DateTime, default=get_local_now)
 
 
+class DailyDiscoveryLog(Base):
+    """
+    Tracks the success/failure of the daily discovery job for each sport and date.
+    Used by the retry queue to guarantee that missed events (e.g. from proxy failures)
+    are retried throughout the day until successful.
+    """
+    __tablename__ = 'daily_discovery_log'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(String(10), nullable=False)  # 'YYYY-MM-DD'
+    sport = Column(String(50), nullable=False)
+    status = Column(String(20), nullable=False, default='pending')  # 'pending', 'completed', 'failed'
+    attempts = Column(Integer, default=0)
+    last_attempt_at = Column(DateTime)
+    created_at = Column(DateTime, default=get_local_now)
+    
+    __table_args__ = (
+        UniqueConstraint('date', 'sport', name='unique_date_sport_discovery'),
+    )
+
+
 # ---------------------------------------------------------------------------
 # SQL view helper – unified odds view (no filtering by var_one)
 # ---------------------------------------------------------------------------

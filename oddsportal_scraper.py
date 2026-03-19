@@ -5,9 +5,10 @@ import time
 import os
 import uuid
 import re
+from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from threading import local
+from threading import Condition, local
 from typing import Any, Dict, List, Optional, Tuple
 
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
@@ -28,6 +29,13 @@ except ImportError:
         PROXY_ENDPOINT = None
         PROXY_USERNAME = None
         PROXY_PASSWORD = None
+        ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS = 30000
+        ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS = 15000
+        ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS = 60000
+        ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS = 8000
+        ODDSPORTAL_TAB_WAIT_TIMEOUT = 20
+        ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT = True
+        ODDSPORTAL_ENABLE_SHELL_GRACE = True
     Config = MockConfig()
     SEASON_ODDSPORTAL_MAP = {}
     BOOKIE_ALIASES = {}
@@ -43,6 +51,7 @@ _LOG_CONTEXT = local()
 DEBUG_TIMING = os.getenv("DEBUG_TIMING", "false").lower() == "true"
 ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS", "21000"))
 ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS", "18000"))
+ODDSPORTAL_SESSION_RESTART_ATTEMPTS = int(os.getenv("ODDSPORTAL_SESSION_RESTART_ATTEMPTS", "2"))
 EN_DASH = "\u2013"
 TEAM_SEPARATOR_PATTERN = rf"\s+(?:vs|[{EN_DASH}-])\s+"
 LEGACY_CACHE_MATCH_PATTERN = rf"([^\n{EN_DASH}\-]+)[\s\n]+(?:vs|[{EN_DASH}v\-])[\s\n]+([^\n\d]+)"
@@ -477,6 +486,220 @@ class OddsPortalScraper:
         active_label = (await self._get_active_group_label(page)).strip().lower()
         return active_label == target
 
+    async def _collect_match_page_state(self, page: Page) -> Dict[str, Any]:
+        """Gather detailed page state metrics to diagnose partial or empty loads.
+
+        Uses selectors validated against actual OddsPortal match-page DOM.
+        """
+        try:
+            return await page.evaluate(r"""
+                () => {
+                    const getCount = (sel) => document.querySelectorAll(sel).length;
+
+                    // --- Shell markers ---
+                    const event_container_count = getCount('div.event-container');
+                    const group_tab_count = getCount('ul.visible-links.odds-tabs li');
+                    const period_nav_count = getCount('div[data-testid="kickoff-events-nav"]');
+
+                    // --- Data markers ---
+                    const bookmaker_row_count = getCount('div.border-black-borders.flex.h-9');
+                    const odds_cell_count = getCount('div.odds-cell');
+                    const ou_collapsed_count = getCount('div[data-testid="over-under-collapsed-row"]');
+                    const ah_collapsed_count = getCount('div[data-testid="asian-handicap-collapsed-row"]');
+                    const ou_expanded_count = getCount('div[data-testid="over-under-expanded-row"]');
+
+                    // --- Skeleton / placeholder markers ---
+                    const skeleton_row_count = getCount('div.animate-pulse.bg-gray-light')
+                        + getCount('[class*="skeleton"]');
+
+                    // --- Event container child count ---
+                    const firstContainer = document.querySelector('div.event-container');
+                    const event_container_child_count = firstContainer ? firstContainer.children.length : 0;
+
+                    // --- Active group label ---
+                    const activeGroupEl = document.querySelector('ul.visible-links.odds-tabs li.active-odds')
+                        || document.querySelector('li[data-testid="navigation-active-tab"]');
+                    const active_group_label = activeGroupEl ? activeGroupEl.textContent.trim() : '';
+
+                    // --- Active period labels ---
+                    const active_period_labels = [];
+                    const navs = document.querySelectorAll('div[data-testid="kickoff-events-nav"]');
+                    navs.forEach(nav => {
+                        const active = nav.querySelector('div[data-testid="sub-nav-active-tab"]');
+                        if (active) {
+                            const txt = active.textContent.trim();
+                            if (txt) active_period_labels.push(txt);
+                        }
+                    });
+
+                    // --- Derived booleans ---
+                    const has_shell_markers = event_container_count > 0
+                        || group_tab_count > 0
+                        || period_nav_count > 0;
+
+                    const has_data_markers = bookmaker_row_count > 0
+                        || odds_cell_count > 0
+                        || ou_collapsed_count > 0
+                        || ah_collapsed_count > 0
+                        || ou_expanded_count > 0;
+
+                    return {
+                        url: window.location.href,
+                        title: document.title,
+                        ready_state: document.readyState,
+                        event_container_count,
+                        event_container_child_count,
+                        group_tab_count,
+                        period_nav_count,
+                        active_group_label,
+                        active_period_labels,
+                        bookmaker_row_count,
+                        odds_cell_count,
+                        ou_collapsed_count,
+                        ah_collapsed_count,
+                        ou_expanded_count,
+                        skeleton_row_count,
+                        has_shell_markers,
+                        has_data_markers,
+                    };
+                }
+            """)
+        except Exception:
+            return {
+                "url": "", "title": "", "ready_state": "",
+                "event_container_count": 0, "event_container_child_count": 0,
+                "group_tab_count": 0, "period_nav_count": 0,
+                "active_group_label": "", "active_period_labels": [],
+                "bookmaker_row_count": 0, "odds_cell_count": 0,
+                "ou_collapsed_count": 0, "ah_collapsed_count": 0,
+                "ou_expanded_count": 0, "skeleton_row_count": 0,
+                "has_shell_markers": False, "has_data_markers": False,
+            }
+
+    def _classify_match_page_state(self, state: Dict[str, Any]) -> str:
+        """Classify the dictionary returned by _collect_match_page_state.
+
+        Rules are ordered so that data-present pages never false-fail,
+        and MISSING_EVENT_CONTAINER only fires when shell markers exist
+        but the event container itself is absent.
+        """
+        # 1. Data already rendered → success
+        if state.get('has_data_markers', False):
+            return "DATA_RENDERED"
+
+        # 2. No shell markers at all → blank page
+        if not state.get('has_shell_markers', False):
+            return "NO_SHELL"
+
+        # 3. Shell markers exist, but event container is missing
+        if state.get('event_container_count', 0) == 0:
+            return "MISSING_EVENT_CONTAINER"
+
+        # 4. Event container exists, but is empty
+        if state.get('event_container_count', 0) > 0 and state.get('event_container_child_count', 0) == 0:
+            return "EMPTY_EVENT_CONTAINER"
+
+        # 5. Shell + skeleton, no data
+        if state.get('skeleton_row_count', 0) > 0 and not state.get('has_data_markers', False):
+            return "SHELL_WITH_SKELETON_NO_DATA"
+
+        # 6. Shell + nav tabs, no skeleton, no data
+        if (state.get('group_tab_count', 0) > 0 or state.get('period_nav_count', 0) > 0) \
+                and state.get('skeleton_row_count', 0) == 0 \
+                and not state.get('has_data_markers', False):
+            return "SHELL_WITH_NAV_NO_DATA"
+
+        return "UNKNOWN_PARTIAL_STATE"
+
+    def _format_page_state_summary(self, state: Dict[str, Any], classification: str) -> str:
+        """Create a compact log line for the state."""
+        return (
+            f"[{classification}] "
+            f"title='{state.get('title', '')}' "
+            f"url={state.get('url', '')} "
+            f"evtC={state.get('event_container_count', 0)} "
+            f"grpTab={state.get('group_tab_count', 0)} "
+            f"periodNav={state.get('period_nav_count', 0)} "
+            f"skel={state.get('skeleton_row_count', 0)} "
+            f"rows={state.get('bookmaker_row_count', 0)} "
+            f"odds={state.get('odds_cell_count', 0)} "
+            f"ou={state.get('ou_collapsed_count', 0)}/{state.get('ou_expanded_count', 0)} "
+            f"ah={state.get('ah_collapsed_count', 0)}"
+        )
+
+    def _classify_goto_exception(self, error: Exception) -> Tuple[str, str]:
+        """Map Playwright goto exceptions into clearer log/debug reasons."""
+        error_text = str(error or "")
+        upper_text = error_text.upper()
+
+        if "ERR_TUNNEL_CONNECTION_FAILED" in upper_text:
+            return "GOTO_PROXY_TUNNEL_FAILED", "proxy tunnel connection failed before page load"
+        if "ERR_CONNECTION_RESET" in upper_text:
+            return "GOTO_CONNECTION_RESET", "connection reset before page load"
+        if "ERR_CONNECTION_CLOSED" in upper_text:
+            return "GOTO_CONNECTION_CLOSED", "connection closed before page load"
+        if "ERR_CONNECTION_REFUSED" in upper_text:
+            return "GOTO_CONNECTION_REFUSED", "connection refused before page load"
+        if "ERR_NAME_NOT_RESOLVED" in upper_text:
+            return "GOTO_DNS_RESOLUTION_FAILED", "DNS resolution failed before page load"
+        if "ERR_TIMED_OUT" in upper_text or "TIMEOUT" in upper_text:
+            return "GOTO_TIMEOUT", "navigation timed out before usable content loaded"
+        return "GOTO_FAILED", "navigation failed before usable content loaded"
+
+    async def _save_debug_artifacts(self, page: Page, reason: str, extra: Dict[str, Any] = None):
+        """Save screenshot, HTML, and JSON manifest on failure if debug_dir is set."""
+        if not self.debug_dir:
+            return
+            
+        try:
+            import datetime
+            import json
+            import os
+            
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            safe_reason = reason.replace('/', '_').replace(' ', '_').lower()
+            base_name = f"op_fail_{timestamp}_{safe_reason}"
+            
+            os.makedirs(self.debug_dir, exist_ok=True)
+            
+            png_path = os.path.join(self.debug_dir, f"{base_name}.png")
+            await page.screenshot(path=png_path, full_page=True)
+            
+            html_path = os.path.join(self.debug_dir, f"{base_name}.html")
+            html_content = await page.content()
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
+                
+            state = await self._collect_match_page_state(page)
+            classification = self._classify_match_page_state(state)
+            
+            manifest = {
+                "timestamp": timestamp,
+                "reason": reason,
+                "url": page.url,
+                "title": await page.title(),
+                "session_id": getattr(self, '_session_id', 'unknown'),
+                "state": state,
+                "classification": classification,
+                "config": {
+                    "goto_timeout": getattr(Config, 'ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS', 30000),
+                    "empty_timeout": getattr(Config, 'ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS', 15000),
+                    "render_timeout": getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000),
+                    "shell_grace": getattr(Config, 'ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS', 8000),
+                },
+                "extras": extra or {}
+            }
+            
+            json_path = os.path.join(self.debug_dir, f"{base_name}.json")
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f, indent=4)
+                
+            logger.info(f"💾 Saved debug artifacts for {reason} at {self.debug_dir}/{base_name}.*")
+        except Exception as e:
+            logger.error(f"Failed to save debug artifacts: {e}")
+
+
+
     async def _wait_for_market_render(self, page: Page, extract_fn: str, timeout_ms: int = 15000) -> bool:
         """
         Wait for selectors appropriate for the extraction mode.
@@ -496,7 +719,14 @@ class OddsPortalScraper:
                     timeout=timeout_ms,
                 )
             return True
-        except Exception:
+        except Exception as e:
+            try:
+                state = await self._collect_match_page_state(page)
+                classification = self._classify_match_page_state(state)
+                summary = self._format_page_state_summary(state, classification)
+                logger.warning(f"⚠️ Wait for market render ({extract_fn}) failed. Final state: {summary} - {e}")
+            except Exception as log_e:
+                logger.debug(f"Failed to log state during _wait_for_market_render timeout: {log_e}")
             return False
     async def _click_period_tab(self, page: Page, period_display_name: str) -> bool:
         """
@@ -576,7 +806,7 @@ class OddsPortalScraper:
                 except Exception:
                     await target_tab.click(force=True, timeout=3000)
 
-            max_wait_s = int(os.environ.get("ODDSPORTAL_TAB_WAIT_TIMEOUT", 20))
+            max_wait_s = Config.ODDSPORTAL_TAB_WAIT_TIMEOUT
             poll_interval_ms = 300
             elapsed = 0
             table_changed = False
@@ -699,7 +929,7 @@ class OddsPortalScraper:
                 except Exception:
                     await target_tab.click(force=True, timeout=3000)
 
-            max_wait_s = int(os.environ.get("ODDSPORTAL_TAB_WAIT_TIMEOUT", 20))
+            max_wait_s = Config.ODDSPORTAL_TAB_WAIT_TIMEOUT
             poll_interval_ms = 300
             elapsed = 0
             table_changed = False
@@ -951,333 +1181,6 @@ class OddsPortalScraper:
         finally:
             await page.close()
 
-    async def prime_league_cache(self, league_url: str, season_id: int) -> bool:
-        """Prime league discovery/cache without resolving a specific event."""
-        if not season_id:
-            return False
-
-        candidates = await self._extract_league_candidates(league_url, season_id)
-        if not candidates:
-            logger.warning(
-                f"OddsPortal Stage 1: no candidates extracted for "
-                f"{_format_group_key(_build_league_group_key(season_id, league_url))}"
-            )
-            return False
-
-        cached_candidates = self._load_cached_candidates(season_id, league_url=league_url)
-        if not cached_candidates:
-            logger.warning(
-                f"OddsPortal Stage 1: extracted candidates but cache was not ready for "
-                f"{_format_group_key(_build_league_group_key(season_id, league_url))}"
-            )
-        return bool(cached_candidates)
-
-    async def _legacy_find_match_url_refactor_artifact(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
-        """
-        Resolve a match URL by team names.
-        Cache hits return immediately; cache misses reuse the shared league extraction path.
-        """
-        if season_id:
-            cached_url = self.find_match_url_from_cache(
-                season_id,
-                home_team,
-                away_team,
-                league_url=league_url,
-            )
-            if cached_url:
-                logger.info(f"⚡ Cache hit (internal): {cached_url}")
-                return cached_url
-
-        try:
-            candidates = await self._extract_league_candidates(league_url, season_id)
-            if not candidates:
-                logger.warning(f"OddsPortal discovery returned no candidates for {league_url}")
-                return None
-
-            logger.info(f"🔍 Scanning {len(candidates)} candidates for {home_team} vs {away_team}...")
-            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
-            if best_match:
-                logger.info(
-                    f"✅ Match found: {best_match['home']} vs {best_match['away']} "
-                    f"(Score: {best_match['max_score']:.1f}, Reversed: {best_match['is_reversed']})"
-                )
-                return f"https://www.oddsportal.com{best_match['href']}"
-
-            logger.warning(f"âŒ Match not found: {home_team} vs {away_team}")
-            return None
-        except Exception as e:
-            logger.error(f"Error finding match on {league_url}: {e}")
-            return None
-
-        if not self.context:
-            await self.start()
-            
-        page = await self.context.new_page()
-        try:
-            logger.info(f"🌐 Navigating to league: {league_url}")
-            t0 = time.perf_counter()
-            try:
-                response = await page.goto(
-                    league_url,
-                    wait_until="domcontentloaded",
-                    timeout=ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS,
-                )
-            except Exception as e:
-                error_str = str(e).lower()
-                if "timeout" in error_str or "err_" in error_str or "net::" in error_str:
-                    logger.error(
-                        "🚨 FAST FAIL (League goto): navigation failed quickly "
-                        f"after {ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS}ms: {str(e).split(chr(10))[0]}"
-                    )
-                    return None
-                raise
-            t_goto = time.perf_counter()
-            log_timing(f"League page load ({league_url}) took {t_goto - t0:.2f}s")
-            
-            if not response or response.status != 200:
-                logger.error(f"❌ Failed to load league page. Status: {response.status if response else 'N/A'}")
-                return None
-
-            # Quick anti-bot/block detection to avoid lingering on a poisoned session.
-            try:
-                page_title = await page.title()
-                if any(blocked in page_title for blocked in ["Access Denied", "Just a moment...", "Attention Required!", "Security check", "Cloudflare"]):
-                    logger.error(f"🚨 FAST FAIL (League title): Proxy IP blocked. Title: '{page_title}'")
-                    return None
-            except Exception:
-                pass
-            
-            # Wait for event rows to appear (faster than networkidle which waits for all ads/trackers)
-            try:
-                await page.wait_for_selector("div.eventRow", timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS)
-                t_wait = time.perf_counter()
-                log_timing(f"Waiting for 'div.eventRow' selector took {t_wait - t_goto:.2f}s")
-            except Exception:
-                logger.error(
-                    "🚨 FAST FAIL (League rows): no event rows loaded "
-                    f"within {ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS}ms on {league_url}"
-                )
-                return None
-                
-            # Handle cookie banner
-            try:
-                accept_btn = await page.query_selector("button:has-text('I Accept'), button:has-text('Accept All')")
-                if accept_btn:
-                    await accept_btn.click()
-                    await asyncio.sleep(0.5)
-            except Exception:
-                pass
-                
-
-            # --- OPTIMIZED SEARCH ALGORITHM ---
-            # Instead of iterating DOM elements (slow), we extract all rows' text and links in ONE payload.
-            # Complexity: O(1) network round-trip + O(N) string process in Python (negligible)
-            
-            t_js_league = time.perf_counter()
-            rows_data = await page.evaluate("""() => {
-                const rows = Array.from(document.querySelectorAll("div.eventRow"));
-                return rows.map(row => {
-                    const text = row.innerText;
-                    // Get all links in the row
-                    const links = Array.from(row.querySelectorAll("a[href]")).map(a => ({
-                        href: a.getAttribute("href"),
-                        text: a.innerText.trim()
-                    }));
-                    return { text, links };
-                });
-            }""")
-            log_timing(f"Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s")
-            
-            if not rows_data:
-                logger.warning(f"⚠️ No event rows found on {league_url}")
-                return None
-            
-            # --- PREPARE CANDIDATES FOR TeamMatcher ---
-            candidates = []
-            league_path = league_url.replace('https://www.oddsportal.com', '').rstrip('/')
-            
-            for row in rows_data:
-                row_text = row.get('text', '')
-                links = row.get('links', [])
-                
-                p1, p2, href = None, None, None
-                
-                # 1. Primary: Try to extract from links (cleanest source)
-                for link in links:
-                    l_href = link.get('href', '')
-                    # Must be a match-like URL and not just the league URL
-                    if not l_href or '-' not in l_href: continue
-                    if l_href.rstrip('/') in league_path: continue
-                    
-                    link_text = link.get('text', '')
-                    # Split by possible separators
-                    # link_text often "Team A - Team B" or "12:00 Team A - Team B 2.50"
-                    parts = re.split(r'\s+[–-]\s+', link_text)
-                    if len(parts) >= 2:
-                        p1 = parts[0].strip()
-                        p2 = parts[1].strip()
-                        # Remove time prefix from p1 (e.g. "12:00 Team Name")
-                        p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
-                        # Remove odds suffix from p2 (e.g. "Team Name 2.50")
-                        p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
-                        href = l_href
-                        break
-
-                # 2. Fallback: Parse row text if links didn't give a clear pair
-                if not (p1 and p2):
-                    # Split row text into lines
-                    lines = [line.strip() for line in row_text.split('\n') if line.strip()]
-                    for line in lines:
-                        # Skip probability/date lines
-                        if any(k in line for k in ["Today", "Tomorrow", "Mar", "Apr", "Play Offs", "Play Out"]):
-                            continue
-                        # Try to find a dash separator in a likely team line
-                        if " – " in line or " - " in line:
-                            parts = re.split(r'\s+[–-]\s+', line)
-                            if len(parts) >= 2:
-                                p1 = parts[0].strip()
-                                p2 = parts[1].strip()
-                                p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
-                                p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
-                                # Pick first good link as href if not set
-                                if not href and links:
-                                    href = links[0].get('href')
-                                break
-
-                if p1 and p2 and href:
-                    candidates.append({
-                        'home': p1, 'away': p2,
-                        'href': href, 'raw_text': row_text
-                    })
-
-            # --- CACHE POPULATION ---
-            if season_id and candidates:
-                try:
-                    from repository import OddsPortalCacheRepository
-                    # Use structured format for consistency with find_match_url_from_cache reader
-                    cache_dict = {
-                        c["href"]: {
-                            "home": c["home"],
-                            "away": c["away"],
-                            "raw_text": c.get("raw_text", "")
-                        }
-                        for c in candidates
-                    }
-                    OddsPortalCacheRepository.save_league_cache(season_id, cache_dict)
-                    logger.info(f"📦 Cached {len(cache_dict)} match URLs for season {season_id}")
-                except Exception as cache_err:
-                    logger.warning(f"⚠️ Cache save failed: {cache_err}")
-
-            # --- TEAM MATCHER SCORING ---
-            logger.info(f"🔎 Scanning {len(candidates)} candidates for {home_team} vs {away_team}...")
-            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
-            
-            if best_match:
-                logger.info(
-                    f"✅ Match found: {best_match['home']} vs {best_match['away']} "
-                    f"(Score: {best_match['max_score']:.1f}, Reversed: {best_match['is_reversed']})"
-                )
-                return f"https://www.oddsportal.com{best_match['href']}"
-            
-            logger.warning(f"❌ Match not found: {home_team} vs {away_team}")
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error finding match on {league_url}: {e}")
-            return None
-        finally:
-            await page.close()
-
-    def _legacy_find_match_url_from_cache_refactor_artifact(
-        self,
-        season_id: int,
-        home_team: str,
-        away_team: str,
-        league_url: Optional[str] = None,
-    ) -> Optional[str]:
-        """
-        Try to find a match URL from the primed in-memory cache or the DB cache.
-        Uses TeamMatcher for robust scoring.
-        """
-        try:
-            candidates = self._load_cached_candidates(
-                season_id,
-                league_url=league_url,
-            )
-            if not candidates:
-                logger.debug(f"âš ï¸ No valid candidates parsed from cache for season {season_id}")
-                return None
-
-            logger.debug(f"ðŸ”Ž Scanning {len(candidates)} cached candidates for {home_team} vs {away_team}...")
-            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
-            if best_match and best_match['max_score'] >= 80:
-                logger.info(
-                    f"⚡ Cache hit: {best_match['home']} vs {best_match['away']} "
-                    f"(Score: {best_match['max_score']:.1f})"
-                )
-                return f"https://www.oddsportal.com{best_match['href']}"
-            return None
-
-            from repository import OddsPortalCacheRepository
-            cached = OddsPortalCacheRepository.get_league_cache(season_id)
-            if not cached:
-                return None
-            
-            candidates = []
-            for href, data in cached.items():
-                if isinstance(data, dict):
-                    # Structured data (new format)
-                    candidates.append({
-                        "home": data.get("home", ""),
-                        "away": data.get("away", ""),
-                        "href": href,
-                        "raw_text": data.get("raw_text", "")
-                    })
-                else:
-                    # Legacy format (string)
-                    row_text = data or ""
-                    
-                    # Split logic for various separators (vs, hyphen, en-dash)
-                    # We use a broad split for robustness
-                    parts = re.split(r'\s+(?:vs|–|-)\s+', row_text)
-                    if len(parts) >= 2:
-                        p1, p2 = parts[0], parts[1]
-                    else:
-                        # Fallback to regex for more complex cases (newlines, etc)
-                        match = re.search(r'([^\n–\-]+)[\s\n]+(?:vs|[–v\-])[\s\n]+([^\n\d]+)', row_text)
-                        if match:
-                            p1, p2 = match.group(1), match.group(2)
-                        else:
-                            p1, p2 = None, None
-                    
-                    if p1 and p2:
-                        # Clean up
-                        home = p1.split("\n")[-1].strip()
-                        away = p2.split("\n")[0].strip()
-                        # Final noise removal
-                        home = re.sub(r'(^.*?\d{2}:\d{2}\s+|^\w+,\s+\d{1,2}\s+\w+\s+[–-]\s+|^.*?\d{1,2}:\d{2}\s+)', '', home)
-                        away = re.sub(r'\s+\d+\.\d+.*', '', away)
-                        if home and away:
-                            candidates.append({"home": home, "away": away, "href": href})
-                    else:
-                        candidates.append({"home": row_text, "away": "", "href": href})
-            
-            if not candidates:
-                logger.debug(f"⚠️ No valid candidates parsed from cache for season {season_id}")
-                return None
-            
-            logger.debug(f"🔎 Scanning {len(candidates)} cached candidates for {home_team} vs {away_team}...")
-            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
-            if best_match and best_match['max_score'] >= 80:
-                logger.info(
-                    f"✅ Cache hit: {best_match['home']} vs {best_match['away']} "
-                    f"(Score: {best_match['max_score']:.1f})"
-                )
-                return f"https://www.oddsportal.com{best_match['href']}"
-            return None
-        except Exception as e:
-            logger.debug(f"Cache lookup failed: {e}")
-            return None
 
     async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
         """
@@ -1409,198 +1312,165 @@ class OddsPortalScraper:
             
             # Navigate to match page
             response = None
+            e_goto = None
+            goto_error_code = None
+            goto_error_summary = None
             try:
-                response = await self._goto_fresh(page, initial_url, wait_until="domcontentloaded", timeout=30000)
+                response = await self._goto_fresh(page, initial_url, wait_until="domcontentloaded", timeout=Config.ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS)
             except Exception as e:
-                error_str = str(e).lower()
+                e_goto = e
+                goto_error_code, goto_error_summary = self._classify_goto_exception(e)
+                logger.warning(
+                    f"Navigation exception before page load: {goto_error_summary} "
+                    f"({goto_error_code})."
+                )
+                logger.warning(f"Inspecting page state after navigation exception: {e}")
 
-                # Immediate network/proxy failures should short-circuit quickly.
-                immediate_network_markers = [
-                    "err_timed_out",
-                    "err_connection",
-                    "err_name_not_resolved",
-                    "err_tunnel_connection_failed",
-                    "err_proxy_connection_failed",
-                    "err_socks_connection_failed",
-                    "net::err_failed",
-                    "timeout 30000ms exceeded",
-                    "navigation timeout",
-                ]
-                if any(err in error_str for err in immediate_network_markers):
-                    logger.error(f"🚨 FAST FAIL (Network): Page navigation completely failed: {str(e).split(chr(10))[0]}")
-                    await page.close()
-                    return None
-
-                # Non-fatal: domcontentloaded might have partially loaded; continue to fast-fail checks.
-                logger.warning(f"⚠️ Initial goto struggled, but continuing to check for odds: {e}")
-
-            # If we received a hard HTTP error, fail fast.
-            if response and response.status >= 400:
-                logger.error(f"🚨 FAST FAIL (HTTP): Match page returned status {response.status} for {initial_url}")
-                await page.close()
-                return None
-
-            # Blank-shell safety: if navigation yielded no response and no useful page context, fail early.
-            if response is None:
-                try:
-                    title_now = (await page.title() or "").strip()
-                    url_now = (page.url or "").strip().lower()
-                    if not title_now and (not url_now or url_now == "about:blank"):
-                        logger.error("🚨 FAST FAIL (Blank shell): navigation produced empty page context")
-                        await page.close()
-                        return None
-                except Exception:
-                    pass
             t_goto = time.perf_counter()
             log_timing(f"Match page load ({initial_url}) took {t_goto - t0:.2f}s")
             
             # --- Fast Fail & Smart Wait Implementation ---
-            fast_fail_event = asyncio.Event()
-            fast_fail_reason = "Unknown"
-
-            async def on_fast_fail_signal(reason: str):
-                nonlocal fast_fail_reason
-                fast_fail_reason = reason
-                fast_fail_event.set()
-
-            # Fast Fail Check 1: Quickly detect Cloudflare blocks via Title
+            # Step 1: If goto threw, inspect the page before deciding whether to bail.
+            # Only a truly blank page (NO_SHELL) fails immediately.
+            # Everything else (including MISSING_EVENT_CONTAINER, which can be
+            # transient during SPA hydration) falls through to the smart-wait race.
+            if e_goto is not None:
+                state = await self._collect_match_page_state(page)
+                classification = self._classify_match_page_state(state)
+                state_summary = self._format_page_state_summary(state, classification)
+                logger.info(f"Page state after navigation exception: {state_summary}")
+                
+                if classification == "NO_SHELL":
+                    reason_prefix = goto_error_code or "GOTO_FAILED"
+                    reason = f"{reason_prefix}_NO_SHELL"
+                    logger.error(f"FAST FAIL: {reason}. {state_summary}")
+                    if getattr(Config, 'ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT', True):
+                        await self._save_debug_artifacts(page, reason, {"error": str(e_goto)})
+                    await page.close()
+                    return None
+                elif classification == "DATA_RENDERED":
+                    logger.info("Navigation threw, but data is already rendered. Continuing.")
+                else:
+                    # Shell is present (possibly hydrating). Don't fail — let the
+                    # smart-wait race below be the final arbiter.
+                    logger.info(
+                        f"Navigation exception left page in {classification}. "
+                        f"Falling through to smart-wait/render checks."
+                    )
+            
+            # Step 2: Cloudflare / WAF block check
             try:
                 page_title = await page.title()
                 if any(blocked in page_title for blocked in ["Access Denied", "Just a moment...", "Attention Required!", "Security check", "Cloudflare"]):
-                    logger.error(f"🚨 FAST FAIL (Title): Proxy IP blocked by Cloudflare. Title: '{page_title}'")
+                    reason = "CLOUDFLARE_BLOCK"
+                    logger.error(f"FAST FAIL: {reason}")
+                    await self._save_debug_artifacts(page, reason)
                     await page.close()
                     return None
             except Exception:
                 pass
 
-            # Fast Fail Check 2: Event-driven detection of unrendered or shell-only SPA pages
-            # Expose a function for the browser to signal failure back to Python
-            await page.expose_function('__signalFastFail', on_fast_fail_signal)
-
-            empty_timeout_ms = int(os.environ.get("ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS", "15000"))
-
-            # Inject observer-based fast-fail logic
-            await page.evaluate(r"""
-                (EMPTY_TIMEOUT_MS) => {
-                    if (window.__opFastFailInstalled) return;
-                    window.__opFastFailInstalled = true;
-
-                    let signaled = false;
-                    const signalOnce = (reason) => {
-                        if (signaled) return;
-                        signaled = true;
-                        window.__signalFastFail(reason);
-                    };
-
-                    const hasOddsMarkers = () => {
-                        return !!(
-                            document.querySelector('div.border-black-borders.flex.h-9') ||
-                            document.querySelector('div[data-testid="over-under-collapsed-row"]') ||
-                            document.querySelector('div[data-testid="asian-handicap-collapsed-row"]') ||
-                            document.querySelector('div[data-testid="over-under-expanded-row"]') ||
-                            document.querySelector('ul.visible-links.odds-tabs li') ||
-                            document.querySelector('div[data-testid="kickoff-events-nav"]')
-                        );
-                    };
-
-                    const container = document.querySelector('div.event-container');
-                    const isContainerEmpty = () => {
-                        if (!container) return true;
-                        return container.children.length === 0 ||
-                            (container.children.length === 1 && container.innerHTML.trim() === '<!---->');
-                    };
-
-                    if (hasOddsMarkers()) {
-                        return;
-                    }
-
-                    let failTimer = setTimeout(() => {
-                        if (hasOddsMarkers()) return;
-                        if (!container) {
-                            signalOnce('Missing event-container');
-                        } else if (isContainerEmpty()) {
-                            signalOnce('Event container stayed empty (SPA render failure)');
-                        } else {
-                            signalOnce('No odds UI markers loaded');
-                        }
-                    }, EMPTY_TIMEOUT_MS);
-
-                    const observer = new MutationObserver(() => {
-                        if (hasOddsMarkers()) {
-                            clearTimeout(failTimer);
-                            observer.disconnect();
-                        }
-                    });
-
-                    const target = document.body || document.documentElement;
-                    if (target) {
-                        observer.observe(target, { childList: true, subtree: true });
-                    }
-                }
-            """, empty_timeout_ms)
-
-            # Race: wait for initial market render (success) vs fast-fail event.
-            first_extract_fn = (first_group or {}).get("extract_fn", "standard")
-
-            async def wait_for_rows():
-                try:
-                    rendered = await self._wait_for_market_render(page, first_extract_fn, timeout_ms=60000)
-                    return "success" if rendered else "timeout"
-                except Exception as e:
-                    return f"error: {str(e)}"
-
-            async def wait_for_fail():
-                await fast_fail_event.wait()
-                return "fast_fail"
-
-            # Create tasks
-            rows_task = asyncio.create_task(wait_for_rows())
-            fail_task = asyncio.create_task(wait_for_fail())
-
-            done, pending = await asyncio.wait(
-                [rows_task, fail_task],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-
-            # Cancel whichever task is still running
-            for task in pending:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-
-            # Determine results
-            finished_task = done.pop()
-            task_result = finished_task.result()
-
-            if task_result != "success":
-                # Failure path (either fast fail or 60s timeout)
-                page_title = "Unknown"
-                try: page_title = await page.title()
-                except: pass
-                
-                if task_result == "fast_fail":
-                    logger.error(f"🚨 FAST FAIL: {fast_fail_reason}")
-                else:
-                    logger.error(f"❌ Match page failure: {task_result}")
-                
-                logger.error(f"   URL: {initial_url}")
-                logger.error(f"   Title: {page_title}")
-                
-                if self.debug_dir:
-                    try:
-                        fail_path = os.path.join(self.debug_dir, "match_load_failure.png")
-                        await page.screenshot(path=fail_path, full_page=True)
-                        fail_html = os.path.join(self.debug_dir, "match_load_failure.html")
-                        with open(fail_html, "w", encoding="utf-8") as f:
-                            f.write(await page.content())
-                        logger.info(f"💾 Saved failure debug info to {self.debug_dir}")
-                    except Exception as se:
-                        logger.warning(f"⚠️ Failed to save failure debug info: {se}")
-                
+            # Step 3: HTTP response status check (only when goto succeeded)
+            if response is not None and response.status >= 400:
+                reason = f"HTTP_{response.status}"
+                logger.error(f"FAST FAIL: {reason}")
+                await self._save_debug_artifacts(page, reason)
                 await page.close()
                 return None
+
+            # Step 4: Smart Wait Race — JS fast-fail observer vs market render
+            first_extract_fn = (first_group or {}).get("extract_fn", "standard")
+            
+            js_timeout = getattr(Config, 'ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS', 15000)
+            js_observer = f"""
+            () => new Promise(resolve => {{
+                setTimeout(() => {{
+                    const shell1 = document.querySelector('div.event-container');
+                    const shell2 = document.querySelector('ul.visible-links.odds-tabs li');
+                    const shell3 = document.querySelector('div[data-testid="kickoff-events-nav"]');
+                    const has_shell = shell1 || shell2 || shell3;
+                    
+                    const skeleton = document.querySelector('div.animate-pulse.bg-gray-light');
+                    const data1 = document.querySelector('div.border-black-borders.flex.h-9');
+                    const data2 = document.querySelector('div[data-testid="over-under-collapsed-row"]');
+                    const data3 = document.querySelector('div[data-testid="asian-handicap-collapsed-row"]');
+                    const data4 = document.querySelector('div[data-testid="over-under-expanded-row"]');
+                    const data5 = document.querySelector('div.odds-cell');
+                    const has_data = data1 || data2 || data3 || data4 || data5;
+                    
+                    if (!has_data) {{
+                        if (!shell1) {{
+                            resolve('Missing event-container');
+                        }} else if (shell1.children.length === 0) {{
+                            resolve('Event container stayed empty');
+                        }} else if (has_shell && skeleton) {{
+                            resolve('Shell loaded, skeleton persisted, no data rows');
+                        }} else if (has_shell && !skeleton) {{
+                            resolve('Shell loaded, no data rows');
+                        }} else {{
+                            resolve('Unknown partial page state');
+                        }}
+                    }} else {{
+                        resolve(null);
+                    }}
+                }}, {js_timeout});
+            }})
+            """
+            
+            fast_fail_task = asyncio.create_task(page.evaluate(js_observer))
+            render_task = asyncio.create_task(self._wait_for_market_render(page, first_extract_fn, timeout_ms=getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000)))
+            
+            done, pending = await asyncio.wait([fast_fail_task, render_task], return_when=asyncio.FIRST_COMPLETED)
+            
+            for p_task in pending:
+                p_task.cancel()
+                
+            if fast_fail_task in done:
+                ff_reason = fast_fail_task.result()
+                if ff_reason is not None:
+                    # Fast fail JS triggered — shell-grace recoverable states get one more chance
+                    if ff_reason in ["Shell loaded, skeleton persisted, no data rows", "Shell loaded, no data rows"]:
+                        logger.info(f"⏳ JS Observer detected '{ff_reason}'. Routing to shell-grace logic.")
+                        if getattr(Config, 'ODDSPORTAL_ENABLE_SHELL_GRACE', True):
+                            rendered = await self._wait_for_market_render(page, first_extract_fn, timeout_ms=getattr(Config, 'ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS', 8000))
+                            if not rendered:
+                                reason_code = "SHELL_WITH_SKELETON_NO_DATA" if "skeleton persisted" in ff_reason else "SHELL_WITH_NAV_NO_DATA"
+                                logger.error(f"FAST FAIL: {reason_code} (after shell grace).")
+                                await self._save_debug_artifacts(page, reason_code)
+                                await page.close()
+                                return None
+                            else:
+                                logger.info("✅ Shell-grace successful.")
+                        else:
+                            reason_code = "SHELL_WITH_SKELETON_NO_DATA" if "skeleton persisted" in ff_reason else "SHELL_WITH_NAV_NO_DATA"
+                            logger.error(f"FAST FAIL: {reason_code} (shell-grace disabled).")
+                            await self._save_debug_artifacts(page, reason_code)
+                            await page.close()
+                            return None
+                    else:
+                        # Hard fast fails (Missing event-container, Event container stayed empty, etc.)
+                        reason_code = "FAST_FAIL_" + ff_reason.replace(" ", "_").upper()
+                        state = await self._collect_match_page_state(page)
+                        summary = self._format_page_state_summary(state, self._classify_match_page_state(state))
+                        logger.error(f"FAST FAIL: {reason_code}. {summary}")
+                        await self._save_debug_artifacts(page, reason_code)
+                        await page.close()
+                        return None
+            
+            # If render_task finished first, check its success
+            if render_task in done:
+                rendered = render_task.result()
+                if not rendered:
+                    state = await self._collect_match_page_state(page)
+                    classification = self._classify_match_page_state(state)
+                    state_summary = self._format_page_state_summary(state, classification)
+                    reason = f"MATCH_RENDER_TIMEOUT_{classification}"
+                    logger.error(f"❌ Match page failure: {reason}. {state_summary}")
+                    await self._save_debug_artifacts(page, reason)
+                    await page.close()
+                    return None
+
+            log_timing(f"Primary rendering + wait race took {time.perf_counter() - t_goto:.2f}s")
             # --- End Fast Fail & Smart Wait ---
             
             t_wait = time.perf_counter()
@@ -1630,17 +1500,7 @@ class OddsPortalScraper:
             await page.evaluate("window.scrollTo(0, 500)")
             await asyncio.sleep(1.0)
             
-            # Save debug screenshot for the initial page load
-            if self.debug_dir:
-                try:
-                    screenshot_path = os.path.join(self.debug_dir, "match_page_loaded.png")
-                    await page.screenshot(path=screenshot_path, full_page=True)
-                    html_path = os.path.join(self.debug_dir, "match_page_loaded.html")
-                    with open(html_path, "w", encoding="utf-8") as f:
-                        f.write(await page.content())
-                    logger.info(f"💾 Saved debug info to {self.debug_dir}")
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to save debug info: {e}")
+
             
             # ========================================
             # MULTI-GROUP & MULTI-PERIOD EXTRACTION
@@ -1662,24 +1522,9 @@ class OddsPortalScraper:
                     success = await self._click_market_group_tab(page, tab_label)
                     
                     if not success:
-                        # Last resort: full page reload to the target group's URL fragment
-                        logger.warning(f"⚠️ Tab click failed for {group_key}. Attempting full page reload recovery...")
-                        try:
-                            fragment = OP_GROUPS.get(group_key, group_key)
-                            first_period_key = periods[0][0] if periods else "FULL_TIME"
-                            period_code = OP_PERIODS.get(first_period_key, 2)
-                            base_url = self._normalize_base_match_url(match_url)
-                            reload_url = f"{base_url}/#{fragment};{period_code}"
-                            await self._goto_fresh(page, reload_url, wait_until="domcontentloaded", timeout=30000)
-                            rendered = await self._wait_for_market_render(page, extract_fn, timeout_ms=15000)
-                            if not rendered:
-                                raise TimeoutError("market render wait timed out after group reload")
-                            await asyncio.sleep(1)
-                            success = True
-                            logger.info(f"✅ Page reload recovery succeeded for {group_key}")
-                        except Exception as re:
-                            logger.error(f"❌ Page reload recovery failed for {group_key}: {re}")
-                    
+                        logger.error(f"Group switch failed for {group_key}; aborting match so the caller can restart with a fresh browser session")
+                        await self._save_debug_artifacts(page, f"GROUP_SWITCH_FAILED_{group_key}")
+                        return None
                     if not success:
                         logger.warning(f"⚠️ Could not switch to group {group_key}, skipping")
                         continue
@@ -1696,22 +1541,9 @@ class OddsPortalScraper:
                         tab_clicked = await self._click_period_tab(page, db_market_period)
                     
                         if not tab_clicked:
-                            # Fallback: full page reload to the exact group+period fragment URL
-                            logger.warning(f"⚠️ Period tab click failed for {db_market_period}. Attempting page reload recovery...")
-                            try:
-                                fragment = OP_GROUPS.get(group_key, group_key)
-                                period_code = OP_PERIODS.get(period_key, 2)
-                                base_url = self._normalize_base_match_url(match_url)
-                                reload_url = f"{base_url}/#{fragment};{period_code}"
-                                await self._goto_fresh(page, reload_url, wait_until="domcontentloaded", timeout=30000)
-                                rendered = await self._wait_for_market_render(page, extract_fn, timeout_ms=15000)
-                                if not rendered:
-                                    raise TimeoutError("market render wait timed out after period reload")
-                                await asyncio.sleep(1)
-                                tab_clicked = True
-                                logger.info(f"✅ Page reload recovery succeeded for period {db_market_period}")
-                            except Exception as re:
-                                logger.error(f"❌ Page reload recovery failed for period {db_market_period}: {re}")
+                            logger.error(f"Period switch failed for {db_market_period}; aborting match so the caller can restart with a fresh browser session")
+                            await self._save_debug_artifacts(page, f"PERIOD_SWITCH_FAILED_{period_key}")
+                            return None
                     
                         if not tab_clicked:
                             logger.warning(f"⚠️ Could not switch to period {db_market_period}, skipping")
@@ -1730,8 +1562,9 @@ class OddsPortalScraper:
                     log_timing(f"JS extraction for {db_market_period} took {time.perf_counter() - t_extract:.2f}s")
                 
                     if not period_data:
-                        logger.warning(f"⚠️ No data extracted for period {db_market_period}")
-                        continue
+                        logger.error(f"No data extracted for period {db_market_period}; aborting match so the caller can restart with a fresh browser session")
+                        await self._save_debug_artifacts(page, f"PERIOD_DATA_EMPTY_{period_key}")
+                        return None
                 
                     # Populate match-level team names from first extraction
                     if period_idx == 0:
@@ -2944,214 +2777,6 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
         logger.error(f"Error in scrape_match_sync: {e}\n{traceback.format_exc()}")
         return None
 
-
-def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
-    """
-    Scrape multiple matches using ONE browser session (browser reuse).
-    
-    Tries DB cache first for each match URL. On cache hit, skips league page
-    navigation entirely (~14s saved). On cache miss, navigates to the league
-    page (which also populates the cache for subsequent events).
-    
-    Args:
-        tasks: List of dicts with keys: event_id, league_url, home_team, away_team, season_id
-        debug_dir: Optional directory to save screenshots/HTML on failure
-    
-    Returns:
-        Dict mapping event_id -> MatchOddsData (or None if scrape failed)
-    """
-    results = {}
-    
-    if not tasks:
-        return results
-    
-    logger.info(f"🔍 OddsPortal batch: scraping {len(tasks)} matches with shared browser")
-    
-    try:
-        async def _run():
-            scraper = OddsPortalScraper(debug_dir=debug_dir)
-            await scraper.start()  # Browser opens ONCE
-            try:
-                for i, task in enumerate(tasks):
-                    event_id = task['event_id']
-                    season_id = task.get('season_id')
-                    try:
-                        logger.info(f"🔍 OddsPortal [{i+1}/{len(tasks)}]: {task['home_team']} vs {task['away_team']}")
-                        
-                        # Step 1: Use a primed direct match URL when available.
-                        match_url = task.get("match_url")
-                        if match_url:
-                            logger.info(f"Using primed match URL for event {event_id}: {match_url}")
-
-                        # Step 2: Try DB cache (no browser navigation needed)
-                        if not match_url and season_id:
-                            match_url = scraper.find_match_url_from_cache(
-                                season_id,
-                                task['home_team'],
-                                task['away_team'],
-                                league_url=task.get('league_url'),
-                            )
-                        
-                        # Step 3: Fall back to live league page navigation (also populates cache)
-                        if not match_url:
-                            match_url = await scraper.find_match_url(
-                                task['league_url'], task['home_team'], task['away_team'],
-                                season_id=season_id
-                            )
-                        
-                        # Resolve sport from season_id for scraping route
-                        task_sport = task.get('sport')
-                        if not task_sport and season_id:
-                            op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
-                            if op_info:
-                                task_sport = op_info.get('sport')
-                        
-                        data = None
-                        if match_url:
-                            clear_state = task.get('clear_state', False)
-                            data = await scraper.scrape_match(match_url, sport=task_sport, clear_state=clear_state)
-                        
-                        # Session-aware retry: if scrape OR discovery failed (likely bad proxy/IP),
-                        # restart browser with a fresh proxy session and retry once.
-                        if data is None:
-                            logger.warning(f"🔄 OddsPortal [{i+1}/{len(tasks)}]: No data (or match discovery failed) — restarting browser with new proxy session and retrying...")
-                            await scraper.stop()
-                            await scraper.start()  # Generates a fresh session ID = new IP
-                            
-                            # Re-find match URL (cache may still have it)
-                            retry_url = task.get("match_url") or match_url
-                            if not retry_url and season_id:
-                                retry_url = scraper.find_match_url_from_cache(
-                                    season_id,
-                                    task['home_team'],
-                                    task['away_team'],
-                                    league_url=task.get('league_url'),
-                                )
-                            if not retry_url:
-                                retry_url = await scraper.find_match_url(
-                                    task['league_url'], task['home_team'], task['away_team'],
-                                    season_id=season_id
-                                )
-                            if retry_url:
-                                data = await scraper.scrape_match(retry_url, sport=task_sport, clear_state=clear_state)
-                                if data:
-                                    logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: RETRY SUCCEEDED with new session-{scraper._session_id}")
-                                else:
-                                    logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Retry also returned no data")
-                        
-                        results[event_id] = data
-                        if data:
-                            logger.info(f"✅ OddsPortal [{i+1}/{len(tasks)}]: Got {len(data.extractions)} period(s), {len(data.bookie_odds)} bookies")
-                        else:
-                            logger.warning(f"⚠️ OddsPortal [{i+1}/{len(tasks)}]: Scrape failed (Match not found or navigation error)")
-                        
-                        # Invoke callback immediately so caller can save/signal per event
-                        if on_result:
-                            try:
-                                on_result(event_id, data)
-                            except Exception as cb_err:
-                                logger.error(f"❌ on_result callback error for event {event_id}: {cb_err}")
-                        
-                        # Small delay between scrapes to be respectful to OddsPortal
-                        if i < len(tasks) - 1:
-                            await asyncio.sleep(1)
-                        
-                    except Exception as e:
-                        logger.error(f"❌ OddsPortal scrape failed for event {event_id}: {e}")
-                        results[event_id] = None
-                        if on_result:
-                            try:
-                                on_result(event_id, None)
-                            except Exception as cb_err:
-                                logger.error(f"❌ on_result callback error for event {event_id}: {cb_err}")
-            finally:
-                await scraper.stop()  # Browser closes ONCE
-            return results
-        
-        # Use new_event_loop() instead of asyncio.run() for thread-safety
-        # asyncio.run() manages signal handlers that only work on the main thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(_run())
-        finally:
-            loop.close()
-        
-    except Exception as e:
-        import traceback
-        logger.error(f"❌ Error in scrape_multiple_matches_sync: {e}\n{traceback.format_exc()}")
-        return results
-
-def _build_priming_groups(tasks: List[Dict]) -> Tuple[Dict[Tuple[int, str], List[Dict]], List[Dict]]:
-    """Group primable tasks by (season_id, league_url) and collect the rest separately."""
-    primable_groups: Dict[Tuple[int, str], List[Dict]] = {}
-    non_primable_tasks: List[Dict] = []
-
-    for task in tasks:
-        group_key = _build_league_group_key(task.get("season_id"), task.get("league_url"))
-        if not group_key:
-            non_primable_tasks.append(task)
-            continue
-        primable_groups.setdefault(group_key, []).append(task)
-
-    return primable_groups, non_primable_tasks
-
-
-def _resolve_group_match_urls(
-    scraper: OddsPortalScraper,
-    group_tasks: List[Dict[str, Any]],
-) -> Dict[int, str]:
-    """Resolve event match URLs from an already-primed candidate set."""
-    resolved_urls: Dict[int, str] = {}
-
-    for task in group_tasks:
-        event_id = task.get("event_id")
-        season_id = task.get("season_id")
-        league_url = task.get("league_url")
-        home_team = task.get("home_team")
-        away_team = task.get("away_team")
-        if not event_id or not season_id or not league_url or not home_team or not away_team:
-            continue
-
-        match_url = scraper.find_match_url_from_cache(
-            season_id,
-            home_team,
-            away_team,
-            league_url=league_url,
-        )
-        if match_url:
-            resolved_urls[event_id] = match_url
-
-    return resolved_urls
-
-
-def _split_recovery_seed_tasks(
-    tasks: List[Dict[str, Any]],
-    recovery_groups: set,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Select exactly one unresolved seed task per recovery group, then leave the
-    rest for balanced fan-out after that seed has had a chance to repopulate cache.
-    """
-    recovery_seeds: List[Dict[str, Any]] = []
-    remaining_tasks: List[Dict[str, Any]] = []
-    seeded_groups: set = set()
-
-    for task in tasks:
-        group_key = _build_league_group_key(task.get("season_id"), task.get("league_url"))
-        if (
-            group_key in recovery_groups
-            and not task.get("match_url")
-            and group_key not in seeded_groups
-        ):
-            recovery_seeds.append(task)
-            seeded_groups.add(group_key)
-            continue
-        remaining_tasks.append(task)
-
-    return recovery_seeds, remaining_tasks
-
-
 def _attach_cached_match_urls(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Refresh task match URLs from the DB-backed cache without opening a browser."""
     if not tasks:
@@ -3174,280 +2799,255 @@ def _attach_cached_match_urls(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any
     return refreshed_tasks
 
 
-def _prime_single_group_sync(
-    group_key: Tuple[int, str],
-    group_tasks: List[Dict[str, Any]],
-    worker_label: str,
-    debug_dir: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Prime one league/season group in its own browser session and event loop."""
-    logger.info(f"{worker_label} OddsPortal Stage 1: priming start for {_format_group_key(group_key)}")
-    representative_task = group_tasks[0]
+def _resolve_task_sport(task: Dict[str, Any]) -> Optional[str]:
+    """Resolve sport directly from the task, falling back to season metadata."""
+    task_sport = task.get("sport")
+    season_id = task.get("season_id")
+    if not task_sport and season_id:
+        op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
+        if op_info:
+            task_sport = op_info.get("sport")
+    return task_sport
 
-    cache_probe_scraper = OddsPortalScraper(debug_dir=debug_dir)
-    cached_candidates = cache_probe_scraper._load_cached_candidates(
-        representative_task["season_id"],
-        league_url=representative_task["league_url"],
-    )
-    pre_resolved_match_urls = _resolve_group_match_urls(cache_probe_scraper, group_tasks)
-    if cached_candidates:
-        success = len(pre_resolved_match_urls) == len(group_tasks)
-        logger.info(
-            f"{worker_label} OddsPortal Stage 1: existing DB cache found for "
-            f"{_format_group_key(group_key)} ({len(cached_candidates)} candidate(s)); skipping priming navigation"
-        )
-        logger.info(
-            f"{worker_label} OddsPortal Stage 1: resolved {len(pre_resolved_match_urls)}/{len(group_tasks)} "
-            f"match URL(s) from existing DB cache for {_format_group_key(group_key)}"
-        )
-        logger.info(
-            f"{worker_label} OddsPortal Stage 1: priming end for {_format_group_key(group_key)} "
-            f"(success={success})"
-        )
-        return {
-            "group_key": group_key,
-            "success": success,
-            "resolved_match_urls": pre_resolved_match_urls,
-            "needs_recovery_seed": not success,
-            "error": None,
-        }
 
-    async def _run() -> Dict[str, Any]:
-        scraper = OddsPortalScraper(debug_dir=debug_dir)
-        await scraper.start()
+async def _resolve_task_match_url(
+    scraper: OddsPortalScraper,
+    task: Dict[str, Any],
+    *,
+    allow_live_lookup: bool = True,
+) -> Optional[str]:
+    """Resolve a task's match URL with cache-first semantics."""
+    match_url = task.get("match_url")
+    if match_url:
+        return match_url
+
+    season_id = task.get("season_id")
+    league_url = task.get("league_url")
+    home_team = task.get("home_team")
+    away_team = task.get("away_team")
+
+    if season_id and league_url and home_team and away_team:
+        cached_url = scraper.find_match_url_from_cache(
+            season_id,
+            home_team,
+            away_team,
+            league_url=league_url,
+        )
+        if cached_url:
+            return cached_url
+
+    if allow_live_lookup and league_url and home_team and away_team:
+        return await scraper.find_match_url(
+            league_url,
+            home_team,
+            away_team,
+            season_id=season_id,
+        )
+
+    return None
+
+
+async def _scrape_task_with_recovery(
+    scraper: OddsPortalScraper,
+    task: Dict[str, Any],
+    task_label: str,
+) -> Tuple[Optional[MatchOddsData], Optional[str]]:
+    """
+    Scrape one task with inline recovery.
+
+    Recovery ladder:
+      1. Cache/live discovery + scrape on the current browser session
+      2. Same browser session with clear_state=True (only if a match URL was resolved)
+      3. Immediate browser restart(s) with a fresh session and full re-resolution
+    """
+    sport = _resolve_task_sport(task)
+    event_id = task.get("event_id")
+    clear_state = bool(task.get("clear_state", False))
+    match_url = await _resolve_task_match_url(scraper, task, allow_live_lookup=True)
+
+    if not match_url:
+        logger.warning(f"{task_label}: could not resolve match URL on the current session for event_id {event_id}")
+
+    data = None
+    if match_url:
+        data = await scraper.scrape_match(match_url, sport=sport, clear_state=clear_state)
+        if data:
+            return data, match_url
+
+    if match_url:
+        logger.info(f"{task_label}: attempt 1 returned no data, retrying with clear_state=True for event_id {event_id}")
         try:
-            success = await scraper.prime_league_cache(
-                representative_task["league_url"],
-                representative_task["season_id"],
-            )
-            resolved_match_urls = _resolve_group_match_urls(scraper, group_tasks)
-            success = success or len(resolved_match_urls) == len(group_tasks)
+            data = await scraper.scrape_match(match_url, sport=sport, clear_state=True)
+        except Exception as e:
+            logger.error(f"{task_label}: clear_state retry failed for event_id {event_id}: {e}")
+            data = None
+        if data:
             logger.info(
-                f"OddsPortal Stage 1: resolved {len(resolved_match_urls)}/{len(group_tasks)} "
-                f"match URL(s) for {_format_group_key(group_key)} on attempt 1"
+                f"{task_label}: clear_state retry succeeded for event_id {event_id} "
+                f"with the existing browser session-{scraper._session_id}"
             )
-            return {
-                "success": success,
-                "resolved_match_urls": resolved_match_urls,
-                "needs_recovery_seed": len(resolved_match_urls) < len(group_tasks),
-            }
-        finally:
-            await scraper.stop()
+            return data, match_url
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        with _log_prefix(worker_label):
-            priming_data = loop.run_until_complete(_run())
-        success = priming_data.get("success", False)
-        logger.info(
-            f"{worker_label} OddsPortal Stage 1: priming end for {_format_group_key(group_key)} "
-            f"(success={success})"
+    restart_attempts = max(1, ODDSPORTAL_SESSION_RESTART_ATTEMPTS)
+    for restart_idx in range(1, restart_attempts + 1):
+        logger.warning(
+            f"{task_label}: restarting browser session ({restart_idx}/{restart_attempts}) "
+            f"for event_id {event_id} after fast-fail/empty scrape"
         )
-        return {
-            "group_key": group_key,
-            "success": success,
-            "resolved_match_urls": priming_data.get("resolved_match_urls", {}),
-            "needs_recovery_seed": priming_data.get("needs_recovery_seed", False),
-            "error": None,
-        }
-    except Exception as e:
-        logger.error(f"{worker_label} OddsPortal Stage 1: priming exception for {_format_group_key(group_key)}: {e}")
-        return {
-            "group_key": group_key,
-            "success": False,
-            "resolved_match_urls": {},
-            "needs_recovery_seed": True,
-            "error": str(e),
-        }
-    finally:
-        loop.close()
+        try:
+            await scraper.stop()
+            await scraper.start()
+        except Exception as e:
+            logger.error(f"{task_label}: browser restart failed for event_id {event_id}: {e}")
+            continue
+
+        retry_url = await _resolve_task_match_url(scraper, task, allow_live_lookup=True)
+        if not retry_url:
+            logger.warning(
+                f"{task_label}: match URL still unresolved after restart "
+                f"({restart_idx}/{restart_attempts}) for event_id {event_id}"
+            )
+            continue
+
+        match_url = retry_url
+        try:
+            data = await scraper.scrape_match(match_url, sport=sport, clear_state=False)
+        except Exception as e:
+            logger.error(f"{task_label}: restart attempt {restart_idx} failed for event_id {event_id}: {e}")
+            data = None
+
+        if data:
+            logger.info(
+                f"{task_label}: restart attempt {restart_idx} succeeded for event_id {event_id} "
+                f"with session-{scraper._session_id}"
+            )
+            return data, match_url
+
+    return None, match_url
 
 
-def _run_stage2_chunk_sync(
-    chunk_index: int,
-    chunk_count: int,
-    chunk: List[Dict],
-    debug_dir: Optional[str] = None,
-    on_result=None,
-) -> Dict[int, Optional[MatchOddsData]]:
-    """Run one stage-2 worker chunk under a stable log prefix."""
-    worker_label = f"[Browser {chunk_index}/{chunk_count}]"
-    with _log_prefix(worker_label):
-        return scrape_multiple_matches_sync(chunk, debug_dir=debug_dir, on_result=on_result)
+# ---------------------------------------------------------------------------
+# Active dispatcher overrides
+# ---------------------------------------------------------------------------
 
+def _build_dispatch_groups(tasks: List[Dict[str, Any]]) -> Tuple[Dict[Tuple[int, str], List[Dict[str, Any]]], List[Dict[str, Any]]]:
+    """Group tasks by normalized season/league key; keep non-groupable tasks separate."""
+    dispatch_groups: Dict[Tuple[int, str], List[Dict[str, Any]]] = {}
+    standalone_tasks: List[Dict[str, Any]] = []
 
-def _summarize_chunk_groups(
-    chunk: List[Dict],
-    primed_success_groups: set,
-    recovery_groups: set,
-) -> str:
-    if not chunk:
-        return "empty"
-
-    counts: Dict[str, int] = {}
-    for task in chunk:
-        group_key = _build_league_group_key(task.get("season_id"), task.get("league_url"))
-        if group_key in primed_success_groups:
-            label = f"primed {_format_group_key(group_key)}"
-        elif group_key in recovery_groups:
-            label = f"recovery {_format_group_key(group_key)}"
-        elif group_key:
-            label = f"primable {_format_group_key(group_key)}"
+    for task in tasks:
+        task_copy = dict(task)
+        group_key = _build_league_group_key(task_copy.get("season_id"), task_copy.get("league_url"))
+        if group_key:
+            dispatch_groups.setdefault(group_key, []).append(task_copy)
         else:
-            label = "non-primable"
-        counts[label] = counts.get(label, 0) + 1
+            standalone_tasks.append(task_copy)
 
-    return ", ".join(f"{label} x{count}" for label, count in counts.items())
+    return dispatch_groups, standalone_tasks
 
 
-def _build_stage2_chunks(
-    tasks: List[Dict],
-    primed_success_groups: set,
-    recovery_groups: set,
-    num_browsers: int,
-) -> List[List[Dict]]:
-    """Build balanced stage-2 worker chunks after priming/recovery has completed."""
+def _attach_cached_match_urls(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Refresh task match URLs from the DB-backed cache without opening a browser."""
     if not tasks:
         return []
 
-    chunk_count = max(1, min(num_browsers, len(tasks)))
-    chunks: List[List[Dict]] = [[] for _ in range(chunk_count)]
-
-    def assign_task(task: Dict) -> None:
-        smallest_idx = min(range(len(chunks)), key=lambda i: len(chunks[i]))
-        chunks[smallest_idx].append(task)
-
+    scraper = OddsPortalScraper()
+    refreshed_tasks: List[Dict[str, Any]] = []
     for task in tasks:
-        assign_task(task)
+        refreshed_task = dict(task)
+        if (
+            not refreshed_task.get("match_url")
+            and refreshed_task.get("season_id")
+            and refreshed_task.get("league_url")
+            and refreshed_task.get("home_team")
+            and refreshed_task.get("away_team")
+        ):
+            cached_url = scraper.find_match_url_from_cache(
+                refreshed_task["season_id"],
+                refreshed_task["home_team"],
+                refreshed_task["away_team"],
+                league_url=refreshed_task["league_url"],
+            )
+            if cached_url:
+                refreshed_task["match_url"] = cached_url
+        refreshed_tasks.append(refreshed_task)
+    return refreshed_tasks
 
-    return [chunk for chunk in chunks if chunk]
 
+def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
+    """Scrape multiple matches sequentially using one shared browser session."""
+    results: Dict[int, Optional[MatchOddsData]] = {}
 
-def _legacy_scrape_multiple_matches_parallel_sync_refactor_artifact(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
-    """
-    Run real two-stage scraping:
-    1. Prime one browser per (season_id, league_url) group.
-    2. Fan out actual event scrapes only after priming completes.
-    """
     if not tasks:
-        return {}
-        
-    if num_browsers <= 1 or len(tasks) == 1:
-        return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir, on_result=on_result)
-        
-    logger.info(f"🚀 OddsPortal Parallel: Splitting {len(tasks)} tasks across {num_browsers} browsers")
-    
-    primable_groups, non_primable_tasks = _build_priming_groups(tasks)
-    logger.info(
-        f"OddsPortal Parallel: total_tasks={len(tasks)}, "
-        f"primable_groups={len(primable_groups)}, non_primable_tasks={len(non_primable_tasks)}, "
-        f"num_browsers={num_browsers}"
-    )
+        return results
 
-    primed_success_groups = set()
-    recovery_groups = set()
-    primed_match_urls: Dict[int, str] = {}
+    logger.info(f"OddsPortal batch: scraping {len(tasks)} matches with shared browser")
 
-    logger.info("OddsPortal Stage 1: start")
-    if primable_groups:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        stage1_workers = min(num_browsers, len(primable_groups))
-        stage1_group_items = list(primable_groups.items())
-        with ThreadPoolExecutor(max_workers=stage1_workers) as executor:
-            future_to_group = {
-                executor.submit(
-                    _prime_single_group_sync,
-                    group_key,
-                    group_tasks,
-                    f"[Prime {idx}/{len(stage1_group_items)}]",
-                    debug_dir,
-                ): group_key
-                for idx, (group_key, group_tasks) in enumerate(stage1_group_items, start=1)
-            }
-
-            for future in as_completed(future_to_group):
-                group_key = future_to_group[future]
-                try:
-                    priming_result = future.result()
-                except Exception as e:
-                    logger.error(f"OddsPortal Stage 1: unexpected future failure for {_format_group_key(group_key)}: {e}")
-                    recovery_groups.add(group_key)
-                    continue
-
-                resolved_match_urls = priming_result.get("resolved_match_urls", {})
-                if resolved_match_urls:
-                    primed_match_urls.update(resolved_match_urls)
-                    logger.info(
-                        f"OddsPortal Stage 1: reusable match URLs ready for "
-                        f"{_format_group_key(group_key)} ({len(resolved_match_urls)})"
-                    )
-
-                if priming_result.get("success"):
-                    primed_success_groups.add(group_key)
-                    logger.info(f"OddsPortal Stage 1: priming success for {_format_group_key(group_key)}")
-                else:
-                    logger.warning(f"OddsPortal Stage 1: priming did not fully resolve {_format_group_key(group_key)}")
-                if priming_result.get("needs_recovery_seed"):
-                    recovery_groups.add(group_key)
-                    logger.info(f"OddsPortal Stage 1: recovery seed required for {_format_group_key(group_key)}")
-    logger.info("OddsPortal Stage 1: end")
-
-    stage2_tasks = []
-    for task in tasks:
-        stage2_task = dict(task)
-        resolved_match_url = primed_match_urls.get(task.get("event_id"))
-        if resolved_match_url:
-            stage2_task["match_url"] = resolved_match_url
-        stage2_tasks.append(stage2_task)
-
-    logger.info(
-        f"OddsPortal Stage 2: prepared {len(primed_match_urls)} primed match URL(s) "
-        f"for {len(stage2_tasks)} task(s)"
-    )
-
-    chunks = _build_stage2_chunks(stage2_tasks, primed_success_groups, recovery_groups, num_browsers)
-    logger.info(f"OddsPortal Stage 2: chunk_count={len(chunks)}")
-    for idx, chunk in enumerate(chunks, start=1):
-        logger.info(
-            f"OddsPortal Stage 2: chunk {idx}/{len(chunks)} has {len(chunk)} task(s) "
-            f"-> {_summarize_chunk_groups(chunk, primed_success_groups, recovery_groups)}"
-        )
-
-    all_results = {}
-
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    with ThreadPoolExecutor(max_workers=len(chunks)) as executor:
-        future_to_chunk = {
-            executor.submit(_run_stage2_chunk_sync, i + 1, len(chunks), chunk, debug_dir, on_result): i
-            for i, chunk in enumerate(chunks)
-        }
-
-        for future in as_completed(future_to_chunk):
-            chunk_idx = future_to_chunk[future]
+    try:
+        async def _run():
+            scraper = OddsPortalScraper(debug_dir=debug_dir)
+            await scraper.start()
             try:
-                chunk_result = future.result()
-                all_results.update(chunk_result)
-                logger.info(f"✅ OddsPortal Parallel: Browser {chunk_idx + 1}/{len(chunks)} completed successfully")
-            except Exception as e:
-                import traceback
-                logger.error(f"âŒ OddsPortal Parallel: Browser {chunk_idx + 1} failed: {e}\n{traceback.format_exc()}")
+                sequential_tasks = _attach_cached_match_urls(tasks)
+                for i, task in enumerate(sequential_tasks, start=1):
+                    event_id = task["event_id"]
+                    task_label = f"OddsPortal [{i}/{len(sequential_tasks)}]"
+                    try:
+                        data, match_url = await _scrape_task_with_recovery(scraper, task, task_label)
+                        results[event_id] = data
 
-    logger.info(
-        f"OddsPortal Parallel summary: primed_groups_succeeded={len(primed_success_groups)}, "
-        f"recovery_groups={len(recovery_groups)}, stage2_tasks_scraped={len(tasks)}"
-    )
-    return all_results
+                        if data:
+                            logger.info(
+                                f"{task_label}: got {len(data.extractions)} period(s), "
+                                f"{len(data.bookie_odds)} bookies"
+                            )
+                        else:
+                            logger.warning(
+                                f"{task_label}: scrape failed "
+                                f"(match_url={match_url or 'unresolved'})"
+                            )
+
+                        if on_result:
+                            try:
+                                on_result(event_id, data)
+                            except Exception as cb_err:
+                                logger.error(f"on_result callback error for event {event_id}: {cb_err}")
+
+                        if i < len(sequential_tasks):
+                            await asyncio.sleep(1)
+                    except Exception as e:
+                        logger.error(f"OddsPortal scrape failed for event {event_id}: {e}")
+                        results[event_id] = None
+                        if on_result:
+                            try:
+                                on_result(event_id, None)
+                            except Exception as cb_err:
+                                logger.error(f"on_result callback error for event {event_id}: {cb_err}")
+            finally:
+                await scraper.stop()
+            return results
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in scrape_multiple_matches_sync: {e}\n{traceback.format_exc()}")
+        return results
 
 
 def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
     """
-    Run real multi-stage scraping:
-    1. Prime one browser per (season_id, league_url) group at most once.
-    2. Run one recovery seed scrape for any unresolved group.
-    3. Fan out the remaining actual event scrapes after cache is ready.
+    Event-driven dispatcher.
+
+    Ready events always run before unresolved resolver tasks. Only one resolver
+    is active per (season_id, league_url) group. Once a resolver warms the
+    league cache, sibling events are released to the shared ready queue so free
+    browsers can start scraping them immediately.
     """
     if not tasks:
         return {}
@@ -3455,214 +3055,232 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
     if num_browsers <= 1 or len(tasks) == 1:
         return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir, on_result=on_result)
 
-    logger.info(f"🚀 OddsPortal Parallel: Splitting {len(tasks)} tasks across {num_browsers} browsers")
-
-    primable_groups, non_primable_tasks = _build_priming_groups(tasks)
-    logger.info(
-        f"OddsPortal Parallel: total_tasks={len(tasks)}, "
-        f"primable_groups={len(primable_groups)}, non_primable_tasks={len(non_primable_tasks)}, "
-        f"num_browsers={num_browsers}"
+    tasks_with_cache = _attach_cached_match_urls(tasks)
+    dispatch_groups, standalone_tasks = _build_dispatch_groups(tasks_with_cache)
+    sorted_group_items = sorted(
+        dispatch_groups.items(),
+        key=lambda item: len(item[1]),
+        reverse=True,
     )
 
-    primed_success_groups = set()
-    recovery_groups = set()
-    primed_match_urls: Dict[int, str] = {}
+    worker_count = max(1, min(num_browsers, len(tasks_with_cache)))
+    logger.info(f"OddsPortal Parallel: distributing {len(tasks_with_cache)} tasks across {worker_count} dynamic browser(s)")
 
-    logger.info("OddsPortal Stage 1: start")
-    if primable_groups:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        stage1_workers = min(num_browsers, len(primable_groups))
-        stage1_group_items = list(primable_groups.items())
-        with ThreadPoolExecutor(max_workers=stage1_workers) as executor:
-            future_to_group = {
-                executor.submit(
-                    _prime_single_group_sync,
-                    group_key,
-                    group_tasks,
-                    f"[Prime {idx}/{len(stage1_group_items)}]",
-                    debug_dir,
-                ): group_key
-                for idx, (group_key, group_tasks) in enumerate(stage1_group_items, start=1)
-            }
-
-            for future in as_completed(future_to_group):
-                group_key = future_to_group[future]
-                try:
-                    priming_result = future.result()
-                except Exception as e:
-                    logger.error(f"OddsPortal Stage 1: unexpected future failure for {_format_group_key(group_key)}: {e}")
-                    recovery_groups.add(group_key)
-                    continue
-
-                resolved_match_urls = priming_result.get("resolved_match_urls", {})
-                if resolved_match_urls:
-                    primed_match_urls.update(resolved_match_urls)
-                    logger.info(
-                        f"OddsPortal Stage 1: reusable match URLs ready for "
-                        f"{_format_group_key(group_key)} ({len(resolved_match_urls)})"
-                    )
-
-                if priming_result.get("success"):
-                    primed_success_groups.add(group_key)
-                    logger.info(f"OddsPortal Stage 1: priming success for {_format_group_key(group_key)}")
-                else:
-                    logger.warning(f"OddsPortal Stage 1: priming did not fully resolve {_format_group_key(group_key)}")
-
-                if priming_result.get("needs_recovery_seed"):
-                    recovery_groups.add(group_key)
-                    logger.info(f"OddsPortal Stage 1: recovery seed required for {_format_group_key(group_key)}")
-    logger.info("OddsPortal Stage 1: end")
-
-    stage2_tasks: List[Dict[str, Any]] = []
-    for task in tasks:
-        stage2_task = dict(task)
-        resolved_match_url = primed_match_urls.get(task.get("event_id"))
-        if resolved_match_url:
-            stage2_task["match_url"] = resolved_match_url
-        stage2_tasks.append(stage2_task)
-
-    logger.info(
-        f"OddsPortal Stage 2: prepared {len(primed_match_urls)} primed match URL(s) "
-        f"for {len(stage2_tasks)} task(s)"
-    )
-
+    dispatcher_condition = Condition()
+    ready_event_queue: deque = deque()
+    resolver_queue: deque = deque()
+    group_state: Dict[Tuple[int, str], Dict[str, Any]] = {}
+    remaining_task_count = len(tasks_with_cache)
     all_results: Dict[int, Optional[MatchOddsData]] = {}
 
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    ready_task_count = 0
+    resolver_task_count = 0
+    blocked_task_count = 0
+    standalone_ready_count = 0
+    standalone_resolver_count = 0
 
-    recovery_seed_tasks, remaining_stage2_tasks = _split_recovery_seed_tasks(stage2_tasks, recovery_groups)
-    if recovery_seed_tasks:
-        logger.info(
-            f"OddsPortal Stage 2A: running {len(recovery_seed_tasks)} recovery seed task(s) "
-            f"for {len(recovery_groups)} group(s)"
-        )
-        seed_chunks = [[task] for task in recovery_seed_tasks]
-        with ThreadPoolExecutor(max_workers=min(num_browsers, len(seed_chunks))) as executor:
-            future_to_seed = {
-                executor.submit(_run_stage2_chunk_sync, i + 1, len(seed_chunks), chunk, debug_dir, on_result): i
-                for i, chunk in enumerate(seed_chunks)
-            }
+    for group_key, group_tasks in sorted_group_items:
+        resolved_group_tasks: List[Dict[str, Any]] = []
+        unresolved_group_tasks: List[Dict[str, Any]] = []
 
-            for future in as_completed(future_to_seed):
-                chunk_idx = future_to_seed[future]
-                try:
-                    chunk_result = future.result()
-                    all_results.update(chunk_result)
-                    logger.info(
-                        f"OddsPortal Stage 2A: recovery seed browser "
-                        f"{chunk_idx + 1}/{len(seed_chunks)} completed successfully"
-                    )
-                except Exception as e:
-                    import traceback
-                    logger.error(
-                        f"OddsPortal Stage 2A: recovery seed browser {chunk_idx + 1} failed: "
-                        f"{e}\n{traceback.format_exc()}"
-                    )
-    else:
-        logger.info("OddsPortal Stage 2A: no recovery seeds required")
+        for task in group_tasks:
+            task_copy = dict(task)
+            task_copy["_dispatch_group_key"] = group_key
+            if task_copy.get("match_url"):
+                task_copy["_dispatch_role"] = "ready_event"
+                resolved_group_tasks.append(task_copy)
+            else:
+                unresolved_group_tasks.append(task_copy)
 
-    remaining_stage2_tasks = [
-        task for task in remaining_stage2_tasks
-        if task.get("event_id") not in all_results
-    ]
-    remaining_stage2_tasks = _attach_cached_match_urls(remaining_stage2_tasks)
+        for ready_task in resolved_group_tasks:
+            ready_event_queue.append(ready_task)
+            ready_task_count += 1
 
-    chunks = _build_stage2_chunks(remaining_stage2_tasks, primed_success_groups, recovery_groups, num_browsers)
-    logger.info(f"OddsPortal Stage 2B: chunk_count={len(chunks)}")
-    for idx, chunk in enumerate(chunks, start=1):
-        logger.info(
-            f"OddsPortal Stage 2B: chunk {idx}/{len(chunks)} has {len(chunk)} task(s) "
-            f"-> {_summarize_chunk_groups(chunk, primed_success_groups, recovery_groups)}"
-        )
+        group_state[group_key] = {
+            "blocked_tasks": unresolved_group_tasks[1:] if unresolved_group_tasks else [],
+            "resolver_active": bool(unresolved_group_tasks),
+        }
+        blocked_task_count += len(group_state[group_key]["blocked_tasks"])
 
-    if chunks:
-        with ThreadPoolExecutor(max_workers=len(chunks)) as executor:
-            future_to_chunk = {
-                executor.submit(_run_stage2_chunk_sync, i + 1, len(chunks), chunk, debug_dir, on_result): i
-                for i, chunk in enumerate(chunks)
-            }
+        if unresolved_group_tasks:
+            resolver_task = dict(unresolved_group_tasks[0])
+            resolver_task["_dispatch_role"] = "resolver_event"
+            resolver_queue.append(resolver_task)
+            resolver_task_count += 1
 
-            for future in as_completed(future_to_chunk):
-                chunk_idx = future_to_chunk[future]
-                try:
-                    chunk_result = future.result()
-                    all_results.update(chunk_result)
-                    logger.info(f"âœ… OddsPortal Parallel: Browser {chunk_idx + 1}/{len(chunks)} completed successfully")
-                except Exception as e:
-                    import traceback
-                    logger.error(f"Ã¢ÂÅ’ OddsPortal Parallel: Browser {chunk_idx + 1} failed: {e}\n{traceback.format_exc()}")
-    else:
-        logger.info("OddsPortal Stage 2B: no remaining tasks after recovery seeds")
+    for task in standalone_tasks:
+        task_copy = dict(task)
+        if task_copy.get("match_url"):
+            task_copy["_dispatch_role"] = "ready_event"
+            ready_event_queue.append(task_copy)
+            ready_task_count += 1
+            standalone_ready_count += 1
+        else:
+            task_copy["_dispatch_role"] = "resolver_event"
+            resolver_queue.append(task_copy)
+            resolver_task_count += 1
+            standalone_resolver_count += 1
 
     logger.info(
-        f"OddsPortal Parallel summary: primed_groups_succeeded={len(primed_success_groups)}, "
-        f"recovery_groups={len(recovery_groups)}, stage2_tasks_scraped={len(tasks)}"
+        f"OddsPortal Parallel: total_tasks={len(tasks_with_cache)}, dispatch_groups={len(dispatch_groups)}, "
+        f"ready_tasks={ready_task_count}, resolver_tasks={resolver_task_count}, "
+        f"blocked_group_tasks={blocked_task_count}, standalone_ready={standalone_ready_count}, "
+        f"standalone_resolvers={standalone_resolver_count}"
     )
-    return all_results
 
-    # --- Two-Phase Season-Aware Distribution ---
-    # Phase 1 (Cache Seeding): One "seed" event per unique season_id.
-    #   These navigate the league page and populate the DB cache.
-    # Phase 2 (Cache Benefiting): Remaining events distributed freely.
-    #   By the time any browser reaches these, the seed browser has
-    #   already populated the cache (~65s earlier).
-    
-    from collections import defaultdict
-    
-    season_groups = defaultdict(list)
-    no_season_tasks = []
-    for task in tasks:
-        sid = task.get('season_id')
-        if sid:
-            season_groups[sid].append(task)
-        else:
-            no_season_tasks.append(task)
-    
-    # Phase 1: Pick one seed per season
-    seeds = []
-    remaining = []
-    for sid, group in season_groups.items():
-        seeds.append(group[0])
-        remaining.extend(group[1:])
-    
-    # Assign seeds + no-season tasks (all need league page navigation)
-    chunks = [[] for _ in range(num_browsers)]
-    for task in seeds + no_season_tasks:
-        smallest = min(range(len(chunks)), key=lambda i: len(chunks[i]))
-        chunks[smallest].append(task)
-    
-    # Phase 2: Distribute remaining tasks (will get cache hits)
-    for task in remaining:
-        smallest = min(range(len(chunks)), key=lambda i: len(chunks[i]))
-        chunks[smallest].append(task)
-    
-    logger.info(f"📦 Season-aware distribution: {len(seeds)} seed(s) + {len(no_season_tasks)} no-season + {len(remaining)} cache-benefiting across {num_browsers} browsers")
-    for idx, chunk in enumerate(chunks):
-        season_ids_in_chunk = [t.get('season_id', '?') for t in chunk]
-        logger.info(f"  Browser {idx}: {len(chunk)} tasks — seasons: {season_ids_in_chunk}")
-    
-    # Remove empty chunks if tasks < num_browsers
-    chunks = [c for c in chunks if c]
-    
-    all_results = {}
-    
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    
-    with ThreadPoolExecutor(max_workers=len(chunks)) as executor:
-        future_to_chunk = {
-            executor.submit(scrape_multiple_matches_sync, chunk, debug_dir, on_result): i 
-            for i, chunk in enumerate(chunks)
-        }
-        
-        for future in as_completed(future_to_chunk):
-            chunk_idx = future_to_chunk[future]
+    def _claim_next_task() -> Optional[Dict[str, Any]]:
+        nonlocal remaining_task_count
+        with dispatcher_condition:
+            while True:
+                if ready_event_queue:
+                    return ready_event_queue.popleft()
+                if resolver_queue:
+                    return resolver_queue.popleft()
+                if remaining_task_count == 0:
+                    return None
+                dispatcher_condition.wait()
+
+    def _complete_task(task: Dict[str, Any], data: Optional[MatchOddsData], resolved_match_url: Optional[str]) -> None:
+        nonlocal remaining_task_count
+
+        event_id = task.get("event_id")
+        role = task.get("_dispatch_role")
+        group_key = task.get("_dispatch_group_key")
+
+        blocked_tasks_to_refresh: List[Dict[str, Any]] = []
+        with dispatcher_condition:
+            if event_id is not None:
+                all_results[event_id] = data
+            remaining_task_count -= 1
+
+            if role == "resolver_event" and group_key and group_key in group_state:
+                group_state[group_key]["resolver_active"] = False
+                blocked_tasks_to_refresh = group_state[group_key]["blocked_tasks"]
+                group_state[group_key]["blocked_tasks"] = []
+
+            if not blocked_tasks_to_refresh:
+                dispatcher_condition.notify_all()
+                return
+
+        refreshed_tasks = _attach_cached_match_urls(blocked_tasks_to_refresh)
+        released_ready_ids: List[int] = []
+        unresolved_tasks: List[Dict[str, Any]] = []
+
+        for sibling_task in refreshed_tasks:
+            sibling_copy = dict(sibling_task)
+            sibling_copy["_dispatch_group_key"] = group_key
+            if sibling_copy.get("match_url"):
+                sibling_copy["_dispatch_role"] = "ready_event"
+                sibling_copy["_released_by_resolver"] = True
+                sibling_copy["_resolver_event_id"] = event_id
+                released_ready_ids.append(sibling_copy.get("event_id"))
+                with dispatcher_condition:
+                    ready_event_queue.append(sibling_copy)
+            else:
+                unresolved_tasks.append(sibling_copy)
+
+        next_resolver_event_id = None
+        unresolved_remaining = 0
+        with dispatcher_condition:
+            state = group_state[group_key]
+            if unresolved_tasks:
+                next_resolver = dict(unresolved_tasks[0])
+                next_resolver["_dispatch_role"] = "resolver_event"
+                resolver_queue.append(next_resolver)
+                next_resolver_event_id = next_resolver.get("event_id")
+                unresolved_remaining = len(unresolved_tasks)
+                state["resolver_active"] = True
+                state["blocked_tasks"] = unresolved_tasks[1:]
+            dispatcher_condition.notify_all()
+
+        if released_ready_ids:
+            logger.info(
+                f"Dispatcher: resolver event_id {event_id} unlocked {len(released_ready_ids)} sibling ready task(s) "
+                f"for {_format_group_key(group_key)}"
+            )
+        if next_resolver_event_id is not None:
+            logger.info(
+                f"Dispatcher: queued next resolver event_id {next_resolver_event_id} for "
+                f"{_format_group_key(group_key)} (remaining_unresolved={unresolved_remaining})"
+            )
+
+    def _run_dynamic_worker_sync(worker_index: int) -> None:
+        worker_label = f"[Browser {worker_index}/{worker_count}]"
+
+        async def _run() -> None:
+            scraper = OddsPortalScraper(debug_dir=debug_dir)
+            await scraper.start()
             try:
-                chunk_result = future.result()
-                all_results.update(chunk_result)
-                logger.info(f"✅ OddsPortal Parallel: Browser {chunk_idx + 1}/{len(chunks)} completed successfully")
-            except Exception as e:
-                import traceback
-                logger.error(f"❌ OddsPortal Parallel: Browser {chunk_idx + 1} failed: {e}\n{traceback.format_exc()}")
-                
+                while True:
+                    task = _claim_next_task()
+                    if task is None:
+                        return
+
+                    role = task.get("_dispatch_role")
+                    group_key = task.get("_dispatch_group_key")
+                    event_id = task.get("event_id")
+                    task_label = (
+                        f"{worker_label} OddsPortal "
+                        f"[{task.get('home_team', 'Unknown')} vs {task.get('away_team', 'Unknown')}]"
+                    )
+                    data: Optional[MatchOddsData] = None
+                    resolved_match_url: Optional[str] = None
+
+                    if role == "resolver_event" and group_key:
+                        logger.info(
+                            f"{worker_label} Resolver start for event_id {event_id} "
+                            f"in {_format_group_key(group_key)}"
+                        )
+                    elif role == "ready_event" and task.get("_released_by_resolver") and group_key:
+                        logger.info(
+                            f"{worker_label} Starting resolver-released sibling event_id {event_id} "
+                            f"for {_format_group_key(group_key)}"
+                        )
+
+                    try:
+                        data, resolved_match_url = await _scrape_task_with_recovery(scraper, task, task_label)
+                        if data:
+                            logger.info(
+                                f"{worker_label} event_id {event_id} scraped successfully "
+                                f"(match_url={resolved_match_url or 'unresolved'})"
+                            )
+                        else:
+                            logger.warning(
+                                f"{worker_label} event_id {event_id} finished without data "
+                                f"(match_url={resolved_match_url or 'unresolved'})"
+                            )
+                    except Exception as e:
+                        logger.error(f"{worker_label} event_id {event_id} failed with exception: {e}")
+                        data = None
+                    finally:
+                        _complete_task(task, data, resolved_match_url)
+
+                    if on_result:
+                        try:
+                            on_result(event_id, data)
+                        except Exception as cb_err:
+                            logger.error(f"{worker_label} on_result callback error for event {event_id}: {cb_err}")
+            finally:
+                await scraper.stop()
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            with _log_prefix(worker_label):
+                loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = [executor.submit(_run_dynamic_worker_sync, idx) for idx in range(1, worker_count + 1)]
+        for future in as_completed(futures):
+            future.result()
+
+    total_success = sum(1 for v in all_results.values() if v is not None)
+    logger.info(
+        f"OddsPortal Parallel summary: Total scraped={total_success}/{len(tasks_with_cache)} "
+        f"(entries in results dict={len(all_results)})"
+    )
     return all_results

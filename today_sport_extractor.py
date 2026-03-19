@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import sofascore_api2  # Import to attach methods to SofaScoreAPI class
 from sofascore_api import api_client
-from repository import EventRepository, OddsRepository
+from repository import EventRepository, OddsRepository, DailyDiscoveryRepository
 from odds_utils import fractional_to_decimal, validate_odds_data
 from timezone_utils import get_local_now_aware
 
@@ -242,26 +242,28 @@ class TodaySportExtractor:
             logger.error(f"Error processing event {event.get('id', 'unknown')}: {e}")
             return False
     
-    def extract_todays_events(self, date: str) -> Dict[str, int]:
+    def extract_todays_events(self, date: str, sports: List[str] = None) -> Dict[str, int]:
         """
         Main function to extract today's events with odds and insert into database.
         
         Args:
             date: Date string in format YYYY-MM-DD
+            sports: Optional list of sports to extract. If None, extracts default sports.
         
         Returns:
             Dict with statistics: {'events_processed': X, 'events_inserted': Y, 'odds_inserted': Z}
         """
 
-        sports = [
-            'basketball',
-            'tennis',
-            'baseball',
-            'ice-hockey',
-            'american-football',
-            'football',
-            'handball',
-        ]
+        if sports is None:
+            sports = [
+                'basketball',
+                'tennis',
+                'baseball',
+                'ice-hockey',
+                'american-football',
+                'football',
+                'handball',
+            ]
         
         logger.info(f"🔍 Starting daily discovery for date: {date}")
         
@@ -281,6 +283,7 @@ class TodaySportExtractor:
                     
                     if not odds_response:
                         logger.warning(f"No odds response for {sport}, skipping")
+                        DailyDiscoveryRepository.update_sport_status(date, sport, 'failed')
                         continue
                     
                     # Step 2: Process odds response to extract event IDs and odds data
@@ -299,6 +302,7 @@ class TodaySportExtractor:
                     
                     if not events_response:
                         logger.warning(f"No events response for {sport}, skipping")
+                        DailyDiscoveryRepository.update_sport_status(date, sport, 'failed')
                         continue
                     
                     # Step 4: Filter events to only those with odds
@@ -339,6 +343,8 @@ class TodaySportExtractor:
                             if validate_odds_data(event_odds):
                                 sport_odds_inserted += 1
                     
+                    DailyDiscoveryRepository.update_sport_status(date, sport, 'completed')
+                    
                     logger.info(f"✅ {sport} completed: {sport_events_inserted}/{len(upcoming_events)} events inserted, {sport_odds_inserted} with odds")
                     
                     # Aggregate statistics
@@ -348,6 +354,7 @@ class TodaySportExtractor:
                     
                 except Exception as e:
                     logger.error(f"Error processing {sport}: {e}")
+                    DailyDiscoveryRepository.update_sport_status(date, sport, 'failed')
                     continue  # Continue with next sport even if one fails
             
             logger.info(f"✅ Daily discovery completed for all sports: {total_events_inserted}/{total_events_processed} events inserted, {total_odds_inserted} with odds")
@@ -367,7 +374,7 @@ class TodaySportExtractor:
 today_sport_extractor = TodaySportExtractor()
 
 
-def run_daily_discovery():
+def run_daily_discovery(sports=None):
     """
     Job function to be called by scheduler.
     Extracts today's events with odds and inserts into database.
@@ -379,7 +386,7 @@ def run_daily_discovery():
         logger.info(f"🚀 Running daily discovery job for {today}")
         
         # Run extraction
-        stats = today_sport_extractor.extract_todays_events(today)
+        stats = today_sport_extractor.extract_todays_events(today, sports)
         
         logger.info(f"📊 Daily discovery stats: {stats}")
         
