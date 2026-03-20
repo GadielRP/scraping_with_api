@@ -19,6 +19,7 @@ try:
     from oddsportal_config import (
         SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
         OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
+        build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
         INSTITUTIONAL_NOISE
     )
     from team_matcher import TeamMatcher
@@ -44,6 +45,40 @@ except ImportError:
     OP_GROUPS = {"1X2": "1X2", "HOME_AWAY": "home-away"}
     OP_PERIODS = {"FT_INC_OT": 1, "FULL_TIME": 2, "1ST_HALF": 3}
     SPORT_SCRAPING_ROUTES = {}
+    def build_op_fragment(group_key: Optional[str], period_key: Optional[str]) -> Optional[str]:
+        if not group_key or not period_key:
+            return None
+        g = OP_GROUPS.get(group_key)
+        p = OP_PERIODS.get(period_key)
+        if g is None or p is None:
+            return None
+        return f"#{g};{p}"
+
+    def build_match_url_with_fragment(match_url: str, group_key: Optional[str], period_key: Optional[str]) -> str:
+        base_url = (match_url or "").split("#", 1)[0].rstrip("/")
+        fragment = build_op_fragment(group_key, period_key)
+        if not fragment:
+            return base_url
+        return f"{base_url}/{fragment}"
+
+    def flatten_sport_scraping_route(sport: Optional[str]) -> List[Dict[str, Any]]:
+        return [{
+            "step_idx": 0,
+            "step_key": "None:FULL_TIME",
+            "group_idx": 0,
+            "period_idx": 0,
+            "group_key": None,
+            "group_display": "1X2",
+            "db_market_group": "1X2",
+            "period_key": "FULL_TIME",
+            "period_display": "Full Time",
+            "db_market_period": "Full Time",
+            "db_market_name": "Full time",
+            "extract_fn": "standard",
+            "betfair_period_index": 0,
+            "betfair_enabled": True,
+            "fragment": None,
+        }]
 
 logger = logging.getLogger(__name__)
 _LOG_CONTEXT = local()
@@ -197,6 +232,16 @@ class MatchOddsData:
     # Legacy compat: populated from first extraction for backward compatibility
     bookie_odds: List[BookieOdds] = field(default_factory=list)
     betfair: Optional[BetfairExchangeOdds] = None
+
+
+@dataclass
+class ScrapeAttemptResult:
+    """Detailed result for one scraping attempt, including resume metadata."""
+    data: Optional[MatchOddsData]
+    resume_state: Optional[Dict[str, Any]]
+    partial_match_data: Optional[MatchOddsData]
+    failed_reason: Optional[str] = None
+    failed_step_idx: Optional[int] = None
 
 
 @dataclass
@@ -751,6 +796,31 @@ class OddsPortalScraper:
             state = await self._collect_match_page_state(page)
             classification = self._classify_match_page_state(state)
             
+            extras_payload = extra or {}
+            resume_manifest = {}
+            for key in [
+                "completed_step_keys",
+                "next_step_idx",
+                "failed_step_key",
+                "failed_reason",
+                "resume_fragment",
+                "partial_extraction_count",
+            ]:
+                if key in extras_payload:
+                    resume_manifest[key] = extras_payload.get(key)
+            if not resume_manifest and isinstance(extras_payload.get("resume_state"), dict):
+                nested_resume = extras_payload["resume_state"]
+                for key in [
+                    "completed_step_keys",
+                    "next_step_idx",
+                    "failed_step_key",
+                    "failed_reason",
+                    "resume_fragment",
+                    "partial_extraction_count",
+                ]:
+                    if key in nested_resume:
+                        resume_manifest[key] = nested_resume.get(key)
+
             manifest = {
                 "timestamp": timestamp,
                 "reason": reason,
@@ -765,7 +835,8 @@ class OddsPortalScraper:
                     "render_timeout": getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000),
                     "shell_grace": getattr(Config, 'ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS', 8000),
                 },
-                "extras": extra or {}
+                "extras": extras_payload,
+                **resume_manifest,
             }
             
             json_path = os.path.join(self.debug_dir, f"{base_name}.json")
@@ -775,6 +846,206 @@ class OddsPortalScraper:
             logger.info(f"💾 Saved debug artifacts for {reason} at {self.debug_dir}/{base_name}.*")
         except Exception as e:
             logger.error(f"Failed to save debug artifacts: {e}")
+
+
+    def _make_initial_resume_state(
+        self,
+        match_url: str,
+        sport: Optional[str],
+        route_steps: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        next_fragment = route_steps[0].get("fragment") if route_steps else None
+        return {
+            "sport": sport,
+            "route_step_count": len(route_steps),
+            "next_step_idx": 0,
+            "completed_step_keys": [],
+            "failed_step_key": None,
+            "failed_group_key": None,
+            "failed_period_key": None,
+            "failed_reason": None,
+            "resume_fragment": next_fragment,
+            "last_completed_fragment": None,
+            "partial_extraction_count": 0,
+        }
+
+    def _normalize_resume_state(
+        self,
+        resume_state: Optional[Dict[str, Any]],
+        sport: Optional[str],
+        route_steps: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        initial_state = self._make_initial_resume_state("", sport, route_steps)
+        if not isinstance(resume_state, dict):
+            return initial_state
+
+        expected_step_count = len(route_steps)
+        if (
+            resume_state.get("sport") != sport
+            or resume_state.get("route_step_count") != expected_step_count
+        ):
+            return initial_state
+
+        step_key_to_idx = {
+            step.get("step_key"): step.get("step_idx", idx)
+            for idx, step in enumerate(route_steps)
+            if step.get("step_key")
+        }
+        ordered_completed: List[str] = []
+        for key in resume_state.get("completed_step_keys", []) or []:
+            if key in step_key_to_idx and key not in ordered_completed:
+                ordered_completed.append(key)
+
+        max_completed_idx = -1
+        if ordered_completed:
+            max_completed_idx = max(step_key_to_idx[key] for key in ordered_completed)
+
+        raw_next_idx = resume_state.get("next_step_idx", 0)
+        next_step_idx = raw_next_idx if isinstance(raw_next_idx, int) else 0
+        next_step_idx = max(next_step_idx, max_completed_idx + 1)
+        next_step_idx = min(max(next_step_idx, 0), expected_step_count)
+
+        failed_step_key = resume_state.get("failed_step_key")
+        if failed_step_key not in step_key_to_idx:
+            failed_step_key = None
+
+        return {
+            "sport": sport,
+            "route_step_count": expected_step_count,
+            "next_step_idx": next_step_idx,
+            "completed_step_keys": ordered_completed,
+            "failed_step_key": failed_step_key,
+            "failed_group_key": resume_state.get("failed_group_key") if failed_step_key else None,
+            "failed_period_key": resume_state.get("failed_period_key") if failed_step_key else None,
+            "failed_reason": resume_state.get("failed_reason") if failed_step_key else None,
+            "resume_fragment": (
+                route_steps[next_step_idx].get("fragment")
+                if next_step_idx < expected_step_count
+                else None
+            ),
+            "last_completed_fragment": resume_state.get("last_completed_fragment"),
+            "partial_extraction_count": int(resume_state.get("partial_extraction_count", 0) or 0),
+        }
+
+    def _mark_step_completed(
+        self,
+        resume_state: Dict[str, Any],
+        step: Dict[str, Any],
+        match_data: MatchOddsData,
+    ) -> None:
+        completed = resume_state.setdefault("completed_step_keys", [])
+        step_key = step.get("step_key")
+        if step_key and step_key not in completed:
+            completed.append(step_key)
+
+        route_count = int(resume_state.get("route_step_count", 0) or 0)
+        next_step_idx = step.get("step_idx", 0) + 1
+        if route_count > 0:
+            next_step_idx = min(next_step_idx, route_count)
+
+        resume_state["next_step_idx"] = next_step_idx
+        resume_state["failed_step_key"] = None
+        resume_state["failed_group_key"] = None
+        resume_state["failed_period_key"] = None
+        resume_state["failed_reason"] = None
+        resume_state["resume_fragment"] = None
+        resume_state["last_completed_fragment"] = step.get("fragment")
+        resume_state["partial_extraction_count"] = len(match_data.extractions)
+
+    def _mark_step_failed(self, resume_state: Dict[str, Any], step: Dict[str, Any], reason: str) -> None:
+        resume_state["failed_step_key"] = step.get("step_key")
+        resume_state["failed_group_key"] = step.get("group_key")
+        resume_state["failed_period_key"] = step.get("period_key")
+        resume_state["failed_reason"] = reason
+        resume_state["resume_fragment"] = step.get("fragment")
+        resume_state["next_step_idx"] = step.get("step_idx", 0)
+        resume_state["partial_extraction_count"] = int(resume_state.get("partial_extraction_count", 0) or 0)
+
+    def _restore_partial_match_data(
+        self,
+        partial_match_data: Optional[MatchOddsData],
+        match_url: str,
+        sport: Optional[str],
+    ) -> MatchOddsData:
+        if isinstance(partial_match_data, MatchOddsData):
+            match_data = partial_match_data
+            match_data.match_url = match_url
+            if sport is not None:
+                match_data.sport = sport
+            if match_data.extractions is None:
+                match_data.extractions = []
+        else:
+            match_data = MatchOddsData(match_url=match_url, sport=sport or "")
+        self._ensure_legacy_match_level_fields(match_data)
+        return match_data
+
+    def _ensure_legacy_match_level_fields(self, match_data: MatchOddsData) -> None:
+        if match_data.extractions:
+            first = match_data.extractions[0]
+            match_data.bookie_odds = first.bookie_odds
+            match_data.betfair = first.betfair
+        else:
+            match_data.bookie_odds = []
+            match_data.betfair = None
+
+    def _log_structured_recap(self, match_data: MatchOddsData) -> None:
+        """Emit a readable recap of all extracted markets for debugging."""
+        if not match_data.extractions:
+            return
+
+        match_label = f"{match_data.home_team} vs {match_data.away_team}"
+        logger.info(f"[RECAP] -- ODDS RECAP: {match_label} --")
+
+        for ext in match_data.extractions:
+            handicap_str = ""
+            if ext.bookie_odds and getattr(ext.bookie_odds[0], "handicap", None):
+                handicap_str = f" [{ext.bookie_odds[0].handicap}]"
+            logger.info(
+                f"   [MARKET] {ext.market_group} | {ext.market_period} | "
+                f"{ext.market_name}{handicap_str}"
+            )
+
+            is_ou = ext.market_group == "Over/Under"
+            is_ah = ext.market_group == "Asian Handicap"
+            if is_ou:
+                col_labels = ("Over", "Under")
+            elif is_ah:
+                col_labels = ("1", "2")
+            else:
+                col_labels = ("1", "X", "2")
+
+            for b in ext.bookie_odds:
+                if is_ou or is_ah:
+                    current = f"{col_labels[0]}={b.odds_1 or '-'} {col_labels[-1]}={b.odds_2 or '-'}"
+                    opening = f"{col_labels[0]}={b.initial_odds_1 or '-'} {col_labels[-1]}={b.initial_odds_2 or '-'}"
+                else:
+                    current = f"1={b.odds_1 or '-'} X={b.odds_x or '-'} 2={b.odds_2 or '-'}"
+                    opening = f"1={b.initial_odds_1 or '-'} X={b.initial_odds_x or '-'} 2={b.initial_odds_2 or '-'}"
+                logger.info(f"      {b.name}: {current} (open: {opening})")
+
+            if ext.betfair:
+                bf = ext.betfair
+                if is_ou or is_ah:
+                    back_str = f"{col_labels[0]}={bf.back_1 or '-'} {col_labels[-1]}={bf.back_2 or '-'}"
+                    lay_str = f"{col_labels[0]}={bf.lay_1 or '-'} {col_labels[-1]}={bf.lay_2 or '-'}"
+                else:
+                    back_str = f"1={bf.back_1 or '-'} X={bf.back_x or '-'} 2={bf.back_2 or '-'}"
+                    lay_str = f"1={bf.lay_1 or '-'} X={bf.lay_x or '-'} 2={bf.lay_2 or '-'}"
+                logger.info(f"      Betfair Back: {back_str} | Lay: {lay_str}")
+
+        logger.info(f"[RECAP] -- END RECAP: {match_label} --")
+
+    def _resume_state_for_debug(self, resume_state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        if not isinstance(resume_state, dict):
+            return {}
+        return {
+            "completed_step_keys": list(resume_state.get("completed_step_keys", []) or []),
+            "next_step_idx": resume_state.get("next_step_idx"),
+            "failed_step_key": resume_state.get("failed_step_key"),
+            "failed_reason": resume_state.get("failed_reason"),
+            "resume_fragment": resume_state.get("resume_fragment"),
+            "partial_extraction_count": resume_state.get("partial_extraction_count"),
+        }
 
 
 
@@ -1338,22 +1609,79 @@ class OddsPortalScraper:
             return None
 
     async def scrape_match(self, match_url: str, sport: str = None, clear_state: bool = False) -> Optional[MatchOddsData]:
+        """Compatibility wrapper for callers expecting only MatchOddsData."""
+        attempt = await self.scrape_match_attempt(
+            match_url,
+            sport=sport,
+            clear_state=clear_state,
+        )
+        return attempt.data
+
+    async def scrape_match_attempt(
+        self,
+        match_url: str,
+        sport: str = None,
+        clear_state: bool = False,
+        resume_state: Optional[Dict[str, Any]] = None,
+        partial_match_data: Optional[MatchOddsData] = None,
+    ) -> ScrapeAttemptResult:
         """
-        Navigate to a match page and extract odds for all configured market periods.
-        
-        Creates a fresh BrowserContext per event when fresh_context_per_event is enabled,
-        ensuring complete isolation between events within the same browser.
-        
-        Args:
-            match_url: Full OddsPortal match URL
-            sport: Sport string from SEASON_ODDSPORTAL_MAP (e.g. "football", "basketball")
-                   Used to determine scraping route from SPORT_SCRAPING_ROUTES.
-                   If None, falls back to legacy single-extraction behavior.
+        Scrape a match while preserving route-step progress so retries can resume
+        from the failed `group_key + period_key` fragment.
         """
+        route_steps = flatten_sport_scraping_route(sport)
+        route_step_count = len(route_steps)
+        state_is_consistent = (
+            isinstance(resume_state, dict)
+            and resume_state.get("sport") == sport
+            and resume_state.get("route_step_count") == route_step_count
+        )
+
+        if not state_is_consistent:
+            # Resume state is source of truth for avoiding duplicates.
+            partial_match_data = None
+
+        normalized_resume_state = self._normalize_resume_state(resume_state, sport, route_steps)
+        match_data = self._restore_partial_match_data(partial_match_data, match_url, sport)
+        normalized_resume_state["partial_extraction_count"] = len(match_data.extractions)
+
+        if route_step_count == 0:
+            self._ensure_legacy_match_level_fields(match_data)
+            self._log_structured_recap(match_data)
+
+            return ScrapeAttemptResult(
+                data=match_data,
+                resume_state=normalized_resume_state,
+                partial_match_data=match_data,
+            )
+
+        start_step_idx = normalized_resume_state.get("next_step_idx", 0)
+        if not isinstance(start_step_idx, int):
+            start_step_idx = 0
+        start_step_idx = min(max(start_step_idx, 0), route_step_count)
+        normalized_resume_state["next_step_idx"] = start_step_idx
+
+        if start_step_idx >= route_step_count:
+            normalized_resume_state["resume_fragment"] = None
+            self._ensure_legacy_match_level_fields(match_data)
+            self._log_structured_recap(match_data)
+            return ScrapeAttemptResult(
+                data=match_data,
+                resume_state=normalized_resume_state,
+                partial_match_data=match_data,
+            )
+
+        start_step = route_steps[start_step_idx]
+        normalized_resume_state["resume_fragment"] = start_step.get("fragment")
+        initial_url = build_match_url_with_fragment(
+            match_url,
+            start_step.get("group_key"),
+            start_step.get("period_key"),
+        )
+
         if not self.browser:
             await self.start()
 
-        # --- Fresh context lifecycle ---
         previous_context = self.context
         fresh_context = None
         page = None
@@ -1364,14 +1692,19 @@ class OddsPortalScraper:
                     fresh_context = await self._create_fresh_context()
                 except Exception as ctx_err:
                     logger.error(f"❌ Failed to create fresh context for {match_url}: {ctx_err}")
-                    return None
+                    return ScrapeAttemptResult(
+                        data=None,
+                        resume_state=normalized_resume_state,
+                        partial_match_data=match_data,
+                        failed_reason="CONTEXT_CREATE_FAILED",
+                        failed_step_idx=start_step_idx,
+                    )
                 self.context = fresh_context
                 logger.info(
                     f"🔒 Fresh context created (session-{self._session_id}, "
                     f"ignore_https_errors={self._ignore_https_errors})"
                 )
             elif not self.context:
-                # Fallback: create a persistent context if fresh mode is off and none exists
                 self.context = await self._create_fresh_context()
 
             if clear_state and self.context:
@@ -1380,73 +1713,42 @@ class OddsPortalScraper:
             page = await self.context.new_page()
         except Exception as setup_err:
             logger.error(f"❌ Failed to set up page for {match_url}: {setup_err}")
-            # Clean up fresh context if page creation failed
             if fresh_context:
                 try:
                     await fresh_context.close()
                 except Exception:
                     pass
                 self.context = previous_context
-            return None
+            return ScrapeAttemptResult(
+                data=None,
+                resume_state=normalized_resume_state,
+                partial_match_data=match_data,
+                failed_reason="PAGE_SETUP_FAILED",
+                failed_step_idx=start_step_idx,
+            )
 
         try:
             t0 = time.perf_counter()
-            
-            # Resolve scraping route for this sport
-            route = SPORT_SCRAPING_ROUTES.get(sport) if sport else None
-            groups = []
-            if route and "groups" in route:
-                groups = route["groups"]
-                logger.info(f"🗺️ Scraping route for '{sport}': {len(groups)} groups")
-            elif route:
-                # Legacy fallback for old config format
-                group_key = route.get("primary_group")
-                groups = [{
-                    "group_key": group_key,
-                    "db_market_group": route.get("db_market_group", "1X2"),
-                    "periods": route.get("periods", [("FULL_TIME", "Full-time", "Full time")]),
-                    "betfair_period_index": route.get("betfair_period_index", 0),
-                    "extract_fn": "standard"
-                }]
-                logger.info(f"🗺️ Legacy scraping route for '{sport}'")
-            else:
-                groups = [{
-                    "group_key": None,
-                    "db_market_group": "1X2",
-                    "periods": [("FULL_TIME", "Full-time", "Full time")],
-                    "betfair_period_index": 0,
-                    "extract_fn": "standard"
-                }]
-                logger.info(f"⚠️ No scraping route for sport='{sport}', using legacy single-extraction mode")
-            
-            # Build initial URL with fragment for the first period of the FIRST group
-            first_group = groups[0] if groups else None
-            if first_group and first_group.get("group_key") and first_group.get("periods"):
-                period_key = first_group["periods"][0][0]
-                fragment = f"#{OP_GROUPS[first_group['group_key']]};{OP_PERIODS[period_key]}"
-                # Robustly strip any existing fragment or trailing slash from base URL
-                base_url = match_url.split('#')[0].rstrip('/')
-                initial_url = f"{base_url}/{fragment}"
-            else:
-                initial_url = match_url
-            
+            logger.info(
+                f"🗺️ Scraping route for '{sport}': {route_step_count} steps "
+                f"(resume step={start_step_idx}, fragment={normalized_resume_state.get('resume_fragment')})"
+            )
             logger.info(f"🌐 Navigating to match: {initial_url}")
-            
-            # --- Per-event Debug Folder Setup ---
-            # We save the original debug_dir and reset it later.
-            # We wait until after extraction to know the team names, but we can pre-calculate 
-            # if we have match_url info or wait until teams are parsed.
-            # To be robust, we'll do it as soon as we have team names.
+
             self._original_debug_dir = self.debug_dir
             self._event_debug_dir_created = False
-            
-            # Navigate to match page
+
             response = None
             e_goto = None
             goto_error_code = None
             goto_error_summary = None
             try:
-                response = await self._goto_fresh(page, initial_url, wait_until="domcontentloaded", timeout=Config.ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS)
+                response = await self._goto_fresh(
+                    page,
+                    initial_url,
+                    wait_until="domcontentloaded",
+                    timeout=Config.ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS,
+                )
             except Exception as e:
                 e_goto = e
                 goto_error_code, goto_error_summary = self._classify_goto_exception(e)
@@ -1458,59 +1760,67 @@ class OddsPortalScraper:
 
             t_goto = time.perf_counter()
             log_timing(f"Match page load ({initial_url}) took {t_goto - t0:.2f}s")
-            
-            # --- Fast Fail & Smart Wait Implementation ---
-            # Step 1: If goto threw, inspect the page before deciding whether to bail.
-            # Only a truly blank page (NO_SHELL) fails immediately.
-            # Everything else (including MISSING_EVENT_CONTAINER, which can be
-            # transient during SPA hydration) falls through to the smart-wait race.
+
             if e_goto is not None:
                 state = await self._collect_match_page_state(page)
                 classification = self._classify_match_page_state(state)
                 state_summary = self._format_page_state_summary(state, classification)
                 logger.info(f"Page state after navigation exception: {state_summary}")
-                
+
                 if classification == "NO_SHELL":
                     reason_prefix = goto_error_code or "GOTO_FAILED"
                     reason = f"{reason_prefix}_NO_SHELL"
                     logger.error(f"FAST FAIL: {reason}. {state_summary}")
                     if getattr(Config, 'ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT', True):
-                        await self._save_debug_artifacts(page, reason, {"error": str(e_goto)})
-                    await page.close()
-                    return None
+                        await self._save_debug_artifacts(
+                            page,
+                            reason,
+                            {"error": str(e_goto), **self._resume_state_for_debug(normalized_resume_state)},
+                        )
+                    return ScrapeAttemptResult(
+                        data=None,
+                        resume_state=normalized_resume_state,
+                        partial_match_data=match_data,
+                        failed_reason=reason,
+                        failed_step_idx=start_step_idx,
+                    )
                 elif classification == "DATA_RENDERED":
                     logger.info("Navigation threw, but data is already rendered. Continuing.")
                 else:
-                    # Shell is present (possibly hydrating). Don't fail — let the
-                    # smart-wait race below be the final arbiter.
                     logger.info(
                         f"Navigation exception left page in {classification}. "
-                        f"Falling through to smart-wait/render checks."
+                        "Falling through to smart-wait/render checks."
                     )
-            
-            # Step 2: Cloudflare / WAF block check
+
             try:
                 page_title = await page.title()
                 if any(blocked in page_title for blocked in ["Access Denied", "Just a moment...", "Attention Required!", "Security check", "Cloudflare"]):
                     reason = "CLOUDFLARE_BLOCK"
                     logger.error(f"FAST FAIL: {reason}")
-                    await self._save_debug_artifacts(page, reason)
-                    await page.close()
-                    return None
+                    await self._save_debug_artifacts(page, reason, self._resume_state_for_debug(normalized_resume_state))
+                    return ScrapeAttemptResult(
+                        data=None,
+                        resume_state=normalized_resume_state,
+                        partial_match_data=match_data,
+                        failed_reason=reason,
+                        failed_step_idx=start_step_idx,
+                    )
             except Exception:
                 pass
 
-            # Step 3: HTTP response status check (only when goto succeeded)
             if response is not None and response.status >= 400:
                 reason = f"HTTP_{response.status}"
                 logger.error(f"FAST FAIL: {reason}")
-                await self._save_debug_artifacts(page, reason)
-                await page.close()
-                return None
+                await self._save_debug_artifacts(page, reason, self._resume_state_for_debug(normalized_resume_state))
+                return ScrapeAttemptResult(
+                    data=None,
+                    resume_state=normalized_resume_state,
+                    partial_match_data=match_data,
+                    failed_reason=reason,
+                    failed_step_idx=start_step_idx,
+                )
 
-            # Step 4: Smart Wait Race — JS fast-fail observer vs market render
-            first_extract_fn = (first_group or {}).get("extract_fn", "standard")
-            
+            first_extract_fn = start_step.get("extract_fn", "standard")
             js_timeout = getattr(Config, 'ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS', 15000)
             js_observer = f"""
             () => new Promise(resolve => {{
@@ -1519,7 +1829,7 @@ class OddsPortalScraper:
                     const shell2 = document.querySelector('ul.visible-links.odds-tabs li');
                     const shell3 = document.querySelector('div[data-testid="kickoff-events-nav"]');
                     const has_shell = shell1 || shell2 || shell3;
-                    
+
                     const skeleton = document.querySelector('div.animate-pulse.bg-gray-light');
                     const data1 = document.querySelector('div.border-black-borders.flex.h-9');
                     const data2 = document.querySelector('div[data-testid="over-under-collapsed-row"]');
@@ -1527,7 +1837,7 @@ class OddsPortalScraper:
                     const data4 = document.querySelector('div[data-testid="over-under-expanded-row"]');
                     const data5 = document.querySelector('div.odds-cell');
                     const has_data = data1 || data2 || data3 || data4 || data5;
-                    
+
                     if (!has_data) {{
                         if (!shell1) {{
                             resolve('Missing event-container');
@@ -1546,48 +1856,68 @@ class OddsPortalScraper:
                 }}, {js_timeout});
             }})
             """
-            
+
             fast_fail_task = asyncio.create_task(page.evaluate(js_observer))
-            render_task = asyncio.create_task(self._wait_for_market_render(page, first_extract_fn, timeout_ms=getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000)))
-            
+            render_task = asyncio.create_task(
+                self._wait_for_market_render(
+                    page,
+                    first_extract_fn,
+                    timeout_ms=getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000),
+                )
+            )
+
             done, pending = await asyncio.wait([fast_fail_task, render_task], return_when=asyncio.FIRST_COMPLETED)
-            
-            for p_task in pending:
-                p_task.cancel()
-                
+            for pending_task in pending:
+                pending_task.cancel()
+
             if fast_fail_task in done:
                 ff_reason = fast_fail_task.result()
                 if ff_reason is not None:
-                    # Fast fail JS triggered — shell-grace recoverable states get one more chance
                     if ff_reason in ["Shell loaded, skeleton persisted, no data rows", "Shell loaded, no data rows"]:
                         logger.info(f"⏳ JS Observer detected '{ff_reason}'. Routing to shell-grace logic.")
                         if getattr(Config, 'ODDSPORTAL_ENABLE_SHELL_GRACE', True):
-                            rendered = await self._wait_for_market_render(page, first_extract_fn, timeout_ms=getattr(Config, 'ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS', 8000))
+                            rendered = await self._wait_for_market_render(
+                                page,
+                                first_extract_fn,
+                                timeout_ms=getattr(Config, 'ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS', 8000),
+                            )
                             if not rendered:
                                 reason_code = "SHELL_WITH_SKELETON_NO_DATA" if "skeleton persisted" in ff_reason else "SHELL_WITH_NAV_NO_DATA"
                                 logger.error(f"FAST FAIL: {reason_code} (after shell grace).")
-                                await self._save_debug_artifacts(page, reason_code)
-                                await page.close()
-                                return None
-                            else:
-                                logger.info("✅ Shell-grace successful.")
+                                await self._save_debug_artifacts(page, reason_code, self._resume_state_for_debug(normalized_resume_state))
+                                return ScrapeAttemptResult(
+                                    data=None,
+                                    resume_state=normalized_resume_state,
+                                    partial_match_data=match_data,
+                                    failed_reason=reason_code,
+                                    failed_step_idx=start_step_idx,
+                                )
+                            logger.info("✅ Shell-grace successful.")
                         else:
                             reason_code = "SHELL_WITH_SKELETON_NO_DATA" if "skeleton persisted" in ff_reason else "SHELL_WITH_NAV_NO_DATA"
                             logger.error(f"FAST FAIL: {reason_code} (shell-grace disabled).")
-                            await self._save_debug_artifacts(page, reason_code)
-                            await page.close()
-                            return None
+                            await self._save_debug_artifacts(page, reason_code, self._resume_state_for_debug(normalized_resume_state))
+                            return ScrapeAttemptResult(
+                                data=None,
+                                resume_state=normalized_resume_state,
+                                partial_match_data=match_data,
+                                failed_reason=reason_code,
+                                failed_step_idx=start_step_idx,
+                            )
                     else:
-                        # Hard fast fails (Missing event-container, Event container stayed empty, etc.)
                         reason_code = "FAST_FAIL_" + ff_reason.replace(" ", "_").upper()
                         state = await self._collect_match_page_state(page)
                         summary = self._format_page_state_summary(state, self._classify_match_page_state(state))
                         logger.error(f"FAST FAIL: {reason_code}. {summary}")
-                        await self._save_debug_artifacts(page, reason_code)
-                        await page.close()
-                        return None
-            
-            # If render_task finished first, check its success
+                        await self._save_debug_artifacts(page, reason_code, self._resume_state_for_debug(normalized_resume_state))
+                        return ScrapeAttemptResult(
+                            data=None,
+                            resume_state=normalized_resume_state,
+                            partial_match_data=match_data,
+                            failed_reason=reason_code,
+                            failed_step_idx=start_step_idx,
+                        )
+
             if render_task in done:
                 rendered = render_task.result()
                 if not rendered:
@@ -1596,17 +1926,17 @@ class OddsPortalScraper:
                     state_summary = self._format_page_state_summary(state, classification)
                     reason = f"MATCH_RENDER_TIMEOUT_{classification}"
                     logger.error(f"❌ Match page failure: {reason}. {state_summary}")
-                    await self._save_debug_artifacts(page, reason)
-                    await page.close()
-                    return None
+                    await self._save_debug_artifacts(page, reason, self._resume_state_for_debug(normalized_resume_state))
+                    return ScrapeAttemptResult(
+                        data=None,
+                        resume_state=normalized_resume_state,
+                        partial_match_data=match_data,
+                        failed_reason=reason,
+                        failed_step_idx=start_step_idx,
+                    )
 
             log_timing(f"Primary rendering + wait race took {time.perf_counter() - t_goto:.2f}s")
-            # --- End Fast Fail & Smart Wait ---
-            
-            t_wait = time.perf_counter()
-            log_timing(f"Waiting for bookmaker rows selector took {t_wait - t_goto:.2f}s")
-            
-            # Handle cookie/consent banner
+
             t_cookie = time.perf_counter()
             for btn_sel in [
                 "#onetrust-accept-btn-handler",
@@ -1625,258 +1955,244 @@ class OddsPortalScraper:
                 except Exception:
                     continue
             log_timing(f"Dismissing cookie banners took {time.perf_counter() - t_cookie:.2f}s")
-            
-            # Scroll to load lazy elements
+
             await page.evaluate("window.scrollTo(0, 500)")
             await asyncio.sleep(1.0)
-            
 
-            
-            # ========================================
-            # MULTI-GROUP & MULTI-PERIOD EXTRACTION
-            # ========================================
-            match_data = MatchOddsData(match_url=match_url, sport=sport or "")
-            
-            for group_idx, group_cfg in enumerate(groups):
-                group_key = group_cfg.get("group_key")
-                db_market_group = group_cfg.get("db_market_group", "1X2")
-                periods = group_cfg.get("periods", [])
-                betfair_period_idx = group_cfg.get("betfair_period_index")
-                extract_fn = group_cfg.get("extract_fn", "standard")
-                
-                logger.info(f"📑 Starting extraction for group: {db_market_group} ({len(periods)} periods)")
-                
-                # Switch to market group tab (skip for the first group, it is already loaded via initial URL fragment)
-                if group_idx > 0 and group_key:
-                    tab_label = OP_GROUPS_DISPLAY.get(group_key, group_key)
-                    success = await self._click_market_group_tab(page, tab_label)
-                    
-                    if not success:
-                        logger.error(f"Group switch failed for {group_key}; aborting match so the caller can restart with a fresh browser session")
-                        await self._save_debug_artifacts(page, f"GROUP_SWITCH_FAILED_{group_key}")
-                        return None
-                    if not success:
-                        logger.warning(f"⚠️ Could not switch to group {group_key}, skipping")
-                        continue
-                
-                for period_idx, (period_key, db_market_period, db_market_name) in enumerate(periods):
-                    t_period = time.perf_counter()
-                    logger.info(f"📊 [{period_idx+1}/{len(periods)}] Extracting: {db_market_group} / {db_market_period}")
-                
-                    # Navigate to this period's tab (skip for first period since we already loaded it)
-                    if period_idx > 0 and group_key:
+            completed_step_keys = set(normalized_resume_state.get("completed_step_keys", []))
+            for step in route_steps[start_step_idx:]:
+                step_idx = step.get("step_idx", 0)
+                step_key = step.get("step_key")
+                group_key = step.get("group_key")
+                period_key = step.get("period_key")
+                db_market_group = step.get("db_market_group", "1X2")
+                db_market_period = step.get("db_market_period", "Full Time")
+                db_market_name = step.get("db_market_name", db_market_period)
+
+                if step_key in completed_step_keys:
+                    normalized_resume_state["next_step_idx"] = max(
+                        normalized_resume_state.get("next_step_idx", 0),
+                        step_idx + 1,
+                    )
+                    continue
+
+                t_period = time.perf_counter()
+                logger.info(
+                    f"📊 [step {step_idx + 1}/{route_step_count}] Extracting: "
+                    f"{db_market_group} / {db_market_period}"
+                )
+
+                is_first_step_in_attempt = step_idx == start_step_idx
+                prev_step = route_steps[step_idx - 1] if step_idx > 0 else None
+
+                if not is_first_step_in_attempt:
+                    if group_key and (not prev_step or prev_step.get("group_key") != group_key):
+                        tab_label = step.get("group_display") or OP_GROUPS_DISPLAY.get(group_key, group_key)
+                        switched_group = await self._click_market_group_tab(page, tab_label)
+                        if not switched_group:
+                            reason_code = f"GROUP_SWITCH_FAILED_{group_key}"
+                            self._mark_step_failed(normalized_resume_state, step, reason_code)
+                            debug_extra = {"step": step, **self._resume_state_for_debug(normalized_resume_state)}
+                            await self._save_debug_artifacts(page, reason_code, debug_extra)
+                            return ScrapeAttemptResult(
+                                data=None,
+                                resume_state=normalized_resume_state,
+                                partial_match_data=match_data,
+                                failed_reason=reason_code,
+                                failed_step_idx=step_idx,
+                            )
+
+                    should_click_period = False
+                    if group_key:
+                        if prev_step and prev_step.get("group_key") == group_key:
+                            should_click_period = step.get("period_key") != prev_step.get("period_key")
+                        elif step.get("period_idx", 0) > 0:
+                            should_click_period = True
+
+                    if should_click_period:
                         logger.info(f"🔀 Switching to period: {db_market_period} (tab click)")
                         t_frag = time.perf_counter()
-                    
-                        tab_clicked = await self._click_period_tab(page, db_market_period)
-                    
+                        tab_clicked = await self._click_period_tab(page, step.get("period_display", db_market_period))
                         if not tab_clicked:
-                            logger.error(f"Period switch failed for {db_market_period}; aborting match so the caller can restart with a fresh browser session")
-                            await self._save_debug_artifacts(page, f"PERIOD_SWITCH_FAILED_{period_key}")
-                            return None
-                    
-                        if not tab_clicked:
-                            logger.warning(f"⚠️ Could not switch to period {db_market_period}, skipping")
-                            continue
-                    
+                            reason_code = f"PERIOD_SWITCH_FAILED_{period_key}"
+                            self._mark_step_failed(normalized_resume_state, step, reason_code)
+                            debug_extra = {"step": step, **self._resume_state_for_debug(normalized_resume_state)}
+                            await self._save_debug_artifacts(page, reason_code, debug_extra)
+                            return ScrapeAttemptResult(
+                                data=None,
+                                resume_state=normalized_resume_state,
+                                partial_match_data=match_data,
+                                failed_reason=reason_code,
+                                failed_step_idx=step_idx,
+                            )
                         log_timing(f"Period tab-click navigation to {period_key} took {time.perf_counter() - t_frag:.2f}s")
-                
-                    # Extract current/final odds via JS
-                    t_extract = time.perf_counter()
-                    if extract_fn == "over_under":
-                        period_data = await self._extract_data_over_under(page, match_url)
-                    elif extract_fn == "asian_handicap":
-                        period_data = await self._extract_data_asian_handicap(page, match_url)
-                    else:
-                        period_data = await self._extract_data(page, match_url)
-                    log_timing(f"JS extraction for {db_market_period} took {time.perf_counter() - t_extract:.2f}s")
-                
-                    if not period_data:
-                        logger.error(f"No data extracted for period {db_market_period}; aborting match so the caller can restart with a fresh browser session")
-                        await self._save_debug_artifacts(page, f"PERIOD_DATA_EMPTY_{period_key}")
-                        return None
-                
-                    # Populate match-level team names from first extraction
-                    if period_idx == 0:
-                        match_data.home_team = period_data.home_team
-                        match_data.away_team = period_data.away_team
 
-                        # Create subfolders for debugging if requested
-                        if self.debug_dir and not self._event_debug_dir_created:
-                            slug = f"{match_data.home_team}-vs-{match_data.away_team}".lower().replace(" ", "-").replace("/", "-")
-                            event_debug_dir = os.path.join(self.debug_dir, f"debug_{slug}")
-                            try:
-                                os.makedirs(event_debug_dir, exist_ok=True)
-                                self.debug_dir = event_debug_dir
-                                self._event_debug_dir_created = True
-                                logger.info(f"📂 Event debug directory: {self.debug_dir}")
-                            except Exception as e:
-                                logger.warning(f"⚠️ Failed to create event debug directory: {e}")
-                
-                    logger.info(f"✅ Extracted {len(period_data.bookie_odds)} bookies for {db_market_period}")
-                
-                    # --- Opening odds via hover ---
-                    # Find highest-priority bookie for hover extraction
-                    target_bookie_obj = None
-                    for priority_name in PRIORITY_BOOKIES:
-                        for b in period_data.bookie_odds:
-                            if priority_name.lower() in b.name.lower() or b.name.lower() in priority_name.lower():
-                                target_bookie_obj = b
-                                break
-                        if target_bookie_obj:
-                            break
-                
-                    if target_bookie_obj:
-                        logger.info(f"🎯 Extracting opening odds via hover for: {target_bookie_obj.name} ({db_market_period})")
-                        t_hover = time.perf_counter()
-                        opening = await self._extract_opening_odds_for_bookie(page, target_bookie_obj.name)
-                        log_timing(f"Hover extraction for {target_bookie_obj.name} ({db_market_period}) took {time.perf_counter() - t_hover:.2f}s")
-                        
-                        is_ou = db_market_group == "Over/Under"
-                        lbl_1 = "Over" if is_ou else "1"
-                        lbl_2 = "Under" if is_ou else "2"
-                        lbl_x = "X=" + str(opening.get('X')) + " " if opening and not is_ou else ""
-                        
-                        if opening:
-                            if opening.get('1'):
-                                target_bookie_obj.initial_odds_1 = opening['1'][0]
-                                target_bookie_obj.movement_odds_time = opening['1'][1]
-                            if opening.get('X'):
-                                target_bookie_obj.initial_odds_x = opening['X'][0]
-                                if not getattr(target_bookie_obj, 'movement_odds_time', None) and opening['X'][1]:
-                                    target_bookie_obj.movement_odds_time = opening['X'][1]
-                            if opening.get('2'):
-                                target_bookie_obj.initial_odds_2 = opening['2'][0]
-                                if not getattr(target_bookie_obj, 'movement_odds_time', None) and opening['2'][1]:
-                                    target_bookie_obj.movement_odds_time = opening['2'][1]
-                            
-                            logger.info(f"✅ Opening odds ({db_market_period}): {lbl_1}={target_bookie_obj.initial_odds_1} {lbl_x}{lbl_2}={target_bookie_obj.initial_odds_2} (Time: {target_bookie_obj.movement_odds_time})")
-                        else:
-                            logger.warning(f"⚠️ Could not extract opening odds for {target_bookie_obj.name} ({db_market_period})")
-                    else:
-                        logger.info(f"ℹ️ No priority bookie found for {db_market_period}, skipping opening odds hover")
-                
-                    # Betfair extraction — only on the designated period
-                    extraction_betfair = None
-                    if period_idx == betfair_period_idx and period_data.betfair:
-                        logger.info(f"🎯 Extracting Betfair Exchange opening odds via hover ({db_market_period})")
-                        t_bf = time.perf_counter()
-                        bf_opening = await self._extract_opening_odds_betfair(page)
-                        log_timing(f"Betfair hover extraction ({db_market_period}) took {time.perf_counter() - t_bf:.2f}s")
-                        if bf_opening:
-                            # Update back odds
-                            if bf_opening.get('back_1'):
-                                period_data.betfair.initial_back_1 = bf_opening['back_1'][0]
-                                period_data.betfair.movement_odds_time = bf_opening['back_1'][1]
-                            if bf_opening.get('back_x'):
-                                period_data.betfair.initial_back_x = bf_opening['back_x'][0]
-                            if bf_opening.get('back_2'):
-                                period_data.betfair.initial_back_2 = bf_opening['back_2'][0]
-                                
-                            # Update lay odds
-                            if bf_opening.get('lay_1'):
-                                period_data.betfair.initial_lay_1 = bf_opening['lay_1'][0]
-                            if bf_opening.get('lay_x'):
-                                period_data.betfair.initial_lay_x = bf_opening['lay_x'][0]
-                            if bf_opening.get('lay_2'):
-                                period_data.betfair.initial_lay_2 = bf_opening['lay_2'][0]
-                                
-                            logger.info(f"✅ Betfair opening odds ({db_market_period}):")
-                            logger.info(f"   Back: 1={period_data.betfair.initial_back_1} X={period_data.betfair.initial_back_x} 2={period_data.betfair.initial_back_2} (Time: {period_data.betfair.movement_odds_time})")
-                            logger.info(f"   Lay:  1={period_data.betfair.initial_lay_1} X={period_data.betfair.initial_lay_x} 2={period_data.betfair.initial_lay_2}")
-                        else:
-                            logger.warning(f"⚠️ Could not extract Betfair Exchange opening odds ({db_market_period})")
-                        extraction_betfair = period_data.betfair
-                
-                    # Wrap into MarketExtraction
-                    extraction = MarketExtraction(
-                        market_group=db_market_group,
-                        market_period=db_market_period,
-                        market_name=db_market_name,
-                        bookie_odds=period_data.bookie_odds,
-                        betfair=extraction_betfair,
+                extract_fn = step.get("extract_fn", "standard")
+                t_extract = time.perf_counter()
+                if extract_fn == "over_under":
+                    period_data = await self._extract_data_over_under(page, match_url)
+                elif extract_fn == "asian_handicap":
+                    period_data = await self._extract_data_asian_handicap(page, match_url)
+                else:
+                    period_data = await self._extract_data(page, match_url)
+                log_timing(f"JS extraction for {db_market_period} took {time.perf_counter() - t_extract:.2f}s")
+
+                if not period_data:
+                    reason_code = f"PERIOD_DATA_EMPTY_{period_key}"
+                    self._mark_step_failed(normalized_resume_state, step, reason_code)
+                    debug_extra = {"step": step, **self._resume_state_for_debug(normalized_resume_state)}
+                    await self._save_debug_artifacts(page, reason_code, debug_extra)
+                    return ScrapeAttemptResult(
+                        data=None,
+                        resume_state=normalized_resume_state,
+                        partial_match_data=match_data,
+                        failed_reason=reason_code,
+                        failed_step_idx=step_idx,
                     )
-                    match_data.extractions.append(extraction)
-                    log_timing(f"Total period extraction for {db_market_period} took {time.perf_counter() - t_period:.2f}s")
-            
-            # ========================================
-            # LEGACY COMPAT: populate top-level fields from first extraction
-            # ========================================
-            if match_data.extractions:
-                first = match_data.extractions[0]
-                match_data.bookie_odds = first.bookie_odds
-                match_data.betfair = first.betfair
-            
+
+                if match_data.home_team in (None, "", "Unknown"):
+                    match_data.home_team = period_data.home_team
+                if match_data.away_team in (None, "", "Unknown"):
+                    match_data.away_team = period_data.away_team
+
+                if (
+                    self.debug_dir
+                    and not self._event_debug_dir_created
+                    and match_data.home_team
+                    and match_data.away_team
+                ):
+                    slug = f"{match_data.home_team}-vs-{match_data.away_team}".lower().replace(" ", "-").replace("/", "-")
+                    event_debug_dir = os.path.join(self.debug_dir, f"debug_{slug}")
+                    try:
+                        os.makedirs(event_debug_dir, exist_ok=True)
+                        self.debug_dir = event_debug_dir
+                        self._event_debug_dir_created = True
+                        logger.info(f"📂 Event debug directory: {self.debug_dir}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to create event debug directory: {e}")
+
+                logger.info(f"✅ Extracted {len(period_data.bookie_odds)} bookies for {db_market_period}")
+
+                target_bookie_obj = None
+                for priority_name in PRIORITY_BOOKIES:
+                    for b in period_data.bookie_odds:
+                        if priority_name.lower() in b.name.lower() or b.name.lower() in priority_name.lower():
+                            target_bookie_obj = b
+                            break
+                    if target_bookie_obj:
+                        break
+
+                if target_bookie_obj:
+                    logger.info(f"🎯 Extracting opening odds via hover for: {target_bookie_obj.name} ({db_market_period})")
+                    t_hover = time.perf_counter()
+                    opening = await self._extract_opening_odds_for_bookie(page, target_bookie_obj.name)
+                    log_timing(f"Hover extraction for {target_bookie_obj.name} ({db_market_period}) took {time.perf_counter() - t_hover:.2f}s")
+
+                    is_ou = db_market_group == "Over/Under"
+                    lbl_1 = "Over" if is_ou else "1"
+                    lbl_2 = "Under" if is_ou else "2"
+                    lbl_x = "X=" + str(opening.get('X')) + " " if opening and not is_ou else ""
+
+                    if opening:
+                        if opening.get('1'):
+                            target_bookie_obj.initial_odds_1 = opening['1'][0]
+                            target_bookie_obj.movement_odds_time = opening['1'][1]
+                        if opening.get('X'):
+                            target_bookie_obj.initial_odds_x = opening['X'][0]
+                            if not getattr(target_bookie_obj, 'movement_odds_time', None) and opening['X'][1]:
+                                target_bookie_obj.movement_odds_time = opening['X'][1]
+                        if opening.get('2'):
+                            target_bookie_obj.initial_odds_2 = opening['2'][0]
+                            if not getattr(target_bookie_obj, 'movement_odds_time', None) and opening['2'][1]:
+                                target_bookie_obj.movement_odds_time = opening['2'][1]
+                        logger.info(f"✅ Opening odds ({db_market_period}): {lbl_1}={target_bookie_obj.initial_odds_1} {lbl_x}{lbl_2}={target_bookie_obj.initial_odds_2} (Time: {target_bookie_obj.movement_odds_time})")
+                    else:
+                        logger.warning(f"⚠️ Could not extract opening odds for {target_bookie_obj.name} ({db_market_period})")
+                else:
+                    logger.info(f"ℹ️ No priority bookie found for {db_market_period}, skipping opening odds hover")
+
+                extraction_betfair = None
+                if step.get("betfair_enabled") and period_data.betfair:
+                    logger.info(f"🎯 Extracting Betfair Exchange opening odds via hover ({db_market_period})")
+                    t_bf = time.perf_counter()
+                    bf_opening = await self._extract_opening_odds_betfair(page)
+                    log_timing(f"Betfair hover extraction ({db_market_period}) took {time.perf_counter() - t_bf:.2f}s")
+                    if bf_opening:
+                        if bf_opening.get('back_1'):
+                            period_data.betfair.initial_back_1 = bf_opening['back_1'][0]
+                            period_data.betfair.movement_odds_time = bf_opening['back_1'][1]
+                        if bf_opening.get('back_x'):
+                            period_data.betfair.initial_back_x = bf_opening['back_x'][0]
+                        if bf_opening.get('back_2'):
+                            period_data.betfair.initial_back_2 = bf_opening['back_2'][0]
+                        if bf_opening.get('lay_1'):
+                            period_data.betfair.initial_lay_1 = bf_opening['lay_1'][0]
+                        if bf_opening.get('lay_x'):
+                            period_data.betfair.initial_lay_x = bf_opening['lay_x'][0]
+                        if bf_opening.get('lay_2'):
+                            period_data.betfair.initial_lay_2 = bf_opening['lay_2'][0]
+                    extraction_betfair = period_data.betfair
+
+                extraction = MarketExtraction(
+                    market_group=db_market_group,
+                    market_period=db_market_period,
+                    market_name=db_market_name,
+                    bookie_odds=period_data.bookie_odds,
+                    betfair=extraction_betfair,
+                )
+                match_data.extractions.append(extraction)
+                self._mark_step_completed(normalized_resume_state, step, match_data)
+                completed_step_keys.add(step_key)
+                next_idx = normalized_resume_state.get("next_step_idx", 0)
+                normalized_resume_state["resume_fragment"] = (
+                    route_steps[next_idx].get("fragment")
+                    if next_idx < route_step_count
+                    else None
+                )
+                normalized_resume_state["partial_extraction_count"] = len(match_data.extractions)
+                log_timing(f"Total period extraction for {db_market_period} took {time.perf_counter() - t_period:.2f}s")
+
+            self._ensure_legacy_match_level_fields(match_data)
             total_duration = time.perf_counter() - t0
             match_data.extraction_time_ms = total_duration * 1000
-            log_timing(f"Total match scraping process (scrape_match) took {total_duration:.2f}s")
-            
+            log_timing(f"Total match scraping process (scrape_match_attempt) took {total_duration:.2f}s")
+
             total_bookies = sum(len(e.bookie_odds) for e in match_data.extractions)
             logger.info(f"✅ Completed scraping {match_data.home_team} vs {match_data.away_team}: {len(match_data.extractions)} periods, {total_bookies} bookie entries total")
-            
-            # ── Structured Recap Log ──────────────────────────────────────
-            match_label = f"{match_data.home_team} vs {match_data.away_team}"
-            logger.info(f"📋 ── ODDS RECAP: {match_label} ──")
-            for ext in match_data.extractions:
-                handicap_str = f" [{ext.bookie_odds[0].handicap}]" if ext.bookie_odds and getattr(ext.bookie_odds[0], 'handicap', None) else ""
-                logger.info(f"   📌 {ext.market_group} | {ext.market_period} | {ext.market_name}{handicap_str}")
-                
-                # Determine column labels based on market group
-                is_ou = ext.market_group == "Over/Under"
-                is_ah = ext.market_group == "Asian Handicap"
-                if is_ou:
-                    col_labels = ("Over", "Under")
-                elif is_ah:
-                    col_labels = ("1", "2")
-                else:
-                    col_labels = ("1", "X", "2")
-                
-                for b in ext.bookie_odds:
-                    if is_ou or is_ah:
-                        current = f"{col_labels[0]}={b.odds_1 or '-'} {col_labels[-1]}={b.odds_2 or '-'}"
-                        opening = f"{col_labels[0]}={b.initial_odds_1 or '-'} {col_labels[-1]}={b.initial_odds_2 or '-'}"
-                    else:
-                        current = f"1={b.odds_1 or '-'} X={b.odds_x or '-'} 2={b.odds_2 or '-'}"
-                        opening = f"1={b.initial_odds_1 or '-'} X={b.initial_odds_x or '-'} 2={b.initial_odds_2 or '-'}"
-                    logger.info(f"      {b.name}: {current} (open: {opening})")
-                
-                # Betfair recap
-                if ext.betfair:
-                    bf = ext.betfair
-                    if is_ou or is_ah:
-                        back_str = f"{col_labels[0]}={bf.back_1 or '-'} {col_labels[-1]}={bf.back_2 or '-'}"
-                        lay_str  = f"{col_labels[0]}={bf.lay_1 or '-'} {col_labels[-1]}={bf.lay_2 or '-'}"
-                    else:
-                        back_str = f"1={bf.back_1 or '-'} X={bf.back_x or '-'} 2={bf.back_2 or '-'}"
-                        lay_str  = f"1={bf.lay_1 or '-'} X={bf.lay_x or '-'} 2={bf.lay_2 or '-'}"
-                    logger.info(f"      Betfair Back: {back_str} | Lay: {lay_str}")
-            logger.info(f"📋 ── END RECAP: {match_label} ──")
-            
-            return match_data
-            
+            self._log_structured_recap(match_data)
+            return ScrapeAttemptResult(
+                data=match_data,
+                resume_state=normalized_resume_state,
+                partial_match_data=match_data,
+            )
+
         except Exception as e:
             logger.error(f"❌ Error scraping match {match_url}: {e}")
-            return None
+            return ScrapeAttemptResult(
+                data=None,
+                resume_state=normalized_resume_state,
+                partial_match_data=match_data,
+                failed_reason=f"SCRAPE_EXCEPTION_{type(e).__name__}",
+                failed_step_idx=normalized_resume_state.get("next_step_idx"),
+            )
         finally:
             try:
                 if page:
                     await page.close()
             except Exception:
                 pass
-            # Close the fresh context and restore previous reference
             if fresh_context:
                 try:
                     await fresh_context.close()
                 except Exception:
                     pass
                 self.context = previous_context
-            
-            # Restore original debug dir if it was specialized per-event
+
             if hasattr(self, '_original_debug_dir'):
                 self.debug_dir = self._original_debug_dir
 
 
-    def _parse_opening_odds_from_modal_html(self, modal_html: str, testing_mode: bool = False) -> Optional[Tuple[str, str]]:
+    def _parse_opening_odds_from_modal_html(self, modal_html: str, label: str = "") -> Optional[Tuple[str, str]]:
         """
         Parse the opening odds value from the tooltip modal HTML.
         
@@ -1887,10 +2203,19 @@ class OddsPortalScraper:
             import re
             movement_time = None
 
-            if testing_mode == True:
-                # save modal html to file
-                # TODO
-                pass
+            # Save modal HTML if testing mode and debug dir are active
+            if self.testing_mode and self.debug_dir:
+                try:
+                    debug_filename = f"modal_{label}.html" if label else "modal_unknown.html"
+                    # sanitized_label to avoid path issues
+                    debug_filename = "".join([c if c.isalnum() or c in "._-" else "_" for c in debug_filename])
+                    debug_path = os.path.join(self.debug_dir, debug_filename)
+                    with open(debug_path, "w", encoding="utf-8") as f:
+                        f.write(modal_html)
+                    # Use relative path for cleaner logs if possible
+                    logger.debug(f"💾 Saved modal HTML: {debug_filename}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to save modal HTML for {label}: {e}")
             
             # Extract movement time (final/current odds time)
             time_matches = re.findall(r'<div[^>]*text-\[10px\][^>]*font-normal[^>]*>\s*([^<]+)\s*</div>', modal_html)
@@ -2077,7 +2402,7 @@ class OddsPortalScraper:
                             # Verify tooltip is actually visible before parsing
                             is_visible = await page.is_visible("h3:has-text('Odds movement')")
                             if not is_visible:
-                                logger.warning(f"  ⚠️ Cell {choice}: tooltip found in DOM but NOT visible (attempt {attempt + 1})")
+                                logger.warning(f"  ♻️ Cell {choice}: tooltip found in DOM but NOT visible (attempt {attempt + 1})")
                                 if attempt < max_retries - 1:
                                     await page.mouse.move(0, 0)
                                     await page.wait_for_timeout(500)
@@ -2090,7 +2415,8 @@ class OddsPortalScraper:
                             modal_el = modal_wrapper.as_element()
                             if modal_el:
                                 html = await modal_el.inner_html()
-                                parsed = self._parse_opening_odds_from_modal_html(html)
+                                label = f"{bookie_name}_{choice}"
+                                parsed = self._parse_opening_odds_from_modal_html(html, label=label)
                                 if parsed:
                                     opening_val, opening_time = parsed
                                     result[choice] = (opening_val, opening_time)
@@ -2275,7 +2601,7 @@ class OddsPortalScraper:
                         # Extra visibility check — tooltip can be in DOM but still animating in
                         is_visible = await page.is_visible("h3:has-text('Odds movement')")
                         if not is_visible:
-                            logger.warning(f"  ⚠️ Betfair {choice}: tooltip in DOM but NOT visible (attempt {attempt + 1})")
+                            logger.warning(f"  ♻️ Betfair {choice}: tooltip in DOM but NOT visible (attempt {attempt + 1})")
                             if attempt < max_retries - 1:
                                 await page.mouse.move(0, 0)
                                 await page.wait_for_timeout(500)
@@ -2287,15 +2613,8 @@ class OddsPortalScraper:
                         modal_el = modal_wrapper.as_element()
                         if modal_el:
                             html = await modal_el.inner_html()
-                            parsed = self._parse_opening_odds_from_modal_html(html)
-
-                            if self.debug_dir:
-                                try:
-                                    debug_path = os.path.join(self.debug_dir, f"modal_Betfair_{choice}.html")
-                                    with open(debug_path, "w", encoding="utf-8") as f:
-                                        f.write(html)
-                                except Exception as e:
-                                    logger.warning(f"⚠️ Failed to save modal HTML: {e}")
+                            label = f"Betfair_{choice}"
+                            parsed = self._parse_opening_odds_from_modal_html(html, label=label)
 
                             if parsed:
                                 opening_val, opening_time = parsed
@@ -2901,8 +3220,18 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
                     target_url = await scraper.find_match_url(league_url, home_team, away_team)
                     
                 data = None
+                resume_state: Optional[Dict[str, Any]] = None
+                partial_match_data: Optional[MatchOddsData] = None
                 if target_url:
-                    data = await scraper.scrape_match(target_url, sport=sport)
+                    attempt = await scraper.scrape_match_attempt(
+                        target_url,
+                        sport=sport,
+                        resume_state=resume_state,
+                        partial_match_data=partial_match_data,
+                    )
+                    data = attempt.data
+                    resume_state = attempt.resume_state
+                    partial_match_data = attempt.partial_match_data
                     
                 # Session-aware retry: if scrape OR discovery failed (likely bad proxy/IP),
                 # restart browser with a fresh proxy session and retry once.
@@ -2916,7 +3245,15 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
                     if not retry_url and league_url and home_team and away_team:
                         retry_url = await scraper.find_match_url(league_url, home_team, away_team)
                     if retry_url:
-                        data = await scraper.scrape_match(retry_url, sport=sport)
+                        attempt = await scraper.scrape_match_attempt(
+                            retry_url,
+                            sport=sport,
+                            resume_state=resume_state,
+                            partial_match_data=partial_match_data,
+                        )
+                        data = attempt.data
+                        resume_state = attempt.resume_state
+                        partial_match_data = attempt.partial_match_data
                         if data:
                             logger.info(f"✅ scrape_match_sync: RETRY SUCCEEDED with new session-{scraper._session_id}")
                         else:
@@ -3005,39 +3342,82 @@ async def _scrape_task_with_recovery(
     sport = _resolve_task_sport(task)
     event_id = task.get("event_id")
     clear_state = bool(task.get("clear_state", False))
+    resume_state = task.get("_oddsportal_resume_state")
+    partial_match_data = task.get("_oddsportal_partial_match_data")
     match_url = await _resolve_task_match_url(scraper, task, allow_live_lookup=True)
 
     if not match_url:
         logger.warning(f"{task_label}: could not resolve match URL on the current session for event_id {event_id}")
 
     data = None
+    attempt: Optional[ScrapeAttemptResult] = None
     if match_url:
-        data = await scraper.scrape_match(match_url, sport=sport, clear_state=clear_state)
+        attempt = await scraper.scrape_match_attempt(
+            match_url,
+            sport=sport,
+            clear_state=clear_state,
+            resume_state=resume_state,
+            partial_match_data=partial_match_data,
+        )
+        data = attempt.data
         if data:
+            task.pop("_oddsportal_resume_state", None)
+            task.pop("_oddsportal_partial_match_data", None)
             return data, match_url
+        resume_state = attempt.resume_state
+        partial_match_data = attempt.partial_match_data
+        task["_oddsportal_resume_state"] = resume_state
+        task["_oddsportal_partial_match_data"] = partial_match_data
 
     if match_url:
+        resume_meta = resume_state if isinstance(resume_state, dict) else {}
+        logger.info(
+            f"{task_label}: resuming from step={resume_meta.get('next_step_idx')} "
+            f"failed_step_key={resume_meta.get('failed_step_key')} "
+            f"resume_fragment={resume_meta.get('resume_fragment')}"
+        )
         logger.info(
             f"{task_label}: attempt 1 returned no data — fresh-context retry on "
             f"existing browser session-{scraper._session_id} for event_id {event_id}"
         )
         try:
-            data = await scraper.scrape_match(match_url, sport=sport, clear_state=True)
+            attempt = await scraper.scrape_match_attempt(
+                match_url,
+                sport=sport,
+                clear_state=True,
+                resume_state=resume_state,
+                partial_match_data=partial_match_data,
+            )
+            data = attempt.data
         except Exception as e:
             logger.error(f"{task_label}: fresh-context retry failed for event_id {event_id}: {e}")
             data = None
+            attempt = None
         if data:
             logger.info(
                 f"{task_label}: fresh-context retry succeeded for event_id {event_id} "
                 f"with the existing browser session-{scraper._session_id}"
             )
+            task.pop("_oddsportal_resume_state", None)
+            task.pop("_oddsportal_partial_match_data", None)
             return data, match_url
+        if attempt:
+            resume_state = attempt.resume_state
+            partial_match_data = attempt.partial_match_data
+            task["_oddsportal_resume_state"] = resume_state
+            task["_oddsportal_partial_match_data"] = partial_match_data
 
     restart_attempts = max(1, ODDSPORTAL_SESSION_RESTART_ATTEMPTS)
     for restart_idx in range(1, restart_attempts + 1):
+        resume_meta = resume_state if isinstance(resume_state, dict) else {}
         logger.warning(
             f"{task_label}: restarting browser session ({restart_idx}/{restart_attempts}) "
             f"for event_id {event_id} after fast-fail/empty scrape"
+        )
+        logger.warning(
+            f"{task_label}: restart resume point step={resume_meta.get('next_step_idx')} "
+            f"failed_step_key={resume_meta.get('failed_step_key')} "
+            f"resume_fragment={resume_meta.get('resume_fragment')}"
         )
         try:
             await scraper.stop()
@@ -3056,17 +3436,32 @@ async def _scrape_task_with_recovery(
 
         match_url = retry_url
         try:
-            data = await scraper.scrape_match(match_url, sport=sport, clear_state=False)
+            attempt = await scraper.scrape_match_attempt(
+                match_url,
+                sport=sport,
+                clear_state=False,
+                resume_state=resume_state,
+                partial_match_data=partial_match_data,
+            )
+            data = attempt.data
         except Exception as e:
             logger.error(f"{task_label}: restart attempt {restart_idx} failed for event_id {event_id}: {e}")
             data = None
+            attempt = None
 
         if data:
             logger.info(
                 f"{task_label}: restart attempt {restart_idx} succeeded for event_id {event_id} "
                 f"with session-{scraper._session_id}"
             )
+            task.pop("_oddsportal_resume_state", None)
+            task.pop("_oddsportal_partial_match_data", None)
             return data, match_url
+        if attempt:
+            resume_state = attempt.resume_state
+            partial_match_data = attempt.partial_match_data
+            task["_oddsportal_resume_state"] = resume_state
+            task["_oddsportal_partial_match_data"] = partial_match_data
 
     return None, match_url
 

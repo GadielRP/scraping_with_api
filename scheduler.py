@@ -514,37 +514,51 @@ class JobScheduler:
                 # Use the "smart" odds extraction logic
                 KEY_MOMENTS = [120, 30, 5, 0]
                 
-                for event_data in upcoming_events:
-                    # RETRIEVE PRE-CALCULATED TIMING
-                    if event_data['id'] in pre_calculated_timings:
-                        minutes_until_start = pre_calculated_timings[event_data['id']]
-                        logger.debug(f"Using pre-calculated timing for {event_data['slug']}: {minutes_until_start} mins")
-                    else:
-                        # Fallback (shouldn't happen for original events)
-                        minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
+                def _process_upcoming_event(event_data: Dict) -> dict:
+                    try:
+                        # RETRIEVE PRE-CALCULATED TIMING
+                        if event_data['id'] in pre_calculated_timings:
+                            minutes_until_start = pre_calculated_timings[event_data['id']]
+                            logger.debug(f"Using pre-calculated timing for {event_data['slug']}: {minutes_until_start} mins")
+                        else:
+                            # Fallback (shouldn't happen for original events)
+                            minutes_until_start = self._minutes_until_start(event_data['start_time_utc'])
+                        
+                        logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
+                        
+                        should_extract_odds, metadata_snapshot = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
+                        
+                        # ALWAYS refresh from DB after potential timestamp correction in _should_extract_odds_for_event
+                        # This ensures event_info uses the corrected time, avoiding safety-check mismatches later.
+                        refreshed_event = self.event_repo.get_event_by_id(event_data['id'])
+                        if refreshed_event:
+                            event_data['season_id'] = refreshed_event.season_id
+                            event_data['start_time_utc'] = refreshed_event.start_time_utc
+                            logger.debug(f"✅ Refreshed metadata for event {event_data['id']} after timing check")
+                        
+                        return {
+                            'event_id': event_data['id'],
+                            'event_data': event_data,
+                            'minutes_until_start': minutes_until_start,
+                            'should_extract_odds': should_extract_odds,
+                            'original_start_time': event_data['start_time_utc'],
+                            'metadata_snapshot': metadata_snapshot,  # Cached from timing check API call
+                        }
+                    except Exception as e:
+                        logger.error(f"Error processing upcoming event {event_data.get('id', 'unknown')}: {e}")
+                        return None
+
+                max_workers = getattr(Config, 'PRE_START_WORKERS', 5)
+                logger.info(f"Using {max_workers} workers for upcoming events checking")
+                
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_event = {executor.submit(_process_upcoming_event, event_data): event_data for event_data in upcoming_events}
                     
-                    logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
-                    
-                    should_extract_odds, metadata_snapshot = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
-                    
-                    # ALWAYS refresh from DB after potential timestamp correction in _should_extract_odds_for_event
-                    # This ensures event_info uses the corrected time, avoiding safety-check mismatches later.
-                    refreshed_event = self.event_repo.get_event_by_id(event_data['id'])
-                    if refreshed_event:
-                        event_data['season_id'] = refreshed_event.season_id
-                        event_data['start_time_utc'] = refreshed_event.start_time_utc
-                        logger.debug(f"✅ Refreshed metadata for event {event_data['id']} after timing check")
-                    
-                    event_info = {
-                        'event_id': event_data['id'],
-                        'event_data': event_data,
-                        'minutes_until_start': minutes_until_start,
-                        'should_extract_odds': should_extract_odds,
-                        'original_start_time': event_data['start_time_utc'],
-                        'metadata_snapshot': metadata_snapshot,  # Cached from timing check API call
-                    }
-                    events_to_process.append(event_info)
-                    event_meta_lookup[event_data['id']] = event_info
+                    for future in as_completed(future_to_event):
+                        event_info = future.result()
+                        if event_info:
+                            events_to_process.append(event_info)
+                            event_meta_lookup[event_info['event_id']] = event_info
             
             # ========================================
             # PARTITION AND START ODDSPORTAL (EARLY)
@@ -604,16 +618,19 @@ class JobScheduler:
             # Track events with odds extracted to prevent timing drift issues
             events_with_odds_extracted = []
             
-            for event_info in events_to_process:
+            def _extract_odds_for_event(event_info: dict) -> dict:
                 try:
                     event_data = event_info['event_data']
                     minutes_until_start = event_info['minutes_until_start']
                     should_extract_odds = event_info['should_extract_odds']
                     
-                    # Initialize observations per event to avoid cross-event contamination
-                    observations = None
+                    result = {
+                        'processed': True,
+                        'odds_extracted': False,
+                        'event_with_odds': None,
+                        'event_info': event_info
+                    }
                     
-                    # SMART ODDS EXTRACTION: Only extract odds at key moments (30 min and 0 min)                  
                     if should_extract_odds:
                         logger.info(f"🎯 EXTRACTING ODDS: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start")
                         
@@ -637,7 +654,7 @@ class JobScheduler:
                                     snapshot = OddsRepository.create_odds_snapshot(event_data['id'], final_odds_data)
                                     if snapshot:
                                         logger.info(f"✅ Final odds snapshot created for event {event_data['id']}")
-                                        odds_extracted_count += 1
+                                        result['odds_extracted'] = True
                                         
                                         # Save all markets to new markets/market_choices tables
                                         # This runs for ALL sports (including excluded ones)
@@ -651,12 +668,11 @@ class JobScheduler:
                                         # (runs concurrently, see _run_oddsportal_batch below)
                                         
                                         # Track this event for alert evaluation (capture timing when odds were extracted)
-                                        events_with_odds_extracted.append({
+                                        result['event_with_odds'] = {
                                             'event_id': event_data['id'],
                                             'start_time': event_data['start_time_utc'],
                                             'initial_minutes': minutes_until_start
-                                        })
-
+                                        }
                                 else:
                                     logger.warning(f"Failed to update final odds for event {event_data['id']}")
                             else:
@@ -669,7 +685,6 @@ class JobScheduler:
                             logger.info(f"🎾 Tennis event detected at key moment - extracting court type for event {event_data['id']}")
                             
                             # Check if event already has observations before making API call
-                            
                             if not sport_observations_manager.has_observations_for_event(event_data['id']):
                                 # Try to use metadata snapshot from timing check first (avoids redundant API call)
                                 snapshot = event_info.get('metadata_snapshot')
@@ -697,12 +712,23 @@ class JobScheduler:
                             
                     else:
                         logger.debug(f"⏭️ SKIPPING ODDS EXTRACTION: {event_data['home_team']} vs {event_data['away_team']} - {minutes_until_start} min until start (not a key moment)")
-                    
-                    processed_count += 1
-                    
+                        
+                    return result
                 except Exception as e:
-                    logger.error(f"Error processing upcoming event {event_data['id']}: {e}")
-                    continue
+                    logger.error(f"Error processing upcoming event odds {event_info.get('event_data', {}).get('id', 'unknown')}: {e}")
+                    return {'processed': False, 'odds_extracted': False, 'event_with_odds': None, 'event_info': event_info}
+
+            max_workers = getattr(Config, 'PRE_START_WORKERS', 5)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(_extract_odds_for_event, event_info): event_info for event_info in events_to_process}
+                for future in as_completed(futures):
+                    res = future.result()
+                    if res['processed']:
+                        processed_count += 1
+                        if res['odds_extracted']:
+                            odds_extracted_count += 1
+                            if res['event_with_odds']:
+                                events_with_odds_extracted.append(res['event_with_odds'])
             
             if processed_count > 0:
                 logger.info(f"🚨 Pre-start check completed: {processed_count} games starting soon!")
@@ -1422,6 +1448,8 @@ class JobScheduler:
                     'away_team': event_data['away_team'],
                     'season_id': season_id,
                     'sport': op_info['sport'],
+                    '_oddsportal_resume_state': None,
+                    '_oddsportal_partial_match_data': None,
                 })
         
         if not op_tasks:
@@ -1494,7 +1522,8 @@ class JobScheduler:
             corrected_count = 0
             checked_count = 0
             
-            for event_data in events_started_recently:
+            def _process_single_recently_started(event_data: Dict) -> dict:
+                result = {'checked': False, 'corrected': False, 'modified_event_id': None}
                 try:
                     logger.info(f"Checking recently started event {event_data['slug']} - {event_data['start_time_utc']}")
                     event_id = event_data['id']
@@ -1508,7 +1537,6 @@ class JobScheduler:
                     minutes_ago = abs(minutes_since_start)
                     
                     # Define check intervals based on sport (when to actually check for timestamp corrections)
-                    # Tennis changes timestamps frequently, even up to 1 hour after scheduled start
                     if sport in ['Tennis', 'Tennis Doubles']:
                         # Tennis: Check every 5 minutes up to 60 minutes after start
                         CHECK_INTERVALS = list(range(5, 65, 5))  # [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
@@ -1520,44 +1548,73 @@ class JobScheduler:
                         # Skip non-tennis events that are outside the 15-minute window
                         if minutes_ago > 15:
                             logger.debug(f"⏭️ Skipping non-tennis event {event_id} - outside 15-minute window ({minutes_ago} minutes ago)")
-                            continue
+                            return result
                     
                     # Check if current time aligns with a check interval
                     if minutes_ago not in CHECK_INTERVALS:
                         logger.debug(f"⏭️ Skipping event {event_id} - not at check interval ({minutes_ago} minutes ago, checking at {CHECK_INTERVALS})")
-                        continue
+                        return result
                     
                     # Check and update starting time via API
-                    # This returns: True if time is correct, False if time was updated, None if API error
                     correct_starting_time = api_client.get_event_results(
                         event_id, 
                         update_time=True, 
                         minutes_until_start=minutes_since_start  # Pass negative value for started events
                     )
                     
-                    checked_count += 1
+                    result['checked'] = True
                     
                     if correct_starting_time is None:
                         # API error - skip this event
                         logger.warning(f"⏭️ API error for event {event_id} - skipping timestamp check")
-                        continue
+                        return result
                     elif not correct_starting_time:
                         # Starting time was corrected by the API call
-                        corrected_count += 1
+                        result['corrected'] = True
                         logger.info(f"✅ TIMESTAMP CORRECTED for event {event_id} - starting time was updated after game started")
                     
                     # Track this ID as modified
-                    modified_event_ids.add(event_id)
-                    
-                    # Trigger rescheduled event processing to extract odds and run alerts/H2H
-                    # This ensures the event doesn't get lost after timestamp correction
-                    # _check_rescheduled_event will mark the event as processed internally
-                    logger.info(f"🔄 Processing rescheduled event {event_id} after timestamp correction")
-                    self._check_rescheduled_event(event_id)
+                    result['modified_event_id'] = event_id
                 
                 except Exception as e:
-                    logger.error(f"Error checking recently started event {event_data.get('id')}: {e}")
-                    continue
+                    logger.error(f"Error checking recently started event {event_data.get('id', 'unknown')}: {e}")
+                
+                return result
+
+            max_workers = getattr(Config, 'PRE_START_WORKERS', 5)
+            logger.info(f"Using {max_workers} workers for timestamp correction checking")
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_event = {executor.submit(_process_single_recently_started, ed): ed for ed in events_started_recently}
+                
+                for future in as_completed(future_to_event):
+                    res = future.result()
+                    if res['checked']:
+                        checked_count += 1
+                    if res['corrected']:
+                        corrected_count += 1
+                    if res['modified_event_id']:
+                        event_id = res['modified_event_id']
+                        modified_event_ids.add(event_id)
+                        
+                        # We accumulate the id and process them concurrently below
+                        # self._check_rescheduled_event(event_id)
+                        pass
+
+            if modified_event_ids:
+                logger.info(f"🔄 Processing {len(modified_event_ids)} rescheduled events concurrently after timestamp correction")
+                
+                def _trigger_rescheduled(eid):
+                    logger.info(f"🔄 Processing rescheduled event {eid} after timestamp correction")
+                    self._check_rescheduled_event(eid)
+                    
+                with ThreadPoolExecutor(max_workers=max_workers) as executor2:
+                    futures2 = {executor2.submit(_trigger_rescheduled, eid): eid for eid in modified_event_ids}
+                    for future in as_completed(futures2):
+                        try:
+                            future.result(timeout=120)
+                        except Exception as e:
+                            logger.error(f"Error processing rescheduled event: {e}")
             
             if checked_count > 0:
                 logger.info(f"📊 Timestamp correction check completed: {checked_count} events checked, {corrected_count} timestamps corrected")

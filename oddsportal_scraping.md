@@ -43,7 +43,7 @@ We only scrape OddsPortal for **tracked leagues** (configured in `oddsportal_con
 | `oddsportal_config.py` | Maps `season_id` → OddsPortal URL, team aliases, bookie priority, **sport scraping routes** |
 | `models.py` | Defines `OddsPortalLeagueCache` DB table |
 | `repository.py` | `MarketRepository.save_markets_from_oddsportal()` — saves per-period data with correct metadata |
-| `test_oddsportal_process.py` | Isolation test for a single event |
+| `tests/test_oddsportal_scheduler_sim.py` | **Scheduler Simulation & Parallel Test**: Replicates the full scheduler flow, including parallel scraping and caching |
 | `.env` | Must have `PROXY_ENABLED=true` and concurrency toggles (`ODDSPORTAL_PARALLEL_BROWSERS`) |
 | `logs/oddsportal/` | Dedicated directory for OddsPortal-only logs, mirrored by month/week |
 
@@ -694,30 +694,29 @@ The extracted data is consumed by `odds_alert.py` to enrich Telegram notificatio
 
 ## 15. Testing
 
-### Isolation Test: `test_oddsportal_process.py`
+### 15.1 Scheduler Simulation: `tests/test_oddsportal_scheduler_sim.py`
+
+This is the primary test file for verifying the OddsPortal scraping subsystem. Unlike simple isolation tests, it simulates the **exact flow** of the `scheduler.py` job, including:
+- **Parallel Dispatching**: Launches multiple browser instances if multiple `event_id`s are passed.
+- **URL Caching**: Leverages and seeds the `OddsPortalLeagueCache`.
+- **Detailed Timing Logs**: Captures precise timestamps for every scraper action (navigating, waiting, hovering, extracting).
+- **Execution Flow**: Mimics the pre-start check logic (event selection, sport route resolution).
 
 ```bash
-python test_oddsportal_process.py <EVENT_ID>
+# Run simulation for multiple events in headless mode
+python tests/test_oddsportal_scheduler_sim.py 14198633 14198634 --headless
 ```
 
-Saves full debug info (screenshots, HTML, JSON) to `debug_<slug>/`. The JSON output now includes per-period extraction data:
+### 15.2 Enhanced Debugging Artifacts
 
-```json
-{
-    "home_team": "...",
-    "away_team": "...",
-    "sport": "football",
-    "extractions": [
-        {
-            "market_group": "1X2",
-            "market_period": "Full-time",
-            "market_name": "Full time",
-            "bookies": [...],
-            "betfair": {...}
-        }
-    ]
-}
-```
+When `debug_dir` is active (always enabled in the simulation test), the scraper generates structured artifacts for troubleshooting:
+
+1.  **Per-Event Folders**: Instead of a shared root, each event is isolated in its own directory named `debug_[home-team]-vs-[away-team]/`.
+2.  **Modal HTML Captures**: During hover extraction, the scraper saves the raw HTML of the "Odds movement" tooltip for both standard bookmakers and Betfair:
+    -   `modal_[BookieName]_[OddKey].html` (e.g., `modal_bet365_1.html`)
+    -   `modal_Betfair_[OddKey].html` (e.g., `modal_Betfair_back_1.html`)
+3.  **Full Page State**: Includes the standard `.png` screenshot and `.html` source on terminal failures.
+4.  **JSON Payload**: The final extracted `MatchOddsData` is saved as a JSON file for data validation.
 
 ---
 

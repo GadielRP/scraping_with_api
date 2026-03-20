@@ -3,6 +3,8 @@ Configuration for OddsPortal scraping.
 Maps internal season IDs to OddsPortal URL slugs.
 """
 
+from typing import Any, Dict, List, Optional
+
 # Maps season_id -> OddsPortal URL slug
 # Based on sport_league_constants.py from OddsHarvester
 SEASON_ODDSPORTAL_MAP = {
@@ -289,7 +291,7 @@ TEAM_ALIASES = {
 
 # Priority order for single-bookie initial odds extraction
 # Also used to filter which bookies are stored in the database
-PRIORITY_BOOKIES = ["bet365", "Pinnacle", "BettingAsia", "Megapari", "1xBet"]
+PRIORITY_BOOKIES = ["bet365", "Pinnacle", "BetInAsia", "Megapari", "1xBet"]
 
 # ---------------------------------------------------------------------------
 # OddsPortal URL Fragment Identifiers
@@ -493,3 +495,94 @@ SPORT_SCRAPING_ROUTES = {
         ],
     },
 }
+
+
+def build_op_fragment(group_key: Optional[str], period_key: Optional[str]) -> Optional[str]:
+    """Build a hash fragment for OddsPortal market routing."""
+    if not group_key or not period_key:
+        return None
+    group_fragment = OP_GROUPS.get(group_key)
+    period_fragment = OP_PERIODS.get(period_key)
+    if group_fragment is None or period_fragment is None:
+        return None
+    return f"#{group_fragment};{period_fragment}"
+
+
+def build_match_url_with_fragment(
+    match_url: str,
+    group_key: Optional[str],
+    period_key: Optional[str],
+) -> str:
+    """Return a cleaned match URL with a normalized route fragment when available."""
+    base_url = (match_url or "").split("#", 1)[0].rstrip("/")
+    fragment = build_op_fragment(group_key, period_key)
+    if not fragment:
+        return base_url
+    return f"{base_url}/{fragment}"
+
+
+def flatten_sport_scraping_route(sport: Optional[str]) -> List[Dict[str, Any]]:
+    """
+    Flatten the nested market-group/period structure into a deterministic, linear step list.
+
+    Fallback behavior:
+      - Unknown sport -> legacy single-step route.
+      - Legacy route format (without `groups`) -> converted into one synthetic group.
+    """
+    route = SPORT_SCRAPING_ROUTES.get(sport) if sport else None
+
+    if route and "groups" in route:
+        groups = route.get("groups", [])
+    elif route:
+        groups = [{
+            "group_key": route.get("primary_group"),
+            "db_market_group": route.get("db_market_group", "1X2"),
+            "periods": route.get("periods", [("FULL_TIME", "Full Time", "Full time")]),
+            "betfair_period_index": route.get("betfair_period_index", 0),
+            "extract_fn": route.get("extract_fn", "standard"),
+        }]
+    else:
+        groups = [{
+            "group_key": None,
+            "db_market_group": "1X2",
+            "periods": [("FULL_TIME", "Full Time", "Full time")],
+            "betfair_period_index": 0,
+            "extract_fn": "standard",
+        }]
+
+    steps: List[Dict[str, Any]] = []
+    step_idx = 0
+
+    for group_idx, group_cfg in enumerate(groups):
+        group_key = group_cfg.get("group_key")
+        periods = group_cfg.get("periods") or [("FULL_TIME", "Full Time", "Full time")]
+        betfair_period_index = group_cfg.get("betfair_period_index")
+        extract_fn = group_cfg.get("extract_fn", "standard")
+        db_market_group = group_cfg.get("db_market_group", "1X2")
+        group_display = OP_GROUPS_DISPLAY.get(group_key, group_key) if group_key else db_market_group
+
+        for period_idx, period_tuple in enumerate(periods):
+            period_key = period_tuple[0] if len(period_tuple) > 0 else "FULL_TIME"
+            db_market_period = period_tuple[1] if len(period_tuple) > 1 else "Full Time"
+            db_market_name = period_tuple[2] if len(period_tuple) > 2 else db_market_period
+            step = {
+                "step_idx": step_idx,
+                "step_key": f"{group_key}:{period_key}",
+                "group_idx": group_idx,
+                "period_idx": period_idx,
+                "group_key": group_key,
+                "group_display": group_display,
+                "db_market_group": db_market_group,
+                "period_key": period_key,
+                "period_display": db_market_period,
+                "db_market_period": db_market_period,
+                "db_market_name": db_market_name,
+                "extract_fn": extract_fn,
+                "betfair_period_index": betfair_period_index,
+                "betfair_enabled": betfair_period_index == period_idx,
+                "fragment": build_op_fragment(group_key, period_key),
+            }
+            steps.append(step)
+            step_idx += 1
+
+    return steps
