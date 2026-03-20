@@ -2091,9 +2091,18 @@ class OddsPortalScraper:
                     is_ou = db_market_group == "Over/Under"
                     lbl_1 = "Over" if is_ou else "1"
                     lbl_2 = "Under" if is_ou else "2"
-                    lbl_x = "X=" + str(opening.get('X')) + " " if opening and not is_ou else ""
+
+                    # Determine expected keys based on the same 2-way / 3-way signal used by extraction.
+                    # In 2-way markets, odds_x is stored as None (or empty / "-"), so only expect 1 and 2.
+                    _three_way_market = (not is_ou) and (getattr(target_bookie_obj, 'odds_x', None) not in (None, '', '-'))
+
+                    if is_ou or not _three_way_market:
+                        expected_keys = ['1', '2']
+                    else:
+                        expected_keys = ['1', 'X', '2']
 
                     if opening:
+                        # Assign only keys with real values
                         if opening.get('1'):
                             target_bookie_obj.initial_odds_1 = opening['1'][0]
                             target_bookie_obj.movement_odds_time = opening['1'][1]
@@ -2105,9 +2114,31 @@ class OddsPortalScraper:
                             target_bookie_obj.initial_odds_2 = opening['2'][0]
                             if not getattr(target_bookie_obj, 'movement_odds_time', None) and opening['2'][1]:
                                 target_bookie_obj.movement_odds_time = opening['2'][1]
-                        logger.info(f"✅ Opening odds ({db_market_period}): {lbl_1}={target_bookie_obj.initial_odds_1} {lbl_x}{lbl_2}={target_bookie_obj.initial_odds_2} (Time: {target_bookie_obj.movement_odds_time})")
+
+                        extracted_keys = [k for k in expected_keys if opening.get(k)]
+                        missing_keys = [k for k in expected_keys if not opening.get(k)]
+
+                        if not missing_keys:
+                            lbl_x_part = f" X={target_bookie_obj.initial_odds_x}" if 'X' in expected_keys else ""
+                            logger.info(
+                                f"✅ FULL_SUCCESS Opening odds ({db_market_period}): "
+                                f"{lbl_1}={target_bookie_obj.initial_odds_1}{lbl_x_part} "
+                                f"{lbl_2}={target_bookie_obj.initial_odds_2} "
+                                f"(Time: {target_bookie_obj.movement_odds_time})"
+                            )
+                        else:
+                            lbl_x_part = f" X={target_bookie_obj.initial_odds_x}" if 'X' in expected_keys else ""
+                            logger.warning(
+                                f"⚠️ PARTIAL_SUCCESS Opening odds ({db_market_period}): "
+                                f"{lbl_1}={target_bookie_obj.initial_odds_1}{lbl_x_part} "
+                                f"{lbl_2}={target_bookie_obj.initial_odds_2} "
+                                f"(missing: {missing_keys})"
+                            )
                     else:
-                        logger.warning(f"⚠️ Could not extract opening odds for {target_bookie_obj.name} ({db_market_period})")
+                        logger.warning(
+                            f"⚠️ TOTAL_FAIL Opening odds ({db_market_period}): "
+                            f"could not extract any opening odds for {target_bookie_obj.name}"
+                        )
                 else:
                     logger.info(f"ℹ️ No priority bookie found for {db_market_period}, skipping opening odds hover")
 
@@ -2117,7 +2148,9 @@ class OddsPortalScraper:
                     t_bf = time.perf_counter()
                     bf_opening = await self._extract_opening_odds_betfair(page)
                     log_timing(f"Betfair hover extraction ({db_market_period}) took {time.perf_counter() - t_bf:.2f}s")
+
                     if bf_opening:
+                        # Assign only keys with real values
                         if bf_opening.get('back_1'):
                             period_data.betfair.initial_back_1 = bf_opening['back_1'][0]
                             period_data.betfair.movement_odds_time = bf_opening['back_1'][1]
@@ -2131,6 +2164,48 @@ class OddsPortalScraper:
                             period_data.betfair.initial_lay_x = bf_opening['lay_x'][0]
                         if bf_opening.get('lay_2'):
                             period_data.betfair.initial_lay_2 = bf_opening['lay_2'][0]
+
+                        # Determine expected keys from layout already detected
+                        _bf_three_way = any(k in bf_opening for k in ('back_x', 'lay_x')) or (
+                            period_data.betfair.back_x not in (None, "-", "")
+                        )
+                        if _bf_three_way:
+                            bf_expected_back = ['back_1', 'back_x', 'back_2']
+                            bf_expected_lay  = ['lay_1', 'lay_x', 'lay_2']
+                        else:
+                            bf_expected_back = ['back_1', 'back_2']
+                            bf_expected_lay  = ['lay_1', 'lay_2']
+                        bf_expected = bf_expected_back + bf_expected_lay
+
+                        bf_extracted = [k for k in bf_expected if bf_opening.get(k)]
+                        bf_missing   = [k for k in bf_expected if not bf_opening.get(k)]
+
+                        if not bf_missing:
+                            logger.info(
+                                f"✅ FULL_SUCCESS Betfair opening odds ({db_market_period}): "
+                                f"Back 1={period_data.betfair.initial_back_1} "
+                                f"X={period_data.betfair.initial_back_x} "
+                                f"2={period_data.betfair.initial_back_2} | "
+                                f"Lay 1={period_data.betfair.initial_lay_1} "
+                                f"X={period_data.betfair.initial_lay_x} "
+                                f"2={period_data.betfair.initial_lay_2}"
+                            )
+                        else:
+                            logger.warning(
+                                f"⚠️ PARTIAL_SUCCESS Betfair opening odds ({db_market_period}): "
+                                f"Back 1={period_data.betfair.initial_back_1} "
+                                f"X={period_data.betfair.initial_back_x} "
+                                f"2={period_data.betfair.initial_back_2} | "
+                                f"Lay 1={period_data.betfair.initial_lay_1} "
+                                f"X={period_data.betfair.initial_lay_x} "
+                                f"2={period_data.betfair.initial_lay_2} "
+                                f"(missing: {bf_missing})"
+                            )
+                    else:
+                        logger.warning(
+                            f"⚠️ TOTAL_FAIL Betfair opening odds ({db_market_period}): "
+                            f"could not extract any opening odds from Betfair Exchange"
+                        )
                     extraction_betfair = period_data.betfair
 
                 extraction = MarketExtraction(
@@ -2195,51 +2270,62 @@ class OddsPortalScraper:
     def _parse_opening_odds_from_modal_html(self, modal_html: str, label: str = "") -> Optional[Tuple[str, str]]:
         """
         Parse the opening odds value from the tooltip modal HTML.
-        
-        The modal HTML contains a movement odds time in the '<div class="text-[10px] font-normal">' 
-        and the opening odds in the 'Opening odds:' section.
+
+        Contract: returns (opening_val, movement_time) only when a real opening odd was found.
+        Never returns (None, movement_time). Returns None on any failure.
+
+        The modal HTML contains:
+          - movement time in '<div class="text-[10px] font-normal">'
+          - an 'Opening odds:' section with a flex row: [date/time div] [font-bold value div]
+          Betfair adds a third div with volume like "(0)" which must be ignored.
         """
         try:
-            import re
             movement_time = None
 
             # Save modal HTML if testing mode and debug dir are active
             if self.testing_mode and self.debug_dir:
                 try:
                     debug_filename = f"modal_{label}.html" if label else "modal_unknown.html"
-                    # sanitized_label to avoid path issues
                     debug_filename = "".join([c if c.isalnum() or c in "._-" else "_" for c in debug_filename])
                     debug_path = os.path.join(self.debug_dir, debug_filename)
                     with open(debug_path, "w", encoding="utf-8") as f:
                         f.write(modal_html)
-                    # Use relative path for cleaner logs if possible
                     logger.debug(f"💾 Saved modal HTML: {debug_filename}")
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to save modal HTML for {label}: {e}")
-            
-            # Extract movement time (final/current odds time)
-            time_matches = re.findall(r'<div[^>]*text-\[10px\][^>]*font-normal[^>]*>\s*([^<]+)\s*</div>', modal_html)
+
+            # Extract movement time — anchored to the top of the tooltip (before Opening odds block)
+            idx_opening_anchor = modal_html.find('Opening odds')
+            pre_section = modal_html[:idx_opening_anchor] if idx_opening_anchor != -1 else modal_html
+
+            time_matches = re.findall(
+                r'<div[^>]*text-\[10px\][^>]*font-normal[^>]*>\s*([^<]+)\s*</div>', pre_section
+            )
             if time_matches:
                 movement_time = time_matches[0].strip()
             else:
-                idx_opening = modal_html.find('Opening odds')
-                if idx_opening != -1:
-                    pre_section = modal_html[:idx_opening]
-                    date_matches = re.findall(r'(?:>|^\s*)(\d{1,2}\s+[A-Za-z]{3},\s+\d{2}:\d{2})(?:<|\s*$)', pre_section)
-                    if date_matches:
-                        movement_time = date_matches[0].strip()
+                date_matches = re.findall(
+                    r'(?:>|^\s*)(\d{1,2}\s+[A-Za-z]{3},\s+\d{2}:\d{2})(?:<|\s*$)', pre_section
+                )
+                if date_matches:
+                    movement_time = date_matches[0].strip()
 
+            # Must have Opening odds section to proceed
             if 'Opening odds' not in modal_html:
-                return (None, movement_time) if movement_time else None
+                return None
 
             idx = modal_html.find('Opening odds')
-            section = modal_html[idx:idx + 500]
-            
-            # Find opening odds value (the bold number in 'Opening odds' section)
-            # e.g.: <div>15 Feb, 19:47</div><div class="font-bold">1.69</div>
-            matches = re.findall(r'<div[^>]*>\s*([^<]+)\s*</div>\s*<div[^>]*font-bold[^>]*>([\d.]+)</div>', section)
+            section = modal_html[idx:idx + 600]
+
+            # Strategy 1: find flex row pattern — [any div] followed by [font-bold div with number]
+            # Captures (datetime_text, bold_val) pairs; ignore volume entries like "(28)" or "(0)"
+            matches = re.findall(
+                r'<div[^>]*>\s*([^<]+)\s*</div>\s*<div[^>]*font-bold[^>]*>([\d.]+)</div>',
+                section
+            )
             extracted_val = None
             for _, val in matches:
+                val = val.strip()
                 try:
                     f = float(val)
                     if 1.0 <= f <= 1001.0:
@@ -2247,10 +2333,12 @@ class OddsPortalScraper:
                         break
                 except ValueError:
                     continue
-                    
+
+            # Strategy 2: any font-bold numeric in opening section (fallback)
             if not extracted_val:
-                matches = re.findall(r'<div[^>]*font-bold[^>]*>([\d.]+)</div>', section)
-                for val in matches:
+                bold_matches = re.findall(r'<div[^>]*font-bold[^>]*>([\d.]+)</div>', section)
+                for val in bold_matches:
+                    val = val.strip()
                     try:
                         f = float(val)
                         if 1.0 <= f <= 1001.0:
@@ -2258,32 +2346,136 @@ class OddsPortalScraper:
                             break
                     except ValueError:
                         continue
-                        
+
+            # Only succeed when we have a real opening odd value
             if extracted_val:
                 return (extracted_val, movement_time)
-            
-            return (None, movement_time) if movement_time else None
-            
+
+            # No valid opening odd found — return None (never (None, time))
+            return None
+
         except Exception as e:
             logger.warning(f"Error parsing opening odds from modal: {e}")
             return None
+
+    async def _dismiss_odds_movement_tooltip(self, page: Page) -> None:
+        """
+        Move the mouse off the current hover target so Vue.js dismisses the tooltip,
+        then wait briefly for the tooltip to detach from the DOM.
+        Errors are swallowed — this helper is never fatal.
+        """
+        try:
+            await page.mouse.move(0, 0)
+            await page.wait_for_timeout(300)
+            try:
+                await page.wait_for_selector(
+                    "h3:has-text('Odds movement')", state="detached", timeout=1500
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    async def _wait_for_scoped_tooltip_html(self, page: Page, timeout_ms: int = 4000) -> Optional[str]:
+        """
+        Old tooltip lookup behavior:
+        after hover, find the visible 'Odds movement' tooltip globally on the page,
+        then return the inner_html of its parent element.
+        """
+        try:
+            odds_movement_h3 = await page.wait_for_selector(
+                "h3:has-text('Odds movement')",
+                state="visible",
+                timeout=timeout_ms
+            )
+
+            is_visible = await page.is_visible("h3:has-text('Odds movement')")
+            if not is_visible:
+                return None
+
+            modal_wrapper = await odds_movement_h3.evaluate_handle(
+                "node => node.parentElement"
+            )
+            modal_el = modal_wrapper.as_element()
+            if modal_el:
+                return await modal_el.inner_html()
+
+        except Exception:
+            return None
+
+        return None
+
+    async def _get_hover_target_from_container(self, container):
+        """
+        Resolve the hover target from an odd-container: prefers the inner
+        font-bold flex div, falls back to the container itself.
+        """
+        try:
+            inner = await container.query_selector("div.flex-center.flex-col.font-bold")
+            return inner if inner else container
+        except Exception:
+            return container
+
+    async def _find_bookie_row(self, page: Page, bookie_name: str):
+        """
+        Locate the bookie row element for *bookie_name*, checking standard rows first
+        then any expanded-context rows.  Returns the element or None.
+        """
+        # Standard rows (h-9)
+        target_row = await page.query_selector(
+            f"div.border-black-borders.flex.h-9:has(a[title*='{bookie_name}'])"
+        )
+        if not target_row:
+            target_row = await page.query_selector(
+                f"div.border-black-borders.flex.h-9:has(img[alt*='{bookie_name}'])"
+            )
+        if not target_row:
+            rows = await page.query_selector_all("div.border-black-borders.flex.h-9")
+            for row in rows:
+                name_link = await row.query_selector("a[title]")
+                if name_link:
+                    title = await name_link.get_attribute("title")
+                    if title and bookie_name.lower() in title.lower():
+                        target_row = row
+                        break
+                img = await row.query_selector("img[alt]")
+                if img:
+                    alt = await img.get_attribute("alt")
+                    if alt and bookie_name.lower() in alt.lower():
+                        target_row = row
+                        break
+        # Fallback: expanded-context rows (any height variant)
+        if not target_row:
+            rows = await page.query_selector_all("div.border-black-borders.flex")
+            for row in rows:
+                name_link = await row.query_selector("a[title]")
+                if name_link:
+                    title = await name_link.get_attribute("title")
+                    if title and bookie_name.lower() in title.lower():
+                        target_row = row
+                        break
+                img = await row.query_selector("img[alt]")
+                if img:
+                    alt = await img.get_attribute("alt")
+                    if alt and bookie_name.lower() in alt.lower():
+                        target_row = row
+                        break
+        return target_row
 
     async def _extract_opening_odds_for_bookie(
         self, page: Page, bookie_name: str
     ) -> Optional[Dict[str, Optional[Tuple[str, str]]]]:
         """
         Hover over each odds cell for a specific bookie to trigger the tooltip,
-        then extract the opening odds from the 'Odds movement' modal.
-        
-        Uses the OddsHarvester pattern:
-          1. Find the bookie row by matching img title or a[title]
-          2. Hover each div.flex-center.flex-col.font-bold inside the row
-          3. Wait 2s for tooltip to appear
-          4. Capture the modal HTML via h3:text('Odds movement') parent
-          5. Parse opening odds from the modal
-        
-        Returns:
-            Dict with keys '1', 'X', '2' mapping to tuples (opening_odds, timestamp) or None on failure.
+        then extract the opening odds from the scoped 'Odds movement' tooltip.
+
+        Key changes vs original:
+          - row, odd-containers and hover target are re-resolved on every retry
+            (no stale handles between attempts).
+          - tooltip is captured from within the same odd-container that was hovered
+            (scoped, not global page selector).
+          - result dict only contains keys with a real opening value; None is never stored.
+          - returns None when no key has a real value.
         """
         try:
             await page.wait_for_timeout(500)
@@ -2293,68 +2485,61 @@ class OddsPortalScraper:
                 () => { document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove()); }
             """)
 
-            # Use CSS :has() to find the bookie row directly
-            target_row = await page.query_selector(
-                f"div.border-black-borders.flex.h-9:has(a[title*='{bookie_name}'])"
-            )
-            if not target_row:
-                target_row = await page.query_selector(
-                    f"div.border-black-borders.flex.h-9:has(img[alt*='{bookie_name}'])"
-                )
-            if not target_row:
-                # Case-insensitive fallback: iterate rows
-                rows = await page.query_selector_all("div.border-black-borders.flex.h-9")
-                for row in rows:
-                    name_link = await row.query_selector("a[title]")
-                    if name_link:
-                        title = await name_link.get_attribute("title")
-                        if title and bookie_name.lower() in title.lower():
-                            target_row = row
-                            break
-                    img = await row.query_selector("img[alt]")
-                    if img:
-                        alt = await img.get_attribute("alt")
-                        if alt and bookie_name.lower() in alt.lower():
-                            target_row = row
-                            break
-
-            if not target_row:
+            # Initial row lookup to determine choice count — re-resolved on each retry below
+            initial_row = await self._find_bookie_row(page, bookie_name)
+            if not initial_row:
                 logger.warning(f"⚠️ Bookie row not found for: {bookie_name}")
                 return None
 
-            # Get the odds cells to hover — inner wrappers that trigger the tooltip
-            odds_blocks = await target_row.query_selector_all("div[data-testid='odd-container'] div.flex-center.flex-col.font-bold")
-            if not odds_blocks:
-                odds_blocks = await target_row.query_selector_all("div[data-testid='odd-container']")
-
-            if not odds_blocks:
-                logger.warning(f"⚠️ No odds blocks found in row for: {bookie_name}")
+            initial_containers = await initial_row.query_selector_all("div[data-testid='odd-container']")
+            if not initial_containers:
+                logger.warning(f"⚠️ No odd containers found in row for: {bookie_name}")
                 return None
 
-            logger.info(f"🖱️ Hovering {len(odds_blocks)} odds cells for {bookie_name}")
+            is_three_way = len(initial_containers) >= 3
+            choice_keys = ['1', 'X', '2'] if is_three_way else ['1', '2']
+            logger.info(f"🖱️ Hovering {len(choice_keys)} odds cells for {bookie_name}")
 
-            is_three_way = len(odds_blocks) >= 3
-            if is_three_way:
-                choice_keys = ['1', 'X', '2']
-            else:
-                choice_keys = ['1', '2']
-                
-            result: Dict[str, Optional[Tuple[str, str]]] = {}
+            result: Dict[str, Tuple[str, str]] = {}  # only real values stored
 
-            for i, odds_block in enumerate(odds_blocks[:len(choice_keys)]):  # Respect the length of dynamic keys
-                choice = choice_keys[i] if i < len(choice_keys) else str(i)
+            for i, choice in enumerate(choice_keys):
                 max_retries = 3
-                got_value = False
-                
                 t_hover_cell = time.perf_counter()
+
+                # Dismiss any lingering tooltip before starting this choice
+                await self._dismiss_odds_movement_tooltip(page)
+
                 for attempt in range(max_retries):
                     try:
-                        await odds_block.scroll_into_view_if_needed()
-                        # Scroll window up to avoid sticky header
+                        # Re-resolve row and containers on every attempt
+                        target_row = await self._find_bookie_row(page, bookie_name)
+                        if not target_row:
+                            logger.debug(f"  Cell {choice}: row not found (attempt {attempt + 1})")
+                            await asyncio.sleep(0.4)
+                            continue
+
+                        containers = await target_row.query_selector_all("div[data-testid='odd-container']")
+                        if not containers or i >= len(containers):
+                            logger.debug(f"  Cell {choice}: container index {i} out of range (attempt {attempt + 1})")
+                            await asyncio.sleep(0.4)
+                            continue
+
+                        current_container = containers[i]
+
+                        # Validate geometry — skip attempt if not rendered
+                        bbox_check = await current_container.bounding_box()
+                        if not bbox_check:
+                            logger.debug(f"  Cell {choice}: bounding_box is None (attempt {attempt + 1}), skipping")
+                            await asyncio.sleep(0.4)
+                            continue
+
+                        hover_target = await self._get_hover_target_from_container(current_container)
+
+                        await hover_target.scroll_into_view_if_needed()
                         await page.evaluate("window.scrollBy(0, -150)")
                         await page.wait_for_timeout(200)
 
-                        # Remove overlays that block hover (bookie-modal + consent)
+                        # Remove overlays before every attempt
                         await page.evaluate("""
                             () => {
                                 document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove());
@@ -2364,9 +2549,9 @@ class OddsPortalScraper:
                                 if (shade) shade.remove();
                             }
                         """)
-                        
-                        # Humanized mouse movement (wiggle)
-                        bbox = await odds_block.bounding_box()
+
+                        # Humanized mouse movement (wiggle) to trigger Vue.js mouseenter
+                        bbox = await hover_target.bounding_box()
                         if bbox:
                             cx = bbox['x'] + bbox['width'] / 2
                             cy = bbox['y'] + bbox['height'] / 2
@@ -2375,95 +2560,62 @@ class OddsPortalScraper:
                             await page.mouse.move(cx, cy)
                             await page.wait_for_timeout(50)
 
-                        # Hover with force=True; fallback to mouse.move() + JS dispatch
                         try:
-                            # Reduced hover timeout to 1500ms
-                            await odds_block.hover(force=True, timeout=1500)
+                            await hover_target.hover(force=True, timeout=1500)
                         except Exception:
                             pass
 
-                        # Also fire JS hover events to trigger Vue.js tooltip component
+                        # Fire JS hover events to guarantee Vue.js tooltip trigger
                         await page.evaluate("""
                             (el) => {
                                 el.dispatchEvent(new PointerEvent('pointerover', {bubbles: true, cancelable: true, pointerId: 1}));
                                 el.dispatchEvent(new PointerEvent('pointerenter', {bubbles: true, cancelable: true, pointerId: 1}));
-                                el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new MouseEvent('mouseover',  {bubbles: true, cancelable: true}));
                                 el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
-                                el.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, cancelable: true}));
+                                el.dispatchEvent(new MouseEvent('mousemove',  {bubbles: true, cancelable: true}));
                             }
-                        """, odds_block)
-                        
-                        # Find the modal via 'Odds movement' heading with dynamic wait instead of hard sleep
+                        """, hover_target)
+
+                        # Wait for tooltip using the old global page-level lookup
                         wait_ms = 3000 + (attempt * 1000)
-                        try:
-                            odds_movement_h3 = await page.wait_for_selector(
-                                "h3:has-text('Odds movement')", state="visible", timeout=wait_ms
-                            )
-                            # Verify tooltip is actually visible before parsing
-                            is_visible = await page.is_visible("h3:has-text('Odds movement')")
-                            if not is_visible:
-                                logger.warning(f"  ♻️ Cell {choice}: tooltip found in DOM but NOT visible (attempt {attempt + 1})")
-                                if attempt < max_retries - 1:
-                                    await page.mouse.move(0, 0)
-                                    await page.wait_for_timeout(500)
-                                    continue
-                                result[choice] = None
-                                break
-                            modal_wrapper = await odds_movement_h3.evaluate_handle(
-                                "node => node.parentElement"
-                            )
-                            modal_el = modal_wrapper.as_element()
-                            if modal_el:
-                                html = await modal_el.inner_html()
-                                label = f"{bookie_name}_{choice}"
-                                parsed = self._parse_opening_odds_from_modal_html(html, label=label)
-                                if parsed:
-                                    opening_val, opening_time = parsed
-                                    result[choice] = (opening_val, opening_time)
-                                    logger.debug(f"  Cell {choice}: opening={opening_val} at {opening_time} (attempt {attempt + 1})")
-                                else:
-                                    result[choice] = None
-                                got_value = True
-                            else:
-                                result[choice] = None
-                        except Exception:
-                            if attempt < max_retries - 1:
-                                logger.debug(f"  Cell {choice}: modal not found (attempt {attempt + 1}/{max_retries}), retrying...")
-                                # Move away and wait before retry
-                                await page.mouse.move(0, 0)
-                                await page.wait_for_timeout(500)
-                                continue
-                            result[choice] = None
-                        
-                        # Move mouse away to dismiss tooltip before next cell
-                        await page.mouse.move(0, 0)
-                        await page.wait_for_timeout(500)
-                        # Wait for modal to fully detach before hovering the next cell
-                        try:
-                            await page.wait_for_selector(
-                                "h3:has-text('Odds movement')",
-                                state="detached", timeout=2000
-                            )
-                        except Exception:
-                            pass
-                        break  # Exit retry loop (success or final attempt done)
-                        
+                        html = await self._wait_for_scoped_tooltip_html(page, timeout_ms=wait_ms)
+
+                        if not html:
+                            logger.debug(f"  Cell {choice}: global tooltip not found (attempt {attempt + 1}/{max_retries})")
+                            await self._dismiss_odds_movement_tooltip(page)
+                            continue
+
+                        label = f"{bookie_name}_{choice}"
+                        parsed = self._parse_opening_odds_from_modal_html(html, label=label)
+
+                        if parsed:
+                            opening_val, opening_time = parsed
+                            result[choice] = (opening_val, opening_time)
+                            logger.debug(f"  Cell {choice}: opening={opening_val} at {opening_time} (attempt {attempt + 1})")
+                        else:
+                            logger.debug(f"  Cell {choice}: tooltip found but no opening odd parsed (attempt {attempt + 1})")
+
+                        # Dismiss tooltip and break retry loop regardless of parse outcome
+                        await self._dismiss_odds_movement_tooltip(page)
+                        break
+
                     except Exception as e:
                         if attempt < max_retries - 1:
                             logger.debug(f"  Cell {choice}: hover error (attempt {attempt + 1}), retrying: {e}")
-                            await page.mouse.move(0, 0)
-                            await page.wait_for_timeout(500)
+                            await self._dismiss_odds_movement_tooltip(page)
                             continue
                         logger.warning(f"  Error hovering cell {choice} for {bookie_name}: {e}")
-                        result[choice] = None
-                
-                if result.get(choice) is not None:
+
+                # Dismiss after all retries for this choice
+                await self._dismiss_odds_movement_tooltip(page)
+
+                if choice in result:
                     log_timing(f"Hovering and extracting '{choice}' opening odd for {bookie_name} took {time.perf_counter() - t_hover_cell:.2f}s")
                 else:
                     log_timing(f"Failed to extract '{choice}' opening odd for {bookie_name} after {time.perf_counter() - t_hover_cell:.2f}s")
-            
+
             return result if result else None
-            
+
         except Exception as e:
             logger.error(f"Error in _extract_opening_odds_for_bookie({bookie_name}): {e}")
             return None
@@ -2473,61 +2625,55 @@ class OddsPortalScraper:
         """
         Extract opening/initial odds for Betfair Exchange by hovering over its odds cells.
 
-        Uses the same retry pattern as _extract_opening_odds_for_bookie:
-          - 3 attempts per cell with escalating wait (3s → 4s → 5s)
-          - Mouse reset to (0, 0) between retries so Vue.js sees a fresh mouseenter
-          - Tooltip detach wait between cells to avoid stale DOM interference
-
-        A 500ms pre-wait is applied after finding the exchange section to let Vue.js
-        fully render all columns (including the X/Draw column) before committing to a
-        2-way or 3-way container count.
-
-        Returns:
-            Dict with keys 'back_1'/'back_x'/'back_2' and 'lay_1'/'lay_x'/'lay_2'
-            mapping to (opening_odds, timestamp) tuples, or None on failure.
+        Key changes vs original:
+          - exchange section, containers and hover target are re-resolved on every retry.
+          - tooltip is captured scoped to the hovered odd-container, not via global h3 selector.
+          - visibility is not inferred from CSS classes (Betfair keeps 'hidden' on tooltip root).
+          - result dict only contains keys with a real opening value; None is never stored.
+          - returns None when no key has a real value.
         """
         try:
+            # Initial section lookup to determine layout — re-resolved per retry below
             exchange_section = await page.query_selector("div[data-testid='betting-exchanges-section']")
             if not exchange_section:
                 logger.warning("⚠️ Betfair Exchange section not found for hover extraction")
                 return None
 
-            # FIX 2: Give Vue.js time to fully render all columns (incl. the X/Draw column)
-            # before counting containers, to avoid a race condition that silently drops back_x/lay_x.
+            # Give Vue.js time to fully render all columns (incl. X/Draw) before committing to layout
             await page.wait_for_timeout(500)
 
-            # Get all odd containers in the exchange section
-            odd_containers = await exchange_section.query_selector_all("div[data-testid='odd-container']")
-            if not odd_containers:
+            odd_containers_init = await exchange_section.query_selector_all("div[data-testid='odd-container']")
+            if not odd_containers_init:
                 logger.warning("⚠️ No odd containers found in Betfair Exchange section")
                 return None
 
-            # Determine if 2-way or 3-way market based on rendered container count
-            is_three_way = len(odd_containers) >= 6
-            logger.debug(f"  Betfair: {len(odd_containers)} containers detected -> {'3-way' if is_three_way else '2-way'}")
+            def _build_betfair_choice_to_index(container_count: int) -> Dict[str, int]:
+                if container_count >= 6:
+                    return {
+                        'back_1': 0, 'back_x': 1, 'back_2': 2,
+                        'lay_1': 3, 'lay_x': 4, 'lay_2': 5,
+                    }
+                if container_count >= 4:
+                    return {
+                        'back_1': 0, 'back_2': 1,
+                        'lay_1': 2, 'lay_2': 3,
+                    }
+                return {}
 
-            if is_three_way:
-                # Indices 0,1,2 = Back; 3,4,5 = Lay
-                back_containers = odd_containers[:3]
-                lay_containers = odd_containers[3:6]
-                choice_keys_back = ['back_1', 'back_x', 'back_2']
-                choice_keys_lay  = ['lay_1', 'lay_x', 'lay_2']
-            else:
-                # Indices 0,1 = Back; 2,3 = Lay
-                back_containers = odd_containers[:2]
-                lay_containers  = odd_containers[2:4]
-                choice_keys_back = ['back_1', 'back_2']
-                choice_keys_lay  = ['lay_1', 'lay_2']
+            initial_mapping = _build_betfair_choice_to_index(len(odd_containers_init))
+            if not initial_mapping:
+                logger.warning(f"⚠️ Unexpected Betfair container count: {len(odd_containers_init)}")
+                return None
 
-            result: Dict[str, Optional[Tuple[str, str]]] = {}
+            logger.debug(
+                f"  Betfair: {len(odd_containers_init)} containers detected -> "
+                f"{'3-way' if len(odd_containers_init) >= 6 else '2-way'}"
+            )
+            logger.info("🖱️ Hovering Betfair cells (Back & Lay) with live layout remap")
 
-            all_targets = []
-            for i, c in enumerate(back_containers):
-                all_targets.append((choice_keys_back[i], c))
-            for i, c in enumerate(lay_containers):
-                all_targets.append((choice_keys_lay[i], c))
-
-            logger.info(f"🖱️ Hovering {len(all_targets)} Betfair cells (Back & Lay)")
+            # Tracks which logical cells have already been processed.
+            # This allows X/Draw to be picked up later if the layout finishes rendering mid-loop.
+            processed_choices = set()
 
             # Dismiss overlays before starting the hover loop
             await page.evaluate("""
@@ -2540,16 +2686,70 @@ class OddsPortalScraper:
                 }
             """)
 
-            for choice, container in all_targets:
+            result: Dict[str, Tuple[str, str]] = {}  # only real values stored
+
+            while True:
+                ex_sec_now = await page.query_selector("div[data-testid='betting-exchanges-section']")
+                if not ex_sec_now:
+                    logger.warning("⚠️ Betfair Exchange section disappeared before hover extraction")
+                    break
+
+                containers_now = await ex_sec_now.query_selector_all("div[data-testid='odd-container']")
+                live_mapping = _build_betfair_choice_to_index(len(containers_now))
+                if not live_mapping:
+                    logger.warning(
+                        f"⚠️ Unexpected Betfair container count during hover extraction: {len(containers_now)}"
+                    )
+                    break
+
+                pending_choices = [k for k in live_mapping.keys() if k not in processed_choices]
+                if not pending_choices:
+                    break
+
+                choice = pending_choices[0]
                 t_hover_bf = time.perf_counter()
                 max_retries = 3
-                got_value = False
+
+                # Dismiss any lingering tooltip before starting this choice
+                await self._dismiss_odds_movement_tooltip(page)
 
                 for attempt in range(max_retries):
                     try:
-                        hover_target = await container.query_selector("div.flex-center.flex-col.font-bold")
-                        if not hover_target:
-                            hover_target = container
+                        # Re-resolve exchange section and containers on every attempt
+                        ex_sec = await page.query_selector("div[data-testid='betting-exchanges-section']")
+                        if not ex_sec:
+                            logger.debug(f"  Betfair {choice}: exchange section not found (attempt {attempt + 1})")
+                            await asyncio.sleep(0.4)
+                            continue
+
+                        containers = await ex_sec.query_selector_all("div[data-testid='odd-container']")
+                        current_mapping = _build_betfair_choice_to_index(len(containers))
+                        if not current_mapping:
+                            logger.debug(
+                                f"  Betfair {choice}: unexpected container count {len(containers)} "
+                                f"(attempt {attempt + 1})"
+                            )
+                            await asyncio.sleep(0.4)
+                            continue
+
+                        if choice not in current_mapping:
+                            logger.debug(
+                                f"  Betfair {choice}: choice not present in current "
+                                f"{'3-way' if len(containers) >= 6 else '2-way'} layout "
+                                f"(attempt {attempt + 1})"
+                            )
+                            break
+
+                        current_container = containers[current_mapping[choice]]
+
+                        # Validate geometry
+                        bbox_check = await current_container.bounding_box()
+                        if not bbox_check:
+                            logger.debug(f"  Betfair {choice}: bounding_box is None (attempt {attempt + 1}), skipping")
+                            await asyncio.sleep(0.4)
+                            continue
+
+                        hover_target = await self._get_hover_target_from_container(current_container)
 
                         await hover_target.scroll_into_view_if_needed()
                         await page.evaluate("window.scrollBy(0, -150)")
@@ -2566,7 +2766,7 @@ class OddsPortalScraper:
                             }
                         """)
 
-                        # Humanized mouse movement (wiggle) to trigger Vue.js mouseenter
+                        # Humanized mouse movement
                         bbox = await hover_target.bounding_box()
                         if bbox:
                             cx = bbox['x'] + bbox['width'] / 2
@@ -2592,69 +2792,43 @@ class OddsPortalScraper:
                             }
                         """, hover_target)
 
-                        # FIX 1: Escalating wait per attempt (3s → 4s → 5s)
+                        # Wait for tooltip using the old global page-level lookup
                         wait_ms = 3000 + (attempt * 1000)
-                        odds_movement_h3 = await page.wait_for_selector(
-                            "h3:has-text('Odds movement')", state="visible", timeout=wait_ms
-                        )
+                        html = await self._wait_for_scoped_tooltip_html(page, timeout_ms=wait_ms)
 
-                        # Extra visibility check — tooltip can be in DOM but still animating in
-                        is_visible = await page.is_visible("h3:has-text('Odds movement')")
-                        if not is_visible:
-                            logger.warning(f"  ♻️ Betfair {choice}: tooltip in DOM but NOT visible (attempt {attempt + 1})")
-                            if attempt < max_retries - 1:
-                                await page.mouse.move(0, 0)
-                                await page.wait_for_timeout(500)
-                                continue
-                            result[choice] = None
-                            break
+                        if not html:
+                            logger.debug(f"  Betfair {choice}: global tooltip not found (attempt {attempt + 1}/{max_retries})")
+                            await self._dismiss_odds_movement_tooltip(page)
+                            continue
 
-                        modal_wrapper = await odds_movement_h3.evaluate_handle("node => node.parentElement")
-                        modal_el = modal_wrapper.as_element()
-                        if modal_el:
-                            html = await modal_el.inner_html()
-                            label = f"Betfair_{choice}"
-                            parsed = self._parse_opening_odds_from_modal_html(html, label=label)
+                        label = f"Betfair_{choice}"
+                        parsed = self._parse_opening_odds_from_modal_html(html, label=label)
 
-                            if parsed:
-                                opening_val, opening_time = parsed
-                                result[choice] = (opening_val, opening_time)
-                                logger.debug(f"  Betfair {choice}: opening={opening_val} at {opening_time} (attempt {attempt + 1})")
-                            else:
-                                result[choice] = None
-                            got_value = True
+                        if parsed:
+                            opening_val, opening_time = parsed
+                            result[choice] = (opening_val, opening_time)
+                            logger.debug(f"  Betfair {choice}: opening={opening_val} at {opening_time} (attempt {attempt + 1})")
                         else:
-                            result[choice] = None
+                            logger.debug(f"  Betfair {choice}: tooltip found but no opening odd parsed (attempt {attempt + 1})")
 
-                    except Exception:
+                        await self._dismiss_odds_movement_tooltip(page)
+                        break
+
+                    except Exception as e:
                         if attempt < max_retries - 1:
                             logger.debug(f"  Betfair {choice}: modal not found (attempt {attempt + 1}/{max_retries}), retrying...")
-                            await page.mouse.move(0, 0)
-                            await page.wait_for_timeout(500)
+                            await self._dismiss_odds_movement_tooltip(page)
                             continue
-                        result[choice] = None
+                        logger.warning(f"  Betfair {choice}: all retries failed: {e}")
 
-                    # Dismiss tooltip and wait for it to fully detach before the next cell
-                    await page.mouse.move(0, 0)
-                    await page.wait_for_timeout(300)
-                    try:
-                        await page.wait_for_selector(
-                            "h3:has-text('Odds movement')", state="detached", timeout=2000
-                        )
-                    except Exception:
-                        pass
-                    break  # exit retry loop (success or final attempt done)
+                await self._dismiss_odds_movement_tooltip(page)
 
-                if got_value:
+                if choice in result:
                     log_timing(f"Hovering and extracting Betfair '{choice}' opening odd took {time.perf_counter() - t_hover_bf:.2f}s")
                 else:
                     log_timing(f"Failed to extract Betfair '{choice}' opening odd after {time.perf_counter() - t_hover_bf:.2f}s")
 
-            # Log summary
-            if result:
-                back_str = f"Back: 1={result.get('back_1', (None,))[0]} X={result.get('back_x', (None,))[0]} 2={result.get('back_2', (None,))[0]}"
-                lay_str  = f"Lay: 1={result.get('lay_1', (None,))[0]} X={result.get('lay_x', (None,))[0]} 2={result.get('lay_2', (None,))[0]}"
-                logger.info(f"✅ Betfair opening odds: {back_str} | {lay_str}")
+                processed_choices.add(choice)
 
             return result if result else None
 
