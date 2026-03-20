@@ -1459,7 +1459,7 @@ class JobScheduler:
         # Scrape all matches (parallel if configured) — callback fires per event
         num_browsers = AppConfig.ODDSPORTAL_PARALLEL_BROWSERS
         logger.info(
-            f"\ud83c\udf10 OddsPortal: Dispatching {len(op_tasks)} tasks with {num_browsers} browser(s) "
+            f"🌐 OddsPortal: Dispatching {len(op_tasks)} tasks with {num_browsers} browser(s) "
             f"(browser-per-worker, fresh-context-per-event)"
         )
         op_results = scrape_multiple_matches_parallel_sync(

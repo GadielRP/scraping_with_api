@@ -199,6 +199,17 @@ class MatchOddsData:
     betfair: Optional[BetfairExchangeOdds] = None
 
 
+@dataclass
+class GroupSeedResult:
+    """Result of a resolver-seed task that only warms the league cache."""
+    success: bool
+    cache_warmed: bool
+    candidate_count: int
+    season_id: Optional[int] = None
+    league_url: Optional[str] = None
+    error: Optional[str] = None
+
+
 class OddsPortalScraper:
     """
     Scraper for OddsPortal match pages.
@@ -2898,26 +2909,6 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
         logger.error(f"Error in scrape_match_sync: {e}\n{traceback.format_exc()}")
         return None
 
-def _attach_cached_match_urls(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Refresh task match URLs from the DB-backed cache without opening a browser."""
-    if not tasks:
-        return []
-
-    scraper = OddsPortalScraper()
-    refreshed_tasks: List[Dict[str, Any]] = []
-    for task in tasks:
-        refreshed_task = dict(task)
-        if not refreshed_task.get("match_url") and refreshed_task.get("season_id") and refreshed_task.get("league_url"):
-            cached_url = scraper.find_match_url_from_cache(
-                refreshed_task["season_id"],
-                refreshed_task["home_team"],
-                refreshed_task["away_team"],
-                league_url=refreshed_task["league_url"],
-            )
-            if cached_url:
-                refreshed_task["match_url"] = cached_url
-        refreshed_tasks.append(refreshed_task)
-    return refreshed_tasks
 
 
 def _resolve_task_sport(task: Dict[str, Any]) -> Optional[str]:
@@ -3051,6 +3042,85 @@ async def _scrape_task_with_recovery(
 
 
 # ---------------------------------------------------------------------------
+# Seed-only resolver
+# ---------------------------------------------------------------------------
+
+async def _seed_group_cache_only(
+    scraper: OddsPortalScraper,
+    task: Dict[str, Any],
+    task_label: str,
+) -> GroupSeedResult:
+    """Seed the league cache for a group without scraping any match.
+
+    Recovery ladder (reduced version of the full scrape ladder):
+      1. Normal attempt on the current browser session.
+      2. If it fails or returns 0 candidates, restart the browser session
+         up to ODDSPORTAL_SESSION_RESTART_ATTEMPTS times.
+    """
+    season_id = task.get("season_id")
+    league_url = task.get("league_url")
+    event_id = task.get("event_id")
+
+    if not league_url:
+        msg = f"No league_url in seed task for event_id {event_id}"
+        logger.warning(f"{task_label}: {msg}")
+        return GroupSeedResult(success=False, cache_warmed=False, candidate_count=0,
+                               season_id=season_id, league_url=league_url, error=msg)
+
+    logger.info(f"{task_label}: Resolver seed start for event_id {event_id} "
+                f"(season_id={season_id}, league_url={league_url})")
+
+    # --- Attempt 1: current session ---
+    try:
+        candidates = await scraper._extract_league_candidates(league_url, season_id)
+    except Exception as e:
+        logger.error(f"{task_label}: league extraction failed for seed: {e}")
+        candidates = []
+
+    if candidates:
+        logger.info(f"{task_label}: Resolver seed finished — cache_warmed=True, "
+                     f"candidate_count={len(candidates)}")
+        return GroupSeedResult(success=True, cache_warmed=True,
+                               candidate_count=len(candidates),
+                               season_id=season_id, league_url=league_url)
+
+    # --- Session restart attempts ---
+    restart_attempts = max(1, ODDSPORTAL_SESSION_RESTART_ATTEMPTS)
+    for restart_idx in range(1, restart_attempts + 1):
+        logger.warning(
+            f"{task_label}: seed returned 0 candidates — restarting browser session "
+            f"({restart_idx}/{restart_attempts}) for seed of event_id {event_id}"
+        )
+        try:
+            await scraper.stop()
+            await scraper.start()
+        except Exception as e:
+            logger.error(f"{task_label}: browser restart failed during seed: {e}")
+            continue
+
+        try:
+            candidates = await scraper._extract_league_candidates(league_url, season_id)
+        except Exception as e:
+            logger.error(f"{task_label}: league extraction failed on restart {restart_idx}: {e}")
+            candidates = []
+
+        if candidates:
+            logger.info(
+                f"{task_label}: Resolver seed finished after restart {restart_idx} — "
+                f"cache_warmed=True, candidate_count={len(candidates)}"
+            )
+            return GroupSeedResult(success=True, cache_warmed=True,
+                                   candidate_count=len(candidates),
+                                   season_id=season_id, league_url=league_url)
+
+    logger.warning(f"{task_label}: Resolver seed finished — cache_warmed=False "
+                    f"(all {restart_attempts} restart(s) exhausted)")
+    return GroupSeedResult(success=False, cache_warmed=False, candidate_count=0,
+                           season_id=season_id, league_url=league_url,
+                           error="all seed attempts exhausted")
+
+
+# ---------------------------------------------------------------------------
 # Active dispatcher overrides
 # ---------------------------------------------------------------------------
 
@@ -3166,12 +3236,16 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
 
 def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
     """
-    Event-driven dispatcher.
+    Event-driven dispatcher with decoupled seeding.
 
-    Ready events always run before unresolved resolver tasks. Only one resolver
-    is active per (season_id, league_url) group. Once a resolver warms the
-    league cache, sibling events are released to the shared ready queue so free
-    browsers can start scraping them immediately.
+    The dispatcher separates league-cache seeding from event scraping:
+      - resolver_seed: lightweight task that navigates to the league page,
+        extracts candidates, and warms the cache.  Does NOT scrape any match.
+      - ready_event: event with a resolved match_url, ready for scraping.
+
+    Siblings are released immediately after the seed finishes (not after the
+    resolver finishes scraping its match).  The event that originated the
+    resolver re-enters the ready queue and competes for any available browser.
     """
     if not tasks:
         return {}
@@ -3179,6 +3253,7 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
     if num_browsers <= 1 or len(tasks) == 1:
         return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir, on_result=on_result)
 
+    # --- Phase 1: attach warm-cache URLs and classify tasks ---
     tasks_with_cache = _attach_cached_match_urls(tasks)
     dispatch_groups, standalone_tasks = _build_dispatch_groups(tasks_with_cache)
     sorted_group_items = sorted(
@@ -3193,16 +3268,22 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
     dispatcher_condition = Condition()
     ready_event_queue: deque = deque()
     resolver_queue: deque = deque()
+    # group_state now tracks ALL pending (unscraped) events per group
     group_state: Dict[Tuple[int, str], Dict[str, Any]] = {}
-    remaining_task_count = len(tasks_with_cache)
+    # remaining_event_count = real events pending completion (excludes seed tasks)
+    remaining_event_count = len(tasks_with_cache)
     all_results: Dict[int, Optional[MatchOddsData]] = {}
 
+    # Max seed retries per group (separate from per-event browser restart attempts)
+    MAX_SEED_ATTEMPTS = max(1, ODDSPORTAL_SESSION_RESTART_ATTEMPTS + 1)
+
     ready_task_count = 0
-    resolver_task_count = 0
-    blocked_task_count = 0
+    resolver_seed_count = 0
+    pending_in_groups = 0
     standalone_ready_count = 0
     standalone_resolver_count = 0
 
+    # --- Phase 2: populate queues and group_state ---
     for group_key, group_tasks in sorted_group_items:
         resolved_group_tasks: List[Dict[str, Any]] = []
         unresolved_group_tasks: List[Dict[str, Any]] = []
@@ -3216,22 +3297,37 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
             else:
                 unresolved_group_tasks.append(task_copy)
 
+        # Tasks that already have a match_url go straight to the ready queue
         for ready_task in resolved_group_tasks:
             ready_event_queue.append(ready_task)
             ready_task_count += 1
 
+        # All unresolved tasks stay in pending_tasks — including the one used
+        # as basis for the resolver_seed task.
         group_state[group_key] = {
-            "blocked_tasks": unresolved_group_tasks[1:] if unresolved_group_tasks else [],
+            "pending_tasks": list(unresolved_group_tasks),
             "resolver_active": bool(unresolved_group_tasks),
+            "seed_attempts": 0,
+            "cache_warmed": False,
         }
-        blocked_task_count += len(group_state[group_key]["blocked_tasks"])
+        pending_in_groups += len(unresolved_group_tasks)
 
+        # Create exactly ONE resolver_seed task per group if there are pending tasks
         if unresolved_group_tasks:
-            resolver_task = dict(unresolved_group_tasks[0])
-            resolver_task["_dispatch_role"] = "resolver_event"
-            resolver_queue.append(resolver_task)
-            resolver_task_count += 1
+            seed_basis = unresolved_group_tasks[0]
+            seed_task: Dict[str, Any] = {
+                "event_id": seed_basis.get("event_id"),
+                "season_id": seed_basis.get("season_id"),
+                "league_url": seed_basis.get("league_url"),
+                "home_team": seed_basis.get("home_team"),
+                "away_team": seed_basis.get("away_team"),
+                "_dispatch_role": "resolver_seed",
+                "_dispatch_group_key": group_key,
+            }
+            resolver_queue.append(seed_task)
+            resolver_seed_count += 1
 
+    # Standalone tasks (no group key) — treat as ready or direct events
     for task in standalone_tasks:
         task_copy = dict(task)
         if task_copy.get("match_url"):
@@ -3240,94 +3336,185 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
             ready_task_count += 1
             standalone_ready_count += 1
         else:
-            task_copy["_dispatch_role"] = "resolver_event"
-            resolver_queue.append(task_copy)
-            resolver_task_count += 1
+            # No group key = cannot seed a league, go straight to live lookup
+            task_copy["_dispatch_role"] = "ready_event"
+            ready_event_queue.append(task_copy)
+            ready_task_count += 1
             standalone_resolver_count += 1
 
     logger.info(
-        f"OddsPortal Parallel: total_tasks={len(tasks_with_cache)}, dispatch_groups={len(dispatch_groups)}, "
-        f"ready_tasks={ready_task_count}, resolver_tasks={resolver_task_count}, "
-        f"blocked_group_tasks={blocked_task_count}, standalone_ready={standalone_ready_count}, "
-        f"standalone_resolvers={standalone_resolver_count}"
+        f"OddsPortal Parallel: total_events={len(tasks_with_cache)}, dispatch_groups={len(dispatch_groups)}, "
+        f"ready_events={ready_task_count}, resolver_seeds={resolver_seed_count}, "
+        f"pending_in_groups={pending_in_groups}, standalone_ready={standalone_ready_count}, "
+        f"standalone_no_url={standalone_resolver_count}"
     )
 
+    # ------------------------------------------------------------------
+    # _release_group_after_seed — liberates pending tasks after seed
+    # ------------------------------------------------------------------
+    def _release_group_after_seed(
+        group_key: Tuple[int, str],
+        seed_task: Dict[str, Any],
+        seed_result: GroupSeedResult,
+    ) -> None:
+        nonlocal remaining_event_count
+
+        seed_event_id = seed_task.get("event_id")
+
+        with dispatcher_condition:
+            state = group_state.get(group_key)
+            if not state:
+                dispatcher_condition.notify_all()
+                return
+
+            state["seed_attempts"] += 1
+            state["resolver_active"] = False
+
+            pending_tasks = state["pending_tasks"]
+            if not pending_tasks:
+                state["cache_warmed"] = seed_result.cache_warmed
+                dispatcher_condition.notify_all()
+                return
+
+        # Re-check cache for every pending task (outside lock to avoid holding
+        # the lock during DB queries)
+        refreshed = _attach_cached_match_urls(pending_tasks)
+
+        cache_hit_ids: List[int] = []
+        cache_miss_ids: List[int] = []
+        tasks_with_url: List[Dict[str, Any]] = []
+        tasks_without_url: List[Dict[str, Any]] = []
+
+        for t in refreshed:
+            t_copy = dict(t)
+            t_copy["_dispatch_group_key"] = group_key
+            if t_copy.get("match_url"):
+                tasks_with_url.append(t_copy)
+                cache_hit_ids.append(t_copy.get("event_id"))
+            else:
+                tasks_without_url.append(t_copy)
+                cache_miss_ids.append(t_copy.get("event_id"))
+
+        with dispatcher_condition:
+            state = group_state[group_key]
+
+            if seed_result.cache_warmed:
+                # Cache was successfully warmed — release ALL tasks immediately
+                state["cache_warmed"] = True
+                state["pending_tasks"] = []
+
+                for t in tasks_with_url:
+                    t["_dispatch_role"] = "ready_event"
+                    t["_released_by_resolver"] = True
+                    t["_resolver_event_id"] = seed_event_id
+                    t["_release_reason"] = "cache_warmed"
+                    ready_event_queue.append(t)
+
+                for t in tasks_without_url:
+                    # Even without match_url, release for live lookup
+                    t["_dispatch_role"] = "ready_event"
+                    t["_released_by_resolver"] = True
+                    t["_resolver_event_id"] = seed_event_id
+                    t["_release_reason"] = "cache_warmed"
+                    ready_event_queue.append(t)
+
+            elif state["seed_attempts"] < MAX_SEED_ATTEMPTS:
+                # Seed failed but we have retries left — release cache hits,
+                # keep misses pending, and re-enqueue a new resolver_seed.
+                state["pending_tasks"] = tasks_without_url
+
+                for t in tasks_with_url:
+                    t["_dispatch_role"] = "ready_event"
+                    t["_released_by_resolver"] = True
+                    t["_resolver_event_id"] = seed_event_id
+                    t["_release_reason"] = "partial_seed"
+                    ready_event_queue.append(t)
+
+                if tasks_without_url:
+                    re_seed_basis = tasks_without_url[0]
+                    re_seed_task: Dict[str, Any] = {
+                        "event_id": re_seed_basis.get("event_id"),
+                        "season_id": re_seed_basis.get("season_id"),
+                        "league_url": re_seed_basis.get("league_url"),
+                        "home_team": re_seed_basis.get("home_team"),
+                        "away_team": re_seed_basis.get("away_team"),
+                        "_dispatch_role": "resolver_seed",
+                        "_dispatch_group_key": group_key,
+                    }
+                    resolver_queue.append(re_seed_task)
+                    state["resolver_active"] = True
+
+            else:
+                # Seed exhausted all retries — release everyone for live lookup
+                state["pending_tasks"] = []
+                state["cache_warmed"] = False
+
+                for t in tasks_with_url:
+                    t["_dispatch_role"] = "ready_event"
+                    t["_released_by_resolver"] = True
+                    t["_resolver_event_id"] = seed_event_id
+                    t["_release_reason"] = "seed_failed_fallback"
+                    ready_event_queue.append(t)
+
+                for t in tasks_without_url:
+                    t["_dispatch_role"] = "ready_event"
+                    t["_released_by_resolver"] = True
+                    t["_resolver_event_id"] = seed_event_id
+                    t["_release_reason"] = "seed_failed_fallback"
+                    ready_event_queue.append(t)
+
+            dispatcher_condition.notify_all()
+
+        # --- Logging (outside lock) ---
+        released_total = len(cache_hit_ids) + len(cache_miss_ids) if seed_result.cache_warmed or state["seed_attempts"] >= MAX_SEED_ATTEMPTS else len(cache_hit_ids)
+        if released_total > 0:
+            logger.info(
+                f"Dispatcher: resolver seed for event_id {seed_event_id} unlocked "
+                f"{released_total} sibling ready task(s) for {_format_group_key(group_key)} "
+                f"(cache_hits={len(cache_hit_ids)}, live_lookups={len(cache_miss_ids) if seed_result.cache_warmed or state['seed_attempts'] >= MAX_SEED_ATTEMPTS else 0})"
+            )
+        if not seed_result.cache_warmed and state["seed_attempts"] < MAX_SEED_ATTEMPTS and tasks_without_url:
+            logger.info(
+                f"Dispatcher: re-enqueuing resolver seed for {_format_group_key(group_key)} "
+                f"(attempt {state['seed_attempts']}/{MAX_SEED_ATTEMPTS}, "
+                f"remaining_pending={len(tasks_without_url)})"
+            )
+        if not seed_result.cache_warmed and state["seed_attempts"] >= MAX_SEED_ATTEMPTS:
+            logger.warning(
+                f"Dispatcher: all seed attempts exhausted for {_format_group_key(group_key)} — "
+                f"releasing {len(cache_miss_ids)} tasks for live lookup fallback"
+            )
+
+    # ------------------------------------------------------------------
+    # _complete_task — only for real events, NOT for resolver_seed
+    # ------------------------------------------------------------------
+    def _complete_task(task: Dict[str, Any], data: Optional[MatchOddsData], resolved_match_url: Optional[str]) -> None:
+        nonlocal remaining_event_count
+
+        event_id = task.get("event_id")
+        with dispatcher_condition:
+            if event_id is not None:
+                all_results[event_id] = data
+            remaining_event_count -= 1
+            dispatcher_condition.notify_all()
+
+    # ------------------------------------------------------------------
+    # _claim_next_task
+    # ------------------------------------------------------------------
     def _claim_next_task() -> Optional[Dict[str, Any]]:
-        nonlocal remaining_task_count
         with dispatcher_condition:
             while True:
                 if ready_event_queue:
                     return ready_event_queue.popleft()
                 if resolver_queue:
                     return resolver_queue.popleft()
-                if remaining_task_count == 0:
+                if remaining_event_count == 0:
                     return None
                 dispatcher_condition.wait()
 
-    def _complete_task(task: Dict[str, Any], data: Optional[MatchOddsData], resolved_match_url: Optional[str]) -> None:
-        nonlocal remaining_task_count
-
-        event_id = task.get("event_id")
-        role = task.get("_dispatch_role")
-        group_key = task.get("_dispatch_group_key")
-
-        blocked_tasks_to_refresh: List[Dict[str, Any]] = []
-        with dispatcher_condition:
-            if event_id is not None:
-                all_results[event_id] = data
-            remaining_task_count -= 1
-
-            if role == "resolver_event" and group_key and group_key in group_state:
-                group_state[group_key]["resolver_active"] = False
-                blocked_tasks_to_refresh = group_state[group_key]["blocked_tasks"]
-                group_state[group_key]["blocked_tasks"] = []
-
-            if not blocked_tasks_to_refresh:
-                dispatcher_condition.notify_all()
-                return
-
-        refreshed_tasks = _attach_cached_match_urls(blocked_tasks_to_refresh)
-        released_ready_ids: List[int] = []
-        unresolved_tasks: List[Dict[str, Any]] = []
-
-        for sibling_task in refreshed_tasks:
-            sibling_copy = dict(sibling_task)
-            sibling_copy["_dispatch_group_key"] = group_key
-            if sibling_copy.get("match_url"):
-                sibling_copy["_dispatch_role"] = "ready_event"
-                sibling_copy["_released_by_resolver"] = True
-                sibling_copy["_resolver_event_id"] = event_id
-                released_ready_ids.append(sibling_copy.get("event_id"))
-                with dispatcher_condition:
-                    ready_event_queue.append(sibling_copy)
-            else:
-                unresolved_tasks.append(sibling_copy)
-
-        next_resolver_event_id = None
-        unresolved_remaining = 0
-        with dispatcher_condition:
-            state = group_state[group_key]
-            if unresolved_tasks:
-                next_resolver = dict(unresolved_tasks[0])
-                next_resolver["_dispatch_role"] = "resolver_event"
-                resolver_queue.append(next_resolver)
-                next_resolver_event_id = next_resolver.get("event_id")
-                unresolved_remaining = len(unresolved_tasks)
-                state["resolver_active"] = True
-                state["blocked_tasks"] = unresolved_tasks[1:]
-            dispatcher_condition.notify_all()
-
-        if released_ready_ids:
-            logger.info(
-                f"Dispatcher: resolver event_id {event_id} unlocked {len(released_ready_ids)} sibling ready task(s) "
-                f"for {_format_group_key(group_key)}"
-            )
-        if next_resolver_event_id is not None:
-            logger.info(
-                f"Dispatcher: queued next resolver event_id {next_resolver_event_id} for "
-                f"{_format_group_key(group_key)} (remaining_unresolved={unresolved_remaining})"
-            )
-
+    # ------------------------------------------------------------------
+    # Worker loop
+    # ------------------------------------------------------------------
     def _run_dynamic_worker_sync(worker_index: int) -> None:
         worker_label = f"[Browser {worker_index}/{worker_count}]"
 
@@ -3343,6 +3530,23 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
                     role = task.get("_dispatch_role")
                     group_key = task.get("_dispatch_group_key")
                     event_id = task.get("event_id")
+
+                    # --- Branch: resolver_seed ---
+                    if role == "resolver_seed" and group_key:
+                        task_label = (
+                            f"{worker_label} OddsPortal [SEED "
+                            f"{task.get('home_team', '?')} vs {task.get('away_team', '?')}]"
+                        )
+                        logger.info(
+                            f"{worker_label} Resolver seed start for event_id {event_id} "
+                            f"in {_format_group_key(group_key)}"
+                        )
+                        seed_result = await _seed_group_cache_only(scraper, task, task_label)
+                        _release_group_after_seed(group_key, task, seed_result)
+                        # Do NOT call _complete_task or on_result for seed tasks
+                        continue
+
+                    # --- Branch: real event ---
                     task_label = (
                         f"{worker_label} OddsPortal "
                         f"[{task.get('home_team', 'Unknown')} vs {task.get('away_team', 'Unknown')}]"
@@ -3350,15 +3554,11 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
                     data: Optional[MatchOddsData] = None
                     resolved_match_url: Optional[str] = None
 
-                    if role == "resolver_event" and group_key:
-                        logger.info(
-                            f"{worker_label} Resolver start for event_id {event_id} "
-                            f"in {_format_group_key(group_key)}"
-                        )
-                    elif role == "ready_event" and task.get("_released_by_resolver") and group_key:
+                    if role == "ready_event" and task.get("_released_by_resolver") and group_key:
                         logger.info(
                             f"{worker_label} Starting resolver-released sibling event_id {event_id} "
-                            f"for {_format_group_key(group_key)}"
+                            f"for {_format_group_key(group_key)} "
+                            f"(reason={task.get('_release_reason', 'unknown')})"
                         )
 
                     try:
@@ -3395,6 +3595,9 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
         finally:
             loop.close()
 
+    # ------------------------------------------------------------------
+    # Launch workers
+    # ------------------------------------------------------------------
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
