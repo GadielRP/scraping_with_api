@@ -214,6 +214,10 @@ class OddsPortalScraper:
         # Safe default so retry logging never crashes when proxy is disabled.
         self._session_id = "no-proxy"
         
+        # Context lifecycle config flags
+        self._ignore_https_errors = getattr(Config, 'ODDSPORTAL_IGNORE_HTTPS_ERRORS', True)
+        self._fresh_context_per_event = getattr(Config, 'ODDSPORTAL_FRESH_CONTEXT_PER_EVENT', True)
+        
         # Initialize Team Matcher
         self.team_matcher = TeamMatcher(
             team_aliases=TEAM_ALIASES, 
@@ -256,54 +260,14 @@ class OddsPortalScraper:
 
         self.browser = await self.playwright.chromium.launch(**launch_args)
         
-        # Common modern User-Agents to rotate
-        user_agents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-        ]
+        # Browser is ready — context creation is deferred to _create_fresh_context()
+        self.context = None
         
-        # Create context with anti-detection
-        self.context = await self.browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            user_agent=random.choice(user_agents),
-            locale="en-US",
-            timezone_id="America/Mexico_City",
-            java_script_enabled=True,
+        logger.info(
+            f"✅ OddsPortalScraper: Browser started (no context yet — "
+            f"fresh_context_per_event={self._fresh_context_per_event}, "
+            f"ignore_https_errors={self._ignore_https_errors})"
         )
-        
-        # Inject evasion scripts
-        await self.context.add_init_script("""
-            // Overwrite webdriver property
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            
-            // Mock permissions
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-            );
-            
-            // Mock plugins and languages
-            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-            
-            // Mock platform
-            Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
-            
-            // Mock chrome object
-            window.chrome = { runtime: {} };
-        """)
-        
-        # Intercept and block unnecessary resources (toggleable via .env)
-        if getattr(Config, 'ODDSPORTAL_BLOCK_RESOURCES', True):
-            await self.context.route("**/*", self._intercept_route)
-            logger.info("🚫 Resource blocking ENABLED (ODDSPORTAL_BLOCK_RESOURCES=true)")
-        else:
-            logger.info("✅ Resource blocking DISABLED (ODDSPORTAL_BLOCK_RESOURCES=false)")
-        
-        logger.info("✅ OddsPortalScraper: Browser started")
 
     async def _intercept_route(self, route):
         """Intercept network requests to block heavy assets and known trackers to save proxy bandwidth."""
@@ -332,6 +296,69 @@ class OddsPortalScraper:
             return
             
         await route.continue_()
+
+    # ---------------------------------------------------------------------------
+    # Context Factory Helpers
+    # ---------------------------------------------------------------------------
+
+    def _build_context_options(self) -> Dict[str, Any]:
+        """Centralize all options for browser.new_context()."""
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+        ]
+        return {
+            "viewport": {"width": 1920, "height": 1080},
+            "user_agent": random.choice(user_agents),
+            "locale": "en-US",
+            "timezone_id": "America/Mexico_City",
+            "java_script_enabled": True,
+            "ignore_https_errors": self._ignore_https_errors,
+        }
+
+    def _get_evasion_init_script(self) -> str:
+        """Return the anti-detection init script as a reusable string."""
+        return """
+            // Overwrite webdriver property
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            
+            // Mock permissions
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+            );
+            
+            // Mock plugins and languages
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            
+            // Mock platform
+            Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+            
+            // Mock chrome object
+            window.chrome = { runtime: {} };
+        """
+
+    async def _install_context_features(self, context: BrowserContext) -> None:
+        """Apply init script and resource-blocking route to a context."""
+        await context.add_init_script(self._get_evasion_init_script())
+        if getattr(Config, 'ODDSPORTAL_BLOCK_RESOURCES', True):
+            await context.route("**/*", self._intercept_route)
+
+    async def _create_fresh_context(self) -> BrowserContext:
+        """Create a brand-new BrowserContext from the already-open browser."""
+        if not self.browser:
+            raise RuntimeError("Cannot create fresh context: browser is not started. Call start() first.")
+        ctx = await self.browser.new_context(**self._build_context_options())
+        await self._install_context_features(ctx)
+        return ctx
+
+    # ---------------------------------------------------------------------------
+    # Lifecycle
+    # ---------------------------------------------------------------------------
 
     async def stop(self):
         """Stop the browser session."""
@@ -387,7 +414,11 @@ class OddsPortalScraper:
             await page.set_extra_http_headers({})
 
     async def _clear_browser_state(self) -> None:
-        """Clear cookies and web storage from the active browser context."""
+        """Clear cookies, web storage, cache storage, and service workers from the active context."""
+        if not self.context:
+            logger.debug("⚠️ _clear_browser_state: no active context, skipping")
+            return
+
         try:
             # 1. Clear cookies
             await self.context.clear_cookies()
@@ -397,11 +428,38 @@ class OddsPortalScraper:
                 tmp_page = await self.context.new_page()
                 await tmp_page.goto("about:blank")
                 await tmp_page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
+
+                # 3. Clear Cache Storage (best-effort)
+                try:
+                    await tmp_page.evaluate("""
+                        async () => {
+                            if (typeof caches !== 'undefined') {
+                                const names = await caches.keys();
+                                await Promise.all(names.map(n => caches.delete(n)));
+                            }
+                        }
+                    """)
+                except Exception:
+                    pass
+
+                # 4. Unregister service workers (best-effort)
+                try:
+                    await tmp_page.evaluate("""
+                        async () => {
+                            if (navigator.serviceWorker) {
+                                const regs = await navigator.serviceWorker.getRegistrations();
+                                await Promise.all(regs.map(r => r.unregister()));
+                            }
+                        }
+                    """)
+                except Exception:
+                    pass
+
                 await tmp_page.close()
             except Exception as storage_err:
-                logger.debug(f"⚠️ Storage clear on about:blank failed (non-fatal): {storage_err}")
+                logger.debug(f"⚠️ Storage/cache clear on about:blank failed (non-fatal): {storage_err}")
 
-            logger.info("🧹 OddsPortalScraper: Browser state cleared (cookies + storage)")
+            logger.info("🧹 OddsPortalScraper: Browser state cleared (cookies + storage + cache storage + service workers)")
         except Exception as e:
             logger.warning(f"⚠️ _clear_browser_state failed (non-fatal): {e}")
 
@@ -642,6 +700,14 @@ class OddsPortalScraper:
             return "GOTO_CONNECTION_REFUSED", "connection refused before page load"
         if "ERR_NAME_NOT_RESOLVED" in upper_text:
             return "GOTO_DNS_RESOLUTION_FAILED", "DNS resolution failed before page load"
+        if "ERR_CERT_AUTHORITY_INVALID" in upper_text:
+            return "GOTO_CERT_AUTHORITY_INVALID", "certificate authority not trusted"
+        if "ERR_CERT_COMMON_NAME_INVALID" in upper_text:
+            return "GOTO_CERT_COMMON_NAME_INVALID", "TLS certificate common name mismatch"
+        if "ERR_CERT_DATE_INVALID" in upper_text:
+            return "GOTO_CERT_DATE_INVALID", "TLS certificate date invalid"
+        if "ERR_CERT_INVALID" in upper_text:
+            return "GOTO_CERT_INVALID", "TLS certificate invalid"
         if "ERR_TIMED_OUT" in upper_text or "TIMEOUT" in upper_text:
             return "GOTO_TIMEOUT", "navigation timed out before usable content loaded"
         return "GOTO_FAILED", "navigation failed before usable content loaded"
@@ -1040,10 +1106,18 @@ class OddsPortalScraper:
         Navigate to a league page, extract candidates once, and populate cache if available.
         This shared path is reused by both priming and cache-miss discovery.
         """
-        if not self.context:
+        if not self.browser:
             await self.start()
 
-        page = await self.context.new_page()
+        # If no active context (normal when fresh_context_per_event is on),
+        # create a temporary one for this league navigation.
+        _temp_ctx = None
+        ctx = self.context
+        if not ctx:
+            _temp_ctx = await self._create_fresh_context()
+            ctx = _temp_ctx
+
+        page = await ctx.new_page()
         navigation_league_url = league_url
         normalized_league_url = _normalize_league_url(league_url) or league_url
         try:
@@ -1180,6 +1254,11 @@ class OddsPortalScraper:
             return candidates
         finally:
             await page.close()
+            if _temp_ctx:
+                try:
+                    await _temp_ctx.close()
+                except Exception:
+                    pass
 
 
     async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
@@ -1250,8 +1329,8 @@ class OddsPortalScraper:
         """
         Navigate to a match page and extract odds for all configured market periods.
         
-        Uses URL fragment identifiers (#{group};{period}) to switch between
-        market groups/periods without reloading the page.
+        Creates a fresh BrowserContext per event when fresh_context_per_event is enabled,
+        ensuring complete isolation between events within the same browser.
         
         Args:
             match_url: Full OddsPortal match URL
@@ -1259,14 +1338,45 @@ class OddsPortalScraper:
                    Used to determine scraping route from SPORT_SCRAPING_ROUTES.
                    If None, falls back to legacy single-extraction behavior.
         """
-        if not self.context:
+        if not self.browser:
             await self.start()
 
-        if clear_state and self.context:
-            await self._clear_browser_state()
+        # --- Fresh context lifecycle ---
+        previous_context = self.context
+        fresh_context = None
+        page = None
 
-        page = await self.context.new_page()
-        
+        try:
+            if self._fresh_context_per_event:
+                try:
+                    fresh_context = await self._create_fresh_context()
+                except Exception as ctx_err:
+                    logger.error(f"❌ Failed to create fresh context for {match_url}: {ctx_err}")
+                    return None
+                self.context = fresh_context
+                logger.info(
+                    f"🔒 Fresh context created (session-{self._session_id}, "
+                    f"ignore_https_errors={self._ignore_https_errors})"
+                )
+            elif not self.context:
+                # Fallback: create a persistent context if fresh mode is off and none exists
+                self.context = await self._create_fresh_context()
+
+            if clear_state and self.context:
+                await self._clear_browser_state()
+
+            page = await self.context.new_page()
+        except Exception as setup_err:
+            logger.error(f"❌ Failed to set up page for {match_url}: {setup_err}")
+            # Clean up fresh context if page creation failed
+            if fresh_context:
+                try:
+                    await fresh_context.close()
+                except Exception:
+                    pass
+                self.context = previous_context
+            return None
+
         try:
             t0 = time.perf_counter()
             
@@ -1716,7 +1826,18 @@ class OddsPortalScraper:
             logger.error(f"❌ Error scraping match {match_url}: {e}")
             return None
         finally:
-            await page.close()
+            try:
+                if page:
+                    await page.close()
+            except Exception:
+                pass
+            # Close the fresh context and restore previous reference
+            if fresh_context:
+                try:
+                    await fresh_context.close()
+                except Exception:
+                    pass
+                self.context = previous_context
 
 
     def _parse_opening_odds_from_modal_html(self, modal_html: str) -> Optional[Tuple[str, str]]:
@@ -2856,9 +2977,9 @@ async def _scrape_task_with_recovery(
     Scrape one task with inline recovery.
 
     Recovery ladder:
-      1. Cache/live discovery + scrape on the current browser session
-      2. Same browser session with clear_state=True (only if a match URL was resolved)
-      3. Immediate browser restart(s) with a fresh session and full re-resolution
+      1. Fresh context on the current browser session (cache/live discovery + scrape)
+      2. Another fresh context on the same browser session (clear_state=True for compat)
+      3. Full browser restart(s) with a fresh session and full re-resolution
     """
     sport = _resolve_task_sport(task)
     event_id = task.get("event_id")
@@ -2875,15 +2996,18 @@ async def _scrape_task_with_recovery(
             return data, match_url
 
     if match_url:
-        logger.info(f"{task_label}: attempt 1 returned no data, retrying with clear_state=True for event_id {event_id}")
+        logger.info(
+            f"{task_label}: attempt 1 returned no data — fresh-context retry on "
+            f"existing browser session-{scraper._session_id} for event_id {event_id}"
+        )
         try:
             data = await scraper.scrape_match(match_url, sport=sport, clear_state=True)
         except Exception as e:
-            logger.error(f"{task_label}: clear_state retry failed for event_id {event_id}: {e}")
+            logger.error(f"{task_label}: fresh-context retry failed for event_id {event_id}: {e}")
             data = None
         if data:
             logger.info(
-                f"{task_label}: clear_state retry succeeded for event_id {event_id} "
+                f"{task_label}: fresh-context retry succeeded for event_id {event_id} "
                 f"with the existing browser session-{scraper._session_id}"
             )
             return data, match_url

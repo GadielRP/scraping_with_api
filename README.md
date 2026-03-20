@@ -21,7 +21,7 @@ The scheduler ingests upcoming events from several SofaScore feeds:
 - Team streak events.
 - Top H2H events.
 - Winning odds events.
-- Daily sport extractor (`daily_discovery`) that fetches today's scheduled events with odds.
+- Daily sport extractor (`daily_discovery`) that fetches today's scheduled events with odds. If a sport's extraction fails due to proxy/network errors, it is queued for automatic retries.
 
 All discovery paths normalize into the same `events` table with source tagging and dedup/upsert behavior.
 
@@ -82,7 +82,7 @@ Daily jobs pull completed match results, refresh odds/markets for finished event
 - Discovery B: `Config.DISCOVERY2_TIMES`
 - Pre-start check: every `Config.POLL_INTERVAL_MINUTES`
 - Midnight sync: `04:00`
-- Daily discovery: `05:01`
+- Daily discovery: `05:21` (with periodic retry loops for failed runs)
 4. Pre-start loop:
 - snapshot upcoming events,
 - apply timestamp correction pass,
@@ -121,6 +121,7 @@ Core env-driven controls:
 - Proxy and OddsPortal toggles
 - `STREAK_ALERT_MIN_RESULTS`
 - `EXCLUDED_SPORTS`
+- Daily Discovery Queue: `DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES`, `DAILY_DISCOVERY_DAYS_TO_KEEP`
 
 ## Database Structure (`models.py`)
 
@@ -147,6 +148,8 @@ Core env-driven controls:
   - market options (`choice_name`, `initial_odds`, `current_odds`, `change`)
 - `prediction_logs`
   - stored predictions + later actual outcomes/status
+- `daily_discovery_logs`
+  - queue table tracking sport-level daily extraction status (`pending`, `completed`, `failed`) and retry attempts
 - `oddsportal_league_cache`
   - daily cache of league match URLs by season for faster OP matching
 
@@ -256,9 +259,12 @@ Core env-driven controls:
 - Update prediction logs with actual outcomes.
 - Refresh materialized alert view.
 
-### Job E: Daily discovery (`job_daily_discovery`)
-- Cleanup old OddsPortal cache rows.
-- Pull today's events+odds by sport and store as `daily_discovery`.
+### Job E: Daily discovery (`job_daily_discovery` & `job_daily_discovery_retry`)
+- Cleanup old OddsPortal cache rows and stale daily discovery logs.
+- Initialize `daily_discovery_logs` queue for today with all default sports marked `pending`.
+- Pull today's events+odds for pending/failed sports and store as `daily_discovery`.
+- Update each sport's status to `completed` or `failed` (e.g., if proxy tunnel fails).
+- The `job_daily_discovery_retry` continuously polls at configured intervals, re-triggering extraction for any sports not yet completed.
 
 ## Libraries / Dependencies
 

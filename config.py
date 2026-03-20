@@ -120,6 +120,10 @@ class Config:
     ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT = os.getenv('ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT', 'true').lower() == 'true'
     ODDSPORTAL_ENABLE_SHELL_GRACE = os.getenv('ODDSPORTAL_ENABLE_SHELL_GRACE', 'true').lower() == 'true'
     
+    # OddsPortal Context Lifecycle
+    ODDSPORTAL_IGNORE_HTTPS_ERRORS = os.getenv('ODDSPORTAL_IGNORE_HTTPS_ERRORS', 'true').lower() == 'true'
+    ODDSPORTAL_FRESH_CONTEXT_PER_EVENT = os.getenv('ODDSPORTAL_FRESH_CONTEXT_PER_EVENT', 'true').lower() == 'true'
+    
     # Max seconds to wait for a previous OP cycle to finish before proceeding
     ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT = int(os.getenv('ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT', '120'))
 
