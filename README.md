@@ -37,7 +37,7 @@ The system is intentionally selective to reduce noise and API load:
 Before pre-start alerting, it checks recently started events to detect late start-time corrections. Rescheduled events are guarded against duplicate/looped processing in the same cycle.
 
 ### 4) OddsPortal Enrichment
-For configured season IDs (`oddsportal_config.py` map), a background worker scrapes OddsPortal at the 0-minute phase and persists bookmaker/market-choice data into the same market schema.
+For configured season IDs (`oddsportal_config.py` map), a background worker scrapes OddsPortal at the 0-minute phase. The system uses a **redesigned parallel dispatcher** that decouples league cache seeding from event scraping, allowing sibling events to be released and scraped in parallel as soon as the league matches are resolved. Data is persisted into the same structured market schema as SofaScore odds.
 
 ### 5) Alerting / Analysis
 At key moments, the system evaluates and sends grouped alerts per event:
@@ -88,7 +88,7 @@ Daily jobs pull completed match results, refresh odds/markets for finished event
 - apply timestamp correction pass,
 - extract odds for 30/0 minute events,
 - refresh MV,
-- evaluate and send event-grouped notifications in parallel (per-event thread pool).
+- evaluate and send event-grouped notifications in parallel (per-event thread pool, waiting on OP decoupled dispatcher).
 5. Midnight flow updates results + prediction outcomes.
 
 ## Entry Commands (`main.py`)

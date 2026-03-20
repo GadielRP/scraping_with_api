@@ -163,12 +163,14 @@ sequenceDiagram
     S->>S: Alert Thread 2 sends Event B alert (immediately when B completes)
 ```
 
-### Key Design Decisions
+### Key Design Decisions (Redesigned Parallel Dispatcher)
 
-- **Worker runs in a background thread**. `scrape_multiple_matches_sync` / `parallel_sync` spin up their own `asyncio` event loops.
-- **Immediate Inline Saving (v2 Callback)**: The scraper accepts an `on_result` callback. As soon as a single match finishes scraping, it is persisted to the DB and its specific `threading.Event` is signalled, before the scraper even moves to the next match.
-- **Parallel Alert Sending (v3 Thread Pool)**: The scheduler evaluates and sends alerts using a `ThreadPoolExecutor` where every event runs in its own thread. This ensures that one slow-scraping event does not block the Telegram alerts for faster events.
-- **One browser instance** is reused for all matches in a sequential batch (or split across browsers in parallel mode), minimising startup overhead.
+- **Worker runs in a background thread**. `scrape_multiple_matches_parallel_sync` spins up its own `asyncio` event loops across multiple workers.
+- **Decoupled Cache Seeding**: The dispatcher identifies events without a cached `match_url` and groups them by league. Instead of having one "main" event scrape the match AND seed the cache, it now creates a lightweight `resolver_seed` task.
+- **Immediate Sibling Release**: As soon as the `resolver_seed` task finishes navigating to the league page and "warming" the cache, ALL pending siblings in that group are immediately moved to the `ready_event_queue` to be scraped in parallel by any available worker.
+- **Improved Concurrency**: The original event that triggered the seed is also re-enqueued as a normal event once the cache is warm. This avoids bottlenecks where siblings waited for a full match extraction before starting.
+- **Immediate Inline Saving (Callback)**: The scraper accepts an `on_result` callback. As soon as a single match finishes scraping, it is persisted to the DB and its specific `threading.Event` is signalled.
+- **One browser instance per worker** is reused for multiple matches/seeds, but each real event gets its own fresh `BrowserContext` to prevent state contamination.
 
 ---
 
@@ -552,11 +554,22 @@ In `scheduler.py`, before launching a new OddsPortal worker, the system checks i
 - **Success**: If it finishes, the new cycle starts cleanly.
 - **Overlap**: If it times out, the new cycle proceeds anyway. This allows two cycles to briefly coexist rather than skipping a full cycle.
 
-### 11.2 Parallel Browsers
+### 11.2 Parallel Browsers & Worker Roles
 The worker can split a batch of matches across multiple independent browser instances using `scrape_multiple_matches_parallel_sync`.
-- **Distribution**: Tasks are assigned to browsers using a **round-robin** strategy (to balance heavy leagues).
-- **Isolation**: Each browser runs in its own `ThreadPoolExecutor` worker with a dedicated `asyncio` loop and Playwright instance.
-- **Config**: Controlled by `ODDSPORTAL_PARALLEL_BROWSERS`. (1 = Legacy sequential, >1 = Parallel).
+- **Distribution**: Tasks are assigned to browsers using a **role-based priority** queue. 
+- **Roles**:
+    - `resolver_seed`: Lightweight tasks that only navigate to a league page to warm the cache. These are prioritized to unlock pending siblings.
+    - `ready_event`: Standard scraping tasks for events that already have a resolved `match_url`.
+- **Isolation**: Each worker runs in its own `ThreadPoolExecutor` thread with a dedicated `asyncio` loop and Playwright instance.
+- **Context Handling**: Each real event scrape uses a **fresh `BrowserContext`** within the worker's browser instance to ensure zero state/cookie leakage between events. Seed tasks use the default context for speed.
+
+### 11.3 Parallel Dispatcher Logic (Seeding Decoupled)
+The dispatcher implements a "barrier" pattern for events with unknown URLs:
+1. All events for the same league without a cached URL are grouped into `pending_tasks`.
+2. A single `resolver_seed` task is dispatched to one worker.
+3. While seeding is in progress, other workers process already-resolved `ready_event` tasks.
+4. Once `resolver_seed` completes, it calls `_release_group_after_seed()` which clears the barrier, moving all `pending_tasks` to the `ready_event_queue`.
+5. This ensures that a 10-event league doesn't wait for the first event to finish a 60s scrape before the other 9 start.
 
 ---
 

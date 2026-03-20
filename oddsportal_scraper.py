@@ -216,9 +216,10 @@ class OddsPortalScraper:
     Uses Playwright with anti-detection measures.
     """
     
-    def __init__(self, headless: bool = True, debug_dir: Optional[str] = None):
+    def __init__(self, headless: bool = True, debug_dir: Optional[str] = None, testing_mode: bool = False):
         self.headless = headless
         self.debug_dir = debug_dir
+        self.testing_mode = testing_mode
         self.browser: Optional[Browser] = None
         self.playwright = None
         self.context: Optional[BrowserContext] = None
@@ -1431,6 +1432,14 @@ class OddsPortalScraper:
             
             logger.info(f"🌐 Navigating to match: {initial_url}")
             
+            # --- Per-event Debug Folder Setup ---
+            # We save the original debug_dir and reset it later.
+            # We wait until after extraction to know the team names, but we can pre-calculate 
+            # if we have match_url info or wait until teams are parsed.
+            # To be robust, we'll do it as soon as we have team names.
+            self._original_debug_dir = self.debug_dir
+            self._event_debug_dir_created = False
+            
             # Navigate to match page
             response = None
             e_goto = None
@@ -1691,6 +1700,18 @@ class OddsPortalScraper:
                     if period_idx == 0:
                         match_data.home_team = period_data.home_team
                         match_data.away_team = period_data.away_team
+
+                        # Create subfolders for debugging if requested
+                        if self.debug_dir and not self._event_debug_dir_created:
+                            slug = f"{match_data.home_team}-vs-{match_data.away_team}".lower().replace(" ", "-").replace("/", "-")
+                            event_debug_dir = os.path.join(self.debug_dir, f"debug_{slug}")
+                            try:
+                                os.makedirs(event_debug_dir, exist_ok=True)
+                                self.debug_dir = event_debug_dir
+                                self._event_debug_dir_created = True
+                                logger.info(f"📂 Event debug directory: {self.debug_dir}")
+                            except Exception as e:
+                                logger.warning(f"⚠️ Failed to create event debug directory: {e}")
                 
                     logger.info(f"✅ Extracted {len(period_data.bookie_odds)} bookies for {db_market_period}")
                 
@@ -1849,9 +1870,13 @@ class OddsPortalScraper:
                 except Exception:
                     pass
                 self.context = previous_context
+            
+            # Restore original debug dir if it was specialized per-event
+            if hasattr(self, '_original_debug_dir'):
+                self.debug_dir = self._original_debug_dir
 
 
-    def _parse_opening_odds_from_modal_html(self, modal_html: str) -> Optional[Tuple[str, str]]:
+    def _parse_opening_odds_from_modal_html(self, modal_html: str, testing_mode: bool = False) -> Optional[Tuple[str, str]]:
         """
         Parse the opening odds value from the tooltip modal HTML.
         
@@ -1861,6 +1886,11 @@ class OddsPortalScraper:
         try:
             import re
             movement_time = None
+
+            if testing_mode == True:
+                # save modal html to file
+                # TODO
+                pass
             
             # Extract movement time (final/current odds time)
             time_matches = re.findall(r'<div[^>]*text-\[10px\][^>]*font-normal[^>]*>\s*([^<]+)\s*</div>', modal_html)
