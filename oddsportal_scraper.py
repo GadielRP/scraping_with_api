@@ -1,9 +1,8 @@
-import asyncio
+﻿import asyncio
 import logging
 import random
 import time
 import os
-import uuid
 import re
 from collections import deque
 from contextlib import contextmanager
@@ -12,6 +11,7 @@ from threading import Condition, local
 from typing import Any, Dict, List, Optional, Tuple
 
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+from proxy_manager import ProxyIdentityManager
 
 # Import configuration
 try:
@@ -30,6 +30,17 @@ except ImportError:
         PROXY_ENDPOINT = None
         PROXY_USERNAME = None
         PROXY_PASSWORD = None
+        PROXY_PROVIDER = "legacy"
+        PROXY_PROTOCOL = "http"
+        PROXY_USERNAME_BASE = None
+        PROXY_COUNTRY = "mx"
+        PROXY_CITY = ""
+        PROXY_SESSION_DURATION_MINUTES = 10
+        PROXY_MODE_ODDSPORTAL = "sticky"
+        PROXY_MODE_SOFASCORE = "rotating"
+        PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART = True
+        PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR = True
+        PROXY_LOG_SAFE = True
         ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS = 30000
         ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS = 15000
         ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS = 60000
@@ -270,6 +281,8 @@ class OddsPortalScraper:
         self.context: Optional[BrowserContext] = None
         # Safe default so retry logging never crashes when proxy is disabled.
         self._session_id = "no-proxy"
+        self.proxy_manager = ProxyIdentityManager(Config, client_name="oddsportal")
+        self._proxy_identity = None
         
         # Context lifecycle config flags
         self._ignore_https_errors = getattr(Config, 'ODDSPORTAL_IGNORE_HTTPS_ERRORS', True)
@@ -285,8 +298,10 @@ class OddsPortalScraper:
             import os
             os.makedirs(self.debug_dir, exist_ok=True)
 
+    def _should_rotate_proxy_on_browser_restart(self) -> bool:
+        return self.proxy_manager.should_rotate_on_browser_restart()
 
-    async def start(self):
+    async def start(self, rotate_proxy_session: bool = False):
         """Start the browser session."""
         if self.browser:
             return
@@ -304,16 +319,27 @@ class OddsPortalScraper:
             ],
         }
 
-        if getattr(Config, 'PROXY_ENABLED', False) and getattr(Config, 'PROXY_ENDPOINT', None):
-            launch_args["proxy"] = {
-                "server": f"http://{Config.PROXY_ENDPOINT}",
-            }
-            if getattr(Config, 'PROXY_USERNAME', None) and getattr(Config, 'PROXY_PASSWORD', None):
-                launch_args["proxy"]["username"] = Config.PROXY_USERNAME
-                launch_args["proxy"]["password"] = Config.PROXY_PASSWORD
-            # Track session restarts for retry logging
-            self._session_id = uuid.uuid4().hex[:8]
-            logger.info(f"🛡️ OddsPortalScraper: Launching Playwright with PROXY (session-{self._session_id})")
+        if self.proxy_manager.proxy_enabled:
+            self._proxy_identity = self.proxy_manager.get_identity(
+                rotate_session=rotate_proxy_session,
+                reason="browser_restart" if rotate_proxy_session else "browser_start",
+            )
+            launch_proxy = self.proxy_manager.build_playwright_proxy(self._proxy_identity)
+            if launch_proxy:
+                launch_args["proxy"] = launch_proxy
+                self._session_id = self.proxy_manager.session_label(self._proxy_identity)
+                state_label = "rotated" if rotate_proxy_session else "active"
+                logger.info(
+                    f"OddsPortalScraper: Launching Playwright with proxy ({state_label}, "
+                    f"session-{self._session_id}, {self.proxy_manager.describe_identity(self._proxy_identity)})"
+                )
+            else:
+                self._proxy_identity = None
+                self._session_id = "no-proxy"
+                logger.warning("OddsPortalScraper: Proxy is enabled but proxy identity is incomplete")
+        else:
+            self._proxy_identity = None
+            self._session_id = "no-proxy"
 
         self.browser = await self.playwright.chromium.launch(**launch_args)
         
@@ -434,6 +460,7 @@ class OddsPortalScraper:
             self.browser = None
             self.context = None
             self.playwright = None
+            self._proxy_identity = None
             logger.info("🛑 OddsPortalScraper: Browser stopped")
 
     async def _goto_fresh(self, page: Page, url: str, **kwargs) -> object:
@@ -1426,7 +1453,7 @@ class OddsPortalScraper:
             log_timing(f"League page load ({navigation_league_url}) took {t_goto - t0:.2f}s")
 
             if not response or response.status != 200:
-                logger.error(f"âŒ Failed to load league page. Status: {response.status if response else 'N/A'}")
+                logger.error(f"❌ Failed to load league page. Status: {response.status if response else 'N/A'}")
                 return []
 
             try:
@@ -1471,7 +1498,7 @@ class OddsPortalScraper:
             log_timing(f"Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s")
 
             if not rows_data:
-                logger.warning(f"âš ï¸ No event rows found on {navigation_league_url}")
+                logger.warning(f"⚠️ No event rows found on {navigation_league_url}")
                 return []
 
             candidates = []
@@ -1530,9 +1557,9 @@ class OddsPortalScraper:
                     if cache_dict and OddsPortalCacheRepository.save_league_cache(season_id, cache_dict):
                         logger.info(f"⚡¦ Cached {len(cache_dict)} match URLs for season {season_id}")
                     elif cache_dict:
-                        logger.warning(f"âš ï¸ Cache save returned False for season {season_id}")
+                        logger.warning(f"⚠️ Cache save returned False for season {season_id}")
                 except Exception as cache_err:
-                    logger.warning(f"âš ï¸ Cache save failed: {cache_err}")
+                    logger.warning(f"⚠️ Cache save failed: {cache_err}")
 
             return candidates
         finally:
@@ -1742,12 +1769,16 @@ class OddsPortalScraper:
             e_goto = None
             goto_error_code = None
             goto_error_summary = None
+            goto_timeout_ms = Config.ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS
             try:
-                response = await self._goto_fresh(
-                    page,
-                    initial_url,
-                    wait_until="domcontentloaded",
-                    timeout=Config.ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS,
+                response = await asyncio.wait_for(
+                    self._goto_fresh(
+                        page,
+                        initial_url,
+                        wait_until="domcontentloaded",
+                        timeout=goto_timeout_ms,
+                    ),
+                    timeout=(goto_timeout_ms / 1000.0) + 5.0,
                 )
             except Exception as e:
                 e_goto = e
@@ -1858,15 +1889,37 @@ class OddsPortalScraper:
             """
 
             fast_fail_task = asyncio.create_task(page.evaluate(js_observer))
+            render_timeout_ms = getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000)
             render_task = asyncio.create_task(
                 self._wait_for_market_render(
                     page,
                     first_extract_fn,
-                    timeout_ms=getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000),
+                    timeout_ms=render_timeout_ms,
                 )
             )
 
-            done, pending = await asyncio.wait([fast_fail_task, render_task], return_when=asyncio.FIRST_COMPLETED)
+            race_timeout_s = (max(js_timeout, render_timeout_ms) / 1000.0) + 5.0
+            try:
+                done, pending = await asyncio.wait_for(
+                    asyncio.wait([fast_fail_task, render_task], return_when=asyncio.FIRST_COMPLETED),
+                    timeout=race_timeout_s,
+                )
+            except asyncio.TimeoutError:
+                fast_fail_task.cancel()
+                render_task.cancel()
+                reason = "RENDER_RACE_TIMEOUT"
+                logger.error(
+                    f"FAST FAIL: {reason} after {race_timeout_s:.1f}s "
+                    f"(js_timeout_ms={js_timeout}, render_timeout_ms={render_timeout_ms})"
+                )
+                await self._save_debug_artifacts(page, reason, self._resume_state_for_debug(normalized_resume_state))
+                return ScrapeAttemptResult(
+                    data=None,
+                    resume_state=normalized_resume_state,
+                    partial_match_data=match_data,
+                    failed_reason=reason,
+                    failed_step_idx=start_step_idx,
+                )
             for pending_task in pending:
                 pending_task.cancel()
 
@@ -3412,7 +3465,7 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
                 if data is None:
                     logger.warning(f"🔄 scrape_match_sync: No data (or match discovery failed) — restarting browser with new proxy session and retrying...")
                     await scraper.stop()
-                    await scraper.start()  # Fresh session ID = new IP
+                    await scraper.start(rotate_proxy_session=scraper._should_rotate_proxy_on_browser_restart())
                     
                     # Re-find match URL if needed
                     retry_url = match_url
@@ -3480,14 +3533,13 @@ async def _resolve_task_match_url(
     away_team = task.get("away_team")
 
     if season_id and league_url and home_team and away_team:
+        
         cached_url = scraper.find_match_url_from_cache(
             season_id,
             home_team,
             away_team,
             league_url=league_url,
         )
-        if cached_url:
-            return cached_url
 
     if allow_live_lookup and league_url and home_team and away_team:
         return await scraper.find_match_url(
@@ -3595,7 +3647,7 @@ async def _scrape_task_with_recovery(
         )
         try:
             await scraper.stop()
-            await scraper.start()
+            await scraper.start(rotate_proxy_session=scraper._should_rotate_proxy_on_browser_restart())
         except Exception as e:
             logger.error(f"{task_label}: browser restart failed for event_id {event_id}: {e}")
             continue
@@ -3692,7 +3744,7 @@ async def _seed_group_cache_only(
         )
         try:
             await scraper.stop()
-            await scraper.start()
+            await scraper.start(rotate_proxy_session=scraper._should_rotate_proxy_on_browser_restart())
         except Exception as e:
             logger.error(f"{task_label}: browser restart failed during seed: {e}")
             continue
@@ -4210,3 +4262,4 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
         f"(entries in results dict={len(all_results)})"
     )
     return all_results
+

@@ -18,6 +18,14 @@ def _parse_env_list(env_name, default_value):
     except (ValueError, SyntaxError):
         return [item.strip() for item in value.split(',') if item.strip()]
 
+
+def _parse_env_bool(env_name, default_value=False):
+    value = os.getenv(env_name)
+    if value is None:
+        return default_value
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 # Discovery sources to allow for alert sending
 DISCOVERY_SOURCES_FOR_ALERTS = _parse_env_list('DISCOVERY_SOURCES_FOR_ALERTS', ['dropping_odds'])
 
@@ -102,6 +110,17 @@ class Config:
     PROXY_USERNAME = os.getenv('PROXY_USERNAME', '')
     PROXY_PASSWORD = os.getenv('PROXY_PASSWORD', '')
     PROXY_ENDPOINT = os.getenv('PROXY_ENDPOINT', '')
+    PROXY_PROVIDER = (os.getenv('PROXY_PROVIDER', '').strip().lower() or ('decodo' if 'decodo' in PROXY_ENDPOINT.lower() else 'legacy'))
+    PROXY_PROTOCOL = (os.getenv('PROXY_PROTOCOL', 'http').strip().lower() or 'http')
+    PROXY_USERNAME_BASE = os.getenv('PROXY_USERNAME_BASE', PROXY_USERNAME)
+    PROXY_COUNTRY = os.getenv('PROXY_COUNTRY', 'mx').strip().lower()
+    PROXY_CITY = os.getenv('PROXY_CITY', '').strip().lower()
+    PROXY_SESSION_DURATION_MINUTES = int(os.getenv('PROXY_SESSION_DURATION_MINUTES', '10'))
+    PROXY_MODE_ODDSPORTAL = os.getenv('PROXY_MODE_ODDSPORTAL', 'sticky').strip().lower()
+    PROXY_MODE_SOFASCORE = os.getenv('PROXY_MODE_SOFASCORE', 'rotating').strip().lower()
+    PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART = _parse_env_bool('PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART', True)
+    PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR = _parse_env_bool('PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR', True)
+    PROXY_LOG_SAFE = _parse_env_bool('PROXY_LOG_SAFE', True)
     
     PROXY_ROTATION_INTERVAL = int(os.getenv('PROXY_ROTATION_INTERVAL', '5'))
     PROXY_MAX_RETRIES = int(os.getenv('PROXY_MAX_RETRIES', '3'))

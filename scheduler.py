@@ -477,6 +477,69 @@ class JobScheduler:
                 minutes = self._minutes_until_start(event['start_time_utc'])
                 pre_calculated_timings[event['id']] = minutes
                 
+            # ========================================
+            # PARTITION AND START ODDSPORTAL (VERY EARLY)
+            # ========================================
+            # Extract OddsPortal candidates early and start the thread so it runs in background
+            # while the main thread sequentially processes the API odds for all events.
+            op_candidates = []
+            
+            for event_dict in upcoming_events:
+                season_id = getattr(event_dict, 'season_id', None)
+                if isinstance(event_dict, dict):
+                    season_id = event_dict.get('season_id')
+                minutes_until_start = pre_calculated_timings.get(event_dict['id'])
+                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == 0:
+                    op_candidates.append({
+                        'event_id': event_dict['id'],
+                        'event_data': event_dict,
+                        'minutes_until_start': minutes_until_start,
+                        'should_extract_odds': True
+                    })
+            
+            # Use threading.Event to coordinate OP scraping with alert delivery
+            op_done_events = {e['event_id']: threading.Event() for e in op_candidates}
+            op_event_ids = set(op_done_events.keys())
+            
+            # Shared dictionary for holding extracted OP MatchOddsData objects in-memory
+            # so that odds_alert_processor can access movement_odds_time without needing the DB.
+            op_data_cache = {}
+            
+            if op_candidates:
+                # To prevent blocking the main thread's API fetches, we move the wait logic
+                # into a background orchestration thread.
+                def op_orchestrator(previous_thread, candidates, done_events, data_cache):
+                    if previous_thread and previous_thread.is_alive():
+                        timeout = AppConfig.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT
+                        logger.warning(f"⏳ Previous OP worker still running — waiting up to {timeout}s for it to finish...")
+                        previous_thread.join(timeout=timeout)
+                        if previous_thread.is_alive():
+                            logger.error(f"🛑 Previous OP worker STILL didn't finish after {timeout}s! ABORTING new OP cycle to prevent double-activation and memory exhaustion.")
+                            # Signal main thread not to wait indefinitely for these events
+                            for evt in done_events.values():
+                                evt.set()
+                            return
+                        else:
+                            logger.info("✅ Previous OP worker finished — proceeding with new cycle")
+                            
+                    logger.info(f"🚀 Launching OddsPortal scraper for {len(candidates)} tracked-league events...")
+                    self._oddsportal_worker_wrapper(candidates, done_events, data_cache)
+
+                previous_thread = getattr(self, '_active_op_thread', None)
+                
+                oddsportal_thread = threading.Thread(
+                    target=op_orchestrator,
+                    args=(previous_thread, op_candidates, op_done_events, op_data_cache),
+                    name="oddsportal_worker_launcher",
+                    daemon=False
+                )
+                oddsportal_thread.start()
+                self._active_op_thread = oddsportal_thread
+            else:
+                op_done_events = {}  # No OP work needed, empty dict
+                if upcoming_events:
+                    logger.info(f"⏭️ No OddsPortal-tracked events among {len(upcoming_events)} events")
+
             # 2. CHECK RECENTLY STARTED EVENTS (Timestamp Correction) - Filtered by season_id if enabled
             # This can take time (e.g., 20-30s)...
             events_started_recently = self.event_repo.get_events_started_recently(window_minutes=60, season_ids=tracked_season_ids)
@@ -560,58 +623,6 @@ class JobScheduler:
                             events_to_process.append(event_info)
                             event_meta_lookup[event_info['event_id']] = event_info
             
-            # ========================================
-            # PARTITION AND START ODDSPORTAL (EARLY)
-            # ========================================
-            # Extract OddsPortal candidates early and start the thread so it runs in background
-            # while the main thread sequentially processes the API odds for all events.
-            op_candidates = []
-            non_op_candidates = []
-            
-            for event_info in events_to_process:
-                season_id = event_info['event_data'].get('season_id')
-                minutes_until_start = event_info.get('minutes_until_start')
-                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == 0:
-                    op_candidates.append(event_info)
-                else:
-                    non_op_candidates.append(event_info)
-            
-            # Use threading.Event to coordinate OP scraping with alert delivery
-            op_done_events = {e['event_id']: threading.Event() for e in op_candidates}
-            op_event_ids = set(op_done_events.keys())
-            
-            # Shared dictionary for holding extracted OP MatchOddsData objects in-memory
-            # so that odds_alert_processor can access movement_odds_time without needing the DB.
-            op_data_cache = {}
-            
-            if op_candidates:
-                # Guard: wait for previous OP cycle if still running
-                if hasattr(self, '_active_op_thread') and self._active_op_thread.is_alive():
-                    timeout = AppConfig.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT
-                    logger.warning(f"⏳ Previous OP worker still running — waiting up to {timeout}s for it to finish...")
-                    self._active_op_thread.join(timeout=timeout)
-                    if self._active_op_thread.is_alive():
-                        logger.warning(f"⚠️ Previous OP worker did NOT finish after {timeout}s — proceeding with new cycle anyway")
-                    else:
-                        logger.info("✅ Previous OP worker finished within timeout — proceeding with new cycle")
-                        
-                logger.info(f"🚀 Launching OddsPortal scraper in background for {len(op_candidates)} tracked-league events...")
-                
-                # Launch the OP worker: ONLY scrapes + saves to DB, then signals completion.
-                # Main thread handles ALL alert evaluation (including for OP events).
-                oddsportal_thread = threading.Thread(
-                    target=self._oddsportal_worker_wrapper,
-                    args=(op_candidates, op_done_events, op_data_cache),
-                    name="oddsportal_worker",
-                    daemon=False
-                )
-                oddsportal_thread.start()
-                self._active_op_thread = oddsportal_thread
-            else:
-                op_done_events = {}  # No OP work needed, empty dict
-                if events_to_process:
-                    logger.info(f"⏭️ No OddsPortal-tracked events among {len(events_to_process)} events")
-                    
             # STEP 2.2: EXECUTE ALL REGULAR ODDS EXTRACTIONS (with pre-computed decisions)
             processed_count = 0
             odds_extracted_count = 0

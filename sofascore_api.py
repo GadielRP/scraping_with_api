@@ -6,6 +6,7 @@ import threading
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from config import Config
+from proxy_manager import ProxyIdentityManager
 from odds_utils import fractional_to_decimal
 from sport_observations import sport_observations_manager
 from alert_system import pre_start_notifier
@@ -45,30 +46,46 @@ class SofaScoreAPI:
         self.session = requests.Session(impersonate="chrome120")
         self.last_request_time = 0
         self._rate_limit_lock = threading.Lock()  # Thread-safe rate limiting
-        
-        # Add proxy configuration
-        self.proxy_enabled = Config.PROXY_ENABLED
-        self.proxy_username = Config.PROXY_USERNAME
-        self.proxy_password = Config.PROXY_PASSWORD
-        self.proxy_endpoint = Config.PROXY_ENDPOINT
-        
-        # Initialize session with proxy support
-        self._setup_session()
-    
-    def _setup_session(self):
-        """Setup session with proxy configuration"""
+
+        # Runtime proxy identity manager (legacy + Decodo support).
+        self.proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
+        self.proxy_identity = None
+        self._proxy_error_streak = 0
+
+        # Initialize session with proxy support.
+        self._setup_session(reason="initial_setup")
+
+    def _setup_session(self, rotate_proxy_identity: bool = False, reason: str = "runtime"):
+        """Setup session with runtime proxy identity configuration."""
         self.session = requests.Session(impersonate="chrome120")
-        
-        if self.proxy_enabled and self.proxy_username and self.proxy_password:
-            # Format: username:password@proxy_endpoint
-            proxy_url = f"http://{self.proxy_username}:{self.proxy_password}@{self.proxy_endpoint}"
-            self.session.proxies = {
-                'http': proxy_url,
-                'https': proxy_url
-            }
-            logger.info(f"Proxy enabled: {self.proxy_endpoint}")
-        else:
+
+        if not self.proxy_manager.proxy_enabled:
             logger.info("Proxy disabled - using direct connection")
+            self.proxy_identity = None
+            return
+
+        self.proxy_identity = self.proxy_manager.get_identity(
+            rotate_session=rotate_proxy_identity,
+            reason=reason,
+        )
+
+        proxies = self.proxy_manager.build_requests_proxies(self.proxy_identity)
+        if not proxies:
+            logger.warning("Proxy is enabled but proxy identity is not valid; using direct connection")
+            self.proxy_identity = None
+            return
+
+        self.session.proxies = proxies
+        logger.info(
+            "SofaScore proxy ready (%s)",
+            self.proxy_manager.describe_identity(self.proxy_identity),
+        )
+
+    def _rotate_proxy_identity(self, reason: str):
+        if not self.proxy_manager.proxy_enabled:
+            return
+        self._setup_session(rotate_proxy_identity=True, reason=reason)
+        self._proxy_error_streak = 0
 
     def clean_competition(self, competition: str) -> str:
         if not competition:
@@ -295,6 +312,7 @@ class SofaScoreAPI:
                 response = self.session.get(url, headers=headers, params=params, timeout=30)
                 
                 if response.status_code == 200:
+                    self._proxy_error_streak = 0
                     data = response.json()
                     return data
                 
@@ -303,6 +321,10 @@ class SofaScoreAPI:
                     # Proxy authentication error - retry with exponential backoff
                     wait_time = min(30 * (2 ** attempt), 300)  # 30s, 60s, 120s, 240s, max 300s
                     logger.warning(f"Proxy authentication error (407) for {endpoint}, waiting {wait_time}s, attempt {attempt + 1}/{Config.MAX_RETRIES}")
+                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                        self._rotate_proxy_identity(
+                            reason=f"http_407_attempt_{attempt + 1}_{endpoint}"
+                        )
                     if attempt < Config.MAX_RETRIES - 1:
                         time.sleep(wait_time)
                         continue
@@ -373,8 +395,22 @@ class SofaScoreAPI:
                     
             except requests.exceptions.RequestException as e:
                 # Network/proxy connection errors - retry with exponential backoff
-                wait_time = min(10 * (2 ** attempt), 120)  # 10s, 20s, 40s, 80s, max 120s
+                wait_time = min(5 * (2 ** attempt), 120)  # 10s, 20s, 40s, 80s, max 120s
                 logger.error(f"Request error for {endpoint} (attempt {attempt + 1}/{Config.MAX_RETRIES}): {e}")
+                proxy_or_network_error = self.proxy_manager.looks_like_proxy_or_network_error(e)
+                if proxy_or_network_error:
+                    self._proxy_error_streak += 1
+                else:
+                    self._proxy_error_streak = 0
+                if (
+                    self.proxy_manager.should_rotate_on_sofascore_error()
+                    and proxy_or_network_error
+                    and self._proxy_error_streak >= 2
+                    and attempt < Config.MAX_RETRIES - 1
+                ):
+                    self._rotate_proxy_identity(
+                        reason=f"network_error_streak_{self._proxy_error_streak}_{endpoint}"
+                    )
                 if attempt < Config.MAX_RETRIES - 1:
                     logger.info(f"Retrying in {wait_time}s...")
                     time.sleep(wait_time)
