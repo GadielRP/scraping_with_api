@@ -497,9 +497,17 @@ class JobScheduler:
                         'should_extract_odds': True
                     })
             
-            # Use threading.Event to coordinate OP scraping with alert delivery
-            op_done_events = {e['event_id']: threading.Event() for e in op_candidates}
-            op_event_ids = set(op_done_events.keys())
+            # Use dictionary of threading.Event to coordinate OP scraping with alert delivery per event lifecycle
+            op_event_states = {
+                e['event_id']: {
+                    "started_event": threading.Event(),
+                    "done_event": threading.Event(),
+                    "started_at_monotonic": None,
+                    "done_at_monotonic": None,
+                }
+                for e in op_candidates
+            }
+            op_event_ids = set(op_event_states.keys())
             
             # Shared dictionary for holding extracted OP MatchOddsData objects in-memory
             # so that odds_alert_processor can access movement_odds_time without needing the DB.
@@ -508,7 +516,7 @@ class JobScheduler:
             if op_candidates:
                 # To prevent blocking the main thread's API fetches, we move the wait logic
                 # into a background orchestration thread.
-                def op_orchestrator(previous_thread, candidates, done_events, data_cache):
+                def op_orchestrator(previous_thread, candidates, event_states, data_cache):
                     if previous_thread and previous_thread.is_alive():
                         timeout = AppConfig.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT
                         logger.warning(f"⏳ Previous OP worker still running — waiting up to {timeout}s for it to finish...")
@@ -516,27 +524,27 @@ class JobScheduler:
                         if previous_thread.is_alive():
                             logger.error(f"🛑 Previous OP worker STILL didn't finish after {timeout}s! ABORTING new OP cycle to prevent double-activation and memory exhaustion.")
                             # Signal main thread not to wait indefinitely for these events
-                            for evt in done_events.values():
-                                evt.set()
+                            for state in event_states.values():
+                                state["done_event"].set()
                             return
                         else:
                             logger.info("✅ Previous OP worker finished — proceeding with new cycle")
                             
                     logger.info(f"🚀 Launching OddsPortal scraper for {len(candidates)} tracked-league events...")
-                    self._oddsportal_worker_wrapper(candidates, done_events, data_cache)
+                    self._oddsportal_worker_wrapper(candidates, event_states, data_cache)
 
                 previous_thread = getattr(self, '_active_op_thread', None)
                 
                 oddsportal_thread = threading.Thread(
                     target=op_orchestrator,
-                    args=(previous_thread, op_candidates, op_done_events, op_data_cache),
+                    args=(previous_thread, op_candidates, op_event_states, op_data_cache),
                     name="oddsportal_worker_launcher",
                     daemon=False
                 )
                 oddsportal_thread.start()
                 self._active_op_thread = oddsportal_thread
             else:
-                op_done_events = {}  # No OP work needed, empty dict
+                op_event_states = {}  # No OP work needed, empty dict
                 if upcoming_events:
                     logger.info(f"⏭️ No OddsPortal-tracked events among {len(upcoming_events)} events")
 
@@ -899,7 +907,7 @@ class JobScheduler:
                         logger.info(f"🔍 Dispatching {len(events_for_alerts)} filtered events to alert evaluation (H2H ∥ OP scraping)...")
                         self._evaluate_and_send_alerts_batch(
                             events_for_alerts, KEY_MOMENTS,
-                            op_done_events=op_done_events,
+                            op_event_states=op_event_states,
                             op_event_ids=op_event_ids,
                             op_data_cache=op_data_cache
                         )
@@ -1257,13 +1265,13 @@ class JobScheduler:
         return results
         
     def _evaluate_and_send_alerts_batch(self, events_for_alerts: list, KEY_MOMENTS: list,
-                                         op_done_events=None, op_event_ids=None, op_data_cache=None):
+                                         op_event_states=None, op_event_ids=None, op_data_cache=None):
         """
         Helper method that encapsulates the thread-pooled parallel evaluation and sequential grouping of alerts.
         It evaluates upcoming events through the prediction engine and H2H analyzers, and sends notifications.
         
         Args:
-            op_done_events: dict of threading.Event signaled when OP scraping finishes per event
+            op_event_states: dict of event states (started_event, done_event, started_at_monotonic)
             op_event_ids: set of event IDs that are being scraped by the OP worker
         """
         try:
@@ -1319,17 +1327,41 @@ class JobScheduler:
                 # If this event is an OP-tracked event, wait for OP scraping to finish
                 # so the odds alert can include OddsPortal bookie data from the DB.
                 if odds_response:
-                    if op_event_ids and event_obj.id in op_event_ids and op_done_events:
-                        per_event = op_done_events.get(event_obj.id)
-                        if per_event and not per_event.is_set():
-                            timeout_s = getattr(Config, "ODDSPORTAL_ALERT_WAIT_TIMEOUT", 180)
-                            logger.info(f"[OP] Waiting for OddsPortal signal (up to {timeout_s}s) before sending odds alert for event {event_obj.id}...")
-                            signaled = per_event.wait(timeout=timeout_s)
-                            if signaled:
-                                logger.info(f"[OP] Worker signaled completion for event {event_obj.id}. Verifying DB availability...")
+                    if op_event_ids and event_obj.id in op_event_ids and op_event_states:
+                        state = op_event_states.get(event_obj.id)
+                        if state:
+                            if state["done_event"].is_set():
+                                logger.info(f"[OP] Event {event_obj.id} already completed; alert thread unblocked")
                             else:
-                                logger.warning(f"[OP] Timed out after {timeout_s}s waiting for OddsPortal for event {event_obj.id}. Sending odds alert now (OddsPortal section may be missing).")
+                                # Phase 1: wait for actual scrape start, but do NOT start timeout budget yet
+                                logged_queue = False
+                                while not state["started_event"].is_set() and not state["done_event"].is_set():
+                                    if not logged_queue:
+                                        logger.info(f"[OP] Event {event_obj.id} queued; waiting for worker claim before starting post-start timeout")
+                                        logged_queue = True
+                                    time.sleep(0.25)
+                                
+                                # Phase 2: timeout budget starts at actual scrape start
+                                if not state["done_event"].is_set():
+                                    started_at = state.get("started_at_monotonic")
+                                    if started_at is not None:
+                                        elapsed = time.monotonic() - started_at
+                                        timeout_s = getattr(Config, "ODDSPORTAL_ALERT_WAIT_TIMEOUT", 180)
+                                        # Use float(timeout_s) to support numeric configs and ensure 0.0 lower bound
+                                        remaining = max(0.0, float(timeout_s) - elapsed)
 
+                                        if remaining > 0:
+                                            logger.info(f"[OP] Event {event_obj.id} started {elapsed:.1f}s ago; waiting up to {remaining:.1f}s more for completion")
+                                            signaled = state["done_event"].wait(timeout=remaining)
+                                            if signaled:
+                                                logger.info(f"[OP] Worker signaled completion for event {event_obj.id}. Verifying DB availability...")
+                                            else:
+                                                logger.warning(f"[OP] Timed out waiting for OddsPortal for event {event_obj.id} after {timeout_s}s post-start.")
+                                        else:
+                                            logger.warning(f"[OP] Event {event_obj.id} already exceeded post-start timeout ({elapsed:.1f}s > {timeout_s}s).")
+                                    else:
+                                        logger.warning(f"[OP] Missing started_at tracking for event {event_obj.id}, unblocking immediately.")
+                                        
                             # Log whether OP section will actually be included (based on DB availability)
                             try:
                                 from repository import MarketRepository
@@ -1411,28 +1443,32 @@ class JobScheduler:
         except Exception as e:
             logger.error(f"Error in event processing batch: {e}")
             
-    def _oddsportal_worker_wrapper(self, op_candidates: list, op_done_events: dict, op_data_cache: dict):
+    def _oddsportal_worker_wrapper(self, op_candidates: list, op_event_states: dict, op_data_cache: dict):
         """
         Background worker that ONLY scrapes OddsPortal and saves to DB.
-        Signals completion in the op_done_events dict so the main thread's alert delivery
+        Signals completion in the op_event_states dict so the main thread's alert delivery
         can include the OP data in odds alerts per event.
         """
         logger.info(f"🔥 OP Worker started: scraping {len(op_candidates)} tracked-league events.")
         try:
-            self._run_oddsportal_batch(op_candidates, op_done_events, op_data_cache)
+            self._run_oddsportal_batch(op_candidates, op_event_states, op_data_cache)
         except Exception as e:
             import traceback
             logger.error(f"❌ OddsPortal Worker CRASHED: {e}\n{traceback.format_exc()}")
         finally:
             # Safety net: signal any events that weren't signaled yet
-            if op_done_events:
-                for eid, evt in op_done_events.items():
-                    if not evt.is_set():
-                        evt.set()
-                        logger.warning(f"⚠️ OP Worker: force-signaled event {eid} (wasn't finished before worker exit)")
+            if op_event_states:
+                for eid, state in op_event_states.items():
+                    if not state["done_event"].is_set():
+                        state["done_event"].set()
+                        state["done_at_monotonic"] = time.monotonic()
+                        if not state["started_event"].is_set():
+                            logger.warning(f"⚠️ OP Worker: force-signaled event {eid} (was force-unblocked without ever starting)")
+                        else:
+                            logger.warning(f"⚠️ OP Worker: force-signaled event {eid} (was force-unblocked after starting but before clean completion)")
             logger.info("✅ OP Worker finished scraping, main thread unblocked.")
     
-    def _run_oddsportal_batch(self, events_to_process: list, op_done_events: dict = None, op_data_cache: dict = None) -> dict:
+    def _run_oddsportal_batch(self, events_to_process: list, op_event_states: dict = None, op_data_cache: dict = None) -> dict:
         """
         Dedicated OddsPortal worker: pre-scans events for eligibility,
         then scrapes all matches with a single browser session.
@@ -1472,6 +1508,15 @@ class JobScheduler:
         # Shared dict for save results (thread-safe: GIL protects dict mutations)
         saved_counts = {}
         
+        # Callback: invoked when event actually starts scraping on a worker
+        def _on_event_started(event_id, task=None):
+            if op_event_states and event_id in op_event_states:
+                state = op_event_states[event_id]
+                if not state["started_event"].is_set():
+                    state["started_at_monotonic"] = time.monotonic()
+                    state["started_event"].set()
+                    logger.info(f"[OP] Event {event_id} scraping STARTED on browser worker at monotonic={state['started_at_monotonic']:.2f}")
+
         # Callback: invoked IMMEDIATELY after each event scrape completes
         # (while still inside the scraper's async loop — before the browser closes)
         def _on_event_scraped(event_id, op_data):
@@ -1491,9 +1536,11 @@ class JobScheduler:
                 saved_counts[event_id] = None
             
             # Signal this specific event immediately — alert thread unblocked
-            if op_done_events and event_id in op_done_events:
-                op_done_events[event_id].set()
-                logger.info(f"🔔 OP: Signaled event {event_id} — alert thread unblocked for this event")
+            if op_event_states and event_id in op_event_states:
+                state = op_event_states[event_id]
+                state["done_at_monotonic"] = time.monotonic()
+                state["done_event"].set()
+                logger.info(f"🔔 OP: Signaled completion for event {event_id} — alert thread unblocked")
         
         # Scrape all matches (parallel if configured) — callback fires per event
         num_browsers = AppConfig.ODDSPORTAL_PARALLEL_BROWSERS
@@ -1505,6 +1552,7 @@ class JobScheduler:
             op_tasks, 
             num_browsers=num_browsers, 
             debug_dir="oddsportal_debug",
+            on_task_started=_on_event_started,
             on_result=_on_event_scraped
         )
         logger.info(f"🌐 OddsPortal: Tiered Orchestrator returned {len(op_results)} results")

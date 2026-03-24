@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 import random
 import time
@@ -3819,7 +3819,7 @@ def _attach_cached_match_urls(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any
     return refreshed_tasks
 
 
-def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
+def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = None, on_task_started=None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
     """Scrape multiple matches sequentially using one shared browser session."""
     results: Dict[int, Optional[MatchOddsData]] = {}
 
@@ -3837,6 +3837,13 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                 for i, task in enumerate(sequential_tasks, start=1):
                     event_id = task["event_id"]
                     task_label = f"OddsPortal [{i}/{len(sequential_tasks)}]"
+                    
+                    if on_task_started:
+                        try:
+                            on_task_started(event_id, task)
+                        except Exception as cb_err:
+                            logger.error(f"on_task_started callback error for event {event_id}: {cb_err}")
+                            
                     try:
                         data, match_url = await _scrape_task_with_recovery(scraper, task, task_label)
                         results[event_id] = data
@@ -3885,7 +3892,7 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
         return results
 
 
-def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
+def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_task_started=None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
     """
     Event-driven dispatcher with decoupled seeding.
 
@@ -3902,7 +3909,7 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
         return {}
 
     if num_browsers <= 1 or len(tasks) == 1:
-        return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir, on_result=on_result)
+        return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir, on_task_started=on_task_started, on_result=on_result)
 
     # --- Phase 1: attach warm-cache URLs and classify tasks ---
     tasks_with_cache = _attach_cached_match_urls(tasks)
@@ -4211,6 +4218,12 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
                             f"for {_format_group_key(group_key)} "
                             f"(reason={task.get('_release_reason', 'unknown')})"
                         )
+
+                    if on_task_started and event_id is not None:
+                        try:
+                            on_task_started(event_id, task)
+                        except Exception as cb_err:
+                            logger.error(f"{worker_label} on_task_started callback error for event {event_id}: {cb_err}")
 
                     try:
                         data, resolved_match_url = await _scrape_task_with_recovery(scraper, task, task_label)

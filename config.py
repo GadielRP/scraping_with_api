@@ -57,7 +57,7 @@ class Config:
         interval_hours = int(os.getenv('DISCOVERY_INTERVAL_HOURS', '6'))
         times = []
         for hour in range(0, 24, interval_hours):
-            times.append(f"{hour:02d}:00")
+            times.append(f"{hour:02d}:12")
         return times
     
     DISCOVERY_TIMES = _generate_discovery_times.__func__() if hasattr(_generate_discovery_times, "__func__") else _generate_discovery_times()
