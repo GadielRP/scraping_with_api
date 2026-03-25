@@ -54,12 +54,17 @@ season_to_process = [
     {"season_name": "NFL 2022", "tournament_id": 9464, "season_id": 46786},
     {"season_name": "NFL 2021", "tournament_id": 9464, "season_id": 36422},
     {"season_name": "NFL 2020", "tournament_id": 9464, "season_id": 27719},
-    {"season_name": "MLB 2025", "tournament_id": 11205, "season_id": 84695},
-    {"season_name": "MLB 2024", "tournament_id": 11205, "season_id": 68611},
+    {"season_name": "MLB 2026", "tournament_id": 11205, "season_id": 84695},
+    {"season_name": "MLB 2025", "tournament_id": 11205, "season_id": 68611},
+    {"season_name": "MLB 2024", "tournament_id": 11205, "season_id": 57577},
     {"season_name": "NHL 2025", "tournament_id": 234, "season_id": 78476},
     {"season_name": "SeriaA 2025", "tournament_id": 23, "season_id": 76457},
     {"season_name": "Bundesliga 2025", "tournament_id": 35, "season_id": 77333},
-    {"season_name": "League 1", "tournament_id": 12, "season_id": 77356}
+    {"season_name": "League 1 2025", "tournament_id": 12, "season_id": 77356},
+    {"season_name": "Saudi Pro League 2025", "tournament_id": 955, "season_id": 80443},
+    {"season_name": "SHL 2025", "tournament_id": 261, "season_id": 75679},
+    {"season_name": "PFL 2025", "tournament_id": 1654, "season_id": 81520},
+    {"season_name": "CBA 2025", "tournament_id": 1566, "season_id": 85375},
 ]
 
 

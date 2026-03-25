@@ -56,14 +56,25 @@ COLLECTED_SEASON_IDS: List[Dict] = [
     {"season_name": "NFL 2021", "season_id": 36422, "additional_season_id": None},
     {"season_name": "NFL 2020", "season_id": 27719, "additional_season_id": None},
     # MLB (Baseball) seasons
-    {"season_name": "MLB 2025", "season_id": 84695, "additional_season_id": None},
-    {"season_name": "MLB 2024", "season_id": 68611, "additional_season_id": None},
+    {"season_name": "MLB 2026", "season_id": 84695, "additional_season_id": None},
+    {"season_name": "MLB 2025", "season_id": 68611, "additional_season_id": None},
+    {"season_name": "MLB 2024", "season_id": 57577, "additional_season_id": None},
     # NHL (Ice Hockey) seasons
     {"season_name": "NHL 2025", "season_id": 78476, "additional_season_id": None},
     # Serie A seasons
     {"season_name": "Serie A 2025", "season_id": 76457, "additional_season_id": None},
     # Bundesliga seasons
     {"season_name": "Bundesliga 2025", "season_id": 77333, "additional_season_id": None},
+    # league 1 2025
+    {"season_name": "League 1 2025", "season_id": 77356, "additional_season_id": None},
+    # saudi professional league 2025
+    {"season_name": "Saudi Pro League 2025", "season_id": 80443, "additional_season_id": None},
+    # SHL sweden hockey league 2025
+    {"season_name": "SHL 2025", "season_id": 75679, "additional_season_id": None},
+    # PFL 2025 philipphines football league
+    {"season_name": "PFL 2025", "season_id": 81520, "additional_season_id": None},
+    # China basketball association
+    {"season_name": "CBA 2025", "season_id": 85375, "additional_season_id": None},
 ]
 
 # ---------------------------------------------------------------------------
@@ -142,19 +153,27 @@ FOOTBALL_SEASON_IDS = {
     76457,
     # Bundesliga
     77333,
+    # Ligue 1
+    77356,
+    # Saudi Pro League
+    80443,
+    # PFL
+    81520,
 }
 
 # MLB (Baseball) seasons
 # Baseball uses wins-only standings (no divisions/conferences for simplicity)
 BASEBALL_MLB_SEASON_IDS = {
-    84695,  # MLB 2025
-    68611,  # MLB 2024
+    84695,  # MLB 2026
+    68611,  # MLB 2025
+    57577,  # MLB 2024
 }
 
 # NHL (Ice Hockey) seasons
 # Hockey uses wins-only standings (points could vary but wins is the primary metric)
 HOCKEY_NHL_SEASON_IDS = {
     78476,  # NHL 2025
+    75679,  # SHL 2025
 }
 
 
@@ -198,7 +217,7 @@ MLB_AMERICAN_LEAGUE = {
     # AL Central
     'Chicago White Sox', 'Cleveland Guardians', 'Detroit Tigers', 'Kansas City Royals', 'Minnesota Twins',
     # AL West
-    'Houston Astros', 'Los Angeles Angels', 'Oakland Athletics', 'Seattle Mariners', 'Texas Rangers'
+    'Houston Astros', 'Los Angeles Angels', 'Athletics', 'Seattle Mariners', 'Texas Rangers'
 }
 
 MLB_NATIONAL_LEAGUE = {
@@ -409,6 +428,7 @@ class StandingsSimulator:
                 winner
             FROM season_events_with_results
             WHERE season_id = :season_id
+              AND round = 'regular_season'
               AND start_time_utc < :cutoff_dt
             ORDER BY start_time_utc
         """)
@@ -634,6 +654,7 @@ class HistoricalFormProcessor:
                 start_time_utc
             FROM season_events_with_results
             WHERE season_id = :season_id
+              AND round = 'regular_season'
             ORDER BY start_time_utc ASC
         """)
         
@@ -709,6 +730,7 @@ class HistoricalFormProcessor:
                     start_time_utc
                 FROM season_events_with_results
                 WHERE season_id = ANY(:season_ids)
+                  AND round = 'regular_season'
                   AND (home_team = :team_name OR away_team = :team_name)
                 ORDER BY start_time_utc DESC
             """)
