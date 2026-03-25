@@ -531,7 +531,18 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
         e.competition,
         r.home_score,
         r.away_score,
-        r.winner
+        r.winner,
+        CASE
+            WHEN r.winner = 'X' THEN 'DRAW'
+            WHEN e.sport = 'Ice hockey'
+                 AND (POSITION('+' IN COALESCE(r.home_sets, '')) > 0 OR POSITION('+' IN COALESCE(r.away_sets, '')) > 0)
+            THEN 'SO'
+            WHEN e.sport = 'Ice hockey'
+                AND (POSITION('(' IN COALESCE(r.home_sets, '')) > 0 OR POSITION('(' IN COALESCE(r.away_sets, '')) > 0)
+            THEN 'OT'
+            ELSE 'REG'
+        END AS result_subtype,
+        e.round
     FROM events e
     JOIN results r ON r.event_id = e.id
     WHERE e.season_id IS NOT NULL
