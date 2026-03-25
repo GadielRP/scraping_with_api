@@ -78,6 +78,9 @@ class JobScheduler:
         # Job E - Daily discovery (at 05:21) - fetches today's scheduled events with odds
         schedule.every().day.at("05:21").do(self.job_daily_discovery)
         
+        # Job F - Clean up OddsPortal league cache once every three days
+        schedule.every(3).days.at("05:00").do(self.job_clean_league_cache)
+        
         # Job E_Retry - Daily discovery retry check
         retry_interval = getattr(Config, 'DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES', 60)
         schedule.every(retry_interval).minutes.do(self.job_daily_discovery_retry)
@@ -88,6 +91,7 @@ class JobScheduler:
         logger.info(f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes (includes tennis timestamp checks + NBA 4th quarter checks)")
         logger.info("  - Midnight sync: daily at 04:00 (results collection only)")
         logger.info("  - Daily discovery: daily at 05:21 (today's scheduled events with odds)")
+        logger.info("  - League cache cleanup: every 3 days at 05:00")
         logger.info(f"  - Daily discovery retry: every {retry_interval} minutes")
     
     def _setup_pre_start_jobs(self):
@@ -2304,13 +2308,6 @@ class JobScheduler:
         """Job E: Daily discovery of today's scheduled events with odds (runs at 05:21)"""
         logger.info("Starting Job E: Daily discovery of today's scheduled events")
         
-        # Clean up yesterday's OddsPortal league cache
-        try:
-            from repository import OddsPortalCacheRepository
-            OddsPortalCacheRepository.cleanup_old_caches()
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to cleanup OddsPortal cache: {e}")
-            
         # Clean up old DailyDiscovery logs
         try:
             from repository import DailyDiscoveryRepository
@@ -2318,6 +2315,16 @@ class JobScheduler:
             DailyDiscoveryRepository.cleanup_old_logs(days_to_keep)
         except Exception as e:
             logger.warning(f"⚠️ Failed to cleanup DailyDiscovery logs: {e}")
+
+    def job_clean_league_cache(self):
+        """Job F: Clean up OddsPortal league cache once every three days (runs at 05:00)"""
+        logger.info("Starting Job F: Clean up OddsPortal league cache")
+        try:
+            from repository import OddsPortalCacheRepository
+            # We keep the caches for 3 days to match the execution frequency
+            OddsPortalCacheRepository.cleanup_old_caches(retention_days=3)
+        except Exception as e:
+            logger.error(f"Error in Job F (Clean up OddsPortal league cache): {e}")
         
         try:
             # Initialize logs for today

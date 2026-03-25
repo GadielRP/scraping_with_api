@@ -1645,21 +1645,22 @@ class OddsPortalCacheRepository:
             return False
     
     @staticmethod
-    def get_league_cache(season_id: int) -> Optional[Dict]:
+    def get_league_cache(season_id: int, valid_days: int = 3) -> Optional[Dict]:
         """
-        Get today's cached match URLs for a season_id.
+        Get cached match URLs for a season_id, valid for the past valid_days.
         
         Returns:
-            Dict of { relative_url: row_display_text } or None if not cached today
+            Dict of { relative_url: row_display_text } or None if not cached recently
         """
         try:
+            from datetime import timedelta
             with db_manager.get_session() as session:
-                today = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+                cutoff_date = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=valid_days - 1)
                 
                 cache = session.query(OddsPortalLeagueCache).filter(
                     OddsPortalLeagueCache.season_id == season_id,
-                    OddsPortalLeagueCache.cached_date >= today
-                ).first()
+                    OddsPortalLeagueCache.cached_date >= cutoff_date
+                ).order_by(OddsPortalLeagueCache.cached_date.desc()).first()
                 
                 if cache:
                     return cache.match_urls
@@ -1670,24 +1671,25 @@ class OddsPortalCacheRepository:
             return None
     
     @staticmethod
-    def cleanup_old_caches() -> int:
+    def cleanup_old_caches(retention_days: int = 3) -> int:
         """
-        Delete all cache entries older than today.
-        Should be called daily (e.g. from job_daily_discovery at 05:21).
+        Delete all cache entries older than retention_days.
+        Should be called periodically (e.g. from job_clean_league_cache).
         
         Returns:
             Number of rows deleted
         """
         try:
+            from datetime import timedelta
             with db_manager.get_session() as session:
-                today = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+                cutoff_date = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=retention_days)
                 
                 deleted = session.query(OddsPortalLeagueCache).filter(
-                    OddsPortalLeagueCache.cached_date < today
+                    OddsPortalLeagueCache.cached_date < cutoff_date
                 ).delete()
                 
                 if deleted > 0:
-                    logger.info(f"🧹 Cleaned up {deleted} old OddsPortal league cache entries")
+                    logger.info(f"🧹 Cleaned up {deleted} old OddsPortal league cache entries (older than {retention_days} days)")
                 return deleted
                 
         except Exception as e:

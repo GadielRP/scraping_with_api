@@ -674,6 +674,10 @@ class OddsPortalScraper:
                         }
                     });
 
+                    // --- Error Code (e.g. 404) ---
+                    const errEl = document.querySelector('div.error-code');
+                    const error_code_text = errEl ? errEl.textContent.trim() : '';
+
                     // --- Derived booleans ---
                     const has_shell_markers = event_container_count > 0
                         || group_tab_count > 0
@@ -686,6 +690,7 @@ class OddsPortalScraper:
                         || ou_expanded_count > 0;
 
                     return {
+                        error_code_text,
                         url: window.location.href,
                         title: document.title,
                         ready_state: document.readyState,
@@ -708,6 +713,7 @@ class OddsPortalScraper:
             """)
         except Exception:
             return {
+                "error_code_text": "",
                 "url": "", "title": "", "ready_state": "",
                 "event_container_count": 0, "event_container_child_count": 0,
                 "group_tab_count": 0, "period_nav_count": 0,
@@ -725,6 +731,9 @@ class OddsPortalScraper:
         and MISSING_EVENT_CONTAINER only fires when shell markers exist
         but the event container itself is absent.
         """
+        if "404" in str(state.get("error_code_text", "")):
+            return "HTTP_ERROR_404"
+
         # 1. Data already rendered → success
         if state.get('has_data_markers', False):
             return "DATA_RENDERED"
@@ -757,6 +766,7 @@ class OddsPortalScraper:
         """Create a compact log line for the state."""
         return (
             f"[{classification}] "
+            f"errCode='{state.get('error_code_text', '')}' "
             f"title='{state.get('title', '')}' "
             f"url={state.get('url', '')} "
             f"evtC={state.get('event_container_count', 0)} "
@@ -771,6 +781,8 @@ class OddsPortalScraper:
 
     def _classify_goto_exception(self, error: Exception) -> Tuple[str, str]:
         """Map Playwright goto exceptions into clearer log/debug reasons."""
+        # debugging 
+        logger.info(f"for debugging purposes: {error}")
         error_text = str(error or "")
         upper_text = error_text.upper()
 
@@ -805,6 +817,7 @@ class OddsPortalScraper:
             import datetime
             import json
             import os
+            import re
             
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             safe_reason = reason.replace('/', '_').replace(' ', '_').lower()
@@ -815,10 +828,22 @@ class OddsPortalScraper:
             png_path = os.path.join(self.debug_dir, f"{base_name}.png")
             await page.screenshot(path=png_path, full_page=True)
             
-            html_path = os.path.join(self.debug_dir, f"{base_name}.html")
             html_content = await page.content()
+            
+            styles = "\n".join(re.findall(r'<style[^>]*>(.*?)</style>', html_content, flags=re.IGNORECASE | re.DOTALL))
+            if styles.strip():
+                with open(os.path.join(self.debug_dir, f"{base_name}.css"), "w", encoding="utf-8") as f:
+                    f.write(styles)
+                    
+            scripts = "\n".join(re.findall(r'<script[^>]*>(.*?)</script>', html_content, flags=re.IGNORECASE | re.DOTALL))
+            if scripts.strip():
+                with open(os.path.join(self.debug_dir, f"{base_name}.js"), "w", encoding="utf-8") as f:
+                    f.write(scripts)
+                    
+            raw_html = re.sub(r'<(style|script)[^>]*>.*?</\1>', '', html_content, flags=re.IGNORECASE | re.DOTALL)
+            html_path = os.path.join(self.debug_dir, f"{base_name}.html")
             with open(html_path, "w", encoding="utf-8") as f:
-                f.write(html_content)
+                f.write(raw_html)
                 
             state = await self._collect_match_page_state(page)
             classification = self._classify_match_page_state(state)
@@ -1411,7 +1436,7 @@ class OddsPortalScraper:
 
         return candidates
 
-    async def _extract_league_candidates(self, league_url: str, season_id: Optional[int]) -> List[Dict[str, str]]:
+    async def _extract_league_candidates(self, league_url: str, season_id: Optional[int], skip_cache_save: bool = False) -> List[Dict[str, str]]:
         """
         Navigate to a league page, extract candidates once, and populate cache if available.
         This shared path is reused by both priming and cache-miss discovery.
@@ -1550,7 +1575,7 @@ class OddsPortalScraper:
                         "raw_text": row_text,
                     })
 
-            if season_id and candidates:
+            if season_id and candidates and not skip_cache_save:
                 try:
                     from repository import OddsPortalCacheRepository
                     cache_dict = _build_structured_league_cache(candidates)
@@ -1571,12 +1596,12 @@ class OddsPortalScraper:
                     pass
 
 
-    async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None) -> Optional[str]:
+    async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None, force_live: bool = False, skip_cache_save: bool = False) -> Optional[str]:
         """
         Resolve a match URL by team names.
         Cache hits return immediately; cache misses reuse the shared league extraction path.
         """
-        if season_id:
+        if season_id and not force_live:
             cached_url = self.find_match_url_from_cache(
                 season_id,
                 home_team,
@@ -1588,7 +1613,7 @@ class OddsPortalScraper:
                 return cached_url
 
         try:
-            candidates = await self._extract_league_candidates(league_url, season_id)
+            candidates = await self._extract_league_candidates(league_url, season_id, skip_cache_save=skip_cache_save)
             if not candidates:
                 logger.warning(f"OddsPortal discovery returned no candidates for {league_url}")
                 return None
@@ -1765,6 +1790,12 @@ class OddsPortalScraper:
             self._original_debug_dir = self.debug_dir
             self._event_debug_dir_created = False
 
+            if self.debug_dir and match_url:
+                match_slug = self._normalize_base_match_url(match_url).split('/')[-1]
+                if match_slug:
+                    self.debug_dir = os.path.join(self.debug_dir, f"debug_{match_slug}")
+                    self._event_debug_dir_created = True
+
             response = None
             e_goto = None
             goto_error_code = None
@@ -1798,9 +1829,9 @@ class OddsPortalScraper:
                 state_summary = self._format_page_state_summary(state, classification)
                 logger.info(f"Page state after navigation exception: {state_summary}")
 
-                if classification == "NO_SHELL":
+                if classification in ("NO_SHELL", "HTTP_ERROR_404"):
                     reason_prefix = goto_error_code or "GOTO_FAILED"
-                    reason = f"{reason_prefix}_NO_SHELL"
+                    reason = f"{reason_prefix}_{classification}"
                     logger.error(f"FAST FAIL: {reason}. {state_summary}")
                     if getattr(Config, 'ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT', True):
                         await self._save_debug_artifacts(
@@ -2340,6 +2371,7 @@ class OddsPortalScraper:
                 try:
                     debug_filename = f"modal_{label}.html" if label else "modal_unknown.html"
                     debug_filename = "".join([c if c.isalnum() or c in "._-" else "_" for c in debug_filename])
+                    os.makedirs(self.debug_dir, exist_ok=True)
                     debug_path = os.path.join(self.debug_dir, debug_filename)
                     with open(debug_path, "w", encoding="utf-8") as f:
                         f.write(modal_html)
@@ -3521,18 +3553,21 @@ async def _resolve_task_match_url(
     task: Dict[str, Any],
     *,
     allow_live_lookup: bool = True,
+    force_live: bool = False,
+    skip_cache_save: bool = False,
 ) -> Optional[str]:
     """Resolve a task's match URL with cache-first semantics."""
-    match_url = task.get("match_url")
-    if match_url:
-        return match_url
+    if not force_live:
+        match_url = task.get("match_url")
+        if match_url:
+            return match_url
 
     season_id = task.get("season_id")
     league_url = task.get("league_url")
     home_team = task.get("home_team")
     away_team = task.get("away_team")
 
-    if season_id and league_url and home_team and away_team:
+    if season_id and league_url and home_team and away_team and not force_live:
         
         cached_url = scraper.find_match_url_from_cache(
             season_id,
@@ -3547,6 +3582,8 @@ async def _resolve_task_match_url(
             home_team,
             away_team,
             season_id=season_id,
+            force_live=force_live,
+            skip_cache_save=skip_cache_save,
         )
 
     return None
@@ -3595,6 +3632,12 @@ async def _scrape_task_with_recovery(
         task["_oddsportal_resume_state"] = resume_state
         task["_oddsportal_partial_match_data"] = partial_match_data
 
+    force_live_discovery = False
+    if attempt and isinstance(attempt.failed_reason, str):
+        if "HTTP_ERROR_404" in attempt.failed_reason or "HTTP_404" in attempt.failed_reason:
+            logger.warning(f"{task_label}: 404 HTTP Error detected on cached URL {match_url}. Forcing live discovery on next retry.")
+            force_live_discovery = True
+
     if match_url:
         resume_meta = resume_state if isinstance(resume_state, dict) else {}
         logger.info(
@@ -3607,6 +3650,13 @@ async def _scrape_task_with_recovery(
             f"existing browser session-{scraper._session_id} for event_id {event_id}"
         )
         try:
+            if force_live_discovery:
+                retry_url = await _resolve_task_match_url(
+                    scraper, task, allow_live_lookup=True, force_live=True, skip_cache_save=True
+                )
+                if retry_url:
+                    match_url = retry_url
+
             attempt = await scraper.scrape_match_attempt(
                 match_url,
                 sport=sport,
@@ -3652,7 +3702,11 @@ async def _scrape_task_with_recovery(
             logger.error(f"{task_label}: browser restart failed for event_id {event_id}: {e}")
             continue
 
-        retry_url = await _resolve_task_match_url(scraper, task, allow_live_lookup=True)
+        retry_url = await _resolve_task_match_url(
+            scraper, task, allow_live_lookup=True, 
+            force_live=force_live_discovery, 
+            skip_cache_save=force_live_discovery
+        )
         if not retry_url:
             logger.warning(
                 f"{task_label}: match URL still unresolved after restart "
