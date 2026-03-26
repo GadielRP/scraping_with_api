@@ -136,6 +136,32 @@ def _build_structured_league_cache(candidates: List[Dict[str, str]]) -> Dict[str
     }
 
 
+def _evaluate_cache_quality(cache_dict: Dict[str, Any]) -> Tuple[int, float, float]:
+    """
+    Evaluate league cache quality.
+    Returns: (count, homogeneity, score). score = count * homogeneity
+    """
+    if not cache_dict:
+        return 0, 0.0, 0.0
+
+    endpoints = list(cache_dict.keys())
+    prefix_counts = {}
+    
+    for ep in endpoints:
+        parts = [p for p in ep.split('/') if p]
+        if len(parts) >= 3:
+            prefix = f"/{parts[0]}/{parts[1]}/{parts[2]}/"
+            prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
+        else:
+            prefix_counts["unknown"] = prefix_counts.get("unknown", 0) + 1
+
+    max_prefix_count = max(prefix_counts.values()) if prefix_counts else 0
+    homogeneity = max_prefix_count / len(endpoints) if endpoints else 0.0
+    score = len(endpoints) * homogeneity
+    
+    return len(endpoints), homogeneity, score
+
+
 def _format_group_key(group_key: Optional[Tuple[int, str]]) -> str:
     if not group_key:
         return "(non-primable)"
@@ -1579,10 +1605,26 @@ class OddsPortalScraper:
                 try:
                     from repository import OddsPortalCacheRepository
                     cache_dict = _build_structured_league_cache(candidates)
-                    if cache_dict and OddsPortalCacheRepository.save_league_cache(season_id, cache_dict):
-                        logger.info(f"⚡¦ Cached {len(cache_dict)} match URLs for season {season_id}")
-                    elif cache_dict:
-                        logger.warning(f"⚠️ Cache save returned False for season {season_id}")
+                    if cache_dict:
+                        new_count, new_homog, new_score = _evaluate_cache_quality(cache_dict)
+                        old_cache = OddsPortalCacheRepository.get_league_cache(season_id)
+                        
+                        save_cache = True
+                        if old_cache:
+                            old_count, old_homog, old_score = _evaluate_cache_quality(old_cache)
+                            logger.info(f"📊 New cache score {new_score:.1f} (count={new_count}, homog={new_homog:.2f}) vs Old cache score {old_score:.1f} (count={old_count}, homog={old_homog:.2f})")
+                            
+                            if new_score < old_score:
+                                save_cache = False
+                                logger.warning(f"⚠️ Rejecting new cache. New score {new_score:.1f} is lower than Old score {old_score:.1f}")
+                            else:
+                                logger.info(f"✅ Accepting new cache. Score is better or equal to the Old cache.")
+
+                        if save_cache:
+                            if OddsPortalCacheRepository.save_league_cache(season_id, cache_dict):
+                                logger.info(f"⚡¦ Cached {len(cache_dict)} match URLs for season {season_id}")
+                            else:
+                                logger.warning(f"⚠️ Cache save returned False for season {season_id}")
                 except Exception as cache_err:
                     logger.warning(f"⚠️ Cache save failed: {cache_err}")
 
@@ -3656,7 +3698,7 @@ async def _scrape_task_with_recovery(
         try:
             if force_live_discovery:
                 retry_url = await _resolve_task_match_url(
-                    scraper, task, allow_live_lookup=True, force_live=True, skip_cache_save=True
+                    scraper, task, allow_live_lookup=True, force_live=True
                 )
                 if retry_url:
                     match_url = retry_url
@@ -3709,7 +3751,7 @@ async def _scrape_task_with_recovery(
         retry_url = await _resolve_task_match_url(
             scraper, task, allow_live_lookup=True, 
             force_live=force_live_discovery, 
-            skip_cache_save=force_live_discovery
+            skip_cache_save=False
         )
         if not retry_url:
             logger.warning(

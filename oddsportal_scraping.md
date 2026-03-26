@@ -223,7 +223,7 @@ Finding a match URL on a league page is not a simple string search. It is an **E
         -   **Fuzzy Fallback**: Uses `SequenceMatcher` for character-level similarity.
 
 3.  **Selection**:
-    -   The candidate with the highest score is selected if it meets the **threshold (>= 80)**.
+    -   The candidate with the highest score is selected if it meets the **threshold (>= 150)**, which represents a 75% average match across both teams.
 
 ### 6.2 Structured Caching (The Rationale)
 
@@ -251,6 +251,19 @@ The `find_match_url_from_cache` method is designed to handle both formats:
 -   **String**: (Legacy) Attempts a robust multi-separator regex split to recover names.
 
 Every day at **05:01**, `job_daily_discovery` calls `cleanup_old_caches()` to reset the cache.
+
+### 6.4 Quality-Aware Cache Replacement (Smart Overwrite)
+
+To prevent "bad" or incomplete scraping sessions from corrupting the database, every cache write now undergoes a **Quality Evaluation**:
+
+1.  **Scoring**: The new cache dictionary is scored using `_evaluate_cache_quality(cache_dict)`:
+    -   **Count**: Number of match URLs found.
+    -   **Homogeneity**: Percentage of URLs that follow the expected `/sport/country/league/` pattern.
+    -   **Total Score**: `count * homogeneity`.
+2.  **Comparison**: Before `save_league_cache`, the system loads the current DB cache and calculates its score.
+3.  **Threshold**: The new cache is only saved if `new_score >= old_score`. This ensures we are always "upgrading" the cache or keeping the best version available.
+
+This logic is especially critical during **404 Recovery**, where the scraper performs a "Live Discovery" to find the correct match URL. The corrected league URLs are now safely merged back into the DB if they prove to be higher quality than the stale cached version.
 
 ---
 
@@ -423,9 +436,7 @@ event-container (stable parent)
 │   =============================================================================
 │   [SUPPORTED MARKET GROUPS: Over/Under]
 │   These have a different HTML structure with collapsed rows containing accordion data
-│   for various lines (e.g. 2.5, 3.5). The scraper calculates the absolute difference
-│   between Over and Under for each row to pick the closest to 50/50 probability,
-│   then clicks that row to expand it, revealing bookmaker odds for that specific line.
+│   for various lines (e.g. 2.5, 3.5). The scraper identifies the "Main Line" (closest to even odds) and clicks the **collapsed row element** (e.g., `div[data-testid="over-under-collapsed-row"]`) to reveal the full bookmaker table.
 │   │
 │   ├── div[data-testid="over-under-collapsed-row"] (clickable line row e.g. "Total +2.5")
 │   │   ├── p (Over odds)
@@ -503,7 +514,7 @@ Because OddsPortal relies on Vue.js to dynamically attach the tooltip to the DOM
 
 1. **Resource Blocking (Critical)**: By setting `ODDSPORTAL_BLOCK_RESOURCES=true`, the scraper intercepts and blocks heavy ad networks and tracking scripts. This prevents ad overlays from stealing Playwright's pointer events, ensuring near 100% hover success rates while significantly reducing bandwidth.
 2. **Scroll-and-Bump**: Playwright's `scroll_into_view_if_needed()` often aligns cells beneath OddsPortal's sticky top header. We immediately follow it with `window.scrollBy(0, -150)` to bump the page down and guarantee visibility.
-3. **Humanized Mouse Wiggle**: Rather than instantly teleporting the cursor to the dead-center of the element, the cursor is moved just outside the element's bounding box and then pulled inside. This reliably triggers DOM `mouseenter` repaints.
+3. **Humanized Mouse Wiggle**: Rather than instantly teleporting the cursor to the dead-center of the element, the cursor is moved slightly outside (**15px offset**) and then pulled inside. This reliably triggers DOM `mouseenter` repaints.
 4. **Dynamic Wait Polling with Escalating Retry**: Instead of hard-sleeping for 3-4 seconds per cell, the scraper dynamically polls for `h3:has-text('Odds movement')` with `state="visible"`. If the tooltip fails to appear, the scraper resets the mouse to `(0, 0)` and retries up to 3 times with escalating timeouts (3s → 4s → 5s).
 5. **Tooltip Detach Wait**: Between sequential hovers, the scraper waits for the previous tooltip to fully `detach` from the DOM. This prevented a common bug where Playwright would sometimes "see" the previous modal's HTML for the current cell.
 
@@ -515,7 +526,7 @@ flowchart TD
     B --> C["Get odds cells:\ndiv.flex-center.flex-col.font-bold"]
     C --> D["For each cell (1, X, 2 or Over, Under):"]
     D --> E["Remove overlays (popups, cookie banners) via JS\nScroll up to dodge sticky header"]
-    E --> F["Humanised mouse move ('wiggle') over box"]
+    E --> F["Humanised mouse move ('wiggle' 15px) over box"]
     F --> G["hover(force=True, timeout=1.5s)\n+ JS mouseenter/mouseover dispatch"]
     G --> H{"page.wait_for_selector(\nh3:has-text('Odds movement'), state='visible')\n(Dynamic wait 3-5s)"}
     H -- Timeouted --> I["Retry (up to 3x)"]
@@ -732,6 +743,8 @@ When `debug_dir` is active (always enabled in the simulation test), the scraper 
 - **Headless Timeout**: If the scraper times out waiting for rows without hitting Fast Fail, it still triggers the Session-Aware Retry to seamlessly attempt the extraction once more with a new IP.
 - **Legacy Duplication Cleanup**: The scraper module was refactored from ~8,000 lines down to **2,523 lines**, removing three complete copies of the class that were causing maintenance overhead and regex bugs.
 - **Universal Logging**: The entire subsystem (Scraper and Matcher) has been migrated to use the standard Python `logging` library (`logging.getLogger(__name__)`) for better integration with the system-wide weekly rotating loggers.
+- **SPA Error Page Rendering Wait**: To fix blank/empty artifacts on 404 errors, the scraper implements a **2.5s wait** after detecting an `HTTP 400+` status but *before* capturing the snapshot. This allows the Oddsportal SPA to finish rendering its "Page Not Found" UI.
+- **Artifact Cleanup (CSS/JS Separation)**: Debugging `.html` files no longer contain inline CSS/JS blobs. These are automatically extracted and saved to separate `.css` and `.js` sibling files, keeping the raw HTML readable.
 
 ---
 
