@@ -939,7 +939,14 @@ class JobScheduler:
         from streak_alerts import streak_alert_engine
         from modules.prediction import prediction_logger
         
-        result = {'event_id': None, 'streak_analysis': None, 'dual_report': None, 'odds_response': None, 'success': False}
+        result = {
+            'event_id': None,
+            'streak_analysis': None,
+            'should_send_streak_alert': False,
+            'dual_report': None,
+            'odds_response': None,
+            'success': False
+        }
         
         try:
             observations = event_payload.get('observations')
@@ -1127,7 +1134,12 @@ class JobScheduler:
                                 event_odds=event_obj.event_odds
                             )
 
-                            if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
+                            should_send_streak_alert = bool(
+                                streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis)
+                            )
+                            result['should_send_streak_alert'] = should_send_streak_alert
+
+                            if should_send_streak_alert:
                                 logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
                                 
                                 # SMART ALERT FILTERING: RESURRECTION LOGIC
@@ -1143,6 +1155,8 @@ class JobScheduler:
                                         self._reset_event_alert_sent(event_obj.id)
                                         event_obj = self.event_repo.get_event_by_id(event_obj.id)
                             else:
+                                # IMPORTANT: prevent downstream send phase from dispatching a filtered-out streak alert
+                                streak_analysis = None
                                 logger.debug(f"⏭️ No H2H streak alert for event {event_obj.id}")
                         else:
                             logger.debug(f"No H2H data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
@@ -1323,6 +1337,7 @@ class JobScheduler:
                 
                 event_obj = result.get('event_obj')
                 streak_analysis = result.get('streak_analysis')
+                should_send_streak_alert = result.get('should_send_streak_alert', False)
                 dual_report = result.get('dual_report')
                 odds_response = result.get('odds_response')
                 minutes_until_start = result.get('minutes_until_start')
@@ -1395,7 +1410,7 @@ class JobScheduler:
                         logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
                 
                 # 2) Send H2H streak alert for this event
-                if streak_analysis:
+                if streak_analysis and should_send_streak_alert:
                     logger.info(f"📊 Sending H2H streak alert for event {event_obj.id} (2nd in group)")
                     pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
                 
@@ -1930,6 +1945,7 @@ class JobScheduler:
             # H2H STREAK ANALYSIS FOR RESCHEDULED EVENT
             # ========================================
             streak_analysis = None
+            should_send_streak_alert = False
             observations = None
             
             # Check if event has custom_id for H2H analysis
@@ -2080,9 +2096,13 @@ class JobScheduler:
                             event_odds=event_obj.event_odds
                         )
                         
-                        if streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis):
+                        should_send_streak_alert = bool(
+                            streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis)
+                        )
+                        if should_send_streak_alert:
                             logger.info(f"✅ H2H streak analysis completed for rescheduled event {event_obj.id}: {streak_analysis.current_streak}")
                         else:
+                            streak_analysis = None
                             logger.debug(f"⏭️ No H2H streak alert for rescheduled event {event_obj.id}")
                     else:
                         logger.debug(f"No H2H data found for rescheduled event {event_obj.id}")
@@ -2134,11 +2154,9 @@ class JobScheduler:
             # ========================================
             
             # Send H2H streak alert if available
-            if streak_analysis:
-                from streak_alerts import streak_alert_engine
-                if streak_alert_engine.should_send_streak_alert(streak_analysis):
-                    logger.info(f"📊 Sending H2H streak alert for rescheduled event {event.id}")
-                    pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
+            if streak_analysis and should_send_streak_alert:
+                logger.info(f"📊 Sending H2H streak alert for rescheduled event {event.id}")
+                pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
             
             # Send dual process alert if available
             if should_send:
