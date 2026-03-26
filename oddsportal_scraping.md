@@ -29,7 +29,7 @@
 
 Our main data source (SofaScore API) provides opening and final odds, but we need odds from **more bookies**. OddsPortal tracks odds changes over time and exposes them through a hover tooltip on their frontend. This allows us to extract the **opening odds** for key bookmakers, which is critical for detecting odds movements and generating high-quality alerts. We store the **final odds for all available bookmakers** on the page, but only perform hovers for the top-priority ones to conserve time.
 
-We only scrape OddsPortal for **tracked leagues** (configured in `oddsportal_config.py`). It runs exclusively at the **5-minute pre-start mark**.
+We only scrape OddsPortal for **tracked leagues** (configured in `oddsportal_config.py`). It triggers **5 minutes after the event has started** (-5 minutes until start).
 
 ---
 
@@ -95,20 +95,20 @@ The scraper is **not always running**. It only fires when all of the following a
 1. `job_pre_start_check` runs (every 5 minutes, at exact minute marks).
 2. An event is found **within 30 minutes of kickoff**.
 3. The event's `season_id` is present in `SEASON_ODDSPORTAL_MAP` (i.e. it's a tracked league).
-4. `_should_extract_odds_for_event` returns `True` — this only happens when `minutes_until_start == 5`.
+4. `_should_extract_odds_for_event` returns `True` — this happens at **-5 minutes until start** (5 minutes after kickoff).
 
 ```mermaid
 flowchart TD
     A["Scheduler: every 5min"] --> B["Find events within 30min"]
     B --> C{"season_id in\nSEASON_ODDSPORTAL_MAP?"}
     C -- No --> D["Skip OP scraping"]
-    C -- Yes --> E{"At T-5min?"}
+    C -- Yes --> E{"At 5min AFTER start?\n(-5 min until start)"}
     E -- No --> D
     E -- Yes --> F["Launch OP Worker Thread"]
 ```
 
 > [!IMPORTANT]
-> OddsPortal scraping is now restricted to the 5-minute window to maximise data completeness while conserving resources. SofaScore odds are still extracted at both 30min and 5min.
+> OddsPortal scraping is now performed **5 minutes after the event starts** (-5 minutes until start) to ensure final/closing odds are fully settled on the page while conserving resources. SofaScore odds are still extracted at 120, 30, 5, 0, and -5 minutes.
 
 ---
 

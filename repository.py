@@ -288,6 +288,7 @@ class EventRepository:
                 now = datetime.now()
                 # Remove seconds logic and give a wider 5 min grace period for delayed crons
                 window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=5)
+                logger.info(f"⏳ Window start: {window_start}")
                 start_window = now + timedelta(minutes=window_minutes)
                 
                 events = session.query(Event).options(
@@ -316,7 +317,7 @@ class EventRepository:
                 window_end = now + timedelta(minutes=window_minutes)
                 
                 # Debug logging
-                logger.debug(f"Looking for events with odds between {window_start} and {window_end}")
+                logger.info(f"⏳ Window size {window_minutes}")
                 
                 # JOIN Event with EventOdds to get events with odds data
                 from sqlalchemy.orm import joinedload

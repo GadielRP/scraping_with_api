@@ -465,6 +465,8 @@ class PreStartNotification:
             
             if dual_report.minutes_until_start is not None and dual_report.minutes_until_start == 0:
                 message += f"\n🕒 Event is startig now!"
+            elif dual_report.minutes_until_start is not None and dual_report.minutes_until_start < 0:
+                message += f"\n🕒 Event is Live!"
             elif dual_report.minutes_until_start is not None:
                 message += f"\n🕒 {dual_report.minutes_until_start} min."
             
@@ -646,6 +648,8 @@ class PreStartNotification:
             message += f"({streak.competition_name})\n"
             if streak.minutes_until_start == 0:
                 message += f"\n🕒 Event is startig now!"
+            elif streak.minutes_until_start < 0:
+                message += f"\n🕒 Event is Live!"
             else:
                 message += f"\n🕒 {streak.minutes_until_start} minutes\n"
             

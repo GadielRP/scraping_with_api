@@ -493,7 +493,7 @@ class JobScheduler:
                 if isinstance(event_dict, dict):
                     season_id = event_dict.get('season_id')
                 minutes_until_start = pre_calculated_timings.get(event_dict['id'])
-                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == 0:
+                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == -5:
                     op_candidates.append({
                         'event_id': event_dict['id'],
                         'event_data': event_dict,
@@ -587,7 +587,7 @@ class JobScheduler:
                 set_prediction_system.check_nba_4th_quarter()
                 
                 # Use the "smart" odds extraction logic
-                KEY_MOMENTS = [120, 30, 5, 0]
+                KEY_MOMENTS = [120, 30, 5, 0, -5]
                 
                 def _process_upcoming_event(event_data: Dict) -> dict:
                     try:
@@ -1799,7 +1799,7 @@ class JobScheduler:
             return False, None
         
         # Key moments for odds extraction (removed 1-minute check - now handled by 5-minutes-after logic)
-        KEY_MOMENTS = [120, 30, 5, 0]
+        KEY_MOMENTS = [120, 30, 5, 0, -5]
         
         # Check if current time aligns with a key moment
         should_extract = minutes_until_start in KEY_MOMENTS
@@ -2200,40 +2200,6 @@ class JobScheduler:
                 logger.info("No events found from previous day")
                 return
             
-            # Update final odds for all events from previous day
-            odds_updated_count = 0
-            for event_data in events:
-                try:
-                    final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
-                    if final_odds_response:
-                        final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
-                        if final_odds_data:
-                            upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
-                            if upserted_id:
-                                snapshot = OddsRepository.create_odds_snapshot(event_data.id, final_odds_data)
-                                if snapshot:
-                                    odds_updated_count += 1
-                                    logger.info(f"✅ Final odds updated for {event_data.home_team} vs {event_data.away_team}")
-                                
-                                # Save all markets to new markets/market_choices tables
-                                # This runs for ALL sports (same as pre-start check)
-                                try:
-                                    from repository import MarketRepository
-                                    MarketRepository.save_markets_from_response(event_data.id, final_odds_response)
-                                except Exception as e:
-                                    logger.warning(f"Error saving markets to DB for event {event_data.id}: {e}")
-                            else:
-                                logger.warning(f"Failed to update final odds for event {event_data.id}")
-                        else:
-                            logger.warning(f"No final odds data extracted for event {event_data.id}")
-                    else:
-                        logger.debug(f"No final odds response for event {event_data.id}")
-                except Exception as e:
-                    logger.warning(f"Error updating odds for event {event_data.id}: {e}")
-                    continue
-            
-            logger.info(f"📊 Final odds updated for {odds_updated_count}/{len(events)} events")
-
             logger.info(f"Processing {len(events)} events from previous day")
             stats = self._collect_results_for_events(events, "Job E")
             logger.info(f"Job E completed: {stats['updated']} updated, {stats['skipped']} skipped, {stats['failed']} failed")

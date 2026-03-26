@@ -193,10 +193,12 @@ class OddsAlertProcessor:
                 formatted_source = discovery_source.title().replace('_', ' ')
                 message += f"🔍 {formatted_source}\n"
             
-            if minutes_until_start is not None and minutes_until_start == 0:
-                message += f"🕒 Event is starting now!\n"
+            if minutes_until_start <0:
+                message += f"🕒 <b>Event is Live!</b>\n"
+            elif minutes_until_start is not None and minutes_until_start == 0:
+                message += f"🕒 <b>Event is starting now!</b>\n"
             elif minutes_until_start is not None:
-                message += f"🕒 {minutes_until_start} min until start\n"
+                message += f"🕒 <b>{minutes_until_start} min until start</b>\n"
             
             message += f"🆔 Event: {event_id}\n\n"
             
