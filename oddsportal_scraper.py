@@ -1872,7 +1872,11 @@ class OddsPortalScraper:
 
             if response is not None and response.status >= 400:
                 reason = f"HTTP_{response.status}"
-                logger.error(f"FAST FAIL: {reason}")
+                logger.error(f"FAST FAIL: {reason}. Waiting 2.5s for SPA error page to render before taking snapshot.")
+                try:
+                    await page.wait_for_timeout(2500)
+                except Exception:
+                    pass
                 await self._save_debug_artifacts(page, reason, self._resume_state_for_debug(normalized_resume_state))
                 return ScrapeAttemptResult(
                     data=None,

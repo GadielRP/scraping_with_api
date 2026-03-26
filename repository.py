@@ -993,17 +993,19 @@ class MarketRepository:
                         # Extract market info
                         market_name = market_data.get('marketName')
                         choice_group = market_data.get('choiceGroup')  # e.g., "2.5" for Over/Under
+                        is_live = market_data.get('isLive', False)
                         
                         if not market_name:
                             continue
                         
-                        # Check if market already exists (upsert by event+bookie+name+line)
+                        # Check if market already exists (upsert by event+bookie+name+line+is_live)
                         existing_market = session.query(Market).filter(
                             and_(
                                 Market.event_id == event_id,
                                 Market.bookie_id == bookie_id,
                                 Market.market_name == market_name,
-                                Market.choice_group == choice_group
+                                Market.choice_group == choice_group,
+                                Market.is_live == is_live
                             )
                         ).first()
                         
@@ -1022,6 +1024,7 @@ class MarketRepository:
                                 market_group=market_data.get('marketGroup'),
                                 market_period=market_data.get('marketPeriod'),
                                 choice_group=choice_group,
+                                is_live=is_live,
                                 collected_at=get_local_now()
                             )
                             session.add(market)
@@ -1181,6 +1184,7 @@ class MarketRepository:
                         'market_name': market.market_name,
                         'market_group': market.market_group,
                         'market_period': market.market_period,
+                        'is_live': market.is_live,
                         'choices': choices_data
                     })
                 
@@ -1317,7 +1321,8 @@ class MarketRepository:
                                      Market.event_id == event_id,
                                      Market.bookie_id == bookie.bookie_id,
                                      Market.market_name == market_name,
-                                     Market.choice_group == getattr(b_odds, 'handicap', None)
+                                     Market.choice_group == getattr(b_odds, 'handicap', None),
+                                     Market.is_live == False
                                  )
                             ).first()
                             
@@ -1329,6 +1334,7 @@ class MarketRepository:
                                     market_group=market_group,
                                     market_period=market_period,
                                     choice_group=getattr(b_odds, 'handicap', None),
+                                    is_live=False,
                                     collected_at=get_local_now()
                                 )
                                 session.add(market)
@@ -1473,7 +1479,8 @@ class MarketRepository:
                                          Market.event_id == event_id,
                                          Market.bookie_id == bookie.bookie_id,
                                          Market.market_name == market_name,
-                                         Market.choice_group == bf_cg
+                                         Market.choice_group == bf_cg,
+                                         Market.is_live == False
                                      )
                                 ).first()
                                 
@@ -1485,6 +1492,7 @@ class MarketRepository:
                                         market_group=market_group,
                                         market_period=market_period,
                                         choice_group=bf_cg,
+                                        is_live=False,
                                         collected_at=get_local_now()
                                     )
                                     session.add(market)

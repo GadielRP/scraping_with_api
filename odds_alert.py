@@ -209,8 +209,9 @@ class OddsAlertProcessor:
                 market_name = market.get('market_name', 'Unknown')
                 choice_group = market.get('choice_group')
                 
-                # Show market name as header
-                message += f"📊 <b>{market_name}</b>\n"
+                # Show market name as header, add (LIVE) label if applicable
+                live_label = " (LIVE)" if market.get('is_live') else ""
+                message += f"📊 <b>{market_name}{live_label}</b>\n"
                 
                 # If this market has a choice_group (like Over/Under with a line), show it
                 if choice_group:
@@ -300,6 +301,7 @@ class OddsAlertProcessor:
             for m in markets:
                 bookie_name = m['bookie_name']
                 choice_group = m.get('choice_group')
+                is_live = m.get('is_live', False)
                 choices = m['choices']
                 
                 # Reorder choices to 1, X, 2 (or standard order)
@@ -324,15 +326,16 @@ class OddsAlertProcessor:
                             break
                         
                 time_str = f" 🕒 {bookie_time}" if bookie_time else ""
+                live_label = " (LIVE)" if is_live else ""
                 
                 # If Betfair, add Back/Lay info
                 if 'betfair' in bookie_name.lower() and choice_group:
-                    bookie_display = f"{bookie_name} ({choice_group}){time_str}"
+                    bookie_display = f"{bookie_name} ({choice_group}){live_label}{time_str}"
                 # For Asian Handicap or Over/Under, optionally show the line next to the bookie name or inside if appropriate.
                 elif market_group in ['Asian Handicap', 'Over/Under'] and choice_group:
-                    bookie_display = f"{bookie_name} [{choice_group}]{time_str}"
+                    bookie_display = f"{bookie_name} [{choice_group}]{live_label}{time_str}"
                 else:
-                    bookie_display = f"{bookie_name}{time_str}"
+                    bookie_display = f"{bookie_name}{live_label}{time_str}"
 
                 # Format choices for this bookie
                 choice_strs = []
@@ -425,8 +428,12 @@ class OddsAlertProcessor:
             if len(markets) == 1:
                 market = markets[0]
                 market_name = market.get('market_name', '')
+                season_id = event_data.get('season_id')
+                
                 # Full time market has marketId=1 and marketName="Full time"
-                if market_name == 'Full time':
+                if season_id and season_id in SEASON_ODDSPORTAL_MAP:
+                    logger.info(f"📊 Event {event_data.get('id')} has 1 market but season {season_id} is tracked in OP - forcing alert send")
+                elif market_name == 'Full time':
                     logger.info(f"⏭️ LOW-VALUE EVENT: Event {event_data.get('id')} has only 1 market (Full time) - marking alert_sent=True and skipping odds alert")
                     self._mark_event_alert_sent(event_data.get('id'))
                     return False  # Don't send alert

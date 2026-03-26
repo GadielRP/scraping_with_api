@@ -201,14 +201,15 @@ class Market(Base):
     market_group = Column(Text)  # "1X2", "Match goals", "Asian Handicap"
     market_period = Column(Text)  # "Full-time", "1st half"
     choice_group = Column(Text)  # For Over/Under: "2.5", "3.5", etc. NULL for non-line markets
+    is_live = Column(Boolean, default=False, nullable=False)
     
     # Timestamps
     collected_at = Column(DateTime, default=get_local_now, nullable=False)
     
     # Constraints
     __table_args__ = (
-        # Each bookie can have one market per event+name+line combination
-        UniqueConstraint('event_id', 'bookie_id', 'market_name', 'choice_group', name='unique_market_per_event_bookie'),
+        # Each bookie can have one market per event+name+line+live-status combination
+        UniqueConstraint('event_id', 'bookie_id', 'market_name', 'choice_group', 'is_live', name='unique_market_per_event_bookie'),
     )
     
     # Relationships
@@ -583,6 +584,8 @@ def create_or_replace_views(engine):
         # Drop basketball_results view first if it exists (to handle column removal)
         conn.exec_driver_sql("DROP VIEW IF EXISTS basketball_results CASCADE;")
         conn.exec_driver_sql(BASKETBALL_RESULTS_VIEW_SQL)
+        # Drop season events view first to ensure schema updates correctly (like adding the 'round' column)
+        conn.exec_driver_sql("DROP VIEW IF EXISTS season_events_with_results CASCADE;")
         # Create season events with results view for historical standings
         conn.exec_driver_sql(SEASON_EVENTS_WITH_RESULTS_VIEW_SQL)
         # Create market choice trajectory view
