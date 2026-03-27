@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from contextlib import contextmanager
 from typing import Generator
 import logging
+import traceback
 from config import Config
 from models import Base
 
@@ -197,7 +198,6 @@ class DatabaseManager:
                     
         except Exception as e:
             logger.error(f"❌ Schema migration failed: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             return False
     
@@ -240,11 +240,30 @@ class DatabaseManager:
             
             db_columns = {col['name'] for col in inspector.get_columns('markets')}
             
-            if 'sofascore_market_id' not in db_columns:
-                logger.debug("✅ Markets table already migrated (no sofascore_market_id)")
+            # Check if we need to migrate from sofascore_market_id or if we just need to fix the constraint
+            needs_sofascore_migration = 'sofascore_market_id' in db_columns
+            
+            # Check existing constraint columns
+            needs_constraint_fix = True
+            try:
+                # Use inspector to check unique constraint columns
+                u_constraints = inspector.get_unique_constraints('markets')
+                for uc in u_constraints:
+                    if uc['name'] == 'unique_market_per_event_bookie':
+                        if 'is_live' in uc['column_names']:
+                            needs_constraint_fix = False
+                        break
+            except Exception as e:
+                logger.debug(f"Error checking existing constraints: {e}")
+
+            if not needs_sofascore_migration and not needs_constraint_fix:
+                logger.debug("✅ Markets table already migrated and unique constraint is correct")
                 return
             
-            logger.info("🔄 Migrating markets table: removing sofascore_market_id, adding bookie support")
+            if needs_sofascore_migration:
+                logger.info("🔄 Migrating markets table: removing sofascore_market_id, adding bookie support")
+            elif needs_constraint_fix:
+                logger.info("🔄 Fixing markets table: updating unique_market_per_event_bookie constraint to include 'is_live'")
             
             # Get the SofaScore bookie_id
             with self.get_session() as session:
@@ -293,21 +312,30 @@ class DatabaseManager:
                 except Exception as e:
                     logger.debug(f"  FK may already exist: {e}")
                 
-                # 5. Drop sofascore_market_id column
-                session.execute(text(
-                    "ALTER TABLE markets DROP COLUMN sofascore_market_id"
-                ))
-                logger.info("  🗑️ Dropped column: sofascore_market_id")
-                
-                # 6. Add new unique constraint
                 try:
+                    # 5. Drop sofascore_market_id column (only if it exists)
+                    if needs_sofascore_migration:
+                        session.execute(text(
+                            "ALTER TABLE markets DROP COLUMN sofascore_market_id"
+                        ))
+                        logger.info("  🗑️ Dropped column: sofascore_market_id")
+                except Exception as e:
+                    logger.debug(f"  Failed to drop sofascore_market_id: {e}")
+                
+                # 6. Add new unique constraint (updated to include is_live)
+                try:
+                    # Always try to drop it first if we are here for a fix
+                    session.execute(text(
+                        "ALTER TABLE markets DROP CONSTRAINT IF EXISTS unique_market_per_event_bookie"
+                    ))
+                    
                     session.execute(text(
                         "ALTER TABLE markets ADD CONSTRAINT unique_market_per_event_bookie "
-                        "UNIQUE (event_id, bookie_id, market_name, choice_group)"
+                        "UNIQUE (event_id, bookie_id, market_name, choice_group, is_live)"
                     ))
-                    logger.info("  ✅ Added new constraint: unique_market_per_event_bookie")
+                    logger.info("  ✅ Added new constraint: unique_market_per_event_bookie (includes is_live)")
                 except Exception as e:
-                    logger.debug(f"  New constraint may already exist: {e}")
+                    logger.warning(f"  Failed to update unique constraint: {e}")
                 
                 session.commit()
                 logger.info("✅ Markets→Bookies migration completed successfully")
