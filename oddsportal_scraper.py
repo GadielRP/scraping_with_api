@@ -494,6 +494,8 @@ class OddsPortalScraper:
 
         1. Sets no-cache/no-store HTTP headers for this navigation only.
         2. Appends a _t=<timestamp> cache-buster to the URL (before the fragment).
+        3. Used by match-page navigation to emulate a fresh/incognito-style load
+           as closely as server behavior allows.
         """
         # --- Build cache-busted URL ---
         # Split on '#' first so the fragment stays at the end.
@@ -524,7 +526,11 @@ class OddsPortalScraper:
             await page.set_extra_http_headers({})
 
     async def _clear_browser_state(self) -> None:
-        """Clear cookies, web storage, cache storage, and service workers from the active context."""
+        """Clear cookies, web storage, cache storage, and service workers from the active context.
+
+        This method is a best-effort stale-state mitigation and is used by
+        retry paths when a previous attempt may have loaded outdated client state.
+        """
         if not self.context:
             logger.debug("⚠️ _clear_browser_state: no active context, skipping")
             return
@@ -4375,4 +4381,3 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
         f"(entries in results dict={len(all_results)})"
     )
     return all_results
-
