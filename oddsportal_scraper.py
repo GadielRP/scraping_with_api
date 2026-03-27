@@ -494,6 +494,8 @@ class OddsPortalScraper:
 
         1. Sets no-cache/no-store HTTP headers for this navigation only.
         2. Appends a _t=<timestamp> cache-buster to the URL (before the fragment).
+        3. Used by match-page navigation to emulate a fresh/incognito-style load
+           as closely as server behavior allows.
         """
         # --- Build cache-busted URL ---
         # Split on '#' first so the fragment stays at the end.
@@ -510,6 +512,7 @@ class OddsPortalScraper:
 
         fresh_url = f"{base_part}#{fragment}" if fragment else base_part
         logger.debug(f"🔄 _goto_fresh: {fresh_url}")
+        logger.info("🧪 Anti-stale checkpoint: _goto_fresh cache-busted navigation is being used")
 
         # --- Apply anti-cache headers for this navigation only ---
         try:
@@ -524,12 +527,17 @@ class OddsPortalScraper:
             await page.set_extra_http_headers({})
 
     async def _clear_browser_state(self) -> None:
-        """Clear cookies, web storage, cache storage, and service workers from the active context."""
+        """Clear cookies, web storage, cache storage, and service workers from the active context.
+
+        This method is a best-effort stale-state mitigation and is used by
+        retry paths when a previous attempt may have loaded outdated client state.
+        """
         if not self.context:
             logger.debug("⚠️ _clear_browser_state: no active context, skipping")
             return
 
         try:
+            logger.info("🧪 Anti-stale checkpoint: clearing browser state (cookies/storage/cache/service-workers)")
             # 1. Clear cookies
             await self.context.clear_cookies()
 
@@ -1781,6 +1789,10 @@ class OddsPortalScraper:
         page = None
 
         try:
+            logger.info(
+                "🧪 Anti-stale strategy: "
+                f"fresh_context_per_event={self._fresh_context_per_event}, clear_state={clear_state}"
+            )
             if self._fresh_context_per_event:
                 try:
                     fresh_context = await self._create_fresh_context()
@@ -1810,6 +1822,7 @@ class OddsPortalScraper:
             if fresh_context:
                 try:
                     await fresh_context.close()
+                    logger.info("🧪 Anti-stale checkpoint: fresh event context closed")
                 except Exception:
                     pass
                 self.context = previous_context
@@ -2389,6 +2402,7 @@ class OddsPortalScraper:
             if fresh_context:
                 try:
                     await fresh_context.close()
+                    logger.info("🧪 Anti-stale checkpoint: fresh event context closed")
                 except Exception:
                     pass
                 self.context = previous_context
@@ -4375,4 +4389,3 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
         f"(entries in results dict={len(all_results)})"
     )
     return all_results
-
