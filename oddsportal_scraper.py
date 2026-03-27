@@ -130,6 +130,7 @@ def _build_structured_league_cache(candidates: List[Dict[str, str]]) -> Dict[str
             "home": candidate["home"],
             "away": candidate["away"],
             "raw_text": candidate.get("raw_text", ""),
+            "date": candidate.get("date", ""),
         }
         for candidate in candidates
         if candidate.get("href")
@@ -1522,12 +1523,15 @@ class OddsPortalScraper:
                 pass
 
             try:
-                await page.wait_for_selector("div.eventRow", timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS)
+                # Use structural scoping to target the main league table container.
+                # 'empty:min-h-[80vh]' is the container for primary schedule content.
+                league_container_selector = 'div[class*="empty:min-h-[80vh]"]'
+                await page.wait_for_selector(f"{league_container_selector} div.eventRow", timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS)
                 t_wait = time.perf_counter()
-                log_timing(f"Waiting for 'div.eventRow' selector took {t_wait - t_goto:.2f}s")
+                log_timing(f"Waiting for scoped event rows took {t_wait - t_goto:.2f}s")
             except Exception:
                 logger.error(
-                    "🔄 FAST FAIL (League rows): no event rows loaded "
+                    "🔄 FAST FAIL (League rows): no scoped event rows loaded "
                     f"within {ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS}ms on {navigation_league_url}"
                 )
                 return []
@@ -1542,15 +1546,32 @@ class OddsPortalScraper:
 
             t_js_league = time.perf_counter()
             rows_data = await page.evaluate("""() => {
-                const rows = Array.from(document.querySelectorAll("div.eventRow"));
-                return rows.map(row => {
-                    const text = row.innerText;
-                    const links = Array.from(row.querySelectorAll("a[href]")).map(a => ({
-                        href: a.getAttribute("href"),
-                        text: a.innerText.trim()
-                    }));
-                    return { text, links };
-                });
+                const container = document.querySelector('div[class*="empty:min-h-[80vh]"]');
+                if (!container) return [];
+                
+                let currentDate = "";
+                const results = [];
+                const rows = Array.from(container.querySelectorAll("div.eventRow"));
+                
+                for (const row of rows) {
+                    const dateHeader = row.querySelector('[data-testid="date-header"]');
+                    if (dateHeader) {
+                        currentDate = dateHeader.innerText.trim();
+                    }
+                    
+                    const gameRows = Array.from(row.querySelectorAll('[data-testid="game-row"]'));
+                    for (const gr of gameRows) {
+                        const hrefEl = gr.querySelector('a[href]');
+                        if (hrefEl) {
+                            results.push({
+                                href: hrefEl.getAttribute("href"),
+                                game_text: gr.innerText.trim(),
+                                date: currentDate
+                            });
+                        }
+                    }
+                }
+                return results;
             }""")
             log_timing(f"Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s")
 
@@ -1559,52 +1580,47 @@ class OddsPortalScraper:
                 return []
 
             candidates = []
-            league_path = navigation_league_url.replace("https://www.oddsportal.com", "").rstrip("/")
+            league_relative_path = navigation_league_url.replace("https://www.oddsportal.com", "").rstrip("/")
+            
+            # Derive the sport/country prefix to definitively block cross-sport or cross-country contamination.
+            # Example: "/football/england/premier-league/" -> "/football/england/"
+            path_parts = [p for p in league_relative_path.split("/") if p]
+            context_prefix = f"/{path_parts[0]}/{path_parts[1]}/" if len(path_parts) >= 2 else None
 
-            for row in rows_data:
-                row_text = row.get("text", "")
-                links = row.get("links", [])
-                p1, p2, href = None, None, None
+            for item in rows_data:
+                href = item.get("href", "")
+                game_text = item.get("game_text", "")
+                date_val = item.get("date", "")
+                
+                if not href or "-" not in href:
+                    continue
+                    
+                # 1. Structural context guard: ensure the candidate link belongs to the same sport/country context.
+                if context_prefix and context_prefix not in href:
+                    continue
 
-                for link in links:
-                    l_href = link.get("href", "")
-                    if not l_href or "-" not in l_href:
-                        continue
-                    if l_href.rstrip("/") in league_path:
-                        continue
+                # 2. Avoid matching the league page itself
+                if href.rstrip("/") in league_relative_path:
+                    continue
 
-                    link_text = link.get("text", "")
-                    parts = re.split(TEAM_SEPARATOR_PATTERN, link_text)
-                    if len(parts) >= 2:
-                        p1 = parts[0].strip()
-                        p2 = parts[1].strip()
-                        p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
-                        p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
-                        href = l_href
-                        break
+                # Try to parse teams from game_text
+                p1, p2 = None, None
+                parts = re.split(TEAM_SEPARATOR_PATTERN, game_text)
+                if len(parts) >= 2:
+                    p1 = parts[0].strip()
+                    p2 = parts[1].strip()
+                    # Clean time prefix (e.g. "13:00 ")
+                    p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
+                    # Clean trailing odd/info (e.g. " 1.88")
+                    p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
 
-                if not (p1 and p2):
-                    lines = [line.strip() for line in row_text.split('\n') if line.strip()]
-                    for line in lines:
-                        if any(k in line for k in ["Today", "Tomorrow", "Mar", "Apr", "Play Offs", "Play Out"]):
-                            continue
-                        if f" {EN_DASH} " in line or " - " in line:
-                            parts = re.split(TEAM_SEPARATOR_PATTERN, line)
-                            if len(parts) >= 2:
-                                p1 = parts[0].strip()
-                                p2 = parts[1].strip()
-                                p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
-                                p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
-                                if not href and links:
-                                    href = links[0].get("href")
-                                break
-
-                if p1 and p2 and href:
+                if p1 and p2:
                     candidates.append({
                         "home": p1,
                         "away": p2,
                         "href": href,
-                        "raw_text": row_text,
+                        "raw_text": game_text,
+                        "date": date_val
                     })
 
             if season_id and candidates and not skip_cache_save:

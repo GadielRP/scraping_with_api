@@ -133,8 +133,8 @@ sequenceDiagram
         W->>W: return URL (skip navigation)
     else Cache Miss
         W->>OP: Navigate league page (30s timeout)
-        W->>W: Extract link-text and row-text from <a> and <div>
-        W->>W: Filter out noise (dates, "Play Offs", tournament info)
+        W->>W: Extract match date from [data-testid="date-header"]
+        W->>W: Extract scoped match text from [data-testid="game-row"]
         W->>W: team_matcher.find_best_match(candidates)
         W->>DB: save_league_cache(season_id, structured_results)
     end
@@ -207,11 +207,11 @@ flowchart LR
 Finding a match URL on a league page is not a simple string search. It is an **Entity Resolution** problem.
 
 1.  **Extraction (Candidate Generation)**:
-    -   The scraper extracts **all** event rows (`div.eventRow`).
-    -   For each row, it attempts to extract a `home`, `away`, and `href` pair.
-    -   Priority 1: Extract from link text (`<a>`). This is clean (e.g., "Team A - Team B").
-    -   Priority 2: Fallback to full row text (`innerText`) if links are ambiguous.
-    -   Result: A list of `Candidate` dicts: `[ {home: "...", away: "...", href: "...", raw_text: "..."}, ... ]`.
+    -   The scraper identifies the main league container (`div[class*="empty:min-h-[80vh]"]`).
+    -   It iterates through each `div.eventRow` to maintain a **Date-Aware State**.
+    -   **Date Detection**: Captures text from `[data-testid="date-header"]` and associates it with all following matches.
+    -   **Scoped Extraction**: Extracts match data exclusively from `[data-testid="game-row"]`. This prevents "noise" like sport, country, or league breadcrumbs from polluting the team names.
+    -   Result: A list of `Candidate` dicts: `[ {home: "...", away: "...", href: "...", raw_text: "...", date: "..."}, ... ]`.
 
 2.  **Scoring (TeamMatcher)**:
     -   The `TeamMatcher` class (in `team_matcher.py`) receives the SofaScore names and the list of candidates.
@@ -235,12 +235,14 @@ Previously, the system stored cache entries as simple strings: `"Team A vs Team 
   "/football/mexico/liga-mx/puebla-queretaro/abcdef/": {
     "home": "Puebla",
     "away": "Queretaro",
-    "raw_text": "22:00 Puebla - Queretaro 2.10 3.20 3.50"
+    "raw_text": "22:00 Puebla - Queretaro 2.10 3.20 3.50",
+    "date": "27 Mar 2026"
   }
 }
 ```
 **Benefits:**
 -   **No Redundant Parsing**: We preserve the perfect extraction we had in memory.
+-   **Date-Based Validation**: Use the `"date"` field to anchor match relevance.
 -   **TeamMatcher Consistency**: The cache reader can feed the `home/away` fields directly into the `TeamMatcher`, ensuring identical scoring logic for both live-scraped and cached events.
 -   **Robustness**: Handles names with special characters or complex layouts.
 
@@ -737,6 +739,7 @@ When `debug_dir` is active (always enabled in the simulation test), the scraper 
 - **Network Navigation Failure**: Handled by **Immediate Network Failure Check**. If the browser returns `ERR_TIMED_OUT` or similar, the scraper fails fast instantly to avoid wasting time on a dead connection.
 - **Proxy Blocked / Cloudflare Banned**: Handled by **Fast Fail Check #1**. Detects blocks via page title, kills the browser, and triggers a **Session-Aware Retry**.
 - **SPA Render Failure (Empty Container)**: Handled by **Fast Fail Check #2**. Sometimes the page loads but the Vue.js app fails to hydrate/render the odds table. A `MutationObserver` detects this state and triggers a fast fail after 15s of empty content, avoiding the full 60s timeout.
+- **Cross-Day Match Collision**: Prevented by the **Date-Aware League Cache**. By storing the match date alongside the URL, we can distinguish between recurring match pairings on different days in the same league.
 - **Tab Switching Failure**: If the SPA router hangs and the odds table doesn't update after clicking a tab within the timeout, the scraper triggers a **Page Reload Recovery** by performing a full navigation to the specific fragment URL (e.g. `#over-under;2`). This breaks cascading failures where one timed-out tab prevents all subsequent tabs from loading.
 - **Already Active" Race Condition**: Fixed by the **Smart Wait** mechanism. Prevents extraction from starting immediately after a fragment change if the table rows haven't rendered yet, even if the tab UI shows as "active".
 - **Session-Aware Retry**: Implemented in `scrape_multiple_matches_sync`. When a scrape fails, the scraper calls `await self.stop()` and `await self.start()`. This generates a fresh `_session_id` and restarts the Playwright process, which forces a new TCP connection and a clean proxy IP from the rotation endpoint (e.g., Webshare).
