@@ -399,6 +399,14 @@ class OddsAlertProcessor:
             from config import Config
             from oddsportal_config import SEASON_ODDSPORTAL_MAP
             
+            # --- START: PRECISION ALERT GATE ---
+            # Odds alerts only send at key moments 30 and -5
+            ALLOWED_ODDS_ALERT_MINUTES = {30, -5}
+            if minutes_until_start not in ALLOWED_ODDS_ALERT_MINUTES:
+                logger.info(f"[ODDS ALERT] Skipping send for event {event_data.get('id')} at minute {minutes_until_start}; allowed minutes are {ALLOWED_ODDS_ALERT_MINUTES}")
+                return False
+            # --- END: PRECISION ALERT GATE ---
+
             # Check OP Season filter
             if Config.FILTER_ALERTS_BY_OP_SEASON and event_data.get('season_id') not in SEASON_ODDSPORTAL_MAP:
                 logger.debug(f"Skipping odds alert for event {event_data.get('id')} due to OP season filter.")

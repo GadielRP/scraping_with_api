@@ -960,8 +960,8 @@ class JobScheduler:
             minutes_until_start = initial_minutes if initial_minutes in KEY_MOMENTS else minutes_now
 
             logger.info(
-                f"🔍 Processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team} "
-                f"(captured {initial_minutes} min, current {minutes_now} min)"
+                f"🔍 Processing event {event_obj.id}: {event_obj.home_team} vs {event_obj.away_team} | "
+                f"Captured: {initial_minutes}m, Current: {minutes_now}m -> Using: {minutes_until_start}m"
             )
             
             # ========================================
@@ -1195,15 +1195,23 @@ class JobScheduler:
                             else:
                                 logger.info(f"🎾 No court type found for event {event_obj.id}")
                         
-                        dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                        # --- START: PRECISION ALERT GATE ---
+                        # Dual Process evaluation restricted to {30, 0}
+                        DUAL_PROCESS_ALLOWED_MINUTES = {30, 0}
+                        if minutes_until_start not in DUAL_PROCESS_ALLOWED_MINUTES:
+                            logger.info(f"[DUAL PROCESS] Skipping evaluation for event {event_obj.id} at minute {minutes_until_start}; allowed minutes are {DUAL_PROCESS_ALLOWED_MINUTES}")
+                            dual_report = None
+                        else:
+                            dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                        # --- END: PRECISION ALERT GATE ---
                         
                         should_send = False
                         reason = ""
                         
-                        if dual_report.process1_prediction or dual_report.process2_prediction:
+                        if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction):
                             should_send = True
                             reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
-                        elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
+                        elif dual_report and dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
                             should_send = True
                             reason = f"Process1 found candidates (status: {dual_report.process1_status})"
                         
@@ -1222,30 +1230,38 @@ class JobScheduler:
                                 alerts = alert_engine.evaluate_upcoming_events([event_obj])
                                 if alerts:
                                     logger.info(f"📊 Generated {len(alerts)} Process 1 candidate reports (fallback) for event {event_obj.id}")
-                                    alert_engine.send_alerts(alerts)
                                     
-                                    for alert in alerts:
-                                        if alert.get('status') == 'success':
-                                            event_id = alert.get('event_id')
-                                            if event_id:
-                                                event_obj_fallback = self.event_repo.get_event_by_id(event_id)
-                                                if event_obj_fallback:
-                                                    minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
-                                                    if minutes_until_start_fallback == 0:
-                                                        success = prediction_logger.log_prediction(event_obj_fallback, alert)
-                                                        if success:
-                                                            logger.info(f"✅ Prediction logged for Process 1 event {event_id} (0 minutes from start)")
+                                    # --- START: PRECISION ALERT GATE ---
+                                    # Process 1 fallback alerts should only be sent at 30 and 0 minutes
+                                    DUAL_PROCESS_ALLOWED_MINUTES = {30, 0}
+                                    if minutes_until_start not in DUAL_PROCESS_ALLOWED_MINUTES:
+                                        logger.warning(f"[DUAL PROCESS] Defensive skip: attempted to send Process 1 fallback alert for event {event_obj.id} at minute {minutes_until_start}; allowed minutes are {DUAL_PROCESS_ALLOWED_MINUTES}")
+                                    else:
+                                        alert_engine.send_alerts(alerts)
+                                        
+                                        for alert in alerts:
+                                            if alert.get('status') == 'success':
+                                                event_id = alert.get('event_id')
+                                                if event_id:
+                                                    event_obj_fallback = self.event_repo.get_event_by_id(event_id)
+                                                    if event_obj_fallback:
+                                                        minutes_until_start_fallback = self._minutes_until_start(event_obj_fallback.start_time_utc)
+                                                        if minutes_until_start_fallback == 0:
+                                                            success = prediction_logger.log_prediction(event_obj_fallback, alert)
+                                                            if success:
+                                                                logger.info(f"✅ Prediction logged for Process 1 event {event_id} (0 minutes from start)")
+                                                            else:
+                                                                with db_manager.get_session() as session:
+                                                                    existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
+                                                                    if existing:
+                                                                        logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
+                                                                    else:
+                                                                        logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
                                                         else:
-                                                            with db_manager.get_session() as session:
-                                                                existing = session.query(PredictionLog).filter_by(event_id=event_id).first()
-                                                                if existing:
-                                                                    logger.info(f"ℹ️ Prediction already exists for Process 1 event {event_id} - no action needed")
-                                                                else:
-                                                                    logger.warning(f"❌ Failed to log prediction for Process 1 event {event_id}")
+                                                            logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 0 minutes)")
                                                     else:
-                                                        logger.info(f"⏭️ Skipping prediction logging for event {event_id} - {minutes_until_start_fallback} minutes until start (not 0 minutes)")
-                                                else:
-                                                    logger.warning(f"Could not find event {event_id} for prediction logging")
+                                                        logger.warning(f"Could not find event {event_id} for prediction logging")
+                                    # --- END: PRECISION ALERT GATE ---
                                 else:
                                     logger.debug(f"No Process 1 candidate reports generated (fallback) for event {event_obj.id}")
                             except Exception as e2:
@@ -1417,30 +1433,37 @@ class JobScheduler:
                 # 3) Send dual process alert for this event
                 if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction or 
                                   (dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates'])):
-                    logger.info(f"📊 Sending dual process alert for event {event_obj.id} (3rd in group)")
-                    self._send_dual_process_alerts([dual_report])
-                    
-                    # Log predictions for successful Process 1 reports
-                    from modules.prediction import prediction_logger
-                    from database import db_manager
-                    from models import PredictionLog
-                    
-                    if (dual_report.process1_report and 
-                        dual_report.process1_report.get('status') == 'success'):
+                    # --- START: PRECISION ALERT GATE ---
+                    # Dual process reports should only be sent at 30 and 0 minutes
+                    DUAL_PROCESS_ALLOWED_MINUTES = {30, 0}
+                    if minutes_until_start not in DUAL_PROCESS_ALLOWED_MINUTES:
+                        logger.warning(f"[DUAL PROCESS] Defensive skip: attempted to send report for event {event_obj.id} at minute {minutes_until_start}; allowed minutes are {DUAL_PROCESS_ALLOWED_MINUTES}")
+                    else:
+                        logger.info(f"📊 Sending dual process alert for event {event_obj.id} (3rd in group)")
+                        self._send_dual_process_alerts([dual_report])
                         
-                        if minutes_until_start == 0:
-                            success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
-                            if success:
-                                logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (0 minutes from start)")
+                        # Log predictions for successful Process 1 reports
+                        from modules.prediction import prediction_logger
+                        from database import db_manager
+                        from models import PredictionLog
+                        
+                        if (dual_report.process1_report and 
+                            dual_report.process1_report.get('status') == 'success'):
+                            
+                            if minutes_until_start == 0:
+                                success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
+                                if success:
+                                    logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (0 minutes from start)")
+                                else:
+                                    with db_manager.get_session() as session:
+                                        existing = session.query(PredictionLog).filter_by(event_id=event_obj.id).first()
+                                        if existing:
+                                            logger.info(f"ℹ️ Prediction already exists for dual process event {event_obj.id} - no action needed")
+                                        else:
+                                            logger.warning(f"❌ Failed to log prediction for dual process event {event_obj.id}")
                             else:
-                                with db_manager.get_session() as session:
-                                    existing = session.query(PredictionLog).filter_by(event_id=event_obj.id).first()
-                                    if existing:
-                                        logger.info(f"ℹ️ Prediction already exists for dual process event {event_obj.id} - no action needed")
-                                    else:
-                                        logger.warning(f"❌ Failed to log prediction for dual process event {event_obj.id}")
-                        else:
-                            logger.info(f"⏭️ Skipping prediction logging for event {event_obj.id} - {minutes_until_start} minutes until start (not 0 minutes)")
+                                logger.info(f"⏭️ Skipping prediction logging for event {event_obj.id} - {minutes_until_start} minutes until start (not 0 minutes)")
+                    # --- END: PRECISION ALERT GATE ---
             
             # Fire all event alert groups in parallel — each event waits on its OWN OP signal
             alert_results_to_send = [r for r in all_results if r.get('success')]
@@ -1827,7 +1850,7 @@ class JobScheduler:
             return False, None
         elif not correct_starting_time:
             # Starting time was actually updated - mark as rescheduled and check if rescheduled game is now in key moments
-            logger.info(f"🔄 Starting time changed for event {event_id} - marking as rescheduled and checking if rescheduled game is in key moments")
+            logger.info(f"🔄 [TIME UPDATE] Starting time changed for event {event_id} - updating DB and checking rescheduled moment")
             self.recently_rescheduled.add(event_id)  # Mark immediately to prevent double processing
             self._check_rescheduled_event(event_id, metadata_snapshot=metadata_snapshot)
             return False, None
@@ -1862,6 +1885,7 @@ class JobScheduler:
             
             # Calculate new minutes until start
             new_minutes_until_start = self._minutes_until_start(event.start_time_utc)
+            logger.info(f"🔄 [RECALCULATING] Rescheduled event {event_id}: new starting time results in {new_minutes_until_start} minutes until start")
             
             # Check if rescheduled game is now in key moments (30 or 0 minutes), starting now (0), or has already started (negative)
             # We always process rescheduled events to catch late corrections
@@ -2135,16 +2159,23 @@ class JobScheduler:
                     else:
                         logger.info(f"🎾 No court type found for rescheduled event {event_obj.id}")
                 
-                # Use the same dual-process evaluation as normal events with CORRECTED timing
-                from prediction_engine import prediction_engine
-                dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                # --- START: PRECISION ALERT GATE ---
+                # Dual Process evaluation restricted to {30, 0}
+                DUAL_PROCESS_ALLOWED_MINUTES = {30, 0}
+                if minutes_until_start not in DUAL_PROCESS_ALLOWED_MINUTES:
+                    logger.info(f"[DUAL PROCESS] Skipping evaluation (rescheduled) for event {event_obj.id} at minute {minutes_until_start}; allowed minutes are {DUAL_PROCESS_ALLOWED_MINUTES}")
+                    dual_report = None
+                else:
+                    from prediction_engine import prediction_engine
+                    dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                # --- END: PRECISION ALERT GATE ---
                 
                 # Only send if at least one process has a prediction OR if Process 1 found candidates
                 # This ensures we show Process 1 findings even when no clear prediction is made
-                if dual_report.process1_prediction or dual_report.process2_prediction:
+                if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction):
                     should_send = True
                     reason = f"Process1={bool(dual_report.process1_prediction)}, Process2={bool(dual_report.process2_prediction)}"
-                elif dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
+                elif dual_report and dual_report.process1_report and dual_report.process1_status in ['partial', 'no_match', 'no_candidates']:
                     # Process 1 found candidates but no clear prediction - still show the report
                     should_send = True
                     reason = f"Process1 found candidates (status: {dual_report.process1_status})"
@@ -2158,12 +2189,18 @@ class JobScheduler:
                 logger.info(f"📊 Sending H2H streak alert for rescheduled event {event.id}")
                 pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
             
-            # Send dual process alert if available
+            # Send dual process alert only at allowed minutes {30, 0}
             if should_send:
-                logger.info(f"✅ Dual process report generated for rescheduled event {event.id}: {reason}")
-                logger.info(f"📊 Sending dual process alert for rescheduled event {event.id}")
-                # Send dual process alerts using the same method as normal events
-                self._send_dual_process_alerts([dual_report])
+                # --- START: PRECISION ALERT GATE ---
+                DUAL_PROCESS_ALLOWED_MINUTES = {30, 0}
+                if minutes_until_start not in DUAL_PROCESS_ALLOWED_MINUTES:
+                    logger.warning(f"[DUAL PROCESS] Defensive skip (rescheduled): attempted to send alert for event {event.id} at minute {minutes_until_start}; allowed minutes are {DUAL_PROCESS_ALLOWED_MINUTES}")
+                else:
+                    logger.info(f"✅ Dual process report generated for rescheduled event {event.id}: {reason}")
+                    logger.info(f"📊 Sending dual process alert for rescheduled event {event.id}")
+                    # Send dual process alerts using the same method as normal events
+                    self._send_dual_process_alerts([dual_report])
+                # --- END: PRECISION ALERT GATE ---
                 
                 # Log predictions for successful Process 1 reports (same logic as normal events)
                 from modules.prediction import prediction_logger

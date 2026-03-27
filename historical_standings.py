@@ -240,7 +240,7 @@ MLB_AMERICAN_LEAGUE = {
     # AL Central
     'Chicago White Sox', 'Cleveland Guardians', 'Detroit Tigers', 'Kansas City Royals', 'Minnesota Twins',
     # AL West
-    'Houston Astros', 'Los Angeles Angels', 'Athletics', 'Seattle Mariners', 'Texas Rangers'
+    'Houston Astros', 'Los Angeles Angels', 'Oakland Athletics', 'Seattle Mariners', 'Texas Rangers'
 }
 
 MLB_NATIONAL_LEAGUE = {
@@ -256,7 +256,7 @@ MLB_NATIONAL_LEAGUE = {
 NHL_EASTERN_CONFERENCE = {
     # Atlantic Division
     'Boston Bruins', 'Buffalo Sabres', 'Detroit Red Wings', 'Florida Panthers',
-    'Montreal Canadiens', 'Ottawa Senators', 'Tampa Bay Lightning', 'Toronto Maple Leafs',
+    'Montréal Canadiens', 'Ottawa Senators', 'Tampa Bay Lightning', 'Toronto Maple Leafs',
     # Metropolitan Division
     'Carolina Hurricanes', 'Columbus Blue Jackets', 'New Jersey Devils', 'New York Islanders',
     'New York Rangers', 'Philadelphia Flyers', 'Pittsburgh Penguins', 'Washington Capitals'

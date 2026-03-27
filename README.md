@@ -27,7 +27,8 @@ All discovery paths normalize into the same `events` table with source tagging a
 
 ### 2) Odds Collection Strategy
 The system is intentionally selective to reduce noise and API load:
-- Main odds extraction happens only at key moments: **30 min** and **0 min** before start.
+- Main odds extraction happens only at key moments: **120, 30, 5, 0, and -5 minutes** before/after start.
+- **Alert Timing**: While odds are extracted at multiple moments, Telegram alerts are strictly restricted to **30 and -5 minutes** to ensure high-signal notifications.
 - For each selected event, it fetches event-level final odds and writes:
   - `event_odds` (latest 1X2 open/final snapshot values),
   - `odds_snapshot` (time-series snapshots),
@@ -40,10 +41,10 @@ Before pre-start alerting, it checks recently started events to detect late star
 For configured season IDs (`oddsportal_config.py` map), a background worker scrapes OddsPortal at the 0-minute phase. The system uses a **redesigned parallel dispatcher** that decouples league cache seeding from event scraping, allowing sibling events to be released and scraped in parallel as soon as the league matches are resolved. Data is persisted into the same structured market schema as SofaScore odds.
 
 ### 5) Alerting / Analysis
-At key moments, the system evaluates and sends grouped alerts per event:
-- Odds market summary alert,
-- H2H/streak analysis alert,
-- dual/pattern prediction analysis alert.
+The system evaluates and sends grouped alerts per event, strictly governed by **precision timing rules** to minimize noise:
+- **Odds alerts**: Sent only at **30 and -5 minutes**.
+- **Dual Process alerts**: Evaluated and sent only at **30 and 0 minutes**.
+- **H2H/Streak alerts**: Typically sent at the **30 minute** mark.
 
 The alert pipeline uses:
 - historical candidate matching from a materialized view (`mv_alert_events`),
@@ -248,11 +249,13 @@ Core env-driven controls:
 ### Job C: Pre-start (`job_pre_start_check`)
 - Capture upcoming window snapshot.
 - Run late timestamp correction checks.
-- Decide key-moment extraction eligibility.
+- Decide key-moment extraction eligibility (120, 30, 5, 0, -5).
 - Extract and persist odds/markets at key moments.
 - For tennis key moments, persist court/observation metadata.
-- Trigger OP worker for mapped seasons.
-- Refresh MVs and evaluate/send grouped alerts.
+- Trigger OP worker for mapped seasons (at 0 minutes).
+- Refresh MVs and evaluate/send grouped alerts according to **precision gates**:
+  - Odds alerts: {30, -5}
+  - Dual Process: {30, 0}
 
 ### Job D: Midnight sync (`job_midnight_sync`)
 - Run results collection.

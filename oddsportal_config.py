@@ -354,7 +354,7 @@ SPORT_SCRAPING_ROUTES = {
                 "has_draw": False,
                 "periods": [
                     ("FULL_TIME", "Full Time", "Over/Under"),
-                    ("1ST_HALF", "1st Half", "1st half Over/Under")
+                    ("1ST_HALF", "1st Half", "Over/Under 1st half ")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "over_under",
@@ -365,7 +365,7 @@ SPORT_SCRAPING_ROUTES = {
                 "has_draw": False,
                 "periods": [
                     ("FULL_TIME", "Full Time", "Asian Handicap"),
-                    ("1ST_HALF", "1st Half", "1st half Asian Handicap")
+                    ("1ST_HALF", "1st Half", "Asian Handicap 1st half")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "asian_handicap",
@@ -391,7 +391,7 @@ SPORT_SCRAPING_ROUTES = {
                 "has_draw": False,
                 "periods": [
                     ("FT_INC_OT", "Full Time", "Over/Under"),
-                    ("1ST_HALF", "1st Half", "1st half Over/Under")
+                    ("1ST_HALF", "1st Half", "Over/Under 1st half")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "over_under",
@@ -402,7 +402,7 @@ SPORT_SCRAPING_ROUTES = {
                 "has_draw": False,
                 "periods": [
                     ("FT_INC_OT", "Full Time", "Asian Handicap"),
-                    ("1ST_HALF", "1st Half", "1st half Asian Handicap")
+                    ("1ST_HALF", "1st Half", "Asian Handicap 1st half")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "asian_handicap",
@@ -428,7 +428,7 @@ SPORT_SCRAPING_ROUTES = {
                 "has_draw": False,
                 "periods": [
                     ("FT_INC_OT", "Full Time", "Over/Under"),
-                    ("1ST_HALF", "1st Half", "1st half Over/Under")
+                    ("1ST_HALF", "1st Half", "Over/Under 1st half")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "over_under",
@@ -439,7 +439,7 @@ SPORT_SCRAPING_ROUTES = {
                 "has_draw": False,
                 "periods": [
                     ("FT_INC_OT", "Full Time", "Asian Handicap"),
-                    ("1ST_HALF", "1st Half", "1st half Asian Handicap")
+                    ("1ST_HALF", "1st Half", "Asian Handicap 1st half")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "asian_handicap",
@@ -465,7 +465,7 @@ SPORT_SCRAPING_ROUTES = {
                 "has_draw": False,
                 "periods": [
                     ("FT_INC_OT", "Full Time", "Over/Under"),
-                    ("1ST_HALF", "1st Half", "1st half Over/Under")
+                    ("1ST_HALF", "1st Half", "Over/Under 1st half")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "over_under",
@@ -476,7 +476,7 @@ SPORT_SCRAPING_ROUTES = {
                 "has_draw": False,
                 "periods": [
                     ("FT_INC_OT", "Full Time", "Asian Handicap"),
-                    ("1ST_HALF", "1st Half", "1st half Asian Handicap")
+                    ("1ST_HALF", "1st Half", "Asian Handicap 1st half")
                 ],
                 "betfair_period_index": None,
                 "extract_fn": "asian_handicap",
