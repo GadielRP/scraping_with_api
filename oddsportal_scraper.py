@@ -512,6 +512,7 @@ class OddsPortalScraper:
 
         fresh_url = f"{base_part}#{fragment}" if fragment else base_part
         logger.debug(f"🔄 _goto_fresh: {fresh_url}")
+        logger.info("🧪 Anti-stale checkpoint: _goto_fresh cache-busted navigation is being used")
 
         # --- Apply anti-cache headers for this navigation only ---
         try:
@@ -536,6 +537,7 @@ class OddsPortalScraper:
             return
 
         try:
+            logger.info("🧪 Anti-stale checkpoint: clearing browser state (cookies/storage/cache/service-workers)")
             # 1. Clear cookies
             await self.context.clear_cookies()
 
@@ -1787,6 +1789,10 @@ class OddsPortalScraper:
         page = None
 
         try:
+            logger.info(
+                "🧪 Anti-stale strategy: "
+                f"fresh_context_per_event={self._fresh_context_per_event}, clear_state={clear_state}"
+            )
             if self._fresh_context_per_event:
                 try:
                     fresh_context = await self._create_fresh_context()
@@ -1816,6 +1822,7 @@ class OddsPortalScraper:
             if fresh_context:
                 try:
                     await fresh_context.close()
+                    logger.info("🧪 Anti-stale checkpoint: fresh event context closed")
                 except Exception:
                     pass
                 self.context = previous_context
@@ -2395,6 +2402,7 @@ class OddsPortalScraper:
             if fresh_context:
                 try:
                     await fresh_context.close()
+                    logger.info("🧪 Anti-stale checkpoint: fresh event context closed")
                 except Exception:
                     pass
                 self.context = previous_context
