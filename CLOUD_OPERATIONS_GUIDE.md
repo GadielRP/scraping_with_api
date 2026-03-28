@@ -63,6 +63,7 @@ Where to run commands:
    PROXY_USERNAME=
    PROXY_PASSWORD=
    PROXY_ENDPOINT=
+   PROXY_SESSION_DURATION_MINUTES=5
    ```
 
 3) **Start Local Environment**:
@@ -255,6 +256,7 @@ PROXY_ENABLED=true
 PROXY_USERNAME=your_proxy_username
 PROXY_PASSWORD=your_proxy_password
 PROXY_ENDPOINT=pr.oxylabs.io:7777
+PROXY_SESSION_DURATION_MINUTES=5
 ```
 
 From your local project folder `C:\Users\...\projects\sofascore`:

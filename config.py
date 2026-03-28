@@ -1,5 +1,6 @@
 import os
 import ast
+import logging
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -124,9 +125,12 @@ class Config:
     
     PROXY_ROTATION_INTERVAL = int(os.getenv('PROXY_ROTATION_INTERVAL', '5'))
     PROXY_MAX_RETRIES = int(os.getenv('PROXY_MAX_RETRIES', '3'))
+    _ODDSPORTAL_PROXY_ALIGNMENT_WARNED = False
     
     # OddsPortal resource blocking toggle (disable if it causes scraping instability)
     ODDSPORTAL_BLOCK_RESOURCES = os.getenv('ODDSPORTAL_BLOCK_RESOURCES', 'true').lower() == 'true'
+    ODDSPORTAL_BLOCK_SERVICE_WORKERS = _parse_env_bool('ODDSPORTAL_BLOCK_SERVICE_WORKERS', True)
+    ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE = _parse_env_bool('ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE', True)
     
     # OddsPortal parallel scraping (requires 2GB+ RAM)
     ODDSPORTAL_PARALLEL_BROWSERS = int(os.getenv('ODDSPORTAL_PARALLEL_BROWSERS', '1'))
@@ -159,3 +163,22 @@ class Config:
 
     # Discovery sources to allow for alert sending
     DISCOVERY_SOURCES_FOR_ALERTS = DISCOVERY_SOURCES_FOR_ALERTS
+
+    @staticmethod
+    def validate_oddsportal_proxy_alignment(logger: logging.Logger) -> None:
+        """Warn when sticky OddsPortal sessions outlive the polling cadence."""
+        if Config._ODDSPORTAL_PROXY_ALIGNMENT_WARNED:
+            return
+
+        if (
+            Config.PROXY_ENABLED
+            and Config.PROXY_MODE_ODDSPORTAL == 'sticky'
+            and Config.PROXY_SESSION_DURATION_MINUTES > Config.POLL_INTERVAL_MINUTES
+        ):
+            logger.warning(
+                "OddsPortal sticky proxy session duration (%s min) exceeds polling cadence (%s min) "
+                "and may increase stale-edge reuse risk.",
+                Config.PROXY_SESSION_DURATION_MINUTES,
+                Config.POLL_INTERVAL_MINUTES,
+            )
+            Config._ODDSPORTAL_PROXY_ALIGNMENT_WARNED = True

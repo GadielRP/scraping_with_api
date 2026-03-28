@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from threading import Condition, local
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 from proxy_manager import ProxyIdentityManager
@@ -49,6 +50,12 @@ except ImportError:
         ODDSPORTAL_TAB_WAIT_TIMEOUT = 20
         ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT = True
         ODDSPORTAL_ENABLE_SHELL_GRACE = True
+        ODDSPORTAL_BLOCK_SERVICE_WORKERS = True
+        ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE = True
+        POLL_INTERVAL_MINUTES = 5
+        @staticmethod
+        def validate_oddsportal_proxy_alignment(logger: logging.Logger) -> None:
+            return None
     Config = MockConfig()
     SEASON_ODDSPORTAL_MAP = {}
     BOOKIE_ALIASES = {}
@@ -459,7 +466,8 @@ class OddsPortalScraper:
         """Start the browser session."""
         if self.browser:
             return
-            
+
+        Config.validate_oddsportal_proxy_alignment(logger)
         self.playwright = await async_playwright().start()
         
         launch_args = {
@@ -531,7 +539,24 @@ class OddsPortalScraper:
         if any(d in url for d in blocked_domains):
             await route.abort()
             return
-            
+
+        if self._should_force_fresh_request(request):
+            original_url = request.url
+            rewritten_url = self._build_cache_busted_request_url(original_url)
+            try:
+                original_headers = await request.all_headers()
+            except Exception:
+                original_headers = getattr(request, "headers", {}) or {}
+            rewritten_headers = self._build_no_cache_request_headers(original_headers)
+            logger.debug(
+                "🔄 Cache-busting OddsPortal inner request (%s): %s -> %s",
+                request.resource_type,
+                original_url,
+                rewritten_url,
+            )
+            await route.continue_(url=rewritten_url, headers=rewritten_headers)
+            return
+
         await route.continue_()
 
     # ---------------------------------------------------------------------------
@@ -545,7 +570,7 @@ class OddsPortalScraper:
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
         ]
-        return {
+        context_options = {
             "viewport": {"width": 1920, "height": 1080},
             "user_agent": random.choice(user_agents),
             "locale": "en-US",
@@ -553,6 +578,9 @@ class OddsPortalScraper:
             "java_script_enabled": True,
             "ignore_https_errors": self._ignore_https_errors,
         }
+        if getattr(Config, "ODDSPORTAL_BLOCK_SERVICE_WORKERS", True):
+            context_options["service_workers"] = "block"
+        return context_options
 
     def _get_evasion_init_script(self) -> str:
         """Return the anti-detection init script as a reusable string."""
@@ -589,8 +617,14 @@ class OddsPortalScraper:
         """Create a brand-new BrowserContext from the already-open browser."""
         if not self.browser:
             raise RuntimeError("Cannot create fresh context: browser is not started. Call start() first.")
-        ctx = await self.browser.new_context(**self._build_context_options())
+        context_options = self._build_context_options()
+        ctx = await self.browser.new_context(**context_options)
         await self._install_context_features(ctx)
+        logger.info(
+            f"🔒 Fresh context created (session-{self._session_id}, "
+            f"ignore_https_errors={self._ignore_https_errors}, "
+            f"service_workers={context_options.get('service_workers', 'allow')})"
+        )
         return ctx
 
     # ---------------------------------------------------------------------------
@@ -653,11 +687,65 @@ class OddsPortalScraper:
             # Reset headers so they don't bleed into subsequent XHRs/fetches.
             await page.set_extra_http_headers({})
 
+    def _should_force_fresh_request(self, request) -> bool:
+        """Return True for dynamic OddsPortal payload requests that should bypass cache reuse."""
+        if request.resource_type not in {"xhr", "fetch"}:
+            return False
+
+        parsed = urlsplit(request.url)
+        hostname = (parsed.hostname or "").lower()
+        if "oddsportal" not in hostname:
+            return False
+
+        request_url = request.url.lower()
+        markers = ("/feed/match/", ".dat", "ajax-nextgames")
+        return any(marker in request_url for marker in markers)
+
+    def _build_cache_busted_request_url(self, url: str) -> str:
+        """Add or refresh a cache-busting query parameter while preserving the original URL shape."""
+        parsed = urlsplit(url)
+        query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        timestamp_ms = str(int(time.time() * 1000))
+        has_underscore_param = any(key == "_" for key, _ in query_pairs)
+
+        rewritten_pairs: List[Tuple[str, str]] = []
+        replaced_key = None
+        for key, value in query_pairs:
+            if key == "_" and replaced_key is None:
+                rewritten_pairs.append((key, timestamp_ms))
+                replaced_key = "_"
+            elif key == "_t" and replaced_key is None and not has_underscore_param:
+                rewritten_pairs.append((key, timestamp_ms))
+                replaced_key = "_t"
+            else:
+                rewritten_pairs.append((key, value))
+
+        if replaced_key is None:
+            rewritten_pairs.append(("_t", timestamp_ms))
+
+        return urlunsplit(parsed._replace(query=urlencode(rewritten_pairs, doseq=True)))
+
+    def _build_no_cache_request_headers(self, headers: Dict[str, str]) -> Dict[str, Optional[str]]:
+        """Override cache headers and drop validators while keeping all other request headers intact."""
+        rewritten_headers: Dict[str, Optional[str]] = dict(headers or {})
+
+        for key in list(rewritten_headers.keys()):
+            lowered = key.lower()
+            if lowered in {"cache-control", "pragma", "expires", "if-none-match", "if-modified-since"}:
+                rewritten_headers[key] = None
+
+        rewritten_headers["Cache-Control"] = "no-cache, no-store, max-age=0"
+        rewritten_headers["Pragma"] = "no-cache"
+        rewritten_headers["Expires"] = "0"
+        rewritten_headers["If-None-Match"] = None
+        rewritten_headers["If-Modified-Since"] = None
+        return rewritten_headers
+
     async def _clear_browser_state(self) -> None:
         """Clear cookies, web storage, cache storage, and service workers from the active context.
 
-        This method is a best-effort stale-state mitigation and is used by
-        retry paths when a previous attempt may have loaded outdated client state.
+        This method is a best-effort stale-state mitigation used before
+        navigation when a fresh network/browser state is desired.
         """
         if not self.context:
             logger.debug("⚠️ _clear_browser_state: no active context, skipping")
@@ -2042,14 +2130,21 @@ class OddsPortalScraper:
                         failed_step_idx=start_step_idx,
                     )
                 self.context = fresh_context
-                logger.info(
-                    f"🔒 Fresh context created (session-{self._session_id}, "
-                    f"ignore_https_errors={self._ignore_https_errors})"
-                )
             elif not self.context:
                 self.context = await self._create_fresh_context()
 
-            if clear_state and self.context:
+            should_clear_state = bool(
+                self.context
+                and (
+                    clear_state
+                    or getattr(Config, "ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE", True)
+                )
+            )
+            if should_clear_state:
+                if clear_state:
+                    logger.info("🧹 Running pre-navigation browser-state cleanup before OddsPortal navigation (clear_state=True)")
+                else:
+                    logger.info("🧹 Running pre-navigation browser-state cleanup before first OddsPortal navigation")
                 await self._clear_browser_state()
 
             page = await self.context.new_page()
