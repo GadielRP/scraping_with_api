@@ -109,6 +109,7 @@ flowchart TD
 
 > [!IMPORTANT]
 > OddsPortal scraping is now performed **5 minutes after the event starts** (-5 minutes until start) to ensure final/closing odds are fully settled on the page while conserving resources. SofaScore odds are still extracted at 120, 30, 5, 0, and -5 minutes.
+> The OddsPortal batch also shares one `current_date` value across all workers so cache lookups and cache replacement decisions are consistent within the same run.
 
 ---
 
@@ -131,7 +132,9 @@ sequenceDiagram
     W->>W: find_match_url_from_cache(season_id, home, away)
     alt Cache Hit
         W->>W: return URL (skip navigation)
-    else Cache Miss
+    else Cache Miss or Cache Exists But No Usable Match
+        W->>W: filter cached entries by current_date
+        W->>W: if no eligible candidate matches the teams, fall back to live navigation
         W->>OP: Navigate league page (30s timeout)
         W->>W: Extract match date from [data-testid="date-header"]
         W->>W: Extract scoped match text from [data-testid="game-row"]
@@ -169,6 +172,7 @@ sequenceDiagram
 - **Decoupled Cache Seeding**: The dispatcher identifies events without a cached `match_url` and groups them by league. Instead of having one "main" event scrape the match AND seed the cache, it now creates a lightweight `resolver_seed` task.
 - **Immediate Sibling Release**: As soon as the `resolver_seed` task finishes navigating to the league page and "warming" the cache, ALL pending siblings in that group are immediately moved to the `ready_event_queue` to be scraped in parallel by any available worker.
 - **Improved Concurrency**: The original event that triggered the seed is also re-enqueued as a normal event once the cache is warm. This avoids bottlenecks where siblings waited for a full match extraction before starting.
+- **Shared Batch Date**: The scheduler computes one `current_date` per OddsPortal batch and passes it into the scraper. Cache filtering and cache replacement use that same date across all workers so a batch never mixes "today" decisions with a later timestamp.
 - **Immediate Inline Saving (Callback)**: The scraper accepts an `on_result` callback. As soon as a single match finishes scraping, it is persisted to the DB and its specific `threading.Event` is signalled.
 - **One browser instance per worker** is reused for multiple matches/seeds, but each real event gets its own fresh `BrowserContext` to prevent state contamination.
 
@@ -192,14 +196,16 @@ Navigating to a league page costs ~9–14 seconds (even with `domcontentloaded`)
 ```mermaid
 flowchart LR
     A["scrape_batch"] --> B["find_match_url_from_cache(season_id)"]
-    B --> C{"Row exists\nfor today?"}
-    C -- Yes --> D["Match name in JSONB?"]
-    D -- Yes --> E["⚡ Return full URL\n~0s — skip browser nav"]
-    D -- No --> F["Cache miss:\nNavigate league page"]
-    C -- No --> F
-    F --> G["Extract CANDIDATES\nfrom current page"]
-    G --> H["save_league_cache()\nupsert structured JSONB"]
-    H --> E
+    B --> C{"Cache row exists?"}
+    C -- No --> F["Cache miss:\nNavigate league page"]
+    C -- Yes --> D{"Any entry with\nstored date >= current_date?"}
+    D -- No --> F
+    D -- Yes --> E{"Match name in filtered JSONB?"}
+    E -- Yes --> G["⚡ Return full URL\n~0s — skip browser nav"]
+    E -- No --> F
+    F --> H["Extract CANDIDATES\nfrom current page"]
+    H --> I["save_league_cache()\nupsert structured JSONB"]
+    I --> G
 ```
 
 ### 6.1 Entity Resolution Pipeline (find_match_url)
@@ -252,20 +258,31 @@ The `find_match_url_from_cache` method is designed to handle both formats:
 -   **Dict**: (New) Uses `home`/`away` fields directly.
 -   **String**: (Legacy) Attempts a robust multi-separator regex split to recover names.
 
+It also now applies a **date gate** before matching:
+-   A cache entry is only considered if its stored `"date"` is today or later relative to the shared batch `current_date`.
+-   If the cache row exists but no eligible stored match meets the team threshold, the scraper logs that the cache was found but no usable match was resolved and then falls back to live league navigation.
+
 Every day at **05:01**, `job_daily_discovery` calls `cleanup_old_caches()` to reset the cache.
 
 ### 6.4 Quality-Aware Cache Replacement (Smart Overwrite)
 
 To prevent "bad" or incomplete scraping sessions from corrupting the database, every cache write now undergoes a **Quality Evaluation**:
 
-1.  **Scoring**: The new cache dictionary is scored using `_evaluate_cache_quality(cache_dict)`:
-    -   **Count**: Number of match URLs found.
-    -   **Homogeneity**: Percentage of URLs that follow the expected `/sport/country/league/` pattern.
-    -   **Total Score**: `count * homogeneity`.
-2.  **Comparison**: Before `save_league_cache`, the system loads the current DB cache and calculates its score.
-3.  **Threshold**: The new cache is only saved if `new_score >= old_score`. This ensures we are always "upgrading" the cache or keeping the best version available.
+1.  **Scoring**: The new cache dictionary is evaluated with `_evaluate_cache_quality(cache_dict, current_date)`:
+    -   `total_count`: Total cache entries in the JSON payload.
+    -   `fresh_count`: Entries whose stored `"date"` is today or later.
+    -   `stale_count`: Entries whose stored `"date"` is older than `current_date` or cannot be parsed.
+    -   `freshness_ratio`: `fresh_count / total_count`.
+    -   `homogeneity`: Percentage of URLs that follow the expected `/sport/country/league/` pattern.
+    -   `score`: `fresh_count * homogeneity`.
+2.  **Comparison**: Before `save_league_cache`, the system loads the current DB cache and evaluates both the old and new cache with the same shared `current_date`.
+3.  **Threshold**: The new cache is only saved if its comparison key wins:
+    -   More fresh entries wins first.
+    -   Then higher freshness ratio.
+    -   Then higher homogeneity.
+    -   Then higher total entry count.
 
-This logic is especially critical during **404 Recovery**, where the scraper performs a "Live Discovery" to find the correct match URL. The corrected league URLs are now safely merged back into the DB if they prove to be higher quality than the stale cached version.
+This logic is especially critical during **404 Recovery** and normal league refreshes, where the scraper performs a live league navigation to find the correct match URL. A cache row can exist for a season but still be unusable if all matching rows are stale or the participants only match an old date. In that case the scraper falls back to live navigation, then lets the freshness-aware cache replacement decide whether the new live snapshot should replace the stored one.
 
 ---
 
@@ -575,6 +592,7 @@ The worker can split a batch of matches across multiple independent browser inst
     - `ready_event`: Standard scraping tasks for events that already have a resolved `match_url`.
 - **Isolation**: Each worker runs in its own `ThreadPoolExecutor` thread with a dedicated `asyncio` loop and Playwright instance.
 - **Context Handling**: Each real event scrape uses a **fresh `BrowserContext`** within the worker's browser instance to ensure zero state/cookie leakage between events. Seed tasks use the default context for speed.
+- **Shared Date Input**: The scheduler passes a single `current_date` value into the batch, and every worker uses that same date for cache filtering, cache misses, and cache replacement decisions.
 
 ### 11.3 Parallel Dispatcher Logic (Seeding Decoupled)
 The dispatcher implements a "barrier" pattern for events with unknown URLs:
@@ -602,6 +620,10 @@ Since OddsPortal logs are verbose, they are routed to a dedicated directory for 
 ### `SEASON_ODDSPORTAL_MAP` (oddsportal_config.py)
 
 Maps SofaScore `season_id` to the OddsPortal URL components. Each entry now includes a `sport` key used to resolve the scraping route.
+
+### `get_oddsportal_current_date()` (oddsportal_config.py)
+
+Returns the local calendar date used by the OddsPortal batch. The scheduler grabs it once and passes it through the scraper so cache checks and live fallback decisions stay consistent across a single run.
 
 ### `SPORT_SCRAPING_ROUTES` (oddsportal_config.py)
 
@@ -740,6 +762,7 @@ When `debug_dir` is active (always enabled in the simulation test), the scraper 
 - **Proxy Blocked / Cloudflare Banned**: Handled by **Fast Fail Check #1**. Detects blocks via page title, kills the browser, and triggers a **Session-Aware Retry**.
 - **SPA Render Failure (Empty Container)**: Handled by **Fast Fail Check #2**. Sometimes the page loads but the Vue.js app fails to hydrate/render the odds table. A `MutationObserver` detects this state and triggers a fast fail after 15s of empty content, avoiding the full 60s timeout.
 - **Cross-Day Match Collision**: Prevented by the **Date-Aware League Cache**. By storing the match date alongside the URL, we can distinguish between recurring match pairings on different days in the same league.
+- **Same-Participants, Wrong-Day Cache Hit**: Prevented by the current-date gate. Even if the participants match, a cached row is ignored when its stored date is older than the batch `current_date`, forcing live league navigation when needed.
 - **Tab Switching Failure**: If the SPA router hangs and the odds table doesn't update after clicking a tab within the timeout, the scraper triggers a **Page Reload Recovery** by performing a full navigation to the specific fragment URL (e.g. `#over-under;2`). This breaks cascading failures where one timed-out tab prevents all subsequent tabs from loading.
 - **Already Active" Race Condition**: Fixed by the **Smart Wait** mechanism. Prevents extraction from starting immediately after a fragment change if the table rows haven't rendered yet, even if the tab UI shows as "active".
 - **Session-Aware Retry**: Implemented in `scrape_multiple_matches_sync`. When a scrape fails, the scraper calls `await self.stop()` and `await self.start()`. This generates a fresh `_session_id` and restarts the Playwright process, which forces a new TCP connection and a clean proxy IP from the rotation endpoint (e.g., Webshare).

@@ -29,7 +29,7 @@ from set_prediction_system import set_prediction_system
 # Import optimization utilities
 
 from config import DISCOVERY_SOURCES_FOR_ALERTS
-from oddsportal_config import SEASON_ODDSPORTAL_MAP
+from oddsportal_config import SEASON_ODDSPORTAL_MAP, get_oddsportal_current_date
 
 from optimization import (
     parallel_team_event_fetching,
@@ -1517,11 +1517,12 @@ class JobScheduler:
         
         Returns dict mapping event_id -> number of markets saved (or None on failure).
         """
-        from oddsportal_config import SEASON_ODDSPORTAL_MAP
+        from oddsportal_config import SEASON_ODDSPORTAL_MAP, get_oddsportal_current_date
         from oddsportal_scraper import scrape_multiple_matches_parallel_sync
         from repository import MarketRepository
         from config import Config as AppConfig
         
+        op_current_date = get_oddsportal_current_date()
         op_tasks = []
         for event_info in events_to_process:
             event_data = event_info['event_data']
@@ -1595,7 +1596,8 @@ class JobScheduler:
             num_browsers=num_browsers, 
             debug_dir="oddsportal_debug",
             on_task_started=_on_event_started,
-            on_result=_on_event_scraped
+            on_result=_on_event_scraped,
+            current_date=op_current_date,
         )
         logger.info(f"🌐 OddsPortal: Tiered Orchestrator returned {len(op_results)} results")
         

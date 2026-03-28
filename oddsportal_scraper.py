@@ -7,6 +7,7 @@ import re
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
 from threading import Condition, local
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,7 +21,7 @@ try:
         SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
         OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
         build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
-        INSTITUTIONAL_NOISE
+        INSTITUTIONAL_NOISE, get_oddsportal_current_date
     )
     from team_matcher import TeamMatcher
 except ImportError:
@@ -56,6 +57,9 @@ except ImportError:
     OP_GROUPS = {"1X2": "1X2", "HOME_AWAY": "home-away"}
     OP_PERIODS = {"FT_INC_OT": 1, "FULL_TIME": 2, "1ST_HALF": 3}
     SPORT_SCRAPING_ROUTES = {}
+    def get_oddsportal_current_date() -> date:
+        return datetime.utcnow().date()
+
     def build_op_fragment(group_key: Optional[str], period_key: Optional[str]) -> Optional[str]:
         if not group_key or not period_key:
             return None
@@ -102,6 +106,19 @@ EN_DASH = "\u2013"
 TEAM_SEPARATOR_PATTERN = rf"\s+(?:vs|[{EN_DASH}-])\s+"
 LEGACY_CACHE_MATCH_PATTERN = rf"([^\n{EN_DASH}\-]+)[\s\n]+(?:vs|[{EN_DASH}v\-])[\s\n]+([^\n\d]+)"
 TEAM_PREFIX_CLEAN_PATTERN = rf"(^.*?\d{{2}}:\d{{2}}\s+|^\w+,\s+\d{{1,2}}\s+\w+\s+[{EN_DASH}-]\s+|^.*?\d{{1,2}}:\d{{2}}\s+)"
+ODDSPORTAL_CACHE_DATE_FORMATS = (
+    "%d %b %Y",
+    "%d %B %Y",
+    "%a %d %b %Y",
+    "%A %d %B %Y",
+    "%d %b",
+    "%d %B",
+)
+ODDSPORTAL_RELATIVE_DATE_OFFSETS = {
+    "today": 0,
+    "tomorrow": 1,
+    "yesterday": -1,
+}
 
 def log_timing(msg):
     if DEBUG_TIMING:
@@ -137,17 +154,86 @@ def _build_structured_league_cache(candidates: List[Dict[str, str]]) -> Dict[str
     }
 
 
-def _evaluate_cache_quality(cache_dict: Dict[str, Any]) -> Tuple[int, float, float]:
-    """
-    Evaluate league cache quality.
-    Returns: (count, homogeneity, score). score = count * homogeneity
-    """
-    if not cache_dict:
-        return 0, 0.0, 0.0
+@dataclass(frozen=True)
+class CacheQualityMetrics:
+    total_count: int
+    fresh_count: int
+    stale_count: int
+    freshness_ratio: float
+    homogeneity: float
+    score: float
 
-    endpoints = list(cache_dict.keys())
+    @property
+    def comparison_key(self) -> Tuple[int, float, float, int]:
+        return (
+            self.fresh_count,
+            self.freshness_ratio,
+            self.homogeneity,
+            self.total_count,
+        )
+
+
+def _coerce_current_date(current_date: Optional[date] = None) -> date:
+    if isinstance(current_date, datetime):
+        return current_date.date()
+    if isinstance(current_date, date):
+        return current_date
+    return get_oddsportal_current_date()
+
+
+def _parse_oddsportal_cache_date(date_text: Any, current_date: Optional[date] = None) -> Optional[date]:
+    reference_date = _coerce_current_date(current_date)
+    if date_text is None:
+        return None
+
+    normalized_text = re.sub(r"\s+", " ", str(date_text).replace(",", " ")).strip()
+    if not normalized_text:
+        return None
+
+    lower_text = normalized_text.lower()
+    for relative_token, offset in ODDSPORTAL_RELATIVE_DATE_OFFSETS.items():
+        if lower_text == relative_token or lower_text.startswith(f"{relative_token} "):
+            return reference_date + timedelta(days=offset)
+
+    iso_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", normalized_text)
+    if iso_match:
+        try:
+            return date.fromisoformat(iso_match.group(0))
+        except ValueError:
+            pass
+
+    explicit_date_match = re.search(r"\b\d{1,2}\s+[A-Za-z]{3,9}(?:\s+\d{4})?\b", normalized_text)
+    candidate_text = explicit_date_match.group(0) if explicit_date_match else normalized_text
+
+    for date_format in ODDSPORTAL_CACHE_DATE_FORMATS:
+        try:
+            parsed = datetime.strptime(candidate_text, date_format).date()
+        except ValueError:
+            continue
+
+        if "%Y" in date_format:
+            return parsed
+
+        parsed = parsed.replace(year=reference_date.year)
+        if parsed < reference_date and reference_date.month == 12 and parsed.month == 1:
+            parsed = parsed.replace(year=reference_date.year + 1)
+        return parsed
+
+    return None
+
+
+def _is_cache_date_current_or_future(date_text: Any, current_date: Optional[date] = None) -> bool:
+    reference_date = _coerce_current_date(current_date)
+    parsed_date = _parse_oddsportal_cache_date(date_text, reference_date)
+    return parsed_date is not None and parsed_date >= reference_date
+
+
+def _calculate_cache_homogeneity(endpoints: List[str]) -> float:
+    if not endpoints:
+        return 0.0
+
     prefix_counts = {}
-    
+
     for ep in endpoints:
         parts = [p for p in ep.split('/') if p]
         if len(parts) >= 3:
@@ -157,10 +243,51 @@ def _evaluate_cache_quality(cache_dict: Dict[str, Any]) -> Tuple[int, float, flo
             prefix_counts["unknown"] = prefix_counts.get("unknown", 0) + 1
 
     max_prefix_count = max(prefix_counts.values()) if prefix_counts else 0
-    homogeneity = max_prefix_count / len(endpoints) if endpoints else 0.0
-    score = len(endpoints) * homogeneity
-    
-    return len(endpoints), homogeneity, score
+    return max_prefix_count / len(endpoints)
+
+
+def _evaluate_cache_quality(
+    cache_dict: Dict[str, Any],
+    current_date: Optional[date] = None,
+) -> CacheQualityMetrics:
+    """Evaluate cache quality while strongly preferring fresh-dated entries."""
+    if not cache_dict:
+        return CacheQualityMetrics(
+            total_count=0,
+            fresh_count=0,
+            stale_count=0,
+            freshness_ratio=0.0,
+            homogeneity=0.0,
+            score=0.0,
+        )
+
+    reference_date = _coerce_current_date(current_date)
+    endpoints = [href for href in cache_dict.keys() if href]
+    fresh_endpoints = []
+
+    for href, cache_entry in cache_dict.items():
+        if not href:
+            continue
+        entry_date_text = cache_entry.get("date", "") if isinstance(cache_entry, dict) else ""
+        if _is_cache_date_current_or_future(entry_date_text, reference_date):
+            fresh_endpoints.append(href)
+
+    total_count = len(endpoints)
+    fresh_count = len(fresh_endpoints)
+    stale_count = max(0, total_count - fresh_count)
+    freshness_ratio = (fresh_count / total_count) if total_count else 0.0
+    homogeneity_basis = fresh_endpoints if fresh_endpoints else endpoints
+    homogeneity = _calculate_cache_homogeneity(homogeneity_basis)
+    score = fresh_count * homogeneity
+
+    return CacheQualityMetrics(
+        total_count=total_count,
+        fresh_count=fresh_count,
+        stale_count=stale_count,
+        freshness_ratio=freshness_ratio,
+        homogeneity=homogeneity,
+        score=score,
+    )
 
 
 def _format_group_key(group_key: Optional[Tuple[int, str]]) -> str:
@@ -1423,28 +1550,42 @@ class OddsPortalScraper:
         self,
         season_id: int,
         league_url: Optional[str] = None,
+        current_date: Optional[date] = None,
     ) -> List[Dict[str, str]]:
         """Load structured league candidates from the DB cache."""
         from repository import OddsPortalCacheRepository
+        reference_date = _coerce_current_date(current_date)
         cached = OddsPortalCacheRepository.get_league_cache(season_id)
 
         if not cached:
             return []
 
+        total_cached_entries = len([href for href in cached.keys() if href])
+        logger.info(
+            f"Cache found for season {season_id}: total_entries={total_cached_entries}, "
+            f"current_date={reference_date.isoformat()}"
+        )
+
         candidates = []
+        skipped_stale_candidates = 0
         for href, data in cached.items():
             if not href:
                 continue
 
             if isinstance(data, dict):
+                if not _is_cache_date_current_or_future(data.get("date", ""), reference_date):
+                    skipped_stale_candidates += 1
+                    continue
                 candidates.append({
                     "home": data.get("home", ""),
                     "away": data.get("away", ""),
                     "href": href,
                     "raw_text": data.get("raw_text", ""),
+                    "date": data.get("date", ""),
                 })
                 continue
 
+            skipped_stale_candidates += 1
             row_text = data or ""
             parts = re.split(TEAM_SEPARATOR_PATTERN, row_text)
             if len(parts) >= 2:
@@ -1462,18 +1603,34 @@ class OddsPortalScraper:
                 home = re.sub(TEAM_PREFIX_CLEAN_PATTERN, '', home)
                 away = re.sub(r'\s+\d+\.\d+.*', '', away)
                 if home and away:
-                    candidates.append({"home": home, "away": away, "href": href})
                     continue
 
-            candidates.append({"home": row_text, "away": "", "href": href})
+        if skipped_stale_candidates:
+            logger.info(
+                f"Cache date filter for season {season_id}: valid_entries={len(candidates)}, "
+                f"stale_or_undated={skipped_stale_candidates}, "
+                f"current_date={reference_date.isoformat()}"
+            )
+        else:
+            logger.info(
+                f"Cache date filter for season {season_id}: valid_entries={len(candidates)}, "
+                f"stale_or_undated=0, current_date={reference_date.isoformat()}"
+            )
 
         return candidates
 
-    async def _extract_league_candidates(self, league_url: str, season_id: Optional[int], skip_cache_save: bool = False) -> List[Dict[str, str]]:
+    async def _extract_league_candidates(
+        self,
+        league_url: str,
+        season_id: Optional[int],
+        skip_cache_save: bool = False,
+        current_date: Optional[date] = None,
+    ) -> List[Dict[str, str]]:
         """
         Navigate to a league page, extract candidates once, and populate cache if available.
         This shared path is reused by both priming and cache-miss discovery.
         """
+        reference_date = _coerce_current_date(current_date)
         if not self.browser:
             await self.start()
 
@@ -1580,6 +1737,7 @@ class OddsPortalScraper:
                 return []
 
             candidates = []
+            stale_candidates_skipped = 0
             league_relative_path = navigation_league_url.replace("https://www.oddsportal.com", "").rstrip("/")
             
             # Derive the sport/country prefix to definitively block cross-sport or cross-country contamination.
@@ -1593,6 +1751,10 @@ class OddsPortalScraper:
                 date_val = item.get("date", "")
                 
                 if not href or "-" not in href:
+                    continue
+
+                if not _is_cache_date_current_or_future(date_val, reference_date):
+                    stale_candidates_skipped += 1
                     continue
                     
                 # 1. Structural context guard: ensure the candidate link belongs to the same sport/country context.
@@ -1623,23 +1785,58 @@ class OddsPortalScraper:
                         "date": date_val
                     })
 
+            if stale_candidates_skipped:
+                logger.info(
+                    f"Skipped {stale_candidates_skipped} stale league candidate(s) on "
+                    f"{navigation_league_url} using current_date={reference_date.isoformat()}"
+                )
+
             if season_id and candidates and not skip_cache_save:
                 try:
                     from repository import OddsPortalCacheRepository
                     cache_dict = _build_structured_league_cache(candidates)
                     if cache_dict:
-                        new_count, new_homog, new_score = _evaluate_cache_quality(cache_dict)
+                        new_quality = _evaluate_cache_quality(cache_dict, reference_date)
+                        new_count = new_quality.total_count
+                        new_homog = new_quality.homogeneity
+                        new_score = new_quality.score
                         old_cache = OddsPortalCacheRepository.get_league_cache(season_id)
                         
                         save_cache = True
                         if old_cache:
-                            old_count, old_homog, old_score = _evaluate_cache_quality(old_cache)
+                            logger.info(
+                                f"Starting cache evaluation for season {season_id}: "
+                                f"existing_cache_entries={len(old_cache)}, "
+                                f"new_cache_entries={len(cache_dict)}, "
+                                f"current_date={reference_date.isoformat()}"
+                            )
+                            old_quality = _evaluate_cache_quality(old_cache, reference_date)
+                            old_count = old_quality.total_count
+                            old_homog = old_quality.homogeneity
+                            old_score = old_quality.score
+                            logger.info(
+                                f"Cache evaluation details for season {season_id}: "
+                                f"new(total={new_quality.total_count}, fresh={new_quality.fresh_count}, "
+                                f"stale={new_quality.stale_count}, ratio={new_quality.freshness_ratio:.2f}, "
+                                f"homog={new_homog:.2f}, score={new_score:.1f}) vs "
+                                f"old(total={old_quality.total_count}, fresh={old_quality.fresh_count}, "
+                                f"stale={old_quality.stale_count}, ratio={old_quality.freshness_ratio:.2f}, "
+                                f"homog={old_homog:.2f}, score={old_score:.1f})"
+                            )
                             logger.info(f"📊 New cache score {new_score:.1f} (count={new_count}, homog={new_homog:.2f}) vs Old cache score {old_score:.1f} (count={old_count}, homog={old_homog:.2f})")
                             
-                            if new_score < old_score:
+                            if new_quality.comparison_key < old_quality.comparison_key:
                                 save_cache = False
+                                logger.warning(
+                                    f"Cache evaluation result for season {season_id}: "
+                                    f"new_key={new_quality.comparison_key} < old_key={old_quality.comparison_key}"
+                                )
                                 logger.warning(f"⚠️ Rejecting new cache. New score {new_score:.1f} is lower than Old score {old_score:.1f}")
                             else:
+                                logger.info(
+                                    f"Cache evaluation result for season {season_id}: "
+                                    f"new_key={new_quality.comparison_key} >= old_key={old_quality.comparison_key}"
+                                )
                                 logger.info(f"✅ Accepting new cache. Score is better or equal to the Old cache.")
 
                         if save_cache:
@@ -1660,7 +1857,16 @@ class OddsPortalScraper:
                     pass
 
 
-    async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int = None, force_live: bool = False, skip_cache_save: bool = False) -> Optional[str]:
+    async def find_match_url(
+        self,
+        league_url: str,
+        home_team: str,
+        away_team: str,
+        season_id: int = None,
+        force_live: bool = False,
+        skip_cache_save: bool = False,
+        current_date: Optional[date] = None,
+    ) -> Optional[str]:
         """
         Resolve a match URL by team names.
         Cache hits return immediately; cache misses reuse the shared league extraction path.
@@ -1671,13 +1877,23 @@ class OddsPortalScraper:
                 home_team,
                 away_team,
                 league_url=league_url,
+                current_date=current_date,
             )
             if cached_url:
                 logger.info(f"Cache hit (internal): {cached_url}")
                 return cached_url
+            logger.info(
+                f"Cache lookup did not resolve an upcoming match for season {season_id}; "
+                f"falling back to league navigation for {home_team} vs {away_team}"
+            )
 
         try:
-            candidates = await self._extract_league_candidates(league_url, season_id, skip_cache_save=skip_cache_save)
+            candidates = await self._extract_league_candidates(
+                league_url,
+                season_id,
+                skip_cache_save=skip_cache_save,
+                current_date=current_date,
+            )
             if not candidates:
                 logger.warning(f"OddsPortal discovery returned no candidates for {league_url}")
                 return None
@@ -1703,10 +1919,15 @@ class OddsPortalScraper:
         home_team: str,
         away_team: str,
         league_url: Optional[str] = None,
+        current_date: Optional[date] = None,
     ) -> Optional[str]:
         """Try to find a match URL from the DB-backed league cache."""
         try:
-            candidates = self._load_cached_candidates(season_id, league_url=league_url)
+            candidates = self._load_cached_candidates(
+                season_id,
+                league_url=league_url,
+                current_date=current_date,
+            )
             if not candidates:
                 logger.debug(f"No valid candidates parsed from cache for season {season_id}")
                 return None
@@ -1719,6 +1940,11 @@ class OddsPortalScraper:
                     f"(Score: {best_match['max_score']:.1f})"
                 )
                 return f"https://www.oddsportal.com{best_match['href']}"
+            logger.info(
+                f"Cache found for season {season_id}, but no stored match matched "
+                f"{home_team} vs {away_team} with threshold >= 80 "
+                f"(candidate_count={len(candidates)})"
+            )
             return None
         except Exception as e:
             logger.debug(f"Cache lookup failed: {e}")
@@ -3524,7 +3750,7 @@ if __name__ == "__main__":
 
 def scrape_match_sync(match_url: str = None, league_url: str = None, 
                       home_team: str = None, away_team: str = None,
-                      sport: str = None) -> Optional[MatchOddsData]:
+                      sport: str = None, current_date: Optional[date] = None) -> Optional[MatchOddsData]:
     """
     Synchronous wrapper for scraping a single match.
     Can provide either match_url OR (league_url, home_team, away_team).
@@ -3544,7 +3770,12 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
             try:
                 target_url = match_url
                 if not target_url and league_url and home_team and away_team:
-                    target_url = await scraper.find_match_url(league_url, home_team, away_team)
+                    target_url = await scraper.find_match_url(
+                        league_url,
+                        home_team,
+                        away_team,
+                        current_date=current_date,
+                    )
                     
                 data = None
                 resume_state: Optional[Dict[str, Any]] = None
@@ -3570,7 +3801,12 @@ def scrape_match_sync(match_url: str = None, league_url: str = None,
                     # Re-find match URL if needed
                     retry_url = match_url
                     if not retry_url and league_url and home_team and away_team:
-                        retry_url = await scraper.find_match_url(league_url, home_team, away_team)
+                        retry_url = await scraper.find_match_url(
+                            league_url,
+                            home_team,
+                            away_team,
+                            current_date=current_date,
+                        )
                     if retry_url:
                         attempt = await scraper.scrape_match_attempt(
                             retry_url,
@@ -3621,10 +3857,12 @@ async def _resolve_task_match_url(
     task: Dict[str, Any],
     *,
     allow_live_lookup: bool = True,
+    allow_cache_lookup: bool = True,
     force_live: bool = False,
     skip_cache_save: bool = False,
+    current_date: Optional[date] = None,
 ) -> Optional[str]:
-    """Resolve a task's match URL with cache-first semantics."""
+    """Resolve a task's match URL, optionally reusing the DB-backed cache."""
     if not force_live:
         match_url = task.get("match_url")
         if match_url:
@@ -3635,14 +3873,17 @@ async def _resolve_task_match_url(
     home_team = task.get("home_team")
     away_team = task.get("away_team")
 
-    if season_id and league_url and home_team and away_team and not force_live:
+    if allow_cache_lookup and season_id and league_url and home_team and away_team and not force_live:
         
         cached_url = scraper.find_match_url_from_cache(
             season_id,
             home_team,
             away_team,
             league_url=league_url,
+            current_date=current_date,
         )
+        if cached_url:
+            return cached_url
 
     if allow_live_lookup and league_url and home_team and away_team:
         return await scraper.find_match_url(
@@ -3650,8 +3891,9 @@ async def _resolve_task_match_url(
             home_team,
             away_team,
             season_id=season_id,
-            force_live=force_live,
+            force_live=True if season_id else force_live,
             skip_cache_save=skip_cache_save,
+            current_date=current_date,
         )
 
     return None
@@ -3661,6 +3903,7 @@ async def _scrape_task_with_recovery(
     scraper: OddsPortalScraper,
     task: Dict[str, Any],
     task_label: str,
+    current_date: Optional[date] = None,
 ) -> Tuple[Optional[MatchOddsData], Optional[str]]:
     """
     Scrape one task with inline recovery.
@@ -3675,7 +3918,13 @@ async def _scrape_task_with_recovery(
     clear_state = bool(task.get("clear_state", False))
     resume_state = task.get("_oddsportal_resume_state")
     partial_match_data = task.get("_oddsportal_partial_match_data")
-    match_url = await _resolve_task_match_url(scraper, task, allow_live_lookup=True)
+    match_url = await _resolve_task_match_url(
+        scraper,
+        task,
+        allow_live_lookup=True,
+        allow_cache_lookup=False,
+        current_date=current_date,
+    )
 
     if not match_url:
         logger.warning(f"{task_label}: could not resolve match URL on the current session for event_id {event_id}")
@@ -3720,7 +3969,12 @@ async def _scrape_task_with_recovery(
         try:
             if force_live_discovery:
                 retry_url = await _resolve_task_match_url(
-                    scraper, task, allow_live_lookup=True, force_live=True
+                    scraper,
+                    task,
+                    allow_live_lookup=True,
+                    allow_cache_lookup=False,
+                    force_live=True,
+                    current_date=current_date,
                 )
                 if retry_url:
                     match_url = retry_url
@@ -3772,8 +4026,10 @@ async def _scrape_task_with_recovery(
 
         retry_url = await _resolve_task_match_url(
             scraper, task, allow_live_lookup=True, 
+            allow_cache_lookup=False,
             force_live=force_live_discovery, 
-            skip_cache_save=False
+            skip_cache_save=False,
+            current_date=current_date,
         )
         if not retry_url:
             logger.warning(
@@ -3822,6 +4078,7 @@ async def _seed_group_cache_only(
     scraper: OddsPortalScraper,
     task: Dict[str, Any],
     task_label: str,
+    current_date: Optional[date] = None,
 ) -> GroupSeedResult:
     """Seed the league cache for a group without scraping any match.
 
@@ -3845,7 +4102,11 @@ async def _seed_group_cache_only(
 
     # --- Attempt 1: current session ---
     try:
-        candidates = await scraper._extract_league_candidates(league_url, season_id)
+        candidates = await scraper._extract_league_candidates(
+            league_url,
+            season_id,
+            current_date=current_date,
+        )
     except Exception as e:
         logger.error(f"{task_label}: league extraction failed for seed: {e}")
         candidates = []
@@ -3872,7 +4133,11 @@ async def _seed_group_cache_only(
             continue
 
         try:
-            candidates = await scraper._extract_league_candidates(league_url, season_id)
+            candidates = await scraper._extract_league_candidates(
+                league_url,
+                season_id,
+                current_date=current_date,
+            )
         except Exception as e:
             logger.error(f"{task_label}: league extraction failed on restart {restart_idx}: {e}")
             candidates = []
@@ -3913,11 +4178,15 @@ def _build_dispatch_groups(tasks: List[Dict[str, Any]]) -> Tuple[Dict[Tuple[int,
     return dispatch_groups, standalone_tasks
 
 
-def _attach_cached_match_urls(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _attach_cached_match_urls(
+    tasks: List[Dict[str, Any]],
+    current_date: Optional[date] = None,
+) -> List[Dict[str, Any]]:
     """Refresh task match URLs from the DB-backed cache without opening a browser."""
     if not tasks:
         return []
 
+    reference_date = _coerce_current_date(current_date)
     scraper = OddsPortalScraper()
     refreshed_tasks: List[Dict[str, Any]] = []
     for task in tasks:
@@ -3934,6 +4203,7 @@ def _attach_cached_match_urls(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any
                 refreshed_task["home_team"],
                 refreshed_task["away_team"],
                 league_url=refreshed_task["league_url"],
+                current_date=reference_date,
             )
             if cached_url:
                 refreshed_task["match_url"] = cached_url
@@ -3941,9 +4211,16 @@ def _attach_cached_match_urls(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any
     return refreshed_tasks
 
 
-def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = None, on_task_started=None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
+def scrape_multiple_matches_sync(
+    tasks: List[Dict],
+    debug_dir: Optional[str] = None,
+    on_task_started=None,
+    on_result=None,
+    current_date: Optional[date] = None,
+) -> Dict[int, Optional[MatchOddsData]]:
     """Scrape multiple matches sequentially using one shared browser session."""
     results: Dict[int, Optional[MatchOddsData]] = {}
+    batch_current_date = _coerce_current_date(current_date)
 
     if not tasks:
         return results
@@ -3955,7 +4232,7 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
             scraper = OddsPortalScraper(debug_dir=debug_dir)
             await scraper.start()
             try:
-                sequential_tasks = _attach_cached_match_urls(tasks)
+                sequential_tasks = _attach_cached_match_urls(tasks, current_date=batch_current_date)
                 for i, task in enumerate(sequential_tasks, start=1):
                     event_id = task["event_id"]
                     task_label = f"OddsPortal [{i}/{len(sequential_tasks)}]"
@@ -3967,7 +4244,12 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
                             logger.error(f"on_task_started callback error for event {event_id}: {cb_err}")
                             
                     try:
-                        data, match_url = await _scrape_task_with_recovery(scraper, task, task_label)
+                        data, match_url = await _scrape_task_with_recovery(
+                            scraper,
+                            task,
+                            task_label,
+                            current_date=batch_current_date,
+                        )
                         results[event_id] = data
 
                         if data:
@@ -4014,7 +4296,14 @@ def scrape_multiple_matches_sync(tasks: List[Dict], debug_dir: Optional[str] = N
         return results
 
 
-def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int = 1, debug_dir: Optional[str] = None, on_task_started=None, on_result=None) -> Dict[int, Optional[MatchOddsData]]:
+def scrape_multiple_matches_parallel_sync(
+    tasks: List[Dict],
+    num_browsers: int = 1,
+    debug_dir: Optional[str] = None,
+    on_task_started=None,
+    on_result=None,
+    current_date: Optional[date] = None,
+) -> Dict[int, Optional[MatchOddsData]]:
     """
     Event-driven dispatcher with decoupled seeding.
 
@@ -4030,11 +4319,19 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
     if not tasks:
         return {}
 
+    batch_current_date = _coerce_current_date(current_date)
+
     if num_browsers <= 1 or len(tasks) == 1:
-        return scrape_multiple_matches_sync(tasks, debug_dir=debug_dir, on_task_started=on_task_started, on_result=on_result)
+        return scrape_multiple_matches_sync(
+            tasks,
+            debug_dir=debug_dir,
+            on_task_started=on_task_started,
+            on_result=on_result,
+            current_date=batch_current_date,
+        )
 
     # --- Phase 1: attach warm-cache URLs and classify tasks ---
-    tasks_with_cache = _attach_cached_match_urls(tasks)
+    tasks_with_cache = _attach_cached_match_urls(tasks, current_date=batch_current_date)
     dispatch_groups, standalone_tasks = _build_dispatch_groups(tasks_with_cache)
     sorted_group_items = sorted(
         dispatch_groups.items(),
@@ -4158,7 +4455,7 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
 
         # Re-check cache for every pending task (outside lock to avoid holding
         # the lock during DB queries)
-        refreshed = _attach_cached_match_urls(pending_tasks)
+        refreshed = _attach_cached_match_urls(pending_tasks, current_date=batch_current_date)
 
         cache_hit_ids: List[int] = []
         cache_miss_ids: List[int] = []
@@ -4321,7 +4618,12 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
                             f"{worker_label} Resolver seed start for event_id {event_id} "
                             f"in {_format_group_key(group_key)}"
                         )
-                        seed_result = await _seed_group_cache_only(scraper, task, task_label)
+                        seed_result = await _seed_group_cache_only(
+                            scraper,
+                            task,
+                            task_label,
+                            current_date=batch_current_date,
+                        )
                         _release_group_after_seed(group_key, task, seed_result)
                         # Do NOT call _complete_task or on_result for seed tasks
                         continue
@@ -4348,7 +4650,12 @@ def scrape_multiple_matches_parallel_sync(tasks: List[Dict], num_browsers: int =
                             logger.error(f"{worker_label} on_task_started callback error for event {event_id}: {cb_err}")
 
                     try:
-                        data, resolved_match_url = await _scrape_task_with_recovery(scraper, task, task_label)
+                        data, resolved_match_url = await _scrape_task_with_recovery(
+                            scraper,
+                            task,
+                            task_label,
+                            current_date=batch_current_date,
+                        )
                         if data:
                             logger.info(
                                 f"{worker_label} event_id {event_id} scraped successfully "

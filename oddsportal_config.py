@@ -3,7 +3,15 @@ Configuration for OddsPortal scraping.
 Maps internal season IDs to OddsPortal URL slugs.
 """
 
+from datetime import date
 from typing import Any, Dict, List, Optional
+
+
+def get_oddsportal_current_date() -> date:
+    """Return the local calendar date used for OddsPortal cache decisions."""
+    from timezone_utils import get_local_now
+
+    return get_local_now().date()
 
 # Maps season_id -> OddsPortal URL slug
 # Based on sport_league_constants.py from OddsHarvester
