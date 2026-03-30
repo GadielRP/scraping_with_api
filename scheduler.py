@@ -2339,16 +2339,7 @@ class JobScheduler:
         except Exception as e:
             logger.warning(f"⚠️ Failed to cleanup DailyDiscovery logs: {e}")
 
-    def job_clean_league_cache(self):
-        """Job F: Clean up OddsPortal league cache once every three days (runs at 05:00)"""
-        logger.info("Starting Job F: Clean up OddsPortal league cache")
-        try:
-            from repository import OddsPortalCacheRepository
-            # We keep the caches for 3 days to match the execution frequency
-            OddsPortalCacheRepository.cleanup_old_caches(retention_days=3)
-        except Exception as e:
-            logger.error(f"Error in Job F (Clean up OddsPortal league cache): {e}")
-        
+        # --- Daily Discovery Execution Logic ---
         try:
             # Initialize logs for today
             from repository import DailyDiscoveryRepository
@@ -2372,6 +2363,16 @@ class JobScheduler:
                 
         except Exception as e:
             logger.error(f"Error in Job E (Daily Discovery): {e}")
+
+    def job_clean_league_cache(self):
+        """Job F: Clean up OddsPortal league cache once every three days (runs at 05:00)"""
+        logger.info("Starting Job F: Clean up OddsPortal league cache")
+        try:
+            from repository import OddsPortalCacheRepository
+            # We keep the caches for 3 days to match the execution frequency
+            OddsPortalCacheRepository.cleanup_old_caches(retention_days=3)
+        except Exception as e:
+            logger.error(f"Error in Job F (Clean up OddsPortal league cache): {e}")
 
     def job_daily_discovery_retry(self):
         """Job E_Retry: Retries failed daily discovery sports"""
