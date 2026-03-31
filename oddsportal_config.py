@@ -536,7 +536,7 @@ def build_op_fragment(group_key: Optional[str], period_key: Optional[str]) -> Op
     period_fragment = OP_PERIODS.get(period_key)
     if group_fragment is None or period_fragment is None:
         return None
-    return f"#{group_fragment};{period_fragment}"
+    return f":{group_fragment};{period_fragment}"
 
 
 def build_match_url_with_fragment(
@@ -545,11 +545,25 @@ def build_match_url_with_fragment(
     period_key: Optional[str],
 ) -> str:
     """Return a cleaned match URL with a normalized route fragment when available."""
-    base_url = (match_url or "").split("#", 1)[0].rstrip("/")
-    fragment = build_op_fragment(group_key, period_key)
-    if not fragment:
-        return base_url
-    return f"{base_url}/{fragment}"
+    # 1. Clean the base URL by removing any trailing slashes
+    base_url_only = (match_url or "").split("#", 1)[0].rstrip("/")
+
+    # 2. Extract existing fragment if present (e.g. #row_id)
+    url_parts = (match_url or "").split("#", 1)
+    existing_fragment = url_parts[1] if len(url_parts) > 1 else ""
+
+    # 3. Build the market segment (e.g. ":home-away;1")
+    market_segment = build_op_fragment(group_key, period_key)
+
+    if not market_segment:
+        if existing_fragment:
+            return f"{base_url_only}/#{existing_fragment}"
+        return base_url_only
+
+    # 4. Construct final URL: base_url / # [existing_fragment] [market_segment]
+    # This results in format: .../#TOKEN:MARKET or .../#:MARKET
+    # Note: market_segment already starts with ":" from build_op_fragment
+    return f"{base_url_only}/#{existing_fragment}{market_segment}"
 
 
 def flatten_sport_scraping_route(sport: Optional[str]) -> List[Dict[str, Any]]:

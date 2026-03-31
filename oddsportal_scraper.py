@@ -81,7 +81,7 @@ except ImportError:
         fragment = build_op_fragment(group_key, period_key)
         if not fragment:
             return base_url
-        return f"{base_url}/{fragment}"
+        return f"{base_url}{fragment}"
 
     def flatten_sport_scraping_route(sport: Optional[str]) -> List[Dict[str, Any]]:
         return [{
@@ -148,13 +148,28 @@ def _build_league_group_key(season_id: Optional[int], league_url: Optional[str])
     return (season_id, normalized_league_url)
 
 
-def _build_structured_league_cache(candidates: List[Dict[str, str]]) -> Dict[str, Dict[str, str]]:
+def _normalize_cache_date(date_text: str, reference_date: Optional[date] = None) -> str:
+    """Resolve relative dates ('Today, 30 Mar', 'Tomorrow, 31 Mar') to absolute
+    'DD Mon YYYY' format so stored cache entries remain correct across day boundaries."""
+    if not date_text:
+        return date_text
+    parsed = _parse_oddsportal_cache_date(date_text, reference_date)
+    if parsed is None:
+        return date_text  # unparseable — keep original to avoid data loss
+    return parsed.strftime("%d %b %Y")
+
+
+def _build_structured_league_cache(
+    candidates: List[Dict[str, str]],
+    current_date: Optional[date] = None,
+) -> Dict[str, Dict[str, str]]:
+    reference_date = _coerce_current_date(current_date)
     return {
         candidate["href"]: {
             "home": candidate["home"],
             "away": candidate["away"],
             "raw_text": candidate.get("raw_text", ""),
-            "date": candidate.get("date", ""),
+            "date": _normalize_cache_date(candidate.get("date", ""), reference_date),
         }
         for candidate in candidates
         if candidate.get("href")
@@ -1793,96 +1808,174 @@ class OddsPortalScraper:
             rows_data = await page.evaluate("""() => {
                 const container = document.querySelector('div[class*="empty:min-h-[80vh]"]');
                 if (!container) return [];
-                
+
                 let currentDate = "";
                 const results = [];
-                const rows = Array.from(container.querySelectorAll("div.eventRow"));
-                
+                const rows = Array.from(container.querySelectorAll('div.eventRow'));
+
                 for (const row of rows) {
+                    const rowId = row.getAttribute('id') || '';
+                    const rect = row.getBoundingClientRect();
+                    const style = window.getComputedStyle(row);
+                    const isVisible =
+                        rect.width > 0 &&
+                        rect.height > 0 &&
+                        style.display !== 'none' &&
+                        style.visibility !== 'hidden';
+
+                    if (!isVisible) continue;
+
                     const dateHeader = row.querySelector('[data-testid="date-header"]');
                     if (dateHeader) {
                         currentDate = dateHeader.innerText.trim();
                     }
-                    
-                    const gameRows = Array.from(row.querySelectorAll('[data-testid="game-row"]'));
-                    for (const gr of gameRows) {
-                        const hrefEl = gr.querySelector('a[href]');
-                        if (hrefEl) {
-                            results.push({
-                                href: hrefEl.getAttribute("href"),
-                                game_text: gr.innerText.trim(),
-                                date: currentDate
-                            });
-                        }
+
+                    const matchAnchor = row.querySelector('div.group.flex[data-testid="game-row"] > a[href]');
+                    if (!matchAnchor) continue;
+
+                    let originalHref = matchAnchor.getAttribute('href') || '';
+                    let href = originalHref;
+                    if (href && !href.includes('/#') && rowId) {
+                        href = href.replace(/\/+$/, '') + '/#' + rowId;
                     }
+
+                    const participantAnchors = row.querySelectorAll('div[data-testid="event-participants"] a[title]');
+                    const titles = Array.from(participantAnchors)
+                        .map(a => (a.getAttribute('title') || '').trim())
+                        .filter(Boolean);
+
+                    results.push({
+                        original_href: originalHref,
+                        href,
+                        row_id: rowId,
+                        date: currentDate,
+                        home: titles[0] || '',
+                        away: titles[1] || '',
+                        game_text: row.innerText.trim(),
+                    });
                 }
                 return results;
             }""")
             log_timing(f"Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s")
+
+            if rows_data:
+                sample_rows = rows_data[:3]
+                logger.info(f"Sample JS rows (up to 3): {[{'row_id': r.get('row_id'), 'href': r.get('href'), 'home': r.get('home'), 'away': r.get('away'), 'date': r.get('date')} for r in sample_rows]}")
 
             if not rows_data:
                 logger.warning(f"⚠️ No event rows found on {navigation_league_url}")
                 return []
 
             candidates = []
-            stale_candidates_skipped = 0
+            
+            total_rows = len(rows_data)
+            already_had_fragment = 0
+            repaired_with_row_id = 0
+            missing_row_id_for_repair = 0
+            accepted_candidates = 0
+
+            skipped_empty_href = 0
+            skipped_wrong_sport = 0
+            skipped_wrong_structure = 0
+            skipped_stale = 0
+            skipped_league_self = 0
+            skipped_missing_teams = 0
+
             league_relative_path = navigation_league_url.replace("https://www.oddsportal.com", "").rstrip("/")
             
-            # Derive the sport/country prefix to definitively block cross-sport or cross-country contamination.
-            # Example: "/football/england/premier-league/" -> "/football/england/"
+            # Derive path structures for validation
             path_parts = [p for p in league_relative_path.split("/") if p]
-            context_prefix = f"/{path_parts[0]}/{path_parts[1]}/" if len(path_parts) >= 2 else None
+            sport_slug = path_parts[0] if len(path_parts) >= 1 else None
+            country_slug = path_parts[1] if len(path_parts) >= 2 else None
+
+            sport_prefix = f"/{sport_slug}/" if sport_slug else None
+            legacy_prefix = f"/{sport_slug}/{country_slug}/" if sport_slug and country_slug else None
+            modern_prefix = f"/{sport_slug}/h2h/" if sport_slug else None
 
             for item in rows_data:
+                original_href = item.get("original_href", "")
                 href = item.get("href", "")
+                row_id = item.get("row_id", "")
                 game_text = item.get("game_text", "")
                 date_val = item.get("date", "")
                 
-                if not href or "-" not in href:
+                if not href:
+                    skipped_empty_href += 1
+                    continue
+                
+                # Check for fragment repair status
+                if "/#" not in original_href and not row_id:
+                    missing_row_id_for_repair += 1
+                    logger.warning(f"Missing row_id for repair, original_href={original_href}")
+                elif "/#" in original_href:
+                    already_had_fragment += 1
+                elif original_href != href:
+                    repaired_with_row_id += 1
+                    logger.debug(f"Repaired fragment: orig={original_href} row_id={row_id} repaired={href}")
+
+                # Using href_no_fragment for basic prefix structural matching
+                href_no_fragment = href.split("#", 1)[0].rstrip("/")
+                if not href_no_fragment:
+                    skipped_empty_href += 1
+                    continue
+
+                if sport_prefix and not href_no_fragment.startswith(sport_prefix):
+                    skipped_wrong_sport += 1
+                    continue
+                    
+                is_modern = bool(modern_prefix and href_no_fragment.startswith(modern_prefix))
+                is_legacy = bool(legacy_prefix and href_no_fragment.startswith(legacy_prefix))
+
+                if not (is_modern or is_legacy):
+                    skipped_wrong_structure += 1
                     continue
 
                 if not _is_cache_date_current_or_future(date_val, reference_date):
-                    stale_candidates_skipped += 1
-                    continue
-                    
-                # 1. Structural context guard: ensure the candidate link belongs to the same sport/country context.
-                if context_prefix and context_prefix not in href:
+                    skipped_stale += 1
                     continue
 
-                # 2. Avoid matching the league page itself
-                if href.rstrip("/") in league_relative_path:
+                # Avoid matching the league page itself
+                if href_no_fragment == league_relative_path:
+                    skipped_league_self += 1
                     continue
 
-                # Try to parse teams from game_text
-                p1, p2 = None, None
-                parts = re.split(TEAM_SEPARATOR_PATTERN, game_text)
-                if len(parts) >= 2:
-                    p1 = parts[0].strip()
-                    p2 = parts[1].strip()
-                    # Clean time prefix (e.g. "13:00 ")
-                    p1 = re.sub(r'^\d{2}:\d{2}\s+', '', p1)
-                    # Clean trailing odd/info (e.g. " 1.88")
-                    p2 = re.sub(r'\s+\d+\.\d+.*', '', p2)
+                home = (item.get("home") or "").strip()
+                away = (item.get("away") or "").strip()
 
-                if p1 and p2:
+                # Try to parse teams from game_text if JS title extraction failed
+                if not home or not away:
+                    parts = re.split(TEAM_SEPARATOR_PATTERN, game_text)
+                    if len(parts) >= 2:
+                        home = parts[0].strip()
+                        away = parts[1].strip()
+
+                # Clean time prefix (e.g. "13:00 ") from home and trailing odd/info (e.g. " 1.88") from away
+                home = re.sub(r'^\d{2}:\d{2}\s+', '', home)
+                away = re.sub(r'\s+\d+\.\d+.*', '', away)
+
+                if home and away:
+                    accepted_candidates += 1
                     candidates.append({
-                        "home": p1,
-                        "away": p2,
-                        "href": href,
+                        "home": home,
+                        "away": away,
+                        "href": href,  # Store the fully repaired URL containing /#row_id
                         "raw_text": game_text,
                         "date": date_val
                     })
+                else:
+                    skipped_missing_teams += 1
 
-            if stale_candidates_skipped:
-                logger.info(
-                    f"Skipped {stale_candidates_skipped} stale league candidate(s) on "
-                    f"{navigation_league_url} using current_date={reference_date.isoformat()}"
-                )
+            logger.info(
+                f"League extraction summary for {navigation_league_url}: total_rows={total_rows} "
+                f"already_had_fragment={already_had_fragment} repaired_with_row_id={repaired_with_row_id} "
+                f"missing_row_id_for_repair={missing_row_id_for_repair} accepted_candidates={accepted_candidates}"
+            )
+
 
             if season_id and candidates and not skip_cache_save:
                 try:
                     from repository import OddsPortalCacheRepository
-                    cache_dict = _build_structured_league_cache(candidates)
+                    cache_dict = _build_structured_league_cache(candidates, current_date=reference_date)
                     if cache_dict:
                         new_quality = _evaluate_cache_quality(cache_dict, reference_date)
                         new_count = new_quality.total_count
