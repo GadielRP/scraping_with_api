@@ -335,15 +335,22 @@ OddsPortal uses **URL fragment identifiers** to switch between market groups and
 
 ### URL Format
 
+Modern OddsPortal SPAs often combine specific event tokens (row IDs) with market routing segments within the fragment:
+
 ```
-https://www.oddsportal.com/football/.../match-slug/#1X2;2
-                                                    ^^^^  ^
-                                                    group  period
+https://www.oddsportal.com/football/.../match-slug/#YP0Mlprg:1X2;2
+                                                    ^^^^^^^^ ^^^^^
+                                                     token   market
 ```
 
-### Fragment Stripping
+### Fragment Handling
 
-The scraper handles URL fragments robustly. Before navigation, any existing fragment (or trailing slash) is stripped from the base URL before appending the desired market group and period identifier. This prevents malformed URLs (e.g. `.../#.../#...`) if the input contains stale cache data.
+The scraper handles URL fragments by preserving any existing event token (e.g., `#YP0Mlprg`) while appending the desired market group and period identifier (e.g., `:1X2;2`). 
+
+- **If a token exists**: The market segment is appended directly to it (e.g., `#TOKEN:MARKET`).
+- **If no token exists**: The market segment is simply prefixed with `#` (e.g., `#:MARKET`).
+
+This ensures that OddsPortal can correctly focus on the specific match row while also navigating to the correct market tab, avoiding 404 errors or missing data.
 
 ### Fragment Constants
 

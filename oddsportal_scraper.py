@@ -154,6 +154,7 @@ def _normalize_cache_date(date_text: str, reference_date: Optional[date] = None)
     if not date_text:
         return date_text
     parsed = _parse_oddsportal_cache_date(date_text, reference_date)
+    logger.info(f"Parsed date: {parsed}")
     if parsed is None:
         return date_text  # unparseable — keep original to avoid data loss
     return parsed.strftime("%d %b %Y")
@@ -212,11 +213,7 @@ def _parse_oddsportal_cache_date(date_text: Any, current_date: Optional[date] = 
     if not normalized_text:
         return None
 
-    lower_text = normalized_text.lower()
-    for relative_token, offset in ODDSPORTAL_RELATIVE_DATE_OFFSETS.items():
-        if lower_text == relative_token or lower_text.startswith(f"{relative_token} "):
-            return reference_date + timedelta(days=offset)
-
+    # 1. Try explicit calendar date first (ISO or DD Mon format)
     iso_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", normalized_text)
     if iso_match:
         try:
@@ -225,21 +222,27 @@ def _parse_oddsportal_cache_date(date_text: Any, current_date: Optional[date] = 
             pass
 
     explicit_date_match = re.search(r"\b\d{1,2}\s+[A-Za-z]{3,9}(?:\s+\d{4})?\b", normalized_text)
-    candidate_text = explicit_date_match.group(0) if explicit_date_match else normalized_text
+    if explicit_date_match:
+        candidate_text = explicit_date_match.group(0)
+        for date_format in ODDSPORTAL_CACHE_DATE_FORMATS:
+            try:
+                parsed = datetime.strptime(candidate_text, date_format).date()
+            except ValueError:
+                continue
 
-    for date_format in ODDSPORTAL_CACHE_DATE_FORMATS:
-        try:
-            parsed = datetime.strptime(candidate_text, date_format).date()
-        except ValueError:
-            continue
+            if "%Y" in date_format:
+                return parsed
 
-        if "%Y" in date_format:
+            parsed = parsed.replace(year=reference_date.year)
+            if parsed < reference_date and reference_date.month == 12 and parsed.month == 1:
+                parsed = parsed.replace(year=reference_date.year + 1)
             return parsed
 
-        parsed = parsed.replace(year=reference_date.year)
-        if parsed < reference_date and reference_date.month == 12 and parsed.month == 1:
-            parsed = parsed.replace(year=reference_date.year + 1)
-        return parsed
+    # 2. Fall back to relative tokens only if no explicit date present
+    lower_text = normalized_text.lower()
+    for relative_token, offset in ODDSPORTAL_RELATIVE_DATE_OFFSETS.items():
+        if lower_text == relative_token or lower_text.startswith(f"{relative_token} "):
+            return reference_date + timedelta(days=offset)
 
     return None
 
@@ -258,8 +261,8 @@ def _calculate_cache_homogeneity(endpoints: List[str]) -> float:
 
     for ep in endpoints:
         parts = [p for p in ep.split('/') if p]
-        if len(parts) >= 3:
-            prefix = f"/{parts[0]}/{parts[1]}/{parts[2]}/"
+        if len(parts) >= 2:
+            prefix = f"/{parts[0]}/{parts[1]}/"
             prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
         else:
             prefix_counts["unknown"] = prefix_counts.get("unknown", 0) + 1
@@ -1837,6 +1840,9 @@ class OddsPortalScraper:
                     let href = originalHref;
                     if (href && !href.includes('/#') && rowId) {
                         href = href.replace(/\/+$/, '') + '/#' + rowId;
+                    }
+                    if (href && href.includes('/inplay-odds')) {
+                        href = href.replace('/inplay-odds', '')
                     }
 
                     const participantAnchors = row.querySelectorAll('div[data-testid="event-participants"] a[title]');
