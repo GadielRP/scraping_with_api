@@ -58,9 +58,9 @@ season_to_process = [
     {"season_name": "MLB 2025", "tournament_id": 11205, "season_id": 68611},
     {"season_name": "MLB 2024", "tournament_id": 11205, "season_id": 57577},
     {"season_name": "NHL 2025", "tournament_id": 234, "season_id": 78476},
-    {"season_name": "SeriaA 2025", "tournament_id": 23, "season_id": 76457},
+    {"season_name": "Serie A 2025", "tournament_id": 23, "season_id": 76457},
     {"season_name": "Bundesliga 2025", "tournament_id": 35, "season_id": 77333},
-    {"season_name": "League 1 2025", "tournament_id": 12, "season_id": 77356},
+    {"season_name": "League 1 2025", "tournament_id": 34, "season_id": 77356},
     {"season_name": "Saudi Pro League 2025", "tournament_id": 955, "season_id": 80443},
     {"season_name": "SHL 2025", "tournament_id": 261, "season_id": 75679},
     {"season_name": "PFL 2025", "tournament_id": 1654, "season_id": 81520},
@@ -117,7 +117,8 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
     
     logger.info(f"Starting to fetch events for tournament {tournament_id}, season {season_id}")
     
-    while True:
+    #set to true for full season, set currently to 5 for latest 5 batches per season.
+    while fetch_number < 5:
         endpoint = f"/unique-tournament/{tournament_id}/season/{season_id}/events/last/{fetch_number}"
         logger.info(f"Fetching batch {fetch_number}...")
         

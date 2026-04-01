@@ -1864,9 +1864,9 @@ class OddsPortalScraper:
             }""")
             log_timing(f"Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s")
 
-            if rows_data:
-                sample_rows = rows_data[:3]
-                logger.info(f"Sample JS rows (up to 3): {[{'row_id': r.get('row_id'), 'href': r.get('href'), 'home': r.get('home'), 'away': r.get('away'), 'date': r.get('date')} for r in sample_rows]}")
+            # if rows_data:
+            #     sample_rows = rows_data[:3]
+            #     logger.info(f"Sample JS rows (up to 3): {[{'row_id': r.get('row_id'), 'href': r.get('href'), 'home': r.get('home'), 'away': r.get('away'), 'date': r.get('date')} for r in sample_rows]}")
 
             if not rows_data:
                 logger.warning(f"⚠️ No event rows found on {navigation_league_url}")
