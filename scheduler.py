@@ -488,18 +488,18 @@ class JobScheduler:
             # while the main thread sequentially processes the API odds for all events.
             op_candidates = []
             
-            for event_dict in upcoming_events:
-                season_id = getattr(event_dict, 'season_id', None)
-                if isinstance(event_dict, dict):
-                    season_id = event_dict.get('season_id')
-                minutes_until_start = pre_calculated_timings.get(event_dict['id'])
-                if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == -5:
-                    op_candidates.append({
-                        'event_id': event_dict['id'],
-                        'event_data': event_dict,
-                        'minutes_until_start': minutes_until_start,
-                        'should_extract_odds': True
-                    })
+            # for event_dict in upcoming_events:
+            #     season_id = getattr(event_dict, 'season_id', None)
+            #     if isinstance(event_dict, dict):
+            #         season_id = event_dict.get('season_id')
+            #     minutes_until_start = pre_calculated_timings.get(event_dict['id'])
+            #     if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == -5:
+            #         op_candidates.append({
+            #             'event_id': event_dict['id'],
+            #             'event_data': event_dict,
+            #             'minutes_until_start': minutes_until_start,
+            #             'should_extract_odds': True
+            #         })
             
             # Use dictionary of threading.Event to coordinate OP scraping with alert delivery per event lifecycle
             op_event_states = {
@@ -518,35 +518,36 @@ class JobScheduler:
             op_data_cache = {}
             
             if op_candidates:
-                # To prevent blocking the main thread's API fetches, we move the wait logic
+                # To prevent blocking the main thread's API fetches, we will move the wait logic
                 # into a background orchestration thread.
-                def op_orchestrator(previous_thread, candidates, event_states, data_cache):
-                    if previous_thread and previous_thread.is_alive():
-                        timeout = AppConfig.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT
-                        logger.warning(f"⏳ Previous OP worker still running — waiting up to {timeout}s for it to finish...")
-                        previous_thread.join(timeout=timeout)
-                        if previous_thread.is_alive():
-                            logger.error(f"🛑 Previous OP worker STILL didn't finish after {timeout}s! ABORTING new OP cycle to prevent double-activation and memory exhaustion.")
-                            # Signal main thread not to wait indefinitely for these events
-                            for state in event_states.values():
-                                state["done_event"].set()
-                            return
-                        else:
-                            logger.info("✅ Previous OP worker finished — proceeding with new cycle")
+                pass  # OddsPortal disabled while worker is being fixed
+                # def op_orchestrator(previous_thread, candidates, event_states, data_cache):
+                #     if previous_thread and previous_thread.is_alive():
+                #         timeout = AppConfig.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT
+                #         logger.warning(f"⏳ Previous OP worker still running — waiting up to {timeout}s for it to finish...")
+                #         previous_thread.join(timeout=timeout)
+                #         if previous_thread.is_alive():
+                #             logger.error(f"🛑 Previous OP worker STILL didn't finish after {timeout}s! ABORTING new OP cycle to prevent double-activation and memory exhaustion.")
+                #             # Signal main thread not to wait indefinitely for these events
+                #             for state in event_states.values():
+                #                 state["done_event"].set()
+                #             return
+                #         else:
+                #             logger.info("✅ Previous OP worker finished — proceeding with new cycle")
                             
-                    logger.info(f"🚀 Launching OddsPortal scraper for {len(candidates)} tracked-league events...")
-                    self._oddsportal_worker_wrapper(candidates, event_states, data_cache)
+                #     logger.info(f"🚀 Launching OddsPortal scraper for {len(candidates)} tracked-league events...")
+                #     self._oddsportal_worker_wrapper(candidates, event_states, data_cache)
 
-                previous_thread = getattr(self, '_active_op_thread', None)
+                # previous_thread = getattr(self, '_active_op_thread', None)
                 
-                oddsportal_thread = threading.Thread(
-                    target=op_orchestrator,
-                    args=(previous_thread, op_candidates, op_event_states, op_data_cache),
-                    name="oddsportal_worker_launcher",
-                    daemon=False
-                )
-                oddsportal_thread.start()
-                self._active_op_thread = oddsportal_thread
+                # oddsportal_thread = threading.Thread(
+                #     target=op_orchestrator,
+                #     args=(previous_thread, op_candidates, op_event_states, op_data_cache),
+                #     name="oddsportal_worker_launcher",
+                #     daemon=False
+                # )
+                # oddsportal_thread.start()
+                # self._active_op_thread = oddsportal_thread
             else:
                 op_event_states = {}  # No OP work needed, empty dict
                 if upcoming_events:
