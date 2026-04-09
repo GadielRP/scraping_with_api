@@ -602,7 +602,7 @@ class JobScheduler:
                         
                         logger.info(f"🚨 UPCOMING GAME ALERT: {event_data['home_team']} vs {event_data['away_team']} starts in {minutes_until_start} minutes")
                         
-                        should_extract_odds, metadata_snapshot = self._should_extract_odds_for_event(event_data['id'], minutes_until_start)
+                        should_extract_odds, metadata_snapshot = self._should_extract_odds_for_event(event_data['id'], minutes_until_start, event_data.get('start_time_utc'))
                         
                         # ALWAYS refresh from DB after potential timestamp correction in _should_extract_odds_for_event
                         # This ensures event_info uses the corrected time, avoiding safety-check mismatches later.
@@ -832,6 +832,8 @@ class JobScheduler:
                             stored_observations = meta_obs.get('observations') if meta_obs else None
                             stored_odds_response = meta_obs.get('final_odds_response') if meta_obs else None
                             stored_metadata_snapshot = meta_obs.get('metadata_snapshot') if meta_obs else None
+
+                            #logger.info(f"\nDEBUGGING PRINT: meta_obs: {meta_obs}.\nstored_observations: {stored_observations}.\nstored_odds_response: {stored_odds_response}.\nStored_metadata_snapshot: {stored_metadata_snapshot}")
 
                             events_for_alerts.append({
                                 'event_obj': event_obj,
@@ -1134,6 +1136,7 @@ class JobScheduler:
                                 away_team_id=away_team_id,
                                 event_odds=event_obj.event_odds
                             )
+                            #logger.info(f"DEBUGING PRINT - SHOWING WHATS BEING PASSED ONTO ANALYZE_H2H_EVENTS: event_id={event_obj.id}, event_custom_id={event_obj.custom_id}, event_start_time={event_obj.start_time_utc}, sport={event_obj.sport}, discovery_source={event_obj.discovery_source}, tournament_id={tournament_id}, competition_name={competition_name}, competition_slug={competition_slug}, season_id={season_id}, season_name={season_name}, participants={event_obj.home_team} vs {event_obj.away_team}, home_team_name={event_obj.home_team}, away_team_name={event_obj.away_team}, minutes_until_start={minutes_until_start}, season_year={season_year}, home_team_id={home_team_id}, away_team_id={away_team_id}")
 
                             should_send_streak_alert = bool(
                                 streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis)
@@ -1804,7 +1807,7 @@ class JobScheduler:
             logger.error(f"Error resetting alert_sent for event {event_id}: {e}")
             return False
     
-    def _should_extract_odds_for_event(self, event_id: int, minutes_until_start: int) -> tuple:
+    def _should_extract_odds_for_event(self, event_id: int, minutes_until_start: int, event_start_time: datetime = None) -> tuple:
         """
         Smart logic to determine if odds should be extracted for an event.
         Only extract odds at key moments: 30 minutes and 0 minutes before start.
@@ -1842,23 +1845,27 @@ class JobScheduler:
         
         # Check and update starting time only for events in key moments
         # return_snapshot=True: extract metadata from the same API response to avoid redundant calls
-        correct_starting_time, metadata_snapshot = api_client.get_event_results(event_id, update_time=True, return_snapshot=True)
+        current_time = event_start_time
+        is_timing_consistent, metadata_snapshot = api_client.get_event_results(
+            event_id, 
+            update_time=True, 
+            return_snapshot=True,
+            current_start_time=current_time,
+            minutes_until_start=minutes_until_start
+        )
         
-        if correct_starting_time:
-            logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until_start} minutes until start - WILL EXTRACT ODDS")
+        if is_timing_consistent:
+            logger.info(f"✅ Timing verified for event {event_id} ({minutes_until_start}m until start). Proceeding with odds extraction.")
             return True, metadata_snapshot
-        elif correct_starting_time is None:
+        elif is_timing_consistent is None:
             # API call failed - skip odds extraction but don't trigger rescheduled logic
             logger.warning(f"⏭️ API error for event {event_id} - skipping odds extraction")
             return False, None
-        elif not correct_starting_time:
+        elif not is_timing_consistent:
             # Starting time was actually updated - mark as rescheduled and check if rescheduled game is now in key moments
-            logger.info(f"🔄 [TIME UPDATE] Starting time changed for event {event_id} - updating DB and checking rescheduled moment")
+            logger.info(f"🔄 [TIME UPDATE] Timing mismatch detected for event {event_id}. DB corrected. Triggering rescheduled check.")
             self.recently_rescheduled.add(event_id)  # Mark immediately to prevent double processing
             self._check_rescheduled_event(event_id, metadata_snapshot=metadata_snapshot)
-            return False, None
-        else:
-            logger.debug(f"⏭️ Starting Time changed for event {event_id} - skipping odds extraction or not a key moment")
             return False, None
     
     def _check_rescheduled_event(self, event_id: int, metadata_snapshot: dict = None):

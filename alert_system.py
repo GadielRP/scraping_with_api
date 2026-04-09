@@ -1221,6 +1221,13 @@ class PreStartNotification:
             else:
                 diff_str = f"{int(time_diff.total_seconds() / 60)} min"
             
+            # Create message context footer
+            now = datetime.now()
+            if new_starting_time > now:
+                footer = "Starting time corrected during pre-start check"
+            else:
+                footer = "Starting time corrected during late timestamp check"
+            
             # Create message
             message = f"🕐 <b>Time Correction Alert</b>\n\n"
             message += f"🏆 <b>{participants}</b>\n"
@@ -1229,7 +1236,7 @@ class PreStartNotification:
             message += f"Original: {current_time_str}\n"
             message += f"Updated: {new_time_str}\n"
             message += f"Difference: {diff_str}\n\n"
-            message += f"🔄 <i>Starting time corrected during late timestamp check</i>"
+            message += f"🔄 <i>{footer}</i>"
             
             if not self.telegram_enabled:
                 logger.warning("Telegram notifications not configured - cannot send time correction message")

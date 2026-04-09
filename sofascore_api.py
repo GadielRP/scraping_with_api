@@ -494,7 +494,7 @@ class SofaScoreAPI:
             logger.error(f"Error updating event information from response: {e}")
             return False
 
-    def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False, minutes_until_start: int = 0, update_event_info: bool = True, return_snapshot: bool = False) -> Optional[Dict]:
+    def get_event_results(self, event_id: int, update_time: bool = False, update_court_type: bool = False, minutes_until_start: int = 0, update_event_info: bool = True, return_snapshot: bool = False, current_start_time: Optional[datetime] = None) -> Optional[Dict]:
         """ 
         Fetch event results from /event/{id} endpoint.
         Returns structured result data ready for database upsert.
@@ -510,6 +510,7 @@ class SofaScoreAPI:
                             instead of just timing_result. The snapshot contains team IDs, rankings,
                             tournament info, season info, and observations extracted from the same
                             API response, eliminating the need for separate get_event_details calls.
+            current_start_time: Optional pre-fetched starting time to avoid redundant DB lookup
         """
         try:
             endpoint = f"/event/{event_id}"
@@ -554,8 +555,9 @@ class SofaScoreAPI:
                         ]
        
             if update_time:
+                logger.info(f"⏱️ Updating time for event {event_id}")
                 event_data = response.get('event', {})
-                # SofaScore uses 'startTimestamp' (camelCase), not 'startTimeStamp'
+                # SofaScore uses 'startTimestamp' (camelCase)
                 start_timestamp = event_data.get('startTimestamp')
                 if start_timestamp is None:
                     logger.warning(f"No startTimestamp found in API response for event {event_id}")
@@ -564,12 +566,15 @@ class SofaScoreAPI:
                         return None, None
                     return None  # Return None to indicate API error, not time change
                 
-                # Check if this is for a recently started event (negative minutes) - send alert
-                if minutes_until_start < 0:
-                    timing_result = self.check_and_update_starting_time(event_id, start_timestamp, send_alert=True)
-                else:
-                    # Regular timestamp check for upcoming events
-                    timing_result = self.check_and_update_starting_time(event_id, start_timestamp)
+                # Check and update starting time via specific method
+                # We always enable alerts (send_alert=True) if a change is detected,
+                # letting the internal logic decide based on the current vs new time.
+                timing_result = self.check_and_update_starting_time(
+                    event_id, 
+                    start_timestamp, 
+                    send_alert=True,
+                    current_starting_time=current_start_time
+                )
                 
                 if return_snapshot:
                     snapshot = self._extract_metadata_snapshot(response)
@@ -1229,39 +1234,43 @@ class SofaScoreAPI:
 
     
 
-    def check_and_update_starting_time(self, event_id: int, startTimeStamp: int, send_alert: bool = False) -> bool:
+    def check_and_update_starting_time(self, event_id: int, startTimeStamp: int, send_alert: bool = False, current_starting_time: Optional[datetime] = None) -> bool:
         """
         Compares the stored starting time with the new starting time that was passed in,
-        if they are different, it updates the starting time of the event in the database
+        if they are different, it updates the starting time of the event in the database.
+        
+        Args:
+            event_id: Event ID
+            startTimeStamp: New timestamp from API
+            send_alert: If True, send Telegram notification on change
+            current_starting_time: Optional pre-fetched starting time to avoid DB lookup
         """
         try:
-            # Query the database for the starting_time_utc of the event and store it in current_starting_time
-            event = EventRepository.get_event_by_id(event_id)
-            if not event:
-                logger.warning(f"Event {event_id} not found in database")
-                return False
+            # If current_starting_time not provided, query the database
+            if current_starting_time is None:
+                event = EventRepository.get_event_by_id(event_id)
+                if not event:
+                    logger.warning(f"Event {event_id} not found in database for timing check")
+                    return False
+                current_starting_time = event.start_time_utc
             
-            current_starting_time = event.start_time_utc
             new_starting_time = self.convert_timestamp_to_datetime(startTimeStamp)
             
-            # Compare the current_starting_time with the new starting time that was passed in startTimeStamp
+            # Compare the current_starting_time with the new starting time
             if current_starting_time == new_starting_time:
-                logger.debug(f"Starting time unchanged for event {event_id}: {current_starting_time}")
+                logger.debug(f"Starting time remains consistent for event {event_id}: {current_starting_time}")
                 return True  # Same time, process should continue
             else:
-                logger.info(f"Starting time changed for event {event_id}: {current_starting_time} -> {new_starting_time}")
+                logger.info(f"Starting time mismatch for event {event_id}: {current_starting_time} -> {new_starting_time}")
                 
                 # If they are different, update the starting time of the event in the database
                 if EventRepository.update_event_starting_time(event_id, new_starting_time):
                     logger.info(f"✅ Successfully updated starting time for event {event_id}")
                     if send_alert:
-                        logger.info(f"🕐 Sending alert for event {event_id} - starting time changed")
+                        logger.info(f"🕐 Sending correction alert for event {event_id}")
                         pre_start_notifier.send_time_correction_message(event_id, current_starting_time, new_starting_time)
-                        return False # Send alert and don't continue with odds extraction, time was updated
-                    else:
-                        logger.info(f"🕐 Starting time changed for event {event_id} - not sending alert")
-                        return False # Time was updated, don't continue with odds extraction
-                    return False  # Time was updated, don't continue with odds extraction
+                    
+                    return False # Time was updated, don't continue with original odds extraction flow
                 else:
                     logger.error(f"Failed to update starting time for event {event_id}")
                     return False
