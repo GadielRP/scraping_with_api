@@ -621,7 +621,7 @@ class PreStartNotification:
             # Calculate total games for each team (from results count, not just W+L+D in case of data issues)
             away_total_games = len(streak.away_team_results) if hasattr(streak, 'away_team_results') else (streak.away_team_wins + streak.away_team_losses + streak.away_team_draws)
             home_total_games = len(streak.home_team_results) if hasattr(streak, 'home_team_results') else (streak.home_team_wins + streak.home_team_losses + streak.home_team_draws)
-            message = f"📊 <b>{streak.discovery_source.title().replace('_', ' ')} Streak Alert</b>\n"
+            message = f"📊 <b>{streak.discovery_source.title().replace('_', ' ')} Matchup Streak AnalysisAlert</b>\n"
             message += f"🏆 <b>{streak.event_id} {streak.participants}</b>\n"
             if streak.sport == 'Football':
                 message += f"⚽ "
@@ -1134,8 +1134,8 @@ class PreStartNotification:
             return message
             
         except Exception as e:
-            logger.error(f"Error creating H2H streak message: {e}")
-            return f"❌ Error creating H2H streak message for event {streak.event_id}: {str(e)}"
+            logger.error(f"Error creating matchup streak analysis message: {e}")
+            return f"❌ Error creating matchup streak analysis message for event {streak.event_id}: {str(e)}"
     
     def send_matchup_streak_alerts(self, streak_reports: List) -> bool:
         """

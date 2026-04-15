@@ -662,7 +662,7 @@ class JobScheduler:
                         final_odds_response = api_client.get_event_final_odds(event_data['id'], event_data['slug'])
                         
                         if final_odds_response:
-                            # Store odds response for later alert sending (grouped with dual/h2h alerts per event)
+                            # Store odds response for later alert sending (grouped with dual/matchup streak analysis alerts per event)
                             event_info['final_odds_response'] = final_odds_response
                             
                             # Process the final odds data
@@ -911,7 +911,7 @@ class JobScheduler:
                         events_for_alerts = filtered_events
 
                     if events_for_alerts:
-                        logger.info(f"🔍 Dispatching {len(events_for_alerts)} filtered events to alert evaluation (H2H ∥ OP scraping)...")
+                        logger.info(f"🔍 Dispatching {len(events_for_alerts)} filtered events to alert evaluation (matchup streak analysis ∥ OP scraping)...")
                         self._evaluate_and_send_alerts_batch(
                             events_for_alerts, KEY_MOMENTS,
                             op_event_states=op_event_states,
@@ -935,7 +935,7 @@ class JobScheduler:
         1) Odds alert (sent first)
         2) Matchup streak analysis
         3) Dual process evaluation
-        4) Send H2H streak + dual process alerts
+        4) Send matchup streak analysis + dual process alerts
         
         Returns a dict with keys: event_id, streak_analysis, dual_report, odds_response, success
         """
@@ -978,7 +978,7 @@ class JobScheduler:
                 logger.debug(f"⏭️ No odds response stored for event {event_obj.id}")
             
             # ========================================
-            # H2H STREAK ANALYSIS FOR THIS EVENT
+            # MATCHUP STREAK ANALYSIS FOR THIS EVENT
             # ========================================
             streak_analysis = None
 
@@ -1164,7 +1164,7 @@ class JobScheduler:
                         else:
                             logger.debug(f"No matchup data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
                     except Exception as e:
-                        logger.error(f"Error analyzing H2H streak for event {event_obj.id}: {e}")
+                        logger.error(f"Error analyzing matchup streak analysis for event {event_obj.id}: {e}")
                 else:
                     logger.debug(f"Event {event_obj.id} has no custom_id - skipping Matchup streak analysis")
             else:
@@ -1305,14 +1305,14 @@ class JobScheduler:
                                          op_event_states=None, op_event_ids=None, op_data_cache=None):
         """
         Helper method that encapsulates the thread-pooled parallel evaluation and sequential grouping of alerts.
-        It evaluates upcoming events through the prediction engine and H2H analyzers, and sends notifications.
+        It evaluates upcoming events through the prediction engine and matchup streak analysis analyzers, and sends notifications.
         
         Args:
             op_event_states: dict of event states (started_event, done_event, started_at_monotonic)
             op_event_ids: set of event IDs that are being scraped by the OP worker
         """
         try:
-            logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for H2H and dual process alerts...")
+            logger.info(f"🔍 Evaluating {len(events_for_alerts)} events at key moments for matchup streak analysis and dual process alerts...")
             
             n_events = len(events_for_alerts)
             all_results = []
@@ -1343,7 +1343,7 @@ class JobScheduler:
             
             # ========================================
             # SEND ALERTS IN PARALLEL PER EVENT
-            # Each event's alert group (Odds → H2H → Dual) runs in its own thread
+            # Each event's alert group (Odds → matchup streak analysis → Dual) runs in its own thread
             # so events don't block each other while waiting for OP data.
             # ========================================
             from odds_alert import odds_alert_processor
@@ -1940,7 +1940,7 @@ class JobScheduler:
     
     def _process_alerts_for_rescheduled_event(self, event, metadata_snapshot: dict = None):
         """
-        Process H2H and dual-process alerts for a rescheduled event.
+        Process matchup streak analysis and dual-process alerts for a rescheduled event.
         This is called after odds have been extracted for the rescheduled game.
         
         Args:
@@ -1956,7 +1956,7 @@ class JobScheduler:
                 logger.info(f"⏭️ SKIPPING ALERT EVALUATION (rescheduled): Event {event.id} ({event.home_team} vs {event.away_team}) is {event.sport} (excluded)")
                 return
             
-            logger.info(f"🔍 Processing H2H and dual-process alerts for rescheduled event {event.id}")
+            logger.info(f"🔍 Processing matchup streak analysis and dual-process alerts for rescheduled event {event.id}")
             
             # Refresh materialized views to ensure latest data for alert evaluation
             logger.info("🔄 Refreshing alert materialized views for rescheduled event...")
@@ -1972,10 +1972,10 @@ class JobScheduler:
             
             # Calculate minutes until start for the rescheduled event using FRESH database time
             minutes_until_start = self._minutes_until_start(event_obj.start_time_utc)
-            logger.info(f"🔍 Evaluating rescheduled event {event.id} for H2H and dual-process alerts (starts in {minutes_until_start} minutes)...")
+            logger.info(f"🔍 Evaluating rescheduled event {event.id} for matchup streak analysis and dual-process alerts (starts in {minutes_until_start} minutes)...")
             
             # ========================================
-            # H2H STREAK ANALYSIS FOR RESCHEDULED EVENT
+            # MATCHUP STREAK ANALYSIS FOR RESCHEDULED EVENT
             # ========================================
             streak_analysis = None
             should_send_streak_alert = False
@@ -2104,7 +2104,7 @@ class JobScheduler:
                                     tennis_observations.append({"type": "rankings", "home_ranking": home_team_ranking, "away_ranking": away_team_ranking})
                                     logger.info(f"✅ Added rankings from snapshot for rescheduled tennis event {event_obj.id}")
                         
-                        # Analyze H2H events with team results
+                        # Analyze matchup streak analysis with team results and pass them to streak_alerts
                         from streak_alerts import streak_alert_engine
                         streak_analysis = streak_alert_engine.build_matchup_streak_context(
                             event_id=event_obj.id,
@@ -2140,9 +2140,9 @@ class JobScheduler:
                     else:
                         logger.debug(f"No matchup data found for rescheduled event {event_obj.id}")
                 except Exception as e:
-                    logger.error(f"Error analyzing H2H streak for rescheduled event {event_obj.id}: {e}")
+                    logger.error(f"Error analyzing matchup streak analysis for rescheduled event {event_obj.id}: {e}")
             else:
-                logger.debug(f"Rescheduled event {event_obj.id} has no custom_id - skipping H2H")
+                logger.debug(f"Rescheduled event {event_obj.id} has no custom_id - skipping matchup streak analysis")
             
             # ========================================
             # DUAL PROCESS ANALYSIS FOR RESCHEDULED EVENT
