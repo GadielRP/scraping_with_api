@@ -71,7 +71,7 @@ class PreStartNotification:
         Calculate ranking prediction based on final real rankings and historical form points.
         
         Args:
-            streak: H2HStreak object with batches and final real rankings
+            streak: MatchupStreakContext object with batches and final real rankings
             home_total_games: Total games for home team
             away_total_games: Total games for away team
         Returns:
@@ -607,12 +607,12 @@ class PreStartNotification:
         return success_count > 0
     
 
-    def create_h2h_streak_message(self, streak) -> str:
+    def create_matchup_streak_message(self, streak) -> str:
         """
-        Create H2H streak alert message for Telegram.
+        Create Matchup streak alert message for Telegram.
         
         Args:
-            streak: H2HStreak object with analysis results
+            streak: MatchupStreakContext object with analysis results
             
         Returns:
             Formatted message string for Telegram
@@ -689,7 +689,7 @@ class PreStartNotification:
                     position = standing.get('position')
                     matches = standing.get('matches')
                     wins = standing.get('wins')
-                    draws = standing.get('draws')
+                    matchup_draws = standing.get('matchup_draws')
                     losses = standing.get('losses')
                     points = standing.get('points')
                     goal_diff_formatted = standing.get('goal_diff_formatted')
@@ -713,8 +713,8 @@ class PreStartNotification:
                     record_parts = []
                     if wins is not None:
                         record_parts.append(f"{wins}W")
-                    if draws is not None:
-                        record_parts.append(f"{draws}D")
+                    if matchup_draws is not None:
+                        record_parts.append(f"{matchup_draws}D")
                     if losses is not None:
                         record_parts.append(f"{losses}L")
                     if record_parts:
@@ -737,19 +737,19 @@ class PreStartNotification:
             message += f"\n📈 H2H (Last 2 Years):\n"
             
             # Total matches only
-            message += f"Total Matches: {streak.matches_analyzed}\n"
+            message += f"Total Matches: {streak.matchup_matches_analyzed}\n"
            
             # Group matches by winner to show results organized by team
-            if hasattr(streak, 'all_matches') and streak.all_matches:
+            if hasattr(streak, 'matchup_matches') and streak.matchup_matches:
                 # Extract results to count wins per team
-                all_results = [match.get('winner', '?') for match in streak.all_matches]
+                all_results = [match.get('winner', '?') for match in streak.matchup_matches]
                 
                 # Show home team wins section
-                if streak.home_wins > 0:
+                if streak.matchup_home_wins > 0:
                     # Compute per-team net points by role for upcoming home team
                     home_team_home_net = 0
                     home_team_away_net = 0
-                    for m in streak.all_matches:
+                    for m in streak.matchup_matches:
                         if m.get('winner') == '1':
                             hist_home = m.get('hist_home')
                             
@@ -767,9 +767,9 @@ class PreStartNotification:
                                 home_team_away_net += (as_ - hs)
                     home_net_str = f"+{home_team_home_net}" if home_team_home_net >= 0 else str(home_team_home_net)
                     away_net_str = f"+{home_team_away_net}" if home_team_away_net >= 0 else str(home_team_away_net)
-                    message += f"\n{streak.home_team_name}: {streak.home_wins} wins ({streak.home_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
+                    message += f"\n{streak.home_team_name}: {streak.matchup_home_wins} wins ({streak.matchup_home_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
                     match_num = 1
-                    for match in streak.all_matches:
+                    for match in streak.matchup_matches:
                         if match.get('winner') == '1':
                             hist_home = match.get('hist_home', 'Unknown')
                             hist_away = match.get('hist_away', 'Unknown')
@@ -787,11 +787,11 @@ class PreStartNotification:
                             match_num += 1
                 
                 # Show away team wins section
-                if streak.away_wins > 0:
+                if streak.matchup_away_wins > 0:
                     # Compute per-team net points by role for upcoming away team
                     away_team_home_net = 0
                     away_team_away_net = 0
-                    for m in streak.all_matches:
+                    for m in streak.matchup_matches:
                         if m.get('winner') == '2':
                             hist_home = m.get('hist_home')
                             
@@ -809,8 +809,8 @@ class PreStartNotification:
                                 away_team_away_net += (as_ - hs)
                     home_net_str = f"+{away_team_home_net}" if away_team_home_net >= 0 else str(away_team_home_net)
                     away_net_str = f"+{away_team_away_net}" if away_team_away_net >= 0 else str(away_team_away_net)
-                    message += f"\n{streak.away_team_name}: {streak.away_wins} wins ({streak.away_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
-                    for match in streak.all_matches:
+                    message += f"\n{streak.away_team_name}: {streak.matchup_away_wins} wins ({streak.matchup_away_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
+                    for match in streak.matchup_matches:
                         if match.get('winner') == '2':
                             hist_home = match.get('hist_home', 'Unknown')
                             hist_away = match.get('hist_away', 'Unknown')
@@ -821,10 +821,10 @@ class PreStartNotification:
                             date_prefix = f"{match_date} " if match_date else ""
                             message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
                 
-                # Show draws section (if any)
-                if streak.draws > 0:
-                    message += f"\nDraws: {streak.draws} ({streak.draw_rate}%)\n"
-                    for match in streak.all_matches:
+                # Show matchup_draws section (if any)
+                if streak.matchup_draws > 0:
+                    message += f"\nDraws: {streak.matchup_draws} ({streak.matchup_draw_rate}%)\n"
+                    for match in streak.matchup_matches:
                         if match.get('winner') == 'X':
                             hist_home = match.get('hist_home', 'Unknown')
                             hist_away = match.get('hist_away', 'Unknown')
@@ -836,10 +836,10 @@ class PreStartNotification:
                             message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
             else:
                 # No matches available, show summary only
-                message += f"{streak.home_team_name}: {streak.home_wins} wins ({streak.home_win_rate}%)\n"
-                message += f"{streak.away_team_name}: {streak.away_wins} wins ({streak.away_win_rate}%)\n"
-                if streak.draws > 0:
-                    message += f"Draws: {streak.draws} ({streak.draw_rate}%)\n"
+                message += f"{streak.home_team_name}: {streak.matchup_home_wins} wins ({streak.matchup_home_win_rate}%)\n"
+                message += f"{streak.away_team_name}: {streak.matchup_away_wins} wins ({streak.matchup_away_win_rate}%)\n"
+                if streak.matchup_draws > 0:
+                    message += f"Draws: {streak.matchup_draws} ({streak.matchup_draw_rate}%)\n"
             
             message += "\n"
             
@@ -1137,12 +1137,12 @@ class PreStartNotification:
             logger.error(f"Error creating H2H streak message: {e}")
             return f"❌ Error creating H2H streak message for event {streak.event_id}: {str(e)}"
     
-    def send_h2h_streak_alerts(self, streak_reports: List) -> bool:
+    def send_matchup_streak_alerts(self, streak_reports: List) -> bool:
         """
-        Send H2H streak alerts via Telegram.
+        Send Matchup streak alerts via Telegram.
         
         Args:
-            streak_reports: List of H2HStreak objects
+            streak_reports: List of MatchupStreakContext objects
             
         Returns:
             True if at least one alert was sent successfully
@@ -1164,27 +1164,27 @@ class PreStartNotification:
             if Config and Config.FILTER_ALERTS_BY_OP_SEASON:
                 event = EventRepository.get_event_by_id(streak.event_id)
                 if not event or event.season_id not in SEASON_ODDSPORTAL_MAP:
-                    logger.debug(f"Skipping H2H streak alert for event {streak.event_id} due to OP season filter.")
+                    logger.debug(f"Skipping Matchup streak alert for event {streak.event_id} due to OP season filter.")
                     continue
 
             try:
                 # Create message for streak report
-                message = self.create_h2h_streak_message(streak)
+                message = self.create_matchup_streak_message(streak)
                 
                 # Send via Telegram
                 sent = self.send_telegram_message(message)
                 
                 if sent:
                     success_count += 1
-                    logger.info(f"✅ H2H streak alert sent for event {streak.event_id}")
+                    logger.info(f"✅ Matchup streak alert sent for event {streak.event_id}")
                 else:
-                    logger.warning(f"❌ Failed to send H2H streak alert for event {streak.event_id}")
+                    logger.warning(f"❌ Failed to send Matchup streak alert for event {streak.event_id}")
                     
             except Exception as e:
-                logger.error(f"Error sending H2H streak alert for event {streak.event_id}: {e}")
+                logger.error(f"Error sending Matchup streak alert for event {streak.event_id}: {e}")
                 continue
         
-        logger.info(f"Sent {success_count}/{len(streak_reports)} H2H streak alerts successfully")
+        logger.info(f"Sent {success_count}/{len(streak_reports)} Matchup streak alerts successfully")
         return success_count > 0
     
     def send_time_correction_message(self, event_id: int, current_starting_time: datetime, new_starting_time: datetime) -> bool:

@@ -44,12 +44,12 @@ For configured season IDs (`oddsportal_config.py` map), a background worker scra
 The system evaluates and sends grouped alerts per event, strictly governed by **precision timing rules** to minimize noise:
 - **Odds alerts**: Sent only at **30 and -5 minutes**.
 - **Dual Process alerts**: Evaluated and sent only at **30 and 0 minutes**.
-- **H2H/Streak alerts**: Typically sent at the **30 minute** mark.
+- **Matchup Streak alerts**: Typically sent at the **30 minute** mark.
 
 The alert pipeline uses:
 - historical candidate matching from a materialized view (`mv_alert_events`),
 - sport-aware filters (including tennis surface handling),
-- streak/H2H context and optional standings/ranking enrichments.
+- matchup streak context and optional standings/ranking enrichments.
 
 ### 6) Result Collection + Feedback Loop
 Daily jobs pull completed match results, refresh odds/markets for finished events, and update prediction logs with actual outcomes.
@@ -211,7 +211,7 @@ Core env-driven controls:
   - Historical odds-pattern candidate search and tier/rule evaluation for process-1 alerts.
 
 - `streak_alerts.py`
-  - H2H and team-form analysis engine with standings/ranking/winning-odds enrichments.
+  - Matchup context and team-form analysis engine with standings/ranking/winning-odds enrichments.
 
 - `oddsportal_scraper.py`
   - Playwright scraping engine (market extraction, opening/current odds, bookie priority, cache use).

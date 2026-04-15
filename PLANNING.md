@@ -61,7 +61,7 @@ Build and operate a reliable, always-on pipeline that transforms live SofaScore 
 - `sport_observations.py`: observation persistence and formatting.
 - `alert_system.py`: notifier + message builders.
 - `alert_engine.py`: pattern match/tier rule engine for alerts.
-- `streak_alerts.py`: H2H/team-form/ranking/standings analysis.
+- `streak_alerts.py`: matchup/team-form/ranking/standings analysis.
 - `oddsportal_scraper.py`: Playwright scraping and extraction pipeline.
 - `oddsportal_config.py`: seasons/routes/aliases/priority bookies.
 - `today_sport_extractor.py`: daily discovery extractor.
@@ -85,7 +85,7 @@ Build and operate a reliable, always-on pipeline that transforms live SofaScore 
 
 4. **Alert evaluation and delivery**
 - Refresh MV.
-- Evaluate each event for odds alert + H2H/streak + dual/pattern report.
+- Evaluate each event for odds alert + matchup streak context + dual/pattern report.
 - Send grouped event messages concurrently (via thread pool). Each event has its own thread, preventing slower OP scrapes from blocking faster events.
 
 5. **Post-match reconciliation**
@@ -118,8 +118,8 @@ Build and operate a reliable, always-on pipeline that transforms live SofaScore 
 - Tiered result confidence logic with directional agreement constraints.
 - Tennis-specific surface filtering using observations.
 
-### Streak/H2H context (`streak_alerts.py`)
-- Team form, two-year H2H windows, standings/ranking context.
+### Matchup Streak Context (`streak_alerts.py`)
+- Team form, two-year matchup event windows, standings/ranking context.
 - Uses DB-simulated standings for collected seasons (`historical_standings.py`) to reduce API dependency.
 
 ### Odds-only alerting (`odds_alert.py`)

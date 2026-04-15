@@ -1,5 +1,5 @@
 """
-Streak Alert System - H2H streak analysis for upcoming events
+Streak Alert System - Matchup streak analysis for upcoming events
 
 Imports proven result extraction logic from sofascore_api.py
 to ensure consistency with existing result collection system.
@@ -17,8 +17,8 @@ from repository import SeasonRepository
 logger = logging.getLogger(__name__)
 
 @dataclass
-class H2HStreak:
-    """Represents H2H streak analysis between two teams (relative to upcoming event)"""
+class MatchupStreakContext:
+    """Represents Matchup streak analysis between two teams (relative to upcoming event)"""
     event_id: int
     custom_id: str
     participants: str
@@ -33,21 +33,21 @@ class H2HStreak:
     away_team_name: str  # Upcoming event away team
     home_team_ranking: Optional[int]  # Ranking of upcoming event's home team
     away_team_ranking: Optional[int]  # Ranking of upcoming event's away team
-    total_h2h_matches: int
-    matches_analyzed: int  # Matches within 2-year window
-    home_wins: int  # Wins for upcoming event's home team
-    away_wins: int  # Wins for upcoming event's away team
-    draws: int
-    home_win_rate: float  # Percentage
-    away_win_rate: float  # Percentage
-    draw_rate: float  # Percentage
-    all_matches: List[Dict]  # All H2H matches with detailed information (most recent first)
-    h2h_home_net_points: int  # Net points when upcoming home team was home
-    h2h_away_net_points: int  # Net points when upcoming home team was away
-    current_streak: str  # e.g., "Home team won last 3 matches"
-    current_streak_count: int
-    avg_home_score: float  # Avg score for upcoming home team
-    avg_away_score: float  # Avg score for upcoming away team
+    raw_matchup_event_count: int
+    matchup_matches_analyzed: int  # Matches within 2-year window
+    matchup_home_wins: int  # Wins for upcoming event's home team
+    matchup_away_wins: int  # Wins for upcoming event's away team
+    matchup_draws: int
+    matchup_home_win_rate: float  # Percentage
+    matchup_away_win_rate: float  # Percentage
+    matchup_draw_rate: float  # Percentage
+    matchup_matches: List[Dict]  # All H2H matches with detailed information (most recent first)
+    matchup_home_net_points: int  # Net points when upcoming home team was home
+    matchup_away_net_points: int  # Net points when upcoming home team was away
+    matchup_streak_summary: str  # e.g., "Home team won last 3 matches"
+    matchup_streak_count: int
+    matchup_avg_home_score: float  # Avg score for upcoming home team
+    matchup_avg_away_score: float  # Avg score for upcoming away team
     minutes_until_start: int
     # NEW: Team results data
     home_team_results: List[Dict]  # Last 10 results for home team
@@ -112,7 +112,7 @@ class StreakAlertEngine:
             - games: List of individual game results in this batch
             - batch_wins: Number of wins in this batch
             - batch_losses: Number of losses in this batch  
-            - batch_draws: Number of draws in this batch
+            - batch_draws: Number of matchup_draws in this batch
             - batch_points_for: Total points scored by team in this batch (sets or total game points)
             - batch_points_against: Total points scored against team in this batch
             - batch_net_points: Net points (for - against) in this batch
@@ -301,7 +301,7 @@ class StreakAlertEngine:
         elif result == '2':  # Loss
             return max(own_ranking, opponent_ranking)
         else:  # Draw
-            # For draws, use average of both rankings
+            # For matchup_draws, use average of both rankings
             return (own_ranking + opponent_ranking) // 2
     
     def _calculate_final_real_ranking(self, batches: List[Dict]) -> float:
@@ -882,12 +882,12 @@ class StreakAlertEngine:
             logger.error(f"Error fetching winning odds for event {event_id}: {e}")
             return None
 
-    def analyze_h2h_events(self, event_id: int, event_custom_id: str, 
+    def build_matchup_streak_context(self, event_id: int, event_custom_id: str, 
                           event_start_time: datetime, sport: str, discovery_source: str, tournament_id: str, competition_name: str, competition_slug: str, season_id: str, season_name: str, participants: str,
                           home_team_name: str, away_team_name: str,
-                          h2h_events: List[Dict], minutes_until_start: int, season_year: Optional[int] = None, observations: Optional[List[Dict]] = None,
+                          matchup_events: List[Dict], minutes_until_start: int, season_year: Optional[int] = None, observations: Optional[List[Dict]] = None,
                           home_team_id: int = None, away_team_id: int = None,
-                          event_odds: Optional[Any] = None) -> Optional[H2HStreak]:
+                          event_odds: Optional[Any] = None) -> Optional[MatchupStreakContext]:
         """
         Analyze H2H events using proven result extraction from sofascore_api.py.
         Tracks wins relative to ACTUAL TEAMS (not home/away positions which change historically).
@@ -904,27 +904,27 @@ class StreakAlertEngine:
                 match_type_info = f" and match_type '{match_type}'"
             
             # Log detailed filtering information for H2H
-            if h2h_events:
-                logger.info(f"🔍 FILTERING H2H: Processing {len(h2h_events)} H2H events for {participants}")
+            if matchup_events:
+                logger.info(f"🔍 FILTERING MATCHUP: Processing {len(matchup_events)} H2H events for {participants}")
                 if (sport == 'Tennis' or sport == 'Tennis Doubles'):
                     ground_type_obs = next((obs for obs in observations if obs.get('type') == 'ground_type'), None) if observations else None
                     if ground_type_obs:
-                        logger.info(f"🔍 FILTERING H2H: Applying filters: ground_type='{ground_type_obs.get('value')}'{match_type_info}")
+                        logger.info(f"🔍 FILTERING MATCHUP: Applying filters: ground_type='{ground_type_obs.get('value')}'{match_type_info}")
                     else:
-                        logger.info(f"🔍 FILTERING H2H: Applying filters: NO ground_type filter (ground_type not found in observations){match_type_info}")
+                        logger.info(f"🔍 FILTERING MATCHUP: Applying filters: NO ground_type filter (ground_type not found in observations){match_type_info}")
                 else:
-                    logger.info(f"🔍 FILTERING H2H: Applying filters: competition='{competition_slug}'")
+                    logger.info(f"🔍 FILTERING MATCHUP: Applying filters: competition='{competition_slug}'")
             
-            if h2h_events:
+            if matchup_events:
                 # Filter events within 2-year window
                 cutoff_timestamp = (event_start_time - self.two_year_window).timestamp()
                 
                 # Extract results using proven logic and map to actual teams
-                for event in h2h_events:
-                    # Exclude current event from H2H analysis
-                    h2h_event_id = event.get('id')
-                    if h2h_event_id == event_id:
-                        logger.debug(f"Skipping H2H event {h2h_event_id} - this is the current/upcoming event being analyzed")
+                for event in matchup_events:
+                    # Exclude current event from Matchup analysis
+                    matchup_event_id = event.get('id')
+                    if matchup_event_id == event_id:
+                        logger.debug(f"Skipping H2H event {matchup_event_id} - this is the current/upcoming event being analyzed")
                         continue
                     
                     event_timestamp = event.get('startTimestamp', 0)
@@ -973,7 +973,7 @@ class StreakAlertEngine:
                         if result_data:
                             # Skip canceled/postponed events in H2H history
                             if result_data.get('_canceled'):
-                                logger.debug(f"Skipping H2H event {h2h_event_id} - event was canceled/postponed")
+                                logger.debug(f"Skipping H2H event {matchup_event_id} - event was canceled/postponed")
                                 continue
                                 
                             # Map winner to actual teams (not positions)
@@ -1036,28 +1036,28 @@ class StreakAlertEngine:
             # Continue processing even if no H2H results found
             # This allows us to still show team form and winning odds data
             
-            # Log H2H filtering results
+            # Log Matchup filtering results
             filter_type, filter_value = self._get_filtering_criteria(sport, competition_slug, observations)
             if filter_value:
                 match_type_info = ""
                 if (sport == 'Tennis' or sport == 'Tennis Doubles'):
                     match_type = "doubles" if sport == 'Tennis Doubles' else "singles"
                     match_type_info = f" and match_type '{match_type}'"
-                logger.info(f"📊 H2H analysis: Found {len(results)} matches in {filter_type} '{filter_value}'{match_type_info} (filtered by {filter_type})")
+                logger.info(f"📊 Matchup analysis: Found {len(results)} matches in {filter_type} '{filter_value}'{match_type_info} (filtered by {filter_type})")
             else:
-                logger.info(f"📊 H2H analysis: Found {len(results)} matches (no filtering)")
+                logger.info(f"📊 Matchup analysis: Found {len(results)} matches (no filtering)")
             
             # Calculate statistics relative to upcoming event teams
-            home_wins = sum(1 for r in results if r['winner'] == '1')
-            away_wins = sum(1 for r in results if r['winner'] == '2')
-            draws = sum(1 for r in results if r['winner'] == 'X')
+            matchup_home_wins = sum(1 for r in results if r['winner'] == '1')
+            matchup_away_wins = sum(1 for r in results if r['winner'] == '2')
+            matchup_draws = sum(1 for r in results if r['winner'] == 'X')
             total = len(results)
             
             # All matches with detailed information (most recent first)
-            all_matches = results  # Already in most recent first order
+            matchup_matches = results  # Already in most recent first order
             
             # Extract results list from matches for streak detection
-            all_results = [match['winner'] for match in all_matches]
+            all_results = [match['winner'] for match in matchup_matches]
             
             # Detect streak with team names
             streak_text, streak_count = self._detect_streak(all_results, home_team_name, away_team_name)
@@ -1067,15 +1067,15 @@ class StreakAlertEngine:
             avg_away = sum(r['away_score'] for r in results) / total if total > 0 else 0
             
             # Calculate H2H net points by role
-            h2h_home_net_points = 0
-            h2h_away_net_points = 0
+            matchup_home_net_points = 0
+            matchup_away_net_points = 0
             for r in results:
                 if r.get('upcoming_home_role') == 'home':
                     # Upcoming home team was home in this match
-                    h2h_home_net_points += (r['home_score'] - r['away_score'])
+                    matchup_home_net_points += (r['home_score'] - r['away_score'])
                 else:
                     # Upcoming home team was away in this match
-                    h2h_away_net_points += (r['home_score'] - r['away_score'])
+                    matchup_away_net_points += (r['home_score'] - r['away_score'])
             
             # Get team results (last 10 games for each team)
             home_team_results = []
@@ -1186,7 +1186,7 @@ class StreakAlertEngine:
             # Log summary of what data we have
             data_summary = []
             if total > 0:
-                data_summary.append(f"H2H: {total} matches")
+                data_summary.append(f"Matchup: {total} matches")
             if home_team_wins + home_team_losses + home_team_draws > 0:
                 data_summary.append(f"Home form: {home_team_wins}W-{home_team_losses}L-{home_team_draws}D")
             if away_team_wins + away_team_losses + away_team_draws > 0:
@@ -1195,9 +1195,9 @@ class StreakAlertEngine:
                 data_summary.append("Winning odds: available")
             
             if data_summary:
-                logger.info(f"📊 H2H analysis for {participants}: {', '.join(data_summary)}")
+                logger.info(f"📊 Matchup analysis for {participants}: {', '.join(data_summary)}")
             else:
-                logger.info(f"📊 H2H analysis for {participants}: No data available (no H2H matches, no team form, no winning odds)")
+                logger.info(f"📊 Matchup analysis for {participants}: No data available (no H2H matches, no team form, no winning odds)")
             
             # Extract rankings safely from observations
             home_team_ranking = None
@@ -1258,7 +1258,7 @@ class StreakAlertEngine:
                 except (AttributeError, ValueError, TypeError) as e:
                     logger.warning(f"Error extracting odds from event_odds for event {event_id}: {e}")
             
-            return H2HStreak(
+            return MatchupStreakContext(
                 event_id=event_id,
                 custom_id=event_custom_id,
                 participants=participants,
@@ -1273,21 +1273,21 @@ class StreakAlertEngine:
                 away_team_name=away_team_name,
                 home_team_ranking=home_team_ranking,
                 away_team_ranking=away_team_ranking,
-                total_h2h_matches=len(h2h_events),
-                matches_analyzed=total,
-                home_wins=home_wins,
-                away_wins=away_wins,
-                draws=draws,
-                home_win_rate=round(home_wins / total * 100, 1) if total > 0 else 0,
-                away_win_rate=round(away_wins / total * 100, 1) if total > 0 else 0,
-                draw_rate=round(draws / total * 100, 1) if total > 0 else 0,
-                all_matches=all_matches,
-                h2h_home_net_points=h2h_home_net_points,
-                h2h_away_net_points=h2h_away_net_points,
-                current_streak=streak_text,
-                current_streak_count=streak_count,
-                avg_home_score=round(avg_home, 1),
-                avg_away_score=round(avg_away, 1),
+                raw_matchup_event_count=len(matchup_events),
+                matchup_matches_analyzed=total,
+                matchup_home_wins=matchup_home_wins,
+                matchup_away_wins=matchup_away_wins,
+                matchup_draws=matchup_draws,
+                matchup_home_win_rate=round(matchup_home_wins / total * 100, 1) if total > 0 else 0,
+                matchup_away_win_rate=round(matchup_away_wins / total * 100, 1) if total > 0 else 0,
+                matchup_draw_rate=round(matchup_draws / total * 100, 1) if total > 0 else 0,
+                matchup_matches=matchup_matches,
+                matchup_home_net_points=matchup_home_net_points,
+                matchup_away_net_points=matchup_away_net_points,
+                matchup_streak_summary=streak_text,
+                matchup_streak_count=streak_count,
+                matchup_avg_home_score=round(avg_home, 1),
+                matchup_avg_away_score=round(avg_away, 1),
                 minutes_until_start=minutes_until_start,
                 # NEW: Team results data
                 home_team_results=home_team_results,
@@ -1339,7 +1339,7 @@ class StreakAlertEngine:
             Tuple of (streak_text, streak_count)
         """
         if not results:
-            return "No H2H matches found between these players", 0
+            return "No matchup events found between these players", 0
         
         # Get the most recent result
         current_result = results[0]
@@ -1366,7 +1366,7 @@ class StreakAlertEngine:
         
         return streak_text, streak_count
     
-    def should_send_streak_alert(self, streak: H2HStreak) -> bool:
+    def should_send_streak_alert(self, streak: MatchupStreakContext) -> bool:
         """
         Determine if a streak alert should be sent.
         
@@ -1374,7 +1374,7 @@ class StreakAlertEngine:
         This filters out events with insufficient historical data.
         
         Send alerts if we have sufficient data AND at least one of:
-        1. H2H data (at least 1 match analyzed), OR
+        1. Matchup data (at least 1 match analyzed), OR
         2. Team form data (at least one team has results), OR  
         3. Winning odds data
         
@@ -1382,7 +1382,7 @@ class StreakAlertEngine:
         but we have team form or winning odds information.
         
         Args:
-            streak: H2HStreak object
+            streak: MatchupStreakContext object
             
         Returns:
             True if we have any meaningful data to show AND sufficient historical data
@@ -1398,11 +1398,11 @@ class StreakAlertEngine:
         has_sufficient_data = home_total_games >= min_results_threshold or away_total_games >= min_results_threshold
         
         if not has_sufficient_data:
-            logger.info(f"⏭️ H2H streak alert skipped for {streak.participants}: Insufficient data (home: {home_total_games}, away: {away_total_games}, need ≥{min_results_threshold})")
+            logger.info(f"⏭️ Matchup streak alert skipped for {streak.participants}: Insufficient data (home: {home_total_games}, away: {away_total_games}, need ≥{min_results_threshold})")
             return False
         
-        # Check if we have H2H data
-        has_h2h_data = streak.matches_analyzed >= 1
+        # Check if we have Matchup data
+        has_h2h_data = streak.matchup_matches_analyzed >= 1
         
         # Check if we have team form data
         has_team_form = (streak.home_team_wins + streak.home_team_losses + streak.home_team_draws > 0) or \
@@ -1417,14 +1417,14 @@ class StreakAlertEngine:
         if should_send:
             reasons = []
             if has_h2h_data:
-                reasons.append(f"H2H data ({streak.matches_analyzed} matches)")
+                reasons.append(f"Matchup data ({streak.matchup_matches_analyzed} matches)")
             if has_team_form:
                 reasons.append("team form data")
             if has_winning_odds:
                 reasons.append("winning odds data")
-            logger.info(f"✅ H2H streak alert will send for {streak.participants}: {', '.join(reasons)} (data: home={home_total_games}, away={away_total_games})")
+            logger.info(f"✅ Matchup streak alert will send for {streak.participants}: {', '.join(reasons)} (data: home={home_total_games}, away={away_total_games})")
         else:
-            logger.info(f"⏭️ H2H streak alert skipped for {streak.participants}: No meaningful data (H2H: {streak.matches_analyzed}, Home form: {streak.home_team_wins + streak.home_team_losses + streak.home_team_draws}, Away form: {streak.away_team_wins + streak.away_team_losses + streak.away_team_draws}, Winning odds: {has_winning_odds})")
+            logger.info(f"⏭️ Matchup streak alert skipped for {streak.participants}: No meaningful data (Matchup: {streak.matchup_matches_analyzed}, Home form: {streak.home_team_wins + streak.home_team_losses + streak.home_team_draws}, Away form: {streak.away_team_wins + streak.away_team_losses + streak.away_team_draws}, Winning odds: {has_winning_odds})")
         
         return should_send
 

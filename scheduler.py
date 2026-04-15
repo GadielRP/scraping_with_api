@@ -232,12 +232,12 @@ class JobScheduler:
                 logger.error("Failed to get h2h events")
                 return
 
-            h2h_events, _ = api_client.extract_events_and_odds_from_dropping_response(h2h_events_response, odds_extraction=False, discovery_source='top_h2h')
+            matchup_events, _ = api_client.extract_events_and_odds_from_dropping_response(h2h_events_response, odds_extraction=False, discovery_source='top_h2h')
             
             # Filter H2H events to only include upcoming events (at least 10 min away)
-            h2h_events = filter_upcoming_events(h2h_events)
+            matchup_events = filter_upcoming_events(matchup_events)
             
-            if not h2h_events:
+            if not matchup_events:
                 logger.warning("No events found in h2h events")
                 return
 
@@ -278,11 +278,11 @@ class JobScheduler:
 
             # H2H events - Use event-only processing (no odds fetching)
             processed_count, skipped_count = process_events_only(
-                h2h_events,
+                matchup_events,
                 discovery_source='h2h',
                 max_workers=10
             )
-            logger.info(f"h2h events completed: processed {processed_count}/{len(h2h_events)} events, skipped {skipped_count} events")
+            logger.info(f"h2h events completed: processed {processed_count}/{len(matchup_events)} events, skipped {skipped_count} events")
 
             # Winning odds events - Use parallel DB ops with 10 workers (odds pre-fetched)
             processed_count, skipped_count = process_with_parallel_db_ops(
@@ -933,7 +933,7 @@ class JobScheduler:
         """
         Process a single event through the full alert pipeline:
         1) Odds alert (sent first)
-        2) H2H streak analysis
+        2) Matchup streak analysis
         3) Dual process evaluation
         4) Send H2H streak + dual process alerts
         
@@ -985,9 +985,9 @@ class JobScheduler:
             if minutes_until_start == 30:
                 if event_obj.custom_id:
                     try:
-                        h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
-                        if h2h_response and 'events' in h2h_response:
-                            h2h_events = h2h_response['events']
+                        matchup_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
+                        if matchup_response and 'events' in matchup_response:
+                            matchup_events = matchup_response['events']
 
                             home_team_id = None
                             away_team_id = None
@@ -1110,11 +1110,11 @@ class JobScheduler:
                             if tennis_observations:
                                 rankings_info = next((obs for obs in tennis_observations if isinstance(obs, dict) and obs.get('type') == 'rankings'), None)
                                 if rankings_info:
-                                    logger.info(f"📊 Passing observations to analyze_h2h_events for event {event_obj.id}: home_ranking={rankings_info.get('home_ranking')}, away_ranking={rankings_info.get('away_ranking')}")
+                                    logger.info(f"📊 Passing observations to build_matchup_streak_context for event {event_obj.id}: home_ranking={rankings_info.get('home_ranking')}, away_ranking={rankings_info.get('away_ranking')}")
                                 else:
                                     logger.warning(f"⚠️ No rankings found in tennis_observations for event {event_obj.id}")
 
-                            streak_analysis = streak_alert_engine.analyze_h2h_events(
+                            streak_analysis = streak_alert_engine.build_matchup_streak_context(
                                 event_id=event_obj.id,
                                 event_custom_id=event_obj.custom_id,
                                 event_start_time=event_obj.start_time_utc,
@@ -1128,7 +1128,7 @@ class JobScheduler:
                                 participants=f"{event_obj.home_team} vs {event_obj.away_team}",
                                 home_team_name=event_obj.home_team,
                                 away_team_name=event_obj.away_team,
-                                h2h_events=h2h_events,
+                                matchup_events=matchup_events,
                                 minutes_until_start=minutes_until_start,
                                 season_year=season_year,
                                 observations=tennis_observations,
@@ -1136,15 +1136,14 @@ class JobScheduler:
                                 away_team_id=away_team_id,
                                 event_odds=event_obj.event_odds
                             )
-                            #logger.info(f"DEBUGING PRINT - SHOWING WHATS BEING PASSED ONTO ANALYZE_H2H_EVENTS: event_id={event_obj.id}, event_custom_id={event_obj.custom_id}, event_start_time={event_obj.start_time_utc}, sport={event_obj.sport}, discovery_source={event_obj.discovery_source}, tournament_id={tournament_id}, competition_name={competition_name}, competition_slug={competition_slug}, season_id={season_id}, season_name={season_name}, participants={event_obj.home_team} vs {event_obj.away_team}, home_team_name={event_obj.home_team}, away_team_name={event_obj.away_team}, minutes_until_start={minutes_until_start}, season_year={season_year}, home_team_id={home_team_id}, away_team_id={away_team_id}")
-
+                           
                             should_send_streak_alert = bool(
                                 streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis)
                             )
                             result['should_send_streak_alert'] = should_send_streak_alert
 
                             if should_send_streak_alert:
-                                logger.info(f"✅ H2H streak analysis completed for event {event_obj.id}: {streak_analysis.current_streak}")
+                                logger.info(f"✅ Matchup streak analysis completed for event {event_obj.id}: {streak_analysis.matchup_streak_summary}")
                                 
                                 # SMART ALERT FILTERING: RESURRECTION LOGIC
                                 from config import Config as AppConfig
@@ -1161,15 +1160,15 @@ class JobScheduler:
                             else:
                                 # IMPORTANT: prevent downstream send phase from dispatching a filtered-out streak alert
                                 streak_analysis = None
-                                logger.debug(f"⏭️ No H2H streak alert for event {event_obj.id}")
+                                logger.debug(f"⏭️ No Matchup streak alert for event {event_obj.id}")
                         else:
-                            logger.debug(f"No H2H data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
+                            logger.debug(f"No matchup data found for event {event_obj.id} (custom_id: {event_obj.custom_id})")
                     except Exception as e:
                         logger.error(f"Error analyzing H2H streak for event {event_obj.id}: {e}")
                 else:
-                    logger.debug(f"Event {event_obj.id} has no custom_id - skipping H2H streak analysis")
+                    logger.debug(f"Event {event_obj.id} has no custom_id - skipping Matchup streak analysis")
             else:
-                logger.debug(f"⏭️ Skipping H2H streak analysis for event {event_obj.id} - minutes_until_start={minutes_until_start} (only run at 30)")
+                logger.debug(f"⏭️ Skipping Matchup streak analysis for event {event_obj.id} - minutes_until_start={minutes_until_start} (only run at 30)")
             
             # ========================================
             # DUAL PROCESS ANALYSIS FOR THIS EVENT
@@ -1429,10 +1428,10 @@ class JobScheduler:
                     except Exception as e:
                         logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
                 
-                # 2) Send H2H streak alert for this event
+                # 2) Send Matchup streak alert for this event
                 if streak_analysis and should_send_streak_alert:
-                    logger.info(f"📊 Sending H2H streak alert for event {event_obj.id} (2nd in group)")
-                    pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
+                    logger.info(f"📊 Sending Matchup streak alert for event {event_obj.id} (2nd in group)")
+                    pre_start_notifier.send_matchup_streak_alerts([streak_analysis])
                 
                 # 3) Send dual process alert for this event
                 if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction or 
@@ -1982,13 +1981,13 @@ class JobScheduler:
             should_send_streak_alert = False
             observations = None
             
-            # Check if event has custom_id for H2H analysis
+            # Check if event has custom_id for Matchup analysis
             if event_obj.custom_id:
                 try:
                     # Fetch H2H events for this custom_id
-                    h2h_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
-                    if h2h_response and 'events' in h2h_response:
-                        h2h_events = h2h_response['events']
+                    matchup_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
+                    if matchup_response and 'events' in matchup_response:
+                        matchup_events = matchup_response['events']
                         
                         # Get team IDs and event details from metadata snapshot (avoids redundant API call)
                         home_team_id = None
@@ -2107,7 +2106,7 @@ class JobScheduler:
                         
                         # Analyze H2H events with team results
                         from streak_alerts import streak_alert_engine
-                        streak_analysis = streak_alert_engine.analyze_h2h_events(
+                        streak_analysis = streak_alert_engine.build_matchup_streak_context(
                             event_id=event_obj.id,
                             event_custom_id=event_obj.custom_id,
                             event_start_time=event_obj.start_time_utc,
@@ -2123,7 +2122,7 @@ class JobScheduler:
                             participants=f"{event_obj.home_team} vs {event_obj.away_team}",
                             home_team_name=event_obj.home_team,
                             away_team_name=event_obj.away_team,
-                            h2h_events=h2h_events,
+                            matchup_events=matchup_events,
                             minutes_until_start=minutes_until_start,
                             home_team_id=home_team_id,
                             away_team_id=away_team_id,
@@ -2134,12 +2133,12 @@ class JobScheduler:
                             streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis)
                         )
                         if should_send_streak_alert:
-                            logger.info(f"✅ H2H streak analysis completed for rescheduled event {event_obj.id}: {streak_analysis.current_streak}")
+                            logger.info(f"✅ Matchup streak analysis completed for rescheduled event {event_obj.id}: {streak_analysis.matchup_streak_summary}")
                         else:
                             streak_analysis = None
-                            logger.debug(f"⏭️ No H2H streak alert for rescheduled event {event_obj.id}")
+                            logger.debug(f"⏭️ No Matchup streak alert for rescheduled event {event_obj.id}")
                     else:
-                        logger.debug(f"No H2H data found for rescheduled event {event_obj.id}")
+                        logger.debug(f"No matchup data found for rescheduled event {event_obj.id}")
                 except Exception as e:
                     logger.error(f"Error analyzing H2H streak for rescheduled event {event_obj.id}: {e}")
             else:
@@ -2194,10 +2193,10 @@ class JobScheduler:
             # SEND ALERTS FOR RESCHEDULED EVENT (H2H + DUAL IN PAIR)
             # ========================================
             
-            # Send H2H streak alert if available
+            # Send Matchup streak alert if available
             if streak_analysis and should_send_streak_alert:
-                logger.info(f"📊 Sending H2H streak alert for rescheduled event {event.id}")
-                pre_start_notifier.send_h2h_streak_alerts([streak_analysis])
+                logger.info(f"📊 Sending Matchup streak alert for rescheduled event {event.id}")
+                pre_start_notifier.send_matchup_streak_alerts([streak_analysis])
             
             # Send dual process alert only at allowed minutes {30, 0}
             if should_send:
