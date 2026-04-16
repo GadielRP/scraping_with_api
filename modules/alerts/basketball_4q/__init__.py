@@ -12,7 +12,6 @@ __all__ = [
     "predictor_4q",
 ]
 
-
 def __getattr__(name):
     if name in {"Basketball4QMonitor", "basketball_4q_monitor"}:
         module = import_module(".run_basketball_4q", __name__)
