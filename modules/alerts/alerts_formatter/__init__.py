@@ -12,6 +12,7 @@ from .matchup_streak_alert import (
     create_matchup_streak_message,
     send_matchup_streak_alerts,
 )
+from .q4_alert import create_q4_alert_message
 from .time_correction_alert import (
     create_time_correction_message,
     send_time_correction_message,
@@ -26,6 +27,7 @@ __all__ = [
     "_format_game_date",
     "create_matchup_streak_message",
     "send_matchup_streak_alerts",
+    "create_q4_alert_message",
     "create_time_correction_message",
     "send_time_correction_message",
 ]

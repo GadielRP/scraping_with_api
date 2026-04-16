@@ -26,8 +26,8 @@ from prediction_engine import prediction_engine
 from database import db_manager
 from models import PredictionLog, refresh_materialized_views
 from today_sport_extractor import run_daily_discovery
-# Import set prediction system for in-game alerts
-from set_prediction_system import set_prediction_system
+# Import basketball 4Q monitor for in-game alerts
+from modules.alerts.basketball_4q import basketball_4q_monitor
 # Import optimization utilities
 
 from config import DISCOVERY_SOURCES_FOR_ALERTS
@@ -579,6 +579,11 @@ class JobScheduler:
             if before_rescheduled != len(upcoming_events):
                 logger.info(f"Filtered {before_rescheduled - len(upcoming_events)} recently rescheduled. {len(upcoming_events)} remain")
 
+            # NBA 4Q monitoring should run on every pre-start cycle, even when there are no upcoming events.
+            # This used to live inside the "upcoming_events" branch, which meant it was skipped whenever the
+            # pre-start snapshot was empty.
+            basketball_4q_monitor.check_nba_4th_quarter()
+
             events_to_process = []
             event_meta_lookup = {}
 
@@ -586,9 +591,6 @@ class JobScheduler:
             if not upcoming_events:
                 logger.info(f"No upcoming events to process (after filtering)")
             else:
-                # Check for NBA 4th quarter
-                set_prediction_system.check_nba_4th_quarter()
-                
                 # Use the "smart" odds extraction logic
                 KEY_MOMENTS = [120, 30, 5, 0, -5]
                 

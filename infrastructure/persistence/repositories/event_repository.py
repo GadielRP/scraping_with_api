@@ -123,7 +123,97 @@ class EventRepository:
         except Exception as e:
             logger.error(f"Error getting event {event_id}: {e}")
             return None
-    
+            
+    @staticmethod
+    def get_events_started_between_minutes_ago(
+        sport: str,
+        competition: Optional[str] = None,
+        min_minutes_ago: int = 105,
+        max_minutes_ago: int = 140,
+        alert_sent: Optional[bool] = None
+    ) -> List[Dict]:
+        """
+        Get events that started within a specific minute range for a given sport/competition.
+        
+        This is a modular function that can be used for any sport and competition.
+        Similar to get_events_started_recently but with sport/competition filtering.
+        
+        Args:
+            sport: Sport name (e.g., 'Basketball', 'Hockey', 'Football')
+            competition: Optional competition filter (e.g., 'NBA', 'NHL'). If None, returns all events for sport.
+            min_minutes_ago: Minimum minutes since event started (e.g., 80)
+            max_minutes_ago: Maximum minutes since event started (e.g., 100)
+            alert_sent: Optional filter for alert_sent flag. If True, only returns events with alert_sent=True.
+                       If False, only returns events with alert_sent=False. If None, returns all events.
+            
+        Returns:
+            List of event dictionaries matching the criteria
+            
+        Example:
+            # Get NBA games that started 105-140 minutes ago and haven't sent alert yet
+            events = get_events_started_between_minutes_ago('Basketball', 'NBA', 105, 140, alert_sent=False)
+        """
+        try:
+            with db_manager.get_session() as session:
+                now = get_local_now()
+                
+                # Calculate time window
+                window_start = now - timedelta(minutes=max_minutes_ago)
+                window_end = now - timedelta(minutes=min_minutes_ago)
+                
+                logger.info(f"Searching for {sport} events (competition: {competition or 'all'}) "
+                           f"that started between {max_minutes_ago} and {min_minutes_ago} minutes ago")
+                logger.debug(f"Time window: {window_start} to {window_end}")
+                
+                # Build query with sport filter
+                filters = [
+                    Event.sport == sport,
+                    Event.start_time_utc >= window_start,
+                    Event.start_time_utc <= window_end
+                ]
+                
+                # Add alert_sent filter if specified
+                if alert_sent is not None:
+                    filters.append(Event.alert_sent == alert_sent)
+                
+                query = session.query(Event).filter(and_(*filters))
+                
+                # Add competition filter if specified
+                if competition:
+                    # Competition is stored as comma-separated values, so we need to use LIKE
+                    query = query.filter(Event.competition.like(f'%{competition}%'))
+                
+                events = query.all()
+                
+                # Convert to list of dictionaries
+                result = []
+                for event in events:
+                    event_data = {
+                        'id': event.id,
+                        'home_team': event.home_team,
+                        'away_team': event.away_team,
+                        'competition': event.competition,
+                        'start_time_utc': event.start_time_utc,
+                        'sport': event.sport,
+                        'country': event.country,
+                        'slug': event.slug,
+                        'custom_id': event.custom_id,
+                        'season_id': event.season_id
+                    }
+                    result.append(event_data)
+                
+                if result:
+                    logger.info(f"Found {len(result)} {sport} events (competition: {competition or 'all'}) "
+                              f"in {max_minutes_ago}-{min_minutes_ago} minute window")
+                else:
+                    logger.debug(f"No {sport} events (competition: {competition or 'all'}) found in time window")
+                
+                return result
+                
+        except Exception as e:
+            logger.error(f"Error getting events by sport and minutes range: {e}")
+            return []
+
     @staticmethod
     def update_event_starting_time(event_id: int, new_start_time: datetime) -> bool:
         """Update the starting time of an event"""
