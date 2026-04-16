@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import Config
 from sofascore_api import api_client
 import sofascore_api2  # Import to attach new methods to api_client
-from repository import EventRepository, OddsRepository, ResultRepository, ObservationRepository
+from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, ObservationRepository
 from odds_utils import process_event_odds_from_dropping_odds
 from alert_system import pre_start_notifier
 import os
@@ -683,7 +683,7 @@ class JobScheduler:
                                         # Save all markets to new markets/market_choices tables
                                         # This runs for ALL sports (including excluded ones)
                                         try:
-                                            from repository import MarketRepository
+                                            from infrastructure.persistence.repositories import MarketRepository
                                             MarketRepository.save_markets_from_response(event_data['id'], final_odds_response)
                                         except Exception as e:
                                             logger.warning(f"Error saving markets to DB for event {event_data['id']}: {e}")
@@ -1050,7 +1050,7 @@ class JobScheduler:
                                         season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
                                         season_name = event_details.get('season', {}).get('name')
                                         season_year_raw = event_details.get('season', {}).get('year')
-                                        from repository import SeasonRepository
+                                        from infrastructure.persistence.repositories import SeasonRepository
                                         season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
                                     else:
                                         logger.warning(f"Could not fetch event details for {event_obj.id}")
@@ -1402,7 +1402,7 @@ class JobScheduler:
                                         
                             # Log whether OP section will actually be included (based on DB availability)
                             try:
-                                from repository import MarketRepository
+                                from infrastructure.persistence.repositories import MarketRepository
                                 op_markets = MarketRepository.get_oddsportal_markets_for_event(event_obj.id)
                                 if op_markets:
                                     logger.info(f"[OP] OddsPortal data is available for event {event_obj.id} ({len(op_markets)} rows) - OddsPortal section should be included.")
@@ -1522,7 +1522,7 @@ class JobScheduler:
         """
         from oddsportal_config import SEASON_ODDSPORTAL_MAP, get_oddsportal_current_date
         from oddsportal_scraper import scrape_multiple_matches_parallel_sync
-        from repository import MarketRepository
+        from infrastructure.persistence.repositories import MarketRepository
         from config import Config as AppConfig
         
         op_current_date = get_oddsportal_current_date()
@@ -2046,7 +2046,7 @@ class JobScheduler:
                                     season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
                                     season_name = event_details.get('season', {}).get('name')
                                     season_year_raw = event_details.get('season', {}).get('year')
-                                    from repository import SeasonRepository
+                                    from infrastructure.persistence.repositories import SeasonRepository
                                     season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
                                 else:
                                     logger.warning(f"Could not fetch event details for rescheduled event {event_obj.id}")
@@ -2340,7 +2340,7 @@ class JobScheduler:
         
         # Clean up old DailyDiscovery logs
         try:
-            from repository import DailyDiscoveryRepository
+            from infrastructure.persistence.repositories import DailyDiscoveryRepository
             days_to_keep = getattr(Config, 'DAILY_DISCOVERY_DAYS_TO_KEEP', 1)
             DailyDiscoveryRepository.cleanup_old_logs(days_to_keep)
         except Exception as e:
@@ -2349,7 +2349,7 @@ class JobScheduler:
         # --- Daily Discovery Execution Logic ---
         try:
             # Initialize logs for today
-            from repository import DailyDiscoveryRepository
+            from infrastructure.persistence.repositories import DailyDiscoveryRepository
             today_str = datetime.now().strftime('%Y-%m-%d')
             sports = ['basketball', 'tennis', 'baseball', 'ice-hockey', 'american-football', 'football', 'handball']
             DailyDiscoveryRepository.initialize_sports_for_date(today_str, sports)
@@ -2375,7 +2375,7 @@ class JobScheduler:
         """Job F: Clean up OddsPortal league cache once every three days (runs at 05:00)"""
         logger.info("Starting Job F: Clean up OddsPortal league cache")
         try:
-            from repository import OddsPortalCacheRepository
+            from infrastructure.persistence.repositories import OddsPortalCacheRepository
             # We keep the caches for 3 days to match the execution frequency
             OddsPortalCacheRepository.cleanup_old_caches(retention_days=3)
         except Exception as e:
@@ -2385,7 +2385,7 @@ class JobScheduler:
         """Job E_Retry: Retries failed daily discovery sports"""
         logger.info("Starting Job E_Retry: Checking for failed daily discovery sports")
         try:
-            from repository import DailyDiscoveryRepository
+            from infrastructure.persistence.repositories import DailyDiscoveryRepository
             from today_sport_extractor import run_daily_discovery
             today = datetime.now().strftime('%Y-%m-%d')
             failed_sports = DailyDiscoveryRepository.get_pending_sports(today)
@@ -2461,7 +2461,7 @@ class JobScheduler:
                                 
                                 # Save all markets to new markets/market_choices tables
                                 try:
-                                    from repository import MarketRepository
+                                    from infrastructure.persistence.repositories import MarketRepository
                                     MarketRepository.save_markets_from_response(event_data.id, final_odds_response)
                                 except Exception as e:
                                     logger.warning(f"Error saving markets to DB for event {event_data.id}: {e}")

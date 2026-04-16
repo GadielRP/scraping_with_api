@@ -14,7 +14,7 @@ MODULAR DESIGN:
 import logging
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
-from repository import EventRepository
+from infrastructure.persistence.repositories import EventRepository
 from sofascore_api2 import api_client
 from alert_system import pre_start_notifier
 from sqlalchemy.orm import Session

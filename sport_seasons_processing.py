@@ -15,7 +15,7 @@ The script fetches all events for a given season and:
 """
 
 from sofascore_api import api_client
-from repository import ResultRepository, MarketRepository
+from infrastructure.persistence.repositories import ResultRepository, MarketRepository
 from database import db_manager
 from typing import Dict, List
 import logging
@@ -188,7 +188,7 @@ def process_season(tournament_id: int, season_id: int):
     
     # Step 3: Process events individually and fetch odds for each
     logger.info(f"Starting to process {len(events)} events with discovery_source='scraping_on_command'")
-    from repository import EventRepository
+    from infrastructure.persistence.repositories import EventRepository
     
     processed_count = 0
     skipped_count = 0

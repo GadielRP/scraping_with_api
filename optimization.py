@@ -15,7 +15,7 @@ from typing import List, Optional, Dict, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from sofascore_api import api_client
-from repository import EventRepository, OddsRepository
+from infrastructure.persistence.repositories import EventRepository, OddsRepository
 
 logger = logging.getLogger(__name__)
 

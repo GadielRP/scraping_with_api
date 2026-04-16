@@ -22,7 +22,7 @@ from datetime import datetime
 import logging
 from typing import Dict, List, Optional
 import requests
-from repository import EventRepository
+from infrastructure.persistence.repositories import EventRepository
 
 logger = logging.getLogger(__name__)
 
@@ -569,7 +569,7 @@ class PreStartNotification:
         try:
             from config import Config
             from oddsportal_config import SEASON_ODDSPORTAL_MAP
-            from repository import EventRepository
+            from infrastructure.persistence.repositories import EventRepository
         except ImportError:
             Config = None
 
@@ -1155,7 +1155,7 @@ class PreStartNotification:
         try:
             from config import Config
             from oddsportal_config import SEASON_ODDSPORTAL_MAP
-            from repository import EventRepository
+            from infrastructure.persistence.repositories import EventRepository
         except ImportError:
             Config = None
 

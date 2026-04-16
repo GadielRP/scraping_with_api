@@ -22,7 +22,7 @@ from config import Config
 # Import database dependencies
 from database import db_manager
 from models import Event
-from repository import EventRepository
+from infrastructure.persistence.repositories import EventRepository
 
 # Configure logging
 logging.basicConfig(

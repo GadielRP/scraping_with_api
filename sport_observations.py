@@ -19,7 +19,7 @@ All functions are designed to be completely fail-safe and not break main applica
 
 import logging
 from typing import Dict, List, Optional
-from repository import ObservationRepository
+from infrastructure.persistence.repositories import ObservationRepository
 
 logger = logging.getLogger(__name__)
 

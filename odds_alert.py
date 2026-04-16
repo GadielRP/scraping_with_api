@@ -458,7 +458,7 @@ class OddsAlertProcessor:
             # If the event's season is tracked in OddsPortal, fetch and append bookie odds
             try:
                 from oddsportal_config import SEASON_ODDSPORTAL_MAP
-                from repository import MarketRepository
+                from infrastructure.persistence.repositories import MarketRepository
                 
                 season_id = event_data.get('season_id')
                 if season_id and season_id in SEASON_ODDSPORTAL_MAP:
