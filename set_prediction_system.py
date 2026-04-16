@@ -16,7 +16,7 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from infrastructure.persistence.repositories import EventRepository
 from sofascore_api2 import api_client
-from alert_system import pre_start_notifier
+from modules.alerts import pre_start_notifier
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from models import Event

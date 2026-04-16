@@ -9,7 +9,8 @@ from config import Config
 from proxy_manager import ProxyIdentityManager
 from odds_utils import fractional_to_decimal
 from sport_observations import sport_observations_manager
-from alert_system import pre_start_notifier
+from modules.alerts import pre_start_notifier
+from modules.alerts.alerts_formatter.time_correction_alert import send_time_correction_message
 from infrastructure.persistence.repositories import EventRepository, SeasonRepository
 from sport_classifier import sport_classifier
 
@@ -1268,7 +1269,7 @@ class SofaScoreAPI:
                     logger.info(f"✅ Successfully updated starting time for event {event_id}")
                     if send_alert:
                         logger.info(f"🕐 Sending correction alert for event {event_id}")
-                        pre_start_notifier.send_time_correction_message(event_id, current_starting_time, new_starting_time)
+                        send_time_correction_message(pre_start_notifier, event_id, current_starting_time, new_starting_time)
                     
                     return False # Time was updated, don't continue with original odds extraction flow
                 else:

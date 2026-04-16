@@ -1,2 +1,5 @@
-# Modules package
-# This file makes the modules directory a Python package
+"""Alerts package."""
+
+from .telegram_notifier import PreStartNotification, pre_start_notifier
+
+__all__ = ["PreStartNotification", "pre_start_notifier"]

@@ -12,7 +12,9 @@ from sofascore_api import api_client
 import sofascore_api2  # Import to attach new methods to api_client
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, ObservationRepository
 from odds_utils import process_event_odds_from_dropping_odds
-from alert_system import pre_start_notifier
+from modules.alerts import pre_start_notifier
+from modules.alerts.alerts_formatter.dual_process_alert import send_dual_process_alerts
+from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
 import os
 from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
@@ -1347,7 +1349,7 @@ class JobScheduler:
             # so events don't block each other while waiting for OP data.
             # ========================================
             from odds_alert import odds_alert_processor
-            from alert_system import pre_start_notifier
+            from modules.alerts import pre_start_notifier
             
             def _send_event_alerts(result):
                 """Send all alerts for a single event. Runs in its own thread."""
@@ -1431,7 +1433,7 @@ class JobScheduler:
                 # 2) Send Matchup streak alert for this event
                 if streak_analysis and should_send_streak_alert:
                     logger.info(f"📊 Sending Matchup streak alert for event {event_obj.id} (2nd in group)")
-                    pre_start_notifier.send_matchup_streak_alerts([streak_analysis])
+                    send_matchup_streak_alerts(pre_start_notifier, [streak_analysis])
                 
                 # 3) Send dual process alert for this event
                 if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction or 
@@ -2196,7 +2198,7 @@ class JobScheduler:
             # Send Matchup streak alert if available
             if streak_analysis and should_send_streak_alert:
                 logger.info(f"📊 Sending Matchup streak alert for rescheduled event {event.id}")
-                pre_start_notifier.send_matchup_streak_alerts([streak_analysis])
+                send_matchup_streak_alerts(pre_start_notifier, [streak_analysis])
             
             # Send dual process alert only at allowed minutes {30, 0}
             if should_send:
@@ -2574,10 +2576,9 @@ class JobScheduler:
             dual_reports: List of DualProcessReport objects
         """
         try:
-            from alert_system import pre_start_notifier
+            from modules.alerts import pre_start_notifier
             
-            # Use alert_system to send dual process alerts (modular approach)
-            success = pre_start_notifier.send_dual_process_alerts(dual_reports)
+            success = send_dual_process_alerts(pre_start_notifier, dual_reports)
             
             if success:
                 logger.info(f"✅ Dual process alerts sent successfully")

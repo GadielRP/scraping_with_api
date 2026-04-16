@@ -154,7 +154,7 @@ logging.getLogger(__name__).info(
 from database import db_manager
 from models import create_or_replace_views, create_or_replace_materialized_views, refresh_materialized_views
 from scheduler import job_scheduler
-from alert_system import pre_start_notifier
+from modules.alerts import pre_start_notifier
 from infrastructure.persistence.repositories import EventRepository, OddsRepository
 
 

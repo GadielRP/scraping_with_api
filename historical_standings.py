@@ -240,7 +240,7 @@ MLB_AMERICAN_LEAGUE = {
     # AL Central
     'Chicago White Sox', 'Cleveland Guardians', 'Detroit Tigers', 'Kansas City Royals', 'Minnesota Twins',
     # AL West
-    'Houston Astros', 'Los Angeles Angels', 'Oakland Athletics', 'Seattle Mariners', 'Texas Rangers'
+    'Houston Astros', 'Los Angeles Angels', 'Athletics', 'Seattle Mariners', 'Texas Rangers'
 }
 
 MLB_NATIONAL_LEAGUE = {
