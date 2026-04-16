@@ -38,7 +38,7 @@ class SetPredictionSystem:
         self.tracked_events = set()  # Events that have already triggered alerts
         logger.info("Set Prediction System initialized")
     
-    def get_events_by_sport_and_minutes_range(
+    def get_ending_events_by_sport_and_minutes_range(
         self,
         sport: str,
         competition: Optional[str] = None,
@@ -65,7 +65,7 @@ class SetPredictionSystem:
             
         Example:
             # Get NBA games that started 105-140 minutes ago and haven't sent alert yet
-            events = get_events_by_sport_and_minutes_range('Basketball', 'NBA', 105, 140, alert_sent=False)
+            events = get_ending_events_by_sport_and_minutes_range('Basketball', 'NBA', 105, 140, alert_sent=False)
         """
         try:
             with db_manager.get_session() as session:
@@ -259,7 +259,7 @@ class SetPredictionSystem:
             # Get ALL NBA games that started up to 140 minutes ago (max window for discovery)
             # This allows us to see all recent NBA games in logs
             # Filter to only events where alert_sent = False (haven't sent alert yet)
-            all_nba_events = self.get_events_by_sport_and_minutes_range(
+            all_nba_events = self.get_ending_events_by_sport_and_minutes_range(
                 sport='Basketball',
                 competition='NBA',
                 min_minutes_ago=0,  # Start from now
