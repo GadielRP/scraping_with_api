@@ -1350,7 +1350,7 @@ class JobScheduler:
             # Each event's alert group (Odds → matchup streak analysis → Dual) runs in its own thread
             # so events don't block each other while waiting for OP data.
             # ========================================
-            from odds_alert import odds_alert_processor
+            from modules.alerts.alerts_formatter.odds_alert import send_odds_alert
             from modules.alerts import pre_start_notifier
             
             def _send_event_alerts(result):
@@ -1428,7 +1428,7 @@ class JobScheduler:
                         }
                         
                         op_data = op_data_cache.get(event_obj.id) if op_data_cache else None
-                        odds_alert_processor.send_odds_alert(event_data_for_odds, odds_response, minutes_until_start, op_data=op_data)
+                        send_odds_alert(event_data_for_odds, odds_response, minutes_until_start, op_data=op_data)
                     except Exception as e:
                         logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
                 
