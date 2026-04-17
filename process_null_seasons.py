@@ -17,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger("process_null_seasons")
 
 from database import db_manager
-from models import Event, refresh_materialized_views
+from infrastructure.persistence.models import Event, refresh_materialized_views
 from sofascore_api import api_client
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, MarketRepository
 from sport_observations import sport_observations_manager

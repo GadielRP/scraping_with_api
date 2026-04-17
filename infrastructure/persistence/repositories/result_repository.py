@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Dict
 
-from models import Result
+from infrastructure.persistence.models import Result
 from database import db_manager
 
 logger = logging.getLogger(__name__)

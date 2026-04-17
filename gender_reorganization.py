@@ -21,7 +21,7 @@ from sofascore_api import api_client
 from infrastructure.settings import Config
 # Import database dependencies
 from database import db_manager
-from models import Event
+from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import EventRepository
 
 # Configure logging

@@ -6,7 +6,7 @@ from typing import Generator
 import logging
 import traceback
 from infrastructure.settings import Config
-from models import Base
+from infrastructure.persistence.models import Base
 
 logger = logging.getLogger(__name__)
 
@@ -411,7 +411,7 @@ class DatabaseManager:
                     logger.warning(f"  Warning renaming constraints: {e}")
                 
                 # 3. Create new table using CURRENT TRANSACTION connection
-                from models import Market
+                from infrastructure.persistence.models import Market
                 Market.__table__.create(session.connection())
                 logger.info("  2️⃣  Created new 'markets' table with correct column order")
                 

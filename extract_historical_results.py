@@ -62,7 +62,7 @@ from sqlalchemy import and_, or_, func, cast, Date
 
 # Import existing project modules
 from database import db_manager
-from models import Event, Result
+from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.repositories import ResultRepository, EventRepository
 from sofascore_api import api_client
 try:

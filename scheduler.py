@@ -20,11 +20,11 @@ from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
 from alert_engine import alert_engine
 from timezone_utils import get_local_now_aware, convert_utc_to_local
-from models import refresh_materialized_views
+from infrastructure.persistence.models import refresh_materialized_views
 from database import db_manager
 from prediction_engine import prediction_engine
 from database import db_manager
-from models import PredictionLog, refresh_materialized_views
+from infrastructure.persistence.models import PredictionLog, refresh_materialized_views
 from today_sport_extractor import run_daily_discovery
 # Import basketball 4Q monitor for in-game alerts
 from modules.alerts.basketball_4q import basketball_4q_monitor
@@ -1452,7 +1452,7 @@ class JobScheduler:
                         # Log predictions for successful Process 1 reports
                         from modules.prediction import prediction_logger
                         from database import db_manager
-                        from models import PredictionLog
+                        from infrastructure.persistence.models import PredictionLog
                         
                         if (dual_report.process1_report and 
                             dual_report.process1_report.get('status') == 'success'):
@@ -1794,7 +1794,7 @@ class JobScheduler:
             True if successfully reset, False otherwise
         """
         try:
-            from models import Event
+            from infrastructure.persistence.models import Event
             
             with db_manager.get_session() as session:
                 event = session.query(Event).filter(Event.id == event_id).first()
@@ -2225,7 +2225,7 @@ class JobScheduler:
                         logger.info(f"✅ Prediction logged for rescheduled event {event.id} (0 minutes from start)")
                     else:
                         # Check if it's a duplicate (already exists) vs. actual failure
-                        from models import PredictionLog
+                        from infrastructure.persistence.models import PredictionLog
                         with db_manager.get_session() as session:
                             existing = session.query(PredictionLog).filter_by(event_id=event.id).first()
                             if existing:
@@ -2330,7 +2330,7 @@ class JobScheduler:
             
             # Refresh materialized views for alerts after results are updated
             logger.info("🔄 Refreshing alert materialized views...")
-            from models import refresh_materialized_views
+            from infrastructure.persistence.models import refresh_materialized_views
             from database import db_manager
             refresh_materialized_views(db_manager.engine)
             logger.info("✅ Alert data refreshed")

@@ -79,7 +79,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             if db_healthy:
                 try:
                     with db_manager.get_session() as session:
-                        from models import Event, EventOdds, Result
+                        from infrastructure.persistence.models import Event, EventOdds, Result
                         stats = {
                             'events_count': session.query(Event).count(),
                             'odds_count': session.query(EventOdds).count(),

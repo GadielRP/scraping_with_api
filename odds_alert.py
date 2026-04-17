@@ -506,7 +506,7 @@ class OddsAlertProcessor:
         """
         try:
             from database import db_manager
-            from models import Event
+            from infrastructure.persistence.models import Event
             
             with db_manager.get_session() as session:
                 event = session.query(Event).filter(Event.id == event_id).first()
@@ -527,7 +527,7 @@ class OddsAlertProcessor:
     #     """Delete event from database (0 markets = invalid event)."""
     #     try:
     #         from database import db_manager
-    #         from models import Event
+    #         from infrastructure.persistence.models import Event
     #         
     #         with db_manager.get_session() as session:
     #             event = session.query(Event).filter(Event.id == event_id).first()

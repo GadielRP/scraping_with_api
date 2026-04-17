@@ -152,7 +152,7 @@ logging.getLogger(__name__).info(
 
 
 from database import db_manager
-from models import create_or_replace_views, create_or_replace_materialized_views, refresh_materialized_views
+from infrastructure.persistence.models import create_or_replace_views, create_or_replace_materialized_views, refresh_materialized_views
 from scheduler import job_scheduler
 from modules.alerts import pre_start_notifier
 from infrastructure.persistence.repositories import EventRepository, OddsRepository
@@ -383,7 +383,7 @@ def show_status():
         odds_repo = OddsRepository()
         
         with db_manager.get_session() as session:
-            from models import Event, EventOdds, Result
+            from infrastructure.persistence.models import Event, EventOdds, Result
             event_count = session.query(Event).count()
             odds_count = session.query(EventOdds).count()
             result_count = session.query(Result).count()
@@ -419,7 +419,7 @@ def show_events(limit: int = 10):
     
     try:
         with db_manager.get_session() as session:
-            from models import Event, EventOdds
+            from infrastructure.persistence.models import Event, EventOdds
             from sqlalchemy.orm import joinedload
             
             events = session.query(Event).options(

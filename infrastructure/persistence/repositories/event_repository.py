@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_, or_, event, DDL
 from sqlalchemy.orm import Session, joinedload
 
-from models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season, Base
+from infrastructure.persistence.models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season, Base
 from database import db_manager
 from timezone_utils import get_local_now
 from .season_repository import SeasonRepository

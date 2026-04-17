@@ -139,7 +139,7 @@ class AlertEngine:
         if not hasattr(event, 'event_odds') or event.event_odds is None:
             try:
                 with db_manager.get_session() as session:
-                    from models import EventOdds
+                    from infrastructure.persistence.models import EventOdds
                     event.event_odds = session.query(EventOdds).filter_by(event_id=event.id).first()
             except Exception as e:
                 logger.error(f"Error loading event odds for {event.id}: {e}")
@@ -214,7 +214,7 @@ class AlertEngine:
         """Get variations for an event from event_odds table"""
         try:
             with db_manager.get_session() as session:
-                from models import EventOdds
+                from infrastructure.persistence.models import EventOdds
                 odds = session.query(EventOdds).filter_by(event_id=event_id).first()
                 if not odds:
                     return None

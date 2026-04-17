@@ -89,7 +89,7 @@ class Process2Engine:
             if not hasattr(event, 'event_odds') or event.event_odds is None:
                 try:
                     with db_manager.get_session() as session:
-                        from models import EventOdds
+                        from infrastructure.persistence.models import EventOdds
                         event.event_odds = session.query(EventOdds).filter_by(event_id=event.id).first()
                 except Exception as e:
                     logger.error(f"❌ Error loading event odds for {event.id}: {e}")

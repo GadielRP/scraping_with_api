@@ -44,7 +44,7 @@ class PredictionLogger:
         """
         try:
             from database import db_manager
-            from models import PredictionLog
+            from infrastructure.persistence.models import PredictionLog
             
             # Check if prediction already exists for this event
             with db_manager.get_session() as session:
@@ -157,7 +157,7 @@ class PredictionLogger:
         """
         try:
             from database import db_manager
-            from models import PredictionLog, Result, Event
+            from infrastructure.persistence.models import PredictionLog, Result, Event
             from datetime import datetime, timedelta
             
             with db_manager.get_session() as session:

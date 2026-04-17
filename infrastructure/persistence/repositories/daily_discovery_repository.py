@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 
-from models import DailyDiscoveryLog
+from infrastructure.persistence.models import DailyDiscoveryLog
 from database import db_manager
 from timezone_utils import get_local_now
 

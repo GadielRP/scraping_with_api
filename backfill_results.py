@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from database import db_manager
-from models import Event, Result
+from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.repositories import ResultRepository, EventRepository, OddsRepository
 from sofascore_api import api_client, SofaScoreNotFoundException, SofaScoreRateLimitException
 
