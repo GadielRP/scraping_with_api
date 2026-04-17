@@ -15,7 +15,7 @@ from shared.odds_utils import fractional_to_decimal
 from infrastructure.persistence.repositories import SeasonRepository
 
 from .constants import is_season_collected
-from .standings_simulator import historical_form_processor
+from .historical_form_service import historical_form_processor
 
 logger = logging.getLogger(__name__)
 
@@ -578,7 +578,7 @@ def get_team_last_results_by_id(
     """
     # =====================================================================
     # ROUTE 1: DB-based form retrieval for collected seasons
-    # Uses standings_simulator module instead of API calls
+    # Uses the DB-backed historical form service instead of API calls
     # =====================================================================
     if season_id and is_season_collected(int(season_id)):
         logger.info(f"📊 Using DB-based form retrieval for {team_name} (season {season_id} is collected)")
