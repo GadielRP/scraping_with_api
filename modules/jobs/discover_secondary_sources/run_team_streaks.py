@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from optimization import parallel_team_event_fetching
 from modules.sofascore import api_client
+from modules.jobs.parallelism import parallel_team_event_fetching
 
 logger = logging.getLogger(__name__)
 

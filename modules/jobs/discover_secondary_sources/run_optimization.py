@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import logging
 
-from optimization import process_events_only, process_with_batch_cleanup, process_with_parallel_db_ops
+from modules.jobs.parallelism import (
+    process_events_only,
+    process_with_batch_cleanup,
+    process_with_parallel_db_ops,
+)
 
 logger = logging.getLogger(__name__)
 

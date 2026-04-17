@@ -1,11 +1,5 @@
-"""Compatibility wrapper for discovery optimization helpers.
-
-New code should import from:
-- modules.jobs.parallelism
-"""
-
-from modules.jobs.parallelism import (
-    filter_upcoming_events,
+from .event_filters import filter_upcoming_events
+from .discovery_optimization import (
     batch_process_odds,
     batch_upsert_events,
     parallel_odds_checking,
@@ -14,6 +8,8 @@ from modules.jobs.parallelism import (
     process_with_aggressive_parallel,
     process_with_batch_cleanup,
     process_with_parallel_db_ops,
+)
+from .optimization_recommendations import (
     OPTIMIZATION_STRATEGIES,
     analyze_discovery_performance,
     calculate_expected_speedup,
@@ -21,3 +17,4 @@ from modules.jobs.parallelism import (
     get_recommended_strategy,
     should_skip_source,
 )
+

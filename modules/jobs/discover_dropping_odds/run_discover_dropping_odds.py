@@ -8,8 +8,8 @@ import os
 from datetime import datetime
 
 from infrastructure.persistence.repositories import EventRepository, OddsRepository
-from optimization import filter_upcoming_events, process_with_parallel_db_ops
 from modules.sofascore import api_client
+from modules.jobs.parallelism import filter_upcoming_events, process_with_parallel_db_ops
 
 logger = logging.getLogger(__name__)
 
