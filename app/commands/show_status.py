@@ -2,7 +2,7 @@ import logging
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, EventOdds, Result
-from scheduler import job_scheduler
+from infrastructure.scheduler import job_scheduler
 
 
 def show_status():
@@ -38,4 +38,3 @@ def show_status():
         print("\n" + "=" * 40)
     except Exception as exc:
         logger.error(f"Error showing status: {exc}")
-

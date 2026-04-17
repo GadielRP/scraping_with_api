@@ -12,7 +12,6 @@ from decimal import Decimal
 from infrastructure.persistence.repositories import EventRepository, MarketRepository
 from infrastructure.settings import Config
 from oddsportal_config import SEASON_ODDSPORTAL_MAP
-from modules.jobs.pre_start_check_job.odds_extraction import odds_extractor
 from modules.alerts import pre_start_notifier
 
 logger = logging.getLogger(__name__)
@@ -58,6 +57,7 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
             return False
         
         # Extract all markets from the response
+        from modules.jobs.pre_start_check_job.odds_extraction import odds_extractor
         markets = odds_extractor.extract_all_markets(odds_response)
         
         # SMART ALERT FILTERING: Handle 0 markets

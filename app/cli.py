@@ -15,7 +15,7 @@ def run_discovery():
     logger = logging.getLogger(__name__)
     logger.info("Running event discovery...")
 
-    from scheduler import job_scheduler
+    from infrastructure.scheduler import job_scheduler
 
     job_scheduler.run_job_discovery_now()
 
@@ -25,7 +25,7 @@ def run_discovery2():
     logger = logging.getLogger(__name__)
     logger.info("Running event discovery 2 (streaks, h2h, winning odds)...")
 
-    from scheduler import job_scheduler
+    from infrastructure.scheduler import job_scheduler
 
     job_scheduler.run_job_discovery2_now()
 
@@ -35,7 +35,7 @@ def run_pre_start_check():
     logger = logging.getLogger(__name__)
     logger.info("Running pre-start check...")
 
-    from scheduler import job_scheduler
+    from infrastructure.scheduler import job_scheduler
 
     job_scheduler.run_job_pre_start_check_now()
 
@@ -45,7 +45,7 @@ def run_midnight_sync():
     logger = logging.getLogger(__name__)
     logger.info("Running midnight results collection...")
 
-    from scheduler import job_scheduler
+    from infrastructure.scheduler import job_scheduler
 
     job_scheduler.run_job_midnight_sync_now()
 
@@ -55,7 +55,7 @@ def run_results_collection():
     logger = logging.getLogger(__name__)
     logger.info("Running results collection...")
 
-    from scheduler import job_scheduler
+    from infrastructure.scheduler import job_scheduler
 
     job_scheduler.run_job_results_collection_now()
 
@@ -65,7 +65,7 @@ def run_results_collection_all():
     logger = logging.getLogger(__name__)
     logger.info("Running comprehensive results collection...")
 
-    from scheduler import job_scheduler
+    from infrastructure.scheduler import job_scheduler
 
     job_scheduler.run_job_results_collection_all_now()
 
@@ -82,7 +82,7 @@ def run_results_for_date(date_str: str):
 
     logger.info(f"Running results collection for date: {target_date}")
 
-    from scheduler import job_scheduler
+    from infrastructure.scheduler import job_scheduler
 
     job_scheduler.run_job_results_collection_for_date_now(target_date)
 
@@ -92,7 +92,7 @@ def run_daily_discovery():
     logger = logging.getLogger(__name__)
     logger.info("Running daily discovery (today's scheduled events with odds)...")
 
-    from scheduler import job_scheduler
+    from infrastructure.scheduler import job_scheduler
 
     job_scheduler.run_job_daily_discovery_now()
 
@@ -102,7 +102,7 @@ def start_scheduler():
     logger = logging.getLogger(__name__)
     logger.info("Starting job scheduler...")
 
-    from scheduler import job_scheduler
+    from infrastructure.scheduler import job_scheduler
 
     job_scheduler.start()
 
@@ -284,4 +284,3 @@ __all__ = [
     "run_results_for_date",
     "start_scheduler",
 ]
-
