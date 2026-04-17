@@ -9,7 +9,7 @@ from datetime import datetime
 
 from infrastructure.persistence.repositories import EventRepository, OddsRepository
 from optimization import filter_upcoming_events, process_with_parallel_db_ops
-from sofascore_api import api_client
+from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)
 

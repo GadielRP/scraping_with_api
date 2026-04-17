@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from sofascore_api import api_client
+from modules.sofascore import api_client
 from infrastructure.persistence.repositories import SeasonRepository
 from infrastructure.settings import Config
 

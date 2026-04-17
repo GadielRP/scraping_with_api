@@ -3,8 +3,7 @@ from typing import Dict, List, Optional, Set
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-import sofascore_api2  # Import to attach methods to SofaScoreAPI class
-from sofascore_api import api_client
+from modules.sofascore import api_client
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, DailyDiscoveryRepository
 from shared.odds_utils import fractional_to_decimal, validate_odds_data
 from shared.timezone_utils import get_local_now_aware
@@ -19,7 +18,7 @@ class TodaySportExtractor:
     """
     
     def __init__(self):
-        self.api_client = api_client  # Uses api_client which has methods from both sofascore_api and sofascore_api2
+        self.api_client = api_client
     
     def _process_odds_response(self, odds_response: Dict) -> Dict[int, Dict]:
         """

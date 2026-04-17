@@ -10,7 +10,8 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository
 from modules.prediction import prediction_logger
-from sofascore_api import api_client
+from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
+from modules.sofascore import api_client
 from sport_observations import sport_observations_manager
 
 logger = logging.getLogger(__name__)
@@ -88,9 +89,7 @@ def run_results_collection_for_date(target_date) -> None:
             try:
                 final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
                 if final_odds_response:
-                    final_odds_data = api_client.extract_final_odds_from_response(
-                        final_odds_response, initial_odds_extraction=True
-                    )
+                    final_odds_data = extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
                     if final_odds_data:
                         upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
                         if upserted_id:

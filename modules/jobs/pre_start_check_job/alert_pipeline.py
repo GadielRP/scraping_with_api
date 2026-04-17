@@ -17,7 +17,7 @@ from modules.alerts.alerts_formatter.odds_alert import send_odds_alert
 from modules.alerts.matchup_streak_analysis import build_matchup_streak_context, should_send_streak_alert
 from modules.prediction import prediction_logger
 from oddsportal_config import SEASON_ODDSPORTAL_MAP
-from sofascore_api import api_client
+from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)
 

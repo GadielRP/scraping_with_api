@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from optimization import filter_upcoming_events
-from sofascore_api import api_client
+from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)
 

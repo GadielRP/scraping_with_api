@@ -10,7 +10,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 from datetime import timedelta
 
-from sofascore_api import api_client
+from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)
 

@@ -64,9 +64,10 @@ from sqlalchemy import and_, or_, func, cast, Date
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.repositories import ResultRepository, EventRepository
-from sofascore_api import api_client
+from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
+from modules.sofascore import api_client
 try:
-    from sofascore_api import SofaScoreRateLimitException
+    from modules.sofascore import SofaScoreRateLimitException
 except ImportError:
     # If not available, define a dummy class
     class SofaScoreRateLimitException(Exception):
@@ -700,7 +701,7 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
                         pass
                     
                     if final_odds_response:
-                        final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
+                        final_odds_data = extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
                         if final_odds_data:
                             if test_mode:
                                 # In test mode, just track what would be updated (don't save)

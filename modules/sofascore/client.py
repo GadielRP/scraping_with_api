@@ -1,0 +1,388 @@
+"""Transport and compatibility facade for SofaScore."""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+from curl_cffi import requests
+
+from infrastructure.network import ProxyIdentityManager
+from infrastructure.settings import Config
+
+from .discovery_feeds import (
+    extract_events_and_odds_from_dropping_response,
+    extract_events_from_high_value_streaks,
+    get_dropping_odds_with_odds_and_events_response,
+    get_h2h_events,
+    get_high_value_streaks_events,
+    get_team_streaks_events,
+    get_winning_odds_events,
+)
+from .event_details import get_event_details, get_event_results, update_event_information_from_response
+from .event_normalizer import clean_competition, get_event_information, get_gender
+from .exceptions import SofaScoreNotFoundException, SofaScoreRateLimitException
+from .h2h import get_h2h_events_for_event
+from .results_parser import extract_results_from_response
+from .schedule_feeds import (
+    get_live_events_response_per_sport,
+    get_today_sport_events_odds_response,
+    get_today_sport_events_response,
+)
+from .standings import get_standings_response, process_standings_response
+from .team_history import get_nearest_event_for_team, get_team_ids_from_team_streaks, get_team_last_results_response
+from .winning_odds import get_winning_odds_response
+from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
+
+logger = logging.getLogger(__name__)
+
+
+class SofaScoreAPI:
+    def __init__(self):
+        self.base_url = Config.SOFASCORE_BASE_URL
+        self.session = requests.Session(impersonate="chrome120")
+        self.last_request_time = 0
+        self._rate_limit_lock = threading.Lock()
+        self.proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
+        self.proxy_identity = None
+        self._proxy_error_streak = 0
+        self._setup_session(reason="initial_setup")
+
+    def _setup_session(self, rotate_proxy_identity: bool = False, reason: str = "runtime"):
+        self.session = requests.Session(impersonate="chrome120")
+
+        if not self.proxy_manager.proxy_enabled:
+            logger.info("Proxy disabled - using direct connection")
+            self.proxy_identity = None
+            return
+
+        self.proxy_identity = self.proxy_manager.get_identity(
+            rotate_session=rotate_proxy_identity,
+            reason=reason,
+        )
+
+        proxies = self.proxy_manager.build_requests_proxies(self.proxy_identity)
+        if not proxies:
+            logger.warning("Proxy is enabled but proxy identity is not valid; using direct connection")
+            self.proxy_identity = None
+            return
+
+        self.session.proxies = proxies
+        logger.info("SofaScore proxy ready (%s)", self.proxy_manager.describe_identity(self.proxy_identity))
+
+    def _rotate_proxy_identity(self, reason: str):
+        if not self.proxy_manager.proxy_enabled:
+            return
+        self._setup_session(rotate_proxy_identity=True, reason=reason)
+        self._proxy_error_streak = 0
+
+    def _rate_limit(self):
+        with self._rate_limit_lock:
+            current_time = time.time()
+            time_since_last = current_time - self.last_request_time
+            min_interval = Config.REQUEST_DELAY_SECONDS
+
+            if time_since_last < min_interval:
+                sleep_time = min_interval - time_since_last
+                logger.debug("Rate limiting: sleeping for %.2f seconds", sleep_time)
+                time.sleep(sleep_time)
+
+            self.last_request_time = time.time()
+
+    def _extract_endpoint_event_id(self, endpoint: str) -> int:
+        parts = endpoint.split("/")
+        if len(parts) >= 3 and parts[1] == "event" and parts[2].isdigit():
+            return int(parts[2])
+        return 0
+
+    def _make_request(
+        self,
+        endpoint: str,
+        params: Optional[Dict] = None,
+        no_retry_on_404: bool = False,
+        delete_event_on_404: bool = False,
+    ) -> Optional[Dict]:
+        url = f"{self.base_url}{endpoint}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
+
+        for attempt in range(Config.MAX_RETRIES):
+            try:
+                self._rate_limit()
+                logger.debug("Making request to: %s", url)
+                response = self.session.get(url, headers=headers, params=params, timeout=30)
+
+                if response.status_code == 200:
+                    self._proxy_error_streak = 0
+                    return response.json()
+
+                if response.status_code == 407:
+                    wait_time = min(30 * (2**attempt), 300)
+                    logger.warning(
+                        "Proxy authentication error (407) for %s, waiting %ss, attempt %s/%s",
+                        endpoint,
+                        wait_time,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                    )
+                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                        self._rotate_proxy_identity(reason=f"http_407_attempt_{attempt + 1}_{endpoint}")
+                    if attempt < Config.MAX_RETRIES - 1:
+                        time.sleep(wait_time)
+                        continue
+                    break
+
+                if response.status_code == 429:
+                    wait_time = min(60 * (2**attempt), 600)
+                    logger.warning(
+                        "Rate limited (429) for %s, waiting %ss, attempt %s/%s",
+                        endpoint,
+                        wait_time,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                    )
+                    if attempt < Config.MAX_RETRIES - 1:
+                        time.sleep(wait_time)
+                        continue
+                    break
+
+                if response.status_code == 404:
+                    if no_retry_on_404:
+                        logger.debug("HTTP 404 for %s - skipping retry as requested", endpoint)
+                    else:
+                        logger.warning("HTTP 404 for %s - skipping retries", endpoint)
+                    raise SofaScoreNotFoundException(self._extract_endpoint_event_id(endpoint))
+
+                if response.status_code == 403:
+                    wait_time = min(30 * (2**attempt), 300)
+                    logger.warning(
+                        "HTTP 403 for %s, waiting %ss, attempt %s/%s",
+                        endpoint,
+                        wait_time,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                    )
+                    if attempt < Config.MAX_RETRIES - 1:
+                        time.sleep(wait_time)
+                        continue
+                    raise SofaScoreRateLimitException(self._extract_endpoint_event_id(endpoint))
+
+                if response.status_code in [500, 502, 503, 504, 522, 525]:
+                    wait_time = min(5 * (2**attempt), 60)
+                    logger.warning(
+                        "HTTP %s for %s, waiting %ss, attempt %s/%s",
+                        response.status_code,
+                        endpoint,
+                        wait_time,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                    )
+                    if attempt < Config.MAX_RETRIES - 1:
+                        time.sleep(wait_time)
+                        continue
+                    break
+
+                logger.error("HTTP %s for %s: %s", response.status_code, endpoint, response.text)
+                break
+            except (SofaScoreNotFoundException, SofaScoreRateLimitException):
+                raise
+            except Exception as exc:
+                logger.error("Unexpected error for %s: %s", endpoint, exc)
+                break
+
+        return None
+
+    def _request_json(self, endpoint: str, params: Optional[Dict] = None, no_retry_on_404: bool = False) -> Optional[Dict]:
+        try:
+            return self._make_request(endpoint, params=params, no_retry_on_404=no_retry_on_404)
+        except (SofaScoreNotFoundException, SofaScoreRateLimitException) as exc:
+            logger.warning("%s", exc)
+            return None
+
+    def clean_competition(self, competition: str) -> str:
+        return clean_competition(competition)
+
+    def get_gender(self, home_team: Dict, away_team: Dict) -> str:
+        return get_gender(home_team, away_team)
+
+    def get_event_information(self, event: Dict, discovery_source: str = "dropping_odds") -> Dict:
+        return get_event_information(event, discovery_source)
+
+    def get_dropping_odds_with_odds_and_events_response(self, sport: str = None) -> Optional[Dict]:
+        return get_dropping_odds_with_odds_and_events_response(self, sport=sport)
+
+    def get_high_value_streaks_events(self):
+        return get_high_value_streaks_events(self)
+
+    def get_team_streaks_events(self):
+        return get_team_streaks_events(self)
+
+    def get_h2h_events(self):
+        return get_h2h_events(self)
+
+    def get_winning_odds_events(self):
+        return get_winning_odds_events(self)
+
+    def get_team_ids_from_team_streaks(self, response: Dict) -> List[int]:
+        return get_team_ids_from_team_streaks(response)
+
+    def get_nearest_event_for_team(self, team_id: int) -> Optional[int]:
+        return get_nearest_event_for_team(self, team_id)
+
+    def get_event_details(self, event_id: int) -> Optional[Dict]:
+        return get_event_details(self, event_id)
+
+    def get_live_events_response_per_sport(self, sport: str) -> Optional[Dict]:
+        return get_live_events_response_per_sport(self, sport)
+
+    def get_team_last_results_response(
+        self,
+        team_id: int,
+        is_tennis_singles: bool = False,
+        is_tennis_doubles: bool = False,
+        fetch_index: int = 0,
+    ) -> Optional[Dict]:
+        return get_team_last_results_response(
+            self,
+            team_id,
+            is_tennis_singles=is_tennis_singles,
+            is_tennis_doubles=is_tennis_doubles,
+            fetch_index=fetch_index,
+        )
+
+    def get_winning_odds_response(self, event_id: int) -> Optional[Dict]:
+        return get_winning_odds_response(self, event_id)
+
+    def get_standings_response(self, season_id: int, unique_tournament_id: int) -> Optional[Dict]:
+        return get_standings_response(self, season_id, unique_tournament_id)
+
+    def process_standings_response(
+        self,
+        standings: Optional[List[Dict]],
+        home_team_id: Optional[int],
+        away_team_id: Optional[int],
+    ) -> Tuple[Optional[Dict], Optional[Dict]]:
+        return process_standings_response(standings, home_team_id, away_team_id)
+
+    def extract_events_from_high_value_streaks(self, response: Dict) -> Tuple[List[Dict], List[Dict]]:
+        return extract_events_from_high_value_streaks(response)
+
+    def get_h2h_events_for_event(self, custom_id: str) -> Optional[Dict]:
+        return get_h2h_events_for_event(self, custom_id)
+
+    def get_today_sport_events_response(self, date: str, sport: str):
+        return get_today_sport_events_response(self, date, sport)
+
+    def get_today_sport_events_odds_response(self, date: str, sport: str):
+        return get_today_sport_events_odds_response(self, date, sport)
+
+    def get_event_final_odds(self, id: int, slug: str = None, no_retry_on_404: bool = False) -> Optional[Dict]:
+        if slug:
+            logger.info("Fetching final odds for event %s using dedicated endpoint", slug)
+        return self._request_json(f"/event/{id}/odds/1/all", no_retry_on_404=no_retry_on_404)
+
+    def update_event_information_from_response(self, response: Dict) -> bool:
+        return update_event_information_from_response(response)
+
+    def _extract_observations_from_response(self, response: Dict):
+        from .event_details import _extract_observations_from_response as _extract
+
+        return _extract(response)
+
+    def _extract_metadata_snapshot(self, response: Dict):
+        from .event_details import _extract_metadata_snapshot as _extract
+
+        return _extract(response)
+
+    def get_event_results(
+        self,
+        event_id: int,
+        update_time: bool = False,
+        update_court_type: bool = False,
+        minutes_until_start: int = 0,
+        update_event_info: bool = True,
+        return_snapshot: bool = False,
+        current_start_time: Optional[datetime] = None,
+    ) -> Optional[Dict]:
+        return get_event_results(
+            self,
+            event_id,
+            update_time=update_time,
+            update_court_type=update_court_type,
+            minutes_until_start=minutes_until_start,
+            update_event_info=update_event_info,
+            return_snapshot=return_snapshot,
+            current_start_time=current_start_time,
+        )
+
+    def extract_results_from_response(
+        self,
+        response: Dict,
+        extract_tennis_points: bool = False,
+        for_streaks: bool = False,
+    ) -> Optional[Dict]:
+        return extract_results_from_response(
+            response,
+            extract_tennis_points=extract_tennis_points,
+            for_streaks=for_streaks,
+        )
+
+    def extract_final_odds_from_response(self, response: Dict, initial_odds_extraction: bool = False) -> Optional[Dict]:
+        return extract_final_odds_from_response(response, initial_odds_extraction=initial_odds_extraction)
+
+    def extract_events_and_odds_from_dropping_response(
+        self,
+        response: Dict,
+        odds_extraction: bool = True,
+        discovery_source: str = "dropping_odds",
+    ) -> Tuple[List[Dict], Dict]:
+        return extract_events_and_odds_from_dropping_response(
+            response,
+            odds_extraction=odds_extraction,
+            discovery_source=discovery_source,
+        )
+
+    def check_and_update_starting_time(
+        self,
+        event_id: int,
+        startTimeStamp: int,
+        send_alert: bool = False,
+        current_starting_time: Optional[datetime] = None,
+    ) -> bool:
+        from modules.jobs.pre_start_check_job.timestamp_corrections import check_and_update_starting_time as _check
+
+        return _check(
+            event_id,
+            startTimeStamp,
+            send_alert=send_alert,
+            current_starting_time=current_starting_time,
+        )
+
+    def convert_timestamp_to_datetime(self, timestamp: int) -> datetime:
+        from modules.jobs.pre_start_check_job.timestamp_corrections import convert_timestamp_to_datetime as _convert
+
+        return _convert(timestamp)
+
+    def is_event_starting_soon(self, start_timestamp: int, window_minutes: int = 30) -> bool:
+        from modules.jobs.pre_start_check_job.timestamp_corrections import is_event_starting_soon as _is_soon
+
+        return _is_soon(start_timestamp, window_minutes=window_minutes)
+
+
+api_client = SofaScoreAPI()

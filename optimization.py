@@ -14,7 +14,8 @@ import logging
 from typing import List, Optional, Dict, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from sofascore_api import api_client
+from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
+from modules.sofascore import api_client
 from infrastructure.persistence.repositories import EventRepository, OddsRepository
 
 logger = logging.getLogger(__name__)
@@ -170,10 +171,7 @@ def parallel_odds_checking(events: List[Dict], max_workers: int = 5, no_retry_on
         if not odds_data:
             return (event_id, None)
         
-        processed_odds_data = api_client.extract_final_odds_from_response(
-            odds_data, 
-            initial_odds_extraction=True
-        )
+        processed_odds_data = extract_final_odds_from_response(odds_data, initial_odds_extraction=True)
         return (event_id, processed_odds_data)
     
     events_with_odds = {}

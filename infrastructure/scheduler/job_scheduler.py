@@ -16,7 +16,7 @@ from modules.jobs.daily_discovery import run_daily_discovery_job, run_daily_disc
 from modules.jobs.discover_dropping_odds import run_discover_dropping_odds
 from modules.jobs.discover_secondary_sources import run_discover_secondary_sources
 from modules.jobs.midnight_sync_job import run_midnight_sync_job
-from modules.jobs.pre_start_check_job import run_pre_start_check_job
+from modules.jobs.pre_start_check_job.run_pre_start_check_job import run_pre_start_check_job
 from modules.jobs.results_collection_job import (
     run_results_collection_all_finished,
     run_results_collection_for_date,

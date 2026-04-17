@@ -13,11 +13,12 @@ from infrastructure.settings import Config
 from modules.alerts.basketball_4q import basketball_4q_monitor
 from modules.jobs.pre_start_check_job.alert_pipeline import build_event_payload, evaluate_and_send_alerts_batch
 from modules.jobs.pre_start_check_job.in_game_checks import run_in_game_checks
+from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 from modules.jobs.pre_start_check_job.rescheduled_events import handle_rescheduled_event
 from modules.jobs.pre_start_check_job.timestamp_corrections import check_recently_started_events_for_timestamp_corrections
 from modules.jobs.pre_start_check_job.timing import minutes_until_start, should_extract_odds_for_event
 from oddsportal_config import SEASON_ODDSPORTAL_MAP
-from sofascore_api import api_client
+from modules.sofascore import api_client
 
 from sport_observations import sport_observations_manager
 
@@ -120,7 +121,7 @@ def run_pre_start_check_job(scheduler) -> None:
                     continue
 
                 event_info["odds_response"] = final_odds_response
-                final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
+                final_odds_data = extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
                 if not final_odds_data:
                     continue
 

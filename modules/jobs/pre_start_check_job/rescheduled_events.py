@@ -7,7 +7,8 @@ import logging
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import OddsRepository
-from sofascore_api import api_client
+from modules.sofascore import api_client
+from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
             logger.warning(f"Failed to fetch odds for rescheduled event {event_id}")
             return
 
-        final_odds_data = api_client.extract_final_odds_from_response(final_odds_response)
+        final_odds_data = extract_final_odds_from_response(final_odds_response)
         if not final_odds_data:
             logger.warning(f"No odds data extracted for rescheduled event {event_id}")
             return

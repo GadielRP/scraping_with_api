@@ -15,7 +15,7 @@ from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.q4_alert import create_q4_alert_message
 from modules.alerts.basketball_4q.predictor import predictor_4q
 from infrastructure.persistence.models import Event
-from sofascore_api2 import api_client
+from modules.sofascore import api_client
 from shared.timezone_utils import get_local_now
 
 logger = logging.getLogger(__name__)

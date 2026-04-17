@@ -313,7 +313,7 @@ def send_dual_process_alerts(notifier: Any, dual_reports: List) -> bool:
                     verdict_value,
                 )
             else:
-                logger.warning("Failed to send dual process alert for event %s", dual_report.event_id)
+                logger.warning("💔 Failed to send dual process alert for event, process 1 did not succeed %s", dual_report.event_id)
         except Exception as e:
             logger.error("Error sending dual process alert for event %s: %s", dual_report.event_id, e)
             continue

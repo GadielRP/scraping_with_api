@@ -10,7 +10,7 @@ import logging
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
 
-from sofascore_api import api_client
+from modules.sofascore import api_client
 from shared.odds_utils import fractional_to_decimal
 from infrastructure.persistence.repositories import SeasonRepository
 
