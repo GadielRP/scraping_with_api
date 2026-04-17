@@ -7,7 +7,7 @@ from typing import List, Optional, Dict
 import json
 from typing import Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from config import Config
+from infrastructure.settings import Config
 from sofascore_api import api_client
 import sofascore_api2  # Import to attach new methods to api_client
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, ObservationRepository
@@ -30,7 +30,7 @@ from today_sport_extractor import run_daily_discovery
 from modules.alerts.basketball_4q import basketball_4q_monitor
 # Import optimization utilities
 
-from config import DISCOVERY_SOURCES_FOR_ALERTS
+
 from oddsportal_config import SEASON_ODDSPORTAL_MAP, get_oddsportal_current_date
 
 from optimization import (
@@ -462,7 +462,7 @@ class JobScheduler:
             
             # Get tracked season IDs from OddsPortal config
             from oddsportal_config import SEASON_ODDSPORTAL_MAP
-            from config import Config as AppConfig
+            from infrastructure.settings import Config as AppConfig
             
             tracked_season_ids = None
             if AppConfig.TRACKED_SEASONS_ONLY:
@@ -903,7 +903,7 @@ class JobScheduler:
                         filtered_events = []
                         for payload in events_for_alerts:
                             event_obj = payload['event_obj']
-                            is_selected_discovery_source = event_obj.discovery_source in DISCOVERY_SOURCES_FOR_ALERTS
+                            is_selected_discovery_source = event_obj.discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
                             is_tracked = event_obj.season_id in SEASON_ODDSPORTAL_MAP
                             
                             if is_selected_discovery_source or is_tracked:
@@ -1150,7 +1150,7 @@ class JobScheduler:
                                 logger.info(f"✅ Matchup streak analysis completed for event {event_obj.id}: {streak_analysis.matchup_streak_summary}")
                                 
                                 # SMART ALERT FILTERING: RESURRECTION LOGIC
-                                from config import Config as AppConfig
+                                from infrastructure.settings import Config as AppConfig
                                 home_result_count = len(streak_analysis.home_team_results) if streak_analysis.home_team_results else 0
                                 away_result_count = len(streak_analysis.away_team_results) if streak_analysis.away_team_results else 0
                                 min_threshold = AppConfig.STREAK_ALERT_MIN_RESULTS
@@ -1186,11 +1186,11 @@ class JobScheduler:
             else:
                 discovery_source = getattr(event_obj, 'discovery_source', None)
                 season_id = getattr(event_obj, 'season_id', None)
-                is_selected_source = discovery_source in DISCOVERY_SOURCES_FOR_ALERTS
+                is_selected_source = discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
                 is_tracked_season = season_id in SEASON_ODDSPORTAL_MAP
                 
                 if not (is_selected_source or is_tracked_season):
-                    logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - source='{discovery_source}' not in {DISCOVERY_SOURCES_FOR_ALERTS} and not a tracked season")
+                    logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - source='{discovery_source}' not in {Config.DISCOVERY_SOURCES_FOR_ALERTS} and not a tracked season")
                 else:
                     try:
                         event_obj.court_type = None
@@ -1231,7 +1231,7 @@ class JobScheduler:
                         logger.error(f"Error running dual process evaluation for event {event_obj.id}: {e}")
                         
                         # Fallback to Process 1 only if dual process fails
-                        if event_obj.discovery_source in DISCOVERY_SOURCES_FOR_ALERTS or event_obj.season_id in SEASON_ODDSPORTAL_MAP:
+                        if event_obj.discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS or event_obj.season_id in SEASON_ODDSPORTAL_MAP:
                             logger.info(f"🔄 Falling back to Process 1 only for event {event_obj.id}...")
                             try:
                                 alerts = alert_engine.evaluate_upcoming_events([event_obj])
@@ -1527,7 +1527,7 @@ class JobScheduler:
         from oddsportal_config import SEASON_ODDSPORTAL_MAP, get_oddsportal_current_date
         from oddsportal_scraper import scrape_multiple_matches_parallel_sync
         from infrastructure.persistence.repositories import MarketRepository
-        from config import Config as AppConfig
+        from infrastructure.settings import Config as AppConfig
         
         op_current_date = get_oddsportal_current_date()
         op_tasks = []
@@ -2159,7 +2159,7 @@ class JobScheduler:
             
             discovery_source = getattr(event_obj, 'discovery_source', None)
             season_id = getattr(event_obj, 'season_id', None)
-            if discovery_source not in DISCOVERY_SOURCES_FOR_ALERTS and season_id not in SEASON_ODDSPORTAL_MAP:
+            if discovery_source not in Config.DISCOVERY_SOURCES_FOR_ALERTS and season_id not in SEASON_ODDSPORTAL_MAP:
                 logger.info(f"⏭️ Skipping dual process for rescheduled event {event_obj.id} - source='{discovery_source}' not allowed and not a tracked season")
             else:
                 # Enrich event object with court type for Tennis/Tennis Doubles events

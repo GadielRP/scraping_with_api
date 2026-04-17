@@ -1387,7 +1387,7 @@ class StreakAlertEngine:
         Returns:
             True if we have any meaningful data to show AND sufficient historical data
         """
-        from config import Config
+        from infrastructure.settings import Config
         
         # Calculate total games for each team
         home_total_games = len(streak.home_team_results) if hasattr(streak, 'home_team_results') and streak.home_team_results else 0

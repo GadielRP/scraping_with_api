@@ -276,7 +276,7 @@ def send_dual_process_alerts(notifier: Any, dual_reports: List) -> bool:
     success_count = 0
 
     try:
-        from config import Config
+        from infrastructure.settings import Config
         from oddsportal_config import SEASON_ODDSPORTAL_MAP
         from infrastructure.persistence.repositories import EventRepository
     except ImportError:

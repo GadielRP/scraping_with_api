@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from typing import Generator
 import logging
 import traceback
-from config import Config
+from infrastructure.settings import Config
 from models import Base
 
 logger = logging.getLogger(__name__)

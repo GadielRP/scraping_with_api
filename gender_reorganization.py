@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from timezone_utils import get_local_now
 from sofascore_api import api_client
-from config import Config
+from infrastructure.settings import Config
 # Import database dependencies
 from database import db_manager
 from models import Event

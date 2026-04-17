@@ -11,7 +11,7 @@ import logging
 import os
 from datetime import datetime
 from database import db_manager
-from config import Config
+from infrastructure.settings import Config
 from timezone_utils import get_local_now_iso
 
 # Setup logging

@@ -456,7 +456,7 @@ def send_matchup_streak_alerts(notifier: Any, streak_reports: List) -> bool:
     success_count = 0
 
     try:
-        from config import Config
+        from infrastructure.settings import Config
         from oddsportal_config import SEASON_ODDSPORTAL_MAP
         from infrastructure.persistence.repositories import EventRepository
     except ImportError:

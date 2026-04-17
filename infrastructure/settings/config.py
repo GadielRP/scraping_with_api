@@ -27,8 +27,7 @@ def _parse_env_bool(env_name, default_value=False):
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
-# Discovery sources to allow for alert sending
-DISCOVERY_SOURCES_FOR_ALERTS = _parse_env_list('DISCOVERY_SOURCES_FOR_ALERTS', ['dropping_odds'])
+
 
 class Config:
     # Database
@@ -162,7 +161,7 @@ class Config:
     EXCLUDED_SPORTS = _parse_env_list('EXCLUDED_SPORTS', ['Table tennis', 'Darts'])
 
     # Discovery sources to allow for alert sending
-    DISCOVERY_SOURCES_FOR_ALERTS = DISCOVERY_SOURCES_FOR_ALERTS
+    DISCOVERY_SOURCES_FOR_ALERTS = _parse_env_list('DISCOVERY_SOURCES_FOR_ALERTS', ['dropping_odds'])
 
     @staticmethod
     def validate_oddsportal_proxy_alignment(logger: logging.Logger) -> None:

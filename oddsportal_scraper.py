@@ -17,7 +17,7 @@ from proxy_manager import ProxyIdentityManager
 
 # Import configuration
 try:
-    from config import Config
+    from infrastructure.settings import Config
     from oddsportal_config import (
         SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
         OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,

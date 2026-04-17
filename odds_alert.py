@@ -396,7 +396,7 @@ class OddsAlertProcessor:
             True if alert sent successfully, False otherwise
         """
         try:
-            from config import Config
+            from infrastructure.settings import Config
             from oddsportal_config import SEASON_ODDSPORTAL_MAP
             
             # --- START: PRECISION ALERT GATE ---

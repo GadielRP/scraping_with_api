@@ -14,7 +14,7 @@ import signal
 import time
 from datetime import datetime
 
-from config import Config
+from infrastructure.settings import Config
 
 # Setup logging early to ensure all modules use the correct configuration
 def _get_log_path():

@@ -6,7 +6,7 @@ Provides consistent timezone handling across all components.
 
 from datetime import datetime
 import pytz
-from config import Config
+from infrastructure.settings import Config
 
 # Get the configured timezone
 TIMEZONE = pytz.timezone(Config.TIMEZONE)
