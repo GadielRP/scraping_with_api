@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
-from proxy_manager import ProxyIdentityManager
+from infrastructure.network import ProxyIdentityManager
 
 # Import configuration
 try:

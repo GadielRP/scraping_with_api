@@ -6,7 +6,7 @@ import threading
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from infrastructure.settings import Config
-from proxy_manager import ProxyIdentityManager
+from infrastructure.network import ProxyIdentityManager
 from odds_utils import fractional_to_decimal
 from sport_observations import sport_observations_manager
 from modules.alerts import pre_start_notifier
