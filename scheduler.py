@@ -942,7 +942,7 @@ class JobScheduler:
         
         Returns a dict with keys: event_id, streak_analysis, dual_report, odds_response, success
         """
-        from streak_alerts import streak_alert_engine
+        from modules.alerts.matchup_streak_analysis import build_matchup_streak_context, should_send_streak_alert
         from modules.prediction import prediction_logger
         
         result = {
@@ -1117,7 +1117,7 @@ class JobScheduler:
                                 else:
                                     logger.warning(f"⚠️ No rankings found in tennis_observations for event {event_obj.id}")
 
-                            streak_analysis = streak_alert_engine.build_matchup_streak_context(
+                            streak_analysis = build_matchup_streak_context(
                                 event_id=event_obj.id,
                                 event_custom_id=event_obj.custom_id,
                                 event_start_time=event_obj.start_time_utc,
@@ -1140,12 +1140,12 @@ class JobScheduler:
                                 event_odds=event_obj.event_odds
                             )
                            
-                            should_send_streak_alert = bool(
-                                streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis)
+                            send_streak_alert = bool(
+                                streak_analysis and should_send_streak_alert(streak_analysis)
                             )
-                            result['should_send_streak_alert'] = should_send_streak_alert
+                            result['should_send_streak_alert'] = send_streak_alert
 
-                            if should_send_streak_alert:
+                            if send_streak_alert:
                                 logger.info(f"✅ Matchup streak analysis completed for event {event_obj.id}: {streak_analysis.matchup_streak_summary}")
                                 
                                 # SMART ALERT FILTERING: RESURRECTION LOGIC
@@ -2111,8 +2111,8 @@ class JobScheduler:
                                     logger.info(f"✅ Added rankings from snapshot for rescheduled tennis event {event_obj.id}")
                         
                         # Analyze matchup streak analysis with team results and pass them to streak_alerts
-                        from streak_alerts import streak_alert_engine
-                        streak_analysis = streak_alert_engine.build_matchup_streak_context(
+                        from modules.alerts.matchup_streak_analysis import build_matchup_streak_context, should_send_streak_alert
+                        streak_analysis = build_matchup_streak_context(
                             event_id=event_obj.id,
                             event_custom_id=event_obj.custom_id,
                             event_start_time=event_obj.start_time_utc,
@@ -2135,10 +2135,10 @@ class JobScheduler:
                             event_odds=event_obj.event_odds
                         )
                         
-                        should_send_streak_alert = bool(
-                            streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis)
+                        send_streak_alert = bool(
+                            streak_analysis and should_send_streak_alert(streak_analysis)
                         )
-                        if should_send_streak_alert:
+                        if send_streak_alert:
                             logger.info(f"✅ Matchup streak analysis completed for rescheduled event {event_obj.id}: {streak_analysis.matchup_streak_summary}")
                         else:
                             streak_analysis = None
