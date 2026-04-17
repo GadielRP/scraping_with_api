@@ -89,7 +89,7 @@ class OddsPortalCacheRepository:
                 ).delete()
 
                 if deleted > 0:
-                    logger.info(f"ðŸ§¹ Cleaned up {deleted} old OddsPortal league cache entries (older than {retention_days} days)")
+                    logger.info(f"🧹 Cleaned up {deleted} old OddsPortal league cache entries (older than {retention_days} days)")
                 return deleted
 
         except Exception as e:

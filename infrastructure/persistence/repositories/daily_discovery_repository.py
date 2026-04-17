@@ -93,7 +93,7 @@ class DailyDiscoveryRepository:
                 ).delete()
 
                 if deleted > 0:
-                    logger.info(f"ðŸ§¹ Cleaned up {deleted} DailyDiscoveryLog entries older than {cutoff_date}")
+                    logger.info(f"🧹 Cleaned up {deleted} DailyDiscoveryLog entries older than {cutoff_date}")
                 return deleted
         except Exception as e:
             logger.error(f"Error cleaning up DailyDiscoveryLogs: {e}")

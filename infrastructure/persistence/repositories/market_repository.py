@@ -304,7 +304,7 @@ class MarketRepository:
             saved_count = 0
             total_bookies = sum(len(t[3]) for t in extraction_tuples)
             total_betfair = sum(1 for t in extraction_tuples if t[4])
-            logger.debug(f"ðŸ’¾ Saving OddsPortal data for event {event_id}: {len(extraction_tuples)} period(s), {total_bookies} bookies, {total_betfair} Betfair sections")
+            logger.debug(f"💾 Saving OddsPortal data for event {event_id}: {len(extraction_tuples)} period(s), {total_bookies} bookies, {total_betfair} Betfair sections")
 
             with db_manager.get_session() as session:
                 for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
