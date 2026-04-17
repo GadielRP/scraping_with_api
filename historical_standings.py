@@ -12,7 +12,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Set
 from datetime import datetime
 
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)

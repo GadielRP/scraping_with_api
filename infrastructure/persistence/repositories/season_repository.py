@@ -2,7 +2,7 @@ import logging
 import re
 from typing import Optional
 from infrastructure.persistence.models import Season
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 
 logger = logging.getLogger(__name__)
 

@@ -246,6 +246,6 @@ class Process2Engine:
 
 # Import db_manager at the end to avoid circular imports
 try:
-    from database import db_manager
+    from infrastructure.persistence.database import db_manager
 except ImportError:
     logger.warning("⚠️ Could not import db_manager, some functionality may be limited")

@@ -6,7 +6,7 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.models import Bookie, Market, MarketChoice, MarketChoiceSnapshot
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from timezone_utils import get_local_now
 
 try:

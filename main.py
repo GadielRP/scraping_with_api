@@ -151,7 +151,7 @@ logging.getLogger(__name__).info(
 )
 
 
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import create_or_replace_views, create_or_replace_materialized_views, refresh_materialized_views
 from scheduler import job_scheduler
 from modules.alerts import pre_start_notifier

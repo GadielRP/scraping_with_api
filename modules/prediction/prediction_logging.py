@@ -43,7 +43,7 @@ class PredictionLogger:
             True if prediction was logged successfully, False otherwise
         """
         try:
-            from database import db_manager
+            from infrastructure.persistence.database import db_manager
             from infrastructure.persistence.models import PredictionLog
             
             # Check if prediction already exists for this event
@@ -156,7 +156,7 @@ class PredictionLogger:
             Dictionary with update statistics
         """
         try:
-            from database import db_manager
+            from infrastructure.persistence.database import db_manager
             from infrastructure.persistence.models import PredictionLog, Result, Event
             from datetime import datetime, timedelta
             

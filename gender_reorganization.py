@@ -20,7 +20,7 @@ from timezone_utils import get_local_now
 from sofascore_api import api_client
 from infrastructure.settings import Config
 # Import database dependencies
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import EventRepository
 

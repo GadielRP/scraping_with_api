@@ -505,7 +505,7 @@ class OddsAlertProcessor:
             True if successfully marked, False otherwise
         """
         try:
-            from database import db_manager
+            from infrastructure.persistence.database import db_manager
             from infrastructure.persistence.models import Event
             
             with db_manager.get_session() as session:
@@ -526,7 +526,7 @@ class OddsAlertProcessor:
     # def _delete_event_from_database(self, event_id: int) -> bool:
     #     """Delete event from database (0 markets = invalid event)."""
     #     try:
-    #         from database import db_manager
+    #         from infrastructure.persistence.database import db_manager
     #         from infrastructure.persistence.models import Event
     #         
     #         with db_manager.get_session() as session:

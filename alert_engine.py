@@ -35,7 +35,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from collections import defaultdict
 
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.dual_process_alert import create_candidate_report_message
 

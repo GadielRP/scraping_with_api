@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 from alert_engine import alert_engine
 from timezone_utils import get_local_now_aware, convert_utc_to_local
 from infrastructure.persistence.models import refresh_materialized_views
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from prediction_engine import prediction_engine
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import PredictionLog, refresh_materialized_views
 from today_sport_extractor import run_daily_discovery
 # Import basketball 4Q monitor for in-game alerts
@@ -1451,7 +1451,7 @@ class JobScheduler:
                         
                         # Log predictions for successful Process 1 reports
                         from modules.prediction import prediction_logger
-                        from database import db_manager
+                        from infrastructure.persistence.database import db_manager
                         from infrastructure.persistence.models import PredictionLog
                         
                         if (dual_report.process1_report and 
@@ -2331,7 +2331,7 @@ class JobScheduler:
             # Refresh materialized views for alerts after results are updated
             logger.info("🔄 Refreshing alert materialized views...")
             from infrastructure.persistence.models import refresh_materialized_views
-            from database import db_manager
+            from infrastructure.persistence.database import db_manager
             refresh_materialized_views(db_manager.engine)
             logger.info("✅ Alert data refreshed")
             

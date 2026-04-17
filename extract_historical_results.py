@@ -61,7 +61,7 @@ from typing import List, Dict, Optional, Tuple
 from sqlalchemy import and_, or_, func, cast, Date
 
 # Import existing project modules
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.repositories import ResultRepository, EventRepository
 from sofascore_api import api_client

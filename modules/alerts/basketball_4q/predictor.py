@@ -11,7 +11,7 @@ Implements the prediction logic for 4th quarter scores based on:
 import logging
 from typing import Dict, Optional, Tuple
 
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 

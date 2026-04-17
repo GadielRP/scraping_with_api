@@ -9,7 +9,7 @@ import logging
 from datetime import timedelta
 from typing import Dict
 
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories import EventRepository
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.q4_alert import create_q4_alert_message

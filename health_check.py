@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from infrastructure.settings import Config
 from timezone_utils import get_local_now_iso
 
