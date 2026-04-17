@@ -1,2 +1,5 @@
-# Modules package
-# This file makes the modules directory a Python package
+"""Dual process alerts package."""
+
+from .process_1 import AlertEngine, alert_engine
+
+__all__ = ["AlertEngine", "alert_engine"]

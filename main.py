@@ -267,7 +267,7 @@ def run_alerts():
     logger.info("Running alert evaluation...")
     
     try:
-        from alert_engine import alert_engine
+        from modules.alerts.dual_process.process_1 import alert_engine
         from infrastructure.persistence.repositories import EventRepository
         
         # Get upcoming events (within 30 minutes)

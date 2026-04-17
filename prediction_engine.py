@@ -138,7 +138,7 @@ class PredictionEngine:
         try:
             logger.info(f"🔍 Executing Process 1 for event {event.id}")
             
-            from alert_engine import alert_engine
+            from modules.alerts.dual_process.process_1 import alert_engine
             
             # Evaluate using Process 1 (event object has court_type attribute)
             alerts = alert_engine.evaluate_single_event(event, minutes_until_start)

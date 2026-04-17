@@ -18,7 +18,7 @@ from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_st
 import os
 from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
-from alert_engine import alert_engine
+from modules.alerts.dual_process.process_1 import alert_engine
 from shared.timezone_utils import get_local_now_aware, convert_utc_to_local
 from infrastructure.persistence.models import refresh_materialized_views
 from infrastructure.persistence.database import db_manager
