@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
 import json
-from timezone_utils import get_local_now
+from shared.timezone_utils import get_local_now
 
 Base = declarative_base()
 

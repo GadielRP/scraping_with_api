@@ -11,7 +11,7 @@ from infrastructure.settings import Config
 from sofascore_api import api_client
 import sofascore_api2  # Import to attach new methods to api_client
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, ObservationRepository
-from odds_utils import process_event_odds_from_dropping_odds
+from shared.odds_utils import process_event_odds_from_dropping_odds
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.dual_process_alert import send_dual_process_alerts
 from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
@@ -19,7 +19,7 @@ import os
 from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
 from alert_engine import alert_engine
-from timezone_utils import get_local_now_aware, convert_utc_to_local
+from shared.timezone_utils import get_local_now_aware, convert_utc_to_local
 from infrastructure.persistence.models import refresh_materialized_views
 from infrastructure.persistence.database import db_manager
 from prediction_engine import prediction_engine
@@ -1740,7 +1740,7 @@ class JobScheduler:
         # Note: start_time_utc is actually stored in local timezone (not UTC)
         # This is because datetime.fromtimestamp() creates local time, not UTC
         # So we treat it as local time and make it timezone-aware
-        from timezone_utils import TIMEZONE
+        from shared.timezone_utils import TIMEZONE
         if start_time_utc.tzinfo is None:
             # Make the naive datetime timezone-aware in local timezone
             start_local = TIMEZONE.localize(start_time_utc)
@@ -1765,7 +1765,7 @@ class JobScheduler:
         Returns:
             Negative integer representing minutes since start (e.g., -5 means started 5 minutes ago)
         """
-        from timezone_utils import TIMEZONE
+        from shared.timezone_utils import TIMEZONE
         if start_time_utc.tzinfo is None:
             # Make the naive datetime timezone-aware in local timezone
             start_local = TIMEZONE.localize(start_time_utc)

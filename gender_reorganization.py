@@ -16,7 +16,7 @@ import time
 import psycopg
 from typing import Dict, List, Optional
 from datetime import datetime
-from timezone_utils import get_local_now
+from shared.timezone_utils import get_local_now
 from sofascore_api import api_client
 from infrastructure.settings import Config
 # Import database dependencies

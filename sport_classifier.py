@@ -18,7 +18,7 @@ import logging
 import argparse
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-from timezone_utils import get_local_now
+from shared.timezone_utils import get_local_now
 
 # Import database dependencies
 from infrastructure.persistence.database import db_manager

@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 from infrastructure.persistence.database import db_manager
 from infrastructure.settings import Config
-from timezone_utils import get_local_now_iso
+from shared.timezone_utils import get_local_now_iso
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from infrastructure.persistence.models import DailyDiscoveryLog
 from infrastructure.persistence.database import db_manager
-from timezone_utils import get_local_now
+from shared.timezone_utils import get_local_now
 
 logger = logging.getLogger(__name__)
 

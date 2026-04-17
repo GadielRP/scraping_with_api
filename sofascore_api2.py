@@ -3,7 +3,7 @@
 from sofascore_api import SofaScoreAPI, api_client
 import logging
 from typing import Dict, List, Tuple, Optional
-from timezone_utils import get_local_now_aware
+from shared.timezone_utils import get_local_now_aware
 
 logger = logging.getLogger(__name__)
 

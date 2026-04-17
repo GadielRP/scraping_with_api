@@ -304,7 +304,7 @@ def backfill_results(limit: int = None):
     Args:
         limit: Maximum number of events to process (None = all)
     """
-    from timezone_utils import get_local_now
+    from shared.timezone_utils import get_local_now
     
     print(f"\n{'='*60}")
     print("BACKFILL: Results & Odds")

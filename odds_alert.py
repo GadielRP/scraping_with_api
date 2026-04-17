@@ -20,7 +20,8 @@ import logging
 from typing import Dict, List, Optional
 from decimal import Decimal
 
-from odds_utils import fractional_to_decimal
+from shared.odds_utils import fractional_to_decimal
+from infrastructure.persistence.repositories import EventRepository
 
 logger = logging.getLogger(__name__)
 
@@ -445,7 +446,7 @@ class OddsAlertProcessor:
                     logger.info(f"📊 Event {event_data.get('id')} has 1 market but season {season_id} is tracked in OP - forcing alert send")
                 elif market_name == 'Full time':
                     logger.info(f"⏭️ LOW-VALUE EVENT: Event {event_data.get('id')} has only 1 market (Full time) - marking alert_sent=True and skipping odds alert")
-                    self._mark_event_alert_sent(event_data.get('id'))
+                    EventRepository.mark_event_as_alerted(event_data.get('id'))
                     return False  # Don't send alert
                 else:
                     # Single market but NOT "Full time" - process normally (edge case)
@@ -491,36 +492,6 @@ class OddsAlertProcessor:
             logger.error(f"Error in send_odds_alert for event {event_data.get('id')}: {e}")
             return False
     
-    def _mark_event_alert_sent(self, event_id: int) -> bool:
-        """
-        Mark event as alert_sent=True in database.
-        
-        This flags the event as "low-value" so other alert processes
-        (Dual Process, 4Q) will skip it.
-        
-        Args:
-            event_id: Event ID to mark
-            
-        Returns:
-            True if successfully marked, False otherwise
-        """
-        try:
-            from infrastructure.persistence.database import db_manager
-            from infrastructure.persistence.models import Event
-            
-            with db_manager.get_session() as session:
-                event = session.query(Event).filter(Event.id == event_id).first()
-                if event:
-                    event.alert_sent = True
-                    session.commit()
-                    logger.info(f"✅ Marked event {event_id} as alert_sent=True (low-value event)")
-                    return True
-                else:
-                    logger.warning(f"Event {event_id} not found when marking alert_sent")
-                    return False
-        except Exception as e:
-            logger.error(f"Error marking event {event_id} as alert_sent: {e}")
-            return False
 
     # TODO: Implement when ready
     # def _delete_event_from_database(self, event_id: int) -> bool:

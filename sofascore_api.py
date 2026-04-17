@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from infrastructure.settings import Config
 from infrastructure.network import ProxyIdentityManager
-from odds_utils import fractional_to_decimal
+from shared.odds_utils import fractional_to_decimal
 from sport_observations import sport_observations_manager
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.time_correction_alert import send_time_correction_message
@@ -556,7 +556,7 @@ class SofaScoreAPI:
                         ]
        
             if update_time:
-                logger.info(f"⏱️ Updating time for event {event_id}")
+                logger.info(f"🔍 Checking starting time for event {event_id}")
                 event_data = response.get('event', {})
                 # SofaScore uses 'startTimestamp' (camelCase)
                 start_timestamp = event_data.get('startTimestamp')

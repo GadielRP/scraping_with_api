@@ -21,7 +21,7 @@ from infrastructure.persistence.models import Event, refresh_materialized_views
 from sofascore_api import api_client
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, MarketRepository
 from sport_observations import sport_observations_manager
-from timezone_utils import get_local_now
+from shared.timezone_utils import get_local_now
 
 # State file to track last processed event ID
 STATE_FILE = 'process_null_seasons_last_id.log'

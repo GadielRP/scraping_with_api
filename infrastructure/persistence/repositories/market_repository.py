@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from infrastructure.persistence.models import Bookie, Market, MarketChoice, MarketChoiceSnapshot
 from infrastructure.persistence.database import db_manager
-from timezone_utils import get_local_now
+from shared.timezone_utils import get_local_now
 
 try:
     from oddsportal_config import BOOKIE_ALIASES

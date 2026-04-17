@@ -23,7 +23,7 @@ def _get_log_path():
     Structure: logs/{MM_MonthName}/week_{N}/sofascore_odds.log
     Week calculation: days 1-7 → week_1, 8-14 → week_2, 15-21 → week_3, 22-31 → week_4
     """
-    from timezone_utils import get_local_now_aware
+    from shared.timezone_utils import get_local_now_aware
     
     MONTH_NAMES = [
         '', '01_January', '02_February', '03_March', '04_April',
@@ -46,7 +46,7 @@ def _get_oddsportal_log_path():
     Structure: logs/oddsportal/{MM_MonthName}/week_{N}/oddsportal.log
     Mirrors the same month/week logic as the main log.
     """
-    from timezone_utils import get_local_now_aware
+    from shared.timezone_utils import get_local_now_aware
     
     MONTH_NAMES = [
         '', '01_January', '02_February', '03_March', '04_April',

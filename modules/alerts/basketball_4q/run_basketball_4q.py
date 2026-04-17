@@ -16,7 +16,7 @@ from modules.alerts.alerts_formatter.q4_alert import create_q4_alert_message
 from modules.alerts.basketball_4q.predictor import predictor_4q
 from infrastructure.persistence.models import Event
 from sofascore_api2 import api_client
-from timezone_utils import get_local_now
+from shared.timezone_utils import get_local_now
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +237,7 @@ class Basketball4QMonitor:
                         )
 
                         if success:
-                            self._mark_event_alert_sent(event_id)
+                            EventRepository.mark_event_as_alerted(event_id)
                             self.tracked_events.add(event_id)
                             alerts_sent += 1
                             logger.info(
@@ -276,22 +276,6 @@ class Basketball4QMonitor:
             logger.error(f"Error calculating minutes since start: {e}")
             return 0
 
-    def _mark_event_alert_sent(self, event_id: int) -> bool:
-        """Mark an event as having sent the 4th quarter alert in the database."""
-        try:
-            with db_manager.get_session() as session:
-                event = session.query(Event).filter(Event.id == event_id).first()
-                if event:
-                    event.alert_sent = True
-                    session.commit()
-                    logger.debug(f"Marked event {event_id} as alert_sent=True in database")
-                    return True
-
-                logger.warning(f"Event {event_id} not found in database when trying to mark as alerted")
-                return False
-        except Exception as e:
-            logger.error(f"Error marking event {event_id} as alerted: {e}")
-            return False
 
     def _send_4th_quarter_alert(
         self,
@@ -379,14 +363,6 @@ class Basketball4QMonitor:
         except Exception as e:
             logger.error(f"Error sending 4th quarter alert for event {event_id}: {e}")
             return False
-
-    def cleanup_tracked_events(self):
-        """Clean up old tracked events to prevent memory leaks."""
-        try:
-            self.tracked_events.clear()
-            logger.info("Cleaned up tracked events set")
-        except Exception as e:
-            logger.error(f"Error cleaning up tracked events: {e}")
 
 
 basketball_4q_monitor = Basketball4QMonitor()

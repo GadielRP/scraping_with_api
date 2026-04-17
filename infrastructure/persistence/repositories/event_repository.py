@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from infrastructure.persistence.models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season, Base
 from infrastructure.persistence.database import db_manager
-from timezone_utils import get_local_now
+from shared.timezone_utils import get_local_now
 from .season_repository import SeasonRepository
 
 logger = logging.getLogger(__name__)
@@ -440,3 +440,29 @@ class EventRepository:
         except Exception as e:
             logger.error(f"Error getting finished events: {e}")
             return []
+
+    @staticmethod
+    def mark_event_as_alerted(event_id: int) -> bool:
+        """
+        Mark event as alert_sent=True in database.
+        
+        Args:
+            event_id: Event ID to mark
+            
+        Returns:
+            True if successfully marked, False otherwise
+        """
+        try:
+            with db_manager.get_session() as session:
+                event_obj = session.query(Event).filter(Event.id == event_id).first()
+                if event_obj:
+                    event_obj.alert_sent = True
+                    session.commit()
+                    logger.info(f"✅ Marked event {event_id} as alert_sent=True")
+                    return True
+                else:
+                    logger.warning(f"Event {event_id} not found when marking as alerted")
+                    return False
+        except Exception as e:
+            logger.error(f"Error marking event {event_id} as alerted: {e}")
+            return False

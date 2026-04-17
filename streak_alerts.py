@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 from sofascore_api import api_client
 import sofascore_api2
-from odds_utils import fractional_to_decimal
+from shared.odds_utils import fractional_to_decimal
 from infrastructure.persistence.repositories import SeasonRepository
 logger = logging.getLogger(__name__)
 
