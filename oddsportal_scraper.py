@@ -13,11 +13,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
-from proxy_manager import ProxyIdentityManager
+from infrastructure.network import ProxyIdentityManager
 
 # Import configuration
 try:
-    from config import Config
+    from infrastructure.settings import Config
     from oddsportal_config import (
         SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
         OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
@@ -1659,7 +1659,7 @@ class OddsPortalScraper:
         current_date: Optional[date] = None,
     ) -> List[Dict[str, str]]:
         """Load structured league candidates from the DB cache."""
-        from repository import OddsPortalCacheRepository
+        from infrastructure.persistence.repositories import OddsPortalCacheRepository
         reference_date = _coerce_current_date(current_date)
         cached = OddsPortalCacheRepository.get_league_cache(season_id)
 
@@ -1980,7 +1980,7 @@ class OddsPortalScraper:
 
             if season_id and candidates and not skip_cache_save:
                 try:
-                    from repository import OddsPortalCacheRepository
+                    from infrastructure.persistence.repositories import OddsPortalCacheRepository
                     cache_dict = _build_structured_league_cache(candidates, current_date=reference_date)
                     if cache_dict:
                         new_quality = _evaluate_cache_quality(cache_dict, reference_date)

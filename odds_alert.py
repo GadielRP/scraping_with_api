@@ -10,7 +10,7 @@ Called from scheduler.py after line 489:
     final_odds_response = api_client.get_event_final_odds(event_data['id'], event_data['slug'])
     
     # NEW: Send odds alert with all markets
-    from odds_alert import odds_alert_processor
+    from modules.alerts.alerts_formatter.odds_alert import odds_alert_processor
     odds_alert_processor.send_odds_alert(event_data, final_odds_response)
 
 This module does NOT modify any existing flow - it's an additional notification layer.
@@ -396,7 +396,7 @@ class OddsAlertProcessor:
             True if alert sent successfully, False otherwise
         """
         try:
-            from config import Config
+            from infrastructure.settings import Config
             from oddsportal_config import SEASON_ODDSPORTAL_MAP
             
             # --- START: PRECISION ALERT GATE ---
@@ -458,7 +458,7 @@ class OddsAlertProcessor:
             # If the event's season is tracked in OddsPortal, fetch and append bookie odds
             try:
                 from oddsportal_config import SEASON_ODDSPORTAL_MAP
-                from repository import MarketRepository
+                from infrastructure.persistence.repositories import MarketRepository
                 
                 season_id = event_data.get('season_id')
                 if season_id and season_id in SEASON_ODDSPORTAL_MAP:
@@ -472,7 +472,7 @@ class OddsAlertProcessor:
 
             
             # Send via Telegram using the existing alert system
-            from alert_system import pre_start_notifier
+            from modules.alerts import pre_start_notifier
             
             if not pre_start_notifier.telegram_enabled:
                 logger.warning("Telegram notifications not configured - cannot send odds alert")

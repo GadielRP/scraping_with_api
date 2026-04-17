@@ -21,7 +21,7 @@ import pytz
 
 # Import your existing models
 from models import Base, Event, EventOdds, Result
-from config import Config
+from infrastructure.settings import Config
 
 # Get configuration values
 DATABASE_URL = Config.DATABASE_URL

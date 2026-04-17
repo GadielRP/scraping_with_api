@@ -5,12 +5,13 @@ import logging
 import threading
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
-from config import Config
-from proxy_manager import ProxyIdentityManager
+from infrastructure.settings import Config
+from infrastructure.network import ProxyIdentityManager
 from odds_utils import fractional_to_decimal
 from sport_observations import sport_observations_manager
-from alert_system import pre_start_notifier
-from repository import EventRepository, SeasonRepository
+from modules.alerts import pre_start_notifier
+from modules.alerts.alerts_formatter.time_correction_alert import send_time_correction_message
+from infrastructure.persistence.repositories import EventRepository, SeasonRepository
 from sport_classifier import sport_classifier
 
 logger = logging.getLogger(__name__)
@@ -363,7 +364,7 @@ class SofaScoreAPI:
                                     logger.warning(f"Event {event_id}: 404 Not Found - deleting from database")
                                     
                                     # Delete event from database
-                                    from repository import EventRepository
+                                    from infrastructure.persistence.repositories import EventRepository
                                     deleted = EventRepository.batch_delete_events([event_id])
                                     if deleted:
                                         logger.info(f"🗑️ Deleted event {event_id} (404 - no longer exists on SofaScore)")
@@ -588,7 +589,7 @@ class SofaScoreAPI:
             # Check if event was canceled/postponed - if so, delete it
             if isinstance(result, dict) and result.get('_canceled'):
                 logger.warning(f"Event {event_id}: Canceled/Postponed (status: {result.get('status_description')}) - deleting from database")
-                from repository import EventRepository
+                from infrastructure.persistence.repositories import EventRepository
                 deleted = EventRepository.batch_delete_events([event_id])
                 if deleted:
                     logger.info(f"🗑️ Deleted canceled event {event_id}")
@@ -951,7 +952,7 @@ class SofaScoreAPI:
             season_year_raw = season_data.get('year')
             season_year = None
             if season_year_raw:
-                from repository import SeasonRepository
+                from infrastructure.persistence.repositories import SeasonRepository
                 season_year = SeasonRepository._parse_year(season_year_raw)
             
             # Build observations list (ground_type + rankings) via existing method
@@ -1268,7 +1269,7 @@ class SofaScoreAPI:
                     logger.info(f"✅ Successfully updated starting time for event {event_id}")
                     if send_alert:
                         logger.info(f"🕐 Sending correction alert for event {event_id}")
-                        pre_start_notifier.send_time_correction_message(event_id, current_starting_time, new_starting_time)
+                        send_time_correction_message(pre_start_notifier, event_id, current_starting_time, new_starting_time)
                     
                     return False # Time was updated, don't continue with original odds extraction flow
                 else:

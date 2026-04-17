@@ -240,7 +240,7 @@ MLB_AMERICAN_LEAGUE = {
     # AL Central
     'Chicago White Sox', 'Cleveland Guardians', 'Detroit Tigers', 'Kansas City Royals', 'Minnesota Twins',
     # AL West
-    'Houston Astros', 'Los Angeles Angels', 'Oakland Athletics', 'Seattle Mariners', 'Texas Rangers'
+    'Houston Astros', 'Los Angeles Angels', 'Athletics', 'Seattle Mariners', 'Texas Rangers'
 }
 
 MLB_NATIONAL_LEAGUE = {
@@ -916,7 +916,7 @@ class HistoricalFormProcessor:
     def _send_debug_telegram(self, message: str, chat_id: str):
         """Send debug message to personal Telegram chat."""
         import requests
-        from config import Config
+        from infrastructure.settings import Config
         
         if not Config.TELEGRAM_BOT_TOKEN or not chat_id:
             logger.debug("Telegram not configured for debug messages")

@@ -19,7 +19,7 @@ logger = logging.getLogger("process_null_seasons")
 from database import db_manager
 from models import Event, refresh_materialized_views
 from sofascore_api import api_client
-from repository import EventRepository, OddsRepository, ResultRepository, MarketRepository
+from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, MarketRepository
 from sport_observations import sport_observations_manager
 from timezone_utils import get_local_now
 

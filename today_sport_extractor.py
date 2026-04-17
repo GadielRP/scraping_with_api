@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import sofascore_api2  # Import to attach methods to SofaScoreAPI class
 from sofascore_api import api_client
-from repository import EventRepository, OddsRepository, DailyDiscoveryRepository
+from infrastructure.persistence.repositories import EventRepository, OddsRepository, DailyDiscoveryRepository
 from odds_utils import fractional_to_decimal, validate_odds_data
 from timezone_utils import get_local_now_aware
 

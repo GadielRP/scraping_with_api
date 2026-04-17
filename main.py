@@ -14,7 +14,7 @@ import signal
 import time
 from datetime import datetime
 
-from config import Config
+from infrastructure.settings import Config
 
 # Setup logging early to ensure all modules use the correct configuration
 def _get_log_path():
@@ -154,8 +154,8 @@ logging.getLogger(__name__).info(
 from database import db_manager
 from models import create_or_replace_views, create_or_replace_materialized_views, refresh_materialized_views
 from scheduler import job_scheduler
-from alert_system import pre_start_notifier
-from repository import EventRepository, OddsRepository
+from modules.alerts import pre_start_notifier
+from infrastructure.persistence.repositories import EventRepository, OddsRepository
 
 
 def initialize_system():
@@ -268,7 +268,7 @@ def run_alerts():
     
     try:
         from alert_engine import alert_engine
-        from repository import EventRepository
+        from infrastructure.persistence.repositories import EventRepository
         
         # Get upcoming events (within 30 minutes)
         event_repo = EventRepository()

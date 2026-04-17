@@ -7,12 +7,14 @@ from typing import List, Optional, Dict
 import json
 from typing import Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from config import Config
+from infrastructure.settings import Config
 from sofascore_api import api_client
 import sofascore_api2  # Import to attach new methods to api_client
-from repository import EventRepository, OddsRepository, ResultRepository, ObservationRepository
+from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, ObservationRepository
 from odds_utils import process_event_odds_from_dropping_odds
-from alert_system import pre_start_notifier
+from modules.alerts import pre_start_notifier
+from modules.alerts.alerts_formatter.dual_process_alert import send_dual_process_alerts
+from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
 import os
 from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
@@ -24,11 +26,11 @@ from prediction_engine import prediction_engine
 from database import db_manager
 from models import PredictionLog, refresh_materialized_views
 from today_sport_extractor import run_daily_discovery
-# Import set prediction system for in-game alerts
-from set_prediction_system import set_prediction_system
+# Import basketball 4Q monitor for in-game alerts
+from modules.alerts.basketball_4q import basketball_4q_monitor
 # Import optimization utilities
 
-from config import DISCOVERY_SOURCES_FOR_ALERTS
+
 from oddsportal_config import SEASON_ODDSPORTAL_MAP, get_oddsportal_current_date
 
 from optimization import (
@@ -460,7 +462,7 @@ class JobScheduler:
             
             # Get tracked season IDs from OddsPortal config
             from oddsportal_config import SEASON_ODDSPORTAL_MAP
-            from config import Config as AppConfig
+            from infrastructure.settings import Config as AppConfig
             
             tracked_season_ids = None
             if AppConfig.TRACKED_SEASONS_ONLY:
@@ -577,6 +579,11 @@ class JobScheduler:
             if before_rescheduled != len(upcoming_events):
                 logger.info(f"Filtered {before_rescheduled - len(upcoming_events)} recently rescheduled. {len(upcoming_events)} remain")
 
+            # NBA 4Q monitoring should run on every pre-start cycle, even when there are no upcoming events.
+            # This used to live inside the "upcoming_events" branch, which meant it was skipped whenever the
+            # pre-start snapshot was empty.
+            basketball_4q_monitor.check_nba_4th_quarter()
+
             events_to_process = []
             event_meta_lookup = {}
 
@@ -584,9 +591,6 @@ class JobScheduler:
             if not upcoming_events:
                 logger.info(f"No upcoming events to process (after filtering)")
             else:
-                # Check for NBA 4th quarter
-                set_prediction_system.check_nba_4th_quarter()
-                
                 # Use the "smart" odds extraction logic
                 KEY_MOMENTS = [120, 30, 5, 0, -5]
                 
@@ -683,7 +687,7 @@ class JobScheduler:
                                         # Save all markets to new markets/market_choices tables
                                         # This runs for ALL sports (including excluded ones)
                                         try:
-                                            from repository import MarketRepository
+                                            from infrastructure.persistence.repositories import MarketRepository
                                             MarketRepository.save_markets_from_response(event_data['id'], final_odds_response)
                                         except Exception as e:
                                             logger.warning(f"Error saving markets to DB for event {event_data['id']}: {e}")
@@ -899,7 +903,7 @@ class JobScheduler:
                         filtered_events = []
                         for payload in events_for_alerts:
                             event_obj = payload['event_obj']
-                            is_selected_discovery_source = event_obj.discovery_source in DISCOVERY_SOURCES_FOR_ALERTS
+                            is_selected_discovery_source = event_obj.discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
                             is_tracked = event_obj.season_id in SEASON_ODDSPORTAL_MAP
                             
                             if is_selected_discovery_source or is_tracked:
@@ -1050,7 +1054,7 @@ class JobScheduler:
                                         season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
                                         season_name = event_details.get('season', {}).get('name')
                                         season_year_raw = event_details.get('season', {}).get('year')
-                                        from repository import SeasonRepository
+                                        from infrastructure.persistence.repositories import SeasonRepository
                                         season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
                                     else:
                                         logger.warning(f"Could not fetch event details for {event_obj.id}")
@@ -1146,7 +1150,7 @@ class JobScheduler:
                                 logger.info(f"✅ Matchup streak analysis completed for event {event_obj.id}: {streak_analysis.matchup_streak_summary}")
                                 
                                 # SMART ALERT FILTERING: RESURRECTION LOGIC
-                                from config import Config as AppConfig
+                                from infrastructure.settings import Config as AppConfig
                                 home_result_count = len(streak_analysis.home_team_results) if streak_analysis.home_team_results else 0
                                 away_result_count = len(streak_analysis.away_team_results) if streak_analysis.away_team_results else 0
                                 min_threshold = AppConfig.STREAK_ALERT_MIN_RESULTS
@@ -1182,11 +1186,11 @@ class JobScheduler:
             else:
                 discovery_source = getattr(event_obj, 'discovery_source', None)
                 season_id = getattr(event_obj, 'season_id', None)
-                is_selected_source = discovery_source in DISCOVERY_SOURCES_FOR_ALERTS
+                is_selected_source = discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
                 is_tracked_season = season_id in SEASON_ODDSPORTAL_MAP
                 
                 if not (is_selected_source or is_tracked_season):
-                    logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - source='{discovery_source}' not in {DISCOVERY_SOURCES_FOR_ALERTS} and not a tracked season")
+                    logger.info(f"⏭️ Skipping dual process for event {event_obj.id} - source='{discovery_source}' not in {Config.DISCOVERY_SOURCES_FOR_ALERTS} and not a tracked season")
                 else:
                     try:
                         event_obj.court_type = None
@@ -1227,7 +1231,7 @@ class JobScheduler:
                         logger.error(f"Error running dual process evaluation for event {event_obj.id}: {e}")
                         
                         # Fallback to Process 1 only if dual process fails
-                        if event_obj.discovery_source in DISCOVERY_SOURCES_FOR_ALERTS or event_obj.season_id in SEASON_ODDSPORTAL_MAP:
+                        if event_obj.discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS or event_obj.season_id in SEASON_ODDSPORTAL_MAP:
                             logger.info(f"🔄 Falling back to Process 1 only for event {event_obj.id}...")
                             try:
                                 alerts = alert_engine.evaluate_upcoming_events([event_obj])
@@ -1347,7 +1351,7 @@ class JobScheduler:
             # so events don't block each other while waiting for OP data.
             # ========================================
             from odds_alert import odds_alert_processor
-            from alert_system import pre_start_notifier
+            from modules.alerts import pre_start_notifier
             
             def _send_event_alerts(result):
                 """Send all alerts for a single event. Runs in its own thread."""
@@ -1402,7 +1406,7 @@ class JobScheduler:
                                         
                             # Log whether OP section will actually be included (based on DB availability)
                             try:
-                                from repository import MarketRepository
+                                from infrastructure.persistence.repositories import MarketRepository
                                 op_markets = MarketRepository.get_oddsportal_markets_for_event(event_obj.id)
                                 if op_markets:
                                     logger.info(f"[OP] OddsPortal data is available for event {event_obj.id} ({len(op_markets)} rows) - OddsPortal section should be included.")
@@ -1431,7 +1435,7 @@ class JobScheduler:
                 # 2) Send Matchup streak alert for this event
                 if streak_analysis and should_send_streak_alert:
                     logger.info(f"📊 Sending Matchup streak alert for event {event_obj.id} (2nd in group)")
-                    pre_start_notifier.send_matchup_streak_alerts([streak_analysis])
+                    send_matchup_streak_alerts(pre_start_notifier, [streak_analysis])
                 
                 # 3) Send dual process alert for this event
                 if dual_report and (dual_report.process1_prediction or dual_report.process2_prediction or 
@@ -1522,8 +1526,8 @@ class JobScheduler:
         """
         from oddsportal_config import SEASON_ODDSPORTAL_MAP, get_oddsportal_current_date
         from oddsportal_scraper import scrape_multiple_matches_parallel_sync
-        from repository import MarketRepository
-        from config import Config as AppConfig
+        from infrastructure.persistence.repositories import MarketRepository
+        from infrastructure.settings import Config as AppConfig
         
         op_current_date = get_oddsportal_current_date()
         op_tasks = []
@@ -2046,7 +2050,7 @@ class JobScheduler:
                                     season_id = str(event_details.get('season', {}).get('id', '')) if event_details.get('season', {}).get('id') else None
                                     season_name = event_details.get('season', {}).get('name')
                                     season_year_raw = event_details.get('season', {}).get('year')
-                                    from repository import SeasonRepository
+                                    from infrastructure.persistence.repositories import SeasonRepository
                                     season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw else None
                                 else:
                                     logger.warning(f"Could not fetch event details for rescheduled event {event_obj.id}")
@@ -2155,7 +2159,7 @@ class JobScheduler:
             
             discovery_source = getattr(event_obj, 'discovery_source', None)
             season_id = getattr(event_obj, 'season_id', None)
-            if discovery_source not in DISCOVERY_SOURCES_FOR_ALERTS and season_id not in SEASON_ODDSPORTAL_MAP:
+            if discovery_source not in Config.DISCOVERY_SOURCES_FOR_ALERTS and season_id not in SEASON_ODDSPORTAL_MAP:
                 logger.info(f"⏭️ Skipping dual process for rescheduled event {event_obj.id} - source='{discovery_source}' not allowed and not a tracked season")
             else:
                 # Enrich event object with court type for Tennis/Tennis Doubles events
@@ -2196,7 +2200,7 @@ class JobScheduler:
             # Send Matchup streak alert if available
             if streak_analysis and should_send_streak_alert:
                 logger.info(f"📊 Sending Matchup streak alert for rescheduled event {event.id}")
-                pre_start_notifier.send_matchup_streak_alerts([streak_analysis])
+                send_matchup_streak_alerts(pre_start_notifier, [streak_analysis])
             
             # Send dual process alert only at allowed minutes {30, 0}
             if should_send:
@@ -2340,7 +2344,7 @@ class JobScheduler:
         
         # Clean up old DailyDiscovery logs
         try:
-            from repository import DailyDiscoveryRepository
+            from infrastructure.persistence.repositories import DailyDiscoveryRepository
             days_to_keep = getattr(Config, 'DAILY_DISCOVERY_DAYS_TO_KEEP', 1)
             DailyDiscoveryRepository.cleanup_old_logs(days_to_keep)
         except Exception as e:
@@ -2349,7 +2353,7 @@ class JobScheduler:
         # --- Daily Discovery Execution Logic ---
         try:
             # Initialize logs for today
-            from repository import DailyDiscoveryRepository
+            from infrastructure.persistence.repositories import DailyDiscoveryRepository
             today_str = datetime.now().strftime('%Y-%m-%d')
             sports = ['basketball', 'tennis', 'baseball', 'ice-hockey', 'american-football', 'football', 'handball']
             DailyDiscoveryRepository.initialize_sports_for_date(today_str, sports)
@@ -2375,7 +2379,7 @@ class JobScheduler:
         """Job F: Clean up OddsPortal league cache once every three days (runs at 05:00)"""
         logger.info("Starting Job F: Clean up OddsPortal league cache")
         try:
-            from repository import OddsPortalCacheRepository
+            from infrastructure.persistence.repositories import OddsPortalCacheRepository
             # We keep the caches for 3 days to match the execution frequency
             OddsPortalCacheRepository.cleanup_old_caches(retention_days=3)
         except Exception as e:
@@ -2385,7 +2389,7 @@ class JobScheduler:
         """Job E_Retry: Retries failed daily discovery sports"""
         logger.info("Starting Job E_Retry: Checking for failed daily discovery sports")
         try:
-            from repository import DailyDiscoveryRepository
+            from infrastructure.persistence.repositories import DailyDiscoveryRepository
             from today_sport_extractor import run_daily_discovery
             today = datetime.now().strftime('%Y-%m-%d')
             failed_sports = DailyDiscoveryRepository.get_pending_sports(today)
@@ -2461,7 +2465,7 @@ class JobScheduler:
                                 
                                 # Save all markets to new markets/market_choices tables
                                 try:
-                                    from repository import MarketRepository
+                                    from infrastructure.persistence.repositories import MarketRepository
                                     MarketRepository.save_markets_from_response(event_data.id, final_odds_response)
                                 except Exception as e:
                                     logger.warning(f"Error saving markets to DB for event {event_data.id}: {e}")
@@ -2574,10 +2578,9 @@ class JobScheduler:
             dual_reports: List of DualProcessReport objects
         """
         try:
-            from alert_system import pre_start_notifier
+            from modules.alerts import pre_start_notifier
             
-            # Use alert_system to send dual process alerts (modular approach)
-            success = pre_start_notifier.send_dual_process_alerts(dual_reports)
+            success = send_dual_process_alerts(pre_start_notifier, dual_reports)
             
             if success:
                 logger.info(f"✅ Dual process alerts sent successfully")

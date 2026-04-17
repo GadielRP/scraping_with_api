@@ -22,7 +22,7 @@ from typing import List, Optional, Tuple
 
 from database import db_manager
 from models import Event, Result
-from repository import ResultRepository, EventRepository, OddsRepository
+from infrastructure.persistence.repositories import ResultRepository, EventRepository, OddsRepository
 from sofascore_api import api_client, SofaScoreNotFoundException, SofaScoreRateLimitException
 
 logging.basicConfig(

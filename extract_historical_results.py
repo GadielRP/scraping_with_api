@@ -63,7 +63,7 @@ from sqlalchemy import and_, or_, func, cast, Date
 # Import existing project modules
 from database import db_manager
 from models import Event, Result
-from repository import ResultRepository, EventRepository
+from infrastructure.persistence.repositories import ResultRepository, EventRepository
 from sofascore_api import api_client
 try:
     from sofascore_api import SofaScoreRateLimitException
@@ -673,7 +673,7 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
         logger.info(f"{mode_text}📅 Processing {total} events for date {day_date.strftime('%Y-%m-%d')}...")
     
     # Import here to avoid circular imports
-    from repository import OddsRepository, MarketRepository
+    from infrastructure.persistence.repositories import OddsRepository, MarketRepository
     
     for idx, event in enumerate(events[start_idx:], start_idx + 1):
         try:
