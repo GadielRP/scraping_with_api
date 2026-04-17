@@ -3,9 +3,9 @@ from typing import List, Optional, Dict
 
 from sqlalchemy import and_
 
-from models import EventObservation
-from database import db_manager
-from timezone_utils import get_local_now
+from infrastructure.persistence.models import EventObservation
+from infrastructure.persistence.database import db_manager
+from shared.timezone_utils import get_local_now
 
 logger = logging.getLogger(__name__)
 

@@ -2,10 +2,10 @@ import logging
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 
-from models import OddsSnapshot, EventOdds
-from database import db_manager
-from timezone_utils import get_local_now
-from odds_utils import validate_odds_data
+from infrastructure.persistence.models import OddsSnapshot, EventOdds
+from infrastructure.persistence.database import db_manager
+from shared.timezone_utils import get_local_now
+from shared.odds_utils import validate_odds_data
 
 logger = logging.getLogger(__name__)
 

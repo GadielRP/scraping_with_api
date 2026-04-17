@@ -18,11 +18,11 @@ import logging
 import argparse
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-from timezone_utils import get_local_now
+from shared.timezone_utils import get_local_now
 
 # Import database dependencies
-from database import db_manager
-from models import Event
+from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.models import Event
 
 logger = logging.getLogger(__name__)
 

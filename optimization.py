@@ -38,7 +38,7 @@ def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> Li
     Returns:
         List of upcoming event objects
     """
-    from timezone_utils import get_local_now_aware
+    from shared.timezone_utils import get_local_now_aware
     
     if not events:
         return []
@@ -352,7 +352,7 @@ def process_with_parallel_db_ops(
         Parallel: (20 ÷ 5) × 1s = 4 seconds
         Improvement: 80% faster (16 seconds saved)
     """
-    from odds_utils import process_event_odds_from_dropping_odds
+    from shared.odds_utils import process_event_odds_from_dropping_odds
     
     def process_single_event(event_data: Dict) -> Tuple[bool, str]:
         """Process a single event with pre-fetched odds."""

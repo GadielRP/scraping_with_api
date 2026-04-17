@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
-from models import Bookie, Market, MarketChoice, MarketChoiceSnapshot
-from database import db_manager
-from timezone_utils import get_local_now
+from infrastructure.persistence.models import Bookie, Market, MarketChoice, MarketChoiceSnapshot
+from infrastructure.persistence.database import db_manager
+from shared.timezone_utils import get_local_now
 
 try:
     from oddsportal_config import BOOKIE_ALIASES
@@ -148,7 +148,7 @@ class MarketRepository:
                         continue
 
                 session.commit()
-                logger.info(f"âœ… Saved {saved_count} markets for event {event_id}")
+                logger.info(f"✅ Saved {saved_count} markets for event {event_id}")
                 return saved_count
 
         except Exception as e:
@@ -193,9 +193,9 @@ class MarketRepository:
                         current = float(choice.current_odds) if choice.current_odds is not None else None
                         if initial is not None and current is not None:
                             if current > initial:
-                                movement = 'â†‘'
+                                movement = '↑'
                             elif current < initial:
-                                movement = 'â†“'
+                                movement = '↓'
                             else:
                                 movement = '='
                         elif current is not None:
@@ -298,7 +298,7 @@ class MarketRepository:
                 ))
 
             if not extraction_tuples:
-                logger.warning(f"âš ï¸ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
+                logger.warning(f"⚠️ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
                 return 0
 
             saved_count = 0

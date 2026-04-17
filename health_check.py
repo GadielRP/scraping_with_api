@@ -10,9 +10,9 @@ import json
 import logging
 import os
 from datetime import datetime
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from infrastructure.settings import Config
-from timezone_utils import get_local_now_iso
+from shared.timezone_utils import get_local_now_iso
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -79,7 +79,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             if db_healthy:
                 try:
                     with db_manager.get_session() as session:
-                        from models import Event, EventOdds, Result
+                        from infrastructure.persistence.models import Event, EventOdds, Result
                         stats = {
                             'events_count': session.query(Event).count(),
                             'odds_count': session.query(EventOdds).count(),

@@ -11,20 +11,19 @@ from infrastructure.settings import Config
 from sofascore_api import api_client
 import sofascore_api2  # Import to attach new methods to api_client
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, ObservationRepository
-from odds_utils import process_event_odds_from_dropping_odds
+from shared.odds_utils import process_event_odds_from_dropping_odds
 from modules.alerts import pre_start_notifier
-from modules.alerts.alerts_formatter.dual_process_alert import send_dual_process_alerts
 from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
 import os
 from sport_observations import sport_observations_manager
 logger = logging.getLogger(__name__)
-from alert_engine import alert_engine
-from timezone_utils import get_local_now_aware, convert_utc_to_local
-from models import refresh_materialized_views
-from database import db_manager
-from prediction_engine import prediction_engine
-from database import db_manager
-from models import PredictionLog, refresh_materialized_views
+from modules.alerts.dual_process.process_1 import alert_engine
+from shared.timezone_utils import get_local_now_aware, convert_utc_to_local
+from infrastructure.persistence.models import refresh_materialized_views
+from infrastructure.persistence.database import db_manager
+from modules.alerts.dual_process.run_dual_process import prediction_engine
+from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.models import PredictionLog, refresh_materialized_views
 from today_sport_extractor import run_daily_discovery
 # Import basketball 4Q monitor for in-game alerts
 from modules.alerts.basketball_4q import basketball_4q_monitor
@@ -943,7 +942,7 @@ class JobScheduler:
         
         Returns a dict with keys: event_id, streak_analysis, dual_report, odds_response, success
         """
-        from streak_alerts import streak_alert_engine
+        from modules.alerts.matchup_streak_analysis import build_matchup_streak_context, should_send_streak_alert
         from modules.prediction import prediction_logger
         
         result = {
@@ -1118,7 +1117,7 @@ class JobScheduler:
                                 else:
                                     logger.warning(f"⚠️ No rankings found in tennis_observations for event {event_obj.id}")
 
-                            streak_analysis = streak_alert_engine.build_matchup_streak_context(
+                            streak_analysis = build_matchup_streak_context(
                                 event_id=event_obj.id,
                                 event_custom_id=event_obj.custom_id,
                                 event_start_time=event_obj.start_time_utc,
@@ -1141,12 +1140,12 @@ class JobScheduler:
                                 event_odds=event_obj.event_odds
                             )
                            
-                            should_send_streak_alert = bool(
-                                streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis)
+                            send_streak_alert = bool(
+                                streak_analysis and should_send_streak_alert(streak_analysis)
                             )
-                            result['should_send_streak_alert'] = should_send_streak_alert
+                            result['should_send_streak_alert'] = send_streak_alert
 
-                            if should_send_streak_alert:
+                            if send_streak_alert:
                                 logger.info(f"✅ Matchup streak analysis completed for event {event_obj.id}: {streak_analysis.matchup_streak_summary}")
                                 
                                 # SMART ALERT FILTERING: RESURRECTION LOGIC
@@ -1350,7 +1349,7 @@ class JobScheduler:
             # Each event's alert group (Odds → matchup streak analysis → Dual) runs in its own thread
             # so events don't block each other while waiting for OP data.
             # ========================================
-            from odds_alert import odds_alert_processor
+            from modules.alerts.alerts_formatter.odds_alert import send_odds_alert
             from modules.alerts import pre_start_notifier
             
             def _send_event_alerts(result):
@@ -1428,7 +1427,7 @@ class JobScheduler:
                         }
                         
                         op_data = op_data_cache.get(event_obj.id) if op_data_cache else None
-                        odds_alert_processor.send_odds_alert(event_data_for_odds, odds_response, minutes_until_start, op_data=op_data)
+                        send_odds_alert(event_data_for_odds, odds_response, minutes_until_start, op_data=op_data)
                     except Exception as e:
                         logger.error(f"Error sending odds alert for event {event_obj.id}: {e}")
                 
@@ -1450,15 +1449,18 @@ class JobScheduler:
                         self._send_dual_process_alerts([dual_report])
                         
                         # Log predictions for successful Process 1 reports
-                        from modules.prediction import prediction_logger
-                        from database import db_manager
-                        from models import PredictionLog
+                        from infrastructure.persistence.database import db_manager
+                        from infrastructure.persistence.models import PredictionLog
                         
                         if (dual_report.process1_report and 
                             dual_report.process1_report.get('status') == 'success'):
                             
                             if minutes_until_start == 0:
-                                success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
+                                success = prediction_engine.log_process1_prediction_if_needed(
+                                    event_obj,
+                                    dual_report,
+                                    minutes_until_start,
+                                )
                                 if success:
                                     logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (0 minutes from start)")
                                 else:
@@ -1740,7 +1742,7 @@ class JobScheduler:
         # Note: start_time_utc is actually stored in local timezone (not UTC)
         # This is because datetime.fromtimestamp() creates local time, not UTC
         # So we treat it as local time and make it timezone-aware
-        from timezone_utils import TIMEZONE
+        from shared.timezone_utils import TIMEZONE
         if start_time_utc.tzinfo is None:
             # Make the naive datetime timezone-aware in local timezone
             start_local = TIMEZONE.localize(start_time_utc)
@@ -1765,7 +1767,7 @@ class JobScheduler:
         Returns:
             Negative integer representing minutes since start (e.g., -5 means started 5 minutes ago)
         """
-        from timezone_utils import TIMEZONE
+        from shared.timezone_utils import TIMEZONE
         if start_time_utc.tzinfo is None:
             # Make the naive datetime timezone-aware in local timezone
             start_local = TIMEZONE.localize(start_time_utc)
@@ -1794,7 +1796,7 @@ class JobScheduler:
             True if successfully reset, False otherwise
         """
         try:
-            from models import Event
+            from infrastructure.persistence.models import Event
             
             with db_manager.get_session() as session:
                 event = session.query(Event).filter(Event.id == event_id).first()
@@ -2109,8 +2111,8 @@ class JobScheduler:
                                     logger.info(f"✅ Added rankings from snapshot for rescheduled tennis event {event_obj.id}")
                         
                         # Analyze matchup streak analysis with team results and pass them to streak_alerts
-                        from streak_alerts import streak_alert_engine
-                        streak_analysis = streak_alert_engine.build_matchup_streak_context(
+                        from modules.alerts.matchup_streak_analysis import build_matchup_streak_context, should_send_streak_alert
+                        streak_analysis = build_matchup_streak_context(
                             event_id=event_obj.id,
                             event_custom_id=event_obj.custom_id,
                             event_start_time=event_obj.start_time_utc,
@@ -2133,10 +2135,10 @@ class JobScheduler:
                             event_odds=event_obj.event_odds
                         )
                         
-                        should_send_streak_alert = bool(
-                            streak_analysis and streak_alert_engine.should_send_streak_alert(streak_analysis)
+                        send_streak_alert = bool(
+                            streak_analysis and should_send_streak_alert(streak_analysis)
                         )
-                        if should_send_streak_alert:
+                        if send_streak_alert:
                             logger.info(f"✅ Matchup streak analysis completed for rescheduled event {event_obj.id}: {streak_analysis.matchup_streak_summary}")
                         else:
                             streak_analysis = None
@@ -2179,7 +2181,7 @@ class JobScheduler:
                     logger.info(f"[DUAL PROCESS] Skipping evaluation (rescheduled) for event {event_obj.id} at minute {minutes_until_start}; allowed minutes are {DUAL_PROCESS_ALLOWED_MINUTES}")
                     dual_report = None
                 else:
-                    from prediction_engine import prediction_engine
+                    from modules.alerts.dual_process.run_dual_process import prediction_engine
                     dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
                 # --- END: PRECISION ALERT GATE ---
                 
@@ -2216,16 +2218,19 @@ class JobScheduler:
                 # --- END: PRECISION ALERT GATE ---
                 
                 # Log predictions for successful Process 1 reports (same logic as normal events)
-                from modules.prediction import prediction_logger
                 if (dual_report.process1_report and 
                     dual_report.process1_report.get('status') == 'success' and
                     minutes_until_start == 0):  # Only log at 0 minutes
-                    success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
+                    success = prediction_engine.log_process1_prediction_if_needed(
+                        event_obj,
+                        dual_report,
+                        minutes_until_start,
+                    )
                     if success:
                         logger.info(f"✅ Prediction logged for rescheduled event {event.id} (0 minutes from start)")
                     else:
                         # Check if it's a duplicate (already exists) vs. actual failure
-                        from models import PredictionLog
+                        from infrastructure.persistence.models import PredictionLog
                         with db_manager.get_session() as session:
                             existing = session.query(PredictionLog).filter_by(event_id=event.id).first()
                             if existing:
@@ -2330,8 +2335,8 @@ class JobScheduler:
             
             # Refresh materialized views for alerts after results are updated
             logger.info("🔄 Refreshing alert materialized views...")
-            from models import refresh_materialized_views
-            from database import db_manager
+            from infrastructure.persistence.models import refresh_materialized_views
+            from infrastructure.persistence.database import db_manager
             refresh_materialized_views(db_manager.engine)
             logger.info("✅ Alert data refreshed")
             
@@ -2580,12 +2585,12 @@ class JobScheduler:
         try:
             from modules.alerts import pre_start_notifier
             
-            success = send_dual_process_alerts(pre_start_notifier, dual_reports)
+            success = prediction_engine.send_alerts(pre_start_notifier, dual_reports)
             
             if success:
                 logger.info(f"✅ Dual process alerts sent successfully")
             else:
-                logger.warning(f"💔 Failed to send dual process alerts")
+                logger.warning(f"💔 Dual process alert not sent due to it not being a success")
                     
         except Exception as e:
             logger.error(f"Error in _send_dual_process_alerts: {e}")

@@ -20,7 +20,7 @@ import os
 import pytz
 
 # Import your existing models
-from models import Base, Event, EventOdds, Result
+from infrastructure.persistence.models import Base, Event, EventOdds, Result
 from infrastructure.settings import Config
 
 # Get configuration values

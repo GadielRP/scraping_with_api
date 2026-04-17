@@ -1,9 +1,9 @@
 import logging
 from typing import Optional, Dict
 
-from models import OddsPortalLeagueCache
-from database import db_manager
-from timezone_utils import get_local_now
+from infrastructure.persistence.models import OddsPortalLeagueCache
+from infrastructure.persistence.database import db_manager
+from shared.timezone_utils import get_local_now
 
 logger = logging.getLogger(__name__)
 

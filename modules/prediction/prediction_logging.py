@@ -43,8 +43,8 @@ class PredictionLogger:
             True if prediction was logged successfully, False otherwise
         """
         try:
-            from database import db_manager
-            from models import PredictionLog
+            from infrastructure.persistence.database import db_manager
+            from infrastructure.persistence.models import PredictionLog
             
             # Check if prediction already exists for this event
             with db_manager.get_session() as session:
@@ -124,11 +124,11 @@ class PredictionLogger:
             if not prediction_text:
                 return None, None
             
-            # Import the proven extraction logic from prediction_engine
-            from prediction_engine import prediction_engine
+            # Import the proven extraction logic from the dual-process runner
+            from modules.alerts.dual_process.run_dual_process import prediction_engine
             
             # Extract winner using the proven method
-            prediction_winner = prediction_engine._extract_winner_from_process1_prediction(prediction_text)
+            prediction_winner = prediction_engine.extract_winner_from_process1_prediction(prediction_text)
             
             # Extract point difference from prediction text
             prediction_point_diff = None
@@ -156,8 +156,8 @@ class PredictionLogger:
             Dictionary with update statistics
         """
         try:
-            from database import db_manager
-            from models import PredictionLog, Result, Event
+            from infrastructure.persistence.database import db_manager
+            from infrastructure.persistence.models import PredictionLog, Result, Event
             from datetime import datetime, timedelta
             
             with db_manager.get_session() as session:

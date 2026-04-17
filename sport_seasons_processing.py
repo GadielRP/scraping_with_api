@@ -16,7 +16,7 @@ The script fetches all events for a given season and:
 
 from sofascore_api import api_client
 from infrastructure.persistence.repositories import ResultRepository, MarketRepository
-from database import db_manager
+from infrastructure.persistence.database import db_manager
 from typing import Dict, List
 import logging
 import argparse

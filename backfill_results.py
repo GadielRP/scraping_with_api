@@ -20,8 +20,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from database import db_manager
-from models import Event, Result
+from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.repositories import ResultRepository, EventRepository, OddsRepository
 from sofascore_api import api_client, SofaScoreNotFoundException, SofaScoreRateLimitException
 
@@ -304,7 +304,7 @@ def backfill_results(limit: int = None):
     Args:
         limit: Maximum number of events to process (None = all)
     """
-    from timezone_utils import get_local_now
+    from shared.timezone_utils import get_local_now
     
     print(f"\n{'='*60}")
     print("BACKFILL: Results & Odds")
