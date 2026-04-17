@@ -13,7 +13,6 @@ import sofascore_api2  # Import to attach new methods to api_client
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, ObservationRepository
 from shared.odds_utils import process_event_odds_from_dropping_odds
 from modules.alerts import pre_start_notifier
-from modules.alerts.alerts_formatter.dual_process_alert import send_dual_process_alerts
 from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
 import os
 from sport_observations import sport_observations_manager
@@ -22,7 +21,7 @@ from modules.alerts.dual_process.process_1 import alert_engine
 from shared.timezone_utils import get_local_now_aware, convert_utc_to_local
 from infrastructure.persistence.models import refresh_materialized_views
 from infrastructure.persistence.database import db_manager
-from prediction_engine import prediction_engine
+from modules.alerts.dual_process.run_dual_process import prediction_engine
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import PredictionLog, refresh_materialized_views
 from today_sport_extractor import run_daily_discovery
@@ -1450,7 +1449,6 @@ class JobScheduler:
                         self._send_dual_process_alerts([dual_report])
                         
                         # Log predictions for successful Process 1 reports
-                        from modules.prediction import prediction_logger
                         from infrastructure.persistence.database import db_manager
                         from infrastructure.persistence.models import PredictionLog
                         
@@ -1458,7 +1456,11 @@ class JobScheduler:
                             dual_report.process1_report.get('status') == 'success'):
                             
                             if minutes_until_start == 0:
-                                success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
+                                success = prediction_engine.log_process1_prediction_if_needed(
+                                    event_obj,
+                                    dual_report,
+                                    minutes_until_start,
+                                )
                                 if success:
                                     logger.info(f"✅ Prediction logged for dual process event {event_obj.id} (0 minutes from start)")
                                 else:
@@ -2179,7 +2181,7 @@ class JobScheduler:
                     logger.info(f"[DUAL PROCESS] Skipping evaluation (rescheduled) for event {event_obj.id} at minute {minutes_until_start}; allowed minutes are {DUAL_PROCESS_ALLOWED_MINUTES}")
                     dual_report = None
                 else:
-                    from prediction_engine import prediction_engine
+                    from modules.alerts.dual_process.run_dual_process import prediction_engine
                     dual_report = prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
                 # --- END: PRECISION ALERT GATE ---
                 
@@ -2216,11 +2218,14 @@ class JobScheduler:
                 # --- END: PRECISION ALERT GATE ---
                 
                 # Log predictions for successful Process 1 reports (same logic as normal events)
-                from modules.prediction import prediction_logger
                 if (dual_report.process1_report and 
                     dual_report.process1_report.get('status') == 'success' and
                     minutes_until_start == 0):  # Only log at 0 minutes
-                    success = prediction_logger.log_prediction(event_obj, dual_report.process1_report)
+                    success = prediction_engine.log_process1_prediction_if_needed(
+                        event_obj,
+                        dual_report,
+                        minutes_until_start,
+                    )
                     if success:
                         logger.info(f"✅ Prediction logged for rescheduled event {event.id} (0 minutes from start)")
                     else:
@@ -2580,7 +2585,7 @@ class JobScheduler:
         try:
             from modules.alerts import pre_start_notifier
             
-            success = send_dual_process_alerts(pre_start_notifier, dual_reports)
+            success = prediction_engine.send_alerts(pre_start_notifier, dual_reports)
             
             if success:
                 logger.info(f"✅ Dual process alerts sent successfully")

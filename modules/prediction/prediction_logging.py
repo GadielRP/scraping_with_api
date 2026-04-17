@@ -124,11 +124,11 @@ class PredictionLogger:
             if not prediction_text:
                 return None, None
             
-            # Import the proven extraction logic from prediction_engine
-            from prediction_engine import prediction_engine
+            # Import the proven extraction logic from the dual-process runner
+            from modules.alerts.dual_process.run_dual_process import prediction_engine
             
             # Extract winner using the proven method
-            prediction_winner = prediction_engine._extract_winner_from_process1_prediction(prediction_text)
+            prediction_winner = prediction_engine.extract_winner_from_process1_prediction(prediction_text)
             
             # Extract point difference from prediction text
             prediction_point_diff = None

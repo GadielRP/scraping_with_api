@@ -148,7 +148,7 @@ class MarketRepository:
                         continue
 
                 session.commit()
-                logger.info(f"âœ… Saved {saved_count} markets for event {event_id}")
+                logger.info(f"✅ Saved {saved_count} markets for event {event_id}")
                 return saved_count
 
         except Exception as e:
@@ -193,9 +193,9 @@ class MarketRepository:
                         current = float(choice.current_odds) if choice.current_odds is not None else None
                         if initial is not None and current is not None:
                             if current > initial:
-                                movement = 'â†‘'
+                                movement = '↑'
                             elif current < initial:
-                                movement = 'â†“'
+                                movement = '↓'
                             else:
                                 movement = '='
                         elif current is not None:
@@ -298,7 +298,7 @@ class MarketRepository:
                 ))
 
             if not extraction_tuples:
-                logger.warning(f"âš ï¸ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
+                logger.warning(f"⚠️ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
                 return 0
 
             saved_count = 0
