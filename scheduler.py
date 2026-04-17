@@ -2585,7 +2585,7 @@ class JobScheduler:
             if success:
                 logger.info(f"✅ Dual process alerts sent successfully")
             else:
-                logger.warning(f"💔 Failed to send dual process alerts")
+                logger.warning(f"💔 Dual process alert not sent due to it not being a success")
                     
         except Exception as e:
             logger.error(f"Error in _send_dual_process_alerts: {e}")
