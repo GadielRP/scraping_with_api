@@ -74,11 +74,9 @@ class SportObservationsManager:
             logger.info(f"🎾 Extracting ground type for tennis event {event_id}")
             
             # Import here to avoid circular imports
-            from sofascore_api import api_client
-            
-            
-            # Use the existing method from sofascore_api to extract observations
-            observations = api_client._extract_observations_from_response(api_response)
+            from modules.sofascore.event_details import extract_observations_from_response
+
+            observations = extract_observations_from_response(api_response)
             
             if observations:
                 logger.info(f"🎾 Found {len(observations)} observations for tennis event {event_id}")

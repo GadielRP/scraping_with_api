@@ -23,7 +23,8 @@ from typing import List, Optional, Tuple
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.repositories import ResultRepository, EventRepository, OddsRepository
-from sofascore_api import api_client, SofaScoreNotFoundException, SofaScoreRateLimitException
+from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
+from modules.sofascore import api_client, SofaScoreNotFoundException, SofaScoreRateLimitException
 
 logging.basicConfig(
     level=logging.INFO, 
@@ -107,7 +108,7 @@ def fetch_event_results_with_error_handling(event_id: int) -> Tuple[Optional[dic
         endpoint = f"/event/{event_id}"
         
         # Make request directly to detect status code
-        from sofascore_api import api_client
+        from modules.sofascore import api_client
         url = f"{api_client.base_url}{endpoint}"
         
         headers = {
@@ -162,7 +163,7 @@ def fetch_event_odds_with_error_handling(event_id: int, slug: str = None) -> Tup
         else:
             endpoint = f"/event/{event_id}/odds/1/all"
         
-        from sofascore_api import api_client
+        from modules.sofascore import api_client
         url = f"{api_client.base_url}{endpoint}"
         
         headers = {
@@ -187,7 +188,7 @@ def fetch_event_odds_with_error_handling(event_id: int, slug: str = None) -> Tup
         
         # Parse response and extract odds
         data = response.json()
-        odds_data = api_client.extract_final_odds_from_response(data, initial_odds_extraction=True)
+        odds_data = extract_final_odds_from_response(data, initial_odds_extraction=True)
         
         if odds_data:
             return odds_data, "success"

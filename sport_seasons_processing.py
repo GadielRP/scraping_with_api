@@ -14,7 +14,7 @@ The script fetches all events for a given season and:
 3. Extracts and saves results for finished events
 """
 
-from sofascore_api import api_client
+from modules.sofascore import api_client
 from infrastructure.persistence.repositories import ResultRepository, MarketRepository
 from infrastructure.persistence.database import db_manager
 from typing import Dict, List
@@ -122,8 +122,8 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
         endpoint = f"/unique-tournament/{tournament_id}/season/{season_id}/events/last/{fetch_number}"
         logger.info(f"Fetching batch {fetch_number}...")
         
-        # Use _make_request with no_retry_on_404=True to stop when we reach the end
-        response = api_client._make_request(endpoint, no_retry_on_404=True)
+        # Use the safe request facade so 404s still end the fetch loop cleanly.
+        response = api_client._request_json(endpoint, no_retry_on_404=True)
         
         if not response:
             logger.info(f"No more events found (received 404 or error). Total batches fetched: {fetch_number}")

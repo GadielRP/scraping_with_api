@@ -17,7 +17,7 @@ import psycopg
 from typing import Dict, List, Optional
 from datetime import datetime
 from shared.timezone_utils import get_local_now
-from sofascore_api import api_client
+from modules.sofascore import api_client
 from infrastructure.settings import Config
 # Import database dependencies
 from infrastructure.persistence.database import db_manager

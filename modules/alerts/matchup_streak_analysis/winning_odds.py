@@ -8,7 +8,7 @@ Extracted from streak_alerts.py (StreakAlertEngine.get_winning_odds_data).
 import logging
 from typing import Dict, Optional
 
-from sofascore_api import api_client
+from modules.sofascore import api_client
 from shared.odds_utils import fractional_to_decimal
 
 logger = logging.getLogger(__name__)

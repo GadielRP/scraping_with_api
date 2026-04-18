@@ -18,7 +18,8 @@ logger = logging.getLogger("process_null_seasons")
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, refresh_materialized_views
-from sofascore_api import api_client
+from modules.sofascore import api_client
+from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, MarketRepository
 from sport_observations import sport_observations_manager
 from shared.timezone_utils import get_local_now
@@ -174,7 +175,7 @@ def process_event(event_id: int, slug: str):
         try:
             final_odds_response = api_client.get_event_final_odds(event_id, slug)
             if final_odds_response:
-                final_odds_data = api_client.extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
+                final_odds_data = extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
                 if final_odds_data:
                     upserted_id = OddsRepository.upsert_event_odds(event_id, final_odds_data)
                     if upserted_id:
