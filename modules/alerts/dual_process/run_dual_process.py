@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class ComparisonVerdict(Enum):
-    """Comparison verdict between Process 1 and Process 2."""
+    """Comparison verdict between Process 1️⃣ and Process 2️⃣."""
 
     AGREE = "AGREE"
     DISAGREE = "DISAGREE"
@@ -44,7 +44,7 @@ class DualProcessReport:
 
 
 class DualProcessRunner:
-    """Orchestrator for Process 1 plus Process 2."""
+    """Orchestrator for Process 1️⃣ plus Process 2️⃣."""
 
     def __init__(self):
         logger.info("[DUAL PROCESS] Runner initialized")
@@ -92,9 +92,9 @@ class DualProcessRunner:
             return self._create_error_report(event, str(e), minutes_until_start)
 
     def _execute_process1(self, event, minutes_until_start: int) -> Tuple[Optional[Dict], Optional[Tuple[str, int]], str]:
-        """Execute Process 1."""
+        """Execute Process 1️⃣."""
         try:
-            logger.info("[DUAL PROCESS] Executing Process 1 for event %s", event.id)
+            logger.info("[DUAL PROCESS] Executing Process 1️⃣️⃣ for event %s", event.id)
             alerts = alert_engine.evaluate_single_event(event, minutes_until_start)
 
             if alerts and len(alerts) > 0:
@@ -106,22 +106,22 @@ class DualProcessRunner:
                     winner_side = self.extract_winner_from_process1_prediction(primary_prediction)
                     if winner_side:
                         process1_prediction = (winner_side, 1)
-                        logger.info("[DUAL PROCESS] Process 1 prediction: %s", winner_side)
+                        logger.info("[DUAL PROCESS] Process 1️⃣️⃣ prediction: %s", winner_side)
                         return alert_report, process1_prediction, "success"
 
-                logger.info("[DUAL PROCESS] Process 1 report generated without clear prediction (status: %s)", status)
+                logger.info("[DUAL PROCESS] Process 1️⃣️⃣ report generated without clear prediction (status: %s)", status)
                 return alert_report, None, status
 
-            logger.info("[DUAL PROCESS] Process 1 found no candidates for event %s", event.id)
+            logger.info("[DUAL PROCESS] Process 1️⃣️⃣ found no candidates for event %s", event.id)
             return None, None, "no_candidates"
         except Exception as e:
-            logger.error("[DUAL PROCESS] Error executing Process 1 for event %s: %s", event.id, e)
+            logger.error("[DUAL PROCESS] Error executing Process 1️⃣️⃣ for event %s: %s", event.id, e)
             return None, None, f"error: {str(e)}"
 
     def _execute_process2(self, event) -> Tuple[Optional[Dict], Optional[Tuple[str, int]], str]:
-        """Execute Process 2."""
+        """Execute Process 2️⃣."""
         try:
-            logger.info("[DUAL PROCESS] Executing Process 2 for event %s", event.id)
+            logger.info("[DUAL PROCESS] Executing Process 2️⃣ for event %s", event.id)
 
             process2_engine = Process2Engine()
             process2_report = process2_engine.evaluate_event(event)
@@ -150,16 +150,16 @@ class DualProcessRunner:
                 status = process2_report.status
 
                 if prediction and status == "success":
-                    logger.info("[DUAL PROCESS] Process 2 prediction: %s", prediction[0])
+                    logger.info("[DUAL PROCESS] Process 2️⃣ prediction: %s", prediction[0])
                     return report_dict, prediction, "success"
 
-                logger.info("[DUAL PROCESS] Process 2 produced no final prediction (status: %s)", status)
+                logger.info("[DUAL PROCESS] Process 2️⃣ produced no final prediction (status: %s)", status)
                 return report_dict, None, status
 
-            logger.info("[DUAL PROCESS] Process 2 returned no report for event %s", event.id)
+            logger.info("[DUAL PROCESS] Process 2️⃣ returned no report for event %s", event.id)
             return None, None, "no_report"
         except Exception as e:
-            logger.error("[DUAL PROCESS] Error executing Process 2 for event %s: %s", event.id, e)
+            logger.error("[DUAL PROCESS] Error executing Process 2️⃣ for event %s: %s", event.id, e)
             return None, None, f"error: {str(e)}"
 
     def _compare_predictions(
@@ -182,30 +182,30 @@ class DualProcessRunner:
                     )
 
                 logger.info(
-                    "[DUAL PROCESS] DISAGREEMENT: Process 1 predicts %s, Process 2 predicts %s",
+                    "[DUAL PROCESS] DISAGREEMENT: Process 1️⃣ predicts %s, Process 2️⃣ predicts %s",
                     p1_winner,
                     p2_winner,
                 )
                 return (
                     ComparisonVerdict.DISAGREE,
                     None,
-                    f"Disagreement: Process 1 predicts {p1_winner}, Process 2 predicts {p2_winner}",
+                    f"Disagreement: Process 1️⃣ predicts {p1_winner}, Process 2️⃣ predicts {p2_winner}",
                 )
 
             if process1_prediction and not process2_prediction:
-                logger.info("[DUAL PROCESS] PARTIAL: only Process 1 has prediction %s", process1_prediction[0])
+                logger.info("[DUAL PROCESS] PARTIAL: only Process 1️⃣ has prediction %s", process1_prediction[0])
                 return (
                     ComparisonVerdict.PARTIAL,
                     process1_prediction,
-                    "Only Process 1 generated prediction",
+                    "Only Process 1️⃣ generated prediction",
                 )
 
             if not process1_prediction and process2_prediction:
-                logger.info("[DUAL PROCESS] PARTIAL: only Process 2 has prediction %s", process2_prediction[0])
+                logger.info("[DUAL PROCESS] PARTIAL: only Process 2️⃣ has prediction %s", process2_prediction[0])
                 return (
                     ComparisonVerdict.PARTIAL,
                     process2_prediction,
-                    "Only Process 2 generated prediction",
+                    "Only Process 2️⃣ generated prediction",
                 )
 
             logger.info("[DUAL PROCESS] Neither process generated a prediction")
@@ -223,7 +223,7 @@ class DualProcessRunner:
             )
 
     def extract_winner_from_process1_prediction(self, prediction_text: str) -> Optional[str]:
-        """Extract winner side from Process 1 prediction text."""
+        """Extract winner side from Process 1️⃣ prediction text."""
         try:
             if not prediction_text:
                 return None
@@ -286,7 +286,7 @@ class DualProcessRunner:
             return False
 
     def log_process1_prediction_if_needed(self, event, dual_report: DualProcessReport, minutes_until_start: int) -> bool:
-        """Log Process 1 predictions when the successful report is sent at minute 0."""
+        """Log Process 1️⃣ predictions when the successful report is sent at minute 0."""
         try:
             if not dual_report or not dual_report.process1_report:
                 return False
@@ -300,7 +300,7 @@ class DualProcessRunner:
             return prediction_logger.log_prediction(event, dual_report.process1_report)
         except Exception as e:
             logger.error(
-                "[DUAL PROCESS] Error logging Process 1 prediction for event %s: %s",
+                "[DUAL PROCESS] Error logging Process 1️⃣ prediction for event %s: %s",
                 getattr(event, "id", "?"),
                 e,
             )

@@ -9,7 +9,7 @@ from typing import Dict, List
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import PredictionLog, refresh_materialized_views
-from infrastructure.persistence.repositories import ObservationRepository
+from infrastructure.persistence.repositories import MarketRepository, ObservationRepository
 from infrastructure.settings import Config
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
@@ -42,6 +42,67 @@ def evaluate_and_send_alerts_batch(
         dual_report = result.get("dual_report")
         odds_response = result.get("odds_response")
         minutes_until_start = result.get("minutes_until_start")
+        op_data = None
+
+        if odds_response and op_event_ids and event_obj.id in op_event_ids and op_event_states:
+            state = op_event_states.get(event_obj.id)
+            if state:
+                if state["done_event"].is_set():
+                    logger.info(f"[OP] Event {event_obj.id} already completed; alert thread unblocked")
+                else:
+                    logged_queue = False
+                    while not state["started_event"].is_set() and not state["done_event"].is_set():
+                        if not logged_queue:
+                            logger.info(
+                                f"[OP] Event {event_obj.id} queued; waiting for worker claim before starting post-start timeout"
+                            )
+                            logged_queue = True
+                        time.sleep(0.25)
+
+                    if not state["done_event"].is_set():
+                        started_at = state.get("started_at_monotonic")
+                        if started_at is not None:
+                            elapsed = time.monotonic() - started_at
+                            timeout_s = getattr(Config, "ODDSPORTAL_ALERT_WAIT_TIMEOUT", 180)
+                            remaining = max(0.0, float(timeout_s) - elapsed)
+
+                            if remaining > 0:
+                                logger.info(
+                                    f"[OP] Event {event_obj.id} started {elapsed:.1f}s ago; waiting up to {remaining:.1f}s more for completion"
+                                )
+                                signaled = state["done_event"].wait(timeout=remaining)
+                                if signaled:
+                                    logger.info(
+                                        f"[OP] Worker signaled completion for event {event_obj.id}. Verifying DB availability..."
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"[OP] Timed out waiting for OddsPortal for event {event_obj.id} after {timeout_s}s post-start."
+                                    )
+                            else:
+                                logger.warning(
+                                    f"[OP] Event {event_obj.id} already exceeded post-start timeout ({elapsed:.1f}s > {timeout_s}s)."
+                                )
+                        else:
+                            logger.warning(
+                                f"[OP] Missing started_at tracking for event {event_obj.id}, unblocking immediately."
+                            )
+
+                try:
+                    op_markets = MarketRepository.get_oddsportal_markets_for_event(event_obj.id)
+                    if op_markets:
+                        logger.info(
+                            f"[OP] OddsPortal data is available for event {event_obj.id} ({len(op_markets)} rows) - OddsPortal section should be included."
+                        )
+                    else:
+                        logger.info(
+                            f"[OP] OddsPortal data is NOT available for event {event_obj.id} - OddsPortal section will NOT be included."
+                        )
+                except Exception as op_check_err:
+                    logger.warning(
+                        f"[OP] Could not verify OddsPortal DB availability for event {event_obj.id}: {op_check_err}"
+                    )
+                op_data = op_data_cache.get(event_obj.id) if op_data_cache else None
 
         if streak_analysis is None and minutes_until_start == 30 and getattr(event_obj, "custom_id", None):
             try:
@@ -96,7 +157,7 @@ def evaluate_and_send_alerts_batch(
                 "discovery_source": getattr(event_obj, "discovery_source", ""),
                 "season_id": getattr(event_obj, "season_id", None),
             }
-            send_odds_alert(event_data_for_odds, odds_response, minutes_until_start, op_data=None)
+            send_odds_alert(event_data_for_odds, odds_response, minutes_until_start, op_data=op_data)
 
         if streak_analysis and should_send_streak_alert_flag:
             send_matchup_streak_alerts(pre_start_notifier, [streak_analysis])

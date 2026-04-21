@@ -93,6 +93,9 @@ class Config:
     
     # Odds Extraction Configuration (for testing)
     ENABLE_ODDS_EXTRACTION = os.getenv('ENABLE_ODDS_EXTRACTION', 'true').lower() == 'true'
+
+    # OddsPortal scraping activation toggle for the pre-start flow
+    ODDSPORTAL_SCRAPING_ENABLED = _parse_env_bool('ODDSPORTAL_SCRAPING_ENABLED', True)
     
     # Filter by tracked seasons only (OddsPortal leagues)
     TRACKED_SEASONS_ONLY = os.getenv('TRACKED_SEASONS_TOGGLE', 'true').lower() == 'true'

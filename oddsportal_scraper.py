@@ -163,7 +163,6 @@ def _normalize_cache_date(date_text: str, reference_date: Optional[date] = None)
     if not date_text:
         return date_text
     parsed = _parse_oddsportal_cache_date(date_text, reference_date)
-    logger.info(f"Parsed date: {parsed}")
     if parsed is None:
         return date_text  # unparseable — keep original to avoid data loss
     return parsed.strftime("%d %b %Y")
@@ -1321,14 +1320,14 @@ class OddsPortalScraper:
             return
 
         match_label = f"{match_data.home_team} vs {match_data.away_team}"
-        logger.info(f"[RECAP] -- ODDS RECAP: {match_label} --")
+        logger.info(f"📝 -- ODDS RECAP: {match_label} --")
 
         for ext in match_data.extractions:
             handicap_str = ""
             if ext.bookie_odds and getattr(ext.bookie_odds[0], "handicap", None):
                 handicap_str = f" [{ext.bookie_odds[0].handicap}]"
             logger.info(
-                f"   [MARKET] {ext.market_group} | {ext.market_period} | "
+                f"   🛒 {ext.market_group} | {ext.market_period} | "
                 f"{ext.market_name}{handicap_str}"
             )
 
@@ -1360,7 +1359,7 @@ class OddsPortalScraper:
                     lay_str = f"1={bf.lay_1 or '-'} X={bf.lay_x or '-'} 2={bf.lay_2 or '-'}"
                 logger.info(f"      Betfair Back: {back_str} | Lay: {lay_str}")
 
-        logger.info(f"[RECAP] -- END RECAP: {match_label} --")
+        logger.info(f"📝 -- END RECAP: {match_label} --")
 
     def _resume_state_for_debug(self, resume_state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if not isinstance(resume_state, dict):

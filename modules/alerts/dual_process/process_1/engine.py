@@ -67,7 +67,7 @@ class AlertEngine:
             participants = "? vs ?"
 
         logger.info(
-            f"[PROCESS1] Event {event.id} ({participants}) vars: d1={cur_v1:.2f}, dx={(cur_vx if cur_vx is not None else 0):.2f}, "
+            f"[P1️⃣] Event {event.id} ({participants}) vars: d1={cur_v1:.2f}, dx={(cur_vx if cur_vx is not None else 0):.2f}, "
             f"d2={cur_v2:.2f}, shape={'3-way' if var_shape else 'no-draw'}"
         )
 
