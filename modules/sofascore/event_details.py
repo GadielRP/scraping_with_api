@@ -189,6 +189,7 @@ def get_event_results(
             ]
 
         if update_time:
+            logger.info("Checking and updating starting time for event %s", event_id)
             event_data = response.get("event", {})
             start_timestamp = event_data.get("startTimestamp")
             if start_timestamp is None:

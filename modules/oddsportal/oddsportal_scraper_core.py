@@ -1,8 +1,4 @@
-class OddsPortalScraper:
-    """Lazy wrapper that instantiates the legacy root scraper on demand."""
 
-    def __new__(cls, *args, **kwargs):
-        from oddsportal_scraper import OddsPortalScraper as RootOddsPortalScraper
+"""Backward-compatible alias to the real OddsPortalScraper implementation."""
 
-        return RootOddsPortalScraper(*args, **kwargs)
-
+from .scraper_impl import OddsPortalScraper

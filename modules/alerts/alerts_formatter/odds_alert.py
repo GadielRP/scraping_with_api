@@ -212,13 +212,16 @@ def _format_oddsportal_section(op_markets: List[Dict], event_data: Dict = None, 
         market_period = m.get('market_period', 'Unknown')
         grouped_markets[(market_group, market_period)].append(m)
         
-    for (market_group, market_period), markets in grouped_markets.items():
+    for (market_group, market_period), markets in sorted(grouped_markets.items()):
         if market_group == '1X2':
             display_group = "Full time" if market_period == 'Full-time' else market_period
         else:
             display_group = f"{market_group} - {market_period}"
             
         result += f"📊 <b>{display_group}</b>\n"
+        
+        # Sort markets by bookie name: numbers first, then alphabetical (case-insensitive)
+        markets = sorted(markets, key=lambda x: x['bookie_name'].lower())
         
         for m in markets:
             bookie_name = m['bookie_name']
