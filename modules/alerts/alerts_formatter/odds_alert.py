@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from infrastructure.persistence.repositories import EventRepository, MarketRepository
 from infrastructure.settings import Config
-from oddsportal_config import SEASON_ODDSPORTAL_MAP
+from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.alerts import pre_start_notifier
 
 logger = logging.getLogger(__name__)

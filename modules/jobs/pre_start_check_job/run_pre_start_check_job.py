@@ -17,7 +17,7 @@ from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_
 from modules.jobs.pre_start_check_job.rescheduled_events import handle_rescheduled_event
 from modules.jobs.pre_start_check_job.timestamp_corrections import check_recently_started_events_for_timestamp_corrections
 from modules.jobs.pre_start_check_job.timing import minutes_until_start, should_extract_odds_for_event
-from oddsportal_config import SEASON_ODDSPORTAL_MAP
+from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.sofascore import api_client
 
 from sport_observations import sport_observations_manager

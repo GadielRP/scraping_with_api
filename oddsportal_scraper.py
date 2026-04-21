@@ -18,13 +18,22 @@ from infrastructure.network import ProxyIdentityManager
 # Import configuration
 try:
     from infrastructure.settings import Config
-    from oddsportal_config import (
-        SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
-        OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
-        build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
-        INSTITUTIONAL_NOISE, get_oddsportal_current_date
+    from modules.oddsportal.oddsportal_config import (
+        SEASON_ODDSPORTAL_MAP,
+        BOOKIE_ALIASES,
+        TEAM_ALIASES,
+        PRIORITY_BOOKIES,
+        OP_GROUPS,
+        OP_GROUPS_DISPLAY,
+        OP_PERIODS,
+        SPORT_SCRAPING_ROUTES,
+        build_op_fragment,
+        build_match_url_with_fragment,
+        flatten_sport_scraping_route,
+        INSTITUTIONAL_NOISE,
+        get_oddsportal_current_date,
     )
-    from team_matcher import TeamMatcher
+    from modules.oddsportal.team_matcher import TeamMatcher
 except ImportError:
     # Fallback/Mock for standalone testing
     class MockConfig:

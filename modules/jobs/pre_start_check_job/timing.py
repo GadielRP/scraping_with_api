@@ -32,7 +32,7 @@ def minutes_since_start(start_time_utc) -> int:
 
 def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start_time: datetime = None):
     """Determine whether odds should be extracted at this moment."""
-    from oddsportal_config import SEASON_ODDSPORTAL_MAP
+    from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
     from modules.sofascore import api_client
 
     if not Config.ENABLE_ODDS_EXTRACTION:

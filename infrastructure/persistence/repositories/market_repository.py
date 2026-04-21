@@ -10,7 +10,7 @@ from infrastructure.persistence.database import db_manager
 from shared.timezone_utils import get_local_now
 
 try:
-    from oddsportal_config import BOOKIE_ALIASES
+from modules.oddsportal.oddsportal_config import BOOKIE_ALIASES
 except ImportError:
     BOOKIE_ALIASES = {}
 

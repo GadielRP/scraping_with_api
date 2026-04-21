@@ -139,7 +139,7 @@ class Basketball4QMonitor:
             check_window_end = now - timedelta(minutes=105)
 
             from infrastructure.settings import Config
-            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+            from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 
             nba_events_to_check = []
             for event in all_nba_events:
