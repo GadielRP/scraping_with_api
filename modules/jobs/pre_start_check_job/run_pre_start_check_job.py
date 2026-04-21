@@ -22,8 +22,7 @@ from modules.jobs.pre_start_check_job.timestamp_corrections import check_recentl
 from modules.jobs.pre_start_check_job.timing import minutes_until_start, should_extract_odds_for_event
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.sofascore import api_client
-
-from sport_observations import sport_observations_manager
+from modules.observations import sport_observation_service
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +150,7 @@ def run_pre_start_check_job(scheduler) -> None:
                         logger.warning(f"Error saving markets to DB for event {event_data['id']}: {market_exc}")
 
                     if event_data["sport"] in ["Tennis", "Tennis Doubles"]:
-                        if not sport_observations_manager.has_observations_for_event(event_data["id"]):
+                        if not sport_observation_service.event_has_observations(event_data["id"]):
                             snapshot = event_info.get("metadata_snapshot")
                             if snapshot and snapshot.get("observations"):
                                 event_info["observations"] = snapshot["observations"]

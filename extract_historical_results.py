@@ -72,7 +72,7 @@ except ImportError:
     # If not available, define a dummy class
     class SofaScoreRateLimitException(Exception):
         pass
-from sport_observations import sport_observations_manager
+from modules.observations import sport_observation_service
 
 # Custom exception for rate limiting (self-contained, doesn't modify sofascore_api.py)
 class RateLimitDetected(Exception):
@@ -809,7 +809,7 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
                     
                     # OPTIONAL: Process observations (FAIL-SAFE - doesn't break main flow)
                     try:
-                        sport_observations_manager.process_event_observations(event, result_data)
+                        sport_observation_service.process_result_observations(event, result_data)
                     except Exception as obs_error:
                         logger.warning(f"  Failed to process observations for event {event.id}: {obs_error}")
                 else:

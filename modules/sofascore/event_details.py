@@ -6,7 +6,8 @@ import logging
 from typing import Dict, List, Optional
 
 from infrastructure.persistence.repositories import EventRepository, SeasonRepository
-from sport_observations import sport_observations_manager
+from modules.observations import sport_observation_service
+from modules.observations.sofascore_extractor import extract_observations_from_sofascore_response
 
 from .event_normalizer import get_event_information
 from .exceptions import SofaScoreNotFoundException, SofaScoreRateLimitException
@@ -71,29 +72,7 @@ def update_event_information_from_response(response: Dict) -> bool:
 
 
 def _extract_observations_from_response(response: Dict) -> Optional[List[Dict]]:
-    try:
-        if not response or "event" not in response:
-            return None
-
-        event_data = response["event"]
-        tournament = event_data.get("tournament", {})
-        sport = tournament.get("category", {}).get("sport", {}).get("name")
-        if not sport:
-            logger.debug("No sport information found, skipping observations")
-            return None
-
-        observations = []
-        if sport.lower() in {"tennis", "tennis doubles"}:
-            ground_type = event_data.get("groundType")
-            if ground_type:
-                observations.append({"type": "ground_type", "value": ground_type, "sport": sport})
-
-        if observations:
-            return observations
-        return None
-    except Exception as exc:
-        logger.warning("Error extracting observations: %s", exc)
-        return None
+    return extract_observations_from_sofascore_response(response)
 
 
 def extract_observations_from_response(response: Dict) -> Optional[List[Dict]]:
@@ -179,7 +158,7 @@ def get_event_results(
             return [
                 {
                     "type": "ground_type",
-                    "value": sport_observations_manager.extract_tennis_ground_type(event_id, response),
+                    "value": sport_observation_service.extract_and_save_tennis_ground_type(event_id, response),
                 },
                 {
                     "type": "rankings",

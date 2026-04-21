@@ -87,9 +87,9 @@ def _format_tier_candidates(icon: str, title: str, count: int, matches: List[Dic
             candidate_sport,
         )
 
-        from sport_observations import sport_observations_manager
+        from modules.observations import sport_observation_service
 
-        sport_info = sport_observations_manager.format_sport_info_for_candidates(
+        sport_info = sport_observation_service.format_candidate_observation_summary(
             candidate_event_id,
             candidate_sport,
         )
