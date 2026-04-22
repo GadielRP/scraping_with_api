@@ -465,8 +465,8 @@ def send_matchup_streak_alerts(notifier: Any, streak_reports: List) -> bool:
         if Config and Config.FILTER_ALERTS_BY_OP_SEASON:
             if streak.season_id not in SEASON_ODDSPORTAL_MAP:
                 logger.info(
-                    "🚫 Skipping Matchup streak alert for event %s due to OP season filter.",
-                    streak.event_id,
+                    "🚫 Skipping Matchup streak alert for event %s (season %s) due to OP season filter.",
+                    streak.event_id, streak.season_id
                 )
                 continue
 

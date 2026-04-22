@@ -31,7 +31,12 @@ def minutes_since_start(start_time_utc) -> int:
 
 
 def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start_time: datetime = None):
-    """Determine whether odds should be extracted at this moment."""
+    """Determine whether odds should be extracted at this moment.
+    Returns:
+        should_extract_odds (bool)
+        metadata_snapshot (dict or None)
+        timing_changed (bool)
+    """
     from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
     from modules.sofascore import api_client
 
@@ -47,8 +52,19 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
         return False, None, False
 
     if not Config.ENABLE_TIMESTAMP_CORRECTION:
-        logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - WILL EXTRACT ODDS")
-        return True, None, False
+        if minutes_until == 30:
+            logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - WILL EXTRACT ODDS (Running timestamp flow to fetch alert metadata)")
+            is_timing_consistent, metadata_snapshot = api_client.get_event_results(
+                event_id,
+                update_time=False,
+                return_snapshot=True,
+                current_start_time=event_start_time,
+                minutes_until_start=minutes_until,
+            )
+            return True, metadata_snapshot, False
+        else:
+            logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - WILL EXTRACT ODDS")
+            return True, None, False
 
     is_timing_consistent, metadata_snapshot = api_client.get_event_results(
         event_id,

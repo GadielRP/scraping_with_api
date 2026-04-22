@@ -140,6 +140,8 @@ def get_event_results(
             logger.info("Fetching /event/%s endpoint to update court type", event_id)
         elif update_time:
             logger.info("Fetching /event/%s endpoint to update time", event_id)
+        elif return_snapshot and update_time==False:
+            logger.info("Fetching /event/%s endpoint to get metadata snapshot (timestamp correction bypassed)", event_id)
         else:
             logger.info("Fetching event results for event %s", event_id)
 
@@ -187,6 +189,10 @@ def get_event_results(
             if return_snapshot:
                 return timing_result, _extract_metadata_snapshot(response)
             return timing_result
+
+        elif return_snapshot and update_time==False:
+            logger.info("Fetching metadata snapshot for event %s (timestamp correction bypassed)", event_id)
+            return True, _extract_metadata_snapshot(response)
 
         result = extract_results_from_response(response)
         if isinstance(result, dict) and result.get("_canceled"):

@@ -46,10 +46,21 @@ class EventAlertProcessor:
             return
 
         event_obj = event_payload.get("event_obj")
+
+        # debuggin prints
+        # print("event_obj:")
+        # for attr, value in event_obj.__dict__.items():
+        #     print(attr, value)
+
         season_id = getattr(event_obj, "season_id", None)
         discovery_source = getattr(event_obj, "discovery_source", None)
         minutes_until_start = event_payload.get("minutes_until_start")
         odds_response = event_payload.get("odds_response")
+        metadata = event_payload.get("metadata_snapshot", {})
+
+        #debugging prints:
+        # print("metadata:")
+        # print(metadata)
 
         # Centralized 'Gating' Logic (Calculate once, reuse everywhere)
         is_tracked_season = season_id in SEASON_ODDSPORTAL_MAP
@@ -135,6 +146,7 @@ class EventAlertProcessor:
 
         if streak_analysis is None and minutes_until_start == 30 and getattr(event_obj, "custom_id", None):
             try:
+                meta = event_payload.get("metadata_snapshot") or {}
                 matchup_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
                 matchup_events = matchup_response.get("events", []) if matchup_response else []
                 streak_analysis = build_matchup_streak_context(
@@ -143,20 +155,20 @@ class EventAlertProcessor:
                     event_start_time=event_obj.start_time_utc,
                     sport=event_obj.sport,
                     discovery_source=event_obj.discovery_source,
-                    tournament_id=None,
-                    competition_name=getattr(event_obj, "competition", None),
-                    competition_slug=None,
-                    season_id=season_id,
-                    season_name=None,
-                    season_year=None,
+                    tournament_id=meta.get("tournament_id"),
+                    competition_name=meta.get("tournament_name") or getattr(event_obj, "competition", None),
+                    competition_slug=meta.get("competition_slug"),
+                    season_id=int(meta.get("season_id")) if meta.get("season_id") else season_id,
+                    season_name=meta.get("season_name"),
+                    season_year=meta.get("season_year"),
                     participants=f"{event_obj.home_team} vs {event_obj.away_team}",
                     home_team_name=event_obj.home_team,
                     away_team_name=event_obj.away_team,
                     matchup_events=matchup_events,
                     minutes_until_start=minutes_until_start,
                     observations=event_payload.get("observations"),
-                    home_team_id=None,
-                    away_team_id=None,
+                    home_team_id=meta.get("home_team_id"),
+                    away_team_id=meta.get("away_team_id"),
                     event_odds=getattr(event_obj, "event_odds", None),
                 )
                 should_send = bool(streak_analysis and should_send_streak_alert(streak_analysis))
