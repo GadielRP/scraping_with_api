@@ -19,22 +19,17 @@ def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> L
 
     def fetch_team_event(team_id: int) -> Optional[Dict]:
         try:
-            nearest_event_id = api_client.get_nearest_event_for_team(team_id)
-            if not nearest_event_id:
-                logger.debug("No nearest event found for team %s", team_id)
-                return None
-
-            event_response = api_client.get_event_details(nearest_event_id)
+            event_response = api_client.get_nearest_event_for_team(team_id)
             if not event_response:
-                logger.debug("Failed to get event details for event %s", nearest_event_id)
+                logger.debug("No nearest event found for team %s", team_id)
                 return None
 
             event_data = api_client.get_event_information(event_response, discovery_source="team_streaks")
             if not event_data:
-                logger.debug("Failed to structure event data for event %s", nearest_event_id)
+                logger.debug("Failed to structure event data for team %s", team_id)
                 return None
 
-            logger.debug("Fetched event %s for team %s", nearest_event_id, team_id)
+            logger.debug("Fetched event %s for team %s", event_data.get("id"), team_id)
             return event_data
         except Exception as exc:
             logger.debug("Error processing team %s: %s", team_id, exc)
@@ -151,6 +146,52 @@ def process_with_batch_cleanup(
 
     processed_count, skipped_count = batch_process_odds(events_with_odds, events)
     skipped_count += len(events_to_delete)
+    return processed_count, skipped_count
+
+
+def process_odds_first(
+    events: List[Dict],
+    discovery_source: str = None,
+    max_workers: int = 5,
+) -> Tuple[int, int]:
+    """Check odds BEFORE upserting. Only persist events that have valid odds.
+
+    This avoids the insert-then-delete pattern and eliminates the need for
+    orphaned season cleanup queries entirely.
+    """
+    if not events:
+        return 0, 0
+
+    # Step 1: Check odds in parallel (no DB writes yet)
+    events_with_odds, events_without_odds_ids = parallel_odds_checking(events, max_workers=max_workers)
+
+    if events_without_odds_ids:
+        logger.info(
+            "Skipped %s %s events without odds (never persisted to DB)",
+            len(events_without_odds_ids),
+            discovery_source,
+        )
+
+    # Step 2: Filter to only events that have odds
+    valid_events = [e for e in events if str(e["id"]) in events_with_odds]
+
+    if not valid_events:
+        logger.info("No %s events had valid odds, nothing to persist", discovery_source)
+        return 0, len(events)
+
+    # Step 3: Upsert only valid events (the ones with odds)
+    upserted = batch_upsert_events(valid_events)
+    logger.info(
+        "Upserted %s/%s %s events (pre-filtered by odds availability)",
+        upserted,
+        len(events),
+        discovery_source,
+    )
+
+    # Step 4: Process odds for those events
+    processed_count, skipped_count = batch_process_odds(events_with_odds, valid_events)
+    skipped_count += len(events_without_odds_ids)
+
     return processed_count, skipped_count
 
 

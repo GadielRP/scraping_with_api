@@ -350,7 +350,7 @@ class Process1Evaluator:
             }
 
         selected_candidates = tier1_candidates
-        logger.info(f"[P1️⃣] Evaluating {len(selected_candidates)} exact candidates ({selected_tier})")
+        logger.info(f"[P1] Evaluating {len(selected_candidates)} exact candidates ({selected_tier})")
 
         rule_b_result = self.evaluate_similar_results(selected_candidates)
         rule_c_result = self.evaluate_same_winning_side(selected_candidates)

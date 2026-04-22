@@ -10,17 +10,10 @@ from shared.timezone_utils import get_local_now_aware
 logger = logging.getLogger(__name__)
 
 
-def get_team_ids_from_team_streaks(response: Dict) -> List[int]:
-    team_ids: List[int] = []
-    for item in response.get("topTeamStreaks", []):
-        team = item.get("team", {})
-        team_id = team.get("id")
-        if team_id is not None:
-            team_ids.append(team_id)
-    return team_ids
 
 
-def get_nearest_event_for_team(client, team_id: int) -> Optional[int]:
+
+def get_nearest_event_for_team(client, team_id: int) -> Optional[Dict]:
     response = client._request_json(f"/team/{team_id}/events/next/0")
     if not response:
         return None
@@ -34,10 +27,10 @@ def get_nearest_event_for_team(client, team_id: int) -> Optional[int]:
 
     if not future_events:
         events.sort(key=lambda event: abs(event.get("startTimestamp", 0) - now_ts))
-        return events[0].get("id")
+        return events[0]
 
     nearest_event = min(future_events, key=lambda event: event.get("startTimestamp", float("inf")))
-    return nearest_event.get("id")
+    return nearest_event
 
 
 def get_team_last_results_response(

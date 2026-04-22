@@ -21,12 +21,14 @@ def run_discover_secondary_sources() -> None:
     logger.info("Starting Job B: Event Discovery from streaks, team streaks, h2h and winning odds events")
 
     try:
+        # HIGH VALUE STREAKS
         high_value_streaks_events, high_value_streaks_events_h2h = run_high_value_streaks()
         if not high_value_streaks_events:
             return
         if not high_value_streaks_events_h2h:
             return
 
+        # TEAM STREAKS 
         team_streaks_events = run_team_streaks()
         if not team_streaks_events:
             logger.warning("No events found after processing team streaks")
@@ -36,14 +38,17 @@ def run_discover_secondary_sources() -> None:
                 f"team streaks events completed: processed {processed_count}/{len(team_streaks_events)} events, skipped {skipped_count} events"
             )
 
+        # TOP H2H
         matchup_events = run_top_h2h()
         if not matchup_events:
             return
 
+        # WINNING ODDS
         winning_odds_events, winning_odds_events_odds_map = run_winning_odds()
         if not winning_odds_events:
             return
 
+        # PROCESSING HIGH VALUE STREAK EVENTS
         processed_count, skipped_count = run_optimization(
             high_value_streaks_events,
             discovery_source="high_value_streaks",
@@ -52,6 +57,7 @@ def run_discover_secondary_sources() -> None:
             f"high value streaks events completed: processed {processed_count}/{len(high_value_streaks_events)} events, skipped {skipped_count} events"
         )
 
+        # PROCESSING 2H EVENTS
         processed_count, skipped_count = run_optimization(
             high_value_streaks_events_h2h,
             discovery_source="high_value_streaks_h2h",

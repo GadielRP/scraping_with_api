@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 def get_dropping_odds_with_odds_and_events_response(client, sport: str = None):
     if sport:
         endpoint = f"/odds/1/dropping/{sport}"
-        logger.info("Fetching dropping odds feed for sport %s", sport)
+        logger.info("Fetching dropping odds feed for sport %s - /odds/1/dropping/%s", sport, sport)
     else:
         endpoint = "/odds/1/dropping/all"
         logger.info("Fetching dropping odds feed for all sports")

@@ -33,7 +33,7 @@ from .schedule_feeds import (
     get_today_sport_events_response,
 )
 from .standings import get_standings_response, process_standings_response
-from .team_history import get_nearest_event_for_team, get_team_ids_from_team_streaks, get_team_last_results_response
+from .team_history import get_nearest_event_for_team, get_team_last_results_response
 from .winning_odds import get_winning_odds_response
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 
@@ -167,7 +167,7 @@ class SofaScoreAPI:
                         logger.debug("HTTP 404 for %s - skipping retry as requested", endpoint)
                     else:
                         logger.warning("HTTP 404 for %s - skipping retries", endpoint)
-                    raise SofaScoreNotFoundException(self._extract_endpoint_event_id(endpoint))
+                    raise SofaScoreNotFoundException(self._extract_endpoint_event_id(endpoint), endpoint=endpoint)
 
                 if response.status_code == 403:
                     wait_time = min(30 * (2**attempt), 300)
@@ -181,7 +181,7 @@ class SofaScoreAPI:
                     if attempt < Config.MAX_RETRIES - 1:
                         time.sleep(wait_time)
                         continue
-                    raise SofaScoreRateLimitException(self._extract_endpoint_event_id(endpoint))
+                    raise SofaScoreRateLimitException(self._extract_endpoint_event_id(endpoint), endpoint=endpoint)
 
                 if response.status_code in [500, 502, 503, 504, 522, 525]:
                     wait_time = min(5 * (2**attempt), 60)
@@ -239,10 +239,7 @@ class SofaScoreAPI:
     def get_winning_odds_events(self):
         return get_winning_odds_events(self)
 
-    def get_team_ids_from_team_streaks(self, response: Dict) -> List[int]:
-        return get_team_ids_from_team_streaks(response)
-
-    def get_nearest_event_for_team(self, team_id: int) -> Optional[int]:
+    def get_nearest_event_for_team(self, team_id: int) -> Optional[Dict]:
         return get_nearest_event_for_team(self, team_id)
 
     def get_event_details(self, event_id: int) -> Optional[Dict]:
