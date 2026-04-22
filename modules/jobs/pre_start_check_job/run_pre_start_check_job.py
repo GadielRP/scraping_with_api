@@ -9,7 +9,7 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import refresh_materialized_views
 from infrastructure.persistence.repositories import EventRepository, OddsRepository
 from infrastructure.settings import Config
-from modules.jobs.pre_start_check_job.alert_pipeline import evaluate_and_send_alerts_batch
+from modules.jobs.pre_start_check_job.alert_pipeline import evaluate_and_dispatch_alerts_batch
 from modules.jobs.pre_start_check_job.in_game_checks import run_in_game_checks
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 from modules.jobs.pre_start_check_job.oddsportal_worker import (
@@ -201,7 +201,7 @@ def run_pre_start_check_job(scheduler) -> None:
                 )
 
             if events_for_alerts:
-                evaluate_and_send_alerts_batch(
+                evaluate_and_dispatch_alerts_batch(
                     events_for_alerts,
                     key_moments,
                     scheduler.event_repo,

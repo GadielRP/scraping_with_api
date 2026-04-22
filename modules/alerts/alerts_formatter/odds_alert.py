@@ -39,13 +39,13 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
         # Odds alerts only send at key moments 30 and -5
         ALLOWED_ODDS_ALERT_MINUTES = {30, -5}
         if minutes_until_start not in ALLOWED_ODDS_ALERT_MINUTES:
-            logger.info(f"[ODDS ALERT] Skipping send for event {event_data.get('id')} at minute {minutes_until_start}; allowed minutes are {ALLOWED_ODDS_ALERT_MINUTES}")
+            logger.info(f"📵 Skipping send for event {event_data.get('id')} at minute {minutes_until_start}; allowed minutes are {ALLOWED_ODDS_ALERT_MINUTES}")
             return False
         # --- END: PRECISION ALERT GATE ---
 
         # Check OP Season filter
         if Config.FILTER_ALERTS_BY_OP_SEASON and event_data.get('season_id') not in SEASON_ODDSPORTAL_MAP:
-            logger.debug(f"Skipping odds alert for event {event_data.get('id')} due to OP season filter.")
+            logger.info(f"🚫 Skipping odds alert for event {event_data.get('id')} due to OP season filter.")
             return False
 
         if not ODDS_ALERT_ENABLED:

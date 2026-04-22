@@ -278,17 +278,14 @@ def send_dual_process_alerts(notifier: Any, dual_reports: List) -> bool:
     try:
         from infrastructure.settings import Config
         from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
-        from infrastructure.persistence.repositories import EventRepository
     except ImportError:
         Config = None
-        EventRepository = None
 
     for dual_report in dual_reports:
         if Config and Config.FILTER_ALERTS_BY_OP_SEASON:
-            event = EventRepository.get_event_by_id(dual_report.event_id)
-            if not event or event.season_id not in SEASON_ODDSPORTAL_MAP:
-                logger.debug(
-                    "Skipping dual process alert for event %s due to OP season filter.",
+            if dual_report.season_id not in SEASON_ODDSPORTAL_MAP:
+                logger.info(
+                    "🚫 Skipping dual process alert for event %s due to OP season filter.",
                     dual_report.event_id,
                 )
                 continue

@@ -145,7 +145,7 @@ class Basketball4QMonitor:
             for event in all_nba_events:
                 event_start = event["start_time_utc"]
                 if Config.FILTER_ALERTS_BY_OP_SEASON and event.get("season_id") not in SEASON_ODDSPORTAL_MAP:
-                    logger.debug(f"Skipping event {event['id']} due to OP season filter.")
+                    logger.info(f"🚫 Skipping event {event['id']} due to OP season filter.")
                     continue
 
                 if check_window_start <= event_start <= check_window_end:

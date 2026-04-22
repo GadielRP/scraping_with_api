@@ -40,6 +40,7 @@ class DualProcessReport:
     agreement_details: str
     minutes_until_start: Optional[int]
     timestamp: str
+    season_id: Optional[int] = None
     court_type: Optional[str] = None
 
 
@@ -71,6 +72,7 @@ class DualProcessRunner:
                 participants=f"{event.home_team} vs {event.away_team}",
                 sport=event.sport,
                 discovery_source=event.discovery_source,
+                season_id=getattr(event, "season_id", None),
                 court_type=getattr(event, "court_type", None),
                 process1_report=process1_report,
                 process1_prediction=process1_prediction,
@@ -94,7 +96,7 @@ class DualProcessRunner:
     def _execute_process1(self, event, minutes_until_start: int) -> Tuple[Optional[Dict], Optional[Tuple[str, int]], str]:
         """Execute Process 1."""
         try:
-            logger.info("[DUAL PROCESS] Executing Process 1️⃣ for event %s", event.id)
+            logger.info("[DUAL PROCESS] Executing Process 1 for event %s", event.id)
             alerts = alert_engine.evaluate_single_event(event, minutes_until_start)
 
             if alerts and len(alerts) > 0:
@@ -106,16 +108,16 @@ class DualProcessRunner:
                     winner_side = self.extract_winner_from_process1_prediction(primary_prediction)
                     if winner_side:
                         process1_prediction = (winner_side, 1)
-                        logger.info("[DUAL PROCESS] Process 1️⃣ prediction: %s", winner_side)
+                        logger.info("[DUAL PROCESS] Process 1 prediction: %s", winner_side)
                         return alert_report, process1_prediction, "success"
 
-                logger.info("[DUAL PROCESS] Process 1️⃣ report generated without clear prediction (status: %s)", status)
+                logger.info("[DUAL PROCESS] Process 1 report generated without clear prediction (status: %s)", status)
                 return alert_report, None, status
 
-            logger.info("[DUAL PROCESS] Process 1️⃣ found no candidates for event %s", event.id)
+            logger.info("[DUAL PROCESS] Process 1 found no candidates for event %s", event.id)
             return None, None, "no_candidates"
         except Exception as e:
-            logger.error("[DUAL PROCESS] Error executing Process 1️⃣ for event %s: %s", event.id, e)
+            logger.error("[DUAL PROCESS] Error executing Process 1 for event %s: %s", event.id, e)
             return None, None, f"error: {str(e)}"
 
     def _execute_process2(self, event) -> Tuple[Optional[Dict], Optional[Tuple[str, int]], str]:
@@ -261,6 +263,7 @@ class DualProcessRunner:
             participants=f"{getattr(event, 'home_team', '?')} vs {getattr(event, 'away_team', '?')}",
             sport=getattr(event, "sport", "Unknown"),
             discovery_source=getattr(event, "discovery_source", "unknown"),
+            season_id=getattr(event, "season_id", None),
             court_type=getattr(event, "court_type", None),
             process1_report=None,
             process1_prediction=None,
