@@ -3,24 +3,26 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import refresh_materialized_views
-from infrastructure.persistence.repositories import EventRepository, OddsRepository, ObservationRepository
+from infrastructure.persistence.repositories import EventRepository, OddsRepository
 from infrastructure.settings import Config
-from modules.alerts.basketball_4q import basketball_4q_monitor
-from modules.jobs.pre_start_check_job.alert_pipeline import build_event_payload, evaluate_and_send_alerts_batch
+from modules.jobs.pre_start_check_job.alert_pipeline import evaluate_and_dispatch_alerts_batch
 from modules.jobs.pre_start_check_job.in_game_checks import run_in_game_checks
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
+from modules.jobs.pre_start_check_job.oddsportal_worker import (
+    build_oddsportal_scrape_candidates,
+    create_oddsportal_scrape_state,
+    start_oddsportal_scrape_thread,
+)
 from modules.jobs.pre_start_check_job.rescheduled_events import handle_rescheduled_event
 from modules.jobs.pre_start_check_job.timestamp_corrections import check_recently_started_events_for_timestamp_corrections
 from modules.jobs.pre_start_check_job.timing import minutes_until_start, should_extract_odds_for_event
-from oddsportal_config import SEASON_ODDSPORTAL_MAP
+from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.sofascore import api_client
-
-from sport_observations import sport_observations_manager
+from modules.observations import sport_observation_service
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +49,11 @@ def run_pre_start_check_job(scheduler) -> None:
 
         pre_calculated_timings = {event["id"]: minutes_until_start(event["start_time_utc"]) for event in upcoming_events}
 
-        # OddsPortal worker is currently disabled, but we keep the hook.
-        scheduler._active_op_thread = None
+        op_candidates = build_oddsportal_scrape_candidates(upcoming_events, pre_calculated_timings)
+        op_event_states = create_oddsportal_scrape_state(op_candidates) if op_candidates else {}
+        op_event_ids = set(op_event_states.keys())
+        op_data_cache = {}
+        start_oddsportal_scrape_thread(scheduler, op_candidates, op_event_states, op_data_cache)
 
         events_started_recently = scheduler.event_repo.get_events_started_recently(
             window_minutes=60,
@@ -145,7 +150,7 @@ def run_pre_start_check_job(scheduler) -> None:
                         logger.warning(f"Error saving markets to DB for event {event_data['id']}: {market_exc}")
 
                     if event_data["sport"] in ["Tennis", "Tennis Doubles"]:
-                        if not sport_observations_manager.has_observations_for_event(event_data["id"]):
+                        if not sport_observation_service.event_has_observations(event_data["id"]):
                             snapshot = event_info.get("metadata_snapshot")
                             if snapshot and snapshot.get("observations"):
                                 event_info["observations"] = snapshot["observations"]
@@ -196,13 +201,13 @@ def run_pre_start_check_job(scheduler) -> None:
                 )
 
             if events_for_alerts:
-                evaluate_and_send_alerts_batch(
+                evaluate_and_dispatch_alerts_batch(
                     events_for_alerts,
                     key_moments,
                     scheduler.event_repo,
-                    op_event_states={},
-                    op_event_ids=set(),
-                    op_data_cache={},
+                    op_event_states=op_event_states,
+                    op_event_ids=op_event_ids,
+                    op_data_cache=op_data_cache,
                 )
         else:
             logger.debug("No events captured at key moments for alert evaluation")

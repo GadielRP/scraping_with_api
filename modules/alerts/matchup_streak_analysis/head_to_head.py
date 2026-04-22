@@ -114,10 +114,10 @@ def analyze_head_to_head_events(
                     continue
 
         # Use proven extraction logic
-        extract_points = sport in ['Tennis', 'Tennis Doubles']
+        if_extract_points = sport in ['Tennis', 'Tennis Doubles']
         result_data = api_client.extract_results_from_response(
             {'event': event},
-            extract_tennis_points=extract_points,
+            extract_tennis_points=if_extract_points,
             for_streaks=True
         )
         if not result_data:

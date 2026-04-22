@@ -70,6 +70,7 @@ def extract_results_from_response(
 
         event_data = response["event"]
         sport = event_data.get("tournament", {}).get("category", {}).get("sport", {}).get("name")
+        event_id = event_data.get("id")
         status = event_data.get("status", {})
         status_code = status.get("code")
         status_type = status.get("type", "").lower()
@@ -79,11 +80,11 @@ def extract_results_from_response(
         canceled_status_codes = {60, 70, 80, 90, 91}
 
         if extract_tennis_points and status_code == 92:
-            logger.info("Tennis player retired - status: %s", status_description)
+            logger.info("Tennis player retired - status: %s, event_id: %s", status_description, event_id)
             return None
 
         if status_code in canceled_status_codes:
-            logger.info("Event canceled/postponed - status: %s", status_description)
+            logger.info("Event canceled/postponed - status: %s, event_id: %s", status_description, event_id)
             return {
                 "_canceled": True,
                 "status_code": status_code,
@@ -91,7 +92,7 @@ def extract_results_from_response(
             }
 
         if status_code not in finished_status_codes or status_type != "finished":
-            logger.info("Event not finished yet - status: %s", status_description)
+            logger.info("Event not finished yet - status: %s, event_id: %s", status_description, event_id)
             return None
 
         home_score_data = event_data.get("homeScore", {})

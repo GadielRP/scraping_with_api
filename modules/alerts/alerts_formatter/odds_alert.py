@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from infrastructure.persistence.repositories import EventRepository, MarketRepository
 from infrastructure.settings import Config
-from oddsportal_config import SEASON_ODDSPORTAL_MAP
+from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.alerts import pre_start_notifier
 
 logger = logging.getLogger(__name__)
@@ -39,13 +39,13 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
         # Odds alerts only send at key moments 30 and -5
         ALLOWED_ODDS_ALERT_MINUTES = {30, -5}
         if minutes_until_start not in ALLOWED_ODDS_ALERT_MINUTES:
-            logger.info(f"[ODDS ALERT] Skipping send for event {event_data.get('id')} at minute {minutes_until_start}; allowed minutes are {ALLOWED_ODDS_ALERT_MINUTES}")
+            logger.info(f"📵 Skipping send for event {event_data.get('id')} at minute {minutes_until_start}; allowed minutes are {ALLOWED_ODDS_ALERT_MINUTES}")
             return False
         # --- END: PRECISION ALERT GATE ---
 
         # Check OP Season filter
         if Config.FILTER_ALERTS_BY_OP_SEASON and event_data.get('season_id') not in SEASON_ODDSPORTAL_MAP:
-            logger.debug(f"Skipping odds alert for event {event_data.get('id')} due to OP season filter.")
+            logger.info(f"🚫 Skipping odds alert for event {event_data.get('id')} due to OP season filter.")
             return False
 
         if not ODDS_ALERT_ENABLED:
@@ -212,13 +212,16 @@ def _format_oddsportal_section(op_markets: List[Dict], event_data: Dict = None, 
         market_period = m.get('market_period', 'Unknown')
         grouped_markets[(market_group, market_period)].append(m)
         
-    for (market_group, market_period), markets in grouped_markets.items():
+    for (market_group, market_period), markets in sorted(grouped_markets.items()):
         if market_group == '1X2':
             display_group = "Full time" if market_period == 'Full-time' else market_period
         else:
             display_group = f"{market_group} - {market_period}"
             
         result += f"📊 <b>{display_group}</b>\n"
+        
+        # Sort markets by bookie name: numbers first, then alphabetical (case-insensitive)
+        markets = sorted(markets, key=lambda x: x['bookie_name'].lower())
         
         for m in markets:
             bookie_name = m['bookie_name']

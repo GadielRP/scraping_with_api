@@ -6,6 +6,7 @@ import logging
 
 from modules.jobs.parallelism import (
     process_events_only,
+    process_odds_first,
     process_with_batch_cleanup,
     process_with_parallel_db_ops,
 )
@@ -15,10 +16,11 @@ logger = logging.getLogger(__name__)
 
 def run_optimization(events, discovery_source: str):
     if discovery_source == "team_streaks":
-        return process_with_batch_cleanup(events, discovery_source=discovery_source, max_workers=10)
+        return process_odds_first(events, discovery_source=discovery_source, max_workers=10)
     if discovery_source == "winning_odds":
         raise ValueError("run_optimization does not handle winning odds maps")
     return process_events_only(events, discovery_source=discovery_source, max_workers=10)
+
 
 
 def run_winning_odds_optimization(events, odds_map):

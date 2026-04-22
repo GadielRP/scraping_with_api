@@ -139,13 +139,13 @@ class Basketball4QMonitor:
             check_window_end = now - timedelta(minutes=105)
 
             from infrastructure.settings import Config
-            from oddsportal_config import SEASON_ODDSPORTAL_MAP
+            from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 
             nba_events_to_check = []
             for event in all_nba_events:
                 event_start = event["start_time_utc"]
                 if Config.FILTER_ALERTS_BY_OP_SEASON and event.get("season_id") not in SEASON_ODDSPORTAL_MAP:
-                    logger.debug(f"Skipping event {event['id']} due to OP season filter.")
+                    logger.info(f"🚫 Skipping event {event['id']} due to OP season filter.")
                     continue
 
                 if check_window_start <= event_start <= check_window_end:

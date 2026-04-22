@@ -12,7 +12,7 @@ from infrastructure.persistence.repositories import EventRepository, OddsReposit
 from modules.prediction import prediction_logger
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 from modules.sofascore import api_client
-from sport_observations import sport_observations_manager
+from modules.observations import sport_observation_service
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
                 logger.info(
                     f"✅ {job_name}: {event.id} = {result_data['home_score']}-{result_data['away_score']}, Winner: {result_data['winner']}"
                 )
-                sport_observations_manager.process_event_observations(event, result_data)
+                sport_observation_service.process_result_observations(event, result_data)
         except Exception as exc:
             logger.error(f"Error in {job_name} for event {event.id}: {exc}")
             stats["failed"] += 1

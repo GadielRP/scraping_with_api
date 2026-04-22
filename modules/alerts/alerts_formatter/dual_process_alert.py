@@ -87,9 +87,9 @@ def _format_tier_candidates(icon: str, title: str, count: int, matches: List[Dic
             candidate_sport,
         )
 
-        from sport_observations import sport_observations_manager
+        from modules.observations import sport_observation_service
 
-        sport_info = sport_observations_manager.format_sport_info_for_candidates(
+        sport_info = sport_observation_service.format_candidate_observation_summary(
             candidate_event_id,
             candidate_sport,
         )
@@ -277,18 +277,15 @@ def send_dual_process_alerts(notifier: Any, dual_reports: List) -> bool:
 
     try:
         from infrastructure.settings import Config
-        from oddsportal_config import SEASON_ODDSPORTAL_MAP
-        from infrastructure.persistence.repositories import EventRepository
+        from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
     except ImportError:
         Config = None
-        EventRepository = None
 
     for dual_report in dual_reports:
         if Config and Config.FILTER_ALERTS_BY_OP_SEASON:
-            event = EventRepository.get_event_by_id(dual_report.event_id)
-            if not event or event.season_id not in SEASON_ODDSPORTAL_MAP:
-                logger.debug(
-                    "Skipping dual process alert for event %s due to OP season filter.",
+            if dual_report.season_id not in SEASON_ODDSPORTAL_MAP:
+                logger.info(
+                    "🚫 Skipping dual process alert for event %s due to OP season filter.",
                     dual_report.event_id,
                 )
                 continue

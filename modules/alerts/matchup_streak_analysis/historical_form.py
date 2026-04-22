@@ -608,6 +608,8 @@ def get_team_last_results_by_id(
     try:
         # Log filtering criteria at the start
         filter_type, filter_value = _get_filtering_criteria(sport, competition_slug, observations)
+        # debugging line:
+        # logger.info(f"📊 Team {team_name} - Starting to fetch last results with filter: {filter_type}='{filter_value}' (season filtering: {'enabled' if use_season_filtering else 'disabled'}, min_results={min_results if not use_season_filtering else 'N/A'})")
         match_type_info = ""
         if (sport == 'Tennis' or sport == 'Tennis Doubles'):
             match_type = "doubles" if sport == 'Tennis Doubles' else "singles"

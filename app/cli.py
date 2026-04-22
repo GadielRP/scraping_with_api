@@ -250,15 +250,10 @@ def main():
 
     logger = logging.getLogger(__name__)
     logger.info(
-        "OddsPortal config: parallel_browsers=%s block_resources=%s previous_cycle_timeout_s=%s "
-        "alert_wait_timeout_s=%s proxy_enabled=%s proxy_endpoint_set=%s",
-        Config.ODDSPORTAL_PARALLEL_BROWSERS,
-        Config.ODDSPORTAL_BLOCK_RESOURCES,
-        Config.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT,
-        getattr(Config, "ODDSPORTAL_ALERT_WAIT_TIMEOUT", 180),
-        Config.PROXY_ENABLED,
-        bool(getattr(Config, "PROXY_ENDPOINT", "")),
+        f"OddsPortal config: parallel_browsers={Config.ODDSPORTAL_PARALLEL_BROWSERS} block_resources={Config.ODDSPORTAL_BLOCK_RESOURCES} previous_cycle_timeout_s={Config.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT} "
+        f"alert_wait_timeout_s={getattr(Config, 'ODDSPORTAL_ALERT_WAIT_TIMEOUT', 180)} proxy_enabled={Config.PROXY_ENABLED} proxy_endpoint_set={bool(getattr(Config, 'PROXY_ENDPOINT', ''))}"
     )
+    logger.info(f"Time corrections config: enabled={Config.ENABLE_TIMESTAMP_CORRECTION}")
 
     parser = _build_parser()
     args = parser.parse_args()

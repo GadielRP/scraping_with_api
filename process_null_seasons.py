@@ -21,7 +21,7 @@ from infrastructure.persistence.models import Event, refresh_materialized_views
 from modules.sofascore import api_client
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, MarketRepository
-from sport_observations import sport_observations_manager
+from modules.observations import sport_observation_service
 from shared.timezone_utils import get_local_now
 
 # State file to track last processed event ID
@@ -210,7 +210,7 @@ def process_event(event_id: int, slug: str):
                     # Process observations
                     event_obj = EventRepository.get_event_by_id(event_id)
                     if event_obj:
-                        sport_observations_manager.process_event_observations(event_obj, result_data)
+                        sport_observation_service.process_result_observations(event_obj, result_data)
                         logger.info(f"✅ Observations processed for event {event_id}")
             else:
                 logger.warning(f"Could not fetch results for event {event_id}")

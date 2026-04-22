@@ -47,7 +47,7 @@ class MatchupStreakContext:
     discovery_source: str
     competition_name: str
     competition_slug: str
-    season_id: Optional[str]
+    season_id: Optional[int]
     season_name: Optional[str]
     observations: Optional[List[Dict]]
     sport: str
@@ -116,7 +116,7 @@ def build_matchup_streak_context(
     tournament_id: str,
     competition_name: str,
     competition_slug: str,
-    season_id: str,
+    season_id: int,
     season_name: str,
     participants: str,
     home_team_name: str,

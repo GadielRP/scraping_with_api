@@ -99,7 +99,8 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
 
                 if minutes_ago not in check_intervals:
                     return result
-
+                
+                logger.info(f"Checking recently started event {event_id} ({sport}) for timestamp correction (started {minutes_ago:.1f} minutes ago)")
                 correct_starting_time = api_client.get_event_results(
                     event_id,
                     update_time=True,

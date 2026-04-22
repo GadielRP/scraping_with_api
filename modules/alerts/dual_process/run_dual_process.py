@@ -40,6 +40,7 @@ class DualProcessReport:
     agreement_details: str
     minutes_until_start: Optional[int]
     timestamp: str
+    season_id: Optional[int] = None
     court_type: Optional[str] = None
 
 
@@ -71,6 +72,7 @@ class DualProcessRunner:
                 participants=f"{event.home_team} vs {event.away_team}",
                 sport=event.sport,
                 discovery_source=event.discovery_source,
+                season_id=getattr(event, "season_id", None),
                 court_type=getattr(event, "court_type", None),
                 process1_report=process1_report,
                 process1_prediction=process1_prediction,
@@ -261,6 +263,7 @@ class DualProcessRunner:
             participants=f"{getattr(event, 'home_team', '?')} vs {getattr(event, 'away_team', '?')}",
             sport=getattr(event, "sport", "Unknown"),
             discovery_source=getattr(event, "discovery_source", "unknown"),
+            season_id=getattr(event, "season_id", None),
             court_type=getattr(event, "court_type", None),
             process1_report=None,
             process1_prediction=None,

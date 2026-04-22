@@ -343,14 +343,14 @@ class Process1Evaluator:
                 "selected_tier": None,
                 "prediction": None,
                 "confidence": 0,
-                "successful_candidates": 0,
+            "successful_candidates": 0,
                 "total_candidates": 0,
                 "rule_activations": {},
                 "tier1_candidates": tier1_candidates,
             }
 
         selected_candidates = tier1_candidates
-        logger.info(f"[PROCESS1] Evaluating {len(selected_candidates)} exact candidates ({selected_tier})")
+        logger.info(f"[P1] Evaluating {len(selected_candidates)} exact candidates ({selected_tier})")
 
         rule_b_result = self.evaluate_similar_results(selected_candidates)
         rule_c_result = self.evaluate_same_winning_side(selected_candidates)

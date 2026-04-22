@@ -101,7 +101,7 @@ def create_matchup_streak_message(streak) -> str:
             else (streak.home_team_wins + streak.home_team_losses + streak.home_team_draws)
         )
 
-        message = f"📊 <b>{streak.discovery_source.title().replace('_', ' ')} Matchup Streak AnalysisAlert</b>\n"
+        message = f"📊 <b>{streak.discovery_source.title().replace('_', ' ')} Matchup Streak Analysis Alert</b>\n"
         message += f"🏆 <b>{streak.event_id} {streak.participants}</b>\n"
         if streak.sport == "Football":
             message += "⚽ "
@@ -457,19 +457,16 @@ def send_matchup_streak_alerts(notifier: Any, streak_reports: List) -> bool:
 
     try:
         from infrastructure.settings import Config
-        from oddsportal_config import SEASON_ODDSPORTAL_MAP
-        from infrastructure.persistence.repositories import EventRepository
+        from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
     except ImportError:
         Config = None
-        EventRepository = None
 
     for streak in streak_reports:
         if Config and Config.FILTER_ALERTS_BY_OP_SEASON:
-            event = EventRepository.get_event_by_id(streak.event_id)
-            if not event or event.season_id not in SEASON_ODDSPORTAL_MAP:
-                logger.debug(
-                    "Skipping Matchup streak alert for event %s due to OP season filter.",
-                    streak.event_id,
+            if streak.season_id not in SEASON_ODDSPORTAL_MAP:
+                logger.info(
+                    "🚫 Skipping Matchup streak alert for event %s (season %s) due to OP season filter.",
+                    streak.event_id, streak.season_id
                 )
                 continue
 
