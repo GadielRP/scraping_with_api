@@ -1,308 +1,224 @@
-# SofaScore Automation Platform
+# Sports Data & Prediction Platform (Modular Monolith)
+## Overview
 
-This project is an automated sports-data and odds intelligence platform built around SofaScore APIs, historical pattern analysis, and Telegram alerts.
+This repository implements a modular monolith for ingesting sports events and odds, analysing prediction signals and delivering structured alerts. This project connects to SofaScore via https requests to its API to feed the db from events
+ and scrapes supplemental data from OddsPortal, persists everything in PostgreSQL, runs rule‑based algorithms (dual process, matchup streak, basketball 4th‑quarter projections and more) and dispatches notifications via Telegram.
 
-It continuously:
-- discovers upcoming events from multiple SofaScore sources,
-- stores event + odds + market history in PostgreSQL,
-- runs key-moment pre-start checks (30 and 0 minutes),
-- enriches events with observations/metadata,
-- scrapes supplemental OddsPortal market data for mapped leagues,
-- analyzes prediction signals (odds patterns, H2H/streak context),
-- sends structured alerts and tracks prediction outcomes.
+Key capabilities include:
 
-## What The System Actually Does
+Event discovery and persistence – multiple discovery sources scan SofaScore feeds for upcoming games, deduplicate them and store events and opening odds in a unified schema.
+Selective odds extraction – key moments (120, 30, 5, 0 and −5 minutes around kick‑off) trigger odds snapshots and market persistence. Alerts are only sent at the 30‑minute and −5‑minute marks.
+Prediction & alerting pipeline – a three‑phase workflow synchronises supplemental OddsPortal data, evaluates dual process and matchup streak rules, and dispatches formatted notifications via Telegram. A separate basketball 4Q predictor uses historical momentum and rhythm models.
+*   Event discovery and persistence – multiple discovery sources scan SofaScore feeds for upcoming games, deduplicate them and store events and opening odds in a unified schema.
+*   Selective odds extraction – key moments (120, 30, 5, 0 and −5 minutes around kick‑off) trigger odds snapshots and market persistence. Alerts are only sent at the 30‑minute and −5‑minute marks.
+*   Prediction & alerting pipeline – a three‑phase workflow synchronises supplemental OddsPortal data, evaluates dual process and matchup streak rules, and dispatches formatted notifications via Telegram. A separate basketball 4Q predictor uses historical momentum and rhythm models.
+*   Scheduled jobs with CLI – a built‑in scheduler runs discovery, pre‑start checks, midnight result collection and daily discovery at configurable times. All jobs can also be triggered ad‑hoc through main.py commands.
+*   Extensible modules – the code is organised into clearly defined packages: alerts, jobs, observations, oddsportal scraping, prediction, infrastructure and shared utilities. Adding a new alert type or job only requires implementing a module under the appropriate package and wiring it through the CLI.
 
-### 1) Event Discovery (multi-source)
-The scheduler ingests upcoming events from several SofaScore feeds:
-- Dropping odds (`discovery_source='dropping_odds'`) from `/odds/1/dropping/all` + sport-specific dropping endpoints.
-- High-value streak events.
-- High-value streak H2H events.
-- Team streak events.
-- Top H2H events.
-- Winning odds events.
-- Daily sport extractor (`daily_discovery`) that fetches today's scheduled events with odds. If a sport's extraction fails due to proxy/network errors, it is queued for automatic retries.
+The remainder of this document describes the project structure, installation and configuration, usage patterns and core modules in detail.
 
-All discovery paths normalize into the same `events` table with source tagging and dedup/upsert behavior.
+## Project Structure
 
-### 2) Odds Collection Strategy
-The system is intentionally selective to reduce noise and API load:
-- Main odds extraction happens only at key moments: **120, 30, 5, 0, and -5 minutes** before/after start.
-- **Alert Timing**: While odds are extracted at multiple moments, Telegram alerts are strictly restricted to **30 and -5 minutes** to ensure high-signal notifications.
-- For each selected event, it fetches event-level final odds and writes:
-  - `event_odds` (latest 1X2 open/final snapshot values),
-  - `odds_snapshot` (time-series snapshots),
-  - `markets` + `market_choices` (all available market structures).
+```text
+root_dir/
+  main.py                      # entrypoint and CLI integration
+  app/                         # application layer: CLI parsing, initialization & commands
+    cli.py
+    initialize.py
+    logging_setup.py
+    commands/                  # individual CLI command implementations
+  modules/                     # domain logic organised by feature
+    alerts/                    # alert transport & formatting engines
+    jobs/                      # scheduled and ad‑hoc jobs
+    observations/              # observations & sport‑specific enrichments
+    oddsportal/                # Playwright scraper & models for OddsPortal
+    prediction/                # prediction logging & utilities
+    sofascore/                 # SofaScore API client & helpers
+  infrastructure/              # cross‑cutting concerns: networking, persistence, scheduling, settings
+  shared/                      # small helpers used across modules
+  scripts/                     # one‑off scripts and maintenance tasks
+```
+  
+## Entry Points (main.py & app/)
 
-### 3) Timestamp Integrity & Reschedule Handling
-Before pre-start alerting, it checks recently started events to detect late start-time corrections. Rescheduled events are guarded against duplicate/looped processing in the same cycle.
+The application is driven by main.py, which delegates to app/cli.py. cli.py defines a command‑line parser and registers sub‑commands for each operational mode. When main.py is executed, it initialises logging, loads environment variables and invokes the appropriate handler. Available commands include:
 
-### 4) OddsPortal Enrichment
-For configured season IDs (`oddsportal_config.py` map), a background worker scrapes OddsPortal at the 0-minute phase. The system uses a **redesigned parallel dispatcher** that decouples league cache seeding from event scraping, allowing sibling events to be released and scraped in parallel as soon as the league matches are resolved. Data is persisted into the same structured market schema as SofaScore odds.
+| Command | Description |
+| :--- | :--- |
+| start | Launches the full scheduler – initialises the database, creates tables, migrates schema and schedules discovery, pre‑start, midnight sync and daily discovery jobs. |
+| discovery | Triggers Discovery A immediately – fetches dropping odds feeds and sport‑specific dropping endpoints, deduplicates and stores events. |
+| discovery2 | Runs Discovery B – pulls high‑value streaks, head‑to‑head (H2H), winning odds and other special feeds. |
+| pre-start | Executes the pre‑start cycle now – captures upcoming events, applies timestamp corrections, extracts odds snapshots at key moments and evaluates alerts. |
+| midnight | Performs the midnight sync job – collects results, updates prediction logs and refreshes materialised views. |
+| results | Collects previous‑day results and updates prediction logs. |
+| results-date --date YYYY-MM-DD | Collects results for the specified date. |
+| results-all | Retrieves results for all finished events. |
+| daily-discovery | Runs daily sports discovery – extracts today’s events and odds for each sport. |
+| backfill-results --limit N | Backfills missing results history up to N events. |
+| status | Prints database and scheduler status information. |
+| events --limit N | Displays a summary of recently discovered events. |
+| alerts | Evaluates and sends alerts on upcoming events. |
+| refresh-alerts | Refreshes the materialised view used for alert candidate lookup. |
 
-### 5) Alerting / Analysis
-The system evaluates and sends grouped alerts per event, strictly governed by **precision timing rules** to minimize noise:
-- **Odds alerts**: Sent only at **30 and -5 minutes**.
-- **Dual Process alerts**: Evaluated and sent only at **30 and 0 minutes**.
-- **Matchup Streak alerts**: Typically sent at the **30 minute** mark.
+These commands map one‑to‑one to functions in app/commands/. See the docstrings there for further details.
 
-The alert pipeline uses:
-- historical candidate matching from a materialized view (`mv_alert_events`),
-- sport-aware filters (including tennis surface handling),
-- matchup streak context and optional standings/ranking enrichments.
+## Modules
+### Alerts (modules/alerts)
 
-### 6) Result Collection + Feedback Loop
-Daily jobs pull completed match results, refresh odds/markets for finished events, and update prediction logs with actual outcomes.
+Alert‑related logic lives under modules/alerts/. It contains a Telegram transport for sending messages and a set of formatters used by different alert types. The telegram_notifier.py module wraps the Telegram Bot API and automatically splits long messages into safe chunks. Sub‑packages include:
 
-## Scope & Boundaries
+alerts_formatter/ – classes responsible for constructing human‑readable alert messages. Each alert type (odds, dual process, matchup streak, Q4, time correction) implements a formatter here.
+basketball_4q/ – prediction engine for basketball fourth‑quarter analysis. It uses team rhythm, momentum and statistical ranges to project performance and exposes a run_basketball_4q.py script for manual execution.
+dual_process/ – implements the dual process alert strategy. The process_1 and process_2 submodules handle candidate search, evaluation and sport‑specific rules for football and other sports. The top‑level run_dual_process.py entrypoint orchestrates both phases.
+matchup_streak_analysis/ – analyses head‑to‑head records, historical form and standings. It defines constants.py, head_to_head.py, historical_form.py, standings_engine.py, standings_rules.py, standings_simulator.py and winning_odds.py. The run_matchup_streak_analysis.py script triggers this pipeline and uses the materialised view mv_alert_events for candidate lookup.
+### Jobs (modules/jobs)
 
-### In scope
-- Data ingestion from SofaScore APIs.
-- Odds normalization and persistence.
-- OddsPortal supplemental scraping for mapped leagues.
-- Real-time-like scheduled alerting to Telegram.
-- Historical pattern matching for prediction support.
-- Result backfill and prediction log reconciliation.
+Scheduled work is compartmentalised in the jobs/ package. Each job has its own sub‑directory with a run_*.py script and helper modules. Highlights include:
 
-### Out of scope
-- No web dashboard/UI in this repository.
-- No ML training pipeline; prediction logic is rule/data-pattern based.
-- Not a betting execution engine.
+clean_league_cache/ – clears stale OddsPortal league cache rows before the day’s discovery.
+daily_discovery/ – fetches today’s events and odds across sports. It maintains a retry queue for sports that fail due to proxies or network errors.
+discover_dropping_odds/ & discover_secondary_sources/ – run the A and B discovery paths. Secondary sources include high‑value streaks, team streaks, H2H, winning odds and optimisation filters.
+midnight_sync_job/ – runs after midnight to collect match results, update prediction logs and refresh materialised views.
+parallelism/ – utilities for job parallelisation, event filtering and recommendation generation.
+pre_start_check_job/ – executes the core alert pipeline. It orchestrates three phases: 1) synchronise with OddsPortal to fetch supplemental odds, 2) evaluate dual process and matchup streak candidates, 3) dispatch formatted alerts. Additional modules handle in‑game checks, odds extraction, rescheduled events and time correction.
+results_collection_job/ – collects finished match results and updates prediction logs.
 
-## Main Runtime Flow
+Jobs are scheduled through the infrastructure/scheduler using the schedule
+ library. The pre‑start job runs repeatedly at a configurable polling interval; discovery and midnight jobs run at specific times. All timings are configurable via environment variables and the settings/config.py file.
 
-1. `main.py start`
-2. System init:
-- DB connection test
-- table creation
-- schema auto-migration checks
-- SQL views creation
-- materialized views creation
-3. Scheduler starts jobs:
-- Discovery A: `Config.DISCOVERY_TIMES`
-- Discovery B: `Config.DISCOVERY2_TIMES`
-- Pre-start check: every `Config.POLL_INTERVAL_MINUTES`
-- Midnight sync: `04:00`
-- Daily discovery: `05:21` (with periodic retry loops for failed runs)
-4. Pre-start loop:
-- snapshot upcoming events,
-- apply timestamp correction pass,
-- extract odds for 30/0 minute events,
-- refresh MV,
-- evaluate and send event-grouped notifications in parallel (per-event thread pool, waiting on OP decoupled dispatcher).
-5. Midnight flow updates results + prediction outcomes.
+### Observations (modules/observations)
 
-## Entry Commands (`main.py`)
+The observations package extracts additional metadata about events. For example, the sofascore_extractor.py module scrapes details such as court surface, player gender and venue; tennis.py adds tennis‑specific observations; and service.py coordinates persistence. These enrichments are persisted in the event_observations table and used by alert engines.
 
-- `python main.py start` - run full scheduler.
-- `python main.py discovery` - run discovery A now.
-- `python main.py discovery2` - run discovery B now.
-- `python main.py pre-start` - run pre-start cycle now.
-- `python main.py midnight` - run midnight sync now.
-- `python main.py results` - collect previous-day results.
-- `python main.py results-date --date YYYY-MM-DD` - date-specific results collection.
-- `python main.py results-all` - collect all finished event results.
-- `python main.py daily-discovery` - run daily sport extraction.
-- `python main.py backfill-results --limit N` - backfill missing history.
-- `python main.py status` - DB + scheduler status.
-- `python main.py events --limit N` - recent event dump.
-- `python main.py alerts` - evaluate/send alerts on upcoming events.
-- `python main.py refresh-alerts` - refresh materialized alert data.
+### OddsPortal Scraping (modules/oddsportal)
 
-## Configuration (`config.py`)
+This package encapsulates a Playwright‑based scraper to retrieve odds data from OddsPortal at the 0‑minute mark. Core modules include:
 
-Core env-driven controls:
-- `DATABASE_URL`, `DB_CONNECT_TIMEOUT`
-- `POLL_INTERVAL_MINUTES`, `PRE_START_WINDOW_MINUTES`
-- `DISCOVERY_INTERVAL_HOURS`, `DISCOVERY2_INTERVAL_HOURS`
-- `TIMEZONE` (default `America/Mexico_City`)
-- `ENABLE_TIMESTAMP_CORRECTION`, `ENABLE_ODDS_EXTRACTION`
-- `TRACKED_SEASONS_TOGGLE` (`TRACKED_SEASONS_ONLY`)
-- Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `PERSONAL_CHAT_ID`
-- Proxy and OddsPortal toggles
-- `STREAK_ALERT_MIN_RESULTS`
-- `EXCLUDED_SPORTS`
-- Daily Discovery Queue: `DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES`, `DAILY_DISCOVERY_DAYS_TO_KEEP`
+scraper_impl.py, scraper_browser.py and scraper_render.py – implement the asynchronous browser, page navigation and element extraction.
+scraper_lookup.py and team_matcher.py – resolve SofaScore events to OddsPortal URLs using league caches and fuzzy team matching.
+scraper_data.py and models.py – define dataclasses for odds snapshots, markets, matches and results.
+oddsportal_dispatcher.py – orchestrates concurrent scraping using a dispatcher that decouples league cache seeding from event scraping. This allows sibling events to begin scraping in parallel once the league page is resolved.
+oddsportal_config.py – configuration and mapping for OddsPortal seasons, markets and scraping routes.
 
-## Database Structure (`models.py`)
+Data scraped here is normalised into the same schema as SofaScore odds and persisted via the infrastructure layer.
 
-### Core tables
-- `events`
-  - identity/context: `id`, `custom_id`, `slug`, `sport`, `competition`, `country`, `home_team`, `away_team`, `gender`, `season_id`, `round`, `discovery_source`, `alert_sent`
-  - timing/audit: `start_time_utc`, `created_at`, `updated_at`
-- `seasons`
-  - `id`, `name`, `year`, `sport`
-- `event_odds` (current 1X2 state per event)
-  - `one_open`, `one_final`, `x_open`, `x_final`, `two_open`, `two_final`
-  - computed deltas: `var_one`, `var_x`, `var_two`
-- `odds_snapshot` (time series)
-  - `event_id`, `collected_at`, odds values, `raw_fractional`
-- `results`
-  - `home_score`, `away_score`, `winner`, `home_sets`, `away_sets`
-- `event_observations`
-  - typed metadata (example: tennis `ground_type`)
-- `bookies`
-  - bookmaker master (`name`, `slug`)
-- `markets`
-  - one market row per `event + bookie + market_name + choice_group`
-- `market_choices`
-  - market options (`choice_name`, `initial_odds`, `current_odds`, `change`)
-- `prediction_logs`
-  - stored predictions + later actual outcomes/status
-- `daily_discovery_logs`
-  - queue table tracking sport-level daily extraction status (`pending`, `completed`, `failed`) and retry attempts
-- `oddsportal_league_cache`
-  - daily cache of league match URLs by season for faster OP matching
+### Prediction (modules/prediction)
 
-### SQL views/materialized objects
-- `event_all_odds` (joined odds + event + result projection)
-- `basketball_results` (quarter parsing from stored sets incl. OT extraction)
-- `season_events_with_results` (season-level result feed)
-- `mv_alert_events` materialized view for fast alert candidate lookup
+Prediction‑related utilities live in this small package. They include prediction_logging.py, which stores prediction attempts and their eventual outcomes. The alert engines call these helpers to record whether predicted events resulted in wins or losses.
 
-## File-by-File Responsibilities (Requested Main Scripts)
+### SofaScore Client (modules/sofascore)
 
-- `main.py`
-  - CLI entrypoint, initialization sequence, command dispatch, log setup.
+This package wraps the SofaScore public API. The client.py implements a resilient HTTP client (using curl‑cffi
+ for browser‑like headers) and methods for event discovery, odds retrieval, results parsing and standings. Additional modules include:
 
-- `repository.py`
-  - DB repositories for events/seasons/odds/results/observations/markets/OP cache.
-  - Event upsert, discovery-source priority, cleanup utilities.
-  - Market persistence for SofaScore and OddsPortal data.
+discovery_feeds.py and schedule_feeds.py – fetch dropping odds, high‑value streaks, H2H, winning odds and daily schedule feeds.
+event_details.py and results_parser.py – normalise event details and final scores.
+h2h.py and team_history.py – provide historical matchups and team form.
+sport_classifier.py – distinguishes sport sub‑types (e.g., tennis singles vs doubles).
+standings.py and winning_odds.py – compute standings and winning odds for ranking enrichments.
 
-- `config.py`
-  - All runtime configuration from environment.
+The SofaScore modules provide the primary source of events and odds for the platform.
 
-- `scheduler.py`
-  - Full job orchestration and operational pipeline.
-  - Discovery A/B, pre-start loop, alert batching, OP worker integration, results jobs.
+## Infrastructure
 
-- `database.py`
-  - SQLAlchemy engine/session management.
-  - table creation + auto schema migration checks/index add.
-  - migration utility logic including `bookie_id` transition support.
+Under infrastructure/ are cross‑cutting utilities shared by the modules:
 
-- `models.py`
-  - SQLAlchemy models + SQL view/materialized view creation helpers.
+Network & proxies – network/proxy_manager.py manages proxy rotation and failure handling for both SofaScore HTTP calls and OddsPortal scraping.
+Persistence – persistence/ defines SQLAlchemy models (models.py), repository patterns for each domain (repositories/*.py) and the main database.py for creating sessions and applying migrations. The repositories perform inserts, updates and queries for events, seasons, odds, markets, results, observations and caches.
+Scheduler – scheduler/job_scheduler.py wraps the schedule library to register jobs and run them on separate threads. When you call python main.py start, this scheduler initialises the job list based on configuration.
+Settings – settings/config.py reads environment variables (via python‑dotenv
+) and exposes typed configuration. Important options include database URL, polling intervals, discovery times, timezone, proxy toggles, and Telegram credentials.
+## Shared Utilities
 
-- `odds_utils.py`
-  - Odds conversion/validation helper utilities.
+The shared/ package houses small helpers that don’t belong to a specific module. For example:
 
-- `sofascore_api.py`
-  - HTTP client with retries, endpoint wrappers, event/result/odds extraction and normalization.
+odds_utils.py – convert fractional odds to decimals and compute deltas.
+timezone_utils.py – provide timezone‑aware conversions between UTC and local time (default America/Mexico_City).
+## Scripts
 
-- `sofascore_api2.py`
-  - Additional SofaScore method extensions attached to base API client:
-  - streak/high-value/H2H/winning odds/today events/standings helpers.
+One‑off scripts live under scripts/. They support administrative tasks such as:
 
-- `timezone_utils.py`
-  - Timezone-safe local/UTC conversion utilities used across scheduling and formatting.
+backfill_results.py – backfill missing result rows.
+backup_server.py – export and backup the PostgreSQL database.
+csv_migration.py, generate_oddsportal_split.py, process_null_seasons.py – perform data migrations and cleanup.
+extract_historical_results.py – download historical results into CSV.
+maintenance/ – contains specialist scripts, e.g. correcting tennis classifications.
 
-- `sport_classifier.py`
-  - Sport sub-classification (notably tennis singles vs doubles).
+These scripts can be invoked directly with python -m scripts/<name>.py. Some are integrated into CLI commands (e.g., backfilling results).
 
-- `sport_observations.py`
-  - Observation management for sport-specific metadata (especially tennis surface).
+## Installation & Setup
 
-- `alert_system.py`
-  - Telegram transport, chunk-safe messaging, and rich alert formatting.
+```bash
+git clone https://github.com/GadielRP/scraping_with_api.git
+cd scraping_with_api
+```
 
-- `alert_engine.py`
-  - Historical odds-pattern candidate search and tier/rule evaluation for process-1 alerts.
+Create a virtual environment and install dependencies. The project requires Python ≥ 3.9. The dependencies listed in requirements.txt include requests, psycopg2-binary, python-dotenv, schedule, sqlalchemy, alembic, curl-cffi, pydantic, rich, pytz and playwright. After installing, run playwright install to download browser binaries.
 
-- `streak_alerts.py`
-  - Matchup context and team-form analysis engine with standings/ranking/winning-odds enrichments.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+playwright install
+```
+Set up environment variables. Copy .env.example to .env and populate the required fields:
+*   `DATABASE_URL` – PostgreSQL connection string (postgresql+psycopg2://user:pass@host/dbname).
+*   `TIMEZONE` – local timezone (default America/Mexico_City).
+*   `POLL_INTERVAL_MINUTES` – polling interval for the pre‑start check job.
+*   `DISCOVERY_INTERVAL_HOURS` and `DISCOVERY2_INTERVAL_HOURS` – intervals for discovery jobs.
+*   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `PERSONAL_CHAT_ID` – credentials for Telegram alerts.
+*   Proxy toggles and credentials (if scraping behind a proxy).
+*   Optional toggles like `ENABLE_TIMESTAMP_CORRECTION`, `ENABLE_ODDS_EXTRACTION`, `EXCLUDED_SPORTS`, `STREAK_ALERT_MIN_RESULTS`.
 
-- `oddsportal_scraper.py`
-  - Playwright scraping engine (market extraction, opening/current odds, bookie priority, cache use).
+Initialise the database. Run:
 
-- `oddsportal_config.py`
-  - OddsPortal league mapping, aliases, and scraping route/market configuration.
+```bash
+python main.py status
+```
 
-- `today_sport_extractor.py`
-  - Daily multi-sport discovery job for today's events with odds.
+This will create tables and materialised views if they do not exist and verify connectivity to PostgreSQL.
 
-- `odds_alert.py`
-  - Odds response -> readable alert formatting + smart low-value suppression behavior.
+## Running the System
+### Full Scheduler
 
-- `historical_standings.py`
-  - Local standings simulator for collected seasons and DB-based historical team-form retrieval.
+To start the full platform with scheduled jobs, execute:
 
-- `basketball_4q_prediction.py`
-  - NBA/Basketball 4th-quarter projection using historical quarter stats + in-game rhythm/momentum.
+```bash
+python main.py start
+```
 
-## Scheduler Jobs In Detail
+This initialises the database, loads configuration and starts the scheduler with discovery jobs (A and B), the pre‑start polling loop, midnight sync and daily discovery. Logs are written to logs/<Month>/week_<N>/sofascore_odds.log and logs/oddsportal/<Month>/week_<N>/oddsportal.log.
 
-### Job A: Discovery (`job_discovery`)
-- Pull `/dropping/all` first.
-- Pull selected sports individually.
-- Filter out events starting too soon/already started.
-- Deduplicate across feeds.
-- Upsert events + odds in parallel DB operations.
+### Manual Invocations
 
-### Job B: Discovery2 (`job_discovery2`)
-- Pull high-value streaks, team streaks, H2H, winning odds feeds.
-- Normalize event payloads.
-- Filter upcoming-only.
-- Persist using specialized processing paths (event-only or event+odds).
+Any job can be triggered on demand using its CLI command. For example, to run the pre‑start check once:
 
-### Job C: Pre-start (`job_pre_start_check`)
-- Capture upcoming window snapshot.
-- Run late timestamp correction checks.
-- Decide key-moment extraction eligibility (120, 30, 5, 0, -5).
-- Extract and persist odds/markets at key moments.
-- For tennis key moments, persist court/observation metadata.
-- Trigger OP worker for mapped seasons (at 0 minutes).
-- Refresh MVs and evaluate/send grouped alerts according to **precision gates**:
-  - Odds alerts: {30, -5}
-  - Dual Process: {30, 0}
+```bash
+python main.py pre-start
+```
 
-### Job D: Midnight sync (`job_midnight_sync`)
-- Run results collection.
-- Update prediction logs with actual outcomes.
-- Refresh materialized alert view.
+To run daily discovery immediately (useful for debugging proxy issues):
 
-### Job E: Daily discovery (`job_daily_discovery` & `job_daily_discovery_retry`)
-- Cleanup old OddsPortal cache rows and stale daily discovery logs.
-- Initialize `daily_discovery_logs` queue for today with all default sports marked `pending`.
-- Pull today's events+odds for pending/failed sports and store as `daily_discovery`.
-- Update each sport's status to `completed` or `failed` (e.g., if proxy tunnel fails).
-- The `job_daily_discovery_retry` continuously polls at configured intervals, re-triggering extraction for any sports not yet completed.
+```bash
+python main.py daily-discovery
+```
 
-## Libraries / Dependencies
+Refer to the command table above for the full list of options.
 
-From `requirements.txt`:
-- `requests` - HTTP (Telegram + some helper calls).
-- `psycopg2-binary` - PostgreSQL driver.
-- `python-dotenv` - env loading.
-- `schedule` - in-process job scheduling.
-- `sqlalchemy` - ORM + SQL execution.
-- `alembic` - migration dependency baseline (project uses custom migration logic too).
-- `curl-cffi` - SofaScore HTTP client with browser impersonation.
-- `pydantic` - typed validation/support utilities.
-- `rich` - console output enhancements.
-- `pytz` - timezone handling.
-- `playwright` - OddsPortal browser scraping.
+## Developing & Extending
 
-## External Integrations
+The modular monolith design encourages adding new features without breaking existing ones. Guidelines:
 
-- SofaScore API (`https://api.sofascore.com/api/v1`)
-- OddsPortal website scraping
-- Telegram Bot API for notifications
+Add new alert types under modules/alerts/alerts_formatter/ and wire them into the alert_pipeline.py. Ensure the formatter produces concise, chunk‑safe output for Telegram.
+Create new jobs by adding a sub‑package under modules/jobs/ with a run_<name>.py script. Register it in infrastructure/scheduler/job_scheduler.py and expose a CLI command.
+Interact with SofaScore or OddsPortal by extending the clients in modules/sofascore/ and modules/oddsportal/. Use repository classes in infrastructure/persistence/ to persist data.
+Keep configuration in .env and settings/config.py so that new modules remain configurable without code changes.
+Write tests to cover new logic. While this project currently focuses on operational scripts, adding unit tests will help prevent regressions.
+## Contribution Workflow
+*   Fork the repository and create a feature branch.
+*   Install pre‑commit hooks (if configured) and run linting tools locally.
+*   Submit a pull request describing your changes. Include relevant docs and update this README if the structure changes.
+*   The repository maintainer will review and merge after tests pass.
+## License
 
-## Logs
-
-- Main logs rotate by month/week:
-  - `logs/{MM_MonthName}/week_{N}/sofascore_odds.log`
-- OddsPortal dedicated logs:
-  - `logs/oddsportal/{MM_MonthName}/week_{N}/oddsportal.log`
-
-## Onboarding Checklist For New Colleagues
-
-1. Create `.env` with DB + Telegram + scheduler toggles.
-2. Install dependencies and Playwright browser binaries.
-3. Run `python main.py status` to verify DB init + migrations.
-4. Run `python main.py discovery` and inspect `events/event_odds` writes.
-5. Run `python main.py pre-start` on test window and confirm alert pipeline logs.
-6. Review `scheduler.py` + `repository.py` + `models.py` first; these are core operational files.
-7. Use `README.md` + `PLANNING.md` together as canonical architecture references.
+This project is provided for educational and personal use. Consult the repository’s LICENSE file for the full license text.
