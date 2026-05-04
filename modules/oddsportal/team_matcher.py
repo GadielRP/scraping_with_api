@@ -150,17 +150,18 @@ class TeamMatcher:
         # Minimum threshold for a match (e.g. 150/200 total)
         # 160 means roughly 80% match on both teams
         if best['max_score'] < 150:
+            logger.debug(f"❌ TeamMatcher: Best candidate rejected (Score {best['max_score']:.1f} < 150): '{best['home']}' vs '{best['away']}'")
             return None
 
         # Check if it's clearly better than the reverse
         # If it's reversed but the difference is small, it might be ambiguous
         if best['is_reversed']:
             if best['reverse_score'] - best['direct_score'] < 20:
-                # Ambiguous
+                logger.debug(f"❌ TeamMatcher: Ambiguous reversed match (Diff {best['reverse_score'] - best['direct_score']:.1f} < 20): '{best['home']}' vs '{best['away']}'")
                 return None
         else:
             if best['direct_score'] - best['reverse_score'] < 20:
-                # Ambiguous
+                logger.debug(f"❌ TeamMatcher: Ambiguous match (Diff {best['direct_score'] - best['reverse_score']:.1f} < 20): '{best['home']}' vs '{best['away']}'")
                 return None
 
         return best

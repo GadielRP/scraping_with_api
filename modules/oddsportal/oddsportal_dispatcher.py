@@ -225,7 +225,7 @@ def scrape_multiple_matches_sync(
                             task["_oddsportal_resume_state"] = task_payload.get("_oddsportal_resume_state")
                             task["_oddsportal_partial_match_data"] = task_payload.get("_oddsportal_partial_match_data")
                         if data is None:
-                            logger.warning(f'???? OddsPortal [{i + 1}/{len(tasks)}]: No data (or match discovery failed) ??? restarting browser with new proxy session and retrying...')
+                            logger.warning(f'🔄 OddsPortal [{i + 1}/{len(tasks)}]: No data (or match discovery failed) 🔄 restarting browser with new proxy session and retrying...')
                             await scraper.stop()
                             await scraper.start()
                             retry_url = match_url
@@ -249,9 +249,9 @@ def scrape_multiple_matches_sync(
                                     on_task_started=on_task_started,
                                 )
                                 if data:
-                                    logger.info(f'??? OddsPortal [{i + 1}/{len(tasks)}]: RETRY SUCCEEDED with new session-{scraper._session_id}')
+                                    logger.info(f'✅ OddsPortal [{i + 1}/{len(tasks)}]: RETRY SUCCEEDED with new session-{scraper._session_id}')
                                 else:
-                                    logger.warning(f'?????? OddsPortal [{i + 1}/{len(tasks)}]: Retry also returned no data')
+                                    logger.warning(f'⚠️ OddsPortal [{i + 1}/{len(tasks)}]: Retry also returned no data')
                         results[event_id] = data
                         if data:
                             logger.info(f'✅ OddsPortal [{i + 1}/{len(tasks)}]: Got {len(data.extractions)} period(s), {len(data.bookie_odds)} bookies')

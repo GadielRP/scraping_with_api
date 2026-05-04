@@ -69,6 +69,11 @@ from .oddsportal_config import (
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
     INSTITUTIONAL_NOISE, get_oddsportal_current_date,
 )
+from .oddsportal_tab_normalizer import (
+    get_group_tab_candidates,
+    get_period_tab_candidates,
+    tab_label_matches,
+)
 from .team_matcher import TeamMatcher
 from .dataclasses import (
     CacheQualityMetrics, BookieOdds, BetfairExchangeOdds, MarketExtraction,
@@ -89,6 +94,33 @@ logger = logging.getLogger(__name__)
 
 
 class OddsPortalRenderMixin:
+    GET_REFERENCE_VALUE_JS = """
+                () => {
+                    const getFirstVisibleText = (selector) => {
+                        const el = Array.from(document.querySelectorAll(selector)).find(
+                            e => e.getBoundingClientRect().width > 0 &&
+                                e.getBoundingClientRect().height > 0
+                        );
+
+                        return el ? el.innerText.trim() : null;
+                    };
+
+                    const oddsVal = getFirstVisibleText('div.odds-cell');
+                    if (oddsVal) return oddsVal;
+
+                    const ouVal = getFirstVisibleText(
+                        'div[data-testid="over-under-collapsed-row"] p'
+                    );
+                    if (ouVal) return ouVal;
+
+                    const ahVal = getFirstVisibleText(
+                        'div[data-testid="asian-handicap-collapsed-row"] p'
+                    );
+                    if (ahVal) return ahVal;
+
+                    return null;
+                }
+            """
     async def _wait_for_market_render(self, page: Page, extract_fn: str, timeout_ms: int=15000) -> bool:
         """
             Wait for selectors appropriate for the extraction mode.
@@ -111,7 +143,12 @@ class OddsPortalRenderMixin:
                 logger.debug(f'Failed to log state during _wait_for_market_render timeout: {log_e}')
             return False
 
-    async def _click_period_tab(self, page: Page, period_display_name: str) -> bool:
+    async def _click_period_tab(
+        self,
+        page: Page,
+        period_display_name: str,
+        period_key: Optional[str] = None,
+    ) -> bool:
         """
             Click a market period sub-tab and wait for the odds table to update.
 
@@ -121,11 +158,20 @@ class OddsPortalRenderMixin:
             - either odds changed OR active-tab state transitioned to target.
             """
         try:
-            ref_value = await page.evaluate('\n                () => {\n                    const getFirstVisibleText = (selector) => {\n                        const el = Array.from(document.querySelectorAll(selector)).find(\n                            e => e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0\n                        );\n                        return el ? el.innerText.trim() : null;\n                    };\n                    const oddsVal = getFirstVisibleText(\'div.odds-cell\');\n                    if (oddsVal) return oddsVal;\n                    const ouVal = getFirstVisibleText(\'div[data-testid="over-under-collapsed-row"] p\');\n                    if (ouVal) return ouVal;\n                    const ahVal = getFirstVisibleText(\'div[data-testid="asian-handicap-collapsed-row"] p\');\n                    if (ahVal) return ahVal;\n                    return null;\n                }\n            ')
+            ref_value = await page.evaluate(self.GET_REFERENCE_VALUE_JS)
             logger.info(f'📸 Reference odds value before period switch: {ref_value}')
             before_active_labels = await self._get_active_period_labels(page)
-            period_target_norm = (period_display_name or '').strip().lower()
-            before_active_has_target = any(((lbl or '').strip().lower() == period_target_norm for lbl in before_active_labels))
+            tab_language = getattr(Config, "ODDSPORTAL_UI_LANGUAGE", "en")
+            period_candidates = get_period_tab_candidates(
+                period_key=period_key,
+                display_name=period_display_name,
+                language=tab_language,
+            )
+            logger.info(f"🔍 Target period candidates ({tab_language}): {period_candidates}")
+            before_active_has_target = any(
+                tab_label_matches(lbl, period_candidates)
+                for lbl in before_active_labels
+            )
             period_navs = await page.query_selector_all('div[data-testid="kickoff-events-nav"]')
             if not period_navs:
                 logger.warning("⚠️ Period sub-nav not found (data-testid='kickoff-events-nav')")
@@ -137,9 +183,10 @@ class OddsPortalRenderMixin:
                 for tab in tabs:
                     text = await tab.text_content()
                     text_stripped = text.strip() if text else ''
+                    logger.info(f"🔍 Found period tab with text: '{text_stripped}'")
                     if text_stripped:
                         available_tabs.append(text_stripped)
-                        if period_target_norm == text_stripped.lower().strip():
+                        if tab_label_matches(text_stripped, period_candidates):
                             target_tab = tab
                             break
                 if target_tab:
@@ -170,15 +217,23 @@ class OddsPortalRenderMixin:
             while elapsed < max_wait_s:
                 await page.wait_for_timeout(poll_interval_ms)
                 elapsed += poll_interval_ms / 1000
-                new_value = await page.evaluate('\n                    () => {\n                        const getFirstVisibleText = (selector) => {\n                            const el = Array.from(document.querySelectorAll(selector)).find(\n                                e => e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0\n                            );\n                            return el ? el.innerText.trim() : null;\n                        };\n                        const oddsVal = getFirstVisibleText(\'div.odds-cell\');\n                        if (oddsVal) return oddsVal;\n                        const ouVal = getFirstVisibleText(\'div[data-testid="over-under-collapsed-row"] p\');\n                        if (ouVal) return ouVal;\n                        const ahVal = getFirstVisibleText(\'div[data-testid="asian-handicap-collapsed-row"] p\');\n                        if (ahVal) return ahVal;\n                        return null;\n                    }\n                ')
-                active_now = await self._is_target_period_active(page, period_display_name)
+                new_value = await page.evaluate(self.GET_REFERENCE_VALUE_JS)
+                active_now = await self._is_target_period_active(
+                    page,
+                    period_display_name,
+                    period_key=period_key,
+                )
                 if active_now and new_value and (ref_value is None or new_value != ref_value):
                     logger.info(f'✅ Odds table updated after {elapsed:.1f}s: {ref_value} → {new_value}')
                     table_changed = True
                     break
             if not table_changed:
                 content_present = await self._has_market_content(page)
-                active_now = await self._is_target_period_active(page, period_display_name)
+                active_now = await self._is_target_period_active(
+                    page,
+                    period_display_name,
+                    period_key=period_key,
+                )
                 if active_now and content_present and (not before_active_has_target or is_active):
                     logger.info(f'ℹ️ No odds-text delta after {max_wait_s}s, but target period is active and content is present — treating as success.')
                     table_changed = True
@@ -190,18 +245,32 @@ class OddsPortalRenderMixin:
             logger.error(f"❌ Error clicking period tab '{period_display_name}': {e}")
             return False
 
-    async def _click_market_group_tab(self, page: Page, group_display_name: str) -> bool:
+    async def _click_market_group_tab(
+        self,
+        page: Page,
+        group_display_name: str,
+        group_key: Optional[str] = None,
+    ) -> bool:
         """
             Click a market group tab (e.g. "Over/Under", "1X2") and wait for the table to update.
 
             Success criteria are strict to avoid false positives that can cause stale extractions.
             """
         try:
-            ref_value = await page.evaluate('\n                () => {\n                    const getFirstVisibleText = (selector) => {\n                        const el = Array.from(document.querySelectorAll(selector)).find(\n                            e => e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0\n                        );\n                        return el ? el.innerText.trim() : null;\n                    };\n                    const oddsVal = getFirstVisibleText(\'div.odds-cell\');\n                    if (oddsVal) return oddsVal;\n                    const ouVal = getFirstVisibleText(\'div[data-testid="over-under-collapsed-row"] p\');\n                    if (ouVal) return ouVal;\n                    const ahVal = getFirstVisibleText(\'div[data-testid="asian-handicap-collapsed-row"] p\');\n                    if (ahVal) return ahVal;\n                    return null;\n                }\n            ')
+            ref_value = await page.evaluate(self.GET_REFERENCE_VALUE_JS)
             logger.info(f'📸 Reference value before group switch: {ref_value}')
             before_active_group = await self._get_active_group_label(page)
-            group_target_norm = (group_display_name or '').strip().lower()
-            before_active_is_target = before_active_group.strip().lower() == group_target_norm
+            tab_language = getattr(Config, "ODDSPORTAL_UI_LANGUAGE", "en")
+            group_candidates = get_group_tab_candidates(
+                group_key=group_key,
+                display_name=group_display_name,
+                language=tab_language,
+            )
+            logger.info(f"🔍 Target group candidates ({tab_language}): {group_candidates}")
+            before_active_is_target = tab_label_matches(
+                before_active_group,
+                group_candidates,
+            )
             tabs = await page.query_selector_all('ul.visible-links.odds-tabs li')
             if not tabs:
                 logger.warning('⚠️ Market group tabs not found')
@@ -213,7 +282,7 @@ class OddsPortalRenderMixin:
                 text_stripped = text.strip() if text else ''
                 if text_stripped:
                     available_tabs.append(text_stripped)
-                    if group_target_norm == text_stripped.lower().strip():
+                    if tab_label_matches(text_stripped, group_candidates):
                         target_tab = tab
                         break
             if not target_tab:
@@ -241,15 +310,23 @@ class OddsPortalRenderMixin:
             while elapsed < max_wait_s:
                 await page.wait_for_timeout(poll_interval_ms)
                 elapsed += poll_interval_ms / 1000
-                new_value = await page.evaluate('\n                    () => {\n                        const getFirstVisibleText = (selector) => {\n                            const el = Array.from(document.querySelectorAll(selector)).find(\n                                e => e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0\n                            );\n                            return el ? el.innerText.trim() : null;\n                        };\n                        const oddsVal = getFirstVisibleText(\'div.odds-cell\');\n                        if (oddsVal) return oddsVal;\n                        const ouVal = getFirstVisibleText(\'div[data-testid="over-under-collapsed-row"] p\');\n                        if (ouVal) return ouVal;\n                        const ahVal = getFirstVisibleText(\'div[data-testid="asian-handicap-collapsed-row"] p\');\n                        if (ahVal) return ahVal;\n                        return null;\n                    }\n                ')
-                active_now = await self._is_target_group_active(page, group_display_name)
+                new_value = await page.evaluate(self.GET_REFERENCE_VALUE_JS)
+                active_now = await self._is_target_group_active(
+                    page,
+                    group_display_name,
+                    group_key=group_key,
+                )
                 if active_now and new_value and (ref_value is None or new_value != ref_value):
                     logger.info(f'✅ Odds table updated after {elapsed:.1f}s: {ref_value} → {new_value}')
                     table_changed = True
                     break
             if not table_changed:
                 content_present = await self._has_market_content(page)
-                active_now = await self._is_target_group_active(page, group_display_name)
+                active_now = await self._is_target_group_active(
+                    page,
+                    group_display_name,
+                    group_key=group_key,
+                )
                 if active_now and content_present and (not before_active_is_target or is_active):
                     logger.info(f'ℹ️ No odds-text delta after {max_wait_s}s, but target group is active and content is present — treating as success.')
                     table_changed = True

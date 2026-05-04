@@ -205,7 +205,7 @@ class OddsPortalLookupMixin:
             skipped_stale = 0
             skipped_league_self = 0
             skipped_missing_teams = 0
-            league_relative_path = navigation_league_url.replace('https://www.oddsportal.com', '').rstrip('/')
+            league_relative_path = navigation_league_url.replace(f'https://www.{Config.ODDSPORTAL_DOMAIN}', '').rstrip('/')
             path_parts = [p for p in league_relative_path.split('/') if p]
             sport_slug = path_parts[0] if len(path_parts) >= 1 else None
             country_slug = path_parts[1] if len(path_parts) >= 2 else None
@@ -261,7 +261,7 @@ class OddsPortalLookupMixin:
                     candidates.append({'home': home, 'away': away, 'href': href, 'raw_text': game_text, 'date': date_val})
                 else:
                     skipped_missing_teams += 1
-            logger.info(f'League extraction summary for {navigation_league_url}: total_rows={total_rows} already_had_fragment={already_had_fragment} repaired_with_row_id={repaired_with_row_id} missing_row_id_for_repair={missing_row_id_for_repair} accepted_candidates={accepted_candidates}')
+            logger.info(f'League extraction summary for {navigation_league_url}: total_rows={total_rows} accepted={accepted_candidates} (skipped: stale={skipped_stale}, sport={skipped_wrong_sport}, struct={skipped_wrong_structure}, teams={skipped_missing_teams}, self={skipped_league_self}, empty={skipped_empty_href})')
             if season_id and candidates and (not skip_cache_save):
                 try:
                     from infrastructure.persistence.repositories import OddsPortalCacheRepository
@@ -324,7 +324,7 @@ class OddsPortalLookupMixin:
             best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
             if best_match:
                 logger.info(f"Match found: {best_match['home']} vs {best_match['away']} (Score: {best_match['max_score']:.1f}, Reversed: {best_match['is_reversed']})")
-                return f"https://www.oddsportal.com{best_match['href']}"
+                return f"https://www.{Config.ODDSPORTAL_DOMAIN}{best_match['href']}"
             logger.warning(f'Match not found: {home_team} vs {away_team}')
             return None
         except Exception as e:
@@ -342,7 +342,7 @@ class OddsPortalLookupMixin:
             best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
             if best_match and best_match['max_score'] >= 80:
                 logger.info(f"Cache hit: {best_match['home']} vs {best_match['away']} (Score: {best_match['max_score']:.1f})")
-                return f"https://www.oddsportal.com{best_match['href']}"
+                return f"https://www.{Config.ODDSPORTAL_DOMAIN}{best_match['href']}"
             logger.info(f'Cache found for season {season_id}, but no stored match matched {home_team} vs {away_team} with threshold >= 80 (candidate_count={len(candidates)})')
             return None
         except Exception as e:

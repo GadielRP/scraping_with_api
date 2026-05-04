@@ -69,6 +69,11 @@ from .oddsportal_config import (
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
     INSTITUTIONAL_NOISE, get_oddsportal_current_date,
 )
+from .oddsportal_tab_normalizer import (
+    get_group_tab_candidates,
+    get_period_tab_candidates,
+    tab_label_matches,
+)
 from .team_matcher import TeamMatcher
 from .dataclasses import (
     CacheQualityMetrics, BookieOdds, BetfairExchangeOdds, MarketExtraction,
@@ -106,17 +111,44 @@ class OddsPortalPageStateMixin:
     async def _get_active_period_labels(self, page: Page) -> List[str]:
         """Collect active period labels from all kickoff-events-nav blocks."""
         try:
-            labels = await page.evaluate('\n                () => {\n                    const out = [];\n                    const navs = Array.from(document.querySelectorAll(\'div[data-testid="kickoff-events-nav"]\'));\n                    for (const nav of navs) {\n                        const active = nav.querySelector(\'div[data-testid="sub-nav-active-tab"]\');\n                        const txt = active ? active.textContent.trim() : \'\';\n                        if (txt) out.push(txt);\n                    }\n                    return out;\n                }\n            ')
+            labels = await page.evaluate("""
+                () => {
+                    const out = [];
+                    const navs = Array.from(document.querySelectorAll('div[data-testid="kickoff-events-nav"]'));
+                    for (const nav of navs) {
+                        const active = nav.querySelector('div[data-testid="sub-nav-active-tab"]');
+                        const txt = active ? active.textContent.trim() : '';
+                        if (txt) out.push(txt);
+                    }
+                    return out;
+                }
+            """)
             return labels or []
         except Exception:
             return []
 
-    async def _is_target_period_active(self, page: Page, period_display_name: str) -> bool:
-        target = (period_display_name or '').strip().lower()
-        if not target:
+    async def _is_target_period_active(
+        self,
+        page: Page,
+        period_display_name: str,
+        period_key: Optional[str] = None,
+    ) -> bool:
+        tab_language = getattr(Config, "ODDSPORTAL_UI_LANGUAGE", "en")
+
+        candidates = get_period_tab_candidates(
+            period_key=period_key,
+            display_name=period_display_name,
+            language=tab_language,
+        )
+
+        if not candidates:
             return False
+
         labels = await self._get_active_period_labels(page)
-        return any(((lbl or '').strip().lower() == target for lbl in labels))
+        return any(
+            tab_label_matches(lbl, candidates)
+            for lbl in labels
+        )
 
     async def _get_active_group_label(self, page: Page) -> str:
         """Return active market group tab label (e.g. '1X2', 'Over/Under')."""
@@ -125,12 +157,26 @@ class OddsPortalPageStateMixin:
         except Exception:
             return ''
 
-    async def _is_target_group_active(self, page: Page, group_display_name: str) -> bool:
-        target = (group_display_name or '').strip().lower()
-        if not target:
+    async def _is_target_group_active(
+        self,
+        page: Page,
+        group_display_name: str,
+        group_key: Optional[str] = None,
+    ) -> bool:
+        tab_language = getattr(Config, "ODDSPORTAL_UI_LANGUAGE", "en")
+
+        candidates = get_group_tab_candidates(
+            group_key=group_key,
+            display_name=group_display_name,
+            language=tab_language,
+        )
+
+        if not candidates:
             return False
-        active_label = (await self._get_active_group_label(page)).strip().lower()
-        return active_label == target
+
+        active_label = await self._get_active_group_label(page)
+
+        return tab_label_matches(active_label, candidates)
 
     async def _collect_match_page_state(self, page: Page) -> Dict[str, Any]:
         """Gather detailed page state metrics to diagnose partial or empty loads.

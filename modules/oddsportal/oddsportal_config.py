@@ -77,7 +77,7 @@ INSTITUTIONAL_NOISE = [
 # Key: The name in OUR database (SofaScore)
 # Value: One or more names displayed on OddsPortal
 TEAM_ALIASES = {
-    # --- Premier League / English Teams ---
+    # --- Premier League / English Football Teams ---
     "Wolverhampton": ["Wolves", "Wolverhampton"],
     "Manchester United": ["Manchester Utd", "Man United", "Man Utd"],
     "Newcastle United": ["Newcastle"],
@@ -112,7 +112,7 @@ TEAM_ALIASES = {
     "Millwall": ["Millwall"],
     "Southampton": ["Southampton"],
 
-    # --- La Liga / Spanish Teams ---
+    # --- La Liga / Spanish Football Teams ---
     "Real Betis": ["Betis"],
     "Deportivo Alavés": ["Alaves"],
     "Atlético Madrid": ["Atl. Madrid", "Atletico Madrid"],
@@ -146,7 +146,7 @@ TEAM_ALIASES = {
     "Cartagena": ["Cartagena"],
     "Tenerife": ["Tenerife"],
 
-    # --- Bundesliga / German Teams ---
+    # --- Bundesliga / German Football Teams ---
     "FC Bayern München": ["Bayern Munich", "Bayern"],
     "Borussia Dortmund": ["Dortmund"],  
     "TSG Hoffenheim": ["Hoffenheim"],
@@ -185,7 +185,7 @@ TEAM_ALIASES = {
     "1. FC Kaiserslautern": ["Kaiserslautern"],
     "Wehen Wiesbaden": ["Wehen"],
 
-    # --- Serie A / Italian Teams ---
+    # --- Serie A / Italian Football Teams ---
     "Hellas Verona": ["Verona"],
     "Milan": ["AC Milan", "Milan"], 
     "Roma": ["AS Roma", "Roma"],
@@ -204,7 +204,7 @@ TEAM_ALIASES = {
     "Internazionale": ["Inter"],
     "Inter": ["Inter"],
 
-    # --- League 1 / French Teams ---
+    # --- League 1 / French Football Teams ---
     "Paris Saint-Germain": ["PSG"],
     "AS Monaco": ["Monaco"],
     "Olympique Lyonnais": ["Lyon"],
@@ -224,7 +224,7 @@ TEAM_ALIASES = {
     "RC Lens": ["Lens"],
     "Girondins de Bordeaux": ["Bordeaux"],
 
-    # --- Saudi Professional League / Saudi Arabian Teams ---
+    # --- Saudi Professional League / Saudi Arabian Football Teams ---
     "Al-Hilal": ["Al Hilal"],
     "Al-Nassr": ["Al Nassr"],
     "Al-Ittihad": ["Al Ittihad"],
@@ -245,7 +245,7 @@ TEAM_ALIASES = {
     "Al-Jabalain": ["Al Jabalain"],
     "Al-Orobah": ["Al Orobah"],
 
-    # --- CBA / Chinese Teams ---
+    # --- CBA / Chinese Basketball Association Teams ---
     "Shanghai Sharks": ["Shanghai"],
     "Guangsha": ["Zhejiang Guangsha"],
     "Guangdong Southern Tigers": ["Guangdong"],
@@ -267,7 +267,7 @@ TEAM_ALIASES = {
     "Jiangsu Dragons": ["Jiangsu Dragons"],
     "Sichuan Blue Whales": ["Sichuan"],
 
-    # --- PFL / Philippines Teams ---
+    # --- PFL / Philippines football league Teams ---
     "Taguig FC": ["One Taguig"],
     "DH Cebu FC": ["Cebu FC"],
     "Kaya": ["Kaya"],

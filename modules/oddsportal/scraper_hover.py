@@ -165,10 +165,13 @@ class OddsPortalHoverMixin:
         try:
             await page.mouse.move(0, 0)
             await page.wait_for_timeout(300)
-            try:
-                await page.wait_for_selector("h3:has-text('Odds movement')", state='detached', timeout=1500)
-            except Exception:
-                pass
+            if Config.ODDSPORTAL_UI_LANGUAGE == "es":
+                await page.wait_for_selector("h3:has-text('Movimiento de cuotas')", state='detached', timeout=1500)
+            else:
+                try:
+                    await page.wait_for_selector("h3:has-text('Odds movement')", state='detached', timeout=1500)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -370,12 +373,15 @@ class OddsPortalHoverMixin:
                 if container_count >= 4:
                     return {'back_1': 0, 'back_2': 1, 'lay_1': 2, 'lay_2': 3}
                 return {}
+
             initial_mapping = _build_betfair_choice_to_index(len(odd_containers_init))
             if not initial_mapping:
                 logger.warning(f'⚠️ Unexpected Betfair container count: {len(odd_containers_init)}')
                 return None
+
             logger.debug(f"  Betfair: {len(odd_containers_init)} containers detected -> {('3-way' if len(odd_containers_init) >= 6 else '2-way')}")
             logger.info('🖱️ Hovering Betfair cells (Back & Lay) with live layout remap')
+
             processed_choices = set()
             await page.evaluate("\n                () => {\n                    document.querySelectorAll('.overlay-bookie-modal').forEach(el => el.remove());\n                    const onetrust = document.getElementById('onetrust-banner-sdk');\n                    if (onetrust) onetrust.remove();\n                    const shade = document.querySelector('.onetrust-pc-dark-filter');\n                    if (shade) shade.remove();\n                }\n            ")
             result: Dict[str, Tuple[str, str]] = {}

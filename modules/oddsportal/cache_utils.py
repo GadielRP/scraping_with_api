@@ -1,11 +1,15 @@
 import os
 import re
+import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .dataclasses import CacheQualityMetrics
 from .oddsportal_config import get_oddsportal_current_date
 
+
+
+logger = logging.getLogger(__name__)
 
 DEBUG_TIMING = os.getenv("DEBUG_TIMING", "false").lower() == "true"
 ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS", "21000"))
@@ -24,9 +28,17 @@ ODDSPORTAL_CACHE_DATE_FORMATS = (
     "%d %B",
 )
 ODDSPORTAL_RELATIVE_DATE_OFFSETS = {
+    "hoy": 0,
+    "mañana": 1,
+    "ayer": -1,
     "today": 0,
     "tomorrow": 1,
     "yesterday": -1,
+}
+
+LOCALIZED_MONTH_MAP = {
+    "ene": "Jan", "feb": "Feb", "mar": "Mar", "abr": "Apr", "may": "May", "jun": "Jun",
+    "jul": "Jul", "ago": "Aug", "sep": "Sep", "oct": "Oct", "nov": "Nov", "dic": "Dec"
 }
 
 
@@ -65,18 +77,37 @@ def _parse_oddsportal_cache_date(date_text: Any, current_date: Optional[date] = 
     if date_text is None:
         return None
 
-    normalized_text = re.sub(r"\s+", " ", str(date_text).replace(",", " ")).strip()
-    if not normalized_text:
+    # Normalization & Cleaning (handle Spanish dots like 'abr.' and commas)
+    text = str(date_text).lower()
+    text = text.replace(",", " ").replace(".", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    
+    if not text:
         return None
 
-    iso_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", normalized_text)
+    # Handle ISO first (common in DB/Cache)
+    iso_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", text)
     if iso_match:
         try:
             return date.fromisoformat(iso_match.group(0))
         except ValueError:
             pass
 
-    explicit_date_match = re.search(r"\b\d{1,2}\s+[A-Za-z]{3,9}(?:\s+\d{4})?\b", normalized_text)
+    # Localized Month Translation to English for strptime compatibility
+    translated_text = text
+    for loc, en in LOCALIZED_MONTH_MAP.items():
+        # Check for word boundary to avoid partial matches (though rare for months)
+        translated_text = re.sub(rf'\b{loc}\b', en, translated_text)
+
+    # Relative Tokens (Hoy, Mañana, Ayer)
+    # We check the original 'text' for tokens to prioritize them
+    for relative_token, offset in ODDSPORTAL_RELATIVE_DATE_OFFSETS.items():
+        if relative_token in text:
+            return reference_date + timedelta(days=offset)
+
+    # Explicit Date Match (Día Mes [Año])
+    # Now uses the translated text (English months) for standard parsing
+    explicit_date_match = re.search(r"\b\d{1,2}\s+[a-z]{3,9}(?:\s+\d{4})?\b", translated_text)
     if explicit_date_match:
         candidate_text = explicit_date_match.group(0)
         for date_format in ODDSPORTAL_CACHE_DATE_FORMATS:
@@ -93,11 +124,8 @@ def _parse_oddsportal_cache_date(date_text: Any, current_date: Optional[date] = 
                 parsed = parsed.replace(year=reference_date.year + 1)
             return parsed
 
-    lower_text = normalized_text.lower()
-    for relative_token, offset in ODDSPORTAL_RELATIVE_DATE_OFFSETS.items():
-        if lower_text == relative_token or lower_text.startswith(f"{relative_token} "):
-            return reference_date + timedelta(days=offset)
-
+    if text:
+        logger.debug(f"⚠️ Date parsing failed for text: '{date_text}' (normalized: '{text}', translated: '{translated_text}')")
     return None
 
 

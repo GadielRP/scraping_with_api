@@ -302,7 +302,11 @@ class OddsPortalAttemptMixin:
                 if not is_first_step_in_attempt:
                     if group_key and (not prev_step or prev_step.get('group_key') != group_key):
                         tab_label = step.get('group_display') or OP_GROUPS_DISPLAY.get(group_key, group_key)
-                        switched_group = await self._click_market_group_tab(page, tab_label)
+                        switched_group = await self._click_market_group_tab(
+                            page,
+                            tab_label,
+                            group_key=group_key,
+                        )
                         if not switched_group:
                             reason_code = f'GROUP_SWITCH_FAILED_{group_key}'
                             self._mark_step_failed(normalized_resume_state, step, reason_code)
@@ -310,15 +314,21 @@ class OddsPortalAttemptMixin:
                             await self._save_debug_artifacts(page, reason_code, debug_extra)
                             return ScrapeAttemptResult(data=None, resume_state=normalized_resume_state, partial_match_data=match_data, failed_reason=reason_code, failed_step_idx=step_idx)
                     should_click_period = False
+
                     if group_key:
                         if prev_step and prev_step.get('group_key') == group_key:
                             should_click_period = step.get('period_key') != prev_step.get('period_key')
                         elif step.get('period_idx', 0) > 0:
                             should_click_period = True
+
                     if should_click_period:
                         logger.info(f'🔀 Switching to period: {db_market_period} (tab click)')
                         t_frag = time.perf_counter()
-                        tab_clicked = await self._click_period_tab(page, step.get('period_display', db_market_period))
+                        tab_clicked = await self._click_period_tab(
+                            page,
+                            step.get('period_display', db_market_period),
+                            period_key=period_key,
+                        )
                         if not tab_clicked:
                             reason_code = f'PERIOD_SWITCH_FAILED_{period_key}'
                             self._mark_step_failed(normalized_resume_state, step, reason_code)
@@ -326,6 +336,7 @@ class OddsPortalAttemptMixin:
                             await self._save_debug_artifacts(page, reason_code, debug_extra)
                             return ScrapeAttemptResult(data=None, resume_state=normalized_resume_state, partial_match_data=match_data, failed_reason=reason_code, failed_step_idx=step_idx)
                         log_timing(f'Period tab-click navigation to {period_key} took {time.perf_counter() - t_frag:.2f}s')
+                        
                 extract_fn = step.get('extract_fn', 'standard')
                 t_extract = time.perf_counter()
                 if extract_fn == 'over_under':

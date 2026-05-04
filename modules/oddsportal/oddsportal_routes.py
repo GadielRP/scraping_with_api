@@ -41,6 +41,7 @@ OP_PERIODS = {
 # ---------------------------------------------------------------------------
 # Sport-Specific Scraping Routes
 # Defines which market_group and periods to scrape for each sport.
+# periods are defined by ('period_key', 'oddsportal_display_name', 'db_market_period')
 # ---------------------------------------------------------------------------
 
 SPORT_SCRAPING_ROUTES = {

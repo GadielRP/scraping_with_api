@@ -151,7 +151,7 @@ def scrape_oddsportal_batch(
         op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
 
         if op_info and event_info.get("should_extract_odds"):
-            league_url = f"https://www.oddsportal.com/{op_info['sport']}/{op_info['country']}/{op_info['league']}/"
+            league_url = f"https://www.{Config.ODDSPORTAL_DOMAIN}/{op_info['sport']}/{op_info['country']}/{op_info['league']}/"
             op_tasks.append(
                 {
                     "event_id": event_data["id"],

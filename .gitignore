@@ -10,7 +10,7 @@ venv/
 # Debugging files
 
 logs/
-
+profile.yaml
 
 
 
