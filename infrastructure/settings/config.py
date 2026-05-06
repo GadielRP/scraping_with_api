@@ -97,7 +97,7 @@ class Config:
     # OddsPortal scraping activation toggle for the pre-start flow
     ODDSPORTAL_SCRAPING_ENABLED = _parse_env_bool('ODDSPORTAL_SCRAPING_ENABLED', True)
     
-    # OddsPortal Domain
+    # ODDSPORTAL LANGUAGE (REGIONAL DOMAIN)
     ODDSPORTAL_UI_LANGUAGE = os.getenv('ODDSPORTAL_UI_LANGUAGE', 'es')
     if ODDSPORTAL_UI_LANGUAGE == 'es':
         ODDSPORTAL_DOMAIN = 'cuotasahora.com'

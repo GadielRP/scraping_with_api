@@ -67,7 +67,7 @@ from .oddsportal_config import (
     SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
     OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
-    INSTITUTIONAL_NOISE, get_oddsportal_current_date,
+    INSTITUTIONAL_NOISE, get_current_date,
 )
 from .team_matcher import TeamMatcher
 from .dataclasses import (
@@ -217,7 +217,40 @@ class OddsPortalAttemptMixin:
                 return ScrapeAttemptResult(data=None, resume_state=normalized_resume_state, partial_match_data=match_data, failed_reason=reason, failed_step_idx=start_step_idx)
             first_extract_fn = start_step.get('extract_fn', 'standard')
             js_timeout = getattr(Config, 'ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS', 15000)
-            js_observer = f"""\n            () => new Promise(resolve => {{\n                setTimeout(() => {{\n                    const shell1 = document.querySelector('div.event-container');\n                    const shell2 = document.querySelector('ul.visible-links.odds-tabs li');\n                    const shell3 = document.querySelector('div[data-testid="kickoff-events-nav"]');\n                    const has_shell = shell1 || shell2 || shell3;\n\n                    const skeleton = document.querySelector('div.animate-pulse.bg-gray-light');\n                    const data1 = document.querySelector('div.border-black-borders.flex.h-9');\n                    const data2 = document.querySelector('div[data-testid="over-under-collapsed-row"]');\n                    const data3 = document.querySelector('div[data-testid="asian-handicap-collapsed-row"]');\n                    const data4 = document.querySelector('div[data-testid="over-under-expanded-row"]');\n                    const data5 = document.querySelector('div.odds-cell');\n                    const has_data = data1 || data2 || data3 || data4 || data5;\n\n                    if (!has_data) {{\n                        if (!shell1) {{\n                            resolve('Missing event-container');\n                        }} else if (shell1.children.length === 0) {{\n                            resolve('Event container stayed empty');\n                        }} else if (has_shell && skeleton) {{\n                            resolve('Shell loaded, skeleton persisted, no data rows');\n                        }} else if (has_shell && !skeleton) {{\n                            resolve('Shell loaded, no data rows');\n                        }} else {{\n                            resolve('Unknown partial page state');\n                        }}\n                    }} else {{\n                        resolve(null);\n                    }}\n                }}, {js_timeout});\n            }})\n            """
+            js_observer = f"""
+                () => new Promise(resolve => {{
+                    setTimeout(() => {{
+                        const shell1 = document.querySelector('div.event-container');
+                        const shell2 = document.querySelector('ul.visible-links.odds-tabs li');
+                        const shell3 = document.querySelector('div[data-testid="kickoff-events-nav"]');
+                        const has_shell = shell1 || shell2 || shell3;
+
+                        const skeleton = document.querySelector('div.animate-pulse.bg-gray-light');
+                        const data1 = document.querySelector('div.border-black-borders.flex.h-9');
+                        const data2 = document.querySelector('div[data-testid="over-under-collapsed-row"]');
+                        const data3 = document.querySelector('div[data-testid="asian-handicap-collapsed-row"]');
+                        const data4 = document.querySelector('div[data-testid="over-under-expanded-row"]');
+                        const data5 = document.querySelector('div.odds-cell');
+                        const has_data = data1 || data2 || data3 || data4 || data5;
+
+                        if (!has_data) {{
+                            if (!shell1) {{
+                                resolve('Missing event-container');
+                            }} else if (shell1.children.length === 0) {{
+                                resolve('Event container stayed empty');
+                            }} else if (has_shell && skeleton) {{
+                                resolve('Shell loaded, skeleton persisted, no data rows');
+                            }} else if (has_shell && !skeleton) {{
+                                resolve('Shell loaded, no data rows');
+                            }} else {{
+                                resolve('Unknown partial page state');
+                            }}
+                        }} else {{
+                            resolve(null);
+                        }}
+                    }}, {js_timeout});
+                }})
+            """
             fast_fail_task = asyncio.create_task(page.evaluate(js_observer))
             render_timeout_ms = getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000)
             render_task = asyncio.create_task(self._wait_for_market_render(page, first_extract_fn, timeout_ms=render_timeout_ms))

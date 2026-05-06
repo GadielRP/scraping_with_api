@@ -67,7 +67,7 @@ from .oddsportal_config import (
     SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
     OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
-    INSTITUTIONAL_NOISE, get_oddsportal_current_date,
+    INSTITUTIONAL_NOISE, get_current_date,
 )
 from .team_matcher import TeamMatcher
 from .dataclasses import (
@@ -91,7 +91,160 @@ logger = logging.getLogger(__name__)
 class OddsPortalDataMixin:
     async def _extract_data(self, page: Page, match_url: str) -> MatchOddsData:
         """Execute JS to extract structured data."""
-        raw_data = await page.evaluate('\n            () => {\n                const result = {\n                    homeTeam: \'\', awayTeam: \'\', bookies: [], \n                    betfairBack: null, betfairLay: null, betfairPayout: null\n                };\n                \n                // --- Team Names ---\n                const h1 = document.querySelector(\'h1\');\n                if (h1) {\n                    let h1Text = h1.textContent.trim();\n                    const dashIdx = h1Text.indexOf(\' - \');\n                    if (dashIdx > 0) h1Text = h1Text.substring(0, dashIdx);\n                    const vsSplit = h1Text.split(\' vs \');\n                    if (vsSplit.length >= 2) {\n                        result.homeTeam = vsSplit[0].trim();\n                        result.awayTeam = vsSplit[1].trim();\n                    }\n                }\n                \n                // --- Bookmakers ---\n                const allDivs = document.querySelectorAll(\'div.flex.h-9\');\n                for (const row of allDivs) {\n                    if (!row.className.includes(\'border-black-borders\')) continue;\n                    \n                    const oddsCells = row.querySelectorAll(\'div.odds-cell\');\n                    if (oddsCells.length < 2) continue;\n                    \n                    let bookieName = null;\n                    const nameLink = row.querySelector(\'a[title]\');\n                    if (nameLink) bookieName = nameLink.getAttribute(\'title\');\n                    if (!bookieName) {\n                        const img = row.querySelector(\'img[alt]\');\n                        if (img) bookieName = img.getAttribute(\'alt\');\n                    }\n                    if (!bookieName || [\'Oddsportal\', \'Search\'].includes(bookieName)) continue;\n                    \n                    const odds = Array.from(oddsCells).map(c => c.textContent.trim());\n                    \n                    // Payout\n                    const lastChild = row.children[row.children.length - 1];\n                    let payout = \'-\';\n                    if (lastChild && lastChild.textContent.includes(\'%\')) {\n                        payout = lastChild.textContent.trim();\n                    }\n                    \n                    const isThreeWay = odds.length >= 3;\n                    result.bookies.push({\n                        name: bookieName,\n                        odds1: odds[0] || \'-\',\n                        oddsX: isThreeWay ? (odds[1] || \'-\') : null,\n                        odds2: isThreeWay ? (odds[2] || \'-\') : (odds[1] || \'-\'),\n                        payout: payout,\n                    });\n                }\n                \n                // --- Extract Betfair Exchange ---\n                // Search for the section directly\n                const exchangeSection = document.querySelector(\'div[data-testid="betting-exchanges-section"]\');\n\n                if (exchangeSection) {\n                    const allOddContainers = exchangeSection.querySelectorAll(\'div[data-testid="odd-container"]\');\n                    \n                    const extractOddFromContainer = (container) => {\n                        const ps = container.querySelectorAll(\'p\');\n                        for (const p of ps) {\n                            const txt = p.textContent.trim();\n                            if (!txt || txt === \'-\') continue;\n                            if (/^\\d+(\\.\\d+)?$/.test(txt)) return txt;\n                        }\n                        return null;\n                    };\n\n                    if (allOddContainers.length >= 6) {\n                        // 3-Way Market (1X2)\n                        // Back Odds (Indices 0, 1, 2)\n                        const back1 = extractOddFromContainer(allOddContainers[0]);\n                        const backX = extractOddFromContainer(allOddContainers[1]);\n                        const back2 = extractOddFromContainer(allOddContainers[2]);\n                        \n                        // Lay Odds (Indices 3, 4, 5)\n                        const lay1 = extractOddFromContainer(allOddContainers[3]);\n                        const layX = extractOddFromContainer(allOddContainers[4]);\n                        const lay2 = extractOddFromContainer(allOddContainers[5]);\n                        \n                        if (back1 || backX || back2) {\n                            result.betfairBack = {\n                                odds1: back1 || \'-\',\n                                oddsX: backX || \'-\',\n                                odds2: back2 || \'-\'\n                            };\n                        }\n                        \n                        if (lay1 || layX || lay2) {\n                            result.betfairLay = {\n                                odds1: lay1 || \'-\',\n                                oddsX: layX || \'-\',\n                                odds2: lay2 || \'-\'\n                            };\n                        }\n                    } else if (allOddContainers.length >= 4) {\n                        // 2-Way Market (Home/Away)\n                        // Back Odds (Indices 0, 1)\n                        const back1 = extractOddFromContainer(allOddContainers[0]);\n                        const back2 = extractOddFromContainer(allOddContainers[1]);\n                        \n                        // Lay Odds (Indices 2, 3)\n                        const lay1 = extractOddFromContainer(allOddContainers[2]);\n                        const lay2 = extractOddFromContainer(allOddContainers[3]);\n                        \n                        if (back1 || back2) {\n                            result.betfairBack = {\n                                odds1: back1 || \'-\',\n                                oddsX: \'-\',\n                                odds2: back2 || \'-\'\n                            };\n                        }\n                        \n                        if (lay1 || lay2) {\n                            result.betfairLay = {\n                                odds1: lay1 || \'-\',\n                                oddsX: \'-\',\n                                odds2: lay2 || \'-\'\n                            };\n                        }\n                    }\n                        \n                    // Extract payout from section text if available\n                    const sectionText = exchangeSection.innerText || \'\';\n                    const payMatch = sectionText.match(/(\\d{2,3}\\.\\d)%/);\n                    if (payMatch) result.betfairPayout = payMatch[0];\n                }\n                \n                return result;\n            }\n        ')
+        raw_data = await page.evaluate("""
+        () => {
+            const result = {
+                homeTeam: '',
+                awayTeam: '',
+                bookies: [],
+                betfairBack: null,
+                betfairLay: null,
+                betfairPayout: null
+            };
+
+            // --- Team Names ---
+            const h1 = document.querySelector('h1');
+
+            if (h1) {
+                let h1Text = h1.textContent.trim();
+                const dashIdx = h1Text.indexOf(' - ');
+
+                if (dashIdx > 0) h1Text = h1Text.substring(0, dashIdx);
+
+                const vsSplit = h1Text.split(' vs ');
+
+                if (vsSplit.length >= 2) {
+                    result.homeTeam = vsSplit[0].trim();
+                    result.awayTeam = vsSplit[1].trim();
+                }
+            }
+
+            // --- Bookmakers ---
+            const allDivs = document.querySelectorAll('div.flex.h-9');
+
+            for (const row of allDivs) {
+                if (!row.className.includes('border-black-borders')) continue;
+
+                const oddsCells = row.querySelectorAll('div.odds-cell');
+                if (oddsCells.length < 2) continue;
+
+                let bookieName = null;
+
+                const nameLink = row.querySelector('a[title]');
+                if (nameLink) bookieName = nameLink.getAttribute('title');
+
+                if (!bookieName) {
+                    const img = row.querySelector('img[alt]');
+                    if (img) bookieName = img.getAttribute('alt');
+                }
+
+                if (!bookieName || ['Oddsportal', 'Search'].includes(bookieName)) continue;
+
+                const odds = Array.from(oddsCells).map(c => c.textContent.trim());
+
+                // Payout
+                const lastChild = row.children[row.children.length - 1];
+                let payout = '-';
+
+                if (lastChild && lastChild.textContent.includes('%')) {
+                    payout = lastChild.textContent.trim();
+                }
+
+                const isThreeWay = odds.length >= 3;
+
+                result.bookies.push({
+                    name: bookieName,
+                    odds1: odds[0] || '-',
+                    oddsX: isThreeWay ? (odds[1] || '-') : null,
+                    odds2: isThreeWay ? (odds[2] || '-') : (odds[1] || '-'),
+                    payout: payout,
+                });
+            }
+
+            // --- Extract Betfair Exchange ---
+            // Search for the section directly
+            const exchangeSection = document.querySelector('div[data-testid="betting-exchanges-section"]');
+
+            if (exchangeSection) {
+                const allOddContainers = exchangeSection.querySelectorAll('div[data-testid="odd-container"]');
+
+                const extractOddFromContainer = (container) => {
+                    const ps = container.querySelectorAll('p');
+
+                    for (const p of ps) {
+                        const txt = p.textContent.trim();
+
+                        if (!txt || txt === '-') continue;
+                        if (/^\\d+(\\.\\d+)?$/.test(txt)) return txt;
+                    }
+
+                    return null;
+                };
+
+                if (allOddContainers.length >= 6) {
+                    // 3-Way Market (1X2)
+                    // Back Odds (Indices 0, 1, 2)
+                    const back1 = extractOddFromContainer(allOddContainers[0]);
+                    const backX = extractOddFromContainer(allOddContainers[1]);
+                    const back2 = extractOddFromContainer(allOddContainers[2]);
+
+                    // Lay Odds (Indices 3, 4, 5)
+                    const lay1 = extractOddFromContainer(allOddContainers[3]);
+                    const layX = extractOddFromContainer(allOddContainers[4]);
+                    const lay2 = extractOddFromContainer(allOddContainers[5]);
+
+                    if (back1 || backX || back2) {
+                        result.betfairBack = {
+                            odds1: back1 || '-',
+                            oddsX: backX || '-',
+                            odds2: back2 || '-'
+                        };
+                    }
+
+                    if (lay1 || layX || lay2) {
+                        result.betfairLay = {
+                            odds1: lay1 || '-',
+                            oddsX: layX || '-',
+                            odds2: lay2 || '-'
+                        };
+                    }
+                } else if (allOddContainers.length >= 4) {
+                    // 2-Way Market (Home/Away)
+                    // Back Odds (Indices 0, 1)
+                    const back1 = extractOddFromContainer(allOddContainers[0]);
+                    const back2 = extractOddFromContainer(allOddContainers[1]);
+
+                    // Lay Odds (Indices 2, 3)
+                    const lay1 = extractOddFromContainer(allOddContainers[2]);
+                    const lay2 = extractOddFromContainer(allOddContainers[3]);
+
+                    if (back1 || back2) {
+                        result.betfairBack = {
+                            odds1: back1 || '-',
+                            oddsX: '-',
+                            odds2: back2 || '-'
+                        };
+                    }
+
+                    if (lay1 || lay2) {
+                        result.betfairLay = {
+                            odds1: lay1 || '-',
+                            oddsX: '-',
+                            odds2: lay2 || '-'
+                        };
+                    }
+                }
+
+                // Extract payout from section text if available
+                const sectionText = exchangeSection.innerText || '';
+                const payMatch = sectionText.match(/(\\d{2,3}\\.\\d)%/);
+
+                if (payMatch) result.betfairPayout = payMatch[0];
+            }
+
+            return result;
+        }
+        """)
         match_data = MatchOddsData(match_url=match_url)
         match_data.home_team = raw_data.get('homeTeam', 'Unknown')
         match_data.away_team = raw_data.get('awayTeam', 'Unknown')
@@ -131,7 +284,7 @@ class OddsPortalDataMixin:
             logger.info(f'  👉 Selecting row {target_index} ({target_handicap}) with min difference {min_diff:.2f}')
             await page.locator('div[data-testid="over-under-collapsed-row"]').nth(target_index).click()
         else:
-            logger.warning('  ⚠️ Could not determine main line Over/Under row')
+            logger.warning('⚠️ Could not determine main line Over/Under row')
             return None
         await page.wait_for_timeout(1500)
         raw_data = await page.evaluate('\n            (hc) => {\n                const result = {\n                    homeTeam: \'Unknown\',\n                    awayTeam: \'Unknown\',\n                    bookies: [],\n                    handicap: hc\n                };\n                \n                // --- Team Names ---\n                const h1 = document.querySelector(\'h1\');\n                if (h1) {\n                    let h1Text = h1.textContent.trim();\n                    const dashIdx = h1Text.indexOf(\' - \');\n                    if (dashIdx > 0) h1Text = h1Text.substring(0, dashIdx);\n                    const vsSplit = h1Text.split(\' vs \');\n                    if (vsSplit.length >= 2) {\n                        result.homeTeam = vsSplit[0].trim();\n                        result.awayTeam = vsSplit[1].trim();\n                    }\n                }\n                \n                // --- Bookmakers ---\n                const allRows = document.querySelectorAll(\'div[data-testid="over-under-expanded-row"]\');\n                for (const row of allRows) {\n                    let bookieName = null;\n                    const namePara = row.querySelector(\'[data-testid="outrights-expanded-bookmaker-name"]\');\n                    if (namePara) bookieName = namePara.textContent.trim();\n                    if (!bookieName) {\n                        const img = row.querySelector(\'[data-testid="outrights-expanded-bookmaker-logo"] img\');\n                        if (img) bookieName = img.getAttribute(\'alt\') || img.getAttribute(\'title\');\n                    }\n                    if (!bookieName || [\'Oddsportal\', \'Search\'].includes(bookieName)) continue;\n                    \n                    // Handicap (from arguments since it\'s not visible in the expanded row)\n                    let handicap = hc;\n                    \n                    // Odds extractor\n                    const cleanOdd = (container) => {\n                        const p = container.querySelector(\'p.odds-text\') || container.querySelector(\'p\');\n                        if (p) return p.textContent.trim();\n                        return container.textContent.trim(); // fallback\n                    };\n                    \n                    // Odds\n                    const oddContainers = row.querySelectorAll(\'[data-testid="odd-container"]\');\n                    let odds1 = \'-\', odds2 = \'-\';\n                    if (oddContainers.length >= 2) {\n                        // Over is first, Under is second\n                        odds1 = cleanOdd(oddContainers[0]);\n                        odds2 = cleanOdd(oddContainers[1]);\n                    }\n                    \n                    // Payout\n                    let payout = \'-\';\n                    const payoutContainer = row.querySelector(\'[data-testid="payout-container"]\');\n                    if (payoutContainer) payout = payoutContainer.textContent.trim();\n                    else {\n                         // Backup payout finder\n                         const lastChild = row.children[row.children.length - 1];\n                         if (lastChild && lastChild.textContent.includes(\'%\')) {\n                             payout = lastChild.textContent.trim();\n                         }\n                    }\n                    \n                    result.bookies.push({\n                        name: bookieName,\n                        handicap: handicap,\n                        odds1: odds1 || \'-\',\n                        oddsX: \'-\',\n                        odds2: odds2 || \'-\',\n                        payout: payout,\n                    });\n                }\n                \n                return result;\n            }\n        ', target_handicap)
@@ -173,7 +326,7 @@ class OddsPortalDataMixin:
             logger.info(f'  👉 Selecting row {target_index} ({target_handicap}) with min difference {min_diff:.2f}')
             await page.locator('div[data-testid="over-under-collapsed-row"]').nth(target_index).click()
         else:
-            logger.warning('  ⚠️ Could not determine main line Asian Handicap row')
+            logger.warning('⚠️ Could not determine main line Asian Handicap row')
             return None
         await page.wait_for_timeout(1500)
         raw_data = await page.evaluate('\n            (hc) => {\n                const result = {\n                    homeTeam: \'Unknown\',\n                    awayTeam: \'Unknown\',\n                    bookies: [],\n                    handicap: hc\n                };\n                \n                // --- Team Names ---\n                const h1 = document.querySelector(\'h1\');\n                if (h1) {\n                    let h1Text = h1.textContent.trim();\n                    const dashIdx = h1Text.indexOf(\' - \');\n                    if (dashIdx > 0) h1Text = h1Text.substring(0, dashIdx);\n                    const vsSplit = h1Text.split(\' vs \');\n                    if (vsSplit.length >= 2) {\n                        result.homeTeam = vsSplit[0].trim();\n                        result.awayTeam = vsSplit[1].trim();\n                    }\n                }\n                \n                // --- Bookmakers ---\n                const allRows = document.querySelectorAll(\'div[data-testid="over-under-expanded-row"]\');\n                for (const row of allRows) {\n                    let bookieName = null;\n                    const namePara = row.querySelector(\'[data-testid="outrights-expanded-bookmaker-name"]\');\n                    if (namePara) bookieName = namePara.textContent.trim();\n                    if (!bookieName) {\n                        const img = row.querySelector(\'[data-testid="outrights-expanded-bookmaker-logo"] img\');\n                        if (img) bookieName = img.getAttribute(\'alt\') || img.getAttribute(\'title\');\n                    }\n                    if (!bookieName || [\'Oddsportal\', \'Search\'].includes(bookieName)) continue;\n                    \n                    // Handicap (from arguments since it\'s not visible in the expanded row)\n                    let handicap = hc;\n                    \n                    // Odds extractor\n                    const cleanOdd = (container) => {\n                        const p = container.querySelector(\'p.odds-text\') || container.querySelector(\'p\');\n                        if (p) return p.textContent.trim();\n                        return container.textContent.trim(); // fallback\n                    };\n                    \n                    // Odds\n                    const oddContainers = row.querySelectorAll(\'[data-testid="odd-container"]\');\n                    let odds1 = \'-\', odds2 = \'-\';\n                    if (oddContainers.length >= 2) {\n                        // 1 is first, 2 is second\n                        odds1 = cleanOdd(oddContainers[0]);\n                        odds2 = cleanOdd(oddContainers[1]);\n                    }\n                    \n                    // Payout\n                    let payout = \'-\';\n                    const payoutContainer = row.querySelector(\'[data-testid="payout-container"]\');\n                    if (payoutContainer) payout = payoutContainer.textContent.trim();\n                    else {\n                         // Backup payout finder\n                         const lastChild = row.children[row.children.length - 1];\n                         if (lastChild && lastChild.textContent.includes(\'%\')) {\n                             payout = lastChild.textContent.trim();\n                         }\n                    }\n                    \n                    result.bookies.push({\n                        name: bookieName,\n                        handicap: handicap,\n                        odds1: odds1 || \'-\',\n                        oddsX: \'-\',\n                        odds2: odds2 || \'-\',\n                        payout: payout,\n                    });\n                }\n                \n                return result;\n            }\n        ', target_handicap)

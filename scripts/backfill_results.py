@@ -267,7 +267,7 @@ def process_event(event, stats: dict, events_to_delete: List[int]) -> str:
         return "404" # Count as deleted for stats
     
     if result_status == "error":
-        print(f"      ⚠️ Error fetching results")
+        print(f"    ⚠️ Error fetching results")
         return "skipped"
     
     # Step 2: Save results
@@ -276,7 +276,7 @@ def process_event(event, stats: dict, events_to_delete: List[int]) -> str:
         if saved:
             print(f"      ✅ Result: {result_data['home_score']}-{result_data['away_score']}, Winner: {result_data['winner']}")
         else:
-            print(f"      ⚠️ Failed to save result")
+            print(f"    ⚠️ Failed to save result")
             return "skipped"
     
     # Step 3: Fetch and save odds (optional - don't fail the whole event if odds fail)
@@ -424,7 +424,7 @@ def backfill_results(limit: int = None):
     print(f"  Deleted (404/Canceled): {stats['deleted']}")
     print(f"  Skipped (other): {stats['skipped']}")
     if stopped_on_403:
-        print(f"  ⚠️ Process stopped - progress saved")
+        print(f"⚠️ Process stopped - progress saved")
     print(f"{'='*60}\n")
 
 

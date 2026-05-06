@@ -37,14 +37,15 @@ def run_discover_dropping_odds() -> None:
         logger.info("Step 1: Fetching /dropping/all endpoint")
         response_all = api_client.get_dropping_odds_with_odds_and_events_response()
         if response_all:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            json_filename = os.path.join("debug", f"debug_discovery_all_{timestamp}.json")
-            try:
-                os.makedirs("debug", exist_ok=True)
-                with open(json_filename, "w", encoding="utf-8") as handle:
-                    json.dump(response_all, handle, indent=2, ensure_ascii=False)
-            except Exception as exc:
-                logger.warning(f"Failed to save JSON debug file: {exc}")
+            # to save dropping/all events in json format
+            # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # json_filename = os.path.join("debug", f"debug_discovery_all_{timestamp}.json")
+            # try:
+            #     os.makedirs("debug", exist_ok=True)
+            #     with open(json_filename, "w", encoding="utf-8") as handle:
+            #         json.dump(response_all, handle, indent=2, ensure_ascii=False)
+            # except Exception as exc:
+            #     logger.warning(f"Failed to save JSON debug file: {exc}")
 
             events_all, odds_map_all = api_client.extract_events_and_odds_from_dropping_response(
                 response_all,

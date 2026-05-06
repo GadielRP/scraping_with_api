@@ -993,7 +993,7 @@ Examples:
             logger.info("🔧 MANUAL MODE: Using datetime range from constants")
             logger.info(f"   Start datetime: {MANUAL_START_DATETIME.strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"   End datetime: {MANUAL_END_DATETIME.strftime('%Y-%m-%d %H:%M:%S')} (inclusive)")
-            logger.info("   ⚠️  Ignoring state file and --days parameter")
+            logger.info(" ⚠️  Ignoring state file and --days parameter")
             
             # Get events directly from datetime range
             logger.info("🔍 Getting events in datetime range...")

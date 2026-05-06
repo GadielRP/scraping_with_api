@@ -7,7 +7,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 
 
-def get_oddsportal_current_date() -> date:
+def get_current_date() -> date:
     """Return the local calendar date used for OddsPortal cache decisions."""
     from shared.timezone_utils import get_local_now
 

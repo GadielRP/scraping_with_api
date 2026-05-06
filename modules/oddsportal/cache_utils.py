@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .dataclasses import CacheQualityMetrics
-from .oddsportal_config import get_oddsportal_current_date
+from .oddsportal_config import get_current_date
 
 
 
@@ -69,7 +69,7 @@ def _coerce_current_date(current_date: Optional[date] = None) -> date:
         return current_date.date()
     if isinstance(current_date, date):
         return current_date
-    return get_oddsportal_current_date()
+    return get_current_date()
 
 
 def _parse_oddsportal_cache_date(date_text: Any, current_date: Optional[date] = None) -> Optional[date]:
@@ -107,7 +107,7 @@ def _parse_oddsportal_cache_date(date_text: Any, current_date: Optional[date] = 
 
     # Explicit Date Match (Día Mes [Año])
     # Now uses the translated text (English months) for standard parsing
-    explicit_date_match = re.search(r"\b\d{1,2}\s+[a-z]{3,9}(?:\s+\d{4})?\b", translated_text)
+    explicit_date_match = re.search(r"\b\d{1,2}\s+[a-z]{3,9}(?:\s+\d{4})?\b", translated_text, re.IGNORECASE)
     if explicit_date_match:
         candidate_text = explicit_date_match.group(0)
         for date_format in ODDSPORTAL_CACHE_DATE_FORMATS:
@@ -159,6 +159,7 @@ def _build_structured_league_cache(
 def _is_cache_date_current_or_future(date_text: Any, current_date: Optional[date] = None) -> bool:
     reference_date = _coerce_current_date(current_date)
     parsed_date = _parse_oddsportal_cache_date(date_text, reference_date)
+    # to debug:logger.info(f"date_text: {date_text}, parsed_date: {parsed_date}, reference_date: {reference_date}")
     return parsed_date is not None and parsed_date >= reference_date
 
 

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from infrastructure.persistence.repositories import MarketRepository
 from infrastructure.settings import Config
 from modules.oddsportal import scrape_multiple_matches_parallel_sync
-from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP, get_oddsportal_current_date
+from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP, get_current_date
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ def scrape_oddsportal_batch(
 
     Returns a mapping of event_id -> number of markets saved, or None on failure.
     """
-    op_current_date = get_oddsportal_current_date()
+    op_current_date = get_current_date()
     op_tasks = []
 
     for event_info in events_to_process:

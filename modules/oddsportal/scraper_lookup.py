@@ -67,7 +67,7 @@ from .oddsportal_config import (
     SEASON_ODDSPORTAL_MAP, BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
     OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
-    INSTITUTIONAL_NOISE, get_oddsportal_current_date,
+    INSTITUTIONAL_NOISE, get_current_date,
 )
 from .team_matcher import TeamMatcher
 from .dataclasses import (
@@ -187,8 +187,67 @@ class OddsPortalLookupMixin:
                     await asyncio.sleep(0.5)
             except Exception:
                 pass
+
             t_js_league = time.perf_counter()
-            rows_data = await page.evaluate('() => {\n                const container = document.querySelector(\'div[class*="empty:min-h-[80vh]"]\');\n                if (!container) return [];\n\n                let currentDate = "";\n                const results = [];\n                const rows = Array.from(container.querySelectorAll(\'div.eventRow\'));\n\n                for (const row of rows) {\n                    const rowId = row.getAttribute(\'id\') || \'\';\n                    const rect = row.getBoundingClientRect();\n                    const style = window.getComputedStyle(row);\n                    const isVisible =\n                        rect.width > 0 &&\n                        rect.height > 0 &&\n                        style.display !== \'none\' &&\n                        style.visibility !== \'hidden\';\n\n                    if (!isVisible) continue;\n\n                    const dateHeader = row.querySelector(\'[data-testid="date-header"]\');\n                    if (dateHeader) {\n                        currentDate = dateHeader.innerText.trim();\n                    }\n\n                    const matchAnchor = row.querySelector(\'div.group.flex[data-testid="game-row"] > a[href]\');\n                    if (!matchAnchor) continue;\n\n                    let originalHref = matchAnchor.getAttribute(\'href\') || \'\';\n                    let href = originalHref;\n                    if (href && !href.includes(\'/#\') && rowId) {\n                        href = href.replace(/\\/+$/, \'\') + \'/#\' + rowId;\n                    }\n                    if (href && href.includes(\'/inplay-odds\')) {\n                        href = href.replace(\'/inplay-odds\', \'\')\n                    }\n\n                    const participantAnchors = row.querySelectorAll(\'div[data-testid="event-participants"] a[title]\');\n                    const titles = Array.from(participantAnchors)\n                        .map(a => (a.getAttribute(\'title\') || \'\').trim())\n                        .filter(Boolean);\n\n                    results.push({\n                        original_href: originalHref,\n                        href,\n                        row_id: rowId,\n                        date: currentDate,\n                        home: titles[0] || \'\',\n                        away: titles[1] || \'\',\n                        game_text: row.innerText.trim(),\n                    });\n                }\n                return results;\n            }')
+            rows_data = await page.evaluate("""() => {
+                const container = document.querySelector('div[class*="empty:min-h-[80vh]"]');
+                if (!container) return [];
+
+                let currentDate = "";
+                const results = [];
+                const rows = Array.from(container.querySelectorAll('div.eventRow'));
+
+                for (const row of rows) {
+                    const rowId = row.getAttribute('id') || '';
+                    const rect = row.getBoundingClientRect();
+                    const style = window.getComputedStyle(row);
+
+                    const isVisible =
+                        rect.width > 0 &&
+                        rect.height > 0 &&
+                        style.display !== 'none' &&
+                        style.visibility !== 'hidden';
+
+                    if (!isVisible) continue;
+
+                    const dateHeader = row.querySelector('[data-testid="date-header"]');
+                    if (dateHeader) {
+                        currentDate = dateHeader.innerText.trim();
+                    }
+
+                    const matchAnchor = row.querySelector('div.group.flex[data-testid="game-row"] > a[href]');
+                    if (!matchAnchor) continue;
+
+                    let originalHref = matchAnchor.getAttribute('href') || '';
+                    let href = originalHref;
+
+                    if (href && !href.includes('/#') && rowId) {
+                        href = href.replace(/\\/+$/, '') + '/#' + rowId;
+                    }
+
+                    if (href && href.includes('/inplay-odds')) {
+                        href = href.replace('/inplay-odds', '')
+                    }
+
+                    const participantAnchors = row.querySelectorAll('div[data-testid="event-participants"] a[title]');
+
+                    const titles = Array.from(participantAnchors)
+                        .map(a => (a.getAttribute('title') || '').trim())
+                        .filter(Boolean);
+
+                    results.push({
+                        original_href: originalHref,
+                        href,
+                        row_id: rowId,
+                        date: currentDate,
+                        home: titles[0] || '',
+                        away: titles[1] || '',
+                        game_text: row.innerText.trim(),
+                    });
+                }
+
+                return results;}""")
+                
             log_timing(f'Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s')
             if not rows_data:
                 logger.warning(f'⚠️ No event rows found on {navigation_league_url}')
