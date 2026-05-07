@@ -9,6 +9,49 @@ from shared.timezone_utils import get_local_now
 
 Base = declarative_base()
 
+
+class Participant(Base):
+    __tablename__ = 'participants'
+
+    participant_id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(Text, nullable=False)
+    source_participant_id = Column(BigInteger, nullable=False)
+    name = Column(Text, nullable=False)
+    slug = Column(Text)
+    short_name = Column(Text)
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+
+    __table_args__ = (
+        UniqueConstraint('source', 'source_participant_id', name='unique_participant_source_external_id'),
+        Index('idx_participants_source_external_id', 'source', 'source_participant_id'),
+        Index('idx_participants_name', 'name'),
+    )
+
+
+class Competition(Base):
+    __tablename__ = 'competitions'
+
+    competition_id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(Text, nullable=False)
+    source_tournament_id = Column(BigInteger, nullable=False)
+    source_unique_tournament_id = Column(BigInteger)
+    canonical_name = Column(Text, nullable=False)
+    display_name = Column(Text, nullable=False)
+    slug = Column(Text)
+    unique_slug = Column(Text)
+    category_id = Column(BigInteger)
+    category_name = Column(Text)
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+
+    __table_args__ = (
+        UniqueConstraint('source', 'source_tournament_id', name='unique_competition_source_tournament_id'),
+        Index('idx_competitions_source_tournament_id', 'source', 'source_tournament_id'),
+        Index('idx_competitions_canonical_name', 'canonical_name'),
+    )
+
+
 class Event(Base):
     __tablename__ = 'events'
     
@@ -26,6 +69,9 @@ class Event(Base):
     season_id = Column(Integer, ForeignKey('seasons.id', ondelete='SET NULL'))  # Season ID from SofaScore API (foreign key to seasons table)
     round = Column(Text)  # Round information (e.g., 'regular_season', 'knockouts/playoffs', 'final')
     alert_sent = Column(Boolean, default=False, nullable=False)  # True if 4th quarter alert sent, False otherwise
+    home_participant_id = Column(Integer, ForeignKey('participants.participant_id', ondelete='SET NULL'))
+    away_participant_id = Column(Integer, ForeignKey('participants.participant_id', ondelete='SET NULL'))
+    competition_id = Column(Integer, ForeignKey('competitions.competition_id', ondelete='SET NULL'))
 
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
@@ -38,6 +84,9 @@ class Event(Base):
     prediction_logs = relationship("PredictionLog", back_populates="event", uselist=False, cascade="all, delete-orphan")
     season = relationship("Season", back_populates="events")
     markets = relationship("Market", back_populates="event", cascade="all, delete-orphan")
+    home_participant = relationship("Participant", foreign_keys=[home_participant_id])
+    away_participant = relationship("Participant", foreign_keys=[away_participant_id])
+    competition_ref = relationship("Competition", foreign_keys=[competition_id])
 
 class Season(Base):
     __tablename__ = 'seasons'
@@ -351,7 +400,7 @@ EVENT_ALL_ODDS_VIEW_SQL = (
     CREATE OR REPLACE VIEW event_all_odds AS
     SELECT
         e.start_time_utc AS start_time_utc,
-        (e.home_team || ' / ' || e.away_team) AS participants,
+        (COALESCE(hp.name, e.home_team) || ' / ' || COALESCE(ap.name, e.away_team)) AS participants,
         eo.one_open AS odds1a,
         eo.one_final AS odds1b,
         eo.x_open AS momEa,
@@ -366,10 +415,13 @@ EVENT_ALL_ODDS_VIEW_SQL = (
             THEN (r.home_score::text || ' - ' || r.away_score::text)
             ELSE NULL
         END AS result,
-        e.competition AS competition,
+        COALESCE(c.display_name, e.competition) AS competition,
         e.sport AS sport
     FROM event_odds eo
     JOIN events e ON e.id = eo.event_id
+    LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
+    LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
+    LEFT JOIN competitions c ON c.competition_id = e.competition_id
     LEFT JOIN results r ON r.event_id = eo.event_id
     """
 )
@@ -383,8 +435,8 @@ BASKETBALL_RESULTS_VIEW_SQL = (
     CREATE OR REPLACE VIEW basketball_results AS
     SELECT
         e.id AS event_id,
-        e.home_team,
-        e.away_team,
+        COALESCE(hp.name, e.home_team) AS home_team,
+        COALESCE(ap.name, e.away_team) AS away_team,
         e.round,
         e.season_id,
         e.start_time_utc AS start_time,
@@ -448,6 +500,8 @@ BASKETBALL_RESULTS_VIEW_SQL = (
         END AS ot_away
     FROM events e
     JOIN results r ON r.event_id = e.id
+    LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
+    LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
     WHERE e.sport = 'Basketball'
       AND r.home_sets IS NOT NULL
       AND r.away_sets IS NOT NULL
@@ -467,10 +521,10 @@ MV_ALERT_EVENTS_SQL = (
         e.gender,
         e.discovery_source,
         e.start_time_utc,
-        (e.home_team || ' vs ' || e.away_team) AS participants,
-        e.home_team,
-        e.away_team,
-        e.competition,
+        (COALESCE(hp.name, e.home_team) || ' vs ' || COALESCE(ap.name, e.away_team)) AS participants,
+        COALESCE(hp.name, e.home_team) AS home_team,
+        COALESCE(ap.name, e.away_team) AS away_team,
+        COALESCE(c.display_name, e.competition) AS competition,
         eo.one_open,
         eo.one_final,
         eo.x_open,
@@ -500,6 +554,9 @@ MV_ALERT_EVENTS_SQL = (
         END AS result_text
     FROM event_odds eo
     JOIN events e ON e.id = eo.event_id
+    LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
+    LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
+    LEFT JOIN competitions c ON c.competition_id = e.competition_id
     LEFT JOIN results r ON r.event_id = eo.event_id
     WHERE r.home_score IS NOT NULL AND r.away_score IS NOT NULL  -- Only finished events
     """
@@ -526,10 +583,10 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
         e.id AS event_id,
         e.season_id,
         e.start_time_utc,
-        e.home_team,
-        e.away_team,
+        COALESCE(hp.name, e.home_team) AS home_team,
+        COALESCE(ap.name, e.away_team) AS away_team,
         e.sport,
-        e.competition,
+        COALESCE(c.display_name, e.competition) AS competition,
         r.home_score,
         r.away_score,
         r.winner,
@@ -546,6 +603,9 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
         e.round
     FROM events e
     JOIN results r ON r.event_id = e.id
+    LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
+    LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
+    LEFT JOIN competitions c ON c.competition_id = e.competition_id
     WHERE e.season_id IS NOT NULL
       AND r.home_score IS NOT NULL
       AND r.away_score IS NOT NULL;
@@ -606,10 +666,8 @@ def refresh_materialized_views(engine):
         conn.exec_driver_sql("REFRESH MATERIALIZED VIEW mv_alert_events;")
 
 
-# Register only the regular view for automatic creation
-# Materialized views are created manually in initialize_system() after migrations
-# NOTE: basketball_results view is NOT auto-created here - it's created manually in create_or_replace_views()
-#       to allow dropping the view first when columns change (PostgreSQL doesn't allow CREATE OR REPLACE VIEW to drop columns)
-event.listen(Base.metadata, 'after_create', DDL(EVENT_ALL_ODDS_VIEW_SQL))
-event.listen(Base.metadata, 'after_create', DDL(MARKET_CHOICE_TRAJECTORY_VIEW_SQL))
-# NOTE: Materialized view is NOT auto-created here - it's created after schema migrations in main.py
+# Views are created explicitly after migrations via create_or_replace_views().
+# Do not register view DDL on Base.metadata.after_create: create_all() may run
+# before additive migrations on existing databases, and views can reference
+# columns that are about to be added by check_and_migrate_schema().
+# NOTE: Materialized views are created after schema migrations in main.py.

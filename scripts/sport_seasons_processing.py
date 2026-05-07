@@ -138,10 +138,11 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
             for event in batch_events:
                 try:
                     event_data = api_client.get_event_information(event, discovery_source='scraping_on_command')
+                    event_payload = event_data.get('event', event_data)
                     
                     # Validate required fields
                     required_fields = ['id', 'slug', 'startTimestamp', 'sport', 'competition', 'homeTeam', 'awayTeam']
-                    if all(event_data.get(field) for field in required_fields):
+                    if all(event_payload.get(field) for field in required_fields):
                         # Store the raw event for later result extraction (avoids redundant API calls)
                         event_data['_raw_event'] = event
                         all_events.append(event_data)
@@ -183,7 +184,7 @@ def process_season(tournament_id: int, season_id: int):
         return
     
     # Step 2: Sort events by startTimestamp (oldest to newest)
-    events.sort(key=lambda x: x['startTimestamp'])
+    events.sort(key=lambda x: x.get('event', x)['startTimestamp'])
     logger.info("Events sorted by start timestamp (oldest to newest)")
     
     # Step 3: Process events individually and fetch odds for each
@@ -203,62 +204,66 @@ def process_season(tournament_id: int, season_id: int):
             
             if event:
                 processed_count += 1
-                logger.debug(f"✅ Event {event_data['id']} upserted: {event_data.get('homeTeam')} vs {event_data.get('awayTeam')}")
+                event_payload = event_data.get('event', event_data)
+                event_id = event_payload['id']
+                logger.debug(f"Event {event_id} upserted: {event_payload.get('homeTeam')} vs {event_payload.get('awayTeam')}")
                 
                 # Check if event already has markets stored before fetching odds
-                existing_market_count = MarketRepository.get_market_count(event_data['id'])
+                existing_market_count = MarketRepository.get_market_count(event_id)
                 
                 if existing_market_count > 0:
                     # Event already has markets stored, skip odds fetching
                     markets_skipped_count += 1
-                    logger.debug(f"⏭️ Event {event_data['id']} already has {existing_market_count} markets stored, skipping odds fetch")
+                    logger.debug(f"Event {event_id} already has {existing_market_count} markets stored, skipping odds fetch")
                 else:
                     # Fetch and save ALL markets using MarketRepository (new flow)
                     try:
-                        final_odds_response = api_client.get_event_final_odds(event_data['id'], event_data.get('slug'))
+                        final_odds_response = api_client.get_event_final_odds(event_id, event_payload.get('slug'))
                         
                         if final_odds_response:
                             # Save all markets using the new market-based flow
-                            saved_markets = MarketRepository.save_markets_from_response(event_data['id'], final_odds_response)
+                            saved_markets = MarketRepository.save_markets_from_response(event_id, final_odds_response)
                             if saved_markets > 0:
                                 markets_processed_count += 1
-                                logger.debug(f"✅ Saved {saved_markets} markets for event {event_data['id']}")
+                                logger.debug(f"Saved {saved_markets} markets for event {event_id}")
                             else:
-                                logger.debug(f"No markets saved for event {event_data['id']}")
+                                logger.debug(f"No markets saved for event {event_id}")
                         else:
-                            logger.debug(f"No odds response for event {event_data['id']}")
+                            logger.debug(f"No odds response for event {event_id}")
                     except Exception as e:
-                        logger.error(f"Error processing markets for event {event_data['id']}: {e}")
+                        logger.error(f"Error processing markets for event {event_id}: {e}")
                 
                 # Extract and upsert results for this event (using already-fetched data)
                 try:
-                    existing_result = ResultRepository.get_result_by_event_id(event_data['id'])
+                    existing_result = ResultRepository.get_result_by_event_id(event_id)
                     if existing_result:
-                        logger.debug(f"Results already exist for event {event_data['id']}, skipping")
+                        logger.debug(f"Results already exist for event {event_id}, skipping")
                     else:
                         raw_event = event_data.get('_raw_event')
                         if raw_event:
                             result_data = api_client.extract_results_from_response({'event': raw_event})
                             
                             if result_data and not result_data.get('_canceled'):
-                                if ResultRepository.upsert_result(event_data['id'], result_data):
+                                if ResultRepository.upsert_result(event_id, result_data):
                                     results_processed_count += 1
-                                    logger.debug(f"✅ Results upserted for event {event_data['id']}: {result_data.get('home_score')}-{result_data.get('away_score')}")
+                                    logger.debug(f"Results upserted for event {event_id}: {result_data.get('home_score')}-{result_data.get('away_score')}")
                                 else:
-                                    logger.warning(f"Failed to upsert results for event {event_data['id']}")
+                                    logger.warning(f"Failed to upsert results for event {event_id}")
                             else:
-                                logger.debug(f"No results data for event {event_data['id']} (may not be finished)")
+                                logger.debug(f"No results data for event {event_id} (may not be finished)")
                         else:
-                            logger.warning(f"No raw event data for event {event_data['id']}")
+                            logger.warning(f"No raw event data for event {event_id}")
                 except Exception as e:
-                    logger.error(f"Error processing results for event {event_data['id']}: {e}")
+                    logger.error(f"Error processing results for event {event_id}: {e}")
             else:
                 skipped_count += 1
-                logger.warning(f"Failed to upsert event {event_data['id']}")
+                event_payload = event_data.get('event', event_data)
+                logger.warning(f"Failed to upsert event {event_payload.get('id')}")
                 
         except Exception as e:
             skipped_count += 1
-            logger.error(f"Error processing event {event_data.get('id')}: {e}")
+            event_payload = event_data.get('event', event_data)
+            logger.error(f"Error processing event {event_payload.get('id')}: {e}")
             continue
     
     logger.info("=" * 80)

@@ -19,7 +19,8 @@ def persist_event_with_odds(api_client, event: Dict, odds_data: Dict) -> bool:
             return False
 
         event_data = api_client.get_event_information(event, discovery_source="daily_discovery")
-        if not event_data or not event_data.get("id"):
+        event_payload = event_data.get("event", event_data) if event_data else {}
+        if not event_payload or not event_payload.get("id"):
             logger.warning("Could not extract event information for event %s", event_id)
             return False
 
@@ -28,7 +29,7 @@ def persist_event_with_odds(api_client, event: Dict, odds_data: Dict) -> bool:
             logger.error("Failed to upsert event %s to database", event_id)
             return False
 
-        logger.info("Upserted event %s: %s vs %s", event_id, event_data["homeTeam"], event_data["awayTeam"])
+        logger.info("Upserted event %s: %s vs %s", event_id, event_payload["homeTeam"], event_payload["awayTeam"])
 
         if not validate_odds_data(odds_data):
             logger.warning("Invalid odds data for event %s, skipping odds insertion", event_id)

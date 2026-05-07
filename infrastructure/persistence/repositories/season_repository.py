@@ -124,3 +124,37 @@ class SeasonRepository:
         except Exception as e:
             logger.error(f"Error getting/creating season {season_id}: {e}")
             return None
+
+    @staticmethod
+    def get_or_create_season_in_session(session, season_id: int, name: str, year: int, sport: str) -> Optional[Season]:
+        """Session-aware season upsert for callers that already own a transaction."""
+        if not season_id:
+            return None
+
+        season = session.query(Season).filter(Season.id == season_id).first()
+
+        if season:
+            updated = False
+            if name is not None and season.name != name:
+                season.name = name
+                updated = True
+            if year is not None and season.year != year:
+                season.year = year
+                updated = True
+            if sport is not None and season.sport != sport:
+                season.sport = sport
+                updated = True
+
+            if updated:
+                logger.debug(f"Updated season {season_id}: {name}")
+            return season
+
+        season = Season(
+            id=season_id,
+            name=name,
+            year=year,
+            sport=sport
+        )
+        session.add(season)
+        logger.debug(f"Created new season {season_id}: {name} (Year: {year}, Sport: {sport})")
+        return season

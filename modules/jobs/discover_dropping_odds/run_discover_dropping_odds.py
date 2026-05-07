@@ -14,6 +14,14 @@ from modules.jobs.parallelism import filter_upcoming_events, process_with_parall
 logger = logging.getLogger(__name__)
 
 
+def _event_payload(event_data):
+    return event_data.get("event", event_data)
+
+
+def _event_id(event_data):
+    return _event_payload(event_data)["id"]
+
+
 def run_discover_dropping_odds() -> None:
     """Discover events from dropping odds and persist them."""
     logger.info("Starting Job A: Event Discovery with Odds Processing")
@@ -34,7 +42,7 @@ def run_discover_dropping_odds() -> None:
     total_skipped = 0
 
     try:
-        logger.info("Step 1: Fetching /dropping/all endpoint")
+        logger.info("Step 1: Fetching odds/1/dropping/all endpoint")
         response_all = api_client.get_dropping_odds_with_odds_and_events_response()
         if response_all:
             # to save dropping/all events in json format
@@ -54,7 +62,7 @@ def run_discover_dropping_odds() -> None:
             )
 
             if events_all:
-                logger.info(f"Found {len(events_all)} events in /dropping/all endpoint")
+                logger.info(f"Found {len(events_all)} events in odds/1/dropping/all endpoint")
                 events_all = filter_upcoming_events(events_all)
                 if events_all:
                     processed_count, skipped_count = process_with_parallel_db_ops(
@@ -66,14 +74,16 @@ def run_discover_dropping_odds() -> None:
                     total_processed += processed_count
                     total_skipped += skipped_count
                     for event in events_all:
-                        processed_event_ids.add(event["id"])
+                        processed_event_ids.add(_event_id(event))
                     logger.info(
                         f"/dropping/all completed: processed {processed_count}/{len(events_all)} events, skipped {skipped_count} events"
                     )
+                else:
+                    logger.warning("No upcoming events found for sport after filtering")
             else:
-                logger.warning("No events found in /dropping/all endpoint")
+                logger.warning("No events found in odds/1/dropping/all endpoint")
         else:
-            logger.error("Failed to get dropping odds with odds data from /dropping/all")
+            logger.error("Failed to get dropping odds with odds data from odds/1/dropping/all")
 
         logger.info(f"Step 2: Fetching and processing {len(dropping_sports)} individual sports")
         for sport in dropping_sports:
@@ -98,11 +108,11 @@ def run_discover_dropping_odds() -> None:
                     logger.info(f"No upcoming events for sport {sport} after filtering")
                     continue
 
-                new_events = [event for event in events_sport if event["id"] not in processed_event_ids]
+                new_events = [event for event in events_sport if _event_id(event) not in processed_event_ids]
                 skipped_duplicates = len(events_sport) - len(new_events)
                 if skipped_duplicates > 0:
                     logger.info(
-                        f"Sport {sport}: Skipping {skipped_duplicates} duplicate events already processed from /dropping/all"
+                        f"Sport {sport}: Skipping {skipped_duplicates} duplicate events already processed from odds/1/dropping/all"
                     )
 
                 if not new_events:
@@ -112,7 +122,7 @@ def run_discover_dropping_odds() -> None:
                 new_odds_map = {
                     str(event_id): odds_data
                     for event_id, odds_data in odds_map_sport.items()
-                    if int(event_id) in [event["id"] for event in new_events]
+                    if int(event_id) in [_event_id(event) for event in new_events]
                 }
 
                 logger.info(f"Sport {sport}: Processing {len(new_events)} new events (skipped {skipped_duplicates} duplicates)")
@@ -126,7 +136,7 @@ def run_discover_dropping_odds() -> None:
                 total_processed += processed_count
                 total_skipped += skipped_count
                 for event in new_events:
-                    processed_event_ids.add(event["id"])
+                    processed_event_ids.add(_event_id(event))
 
                 logger.info(f"Sport {sport} completed: processed {processed_count}/{len(new_events)} events, skipped {skipped_count} events")
             except Exception as exc:

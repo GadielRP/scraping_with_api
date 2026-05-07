@@ -10,6 +10,10 @@ from shared.timezone_utils import get_local_now_aware
 logger = logging.getLogger(__name__)
 
 
+def _event_payload(event: Dict) -> Dict:
+    return event.get("event", event)
+
+
 def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> List[Dict]:
     """Keep only events that start at least ``min_minutes_away`` minutes from now."""
     if not events:
@@ -24,9 +28,11 @@ def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> Li
         filtered_count = 0
 
         for event in events:
-            start_timestamp = event.get("startTimestamp")
+            event_payload = _event_payload(event)
+            event_id = event_payload.get("id", "unknown")
+            start_timestamp = event_payload.get("startTimestamp")
             if not start_timestamp:
-                logger.debug("Event %s has no startTimestamp, skipping", event.get("id", "unknown"))
+                logger.debug("Event %s has no startTimestamp, skipping", event_id)
                 filtered_count += 1
                 continue
 
@@ -34,7 +40,6 @@ def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> Li
                 upcoming_events.append(event)
                 continue
 
-            event_id = event.get("id", "unknown")
             time_diff_minutes = (start_timestamp - current_timestamp) / 60
             if time_diff_minutes < 0:
                 logger.debug(

@@ -114,6 +114,9 @@ class DatabaseManager:
             
             # Check and fix column order (bookie_id should be next to event_id)
             self._reorder_markets_columns()
+
+            # Ensure normalized event entity tables/links exist before generic column sync.
+            self._migrate_events_to_participants_competitions()
             
             # Re-create inspector after manual migrations may have changed schema
             inspector = inspect(self.engine)
@@ -468,6 +471,99 @@ class DatabaseManager:
                     pass
             except Exception:
                 pass
+
+    def _migrate_events_to_participants_competitions(self):
+        """
+        Idempotent migration for normalized event participants and competitions.
+
+        This intentionally does not backfill from legacy text fields because those
+        names are display snapshots and do not carry reliable external IDs.
+        Existing events continue to work through COALESCE fallbacks in the views.
+        """
+        try:
+            from sqlalchemy import inspect
+            from infrastructure.persistence.models import Participant, Competition
+
+            inspector = inspect(self.engine)
+            table_names = set(inspector.get_table_names())
+
+            with self.get_session() as session:
+                connection = session.connection()
+
+                if 'participants' not in table_names:
+                    Participant.__table__.create(connection, checkfirst=True)
+                    logger.info("Created participants table")
+
+                if 'competitions' not in table_names:
+                    Competition.__table__.create(connection, checkfirst=True)
+                    logger.info("Created competitions table")
+
+                if 'events' not in table_names:
+                    return
+
+                event_columns = {col['name'] for col in inspector.get_columns('events')}
+                missing_event_columns = {
+                    'home_participant_id': 'INTEGER',
+                    'away_participant_id': 'INTEGER',
+                    'competition_id': 'INTEGER',
+                }
+
+                for column_name, column_type in missing_event_columns.items():
+                    if column_name not in event_columns:
+                        session.execute(text(f"ALTER TABLE events ADD COLUMN {column_name} {column_type}"))
+                        logger.info("Added events.%s", column_name)
+
+                existing_fk_columns = {
+                    tuple(constraint.get('constrained_columns') or [])
+                    for constraint in inspector.get_foreign_keys('events')
+                }
+
+                fk_statements = [
+                    (
+                        'fk_events_home_participant',
+                        ('home_participant_id',),
+                        "ALTER TABLE events ADD CONSTRAINT fk_events_home_participant "
+                        "FOREIGN KEY (home_participant_id) REFERENCES participants(participant_id) ON DELETE SET NULL",
+                    ),
+                    (
+                        'fk_events_away_participant',
+                        ('away_participant_id',),
+                        "ALTER TABLE events ADD CONSTRAINT fk_events_away_participant "
+                        "FOREIGN KEY (away_participant_id) REFERENCES participants(participant_id) ON DELETE SET NULL",
+                    ),
+                    (
+                        'fk_events_competition',
+                        ('competition_id',),
+                        "ALTER TABLE events ADD CONSTRAINT fk_events_competition "
+                        "FOREIGN KEY (competition_id) REFERENCES competitions(competition_id) ON DELETE SET NULL",
+                    ),
+                ]
+
+                for constraint_name, constrained_columns, statement in fk_statements:
+                    if constrained_columns not in existing_fk_columns:
+                        try:
+                            session.execute(text(statement))
+                            logger.info("Added FK constraint %s", constraint_name)
+                        except Exception as exc:
+                            logger.debug("FK constraint %s may already exist or be equivalent: %s", constraint_name, exc)
+
+                index_statements = [
+                    "CREATE INDEX IF NOT EXISTS idx_events_home_participant_id ON events (home_participant_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_events_away_participant_id ON events (away_participant_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_events_competition_id ON events (competition_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_participants_source_participant ON participants (source, source_participant_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_competitions_source_tournament ON competitions (source, source_tournament_id)",
+                ]
+
+                for statement in index_statements:
+                    session.execute(text(statement))
+
+                session.commit()
+                logger.info("Normalized event entity migration completed")
+
+        except Exception as e:
+            logger.error(f"Events participant/competition migration failed: {e}")
+            logger.error(traceback.format_exc())
     
     def _get_column_type_sql(self, col) -> str:
         """

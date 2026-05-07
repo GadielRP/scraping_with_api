@@ -48,23 +48,24 @@ def update_event_information_from_response(response: Dict) -> bool:
 
         event_response = response["event"]
         event_data = get_event_information(event_response, discovery_source="results_sync")
-        if not event_data or not event_data.get("id"):
+        event_payload = event_data.get("event", event_data) if event_data else {}
+        if not event_payload or not event_payload.get("id"):
             logger.warning("Could not extract event information from response")
             return False
 
-        event_data.pop("discovery_source", None)
+        event_payload.pop("discovery_source", None)
         updated_event = EventRepository.upsert_event(event_data)
         if updated_event:
             logger.info(
                 "Event information updated for event %s from results sync (season_id=%s, round=%s, season_year=%s)",
-                event_data["id"],
-                event_data.get("season_id"),
-                event_data.get("round"),
-                event_data.get("season_year"),
+                event_payload["id"],
+                event_payload.get("season_id"),
+                event_payload.get("round"),
+                event_payload.get("season_year"),
             )
             return True
 
-        logger.warning("Failed to update event information for event %s", event_data.get("id"))
+        logger.warning("Failed to update event information for event %s", event_payload.get("id"))
         return False
     except Exception as exc:
         logger.error("Error updating event information from response: %s", exc)

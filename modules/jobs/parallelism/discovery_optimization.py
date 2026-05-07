@@ -14,6 +14,14 @@ from shared.odds_utils import process_event_odds_from_dropping_odds
 logger = logging.getLogger(__name__)
 
 
+def _event_payload(event_data: Dict) -> Dict:
+    return event_data.get("event", event_data)
+
+
+def _event_id(event_data: Dict) -> int:
+    return _event_payload(event_data)["id"]
+
+
 def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> List[Dict]:
     """Fetch nearest events for multiple teams in parallel."""
 
@@ -29,7 +37,7 @@ def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> L
                 logger.debug("Failed to structure event data for team %s", team_id)
                 return None
 
-            logger.debug("Fetched event %s for team %s", event_data.get("id"), team_id)
+            logger.debug("Fetched event %s for team %s", _event_payload(event_data).get("id"), team_id)
             return event_data
         except Exception as exc:
             logger.debug("Error processing team %s: %s", team_id, exc)
@@ -54,7 +62,7 @@ def parallel_odds_checking(
     """Check odds availability for multiple events in parallel."""
 
     def check_event_odds(event_data: Dict) -> Tuple[str, Optional[Dict]]:
-        event_id = str(event_data["id"])
+        event_id = str(_event_id(event_data))
         odds_data = api_client.get_event_final_odds(event_id, no_retry_on_404=no_retry_on_404)
         if not odds_data:
             return event_id, None
@@ -76,8 +84,8 @@ def parallel_odds_checking(
                     events_with_odds[event_id] = odds_data
             except Exception as exc:
                 event_data = future_to_event[future]
-                logger.debug("Error checking odds for event %s: %s", event_data.get("id"), exc)
-                events_to_delete.append(int(event_data["id"]))
+                logger.debug("Error checking odds for event %s: %s", _event_payload(event_data).get("id"), exc)
+                events_to_delete.append(int(_event_id(event_data)))
 
     return events_with_odds, events_to_delete
 
@@ -91,7 +99,7 @@ def batch_upsert_events(events: List[Dict]) -> int:
             if event:
                 upserted_count += 1
         except Exception as exc:
-            logger.debug("Error upserting event %s: %s", event_data.get("id"), exc)
+            logger.debug("Error upserting event %s: %s", _event_payload(event_data).get("id"), exc)
     return upserted_count
 
 
@@ -101,7 +109,7 @@ def batch_process_odds(events_with_odds: Dict[str, Dict], events: List[Dict]) ->
     skipped_count = 0
 
     for event_data in events:
-        event_id = str(event_data["id"])
+        event_id = str(_event_id(event_data))
         if event_id not in events_with_odds:
             continue
 
@@ -173,7 +181,7 @@ def process_odds_first(
         )
 
     # Step 2: Filter to only events that have odds
-    valid_events = [e for e in events if str(e["id"]) in events_with_odds]
+    valid_events = [e for e in events if str(_event_id(e)) in events_with_odds]
 
     if not valid_events:
         logger.info("No %s events had valid odds, nothing to persist", discovery_source)
@@ -205,7 +213,7 @@ def process_with_parallel_db_ops(
 
     def process_single_event(event_data: Dict) -> Tuple[bool, str]:
         try:
-            event_id = str(event_data["id"])
+            event_id = str(_event_id(event_data))
 
             event = EventRepository.upsert_event(event_data)
             if not event:
@@ -225,7 +233,7 @@ def process_with_parallel_db_ops(
 
             return True, f"Successfully processed event {event_id}"
         except Exception as exc:
-            return False, f"Error processing event {event_data.get('id')}: {exc}"
+            return False, f"Error processing event {_event_payload(event_data).get('id')}: {exc}"
 
     processed_count = 0
     skipped_count = 0
@@ -242,7 +250,7 @@ def process_with_parallel_db_ops(
                     skipped_count += 1
             except Exception as exc:
                 event_data = future_to_event[future]
-                logger.error("Exception processing event %s: %s", event_data.get("id"), exc)
+                logger.error("Exception processing event %s: %s", _event_payload(event_data).get("id"), exc)
                 skipped_count += 1
 
     return processed_count, skipped_count

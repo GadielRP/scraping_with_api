@@ -8,6 +8,8 @@ from infrastructure.persistence.models import Event, OddsSnapshot, EventOdds, Re
 from infrastructure.persistence.database import db_manager
 from shared.timezone_utils import get_local_now
 from .season_repository import SeasonRepository
+from .participant_repository import ParticipantRepository
+from .competition_repository import CompetitionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,20 +24,50 @@ NBA_SEASONS = [
 
 class EventRepository:
     """Repository for event-related database operations"""
+
+    @staticmethod
+    def _display_home_team(event_obj: Event) -> str:
+        return event_obj.home_participant.name if event_obj.home_participant else event_obj.home_team
+
+    @staticmethod
+    def _display_away_team(event_obj: Event) -> str:
+        return event_obj.away_participant.name if event_obj.away_participant else event_obj.away_team
+
+    @staticmethod
+    def _display_competition(event_obj: Event) -> str:
+        return event_obj.competition_ref.display_name if event_obj.competition_ref else event_obj.competition
     
     @staticmethod
     def upsert_event(event_data: Dict) -> Optional[Event]:
         """Insert or update an event"""
         try:
+            event_payload = event_data.get('event', event_data) if event_data else {}
+            home_participant_data = event_data.get('home_participant') if event_data and 'event' in event_data else None
+            away_participant_data = event_data.get('away_participant') if event_data and 'event' in event_data else None
+            competition_data = event_data.get('competition_ref') if event_data and 'event' in event_data else None
+
+            event_id = event_payload.get('id')
+            if not event_id:
+                logger.warning("Skipping event upsert because event id is missing")
+                return None
+
+            if event_payload.get('startTimestamp') is None:
+                logger.warning("Skipping event %s upsert because startTimestamp is missing", event_id)
+                return None
+
             with db_manager.get_session() as session:
-                round_info = event_data.get('round')
+                round_info = event_payload.get('round')
+
+                home_participant = None
+                away_participant = None
+                competition = None
                 
-                if 'season_id' in event_data and event_data['season_id']:
-                    season_id = event_data['season_id']
-                    season_name = event_data.get('season_name')
-                    season_year = event_data.get('season_year')
-                    sport = event_data.get('sport')
-                    competition_name = event_data.get('competition') or ""
+                if 'season_id' in event_payload and event_payload['season_id']:
+                    season_id = event_payload['season_id']
+                    season_name = event_payload.get('season_name')
+                    season_year = event_payload.get('season_year')
+                    sport = event_payload.get('sport')
+                    competition_name = event_payload.get('competition') or ""
                     
                     if season_year and isinstance(season_year, str):
                         year = SeasonRepository._parse_year(season_year)
@@ -48,34 +80,55 @@ class EventRepository:
                         round_info = 'knockouts/playoffs'
                     
                     if season_name and year and sport:
-                        SeasonRepository.get_or_create_season(season_id, season_name, year, sport)
+                        SeasonRepository.get_or_create_season_in_session(session, season_id, season_name, year, sport)
                     elif season_name and sport:
                         parsed_year = SeasonRepository._parse_year(season_name)
                         if parsed_year:
-                            SeasonRepository.get_or_create_season(season_id, season_name, parsed_year, sport)
+                            SeasonRepository.get_or_create_season_in_session(session, season_id, season_name, parsed_year, sport)
+
+                if home_participant_data and home_participant_data.get('source_participant_id') is not None:
+                    home_participant = ParticipantRepository.upsert_participant(session, home_participant_data)
+                elif home_participant_data:
+                    logger.warning("Event %s has no home participant id; keeping legacy home_team only", event_id)
+
+                if away_participant_data and away_participant_data.get('source_participant_id') is not None:
+                    away_participant = ParticipantRepository.upsert_participant(session, away_participant_data)
+                elif away_participant_data:
+                    logger.warning("Event %s has no away participant id; keeping legacy away_team only", event_id)
+
+                if competition_data and competition_data.get('source_tournament_id') is not None:
+                    competition = CompetitionRepository.upsert_competition(session, competition_data)
+                elif competition_data:
+                    logger.warning("Event %s has no tournament id; keeping legacy competition only", event_id)
                 
-                event_obj = session.query(Event).filter(Event.id == event_data['id']).first()
+                event_obj = session.query(Event).filter(Event.id == event_id).first()
                 
                 if event_obj:
-                    event_obj.custom_id = event_data.get('customId')
-                    event_obj.slug = event_data['slug']
-                    event_obj.start_time_utc = datetime.fromtimestamp(event_data['startTimestamp'])
-                    event_obj.sport = event_data['sport']
-                    event_obj.competition = event_data['competition']
-                    event_obj.country = event_data.get('country')
-                    event_obj.home_team = event_data['homeTeam']
-                    event_obj.away_team = event_data['awayTeam']
-                    gender = event_data.get('gender') or 'unknown'
+                    event_obj.custom_id = event_payload.get('customId')
+                    event_obj.slug = event_payload.get('slug') or event_obj.slug
+                    event_obj.start_time_utc = datetime.fromtimestamp(event_payload['startTimestamp'])
+                    event_obj.sport = event_payload.get('sport') or event_obj.sport
+                    event_obj.competition = event_payload.get('competition') or event_obj.competition
+                    event_obj.country = event_payload.get('country')
+                    event_obj.home_team = event_payload.get('homeTeam') or event_obj.home_team
+                    event_obj.away_team = event_payload.get('awayTeam') or event_obj.away_team
+                    gender = event_payload.get('gender') or 'unknown'
                     event_obj.gender = gender[:10] if len(gender) > 10 else gender
+                    if home_participant:
+                        event_obj.home_participant_id = home_participant.participant_id
+                    if away_participant:
+                        event_obj.away_participant_id = away_participant.participant_id
+                    if competition:
+                        event_obj.competition_id = competition.competition_id
                     
-                    if event_data.get('discovery_source') == 'dropping_odds':
+                    if event_payload.get('discovery_source') == 'dropping_odds':
                         old_source = event_obj.discovery_source
                         if old_source != 'dropping_odds':
                             event_obj.discovery_source = 'dropping_odds'
-                            logger.debug(f"Overwrote discovery_source to 'dropping_odds' for event {event_data['id']} (was: {old_source})")
+                            logger.debug(f"Overwrote discovery_source to 'dropping_odds' for event {event_id} (was: {old_source})")
                     
-                    if event_data.get('season_id'):
-                        event_obj.season_id = event_data['season_id']
+                    if event_payload.get('season_id'):
+                        event_obj.season_id = event_payload['season_id']
                     if round_info:
                         existing = (event_obj.round or "").lower()
                         incoming = str(round_info).lower()
@@ -85,33 +138,37 @@ class EventRepository:
                             event_obj.round = round_info
 
                     event_obj.updated_at = get_local_now()
-                    logger.info(f"Updated event {event_data['id']}")
+                    logger.info(f"Updated event {event_id}")
                 else:
-                    gender = event_data.get('gender') or 'unknown'
+                    gender = event_payload.get('gender') or 'unknown'
                     gender = gender[:10] if len(gender) > 10 else gender
                     
                     event_obj = Event(
-                        id=event_data['id'],
-                        custom_id=event_data.get('customId'),
-                        slug=event_data['slug'],
-                        start_time_utc=datetime.fromtimestamp(event_data['startTimestamp']),
-                        sport=event_data['sport'],
-                        competition=event_data['competition'],
-                        country=event_data.get('country'),
-                        home_team=event_data['homeTeam'],
-                        away_team=event_data['awayTeam'],
+                        id=event_id,
+                        custom_id=event_payload.get('customId'),
+                        slug=event_payload.get('slug') or str(event_id),
+                        start_time_utc=datetime.fromtimestamp(event_payload['startTimestamp']),
+                        sport=event_payload.get('sport') or 'Unknown',
+                        competition=event_payload.get('competition') or 'Unknown',
+                        country=event_payload.get('country'),
+                        home_team=event_payload.get('homeTeam') or 'Unknown',
+                        away_team=event_payload.get('awayTeam') or 'Unknown',
                         gender=gender,
-                        discovery_source=event_data.get('discovery_source', 'dropping_odds'),
-                        season_id=event_data.get('season_id'),
-                        round=round_info
+                        discovery_source=event_payload.get('discovery_source', 'dropping_odds'),
+                        season_id=event_payload.get('season_id'),
+                        round=round_info,
+                        home_participant_id=home_participant.participant_id if home_participant else None,
+                        away_participant_id=away_participant.participant_id if away_participant else None,
+                        competition_id=competition.competition_id if competition else None
                     )
                     session.add(event_obj)
-                    logger.debug(f"Created new event {event_data['id']}")
+                    logger.debug(f"Created new event {event_id}")
                 
                 return event_obj
                 
         except Exception as e:
-            logger.error(f"Error upserting event {event_data.get('id')}: {e}")
+            event_payload = event_data.get('event', event_data) if event_data else {}
+            logger.error(f"Error upserting event {event_payload.get('id')}: {e}")
             return None
     
     @staticmethod
@@ -119,7 +176,17 @@ class EventRepository:
         """Get event by ID with event_odds loaded"""
         try:
             with db_manager.get_session() as session:
-                return session.query(Event).options(joinedload(Event.event_odds)).filter(Event.id == event_id).first()
+                return (
+                    session.query(Event)
+                    .options(
+                        joinedload(Event.event_odds),
+                        joinedload(Event.home_participant),
+                        joinedload(Event.away_participant),
+                        joinedload(Event.competition_ref),
+                    )
+                    .filter(Event.id == event_id)
+                    .first()
+                )
         except Exception as e:
             logger.error(f"Error getting event {event_id}: {e}")
             return None
@@ -176,7 +243,15 @@ class EventRepository:
                 if alert_sent is not None:
                     filters.append(Event.alert_sent == alert_sent)
                 
-                query = session.query(Event).filter(and_(*filters))
+                query = (
+                    session.query(Event)
+                    .options(
+                        joinedload(Event.home_participant),
+                        joinedload(Event.away_participant),
+                        joinedload(Event.competition_ref),
+                    )
+                    .filter(and_(*filters))
+                )
                 
                 # Add competition filter if specified
                 if competition:
@@ -190,9 +265,9 @@ class EventRepository:
                 for event in events:
                     event_data = {
                         'id': event.id,
-                        'home_team': event.home_team,
-                        'away_team': event.away_team,
-                        'competition': event.competition,
+                        'home_team': EventRepository._display_home_team(event),
+                        'away_team': EventRepository._display_away_team(event),
+                        'competition': EventRepository._display_competition(event),
                         'start_time_utc': event.start_time_utc,
                         'sport': event.sport,
                         'country': event.country,
@@ -303,7 +378,12 @@ class EventRepository:
                 window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=5)
                 start_window = now + timedelta(minutes=window_minutes)
                 
-                return session.query(Event).options(joinedload(Event.event_odds)).filter(
+                return session.query(Event).options(
+                    joinedload(Event.event_odds),
+                    joinedload(Event.home_participant),
+                    joinedload(Event.away_participant),
+                    joinedload(Event.competition_ref),
+                ).filter(
                     Event.start_time_utc.between(window_start, start_window)
                 ).all()
         except Exception as e:
@@ -319,7 +399,12 @@ class EventRepository:
                 window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=5)
                 window_end = now + timedelta(minutes=window_minutes)
                 
-                query = session.query(Event).options(joinedload(Event.event_odds)).filter(
+                query = session.query(Event).options(
+                    joinedload(Event.event_odds),
+                    joinedload(Event.home_participant),
+                    joinedload(Event.away_participant),
+                    joinedload(Event.competition_ref),
+                ).filter(
                     and_(Event.start_time_utc >= window_start, Event.start_time_utc <= window_end)
                 )
                 
@@ -331,9 +416,9 @@ class EventRepository:
                 for event_obj in events_with_odds:
                     event_data = {
                         'id': event_obj.id,
-                        'home_team': event_obj.home_team,
-                        'away_team': event_obj.away_team,
-                        'competition': event_obj.competition,
+                        'home_team': EventRepository._display_home_team(event_obj),
+                        'away_team': EventRepository._display_away_team(event_obj),
+                        'competition': EventRepository._display_competition(event_obj),
                         'start_time_utc': event_obj.start_time_utc,
                         'sport': event_obj.sport,
                         'country': event_obj.country,
@@ -366,7 +451,11 @@ class EventRepository:
                 window_start = now - timedelta(minutes=window_minutes, seconds=10)
                 window_start = window_start.replace(microsecond=0)
                 
-                query = session.query(Event).filter(
+                query = session.query(Event).options(
+                    joinedload(Event.home_participant),
+                    joinedload(Event.away_participant),
+                    joinedload(Event.competition_ref),
+                ).filter(
                     and_(Event.start_time_utc >= window_start, Event.start_time_utc < now)
                 )
                 
@@ -378,9 +467,9 @@ class EventRepository:
                 for event_obj in events_started_recently:
                     result.append({
                         'id': event_obj.id,
-                        'home_team': event_obj.home_team,
-                        'away_team': event_obj.away_team,
-                        'competition': event_obj.competition,
+                        'home_team': EventRepository._display_home_team(event_obj),
+                        'away_team': EventRepository._display_away_team(event_obj),
+                        'competition': EventRepository._display_competition(event_obj),
                         'start_time_utc': event_obj.start_time_utc,
                         'sport': event_obj.sport,
                         'country': event_obj.country,
@@ -399,7 +488,11 @@ class EventRepository:
             with db_manager.get_session() as session:
                 today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
                 today_end = today_start + timedelta(days=1)
-                return session.query(Event).filter(
+                return session.query(Event).options(
+                    joinedload(Event.home_participant),
+                    joinedload(Event.away_participant),
+                    joinedload(Event.competition_ref),
+                ).filter(
                     and_(Event.start_time_utc >= today_start, Event.start_time_utc < today_end)
                 ).all()
         except Exception as e:
@@ -415,7 +508,11 @@ class EventRepository:
                     target_date = target_date.date()
                 day_start = datetime.combine(target_date, datetime.min.time())
                 day_end = day_start + timedelta(days=1)
-                return session.query(Event).filter(
+                return session.query(Event).options(
+                    joinedload(Event.home_participant),
+                    joinedload(Event.away_participant),
+                    joinedload(Event.competition_ref),
+                ).filter(
                     and_(Event.start_time_utc >= day_start, Event.start_time_utc < day_end)
                 ).all()
         except Exception as e:
@@ -428,7 +525,11 @@ class EventRepository:
         try:
             with db_manager.get_session() as session:
                 now = datetime.now()
-                return session.query(Event).filter(
+                return session.query(Event).options(
+                    joinedload(Event.home_participant),
+                    joinedload(Event.away_participant),
+                    joinedload(Event.competition_ref),
+                ).filter(
                     or_(
                         and_(Event.sport.in_(['Football', 'Futsal']), Event.start_time_utc < now - timedelta(hours=2.5)),
                         and_(Event.sport == 'Tennis', Event.start_time_utc < now - timedelta(hours=4)),

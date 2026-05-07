@@ -3,6 +3,8 @@ from .event_repository import (
     NBA_SEASONS
 )
 from .season_repository import SeasonRepository
+from .participant_repository import ParticipantRepository
+from .competition_repository import CompetitionRepository
 from .odds_repository import OddsRepository
 from .result_repository import ResultRepository
 from .observation_repository import ObservationRepository
@@ -14,6 +16,8 @@ __all__ = [
     'EventRepository',
     'NBA_SEASONS',
     'SeasonRepository',
+    'ParticipantRepository',
+    'CompetitionRepository',
     'OddsRepository',
     'ResultRepository',
     'ObservationRepository',
