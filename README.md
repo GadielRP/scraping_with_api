@@ -1,4 +1,4 @@
-# Sports Data & Prediction Platform (Modular Monolith)
+# Sports Data & Prediction Platform
 ## Overview
 
 This repository implements a modular monolith for ingesting sports events and odds, analysing prediction signals and delivering structured alerts. This project connects to SofaScore via https requests to its API to feed the db from events
