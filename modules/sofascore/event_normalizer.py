@@ -13,10 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 def clean_competition(competition: str) -> str:
+    """Clean up competition string by removing duplicate parts and reordering."""
     if not competition:
         return competition
 
+    # Split by comma
     parts = [part.strip() for part in competition.split(",")]
+
+    # Build sets to identify unique parts
     seen = set()
     unique_parts = []
 
