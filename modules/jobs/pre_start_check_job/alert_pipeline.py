@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import PredictionLog, refresh_materialized_views
-from infrastructure.persistence.repositories import MarketRepository, ObservationRepository
+from infrastructure.persistence.repositories import DualProcessOddsRepository, MarketRepository, ObservationRepository
 from infrastructure.settings import Config
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
@@ -147,6 +147,7 @@ class EventAlertProcessor:
         if streak_analysis is None and minutes_until_start == 30 and getattr(event_obj, "custom_id", None):
             try:
                 meta = event_payload.get("metadata_snapshot") or {}
+                dual_process_odds = DualProcessOddsRepository.get_event_odds(event_obj.id)
                 matchup_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
                 matchup_events = matchup_response.get("events", []) if matchup_response else []
                 streak_analysis = build_matchup_streak_context(
@@ -169,7 +170,7 @@ class EventAlertProcessor:
                     observations=event_payload.get("observations"),
                     home_team_id=meta.get("home_team_id"),
                     away_team_id=meta.get("away_team_id"),
-                    event_odds=getattr(event_obj, "event_odds", None),
+                    event_odds=dual_process_odds,
                 )
                 should_send = bool(streak_analysis and should_send_streak_alert(streak_analysis))
             except Exception as exc:

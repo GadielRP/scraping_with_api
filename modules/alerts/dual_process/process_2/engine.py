@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from infrastructure.persistence.repositories import OddsRepository
+from infrastructure.persistence.repositories import DualProcessOddsRepository
 
 from .sports import FootballFormulas
 
@@ -66,9 +66,13 @@ class Process2Engine:
     def _evaluate_football(self, event) -> Process2Report:
         """Evaluate football event using football-specific formulas."""
         try:
-            event_odds = self._ensure_event_odds_loaded(event)
+            event_odds = self._ensure_dual_process_odds_loaded(event)
             if not event_odds:
-                logger.warning("[PROCESS2] No odds found for football event %s", event.id)
+                logger.warning(
+                    "[PROCESS2] No dual-process market odds found for event %s; expected market_name/group in "
+                    "Config.MARKETS_DUAL_PROCESS, period in Config.PERIODS_DUAL_PROCESS, bookie_id=1.",
+                    event.id,
+                )
                 return self._create_error_report(event, "No odds data available")
 
             var_one = float(event_odds.var_one or 0)
@@ -146,16 +150,16 @@ class Process2Engine:
             logger.error("[PROCESS2] Error in football evaluation for event %s: %s", event.id, e)
             return self._create_error_report(event, str(e))
 
-    def _ensure_event_odds_loaded(self, event):
+    def _ensure_dual_process_odds_loaded(self, event):
         """Load odds into the event object if they are missing."""
-        if hasattr(event, "event_odds") and event.event_odds is not None:
-            return event.event_odds
+        if hasattr(event, "dual_process_odds") and event.dual_process_odds is not None:
+            return event.dual_process_odds
 
         try:
-            event.event_odds = OddsRepository.get_event_odds(event.id)
-            return event.event_odds
+            event.dual_process_odds = DualProcessOddsRepository.get_event_odds(event.id)
+            return event.dual_process_odds
         except Exception as e:
-            logger.error("[PROCESS2] Error loading event odds for %s: %s", event.id, e)
+            logger.error("[PROCESS2] Error loading dual-process market odds for %s: %s", event.id, e)
             return None
 
     def _determine_primary_prediction(self, activated_formulas: List[FormulaResult]) -> Optional[Tuple[str, int]]:

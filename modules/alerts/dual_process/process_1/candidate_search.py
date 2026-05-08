@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.repositories import OddsRepository
+from infrastructure.persistence.repositories import DualProcessOddsRepository
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +41,13 @@ class Process1CandidateSearch:
     """Search helpers for exact historical candidates used by Process 1."""
 
     def get_event_variations(self, event_id: int, event_odds=None) -> Optional[Tuple]:
-        """Get variations for an event from event_odds."""
+        """Get variations for an event from dual-process market odds."""
         try:
-            odds = event_odds or OddsRepository.get_event_odds(event_id)
+            odds = event_odds or DualProcessOddsRepository.get_event_odds(event_id)
             if not odds:
                 return None
 
-            var_shape = odds.var_x is not None
-            return (odds.var_one, odds.var_x, odds.var_two, var_shape)
+            return (odds.var_one, odds.var_x, odds.var_two, odds.var_shape)
         except Exception as e:
             logger.error(f"Error getting variations for event {event_id}: {e}")
             return None

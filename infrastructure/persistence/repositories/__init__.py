@@ -6,6 +6,7 @@ from .season_repository import SeasonRepository
 from .participant_repository import ParticipantRepository
 from .competition_repository import CompetitionRepository
 from .odds_repository import OddsRepository
+from .dual_process_odds_repository import DualProcessOdds, DualProcessOddsRepository
 from .result_repository import ResultRepository
 from .observation_repository import ObservationRepository
 from .market_repository import MarketRepository
@@ -19,6 +20,8 @@ __all__ = [
     'ParticipantRepository',
     'CompetitionRepository',
     'OddsRepository',
+    'DualProcessOdds',
+    'DualProcessOddsRepository',
     'ResultRepository',
     'ObservationRepository',
     'MarketRepository',

@@ -173,13 +173,12 @@ class EventRepository:
     
     @staticmethod
     def get_event_by_id(event_id: int) -> Optional[Event]:
-        """Get event by ID with event_odds loaded"""
+        """Get event by ID with display relationships loaded."""
         try:
             with db_manager.get_session() as session:
                 return (
                     session.query(Event)
                     .options(
-                        joinedload(Event.event_odds),
                         joinedload(Event.home_participant),
                         joinedload(Event.away_participant),
                         joinedload(Event.competition_ref),
@@ -379,7 +378,6 @@ class EventRepository:
                 start_window = now + timedelta(minutes=window_minutes)
                 
                 return session.query(Event).options(
-                    joinedload(Event.event_odds),
                     joinedload(Event.home_participant),
                     joinedload(Event.away_participant),
                     joinedload(Event.competition_ref),
@@ -400,7 +398,6 @@ class EventRepository:
                 window_end = now + timedelta(minutes=window_minutes)
                 
                 query = session.query(Event).options(
-                    joinedload(Event.event_odds),
                     joinedload(Event.home_participant),
                     joinedload(Event.away_participant),
                     joinedload(Event.competition_ref),
@@ -412,6 +409,11 @@ class EventRepository:
                     query = query.filter(Event.season_id.in_(season_ids))
 
                 events_with_odds = query.all()
+                from .dual_process_odds_repository import DualProcessOddsRepository
+
+                odds_by_event_id = DualProcessOddsRepository.get_event_odds_map(
+                    [event_obj.id for event_obj in events_with_odds]
+                )
                 result = []
                 for event_obj in events_with_odds:
                     event_data = {
@@ -426,15 +428,19 @@ class EventRepository:
                         'season_id': event_obj.season_id,
                         'odds': None
                     }
-                    if hasattr(event_obj, 'event_odds') and event_obj.event_odds:
-                        odds = event_obj.event_odds
+                    odds = odds_by_event_id.get(event_obj.id)
+                    if odds:
                         event_data['odds'] = {
                             'one_open': odds.one_open,
                             'x_open': odds.x_open,
                             'two_open': odds.two_open,
                             'one_final': odds.one_final,
                             'x_final': odds.x_final,
-                            'two_final': odds.two_final
+                            'two_final': odds.two_final,
+                            'market_id': odds.market_id,
+                            'market_name': odds.market_name,
+                            'market_group': odds.market_group,
+                            'market_period': odds.market_period,
                         }
                     result.append(event_data)
                 return result

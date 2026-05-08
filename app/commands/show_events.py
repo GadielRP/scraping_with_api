@@ -1,9 +1,8 @@
 import logging
 
-from sqlalchemy.orm import joinedload
-
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
+from infrastructure.persistence.repositories import DualProcessOddsRepository
 
 
 def show_events(limit: int = 10):
@@ -14,7 +13,6 @@ def show_events(limit: int = 10):
         with db_manager.get_session() as session:
             events = (
                 session.query(Event)
-                .options(joinedload(Event.event_odds))
                 .order_by(Event.start_time_utc.desc())
                 .limit(limit)
                 .all()
@@ -22,17 +20,18 @@ def show_events(limit: int = 10):
 
         print(f"\n=== Recent Events (showing {len(events)}) ===")
         for event in events:
-            odds = event.event_odds
+            odds = DualProcessOddsRepository.get_event_odds(event.id)
             print(f"\nEvent ID: {event.id}")
             print(f"Teams: {event.home_team} vs {event.away_team}")
             print(f"Competition: {event.competition}")
             print(f"Start Time: {event.start_time_utc}")
 
             if odds:
+                print(f"Market: {odds.market_name} / {odds.market_group} / {odds.market_period}")
                 print(f"Odds - Open: 1={odds.one_open}, X={odds.x_open}, 2={odds.two_open}")
                 print(f"Odds - Final: 1={odds.one_final}, X={odds.x_final}, 2={odds.two_final}")
             else:
-                print("No odds data available")
+                print("No dual-process market odds available")
 
         print("\n" + "=" * 40)
     except Exception as exc:

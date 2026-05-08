@@ -323,7 +323,7 @@ class OddsPortalAttemptMixin:
                 group_key = step.get('group_key')
                 period_key = step.get('period_key')
                 db_market_group = step.get('db_market_group', '1X2')
-                db_market_period = step.get('db_market_period', 'Full Time')
+                db_market_period = step.get('db_market_period', 'Full-time')
                 db_market_name = step.get('db_market_name', db_market_period)
                 if step_key in completed_step_keys:
                     normalized_resume_state['next_step_idx'] = max(normalized_resume_state.get('next_step_idx', 0), step_idx + 1)

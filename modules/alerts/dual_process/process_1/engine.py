@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-from infrastructure.persistence.repositories import OddsRepository
+from infrastructure.persistence.repositories import DualProcessOddsRepository
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.dual_process_alert import create_candidate_report_message
 
@@ -46,9 +46,13 @@ class AlertEngine:
 
     def evaluate_single_event(self, event, minutes_until_start: int = None) -> List[Dict]:
         """Evaluate a single event and return candidate reports."""
-        event_odds = self._ensure_event_odds_loaded(event)
+        event_odds = self._ensure_dual_process_odds_loaded(event)
         if not event_odds:
-            logger.debug(f"No odds found for event {event.id}")
+            logger.info(
+                "No dual-process market odds found for event %s; expected market_name/group in "
+                "Config.MARKETS_DUAL_PROCESS, period in Config.PERIODS_DUAL_PROCESS, bookie_id=1.",
+                event.id,
+            )
             return []
 
         current_vars = self.candidate_search.get_event_variations(event.id, event_odds=event_odds)
@@ -104,16 +108,16 @@ class AlertEngine:
         logger.info(f"No candidates found for event {event.id}")
         return []
 
-    def _ensure_event_odds_loaded(self, event):
+    def _ensure_dual_process_odds_loaded(self, event):
         """Load odds into the event object if they are missing."""
-        if hasattr(event, "event_odds") and event.event_odds is not None:
-            return event.event_odds
+        if hasattr(event, "dual_process_odds") and event.dual_process_odds is not None:
+            return event.dual_process_odds
 
         try:
-            event.event_odds = OddsRepository.get_event_odds(event.id)
-            return event.event_odds
+            event.dual_process_odds = DualProcessOddsRepository.get_event_odds(event.id)
+            return event.dual_process_odds
         except Exception as e:
-            logger.error(f"Error loading event odds for {event.id}: {e}")
+            logger.error(f"Error loading dual-process market odds for {event.id}: {e}")
             return None
 
     def _create_candidate_report(
@@ -131,10 +135,11 @@ class AlertEngine:
             vars_display += f", DX: {cur_vx:.2f}"
         vars_display += f", D2: {cur_v2:.2f}"
 
-        odds_display = f"1: {event.event_odds.one_open}->{event.event_odds.one_final}"
-        if event.event_odds.x_open and event.event_odds.x_final:
-            odds_display += f", X: {event.event_odds.x_open}->{event.event_odds.x_final}"
-        odds_display += f", 2: {event.event_odds.two_open}->{event.event_odds.two_final}"
+        event_odds = self._ensure_dual_process_odds_loaded(event)
+        odds_display = f"1: {event_odds.one_open}->{event_odds.one_final}"
+        if event_odds.x_open and event_odds.x_final:
+            odds_display += f", X: {event_odds.x_open}->{event_odds.x_final}"
+        odds_display += f", 2: {event_odds.two_open}->{event_odds.two_final}"
 
         evaluation_result = self.evaluator.evaluate_candidates_with_new_logic(tier1_candidates)
         tier1_matches_data = self._format_candidate_data(tier1_candidates)

@@ -20,6 +20,14 @@ def _parse_env_list(env_name, default_value):
         return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def _parse_env_list_alias(primary_name, alias_name, default_value):
+    if os.getenv(primary_name):
+        return _parse_env_list(primary_name, default_value)
+    if os.getenv(alias_name):
+        return _parse_env_list(alias_name, default_value)
+    return default_value
+
+
 def _parse_env_bool(env_name, default_value=False):
     value = os.getenv(env_name)
     if value is None:
@@ -93,6 +101,10 @@ class Config:
     
     # Odds Extraction Configuration (for testing)
     ENABLE_ODDS_EXTRACTION = os.getenv('ENABLE_ODDS_EXTRACTION', 'true').lower() == 'true'
+
+    # Dual Process market odds read configuration
+    MARKETS_DUAL_PROCESS = _parse_env_list_alias('MARKETS_DUAL_PROCESS', 'markets_dual_process', ['Full time', 'Home/Away'])
+    PERIODS_DUAL_PROCESS = _parse_env_list_alias('PERIODS_DUAL_PROCESS', 'periods_dual_process', ['Full-time', 'Match'])
 
     # OddsPortal scraping activation toggle for the pre-start flow
     ODDSPORTAL_SCRAPING_ENABLED = _parse_env_bool('ODDSPORTAL_SCRAPING_ENABLED', True)

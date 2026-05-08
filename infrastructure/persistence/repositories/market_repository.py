@@ -262,6 +262,32 @@ class MarketRepository:
         return bookie
 
     @staticmethod
+    def _normalize_market_period(period: str) -> str:
+        """
+        Normalize OddsPortal market period strings to the canonical DB value.
+
+        All full-time variants are collapsed to 'Full-time'. Other period
+        strings (e.g. '1st half') are returned unchanged after stripping.
+        """
+        if period is None:
+            return period
+
+        normalized = str(period).strip()
+
+        full_time_variants = {
+            "Full Time",
+            "Full time",
+            "Full-time",
+            "Fulltime",
+            "FT",
+        }
+
+        if normalized in full_time_variants:
+            return "Full-time"
+
+        return normalized
+
+    @staticmethod
     def save_markets_from_oddsportal(event_id: int, odds_data: object) -> int:
         """
         Save markets from OddsPortal scraper data.
@@ -292,7 +318,7 @@ class MarketRepository:
                 extraction_tuples.append((
                     "1X2",
                     "Full-time",
-                    "Full time",
+                    "Full-time",
                     odds_data.bookie_odds,
                     odds_data.betfair,
                 ))
@@ -308,6 +334,7 @@ class MarketRepository:
 
             with db_manager.get_session() as session:
                 for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
+                    market_period = MarketRepository._normalize_market_period(market_period)
                     for b_odds in bookie_odds_list:
                         try:
                             bookie = MarketRepository._get_or_create_bookie(session, b_odds.name)

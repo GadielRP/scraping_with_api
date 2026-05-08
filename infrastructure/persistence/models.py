@@ -259,6 +259,8 @@ class Market(Base):
     __table_args__ = (
         # Each bookie can have one market per event+name+line+live-status combination
         UniqueConstraint('event_id', 'bookie_id', 'market_name', 'choice_group', 'is_live', name='unique_market_per_event_bookie'),
+        Index('idx_markets_event_bookie_live_name_period', 'event_id', 'bookie_id', 'is_live', 'market_name', 'market_period'),
+        Index('idx_markets_event_bookie_live_group_period', 'event_id', 'bookie_id', 'is_live', 'market_group', 'market_period'),
     )
     
     # Relationships
@@ -297,6 +299,7 @@ class MarketChoice(Base):
     # Constraints
     __table_args__ = (
         UniqueConstraint('market_id', 'choice_name', name='unique_choice_per_market'),
+        Index('idx_market_choices_market_choice_name', 'market_id', 'choice_name'),
     )
     
     # Relationships
@@ -395,21 +398,131 @@ class DailyDiscoveryLog(Base):
 # SQL view helper – unified odds view (no filtering by var_one)
 # ---------------------------------------------------------------------------
 
+def _sql_string_list(values):
+    cleaned = []
+    for value in values:
+        if value is None:
+            continue
+        escaped = str(value).replace("'", "''")
+        cleaned.append(f"'{escaped}'")
+    return ", ".join(cleaned) if cleaned else "''"
+
+
+def build_dual_process_event_odds_view_sql(markets, periods) -> str:
+    market_values = _sql_string_list(markets)
+    period_values = _sql_string_list(periods)
+    return f"""
+    CREATE OR REPLACE VIEW v_dual_process_event_odds AS
+    WITH choice_values AS (
+        SELECT
+            m.event_id,
+            m.market_id,
+            m.market_name,
+            m.market_group,
+            m.market_period,
+            m.bookie_id,
+            m.collected_at,
+            mc.choice_name,
+            mc.initial_odds,
+            COALESCE(latest.odds_value, mc.current_odds) AS current_odds,
+            latest.collected_at AS latest_snapshot_at
+        FROM markets m
+        JOIN market_choices mc ON mc.market_id = m.market_id
+        LEFT JOIN LATERAL (
+            SELECT mcs.odds_value, mcs.collected_at
+            FROM market_choice_snapshots mcs
+            WHERE mcs.choice_id = mc.choice_id
+            ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC
+            LIMIT 1
+        ) latest ON TRUE
+        WHERE m.bookie_id = 1
+          AND m.is_live = false
+          AND (
+              m.market_name IN ({market_values})
+              OR m.market_group IN ({market_values})
+          )
+          AND m.market_period IN ({period_values})
+          AND mc.choice_name IN ('1', 'X', '2')
+    ),
+    pivoted AS (
+        SELECT
+            event_id,
+            market_id,
+            market_name,
+            market_group,
+            market_period,
+            bookie_id,
+            collected_at,
+            MAX(CASE WHEN choice_name = '1' THEN initial_odds END) AS one_open,
+            MAX(CASE WHEN choice_name = '1' THEN current_odds END) AS one_final,
+            MAX(CASE WHEN choice_name = 'X' THEN initial_odds END) AS x_open,
+            MAX(CASE WHEN choice_name = 'X' THEN current_odds END) AS x_final,
+            MAX(CASE WHEN choice_name = '2' THEN initial_odds END) AS two_open,
+            MAX(CASE WHEN choice_name = '2' THEN current_odds END) AS two_final,
+            MAX(latest_snapshot_at) AS last_sync_at
+        FROM choice_values
+        GROUP BY event_id, market_id, market_name, market_group, market_period, bookie_id, collected_at
+    ),
+    valid_markets AS (
+        SELECT
+            *,
+            (one_final - one_open)::numeric(8,3) AS var_one,
+            CASE
+                WHEN x_open IS NOT NULL AND x_final IS NOT NULL
+                THEN (x_final - x_open)::numeric(8,3)
+                ELSE NULL
+            END AS var_x,
+            (two_final - two_open)::numeric(8,3) AS var_two,
+            (x_open IS NOT NULL AND x_final IS NOT NULL) AS var_shape,
+            ROW_NUMBER() OVER (
+                PARTITION BY event_id
+                ORDER BY collected_at DESC, market_id DESC
+            ) AS rn
+        FROM pivoted
+        WHERE one_open IS NOT NULL
+          AND one_final IS NOT NULL
+          AND two_open IS NOT NULL
+          AND two_final IS NOT NULL
+    )
+    SELECT
+        event_id,
+        market_id,
+        market_name,
+        market_group,
+        market_period,
+        bookie_id,
+        collected_at,
+        one_open,
+        one_final,
+        x_open,
+        x_final,
+        two_open,
+        two_final,
+        var_one,
+        var_x,
+        var_two,
+        var_shape,
+        COALESCE(last_sync_at, collected_at) AS last_sync_at
+    FROM valid_markets
+    WHERE rn = 1;
+    """
+
+
 EVENT_ALL_ODDS_VIEW_SQL = (
     """
     CREATE OR REPLACE VIEW event_all_odds AS
     SELECT
         e.start_time_utc AS start_time_utc,
         (COALESCE(hp.name, e.home_team) || ' / ' || COALESCE(ap.name, e.away_team)) AS participants,
-        eo.one_open AS odds1a,
-        eo.one_final AS odds1b,
-        eo.x_open AS momEa,
-        eo.x_final AS momeEb,
-        eo.two_open AS odds2a,
-        eo.two_final AS odds2b,
-        eo.var_one AS var_1,
-        eo.var_x AS var_x,
-        eo.var_two AS var_2,
+        eo.one_open::numeric(6,2) AS odds1a,
+        eo.one_final::numeric(6,2) AS odds1b,
+        eo.x_open::numeric(6,2) AS momEa,
+        eo.x_final::numeric(6,2) AS momeEb,
+        eo.two_open::numeric(6,2) AS odds2a,
+        eo.two_final::numeric(6,2) AS odds2b,
+        eo.var_one::numeric(6,2) AS var_1,
+        eo.var_x::numeric(6,2) AS var_x,
+        eo.var_two::numeric(6,2) AS var_2,
         CASE
             WHEN r.home_score IS NOT NULL AND r.away_score IS NOT NULL
             THEN (r.home_score::text || ' - ' || r.away_score::text)
@@ -417,7 +530,7 @@ EVENT_ALL_ODDS_VIEW_SQL = (
         END AS result,
         COALESCE(c.display_name, e.competition) AS competition,
         e.sport AS sport
-    FROM event_odds eo
+    FROM v_dual_process_event_odds eo
     JOIN events e ON e.id = eo.event_id
     LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
     LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
@@ -535,7 +648,7 @@ MV_ALERT_EVENTS_SQL = (
         eo.var_x,
         eo.var_two,
         -- Computed fields for matching
-        (eo.var_x IS NOT NULL) AS var_shape,  -- true if draw sport, false if not
+        eo.var_shape,
         (COALESCE(eo.var_one, 0) + COALESCE(eo.var_x, 0) + COALESCE(eo.var_two, 0)) AS var_total,
         ROUND((COALESCE(eo.var_one, 0) + COALESCE(eo.var_x, 0) + COALESCE(eo.var_two, 0))::numeric, 2) AS var_total_rounded,
         -- Result fields
@@ -552,7 +665,7 @@ MV_ALERT_EVENTS_SQL = (
             THEN (r.home_score::text || '-' || r.away_score::text)
             ELSE NULL
         END AS result_text
-    FROM event_odds eo
+    FROM v_dual_process_event_odds eo
     JOIN events e ON e.id = eo.event_id
     LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
     LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
@@ -569,6 +682,13 @@ MV_ALERT_EVENTS_INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_mv_alert_start_time ON mv_alert_events (start_time_utc);",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_alert_event_id ON mv_alert_events (event_id);",
     "CREATE INDEX IF NOT EXISTS idx_mv_alert_sport_gender ON mv_alert_events (sport, gender);"
+]
+
+DUAL_PROCESS_MARKET_INDEXES_SQL = [
+    "CREATE INDEX IF NOT EXISTS idx_markets_event_bookie_live_name_period ON markets (event_id, bookie_id, is_live, market_name, market_period);",
+    "CREATE INDEX IF NOT EXISTS idx_markets_event_bookie_live_group_period ON markets (event_id, bookie_id, is_live, market_group, market_period);",
+    "CREATE INDEX IF NOT EXISTS idx_market_choices_market_choice_name ON market_choices (market_id, choice_name);",
+    "CREATE INDEX IF NOT EXISTS idx_choice_collected ON market_choice_snapshots (choice_id, collected_at);",
 ]
 
 # ---------------------------------------------------------------------------
@@ -639,7 +759,12 @@ MARKET_CHOICE_TRAJECTORY_VIEW_SQL = (
 
 def create_or_replace_views(engine):
     """Create or replace reporting SQL views. Call this after engine init."""
+    from infrastructure.settings import Config
+
     with engine.begin() as conn:
+        for index_sql in DUAL_PROCESS_MARKET_INDEXES_SQL:
+            conn.exec_driver_sql(index_sql)
+        conn.exec_driver_sql(build_dual_process_event_odds_view_sql(Config.MARKETS_DUAL_PROCESS, Config.PERIODS_DUAL_PROCESS))
         conn.exec_driver_sql(EVENT_ALL_ODDS_VIEW_SQL)
         # Drop basketball_results view first if it exists (to handle column removal)
         conn.exec_driver_sql("DROP VIEW IF EXISTS basketball_results CASCADE;")
@@ -653,7 +778,12 @@ def create_or_replace_views(engine):
 
 def create_or_replace_materialized_views(engine):
     """Create or replace materialized views for alerts. Call this after engine init."""
+    from infrastructure.settings import Config
+
     with engine.begin() as conn:
+        for index_sql in DUAL_PROCESS_MARKET_INDEXES_SQL:
+            conn.exec_driver_sql(index_sql)
+        conn.exec_driver_sql(build_dual_process_event_odds_view_sql(Config.MARKETS_DUAL_PROCESS, Config.PERIODS_DUAL_PROCESS))
         # Drop existing materialized view to recreate with new schema
         conn.exec_driver_sql("DROP MATERIALIZED VIEW IF EXISTS mv_alert_events CASCADE;")
         conn.exec_driver_sql(MV_ALERT_EVENTS_SQL)

@@ -1,7 +1,9 @@
 import logging
 
+from sqlalchemy import text
+
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import Event, EventOdds, Result
+from infrastructure.persistence.models import Event, Result
 from infrastructure.scheduler import job_scheduler
 
 
@@ -14,7 +16,7 @@ def show_status():
 
         with db_manager.get_session() as session:
             event_count = session.query(Event).count()
-            odds_count = session.query(EventOdds).count()
+            odds_count = session.execute(text("SELECT COUNT(*) FROM v_dual_process_event_odds")).scalar()
             result_count = session.query(Result).count()
 
         jobs = job_scheduler.get_scheduled_jobs()
@@ -22,7 +24,7 @@ def show_status():
         print("\n=== SofaScore Odds System Status ===")
         print(f"Database: {db_status}")
         print(f"Events in database: {event_count}")
-        print(f"Events with odds: {odds_count}")
+        print(f"Events with dual-process odds: {odds_count}")
         print(f"Events with results: {result_count}")
         print("Pre-start notifications: Active")
         print("\nScheduled Jobs:")
