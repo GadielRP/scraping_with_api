@@ -8,7 +8,7 @@ from typing import Dict, Optional
 
 from infrastructure.persistence.repositories import DualProcessOddsRepository, MarketRepository
 
-from .sofascore_market_adapter import SofaScoreMarketAdapter
+from .adapters.sofascore_market_adapter import SofaScoreMarketAdapter
 
 logger = logging.getLogger(__name__)
 

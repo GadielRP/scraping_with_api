@@ -35,7 +35,6 @@ from .schedule_feeds import (
 from .standings import get_standings_response, process_standings_response
 from .team_history import get_nearest_event_for_team, get_team_last_results_response
 from .winning_odds import get_winning_odds_response
-from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 
 logger = logging.getLogger(__name__)
 
@@ -339,9 +338,6 @@ class SofaScoreAPI:
             extract_tennis_points=extract_tennis_points,
             for_streaks=for_streaks,
         )
-
-    def extract_final_odds_from_response(self, response: Dict, initial_odds_extraction: bool = False) -> Optional[Dict]:
-        return extract_final_odds_from_response(response, initial_odds_extraction=initial_odds_extraction)
 
     def extract_events_and_odds_from_dropping_response(
         self,

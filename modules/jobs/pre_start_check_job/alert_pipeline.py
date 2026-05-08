@@ -280,25 +280,3 @@ def evaluate_and_dispatch_alerts_batch(
                 future.result()
             except Exception as exc:
                 logger.error(f"Critical failure in alert processing thread: {exc}")
-
-
-def build_event_alert_context(
-    event_obj,
-    initial_minutes: int,
-    odds_response=None,
-    metadata_snapshot: dict = None,
-):
-    """Constructs the initial alert context for an event check."""
-    return {
-        "event_obj": event_obj,
-        "initial_minutes": initial_minutes,
-        "observations": None,
-        "odds_response": odds_response,
-        "metadata_snapshot": metadata_snapshot,
-        "season_id": getattr(event_obj, "season_id", None),
-        "should_send_streak_alert": False,
-        "streak_analysis": None,
-        "dual_report": None,
-        "minutes_until_start": initial_minutes,
-        "success": True,
-    }

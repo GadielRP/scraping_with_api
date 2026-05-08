@@ -7,110 +7,11 @@ all available betting markets.
 
 import logging
 from typing import Dict, List, Optional
-from decimal import Decimal
 
 from shared.odds_utils import fractional_to_decimal
 
 logger = logging.getLogger(__name__)
 
-
-def extract_final_odds_from_response(response: Dict, initial_odds_extraction: bool = False) -> Optional[Dict]:
-    """Extract final odds from a full-time market response."""
-    try:
-        if not response or "markets" not in response:
-            logger.warning("No markets found in final odds response")
-            return None
-
-        for market in response["markets"]:
-            if market.get("isLive") is False and market.get("marketName") == "Full time":
-                choices = market.get("choices", [])
-                if not choices:
-                    continue
-
-                odds_data = {}
-                available_choices = []
-                initial_odds_data = {} if initial_odds_extraction else None
-
-                for choice in choices:
-                    name = choice.get("name")
-                    current_fractional = choice.get("fractionalValue")
-                    initial_fractional = choice.get("initialFractionalValue")
-
-                    if not current_fractional:
-                        logger.warning("Missing fractional value for choice %s", name)
-                        continue
-
-                    available_choices.append(name)
-                    odds_data[f"{name}_final"] = fractional_to_decimal(current_fractional)
-
-                    if initial_odds_extraction and initial_fractional:
-                        initial_odds_data[f"{name}_initial"] = fractional_to_decimal(initial_fractional)
-                    elif initial_odds_extraction and not initial_fractional:
-                        logger.warning("Missing initial fractional value for choice %s", name)
-
-                if len(available_choices) >= 2:
-                    if len(available_choices) == 3 and len(odds_data) == 3:
-                        choice_names = list(odds_data.keys())
-                        result = {
-                            "one_final": odds_data[choice_names[0]],
-                            "x_final": odds_data[choice_names[1]],
-                            "two_final": odds_data[choice_names[2]],
-                        }
-
-                        if initial_odds_extraction and initial_odds_data and len(initial_odds_data) == 3:
-                            initial_choice_names = list(initial_odds_data.keys())
-                            result.update(
-                                {
-                                    "one_initial": initial_odds_data[initial_choice_names[0]],
-                                    "x_initial": initial_odds_data[initial_choice_names[1]],
-                                    "two_initial": initial_odds_data[initial_choice_names[2]],
-                                }
-                            )
-                        return result
-
-                    if len(available_choices) == 2 and len(odds_data) == 2:
-                        choice_names = list(odds_data.keys())
-                        result = {
-                            "one_final": odds_data[choice_names[0]],
-                            "x_final": None,
-                            "two_final": odds_data[choice_names[1]],
-                        }
-
-                        if initial_odds_extraction and initial_odds_data and len(initial_odds_data) == 2:
-                            initial_choice_names = list(initial_odds_data.keys())
-                            result.update(
-                                {
-                                    "one_initial": initial_odds_data[initial_choice_names[0]],
-                                    "x_initial": None,
-                                    "two_initial": initial_odds_data[initial_choice_names[1]],
-                                }
-                            )
-                        return result
-
-                    if len(available_choices) > 3 and len(odds_data) >= 2:
-                        choice_names = list(odds_data.keys())
-                        result = {
-                            "one_final": odds_data[choice_names[0]],
-                            "x_final": None,
-                            "two_final": odds_data[choice_names[1]],
-                        }
-
-                        if initial_odds_extraction and initial_odds_data and len(initial_odds_data) >= 2:
-                            initial_choice_names = list(initial_odds_data.keys())
-                            result.update(
-                                {
-                                    "one_initial": initial_odds_data[initial_choice_names[0]],
-                                    "x_initial": None,
-                                    "two_initial": initial_odds_data[initial_choice_names[1]],
-                                }
-                            )
-                        return result
-
-        logger.warning("No suitable market found for final odds extraction")
-        return None
-    except Exception as exc:
-        logger.error("Error extracting final odds: %s", exc)
-        return None
 
 class OddsExtractor:
     """

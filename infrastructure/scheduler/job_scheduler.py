@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List
 
-from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository
+from infrastructure.persistence.repositories import EventRepository, ResultRepository
 from infrastructure.settings import Config
 from modules.jobs.clean_league_cache import run_clean_league_cache_job
 from modules.jobs.daily_discovery import run_daily_discovery_job, run_daily_discovery_retry_job
@@ -33,7 +33,6 @@ class JobScheduler:
         self.running = False
         self.thread = None
         self.event_repo = EventRepository()
-        self.odds_repo = OddsRepository()
         self.result_repo = ResultRepository()
         self.recently_rescheduled = set()
         self.last_cleanup_time = time.time()

@@ -103,7 +103,8 @@ class Config:
     ENABLE_ODDS_EXTRACTION = os.getenv('ENABLE_ODDS_EXTRACTION', 'true').lower() == 'true'
 
     # Dual Process market odds read configuration
-    MARKETS_DUAL_PROCESS = _parse_env_list_alias('MARKETS_DUAL_PROCESS', 'markets_dual_process', ['Full time', 'Home/Away'])
+    MARKETS_DUAL_PROCESS = _parse_env_list_alias('MARKETS_DUAL_PROCESS', 'markets_dual_process', ['1X2', 'Home/Away'])
+
     PERIODS_DUAL_PROCESS = _parse_env_list_alias('PERIODS_DUAL_PROCESS', 'periods_dual_process', ['Full-time', 'Match'])
 
     # OddsPortal scraping activation toggle for the pre-start flow

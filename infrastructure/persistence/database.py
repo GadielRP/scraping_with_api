@@ -197,6 +197,8 @@ class DatabaseManager:
                 logger.info(f"✅ Migration completed: Added {len(migrations_applied)} column(s) - {', '.join(migrations_applied)}")
             else:
                 logger.info("✅ Database schema is up to date with models")
+
+            self._drop_legacy_odds_tables()
             
             return True
                     
@@ -686,6 +688,18 @@ class DatabaseManager:
 
         except Exception as e:
             logger.error(f"Events participant/competition migration failed: {e}")
+            logger.error(traceback.format_exc())
+
+    def _drop_legacy_odds_tables(self):
+        """Drop legacy flat odds tables after the normalized market schema is in place."""
+        try:
+            with self.get_session() as session:
+                session.execute(text("DROP TABLE IF EXISTS odds_snapshot CASCADE;"))
+                session.execute(text("DROP TABLE IF EXISTS event_odds CASCADE;"))
+                session.commit()
+            logger.info("Dropped legacy odds tables if they existed")
+        except Exception as e:
+            logger.error(f"Failed to drop legacy odds tables: {e}")
             logger.error(traceback.format_exc())
     
     def _get_column_type_sql(self, col) -> str:

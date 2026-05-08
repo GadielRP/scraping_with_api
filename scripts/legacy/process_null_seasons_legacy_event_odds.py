@@ -1,4 +1,4 @@
-"""LEGACY: may write old event_odds / odds_snapshot. Do not use after Phase 2 unless intentionally backfilling legacy tables."""
+"""LEGACY: old event_odds / odds_snapshot migration script. Not compatible with final market-based odds architecture."""
 
 import logging
 import sys

@@ -23,6 +23,7 @@ def initialize_system() -> bool:
 
         create_or_replace_views(db_manager.engine)
         create_or_replace_materialized_views(db_manager.engine)
+        db_manager._drop_legacy_odds_tables()
 
         logger.info("System initialized successfully")
         return True

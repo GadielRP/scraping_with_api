@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+LEGACY: old event_odds / odds_snapshot migration script. Not compatible with final market-based odds architecture.
+
 CSV to PostgreSQL Migration Script
 Migrates data from CSV file to PostgreSQL database following the SofaScore schema.
 

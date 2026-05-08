@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_, or_, event, DDL
 from sqlalchemy.orm import Session, joinedload
 
-from infrastructure.persistence.models import Event, OddsSnapshot, EventOdds, Result, EventObservation, Season, Base
+from infrastructure.persistence.models import Event, Result, EventObservation, Season, Base
 from infrastructure.persistence.database import db_manager
 from shared.timezone_utils import get_local_now
 from .season_repository import SeasonRepository
@@ -318,8 +318,6 @@ class EventRepository:
                     return False
                 
                 season_id_to_check = event_obj.season_id
-                session.query(OddsSnapshot).filter(OddsSnapshot.event_id == event_id).delete()
-                session.query(EventOdds).filter(EventOdds.event_id == event_id).delete()
                 session.query(Result).filter(Result.event_id == event_id).delete()
                 session.query(EventObservation).filter(EventObservation.event_id == event_id).delete()
                 session.query(Event).filter(Event.id == event_id).delete()
@@ -345,8 +343,6 @@ class EventRepository:
         
         try:
             with db_manager.get_session() as session:
-                session.query(OddsSnapshot).filter(OddsSnapshot.event_id.in_(event_ids)).delete(synchronize_session=False)
-                session.query(EventOdds).filter(EventOdds.event_id.in_(event_ids)).delete(synchronize_session=False)
                 session.query(Result).filter(Result.event_id.in_(event_ids)).delete(synchronize_session=False)
                 session.query(EventObservation).filter(EventObservation.event_id.in_(event_ids)).delete(synchronize_session=False)
                 deleted_count = session.query(Event).filter(Event.id.in_(event_ids)).delete(synchronize_session=False)

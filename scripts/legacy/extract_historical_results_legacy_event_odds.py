@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Historical Results Extraction Script
+LEGACY: old event_odds / odds_snapshot migration script. Not compatible with final market-based odds architecture.
 
-LEGACY: may write old event_odds / odds_snapshot. Do not use after Phase 2 unless intentionally backfilling legacy tables.
+Historical Results Extraction Script
 
 This script extracts/updates results for events with id > 269, excluding NBA seasons.
 It processes events in daily batches to avoid API rate limiting/banning.
