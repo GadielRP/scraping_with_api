@@ -1,4 +1,5 @@
-"""Schedule and live feed helpers for SofaScore."""
+"""Schedule and live feed helpers for SofaScore.
+    dates are in format YYYY-MM-DD."""
 
 from __future__ import annotations
 

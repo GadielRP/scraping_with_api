@@ -509,7 +509,7 @@ class DatabaseManager:
                 try:
                     session.execute(text(
                         "CREATE UNIQUE INDEX IF NOT EXISTS unique_market_per_event_bookie_period_line "
-                        "ON markets (event_id, bookie_id, market_name, market_period, COALESCE(choice_group, ''), is_live)"
+                        "ON markets (event_id, bookie_id, market_name, COALESCE(market_period, ''), COALESCE(choice_group, ''), is_live)"
                     ))
                     logger.info("Ensured functional unique index unique_market_per_event_bookie_period_line")
                 except Exception as exc:
@@ -533,11 +533,11 @@ class DatabaseManager:
                         SELECT
                             market_id,
                             FIRST_VALUE(market_id) OVER (
-                                PARTITION BY event_id, bookie_id, market_name, market_period, COALESCE(choice_group, ''), is_live
+                                PARTITION BY event_id, bookie_id, market_name, COALESCE(market_period, ''), COALESCE(choice_group, ''), is_live
                                 ORDER BY collected_at DESC NULLS LAST, market_id DESC
                             ) AS keeper_id,
                             ROW_NUMBER() OVER (
-                                PARTITION BY event_id, bookie_id, market_name, market_period, COALESCE(choice_group, ''), is_live
+                                PARTITION BY event_id, bookie_id, market_name, COALESCE(market_period, ''), COALESCE(choice_group, ''), is_live
                                 ORDER BY collected_at DESC NULLS LAST, market_id DESC
                             ) AS rn
                         FROM markets

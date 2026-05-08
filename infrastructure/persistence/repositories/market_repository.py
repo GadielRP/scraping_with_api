@@ -45,11 +45,15 @@ class MarketRepository:
             return None
 
     @staticmethod
-    def save_markets_from_response(event_id: int, odds_response: Dict, bookie_id: int = 1) -> int:
+    def save_markets_from_response(event_id: int, odds_response: Dict, bookie_id: int) -> int:
         """
         Save all markets from an odds API response to the database.
         """
         try:
+            if bookie_id is None:
+                logger.error("Cannot save markets for event %s without an explicit bookie_id", event_id)
+                return 0
+
             markets_data = odds_response.get('markets', [])
             if not markets_data:
                 logger.debug(f"No markets in odds response for event {event_id}")
@@ -68,6 +72,7 @@ class MarketRepository:
                             is_live = market_data.get('isLive', False)
 
                             if not market_name:
+                                logger.info("Skipping market for event %s because marketName is missing", event_id)
                                 continue
 
                             market_collected_at = get_local_now()
@@ -192,11 +197,17 @@ class MarketRepository:
 
     @staticmethod
     def _normalize_market_name(name: str) -> str:
-        return str(name).strip() if name is not None else name
+        if name is None:
+            return None
+        normalized = str(name).strip()
+        return normalized or None
 
     @staticmethod
     def _normalize_market_group(group: str) -> str:
-        return str(group).strip() if group is not None else group
+        if group is None:
+            return None
+        normalized = str(group).strip()
+        return normalized or None
 
     @staticmethod
     def get_markets_for_event(event_id: int) -> List[Market]:
@@ -313,9 +324,11 @@ class MarketRepository:
         strings (e.g. '1st half') are returned unchanged after stripping.
         """
         if period is None:
-            return period
+            return None
 
         normalized = str(period).strip()
+        if not normalized:
+            return None
 
         full_time_variants = {
             "Full Time",
@@ -367,13 +380,13 @@ class MarketRepository:
                 ))
 
             if not extraction_tuples:
-                logger.warning(f"âš ï¸ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
+                logger.warning(f"⚠️ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
                 return 0
 
             saved_count = 0
             total_bookies = sum(len(t[3]) for t in extraction_tuples)
             total_betfair = sum(1 for t in extraction_tuples if t[4])
-            logger.debug(f"ðŸ’¾ Saving OddsPortal data for event {event_id}: {len(extraction_tuples)} period(s), {total_bookies} bookies, {total_betfair} Betfair sections")
+            logger.debug(f"💾 Saving OddsPortal data for event {event_id}: {len(extraction_tuples)} period(s), {total_bookies} bookies, {total_betfair} Betfair sections")
 
             with db_manager.get_session() as session:
                 for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
