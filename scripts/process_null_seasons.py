@@ -1,3 +1,5 @@
+"""LEGACY: may write old event_odds / odds_snapshot. Do not use after Phase 2 unless intentionally backfilling legacy tables."""
+
 import logging
 import sys
 import time

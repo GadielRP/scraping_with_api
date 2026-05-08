@@ -6,13 +6,10 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List
 
-from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import Event
-from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository
-from modules.prediction import prediction_logger
-from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
-from modules.sofascore import api_client
+from infrastructure.persistence.repositories import EventRepository, ResultRepository
+from modules.odds_ingestion import MarketOddsIngestionService
 from modules.observations import sport_observation_service
+from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +20,7 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
     for event in events:
         try:
             if ResultRepository.get_result_by_event_id(event.id):
-                logger.info(f"Results exist for event {event.id}, skipping")
+                logger.info("Results exist for event %s, skipping", event.id)
                 stats["skipped"] += 1
                 continue
 
@@ -35,11 +32,16 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
             if ResultRepository.upsert_result(event.id, result_data):
                 stats["updated"] += 1
                 logger.info(
-                    f"✅ {job_name}: {event.id} = {result_data['home_score']}-{result_data['away_score']}, Winner: {result_data['winner']}"
+                    "%s: %s = %s-%s, Winner: %s",
+                    job_name,
+                    event.id,
+                    result_data["home_score"],
+                    result_data["away_score"],
+                    result_data["winner"],
                 )
                 sport_observation_service.process_result_observations(event, result_data)
         except Exception as exc:
-            logger.error(f"Error in {job_name} for event {event.id}: {exc}")
+            logger.error("Error in %s for event %s: %s", job_name, event.id, exc)
             stats["failed"] += 1
 
     return stats
@@ -54,11 +56,11 @@ def run_results_collection_previous_day() -> None:
             logger.info("No events found from previous day")
             return
 
-        logger.info(f"Processing {len(events)} events from previous day")
+        logger.info("Processing %s events from previous day", len(events))
         stats = _collect_results_for_events(events, "Job E")
-        logger.info(f"Job E completed: {stats['updated']} updated, {stats['skipped']} skipped, {stats['failed']} failed")
+        logger.info("Job E completed: %s updated, %s skipped, %s failed", stats["updated"], stats["skipped"], stats["failed"])
     except Exception as exc:
-        logger.error(f"Error in Job E: {exc}")
+        logger.error("Error in Job E: %s", exc)
 
 
 def run_results_collection_all_finished() -> None:
@@ -69,55 +71,51 @@ def run_results_collection_all_finished() -> None:
             logger.info("No finished events found")
             return
 
-        logger.info(f"Processing {len(events)} finished events")
+        logger.info("Processing %s finished events", len(events))
         stats = _collect_results_for_events(events, "Job E2")
-        logger.info(f"Job E2 completed: {stats['updated']} updated, {stats['skipped']} skipped, {stats['failed']} failed")
+        logger.info("Job E2 completed: %s updated, %s skipped, %s failed", stats["updated"], stats["skipped"], stats["failed"])
     except Exception as exc:
-        logger.error(f"Error in Job E2: {exc}")
+        logger.error("Error in Job E2: %s", exc)
 
 
 def run_results_collection_for_date(target_date) -> None:
-    logger.info(f"Starting results collection for date: {target_date}")
+    logger.info("Starting results collection for date: %s", target_date)
     try:
         events = EventRepository.get_events_by_date(target_date)
         if not events:
-            logger.info(f"No events found for {target_date}")
+            logger.info("No events found for %s", target_date)
             return
 
         odds_updated_count = 0
         for event_data in events:
             try:
                 final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
-                if final_odds_response:
-                    final_odds_data = extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
-                    if final_odds_data:
-                        upserted_id = OddsRepository.upsert_event_odds(event_data.id, final_odds_data)
-                        if upserted_id:
-                            snapshot = OddsRepository.create_odds_snapshot(event_data.id, final_odds_data)
-                            if snapshot:
-                                odds_updated_count += 1
-                                logger.info(f"✅ Final odds updated for {event_data.home_team} vs {event_data.away_team}")
+                if not final_odds_response:
+                    logger.debug("No final odds response for event %s", event_data.id)
+                    continue
 
-                            try:
-                                from infrastructure.persistence.repositories import MarketRepository
-
-                                MarketRepository.save_markets_from_response(event_data.id, final_odds_response)
-                            except Exception as market_exc:
-                                logger.warning(f"Error saving markets to DB for event {event_data.id}: {market_exc}")
-                        else:
-                            logger.warning(f"Failed to update final odds for event {event_data.id}")
-                    else:
-                        logger.warning(f"No final odds data extracted for event {event_data.id}")
+                ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
+                    event_data.id,
+                    final_odds_response,
+                    source="results_collection_for_date",
+                )
+                if ingestion_result.markets_saved > 0 or ingestion_result.dual_process_market_available:
+                    odds_updated_count += 1
+                    logger.info("Final market odds updated for %s vs %s", event_data.home_team, event_data.away_team)
                 else:
-                    logger.debug(f"No final odds response for event {event_data.id}")
+                    logger.warning("Failed to save final market odds for event %s: %s", event_data.id, ingestion_result.reason)
             except Exception as exc:
-                logger.warning(f"Error updating odds for event {event_data.id}: {exc}")
+                logger.warning("Error updating odds for event %s: %s", event_data.id, exc)
 
-        logger.info(f"📊 Final odds updated for {odds_updated_count}/{len(events)} events")
-        logger.info(f"Processing {len(events)} events from {target_date}")
+        logger.info("Final market odds updated for %s/%s events", odds_updated_count, len(events))
+        logger.info("Processing %s events from %s", len(events), target_date)
         stats = _collect_results_for_events(events, f"Results Collection ({target_date})")
         logger.info(
-            f"Results collection for {target_date} completed: {stats['updated']} updated, {stats['skipped']} skipped, {stats['failed']} failed"
+            "Results collection for %s completed: %s updated, %s skipped, %s failed",
+            target_date,
+            stats["updated"],
+            stats["skipped"],
+            stats["failed"],
         )
     except Exception as exc:
-        logger.error(f"Error in results collection for {target_date}: {exc}")
+        logger.error("Error in results collection for %s: %s", target_date, exc)

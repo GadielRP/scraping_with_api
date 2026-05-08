@@ -1,6 +1,8 @@
 """
 Backfill script to collect results and odds for events missing results.
 
+LEGACY: may write old event_odds / odds_snapshot. Do not use after Phase 2 unless intentionally backfilling legacy tables.
+
 This script processes events from a start date up until yesterday (the day before execution).
 It handles API errors gracefully:
 - 404 errors: Event is added to deletion batch (event no longer exists)

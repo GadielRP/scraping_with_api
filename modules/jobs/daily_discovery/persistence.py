@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Dict
 
-from infrastructure.persistence.repositories import EventRepository, OddsRepository
-from shared.odds_utils import validate_odds_data
+from infrastructure.persistence.repositories import EventRepository
+from modules.odds_ingestion import MarketOddsIngestionService
 
 logger = logging.getLogger(__name__)
 
@@ -31,25 +31,14 @@ def persist_event_with_odds(api_client, event: Dict, odds_data: Dict) -> bool:
 
         logger.info("Upserted event %s: %s vs %s", event_id, event_payload["homeTeam"], event_payload["awayTeam"])
 
-        if not validate_odds_data(odds_data):
-            logger.warning("Invalid odds data for event %s, skipping odds insertion", event_id)
-            return True
-
-        snapshot = OddsRepository.create_odds_snapshot(event_id, odds_data)
-        if snapshot:
-            logger.debug("Created odds snapshot for event %s", event_id)
-
-        event_odds_id = OddsRepository.upsert_event_odds(event_id, odds_data)
-        if event_odds_id:
-            logger.info(
-                "Upserted odds for event %s: 1:%s, X:%s, 2:%s",
-                event_id,
-                odds_data.get("one_final"),
-                odds_data.get("x_final"),
-                odds_data.get("two_final"),
-            )
-        else:
-            logger.warning("Failed to upsert event odds for event %s", event_id)
+        ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
+            event_id,
+            odds_data,
+            source="daily_discovery",
+        )
+        if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
+            logger.warning("Failed to save market odds for event %s: %s", event_id, ingestion_result.reason)
+            return False
 
         return True
     except Exception as exc:

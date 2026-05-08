@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 
@@ -60,91 +60,108 @@ class MarketRepository:
             with db_manager.get_session() as session:
                 for market_data in markets_data:
                     try:
-                        market_name = market_data.get('marketName')
-                        choice_group = market_data.get('choiceGroup')
-                        is_live = market_data.get('isLive', False)
+                        with session.begin_nested():
+                            market_name = MarketRepository._normalize_market_name(market_data.get('marketName'))
+                            market_group = MarketRepository._normalize_market_group(market_data.get('marketGroup'))
+                            market_period = MarketRepository._normalize_market_period(market_data.get('marketPeriod'))
+                            choice_group = market_data.get('choiceGroup')
+                            is_live = market_data.get('isLive', False)
 
-                        if not market_name:
-                            continue
+                            if not market_name:
+                                continue
 
-                        existing_market = session.query(Market).filter(
-                            and_(
-                                Market.event_id == event_id,
-                                Market.bookie_id == bookie_id,
-                                Market.market_name == market_name,
-                                Market.choice_group == choice_group,
-                                Market.is_live == is_live
-                            )
-                        ).first()
-
-                        if existing_market:
-                            market = existing_market
-                            market.market_group = market_data.get('marketGroup')
-                            market.market_period = market_data.get('marketPeriod')
-                            market.collected_at = get_local_now()
-                        else:
-                            market = Market(
-                                event_id=event_id,
-                                bookie_id=bookie_id,
-                                market_name=market_name,
-                                market_group=market_data.get('marketGroup'),
-                                market_period=market_data.get('marketPeriod'),
-                                choice_group=choice_group,
-                                is_live=is_live,
-                                collected_at=get_local_now()
-                            )
-                            session.add(market)
-                            session.flush()
-
-                        choices_data = market_data.get('choices', [])
-                        seen_choice_names = {}
-                        for choice_data in choices_data:
-                            choice_name = choice_data.get('name')
-                            if choice_name and choice_name not in seen_choice_names:
-                                seen_choice_names[choice_name] = choice_data
-
-                        for choice_name, choice_data in seen_choice_names.items():
-                            initial_fractional = choice_data.get('initialFractionalValue')
-                            current_fractional = choice_data.get('fractionalValue')
-                            initial_odds = MarketRepository._fractional_to_decimal(initial_fractional)
-                            current_odds = MarketRepository._fractional_to_decimal(current_fractional)
-                            change = choice_data.get('change', 0)
-
-                            existing_choice = session.query(MarketChoice).filter(
+                            market_collected_at = get_local_now()
+                            existing_market = session.query(Market).filter(
                                 and_(
-                                    MarketChoice.market_id == market.market_id,
-                                    MarketChoice.choice_name == choice_name
+                                    Market.event_id == event_id,
+                                    Market.bookie_id == bookie_id,
+                                    Market.market_name == market_name,
+                                    Market.market_period == market_period,
+                                    Market.choice_group == choice_group,
+                                    Market.is_live == is_live
                                 )
                             ).first()
 
-                            if existing_choice:
-                                existing_choice.current_odds = current_odds
-                                existing_choice.change = change
-                                choice = existing_choice
+                            if existing_market:
+                                market = existing_market
+                                market.market_group = market_group
+                                market.market_period = market_period
+                                market.collected_at = market_collected_at
                             else:
-                                choice = MarketChoice(
-                                    market_id=market.market_id,
-                                    choice_name=choice_name,
-                                    initial_odds=initial_odds,
-                                    current_odds=current_odds,
-                                    change=change
+                                market = Market(
+                                    event_id=event_id,
+                                    bookie_id=bookie_id,
+                                    market_name=market_name,
+                                    market_group=market_group,
+                                    market_period=market_period,
+                                    choice_group=choice_group,
+                                    is_live=is_live,
+                                    collected_at=market_collected_at
                                 )
-                                session.add(choice)
+                                session.add(market)
                                 session.flush()
 
-                            if current_odds is not None:
-                                snapshot = MarketChoiceSnapshot(
-                                    choice_id=choice.choice_id,
-                                    odds_value=current_odds,
-                                    collected_at=market.collected_at
+                            choices_data = market_data.get('choices', [])
+                            seen_choice_names = {}
+                            for choice_data in choices_data:
+                                choice_name = choice_data.get('name')
+                                if choice_name and choice_name not in seen_choice_names:
+                                    seen_choice_names[choice_name] = choice_data
+
+                            for choice_name, choice_data in seen_choice_names.items():
+                                initial_odds = MarketRepository._choice_odds_value(
+                                    choice_data,
+                                    "initialFractionalValue",
+                                    "initialDecimalValue",
+                                    "initialOdds",
+                                    "initial_odds",
                                 )
-                                session.add(snapshot)
+                                current_odds = MarketRepository._choice_odds_value(
+                                    choice_data,
+                                    "fractionalValue",
+                                    "decimalValue",
+                                    "currentOdds",
+                                    "current_odds",
+                                    "odds",
+                                )
+                                change = choice_data.get('change', 0)
 
-                        saved_count += 1
+                                existing_choice = session.query(MarketChoice).filter(
+                                    and_(
+                                        MarketChoice.market_id == market.market_id,
+                                        MarketChoice.choice_name == choice_name
+                                    )
+                                ).first()
 
+                                if existing_choice:
+                                    if current_odds is not None:
+                                        existing_choice.current_odds = current_odds
+                                    existing_choice.change = change
+                                    if existing_choice.initial_odds is None and initial_odds is not None:
+                                        existing_choice.initial_odds = initial_odds
+                                    choice = existing_choice
+                                else:
+                                    choice = MarketChoice(
+                                        market_id=market.market_id,
+                                        choice_name=choice_name,
+                                        initial_odds=initial_odds,
+                                        current_odds=current_odds,
+                                        change=change
+                                    )
+                                    session.add(choice)
+                                    session.flush()
+
+                                if current_odds is not None:
+                                    snapshot = MarketChoiceSnapshot(
+                                        choice_id=choice.choice_id,
+                                        odds_value=current_odds,
+                                        collected_at=market.collected_at
+                                    )
+                                    session.add(snapshot)
+
+                            saved_count += 1
                     except Exception as e:
                         logger.warning(f"Error processing market for event {event_id}: {e}")
-                        session.rollback()
                         continue
 
                 session.commit()
@@ -154,6 +171,32 @@ class MarketRepository:
         except Exception as e:
             logger.error(f"Error saving markets for event {event_id}: {e}")
             return 0
+
+    @staticmethod
+    def _choice_odds_value(choice_data: Dict, fractional_key: str, *decimal_keys):
+        fractional = choice_data.get(fractional_key)
+        if fractional:
+            decimal_value = MarketRepository._fractional_to_decimal(fractional)
+            if decimal_value is not None:
+                return decimal_value
+
+        for key in decimal_keys:
+            value = choice_data.get(key)
+            if value is None or value == "":
+                continue
+            try:
+                return round(float(value), 3)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    @staticmethod
+    def _normalize_market_name(name: str) -> str:
+        return str(name).strip() if name is not None else name
+
+    @staticmethod
+    def _normalize_market_group(group: str) -> str:
+        return str(group).strip() if group is not None else group
 
     @staticmethod
     def get_markets_for_event(event_id: int) -> List[Market]:
@@ -324,13 +367,13 @@ class MarketRepository:
                 ))
 
             if not extraction_tuples:
-                logger.warning(f"⚠️ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
+                logger.warning(f"âš ï¸ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
                 return 0
 
             saved_count = 0
             total_bookies = sum(len(t[3]) for t in extraction_tuples)
             total_betfair = sum(1 for t in extraction_tuples if t[4])
-            logger.debug(f"💾 Saving OddsPortal data for event {event_id}: {len(extraction_tuples)} period(s), {total_bookies} bookies, {total_betfair} Betfair sections")
+            logger.debug(f"ðŸ’¾ Saving OddsPortal data for event {event_id}: {len(extraction_tuples)} period(s), {total_bookies} bookies, {total_betfair} Betfair sections")
 
             with db_manager.get_session() as session:
                 for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
@@ -344,6 +387,7 @@ class MarketRepository:
                                      Market.event_id == event_id,
                                      Market.bookie_id == bookie.bookie_id,
                                      Market.market_name == market_name,
+                                     Market.market_period == market_period,
                                      Market.choice_group == getattr(b_odds, 'handicap', None),
                                      Market.is_live == False
                                  )
@@ -492,6 +536,7 @@ class MarketRepository:
                                          Market.event_id == event_id,
                                          Market.bookie_id == bookie.bookie_id,
                                          Market.market_name == market_name,
+                                         Market.market_period == market_period,
                                          Market.choice_group == bf_cg,
                                          Market.is_live == False
                                      )

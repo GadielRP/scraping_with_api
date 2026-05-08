@@ -7,11 +7,10 @@ from datetime import datetime
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import refresh_materialized_views
-from infrastructure.persistence.repositories import EventRepository, OddsRepository
+from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.alert_pipeline import evaluate_and_dispatch_alerts_batch
 from modules.jobs.pre_start_check_job.in_game_checks import run_in_game_checks
-from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 from modules.jobs.pre_start_check_job.oddsportal_worker import (
     build_oddsportal_scrape_candidates,
     create_oddsportal_scrape_state,
@@ -21,6 +20,7 @@ from modules.jobs.pre_start_check_job.rescheduled_events import handle_reschedul
 from modules.jobs.pre_start_check_job.timestamp_corrections import check_recently_started_events_for_timestamp_corrections
 from modules.jobs.pre_start_check_job.timing import minutes_until_start, should_extract_odds_for_event
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
+from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
 from modules.observations import sport_observation_service
 
@@ -126,28 +126,18 @@ def run_pre_start_check_job(scheduler) -> None:
                     continue
 
                 event_info["odds_response"] = final_odds_response
-                final_odds_data = extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
-                if not final_odds_data:
-                    continue
-
-                upserted_id = OddsRepository.upsert_event_odds(event_data["id"], final_odds_data)
-                if not upserted_id:
-                    continue
-
-                if OddsRepository.create_odds_snapshot(event_data["id"], final_odds_data):
+                ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
+                    event_data["id"],
+                    final_odds_response,
+                    source="pre_start_check",
+                )
+                if ingestion_result.markets_saved > 0 or ingestion_result.dual_process_market_available:
                     event_info["event_with_odds"] = {
                         "event_id": event_data["id"],
                         "start_time": event_data["start_time_utc"],
                         "initial_minutes": minutes,
                     }
                     events_with_odds_extracted.append(event_info["event_with_odds"])
-
-                    try:
-                        from infrastructure.persistence.repositories import MarketRepository
-
-                        MarketRepository.save_markets_from_response(event_data["id"], final_odds_response)
-                    except Exception as market_exc:
-                        logger.warning(f"Error saving markets to DB for event {event_data['id']}: {market_exc}")
 
                     if event_data["sport"] in ["Tennis", "Tennis Doubles"]:
                         if not sport_observation_service.event_has_observations(event_data["id"]):
@@ -158,6 +148,8 @@ def run_pre_start_check_job(scheduler) -> None:
                                 observations = api_client.get_event_results(event_id=event_data["id"], update_court_type=True)
                                 if observations:
                                     event_info["observations"] = observations
+                else:
+                    logger.warning("No market odds saved for event %s: %s", event_data["id"], ingestion_result.reason)
             except Exception as exc:
                 logger.error(f"Error processing upcoming event odds {event_info.get('event_id', 'unknown')}: {exc}")
 

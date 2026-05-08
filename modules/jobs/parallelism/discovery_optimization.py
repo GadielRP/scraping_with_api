@@ -6,10 +6,9 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple
 
-from infrastructure.persistence.repositories import EventRepository, OddsRepository
-from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
+from infrastructure.persistence.repositories import EventRepository
+from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
-from shared.odds_utils import process_event_odds_from_dropping_odds
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +66,7 @@ def parallel_odds_checking(
         if not odds_data:
             return event_id, None
 
-        processed_odds_data = extract_final_odds_from_response(odds_data, initial_odds_extraction=True)
-        return event_id, processed_odds_data
+        return event_id, odds_data
 
     events_with_odds = {}
     events_to_delete = []
@@ -110,21 +108,18 @@ def batch_process_odds(events_with_odds: Dict[str, Dict], events: List[Dict]) ->
 
     for event_data in events:
         event_id = str(_event_id(event_data))
-        if event_id not in events_with_odds:
+        odds_response = events_with_odds.get(event_id) or events_with_odds.get(int(event_id))
+        if not odds_response:
             continue
 
         try:
-            odds_data = events_with_odds[event_id]
-
-            snapshot = OddsRepository.create_odds_snapshot(int(event_id), odds_data)
-            if not snapshot:
-                logger.debug("Failed to create odds snapshot for event %s", event_id)
-                skipped_count += 1
-                continue
-
-            upserted_id = OddsRepository.upsert_event_odds(int(event_id), odds_data)
-            if not upserted_id:
-                logger.debug("Failed to upsert event odds for event %s", event_id)
+            ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
+                int(event_id),
+                odds_response,
+                source="parallel_odds_checking",
+            )
+            if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
+                logger.debug("Failed to save market odds for event %s: %s", event_id, ingestion_result.reason)
                 skipped_count += 1
                 continue
 
@@ -219,17 +214,17 @@ def process_with_parallel_db_ops(
             if not event:
                 return False, f"Failed to upsert event {event_id}"
 
-            odds_data = process_event_odds_from_dropping_odds(event_id, odds_map)
-            if not odds_data:
+            odds_map_entry = odds_map.get(event_id) or odds_map.get(str(event_id)) or odds_map.get(int(event_id))
+            if not odds_map_entry:
                 return False, f"No odds data found for event {event_id}"
 
-            snapshot = OddsRepository.create_odds_snapshot(int(event_id), odds_data)
-            if not snapshot:
-                return False, f"Failed to create odds snapshot for event {event_id}"
-
-            upserted_id = OddsRepository.upsert_event_odds(int(event_id), odds_data)
-            if not upserted_id:
-                return False, f"Failed to upsert event odds for event {event_id}"
+            ingestion_result = MarketOddsIngestionService.save_from_dropping_odds_map_entry(
+                int(event_id),
+                odds_map_entry,
+                source=discovery_source or "dropping_odds",
+            )
+            if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
+                return False, f"Failed to save market odds for event {event_id}: {ingestion_result.reason}"
 
             return True, f"Successfully processed event {event_id}"
         except Exception as exc:

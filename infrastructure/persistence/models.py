@@ -258,7 +258,7 @@ class Market(Base):
     # Constraints
     __table_args__ = (
         # Each bookie can have one market per event+name+line+live-status combination
-        UniqueConstraint('event_id', 'bookie_id', 'market_name', 'choice_group', 'is_live', name='unique_market_per_event_bookie'),
+        UniqueConstraint('event_id', 'bookie_id', 'market_name', 'market_period', 'choice_group', 'is_live', name='unique_market_per_event_bookie'),
         Index('idx_markets_event_bookie_live_name_period', 'event_id', 'bookie_id', 'is_live', 'market_name', 'market_period'),
         Index('idx_markets_event_bookie_live_group_period', 'event_id', 'bookie_id', 'is_live', 'market_group', 'market_period'),
     )

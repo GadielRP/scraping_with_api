@@ -114,6 +114,7 @@ class DatabaseManager:
             
             # Check and fix column order (bookie_id should be next to event_id)
             self._reorder_markets_columns()
+            self._migrate_market_period_identity()
 
             # Ensure normalized event entity tables/links exist before generic column sync.
             self._migrate_events_to_participants_competitions()
@@ -334,7 +335,7 @@ class DatabaseManager:
                     
                     session.execute(text(
                         "ALTER TABLE markets ADD CONSTRAINT unique_market_per_event_bookie "
-                        "UNIQUE (event_id, bookie_id, market_name, choice_group, is_live)"
+                        "UNIQUE (event_id, bookie_id, market_name, market_period, choice_group, is_live)"
                     ))
                     logger.info("  ✅ Added new constraint: unique_market_per_event_bookie (includes is_live)")
                 except Exception as e:
@@ -471,6 +472,128 @@ class DatabaseManager:
                     pass
             except Exception:
                 pass
+
+    def _migrate_market_period_identity(self):
+        """Make market identity period-aware for normalized odds ingestion."""
+        try:
+            from sqlalchemy import inspect
+
+            inspector = inspect(self.engine)
+            if 'markets' not in inspector.get_table_names():
+                return
+
+            with self.get_session() as session:
+                session.execute(text(
+                    "DROP INDEX IF EXISTS unique_market_per_event_bookie_period_line"
+                ))
+                session.execute(text(
+                    "ALTER TABLE markets DROP CONSTRAINT IF EXISTS unique_market_per_event_bookie"
+                ))
+                session.commit()
+
+            with self.get_session() as session:
+                self._deduplicate_markets_for_period_identity(session)
+
+            with self.get_session() as session:
+                try:
+                    session.execute(text(
+                        "ALTER TABLE markets ADD CONSTRAINT unique_market_per_event_bookie "
+                        "UNIQUE (event_id, bookie_id, market_name, market_period, choice_group, is_live)"
+                    ))
+                    logger.info("Ensured period-aware markets unique constraint")
+                except Exception as exc:
+                    logger.warning("Could not rebuild period-aware markets constraint: %s", exc)
+                    session.rollback()
+
+            with self.get_session() as session:
+                try:
+                    session.execute(text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS unique_market_per_event_bookie_period_line "
+                        "ON markets (event_id, bookie_id, market_name, market_period, COALESCE(choice_group, ''), is_live)"
+                    ))
+                    logger.info("Ensured functional unique index unique_market_per_event_bookie_period_line")
+                except Exception as exc:
+                    logger.error("Could not create functional market uniqueness index after dedupe: %s", exc)
+                    session.rollback()
+        except Exception as e:
+            logger.error(f"Market period identity migration failed: {e}")
+            logger.error(traceback.format_exc())
+
+    def _deduplicate_markets_for_period_identity(self, session):
+        """Merge duplicate markets that differ only by NULL choice_group uniqueness semantics."""
+        session.execute(text("""
+            DO $$
+            DECLARE
+                dup RECORD;
+                dup_choice RECORD;
+                keeper_choice_id INTEGER;
+            BEGIN
+                FOR dup IN
+                    WITH ranked AS (
+                        SELECT
+                            market_id,
+                            FIRST_VALUE(market_id) OVER (
+                                PARTITION BY event_id, bookie_id, market_name, market_period, COALESCE(choice_group, ''), is_live
+                                ORDER BY collected_at DESC NULLS LAST, market_id DESC
+                            ) AS keeper_id,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY event_id, bookie_id, market_name, market_period, COALESCE(choice_group, ''), is_live
+                                ORDER BY collected_at DESC NULLS LAST, market_id DESC
+                            ) AS rn
+                        FROM markets
+                    )
+                    SELECT market_id, keeper_id
+                    FROM ranked
+                    WHERE rn > 1
+                LOOP
+                    FOR dup_choice IN
+                        SELECT *
+                        FROM market_choices
+                        WHERE market_id = dup.market_id
+                    LOOP
+                        SELECT choice_id
+                        INTO keeper_choice_id
+                        FROM market_choices
+                        WHERE market_id = dup.keeper_id
+                          AND choice_name = dup_choice.choice_name
+                        LIMIT 1;
+
+                        IF keeper_choice_id IS NULL THEN
+                            UPDATE market_choices
+                            SET market_id = dup.keeper_id
+                            WHERE choice_id = dup_choice.choice_id;
+                        ELSE
+                            UPDATE market_choice_snapshots
+                            SET choice_id = keeper_choice_id
+                            WHERE choice_id = dup_choice.choice_id;
+
+                            UPDATE market_choices keeper
+                            SET
+                                initial_odds = COALESCE(keeper.initial_odds, dup_choice.initial_odds),
+                                current_odds = COALESCE(dup_choice.current_odds, keeper.current_odds),
+                                change = COALESCE(dup_choice.change, keeper.change)
+                            WHERE keeper.choice_id = keeper_choice_id;
+
+                            DELETE FROM market_choices
+                            WHERE choice_id = dup_choice.choice_id;
+                        END IF;
+                    END LOOP;
+
+                    UPDATE markets keeper
+                    SET
+                        market_group = COALESCE(keeper.market_group, duplicate.market_group),
+                        collected_at = GREATEST(keeper.collected_at, duplicate.collected_at)
+                    FROM markets duplicate
+                    WHERE keeper.market_id = dup.keeper_id
+                      AND duplicate.market_id = dup.market_id;
+
+                    DELETE FROM markets
+                    WHERE market_id = dup.market_id;
+                END LOOP;
+            END $$;
+        """))
+        session.commit()
+        logger.info("Merged duplicate markets for period-aware uniqueness")
 
     def _migrate_events_to_participants_competitions(self):
         """

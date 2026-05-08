@@ -7,11 +7,10 @@ from typing import Dict, List
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from modules.sofascore import api_client as default_api_client
-from shared.odds_utils import validate_odds_data
 
 from .constants import DEFAULT_DAILY_DISCOVERY_SPORTS
 from .filters import filter_events_present_in_odds_feed, filter_events_starting_after_threshold
-from .odds_parser import parse_today_odds_response
+from .odds_parser import parse_today_market_odds_response
 from .persistence import persist_event_with_odds
 
 logger = logging.getLogger(__name__)
@@ -45,7 +44,7 @@ class DailyDiscoveryExtractor:
                         DailyDiscoveryRepository.update_sport_status(date, sport, "failed")
                         continue
 
-                    odds_map = parse_today_odds_response(odds_response)
+                    odds_map = parse_today_market_odds_response(odds_response)
                     if not odds_map:
                         logger.info("No events with odds found for %s", sport)
                         continue
@@ -88,8 +87,7 @@ class DailyDiscoveryExtractor:
                         success = persist_event_with_odds(self.api_client, event, event_odds)
                         if success:
                             sport_events_inserted += 1
-                            if validate_odds_data(event_odds):
-                                sport_odds_inserted += 1
+                            sport_odds_inserted += 1
 
                     DailyDiscoveryRepository.update_sport_status(date, sport, "completed")
                     logger.info(

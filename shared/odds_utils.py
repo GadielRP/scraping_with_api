@@ -60,6 +60,9 @@ def fractional_to_decimal(fractional_value: str) -> Optional[Decimal]:
 
 def process_event_odds_from_dropping_odds(event_id: str, odds_map: Dict) -> Dict:
     """
+    LEGACY: used only for old event_odds / odds_snapshot pipeline. Do not use
+    for new market ingestion; use MarketOddsIngestionService instead.
+
     Process odds data from the dropping odds oddsMap for an event and return structured odds data.
     
     Args:
@@ -135,6 +138,9 @@ def process_event_odds_from_dropping_odds(event_id: str, odds_map: Dict) -> Dict
 
 def validate_odds_data(odds_data: Dict) -> bool:
     """
+    LEGACY: validates old flat event_odds payloads. New active jobs should use
+    MarketOddsIngestionService and normalized market payloads instead.
+
     Validate processed odds data for consistency.
     Handles both complete odds data (from discovery) and final odds data (from pre-start checks).
     

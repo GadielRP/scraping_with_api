@@ -2,6 +2,8 @@
 """
 Historical Results Extraction Script
 
+LEGACY: may write old event_odds / odds_snapshot. Do not use after Phase 2 unless intentionally backfilling legacy tables.
+
 This script extracts/updates results for events with id > 269, excluding NBA seasons.
 It processes events in daily batches to avoid API rate limiting/banning.
 It ALWAYS processes events, even if results already exist, to update them with new
