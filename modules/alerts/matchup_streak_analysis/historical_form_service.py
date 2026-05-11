@@ -176,19 +176,6 @@ class HistoricalFormService:
                         )
                         send_debug_telegram(message, personal_chat_id)
 
-                        # Final table: pre-match standings simulation
-                        pre_match_standings = self.standings_calculator.calculate_standings_at(
-                            season_id,
-                            current_event_timestamp,
-                            sport,
-                        )
-                        pre_match_title = f"🏁 PRE-MATCH Standings Simulation ({team_name} - {current_date})"
-                        pre_match_message = format_standings_table_for_telegram(
-                            pre_match_standings,
-                            pre_match_title,
-                            standings_method=get_standings_method(season_id, sport),
-                        )
-                        send_debug_telegram(pre_match_message, personal_chat_id)
                 else:
                     logger.warning("PERSONAL_CHAT_ID not configured - skipping debug standings")
 
