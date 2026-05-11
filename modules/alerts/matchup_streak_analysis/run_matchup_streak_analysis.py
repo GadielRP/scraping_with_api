@@ -53,23 +53,23 @@ class MatchupStreakContext:
     sport: str
     home_team_name: str  # Upcoming event home team
     away_team_name: str  # Upcoming event away team
-    home_team_ranking: Optional[int]  # Ranking of upcoming event's home team
-    away_team_ranking: Optional[int]  # Ranking of upcoming event's away team
-    raw_matchup_event_count: int
-    matchup_matches_analyzed: int  # Matches within 2-year window
-    matchup_home_wins: int  # Wins for upcoming event's home team
-    matchup_away_wins: int  # Wins for upcoming event's away team
-    matchup_draws: int
-    matchup_home_win_rate: float  # Percentage
-    matchup_away_win_rate: float  # Percentage
-    matchup_draw_rate: float  # Percentage
-    matchup_matches: List[Dict]  # All H2H matches with detailed information (most recent first)
-    matchup_home_net_points: int  # Net points when upcoming home team was home
-    matchup_away_net_points: int  # Net points when upcoming home team was away
-    matchup_streak_summary: str  # e.g., "Home team won last 3 matches"
-    matchup_streak_count: int
-    matchup_avg_home_score: float  # Avg score for upcoming home team
-    matchup_avg_away_score: float  # Avg score for upcoming away team
+    sofascores_snapshot_home_team_ranking: Optional[int]  # Ranking of upcoming event's home team
+    sofascores_snapshot_away_team_ranking: Optional[int]  # Ranking of upcoming event's away team
+    raw_h2h_matchup_event_count: int
+    h2h_matchup_matches_analyzed: int  # Matches within 2-year window
+    h2h_matchup_home_wins: int  # Wins for upcoming event's home team
+    h2h_matchup_away_wins: int  # Wins for upcoming event's away team
+    h2h_matchup_draws: int
+    h2h_matchup_home_win_rate: float  # Percentage
+    h2h_matchup_away_win_rate: float  # Percentage
+    h2h_matchup_draw_rate: float  # Percentage
+    h2h_matchup_matches: List[Dict]  # All H2H matches with detailed information (most recent first)
+    h2h_matchup_home_net_points: int  # Net points when upcoming home team was home
+    h2h_matchup_away_net_points: int  # Net points when upcoming home team was away
+    h2h_matchup_streak_summary: str  # e.g., "Home team won last 3 matches"
+    h2h_matchup_streak_count: int
+    h2h_matchup_avg_home_score: float  # Avg score for upcoming home team
+    h2h_matchup_avg_away_score: float  # Avg score for upcoming away team
     minutes_until_start: int
     # Team results data
     home_team_results: List[Dict]  # Last 10 results for home team
@@ -127,7 +127,8 @@ def build_matchup_streak_context(
     observations: Optional[List[Dict]] = None,
     home_team_id: int = None,
     away_team_id: int = None,
-    event_odds: Optional[Any] = None
+    event_odds: Optional[Any] = None,
+    debug_mode: bool = False,
 ) -> Optional[MatchupStreakContext]:
     """
     Analyze H2H events and build a MatchupStreakContext for an upcoming event.
@@ -190,15 +191,15 @@ def build_matchup_streak_context(
             logger.info(f"📊 Matchup analysis: Found {len(results)} matches (no filtering)")
 
         # Calculate H2H statistics relative to upcoming event teams
-        matchup_home_wins = sum(1 for r in results if r['winner'] == '1')
-        matchup_away_wins = sum(1 for r in results if r['winner'] == '2')
-        matchup_draws = sum(1 for r in results if r['winner'] == 'X')
+        h2h_matchup_home_wins = sum(1 for r in results if r['winner'] == '1')
+        h2h_matchup_away_wins = sum(1 for r in results if r['winner'] == '2')
+        h2h_matchup_draws = sum(1 for r in results if r['winner'] == 'X')
         total = len(results)
 
-        matchup_matches = results  # Already in most recent first order
+        h2h_matchup_matches = results  # Already in most recent first order
 
         # Extract results list for streak detection
-        all_h2h_results = [match['winner'] for match in matchup_matches]
+        all_h2h_results = [match['winner'] for match in h2h_matchup_matches]
         streak_text, streak_count = detect_streak(all_h2h_results, home_team_name, away_team_name)
 
         # Calculate averages relative to upcoming event teams
@@ -206,13 +207,13 @@ def build_matchup_streak_context(
         avg_away = sum(r['away_score'] for r in results) / total if total > 0 else 0
 
         # Calculate H2H net points by role
-        matchup_home_net_points = 0
-        matchup_away_net_points = 0
+        h2h_matchup_home_net_points = 0
+        h2h_matchup_away_net_points = 0
         for r in results:
             if r.get('upcoming_home_role') == 'home':
-                matchup_home_net_points += (r['home_score'] - r['away_score'])
+                h2h_matchup_home_net_points += (r['home_score'] - r['away_score'])
             else:
-                matchup_away_net_points += (r['home_score'] - r['away_score'])
+                h2h_matchup_away_net_points += (r['home_score'] - r['away_score'])
 
         # -----------------------------------------------------------------
         # Team form retrieval (parallel)
@@ -256,7 +257,8 @@ def build_matchup_streak_context(
                     season_year=target_season_year,
                     observations=observations,
                     exclude_event_id=event_id,
-                    event_start_timestamp=event_start_ts
+                    event_start_timestamp=event_start_ts,
+                    debug_mode=debug_mode,
                 )
             else:
                 logger.debug(f"No home_team_id provided for {home_team_name}")
@@ -272,7 +274,8 @@ def build_matchup_streak_context(
                     season_year=target_season_year,
                     observations=observations,
                     exclude_event_id=event_id,
-                    event_start_timestamp=event_start_ts
+                    event_start_timestamp=event_start_ts,
+                    debug_mode=debug_mode,
                 )
             else:
                 logger.debug(f"No away_team_id provided for {away_team_name}")
@@ -349,8 +352,8 @@ def build_matchup_streak_context(
         # -----------------------------------------------------------------
         # Standings snapshot
         # -----------------------------------------------------------------
-        home_team_ranking = None
-        away_team_ranking = None
+        sofascores_snapshot_home_team_ranking = None
+        sofascores_snapshot_away_team_ranking = None
         home_team_standing = None
         away_team_standing = None
 
@@ -362,10 +365,10 @@ def build_matchup_streak_context(
                 away_team_id
             )
 
-            if home_team_standing and home_team_ranking is None:
-                home_team_ranking = home_team_standing.get('position')
-            if away_team_standing and away_team_ranking is None:
-                away_team_ranking = away_team_standing.get('position')
+            if home_team_standing and sofascores_snapshot_home_team_ranking is None:
+                sofascores_snapshot_home_team_ranking = home_team_standing.get('position')
+            if away_team_standing and sofascores_snapshot_away_team_ranking is None:
+                sofascores_snapshot_away_team_ranking = away_team_standing.get('position')
 
             if home_team_standing or away_team_standing:
                 logger.debug(
@@ -381,9 +384,9 @@ def build_matchup_streak_context(
                 None
             )
             if rankings_obs:
-                home_team_ranking = rankings_obs.get('home_ranking')
-                away_team_ranking = rankings_obs.get('away_ranking')
-                logger.debug(f"Extracted rankings from observations: home={home_team_ranking}, away={away_team_ranking}")
+                sofascores_snapshot_home_team_ranking = rankings_obs.get('home_ranking')
+                sofascores_snapshot_away_team_ranking = rankings_obs.get('away_ranking')
+                logger.debug(f"Extracted rankings from observations: home={sofascores_snapshot_home_team_ranking}, away={sofascores_snapshot_away_team_ranking}")
             else:
                 logger.debug(f"No rankings found in observations for event {event_id}")
 
@@ -428,23 +431,23 @@ def build_matchup_streak_context(
             sport=sport,
             home_team_name=home_team_name,
             away_team_name=away_team_name,
-            home_team_ranking=home_team_ranking,
-            away_team_ranking=away_team_ranking,
-            raw_matchup_event_count=len(matchup_events),
-            matchup_matches_analyzed=total,
-            matchup_home_wins=matchup_home_wins,
-            matchup_away_wins=matchup_away_wins,
-            matchup_draws=matchup_draws,
-            matchup_home_win_rate=round(matchup_home_wins / total * 100, 1) if total > 0 else 0,
-            matchup_away_win_rate=round(matchup_away_wins / total * 100, 1) if total > 0 else 0,
-            matchup_draw_rate=round(matchup_draws / total * 100, 1) if total > 0 else 0,
-            matchup_matches=matchup_matches,
-            matchup_home_net_points=matchup_home_net_points,
-            matchup_away_net_points=matchup_away_net_points,
-            matchup_streak_summary=streak_text,
-            matchup_streak_count=streak_count,
-            matchup_avg_home_score=round(avg_home, 1),
-            matchup_avg_away_score=round(avg_away, 1),
+            sofascores_snapshot_home_team_ranking=sofascores_snapshot_home_team_ranking,
+            sofascores_snapshot_away_team_ranking=sofascores_snapshot_away_team_ranking,
+            raw_h2h_matchup_event_count=len(matchup_events),
+            h2h_matchup_matches_analyzed=total,
+            h2h_matchup_home_wins=h2h_matchup_home_wins,
+            h2h_matchup_away_wins=h2h_matchup_away_wins,
+            h2h_matchup_draws=h2h_matchup_draws,
+            h2h_matchup_home_win_rate=round(h2h_matchup_home_wins / total * 100, 1) if total > 0 else 0,
+            h2h_matchup_away_win_rate=round(h2h_matchup_away_wins / total * 100, 1) if total > 0 else 0,
+            h2h_matchup_draw_rate=round(h2h_matchup_draws / total * 100, 1) if total > 0 else 0,
+            h2h_matchup_matches=h2h_matchup_matches,
+            h2h_matchup_home_net_points=h2h_matchup_home_net_points,
+            h2h_matchup_away_net_points=h2h_matchup_away_net_points,
+            h2h_matchup_streak_summary=streak_text,
+            h2h_matchup_streak_count=streak_count,
+            h2h_matchup_avg_home_score=round(avg_home, 1),
+            h2h_matchup_avg_away_score=round(avg_away, 1),
             minutes_until_start=minutes_until_start,
             # Team results data
             home_team_results=home_team_results,
@@ -517,7 +520,7 @@ def should_send_streak_alert(streak: MatchupStreakContext) -> bool:
         return False
 
     # Check if we have Matchup data
-    has_h2h_data = streak.matchup_matches_analyzed >= 1
+    has_h2h_data = streak.h2h_matchup_matches_analyzed >= 1
 
     # Check if we have team form data
     has_team_form = (
@@ -533,7 +536,7 @@ def should_send_streak_alert(streak: MatchupStreakContext) -> bool:
     if should_send:
         reasons = []
         if has_h2h_data:
-            reasons.append(f"Matchup data ({streak.matchup_matches_analyzed} matches)")
+            reasons.append(f"Matchup data ({streak.h2h_matchup_matches_analyzed} matches)")
         if has_team_form:
             reasons.append("team form data")
         if has_winning_odds:
@@ -545,7 +548,7 @@ def should_send_streak_alert(streak: MatchupStreakContext) -> bool:
     else:
         logger.info(
             f"⏭️ Matchup streak alert skipped for {streak.participants}: "
-            f"No meaningful data (Matchup: {streak.matchup_matches_analyzed}, "
+            f"No meaningful data (Matchup: {streak.h2h_matchup_matches_analyzed}, "
             f"Home form: {streak.home_team_wins + streak.home_team_losses + streak.home_team_draws}, "
             f"Away form: {streak.away_team_wins + streak.away_team_losses + streak.away_team_draws}, "
             f"Winning odds: {has_winning_odds})"

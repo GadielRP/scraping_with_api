@@ -108,7 +108,7 @@ def create_matchup_streak_message(streak) -> str:
         elif streak.sport == "Basketball":
             message += "🏀 "
         elif streak.sport == "Tennis":
-            message += f"⚜️ H~{streak.home_team_ranking} vs A~{streak.away_team_ranking}\n🎾 "
+            message += f"⚜️ H~{streak.sofascores_snapshot_home_team_ranking} vs A~{streak.sofascores_snapshot_away_team_ranking}\n🎾 "
         elif streak.sport == "Hockey":
             message += "🏒 "
         elif streak.sport == "Baseball":
@@ -169,7 +169,7 @@ def create_matchup_streak_message(streak) -> str:
                 position = standing.get("position")
                 matches = standing.get("matches")
                 wins = standing.get("wins")
-                matchup_draws = standing.get("matchup_draws")
+                h2h_matchup_draws = standing.get("h2h_matchup_draws")
                 losses = standing.get("losses")
                 points = standing.get("points")
                 goal_diff_formatted = standing.get("goal_diff_formatted")
@@ -191,8 +191,8 @@ def create_matchup_streak_message(streak) -> str:
                 record_parts = []
                 if wins is not None:
                     record_parts.append(f"{wins}W")
-                if matchup_draws is not None:
-                    record_parts.append(f"{matchup_draws}D")
+                if h2h_matchup_draws is not None:
+                    record_parts.append(f"{h2h_matchup_draws}D")
                 if losses is not None:
                     record_parts.append(f"{losses}L")
                 if record_parts:
@@ -213,13 +213,13 @@ def create_matchup_streak_message(streak) -> str:
                 message += f"{streak.away_team_name}: No standings data\n"
 
         message += "\n📈 H2H (Last 2 Years):\n"
-        message += f"Total Matches: {streak.matchup_matches_analyzed}\n"
+        message += f"Total Matches: {streak.h2h_matchup_matches_analyzed}\n"
 
-        if hasattr(streak, "matchup_matches") and streak.matchup_matches:
-            if streak.matchup_home_wins > 0:
+        if hasattr(streak, "h2h_matchup_matches") and streak.h2h_matchup_matches:
+            if streak.h2h_matchup_home_wins > 0:
                 home_team_home_net = 0
                 home_team_away_net = 0
-                for m in streak.matchup_matches:
+                for m in streak.h2h_matchup_matches:
                     if m.get("winner") == "1":
                         hist_home = m.get("hist_home")
                         if streak.sport in ["Tennis", "Tennis Doubles"] and "hist_home_period1" in m:
@@ -237,10 +237,10 @@ def create_matchup_streak_message(streak) -> str:
                 home_net_str = f"+{home_team_home_net}" if home_team_home_net >= 0 else str(home_team_home_net)
                 away_net_str = f"+{home_team_away_net}" if home_team_away_net >= 0 else str(home_team_away_net)
                 message += (
-                    f"\n{streak.home_team_name}: {streak.matchup_home_wins} wins "
-                    f"({streak.matchup_home_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
+                    f"\n{streak.home_team_name}: {streak.h2h_matchup_home_wins} wins "
+                    f"({streak.h2h_matchup_home_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
                 )
-                for match in streak.matchup_matches:
+                for match in streak.h2h_matchup_matches:
                     if match.get("winner") == "1":
                         hist_home = match.get("hist_home", "Unknown")
                         hist_away = match.get("hist_away", "Unknown")
@@ -259,10 +259,10 @@ def create_matchup_streak_message(streak) -> str:
                         else:
                             message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
 
-            if streak.matchup_away_wins > 0:
+            if streak.h2h_matchup_away_wins > 0:
                 away_team_home_net = 0
                 away_team_away_net = 0
-                for m in streak.matchup_matches:
+                for m in streak.h2h_matchup_matches:
                     if m.get("winner") == "2":
                         hist_home = m.get("hist_home")
                         if streak.sport in ["Tennis", "Tennis Doubles"] and "hist_home_period1" in m:
@@ -280,10 +280,10 @@ def create_matchup_streak_message(streak) -> str:
                 home_net_str = f"+{away_team_home_net}" if away_team_home_net >= 0 else str(away_team_home_net)
                 away_net_str = f"+{away_team_away_net}" if away_team_away_net >= 0 else str(away_team_away_net)
                 message += (
-                    f"\n{streak.away_team_name}: {streak.matchup_away_wins} wins "
-                    f"({streak.matchup_away_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
+                    f"\n{streak.away_team_name}: {streak.h2h_matchup_away_wins} wins "
+                    f"({streak.h2h_matchup_away_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
                 )
-                for match in streak.matchup_matches:
+                for match in streak.h2h_matchup_matches:
                     if match.get("winner") == "2":
                         hist_home = match.get("hist_home", "Unknown")
                         hist_away = match.get("hist_away", "Unknown")
@@ -294,9 +294,9 @@ def create_matchup_streak_message(streak) -> str:
                         date_prefix = f"{match_date} " if match_date else ""
                         message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
 
-            if streak.matchup_draws > 0:
-                message += f"\nDraws: {streak.matchup_draws} ({streak.matchup_draw_rate}%)\n"
-                for match in streak.matchup_matches:
+            if streak.h2h_matchup_draws > 0:
+                message += f"\nDraws: {streak.h2h_matchup_draws} ({streak.h2h_matchup_draw_rate}%)\n"
+                for match in streak.h2h_matchup_matches:
                     if match.get("winner") == "X":
                         hist_home = match.get("hist_home", "Unknown")
                         hist_away = match.get("hist_away", "Unknown")
@@ -307,10 +307,10 @@ def create_matchup_streak_message(streak) -> str:
                         date_prefix = f"{match_date} " if match_date else ""
                         message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
         else:
-            message += f"{streak.home_team_name}: {streak.matchup_home_wins} wins ({streak.matchup_home_win_rate}%)\n"
-            message += f"{streak.away_team_name}: {streak.matchup_away_wins} wins ({streak.matchup_away_win_rate}%)\n"
-            if streak.matchup_draws > 0:
-                message += f"Draws: {streak.matchup_draws} ({streak.matchup_draw_rate}%)\n"
+            message += f"{streak.home_team_name}: {streak.h2h_matchup_home_wins} wins ({streak.h2h_matchup_home_win_rate}%)\n"
+            message += f"{streak.away_team_name}: {streak.h2h_matchup_away_wins} wins ({streak.h2h_matchup_away_win_rate}%)\n"
+            if streak.h2h_matchup_draws > 0:
+                message += f"Draws: {streak.h2h_matchup_draws} ({streak.h2h_matchup_draw_rate}%)\n"
 
         message += "\n"
 

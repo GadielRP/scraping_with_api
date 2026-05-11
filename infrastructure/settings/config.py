@@ -85,6 +85,9 @@ class Config:
     # Timezone
     TIMEZONE = os.getenv('TIMEZONE', 'America/Mexico_City')
     
+    # pre start check settings
+    global_debug_mode = os.getenv('global_debug_mode', 'true').lower() == 'true'
+
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')  # Reset to INFO after debugging
     LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

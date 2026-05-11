@@ -18,6 +18,7 @@ from modules.alerts.matchup_streak_analysis import build_matchup_streak_context,
 from modules.prediction import prediction_logger
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.sofascore import api_client
+from modules.alerts.dual_process.run_dual_process import prediction_engine
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +32,13 @@ class EventAlertProcessor:
         op_event_states: Optional[dict] = None,
         op_event_ids: Optional[set] = None,
         op_data_cache: Optional[dict] = None,
+        debug_mode: Optional[bool] = False,
     ):
         self.event_repo = event_repo
         self.op_event_states = op_event_states
         self.op_event_ids = op_event_ids
         self.op_data_cache = op_data_cache
+        self.debug_mode = debug_mode
 
     def process_event(self, event_payload: dict) -> None:
         """
@@ -73,6 +76,28 @@ class EventAlertProcessor:
         streak_analysis, should_send_streak = self._ensure_matchup_streak_analysis(
             event_payload, event_obj, season_id, minutes_until_start
         )
+
+       
+        if streak_analysis and self.debug_mode == True:
+            import os
+            import pprint
+            
+            debug_dir = "debug/matchup_streak_analysis"
+            os.makedirs(debug_dir, exist_ok=True)
+            
+            # Format participants for filename
+            safe_participants = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in streak_analysis.participants).replace(' ', '_')
+            filename = f"{streak_analysis.event_id}_{safe_participants}.txt"
+            filepath = os.path.join(debug_dir, filename)
+            
+            try:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    for attr, value in streak_analysis.__dict__.items():
+                        f.write(f"{attr}:\n{pprint.pformat(value, width=120)}\n\n")
+            except Exception as e:
+                logger.error(f"Failed to save streak_analysis debug file: {e}")
+
+
         dual_report = self._ensure_dual_process_evaluation(
             event_payload, event_obj, is_tracked_season, is_selected_source, minutes_until_start
         )
@@ -142,6 +167,7 @@ class EventAlertProcessor:
     ) -> Tuple[Optional[dict], bool]:
         """Builds or retrieves matchup streak analysis."""
         streak_analysis = event_payload.get("streak_analysis")
+        
         should_send = event_payload.get("should_send_streak_alert", False)
 
         if streak_analysis is None and minutes_until_start == 30 and getattr(event_obj, "custom_id", None):
@@ -171,6 +197,7 @@ class EventAlertProcessor:
                     home_team_id=meta.get("home_team_id"),
                     away_team_id=meta.get("away_team_id"),
                     event_odds=dual_process_odds,
+                    debug_mode=self.debug_mode,
                 )
                 should_send = bool(streak_analysis and should_send_streak_alert(streak_analysis))
             except Exception as exc:
@@ -188,7 +215,7 @@ class EventAlertProcessor:
 
         if (is_selected_source or is_tracked_season) and minutes_until_start in {30, 0}:
             try:
-                from modules.alerts.dual_process.run_dual_process import prediction_engine
+                
                 return prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
             except Exception as exc:
                 logger.error(f"Error running dual process evaluation for event {event_obj.id}: {exc}")
@@ -233,7 +260,7 @@ class EventAlertProcessor:
             or (dual_report.process1_report and dual_report.process1_status in ["partial", "no_match", "no_candidates"])
         ):
             if minutes_until_start in {30, 0}:
-                from modules.alerts.dual_process.run_dual_process import prediction_engine
+                
                 prediction_engine.send_alerts(pre_start_notifier, [dual_report])
 
                 # Log Process 1 prediction if it's kick-off time
@@ -256,6 +283,7 @@ def evaluate_and_dispatch_alerts_batch(
     op_event_states=None,
     op_event_ids=None,
     op_data_cache=None,
+    debug_mode=False,
 ):
     """Entry point to evaluate and dispatch alerts for a batch of events."""
     if not events_for_alerts:
@@ -270,6 +298,7 @@ def evaluate_and_dispatch_alerts_batch(
         op_event_states=op_event_states,
         op_event_ids=op_event_ids,
         op_data_cache=op_data_cache,
+        debug_mode=debug_mode,
     )
 
     # Parallelize the processing of each event

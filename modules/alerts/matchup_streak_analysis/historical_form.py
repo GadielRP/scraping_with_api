@@ -546,7 +546,8 @@ def get_team_last_results_by_id(
     observations: Optional[List[Dict]] = None,
     exclude_event_id: Optional[int] = None,
     min_results: int = None,
-    event_start_timestamp: float = None
+    event_start_timestamp: float = None,
+    debug_mode: bool = False
 ) -> Tuple[List[Dict], int]:
     """
     Get team results using team_id with flexible filtering.
@@ -588,7 +589,7 @@ def get_team_last_results_by_id(
             sport=sport,
             exclude_event_id=exclude_event_id,
             current_event_timestamp=event_start_timestamp,
-            send_debug_standings=False  # Toggle: set True to send debug standings to personal chat
+            send_debug_standings=debug_mode,  # Toggle: via .env global_debug_mode
         )
 
     # =====================================================================

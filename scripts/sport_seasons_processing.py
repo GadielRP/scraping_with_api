@@ -117,8 +117,8 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
     
     logger.info(f"Starting to fetch events for tournament {tournament_id}, season {season_id}")
     
-    #set to true for full season, set currently to 5 for latest 5 batches per season.
-    while fetch_number < 5:
+    #set to True for full season, set currently to 5 for latest 5 batches per season.
+    while True:
         endpoint = f"/unique-tournament/{tournament_id}/season/{season_id}/events/last/{fetch_number}"
         logger.info(f"Fetching batch {fetch_number}...")
         

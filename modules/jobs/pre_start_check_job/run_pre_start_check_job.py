@@ -27,7 +27,7 @@ from modules.observations import sport_observation_service
 logger = logging.getLogger(__name__)
 
 
-def run_pre_start_check_job(scheduler) -> None:
+def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
     """Run the pre-start check flow."""
     logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
 
@@ -200,6 +200,7 @@ def run_pre_start_check_job(scheduler) -> None:
                     op_event_states=op_event_states,
                     op_event_ids=op_event_ids,
                     op_data_cache=op_data_cache,
+                    debug_mode=global_debug_mode
                 )
         else:
             logger.debug("No events captured at key moments for alert evaluation")
