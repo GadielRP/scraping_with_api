@@ -36,9 +36,12 @@ def _normalize_team_name_for_sort(team_name: str) -> str:
 def build_sort_key(stats: Dict, standings_method: str) -> Tuple:
     """Build method-specific sort key for deterministic simplified ranking."""
     if standings_method == "football_3_1_0":
+        # Simplified football ranking: points first, then goal differential,
+        # then goals for, with wins as a final generic fallback.
         return (
             stats.get("points", 0),
             stats.get("goal_diff", 0),
+            stats.get("goals_for", 0),
             stats.get("wins", 0),
         )
 
@@ -50,6 +53,8 @@ def build_sort_key(stats: Dict, standings_method: str) -> Tuple:
         )
 
     if standings_method == "nhl_2_1_0_otl":
+        # TODO: For full NHL exactness, separate ROW/OT/SO wins and other
+        # official tie-break details when the source data supports them.
         if stats.get("regulation_wins") is not None:
             return (
                 stats.get("points", 0),

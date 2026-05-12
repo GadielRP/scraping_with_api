@@ -87,6 +87,45 @@ def _calculate_ranking_prediction(streak, home_total_games, away_total_games) ->
     }
 
 
+def _format_signed_metric(value: Any) -> str:
+    """Format numeric metrics with a signed prefix when possible."""
+    if value is None:
+        return "N/A"
+    try:
+        numeric = float(value)
+        if numeric.is_integer():
+            numeric = int(numeric)
+        return f"{numeric:+d}" if isinstance(numeric, int) else f"{numeric:+g}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _format_compact_standing(
+    standing: Optional[Dict],
+    legacy_position: Any = None,
+    legacy_points: Any = None,
+    legacy_gp: Any = None,
+    legacy_diff: Any = None,
+) -> str:
+    """Format a standing snapshot with rank, points, GP and DIFF."""
+    standing = standing if isinstance(standing, dict) else {}
+    rank = standing.get("rank", standing.get("position", legacy_position))
+    points = standing.get("points", legacy_points)
+    gp = standing.get("gp", standing.get("games_played", legacy_gp))
+    diff = standing.get("diff", standing.get("goal_diff", legacy_diff))
+
+    parts: List[str] = []
+    if rank is not None:
+        parts.append(f"#{rank}")
+    if points is not None:
+        parts.append(f"{points}pts")
+    if gp is not None:
+        parts.append(f"GP:{gp}")
+    if diff is not None:
+        parts.append(f"DIFF:{_format_signed_metric(diff)}")
+    return " ".join(parts)
+
+
 def create_matchup_streak_message(streak) -> str:
     """Create Matchup streak alert message for Telegram."""
     try:
@@ -166,24 +205,14 @@ def create_matchup_streak_message(streak) -> str:
             message += "\n🏆 Standings Snapshot:\n"
 
             def _format_standing_line(team_name: str, standing: Dict) -> str:
-                position = standing.get("position")
-                matches = standing.get("matches")
+                position = standing.get("rank", standing.get("position"))
+                matches = standing.get("gp", standing.get("games_played", standing.get("matches")))
                 wins = standing.get("wins")
                 h2h_matchup_draws = standing.get("h2h_matchup_draws")
                 losses = standing.get("losses")
                 points = standing.get("points")
-                goal_diff_formatted = standing.get("goal_diff_formatted")
-                goal_diff = standing.get("goal_diff")
-
-                if goal_diff_formatted:
-                    goal_diff_display = goal_diff_formatted
-                elif goal_diff is not None:
-                    try:
-                        goal_diff_display = f"{goal_diff:+d}"
-                    except (TypeError, ValueError):
-                        goal_diff_display = str(goal_diff)
-                else:
-                    goal_diff_display = "N/A"
+                goal_diff = standing.get("diff", standing.get("goal_diff"))
+                goal_diff_display = _format_signed_metric(goal_diff)
 
                 parts = [f"{team_name}: ", f"#{position}" if position is not None else "#N/A"]
                 if points is not None:
@@ -198,8 +227,8 @@ def create_matchup_streak_message(streak) -> str:
                 if record_parts:
                     parts.append(f" ({'-'.join(record_parts)})")
                 if matches is not None:
-                    parts.append(f", {matches} played")
-                parts.append(f", GD {goal_diff_display}")
+                    parts.append(f", GP:{matches}")
+                parts.append(f", DIFF:{goal_diff_display}")
                 return "".join(parts)
 
             if home_standing:
@@ -370,26 +399,39 @@ def create_matchup_streak_message(streak) -> str:
                             date_prefix = f"{game_date} " if game_date else ""
 
                             game_net_score = game.get("net_score", 0)
-                            game_role = game.get("role", "home")
+                            game_role = game.get("team_role", game.get("role", "home"))
                             if game_role == "home":
                                 cumulative_home_net += game_net_score
                             else:
                                 cumulative_away_net += game_net_score
 
+                            team_standing_display = _format_compact_standing(
+                                game.get("team_standing"),
+                                legacy_position=game.get("standings_position"),
+                                legacy_points=game.get("standings_points"),
+                                legacy_gp=game.get("standings_gp"),
+                                legacy_diff=game.get("standings_diff"),
+                            )
+                            opponent_standing_display = _format_compact_standing(
+                                game.get("opponent_standing"),
+                                legacy_position=game.get("opponent_standings_position"),
+                                legacy_points=game.get("opponent_standings_points"),
+                                legacy_gp=game.get("opponent_standings_gp"),
+                                legacy_diff=game.get("opponent_standings_diff"),
+                            )
+
                             if is_tennis:
+                                team_prefix = f"[{team_standing_display}] " if team_standing_display else ""
+                                opponent_suffix = f" [{opponent_standing_display}]" if opponent_standing_display else ""
                                 message += (
-                                    f"{date_prefix} ~{game['own_ranking']} {game['result']} vs "
-                                    f"~{game['opponent_ranking']} {game['opponent']} "
-                                    f"({game['home_score']}-{game['away_score']})\n"
+                                    f"{date_prefix}{team_prefix}{game['result']} vs "
+                                    f"{game['opponent']}{opponent_suffix} "
+                                    f"({game['team_score']}-{game['opponent_score']})\n"
                                 )
                             else:
                                 role_indicator = "🏠" if game_role == "home" else "✈️"
-                                team_standings_str = ""
-                                opponent_standings_str = ""
-                                if game.get("standings_position") is not None:
-                                    team_standings_str = f"[#{game['standings_position']}] "
-                                if game.get("opponent_standings_position") is not None:
-                                    opponent_standings_str = f" [#{game['opponent_standings_position']}]"
+                                team_standings_str = f"[{team_standing_display}] " if team_standing_display else ""
+                                opponent_standings_str = f" [{opponent_standing_display}]" if opponent_standing_display else ""
 
                                 message += (
                                     f"{date_prefix}{role_indicator}{team_standings_str}{game['result']} vs "

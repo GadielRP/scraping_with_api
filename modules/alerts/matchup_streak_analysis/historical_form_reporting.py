@@ -23,27 +23,27 @@ def format_standings_table_for_telegram(
     sorted_standings = sorted(standings.items(), key=lambda item: item[1].get("position", 999))
 
     for team_name, stats in sorted_standings:
-        pos = stats.get("position", "?")
+        pos = stats.get("rank", stats.get("position", "?"))
         pts = stats.get("points", 0)
         wins = stats.get("wins", 0)
         draws = stats.get("draws", 0)
         losses = stats.get("losses", 0)
-        gd = stats.get("goal_diff", 0)
+        gd = stats.get("diff", stats.get("goal_diff", 0))
         gd_str = f"+{gd}" if gd > 0 else str(gd)
-        games = stats.get("games_played", 0)
+        games = stats.get("gp", stats.get("games_played", 0))
         pct = stats.get("pct")
         method = standings_method or ""
         ot_losses = stats.get("ot_losses", 0)
         ties = stats.get("ties", 0)
 
         if pct is not None and method == "win_pct":
-            message += f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L) PD:{gd_str}\n"
+            message += f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L) GP:{games} DIFF:{gd_str}\n"
         elif pct is not None and method == "win_pct_half_tie":
-            message += f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L-{ties}T) PD:{gd_str}\n"
+            message += f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L-{ties}T) GP:{games} DIFF:{gd_str}\n"
         elif method in {"nhl_2_1_0_otl", "hockey_3_2_1_0"} and ot_losses > 0:
-            message += f"#{pos} {team_name}: {pts}pts ({wins}W-{losses}L-{ot_losses}OTL) GD:{gd_str}\n"
+            message += f"#{pos} {team_name}: {pts}pts ({wins}W-{losses}L-{ot_losses}OTL) GP:{games} DIFF:{gd_str}\n"
         else:
-            message += f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, {games} played) GD:{gd_str}\n"
+            message += f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, GP:{games}) DIFF:{gd_str}\n"
 
     return message
 

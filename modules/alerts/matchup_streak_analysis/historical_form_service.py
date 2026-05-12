@@ -18,6 +18,32 @@ from .standings_engine import standings_calculator
 logger = logging.getLogger(__name__)
 
 
+def _normalize_standing_snapshot(raw_standing: Dict, standings_method: str = None) -> Dict:
+    """Return a normalized standings snapshot with stable aliases."""
+    standing = dict(raw_standing or {})
+
+    rank = standing.get("rank", standing.get("position"))
+    gp = standing.get("gp", standing.get("games_played"))
+    diff = standing.get("diff", standing.get("goal_diff"))
+
+    standing["rank"] = rank
+    standing["position"] = standing.get("position", rank)
+    standing["gp"] = gp
+    standing["games_played"] = standing.get("games_played", gp)
+    standing["diff"] = diff
+    standing["goal_diff"] = standing.get("goal_diff", diff)
+    standing["points"] = standing.get("points")
+    standing["wins"] = standing.get("wins")
+    standing["draws"] = standing.get("draws")
+    standing["losses"] = standing.get("losses")
+    standing["pct"] = standing.get("pct")
+    standing["goals_for"] = standing.get("goals_for")
+    standing["goals_against"] = standing.get("goals_against")
+    standing["method"] = standing.get("method") or standings_method
+    standing["standings_method"] = standing.get("standings_method") or standings_method
+    return standing
+
+
 class HistoricalFormService:
     """Fetch historical form from the local database for collected seasons."""
 
@@ -47,6 +73,8 @@ class HistoricalFormService:
     ) -> Tuple[List[Dict], int]:
         try:
             from infrastructure.persistence.database import db_manager
+
+            standings_method = get_standings_method(season_id, sport)
 
             query = text(
                 """
@@ -98,10 +126,12 @@ class HistoricalFormService:
                         team_score = row.home_score
                         opponent_score = row.away_score
                         team_role = "home"
+                        opponent_role = "away"
                     else:
                         team_score = row.away_score
                         opponent_score = row.home_score
                         team_role = "away"
+                        opponent_role = "home"
 
                     game_timestamp = row.start_time_utc.timestamp()
                     standings = self.standings_calculator.calculate_standings_at(
@@ -111,25 +141,43 @@ class HistoricalFormService:
                         send_debug_standings,
                     )
 
-                    team_standing = standings.get(team_name, {})
-                    opponent_standing = standings.get(opponent_name, {})
+                    team_standing = _normalize_standing_snapshot(
+                        standings.get(team_name, {}),
+                        standings_method,
+                    )
+                    opponent_standing = _normalize_standing_snapshot(
+                        standings.get(opponent_name, {}),
+                        standings_method,
+                    )
+
+                    team_result_code = team_result
+                    team_result = "W" if team_result_code == "1" else "L" if team_result_code == "2" else "D"
 
                     results.append(
                         {
                             "event_id": event_id,
-                            "winner": team_result,
+                            "team_name": team_name,
+                            "team_role": team_role,
+                            "opponent_name": opponent_name,
+                            "opponent_role": opponent_role,
+                            "team_score": team_score,
+                            "opponent_score": opponent_score,
+                            "team_result_code": team_result_code,
+                            "team_result": team_result,
+                            "winner": team_result_code,
                             "home_score": team_score,
                             "away_score": opponent_score,
-                            "team_name": team_name,
-                            "opponent_name": opponent_name,
                             "startTimestamp": int(game_timestamp),
                             "role": team_role,
-                            "opponent_ranking": 0,
-                            "own_ranking": 0,
-                            "standings_position": team_standing.get("position"),
+                            "opponent_ranking": opponent_standing.get("rank") or 0,
+                            "own_ranking": team_standing.get("rank") or 0,
+                            "standings_position": team_standing.get("rank"),
                             "standings_points": team_standing.get("points"),
-                            "opponent_standings_position": opponent_standing.get("position"),
+                            "opponent_standings_position": opponent_standing.get("rank"),
                             "opponent_standings_points": opponent_standing.get("points"),
+                            "team_standing": team_standing,
+                            "opponent_standing": opponent_standing,
+                            "winner_code": team_result_code,
                         }
                     )
 

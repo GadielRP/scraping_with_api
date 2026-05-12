@@ -122,6 +122,41 @@ def _calculate_current_win_streak(results: List[Dict]) -> int:
     return streak_count
 
 
+def _get_game_result_code(game: Dict) -> str:
+    """Return the canonical result code for a game, with legacy fallback."""
+    result_code = game.get("team_result_code", game.get("winner", "X"))
+    if result_code is None:
+        return "X"
+    return str(result_code)
+
+
+def _get_game_role(game: Dict) -> str:
+    """Return the canonical role for a game, with legacy fallback."""
+    role = game.get("team_role", game.get("role", "home"))
+    return str(role).lower() if role is not None else "home"
+
+
+def _get_game_score_pair(game: Dict) -> Tuple[int, int]:
+    """Return team/opponent scores using canonical keys first."""
+    team_score = game.get("team_score", game.get("home_score", 0))
+    opponent_score = game.get("opponent_score", game.get("away_score", 0))
+    return team_score or 0, opponent_score or 0
+
+
+def _get_game_standing_value(game: Dict, standing_key: str, value_key: str, fallback_key: str = None):
+    """Read a value from a nested standings snapshot with legacy fallbacks."""
+    standing = game.get(standing_key) or {}
+    if isinstance(standing, dict):
+        value = standing.get(value_key)
+        if value is not None:
+            return value
+        if fallback_key:
+            value = standing.get(fallback_key)
+            if value is not None:
+                return value
+    return None
+
+
 def _get_filtering_criteria(sport: str, competition_slug: str, observations: Optional[List[Dict]] = None) -> Tuple[str, str]:
     """
     Determine the filtering criteria and value for logging purposes.
@@ -210,9 +245,9 @@ def process_team_results_into_batches(team_results: List[Dict], team_name: str) 
         batch_number = (i // batch_size) + 1
 
         # Calculate batch statistics
-        batch_wins = sum(1 for game in batch_games if game['winner'] == '1')
-        batch_losses = sum(1 for game in batch_games if game['winner'] == '2')
-        batch_draws = sum(1 for game in batch_games if game['winner'] == 'X')
+        batch_wins = sum(1 for game in batch_games if _get_game_result_code(game) == '1')
+        batch_losses = sum(1 for game in batch_games if _get_game_result_code(game) == '2')
+        batch_draws = sum(1 for game in batch_games if _get_game_result_code(game) == 'X')
 
         # Calculate points totals
         if is_tennis:
@@ -227,8 +262,8 @@ def process_team_results_into_batches(team_results: List[Dict], team_name: str) 
             batch_net_points = batch_points_for - batch_points_against
         else:
             # For other sports, use regular scores
-            batch_points_for = sum(game['home_score'] for game in batch_games)
-            batch_points_against = sum(game['away_score'] for game in batch_games)
+            batch_points_for = sum(_get_game_score_pair(game)[0] for game in batch_games)
+            batch_points_against = sum(_get_game_score_pair(game)[1] for game in batch_games)
             batch_net_points = batch_points_for - batch_points_against
 
         # Calculate net points by role
@@ -242,19 +277,20 @@ def process_team_results_into_batches(team_results: List[Dict], team_name: str) 
                 net = team_total - opponent_total
             else:
                 # For other sports, use regular scores
-                net = game['home_score'] - game['away_score']
+                team_score, opponent_score = _get_game_score_pair(game)
+                net = team_score - opponent_score
 
-            if game.get('role') == 'home':
+            if _get_game_role(game) == 'home':
                 batch_home_net_points += net
-            elif game.get('role') == 'away':
+            elif _get_game_role(game) == 'away':
                 batch_away_net_points += net
 
         # Calculate real ranking (average of single rankings)
         single_rankings = []
         for game in batch_games:
-            own_ranking = game.get('own_ranking', 0)
-            opponent_ranking = game.get('opponent_ranking', 0)
-            result = game.get('winner')
+            own_ranking = game.get('own_ranking', 0) or _get_game_standing_value(game, 'team_standing', 'rank', 'position') or 0
+            opponent_ranking = game.get('opponent_ranking', 0) or _get_game_standing_value(game, 'opponent_standing', 'rank', 'position') or 0
+            result = _get_game_result_code(game)
             single_ranking = _calculate_single_ranking(result, own_ranking, opponent_ranking)
             if single_ranking > 0:
                 single_rankings.append(single_ranking)
@@ -265,21 +301,29 @@ def process_team_results_into_batches(team_results: List[Dict], team_name: str) 
         # Format individual games for display
         formatted_games = []
         for game in batch_games:
+            result_code = _get_game_result_code(game)
+
             # Convert winner to display format
-            if game['winner'] == '1':
+            if result_code == '1':
                 result_symbol = 'W'
-            elif game['winner'] == '2':
+            elif result_code == '2':
                 result_symbol = 'L'
             else:  # 'X'
                 result_symbol = 'D'
 
             # Format opponent name (truncate if too long)
-            opponent = game['opponent_name']
+            opponent = game.get('opponent_name', game.get('opponent', 'Unknown'))
             if len(opponent) > 15:
                 opponent = opponent[:12] + "..."
 
             # Get role for this game
-            team_role = game.get('role', 'home')
+            team_role = _get_game_role(game)
+            team_score, opponent_score = _get_game_score_pair(game)
+            team_standing = game.get('team_standing') if isinstance(game.get('team_standing'), dict) else {}
+            opponent_standing = game.get('opponent_standing') if isinstance(game.get('opponent_standing'), dict) else {}
+
+            own_ranking = game.get('own_ranking', 0) or _get_game_standing_value(game, 'team_standing', 'rank', 'position') or 0
+            opponent_ranking = game.get('opponent_ranking', 0) or _get_game_standing_value(game, 'opponent_standing', 'rank', 'position') or 0
 
             # Calculate score_for and score_against based on sport
             if is_tennis:
@@ -288,32 +332,47 @@ def process_team_results_into_batches(team_results: List[Dict], team_name: str) 
                 score_against = _calculate_tennis_total_points(game, is_team=False)
             else:
                 # For other sports, use regular scores
-                score_for = game['home_score']
-                score_against = game['away_score']
+                score_for = team_score
+                score_against = opponent_score
 
             # Calculate single ranking for this game
             single_ranking = _calculate_single_ranking(
-                game['winner'],
-                game.get('own_ranking', 0),
-                game.get('opponent_ranking', 0)
+                result_code,
+                own_ranking,
+                opponent_ranking
             )
 
             formatted_games.append({
                 'result': result_symbol,
+                'winner': result_code,
+                'team_result_code': result_code,
+                'team_result': result_symbol,
                 'opponent': opponent,
+                'team_name': game.get('team_name', team_name),
+                'opponent_name': game.get('opponent_name', opponent),
                 'score_for': score_for,
                 'score_against': score_against,
                 'net_score': score_for - score_against,
                 'startTimestamp': game.get('startTimestamp', 0),  # Include timestamp for date display
                 'role': team_role,  # Track role for display
-                'opponent_ranking': game.get('opponent_ranking', 0),
-                'own_ranking': game.get('own_ranking', 0),
-                'home_score': game.get('home_score'),  # Original sets for tennis display
-                'away_score': game.get('away_score'),  # Original sets for tennis display
+                'team_role': team_role,
+                'opponent_ranking': opponent_ranking,
+                'own_ranking': own_ranking,
+                'team_score': team_score,
+                'opponent_score': opponent_score,
+                'home_score': game.get('home_score', team_score),  # Legacy alias
+                'away_score': game.get('away_score', opponent_score),  # Legacy alias
+                'team_standing': team_standing,
+                'opponent_standing': opponent_standing,
                 'single_ranking': single_ranking,  # Single ranking for this game
-                'standings_position': game.get('standings_position'),  # Position at time of game (from DB)
-                'standings_points': game.get('standings_points'),  # Points at time of game (from DB)
-                'opponent_standings_position': game.get('opponent_standings_position')  # Opponent position (from DB)
+                'standings_position': game.get('standings_position', team_standing.get('rank', team_standing.get('position'))),  # Position at time of game (from DB)
+                'standings_points': game.get('standings_points', team_standing.get('points')),  # Points at time of game (from DB)
+                'standings_gp': team_standing.get('gp', team_standing.get('games_played')),
+                'standings_diff': team_standing.get('diff', team_standing.get('goal_diff')),
+                'opponent_standings_position': game.get('opponent_standings_position', opponent_standing.get('rank', opponent_standing.get('position'))),  # Opponent position (from DB)
+                'opponent_standings_points': game.get('opponent_standings_points', opponent_standing.get('points')),
+                'opponent_standings_gp': opponent_standing.get('gp', opponent_standing.get('games_played')),
+                'opponent_standings_diff': opponent_standing.get('diff', opponent_standing.get('goal_diff'))
             })
 
         batches.append({

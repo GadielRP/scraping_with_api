@@ -75,6 +75,30 @@ def _finalize_team_stats(stats: Dict[str, object], standings_method: str) -> Non
         stats["pct"] = stats["wins"] / stats["games_played"] if stats["games_played"] > 0 else 0.0
 
 
+def _build_team_standing_payload(
+    stats: Dict[str, object],
+    position_meta: Dict[str, object],
+    standings_method: str,
+    group_name: Optional[str] = None,
+) -> Dict[str, object]:
+    payload = dict(stats)
+    position = position_meta.get("position")
+
+    payload["position"] = position
+    payload["rank"] = position
+    payload["games_played"] = stats.get("games_played")
+    payload["gp"] = stats.get("games_played")
+    payload["goal_diff"] = stats.get("goal_diff")
+    payload["diff"] = stats.get("goal_diff")
+    payload["method"] = standings_method
+    payload["standings_method"] = standings_method
+    payload["group"] = group_name
+    payload["conference"] = group_name
+    payload["is_primary_tie"] = position_meta.get("is_primary_tie")
+    payload["primary_rank_key"] = position_meta.get("primary_rank_key")
+    return payload
+
+
 def _apply_game_result(
     team_stats: Dict[str, Dict[str, object]],
     home_team: str,
@@ -201,22 +225,7 @@ def _build_standings_payload(
 
         for team_name, stats in sorted_teams:
             pos_meta = positions[team_name]
-            standings[team_name] = {
-                "position": pos_meta["position"],
-                "is_primary_tie": pos_meta["is_primary_tie"],
-                "primary_rank_key": pos_meta["primary_rank_key"],
-                "points": stats["points"],
-                "wins": stats["wins"],
-                "losses": stats["losses"],
-                "draws": stats["draws"],
-                "goal_diff": stats["goal_diff"],
-                "games_played": stats["games_played"],
-                "pct": stats["pct"],
-                "ties": stats["ties"],
-                "ot_losses": stats["ot_losses"],
-                "group": None,
-                "conference": None,
-            }
+            standings[team_name] = _build_team_standing_payload(stats, pos_meta, standings_method)
         return standings
 
     grouped_teams: Dict[str, List[Tuple[str, Dict[str, object]]]] = {}
@@ -234,22 +243,7 @@ def _build_standings_payload(
 
         for team_name, stats in sorted_teams:
             pos_meta = positions[team_name]
-            standings[team_name] = {
-                "position": pos_meta["position"],
-                "is_primary_tie": pos_meta["is_primary_tie"],
-                "primary_rank_key": pos_meta["primary_rank_key"],
-                "points": stats["points"],
-                "wins": stats["wins"],
-                "losses": stats["losses"],
-                "draws": stats["draws"],
-                "goal_diff": stats["goal_diff"],
-                "games_played": stats["games_played"],
-                "pct": stats["pct"],
-                "ties": stats["ties"],
-                "ot_losses": stats["ot_losses"],
-                "group": group_name,
-                "conference": group_name,
-            }
+            standings[team_name] = _build_team_standing_payload(stats, pos_meta, standings_method, group_name)
 
     return standings
 
