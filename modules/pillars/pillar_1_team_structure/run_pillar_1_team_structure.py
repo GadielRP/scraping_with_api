@@ -7,8 +7,9 @@ are added, this aggregator will weight them to produce a single pillar value.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+from modules.pillars.context import EventContext
 from modules.pillars.pillar_1_team_structure.module_1.base_strength import (
     calculate_base_strength,
 )
@@ -16,7 +17,10 @@ from modules.pillars.pillar_1_team_structure.module_1.base_strength import (
 logger = logging.getLogger(__name__)
 
 
-def calculate_pillar_1_team_structure(streak_analysis: Any) -> Dict[str, Any]:
+def calculate_pillar_1_team_structure(
+    streak_analysis: Any,
+    event_context: Optional[EventContext] = None,
+) -> Dict[str, Any]:
     """Calculate Pillar 1 — Team Structure for an event.
 
     Args:
@@ -27,7 +31,10 @@ def calculate_pillar_1_team_structure(streak_analysis: Any) -> Dict[str, Any]:
         A dictionary containing pillar metadata, the list of module results,
         and the aggregated pillar value.
     """
-    m1_result = calculate_base_strength(streak_analysis)
+    m1_result = calculate_base_strength(
+        streak_analysis,
+        event_context=event_context,
+    )
 
     # Temporary: pillar value equals M1 until more modules exist
     pillar_value = m1_result.value

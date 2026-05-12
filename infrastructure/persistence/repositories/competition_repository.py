@@ -53,6 +53,7 @@ class CompetitionRepository:
             unique_slug=competition_data.get("unique_slug"),
             category_id=competition_data.get("category_id"),
             category_name=competition_data.get("category_name"),
+            number_of_teams=competition_data.get("number_of_teams"),
         )
 
         try:
@@ -83,11 +84,35 @@ class CompetitionRepository:
             "unique_slug",
             "category_id",
             "category_name",
+            "number_of_teams",
         ):
             value = competition_data.get(attr)
             if value is not None:
                 setattr(competition, attr, value)
         competition.updated_at = get_local_now()
+
+    @staticmethod
+    def update_number_of_teams_if_missing(
+        session: Session,
+        competition_id: int,
+        number_of_teams: Optional[int],
+    ) -> bool:
+        if competition_id is None or number_of_teams is None or number_of_teams <= 1:
+            return False
+
+        competition = (
+            session.query(Competition)
+            .filter(Competition.competition_id == competition_id)
+            .first()
+        )
+        if competition is None:
+            return False
+        if competition.number_of_teams is not None:
+            return False
+
+        competition.number_of_teams = number_of_teams
+        competition.updated_at = get_local_now()
+        return True
     
     @staticmethod
     def get_competition_information_by_competition_id(session: Session, competition_id: int) -> Optional[Dict]:

@@ -29,6 +29,7 @@ from modules.pillars.common import (
     clamp,
     classify_strength,
 )
+from modules.pillars.context import EventContext
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,6 @@ _WEIGHT_VOL_DIRECTION_EDGE = 0.15
 
 _BATCH_SIZE = 5
 _CONSISTENCY_WINDOW_STEP = 5  # L5, L10, L15 ...
-_MIN_GD_SCALE_SAMPLE_SIZE = 20
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +209,7 @@ def _resolve_gd_dynamic_scale(
     away_results: List[Dict],
     home_gd_per_game: float,
     away_gd_per_game: float,
+    expected_league_size: Optional[int] = None,
 ) -> Tuple[Optional[float], str, int]:
     """Determine the GD dynamic scale using the official v4 chain."""
     del home_gd_per_game, away_gd_per_game
@@ -220,13 +221,17 @@ def _resolve_gd_dynamic_scale(
     if sample_size == 0:
         return None, "missing", 0
 
-    if sample_size < _MIN_GD_SCALE_SAMPLE_SIZE:
+    if expected_league_size is not None and sample_size < expected_league_size:
         return None, "incomplete_league_standings", sample_size
 
     scale = _calculate_p75_dynamic_scale(league_standings)
     if scale is not None and scale > 0:
+        if expected_league_size is None:
+            return scale, "missing_expected_league_size", sample_size
         return scale, "computed_league_standings", sample_size
 
+    if expected_league_size is None:
+        return None, "missing_expected_league_size", sample_size
     return None, "incomplete_league_standings", sample_size
 
 
@@ -287,6 +292,7 @@ def _calculate_gd_edge(
     away_gd_series: List[float],
     home_results: List[Dict],
     away_results: List[Dict],
+    expected_league_size: Optional[int] = None,
 ) -> Tuple[float, Dict[str, Any]]:
     """Component 2 - GD_EDGE (goal-difference per game, dynamically scaled)."""
     home_gp = len(home_gd_series)
@@ -319,12 +325,14 @@ def _calculate_gd_edge(
         away_results,
         home_gd_per_game,
         away_gd_per_game,
+        expected_league_size=expected_league_size,
     )
 
     raw["dynamic_scale"] = scale
     raw["m1_gd_dynamic_scale"] = scale
     raw["scale_source"] = source
     raw["league_sample_size"] = sample_size
+    raw["expected_league_size"] = expected_league_size
 
     if scale is None or scale <= 0:
         raw["reason"] = "missing_dynamic_scale"
@@ -478,7 +486,7 @@ def _determine_m1_status(
     gd_raw: Dict[str, Any],
     consistency_raw: Dict[str, Any],
     vol_raw: Dict[str, Any],
-) -> Tuple[str, str]:
+    ) -> Tuple[str, str]:
     """Derive a v4 status label and reason for the module output."""
     if (
         result_raw.get("reason") == "no_results"
@@ -489,10 +497,19 @@ def _determine_m1_status(
         return "INSUFFICIENT_DATA", "insufficient_results_or_series"
 
     scale_source = gd_raw.get("scale_source")
-    if scale_source == "computed_league_standings":
-        return "ACTIVE", "official_league_scale"
+    expected_league_size = gd_raw.get("expected_league_size")
+    league_sample_size = gd_raw.get("league_sample_size")
+
+    if scale_source == "computed_league_standings" and expected_league_size and league_sample_size is not None:
+        if league_sample_size >= expected_league_size:
+            return "ACTIVE", "official_league_scale"
+        return "DEGRADED", "insufficient_league_sample_size"
     if scale_source == "missing":
         return "INVALID_GD_SCALE", "missing_league_standings"
+    if scale_source == "missing_expected_league_size":
+        if gd_raw.get("dynamic_scale") is None:
+            return "INVALID_GD_SCALE", "missing_expected_league_size"
+        return "DEGRADED", "missing_expected_league_size"
     if scale_source == "incomplete_league_standings":
         return "DEGRADED", "incomplete_league_standings"
 
@@ -503,12 +520,41 @@ def _determine_m1_status(
 # Public API
 # ---------------------------------------------------------------------------
 
-def calculate_base_strength(streak_analysis: Any) -> ModuleResult:
+def calculate_base_strength(
+    streak_analysis: Any,
+    event_context: Optional[EventContext] = None,
+) -> ModuleResult:
     """Calculate M1 - Base Strength for an event."""
     home_results: List[Dict] = getattr(streak_analysis, "home_team_results", None) or []
     away_results: List[Dict] = getattr(streak_analysis, "away_team_results", None) or []
     event_id: int = getattr(streak_analysis, "event_id", 0)
     participants: str = getattr(streak_analysis, "participants", "")
+    event_context_present = event_context is not None
+    context_status = event_context.context_status if event_context is not None else "legacy_compat"
+    legacy_compat_used = event_context is None or context_status != "normalized"
+    competition_id = event_context.competition.competition_id if event_context is not None else None
+    competition_display_name = (
+        event_context.competition.display_name
+        if event_context is not None
+        else getattr(streak_analysis, "competition_name", None)
+    )
+    if event_context is not None:
+        competition_display_name = (
+            competition_display_name
+            or event_context.competition.canonical_name
+            or getattr(streak_analysis, "competition_name", None)
+        )
+    competition_number_of_teams = (
+        event_context.competition.number_of_teams
+        if event_context is not None
+        else None
+    )
+    competition_number_of_teams_source = (
+        event_context.competition.number_of_teams_source
+        if event_context is not None
+        else "missing"
+    )
+    expected_league_size = competition_number_of_teams
 
     home_gd_series = _extract_game_gd_series(home_results)
     away_gd_series = _extract_game_gd_series(away_results)
@@ -519,6 +565,7 @@ def calculate_base_strength(streak_analysis: Any) -> ModuleResult:
         away_gd_series,
         home_results,
         away_results,
+        expected_league_size=expected_league_size,
     )
     consistency_edge, consistency_raw = _calculate_consistency_edge(
         home_gd_series,
@@ -560,6 +607,14 @@ def calculate_base_strength(streak_analysis: Any) -> ModuleResult:
     raw_audit: Dict[str, Any] = {
         "home_team": getattr(streak_analysis, "home_team_name", None),
         "away_team": getattr(streak_analysis, "away_team_name", None),
+        "event_context_present": event_context_present,
+        "context_status": context_status,
+        "legacy_compat_used": legacy_compat_used,
+        "competition_id": competition_id,
+        "competition_display_name": competition_display_name,
+        "competition_number_of_teams": competition_number_of_teams,
+        "competition_number_of_teams_source": competition_number_of_teams_source,
+        "expected_league_size": expected_league_size,
         "m1_edge": final_value,
         "m1_abs_edge": abs(final_value),
         "m1_bias": calculate_bias(final_value),

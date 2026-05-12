@@ -10,6 +10,13 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
+from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.repositories import CompetitionRepository
+from modules.jobs.pre_start_check_job.pillar_event_context import (
+    build_event_context,
+    count_unique_teams_from_streak_analysis,
+    infer_number_of_teams_from_streak_analysis,
+)
 from modules.jobs.pre_start_check_job.streak_analysis_resolver import (
     resolve_matchup_streak_analysis,
 )
@@ -43,9 +50,15 @@ class EventPillarProcessor:
         if event_obj is None:
             return None
 
-        season_id = getattr(event_obj, "season_id", None)
         minutes_until_start = event_payload.get("minutes_until_start")
-        participants = f"{event_obj.home_team} vs {event_obj.away_team}"
+        metadata_snapshot = event_payload.get("metadata_snapshot")
+        event_context = build_event_context(
+            event_obj=event_obj,
+            minutes_until_start=minutes_until_start,
+            metadata_snapshot=metadata_snapshot,
+        )
+        season_id = event_context.season_id
+        participants = event_context.participants_label
 
         # --- Resolve streak analysis (shared with alert pipeline) ---
         streak_analysis, _should_send = resolve_matchup_streak_analysis(
@@ -53,6 +66,7 @@ class EventPillarProcessor:
             event_obj=event_obj,
             season_id=season_id,
             minutes_until_start=minutes_until_start,
+            event_context=event_context,
             debug_mode=self.debug_mode,
         )
 
@@ -64,9 +78,55 @@ class EventPillarProcessor:
             )
             return None
 
+        inferred_number_of_teams = infer_number_of_teams_from_streak_analysis(streak_analysis)
+        unique_team_count = count_unique_teams_from_streak_analysis(streak_analysis)
+        persisted_number_of_teams = False
+        competition_id = event_context.competition.competition_id
+        legacy_status = (
+            event_context.context_status
+            if event_context.context_status in {"mixed", "legacy_compat"}
+            else None
+        )
+
+        if inferred_number_of_teams is not None and event_context.competition.number_of_teams is None:
+            event_context.competition.number_of_teams = inferred_number_of_teams
+            event_context.competition.number_of_teams_source = "inferred_from_streak_analysis"
+
+            if competition_id is not None:
+                try:
+                    with db_manager.get_session() as session:
+                        persisted_number_of_teams = CompetitionRepository.update_number_of_teams_if_missing(
+                            session=session,
+                            competition_id=competition_id,
+                            number_of_teams=inferred_number_of_teams,
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "🧭 Pillar pipeline: failed to persist inferred number_of_teams for competition %s: %s",
+                        competition_id,
+                        exc,
+                    )
+
+        logger.info(
+            "🧭 Pillar context for %s: context_status=%s, event_context_present=%s, competition_id=%s, competition_number_of_teams=%s, number_of_teams_source=%s, inferred_number_of_teams=%s, unique_team_count=%s, persisted=%s, legacy_status=%s",
+            participants,
+            event_context.context_status,
+            True,
+            competition_id,
+            event_context.competition.number_of_teams,
+            event_context.competition.number_of_teams_source,
+            inferred_number_of_teams,
+            unique_team_count,
+            persisted_number_of_teams,
+            legacy_status,
+        )
+
         # --- Calculate Pillar 1 ---
         try:
-            p1_result = calculate_pillar_1_team_structure(streak_analysis)
+            p1_result = calculate_pillar_1_team_structure(
+                streak_analysis,
+                event_context=event_context,
+            )
         except Exception as exc:
             logger.error(
                 "🧱 Error calculating P1 for event %s (%s): %s",
@@ -97,6 +157,23 @@ class EventPillarProcessor:
                 comp.get("bias", "?"),
                 comp.get("strength", "?"),
             )
+
+        p1_result.setdefault("raw", {}).update(
+            {
+                "event_context_present": True,
+                "context_status": event_context.context_status,
+                "competition_id": competition_id,
+                "competition_display_name": event_context.competition.display_name,
+                "competition_number_of_teams": event_context.competition.number_of_teams,
+                "competition_number_of_teams_source": event_context.competition.number_of_teams_source,
+                "legacy_compat_used": event_context.context_status != "normalized",
+                "inferred_number_of_teams": inferred_number_of_teams,
+                "inferred_number_of_teams_source": "streak_analysis_team_results",
+                "unique_team_count": unique_team_count,
+                "persisted_number_of_teams": persisted_number_of_teams,
+                "legacy_status": legacy_status,
+            }
+        )
 
         return {
             "event_id": event_obj.id,
