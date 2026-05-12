@@ -10,6 +10,7 @@ from infrastructure.persistence.models import refresh_materialized_views
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.alert_pipeline import evaluate_and_dispatch_alerts_batch
+from modules.jobs.pre_start_check_job.pillar_pipeline import evaluate_and_calculate_pillars_batch
 from modules.jobs.pre_start_check_job.in_game_checks import run_in_game_checks
 from modules.jobs.pre_start_check_job.oddsportal_worker import (
     build_oddsportal_scrape_candidates,
@@ -193,15 +194,29 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                 )
 
             if events_for_alerts:
-                evaluate_and_dispatch_alerts_batch(
-                    events_for_alerts,
-                    key_moments,
-                    scheduler.event_repo,
-                    op_event_states=op_event_states,
-                    op_event_ids=op_event_ids,
-                    op_data_cache=op_data_cache,
-                    debug_mode=global_debug_mode
-                )
+                # Legacy alert pipeline
+                if Config.ENABLE_LEGACY_ALERT_PIPELINE:
+                    evaluate_and_dispatch_alerts_batch(
+                        events_for_alerts,
+                        key_moments,
+                        scheduler.event_repo,
+                        op_event_states=op_event_states,
+                        op_event_ids=op_event_ids,
+                        op_data_cache=op_data_cache,
+                        debug_mode=global_debug_mode
+                    )
+
+                # New pillar pipeline
+                if Config.ENABLE_PILLAR_PIPELINE:
+                    evaluate_and_calculate_pillars_batch(
+                        events_for_pillars=events_for_alerts,
+                        key_moments=key_moments,
+                        event_repo=scheduler.event_repo,
+                        op_event_states=op_event_states,
+                        op_event_ids=op_event_ids,
+                        op_data_cache=op_data_cache,
+                        debug_mode=global_debug_mode,
+                    )
         else:
             logger.debug("No events captured at key moments for alert evaluation")
     except Exception as exc:

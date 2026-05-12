@@ -196,6 +196,10 @@ class Config:
     # Sports to exclude from alert evaluation (but not odds extraction)
     EXCLUDED_SPORTS = _parse_env_list('EXCLUDED_SPORTS', ['Table tennis', 'Darts'])
 
+    # Pipeline toggles
+    ENABLE_PILLAR_PIPELINE = _parse_env_bool('ENABLE_PILLAR_PIPELINE', True)
+    ENABLE_LEGACY_ALERT_PIPELINE = _parse_env_bool('ENABLE_LEGACY_ALERT_PIPELINE', True)
+
     # Discovery sources to allow for alert sending
     DISCOVERY_SOURCES_FOR_ALERTS = _parse_env_list('DISCOVERY_SOURCES_FOR_ALERTS', ['dropping_odds'])
 

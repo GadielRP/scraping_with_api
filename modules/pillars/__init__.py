@@ -1,0 +1,1 @@
+"""Pillars architecture package."""
