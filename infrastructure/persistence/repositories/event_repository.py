@@ -422,6 +422,7 @@ class EventRepository:
                         'country': event_obj.country,
                         'slug': event_obj.slug,
                         'season_id': event_obj.season_id,
+                        'competition_id': event_obj.competition_id,
                         'odds': None
                     }
                     odds = odds_by_event_id.get(event_obj.id)
@@ -476,7 +477,8 @@ class EventRepository:
                         'sport': event_obj.sport,
                         'country': event_obj.country,
                         'slug': event_obj.slug,
-                        'season_id': event_obj.season_id
+                        'season_id': event_obj.season_id,
+                        'competition_id': event_obj.competition_id
                     })
                 return result
         except Exception as e:

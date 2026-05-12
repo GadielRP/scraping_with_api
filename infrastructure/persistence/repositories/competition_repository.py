@@ -88,3 +88,29 @@ class CompetitionRepository:
             if value is not None:
                 setattr(competition, attr, value)
         competition.updated_at = get_local_now()
+    
+    @staticmethod
+    def get_competition_information_by_competition_id(session: Session, competition_id: int) -> Optional[Dict]:
+        """Get competition by competition id"""
+        competition = (
+            session.query(Competition)
+            .filter(
+                Competition.competition_id == competition_id,
+            )
+            .first()
+        )
+        if competition:
+            return {
+                "competition_id": competition.competition_id,
+                "source": competition.source,
+                "source_tournament_id": competition.source_tournament_id,
+                "source_unique_tournament_id": competition.source_unique_tournament_id,
+                "canonical_name": competition.canonical_name,
+                "display_name": competition.display_name,
+                "slug": competition.slug,
+                "unique_slug": competition.unique_slug,
+                "category_id": competition.category_id,
+                "category_name": competition.category_name,
+                "number_of_teams": competition.number_of_teams,
+            }
+        return None

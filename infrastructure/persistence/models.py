@@ -40,6 +40,7 @@ class Competition(Base):
     unique_slug = Column(Text)
     category_id = Column(BigInteger)
     category_name = Column(Text)
+    number_of_teams = Column(Integer)
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
 

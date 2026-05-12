@@ -126,6 +126,17 @@ def _extract_game_gd_series(results: List[Dict]) -> List[float]:
     return series
 
 
+def _build_cumulative_windows(n: int, step: int = 5) -> List[int]:
+    """Build cumulative window sizes in ``step`` increments plus the final window."""
+    if n <= 0:
+        return []
+
+    windows = list(range(step, n + 1, step))
+    if n >= step and (not windows or windows[-1] != n):
+        windows.append(n)
+    return windows
+
+
 # ---------------------------------------------------------------------------
 # GD dynamic scale
 # ---------------------------------------------------------------------------
@@ -346,7 +357,7 @@ def _calculate_consistency_edge(
         raw["final_edge_clamped"] = 0.0
         return 0.0, raw
 
-    windows: List[int] = list(range(_CONSISTENCY_WINDOW_STEP, n + 1, _CONSISTENCY_WINDOW_STEP))
+    windows: List[int] = _build_cumulative_windows(n, _CONSISTENCY_WINDOW_STEP)
     if not windows:
         raw["reason"] = "no_valid_windows"
         raw["available_games"] = n
@@ -397,7 +408,7 @@ def _calculate_vol_direction_edge(
         raw["final_edge_clamped"] = 0.0
         return 0.0, raw
 
-    windows: List[int] = list(range(_BATCH_SIZE, n + 1, _BATCH_SIZE))
+    windows: List[int] = _build_cumulative_windows(n, _BATCH_SIZE)
     if not windows:
         raw["reason"] = "no_valid_windows"
         raw["available_games"] = n

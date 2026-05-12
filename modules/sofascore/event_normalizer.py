@@ -220,9 +220,13 @@ def get_event_information(event: Dict, discovery_source: str = "dropping_odds") 
                 "source": "sofascore",
                 "source_tournament_id": tournament.get("id"),
                 "source_unique_tournament_id": unique_tournament.get("id"),
-                "canonical_name": unique_tournament.get("name") or tournament.get("name"),
-                "display_name": tournament.get("name") or unique_tournament.get("name"),
+                # canonical name is unique tournament name
+                "canonical_name": unique_tournament.get("name"),
+                # display name is tournament name
+                "display_name": tournament.get("name"),
+                # slug is tournament slug
                 "slug": tournament.get("slug"),
+                # unique slug is unique tournament slug
                 "unique_slug": unique_tournament.get("slug"),
                 "category_id": category.get("id"),
                 "category_name": category.get("name"),
