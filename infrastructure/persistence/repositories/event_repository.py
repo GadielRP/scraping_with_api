@@ -71,6 +71,58 @@ class EventRepository:
             "competition_source_tournament_id": competition_ref.source_tournament_id,
             "competition_source_unique_tournament_id": competition_ref.source_unique_tournament_id,
         }
+
+    @staticmethod
+    def _build_event_data_with_legacy_fallback(event_obj: Event) -> Dict:
+        """Build event payloads for runtime use, falling back to legacy display fields when needed.
+
+        This is a temporary compatibility bridge while historical rows are backfilled.
+        Legacy-derived payloads are marked explicitly so they can be removed later.
+        """
+        home_participant = event_obj.__dict__.get("home_participant")
+        away_participant = event_obj.__dict__.get("away_participant")
+        competition_ref = event_obj.__dict__.get("competition_ref")
+
+        home_team = home_participant.name if home_participant else (event_obj.home_team or None)
+        away_team = away_participant.name if away_participant else (event_obj.away_team or None)
+        competition_name = (
+            competition_ref.display_name if competition_ref else (event_obj.competition or None)
+        )
+
+        if not home_team or not away_team or not competition_name:
+            raise ValueError(f"Missing normalized participants/competition for event_id={event_obj.id}")
+
+        legacy_compat_used = not (home_participant and away_participant and competition_ref)
+
+        return {
+            "id": event_obj.id,
+            "home_team": home_team,
+            "away_team": away_team,
+            "competition": competition_name,
+            "start_time_utc": event_obj.start_time_utc,
+            "sport": event_obj.sport,
+            "country": event_obj.country,
+            "slug": event_obj.slug,
+            "custom_id": event_obj.custom_id,
+            "season_id": event_obj.season_id,
+            "home_participant_id": event_obj.home_participant_id,
+            "away_participant_id": event_obj.away_participant_id,
+            "competition_id": event_obj.competition_id,
+            "home_source_participant_id": (
+                home_participant.source_participant_id if home_participant else None
+            ),
+            "away_source_participant_id": (
+                away_participant.source_participant_id if away_participant else None
+            ),
+            "competition_source_tournament_id": (
+                competition_ref.source_tournament_id if competition_ref else None
+            ),
+            "competition_source_unique_tournament_id": (
+                competition_ref.source_unique_tournament_id if competition_ref else None
+            ),
+            "context_status": "legacy_compat" if legacy_compat_used else "normalized",
+            "legacy_compat_used": legacy_compat_used,
+        }
     
     @staticmethod
     def upsert_event(event_data: Dict) -> Optional[Event]:
@@ -320,7 +372,7 @@ class EventRepository:
                 result = []
                 for event in events:
                     try:
-                        result.append(EventRepository._build_normalized_event_data(event))
+                        result.append(EventRepository._build_event_data_with_legacy_fallback(event))
                     except ValueError as exc:
                         logger.warning("Skipping event %s in minutes-range query: %s", event.id, exc)
                 
@@ -461,7 +513,7 @@ class EventRepository:
                 result = []
                 for event_obj in events_with_odds:
                     try:
-                        event_data = EventRepository._build_normalized_event_data(event_obj)
+                        event_data = EventRepository._build_event_data_with_legacy_fallback(event_obj)
                     except ValueError as exc:
                         logger.warning("Skipping event %s in starting-soon query: %s", event_obj.id, exc)
                         continue
@@ -510,7 +562,7 @@ class EventRepository:
                 result = []
                 for event_obj in events_started_recently:
                     try:
-                        result.append(EventRepository._build_normalized_event_data(event_obj))
+                        result.append(EventRepository._build_event_data_with_legacy_fallback(event_obj))
                     except ValueError as exc:
                         logger.warning("Skipping event %s in recently-started query: %s", event_obj.id, exc)
                 return result

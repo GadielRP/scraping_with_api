@@ -12,11 +12,11 @@ from typing import Optional
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories import CompetitionRepository
-from modules.jobs.pre_start_check_job.pillar_event_context import (
+from modules.pillars.context import (
     build_event_context,
     summarize_number_of_teams_from_streak_analysis,
 )
-from modules.jobs.pre_start_check_job.streak_analysis_resolver import (
+from modules.pillars.streak_analysis_resolver import (
     resolve_matchup_streak_analysis,
 )
 from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import (
@@ -47,6 +47,16 @@ class EventPillarProcessor:
 
         event_obj = event_payload.get("event_obj")
         if event_obj is None:
+            return None
+
+        round = event_obj.round
+        event_id = event_obj.id
+        if round != 'regular_season':
+            logger.warning(
+                "🚫 Pillar pipeline: round is %s for event_id %s, skipping pillar calculation",
+                round,
+                event_id,
+            )
             return None
 
         minutes_until_start = event_payload.get("minutes_until_start")

@@ -10,7 +10,7 @@ from infrastructure.persistence.models import refresh_materialized_views
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.alert_pipeline import evaluate_and_dispatch_alerts_batch
-from modules.jobs.pre_start_check_job.pillar_event_context import build_event_context
+from modules.pillars.context import build_event_context
 from modules.jobs.pre_start_check_job.pillar_pipeline import evaluate_and_calculate_pillars_batch
 from modules.jobs.pre_start_check_job.in_game_checks import run_in_game_checks
 from modules.jobs.pre_start_check_job.oddsportal_worker import (

@@ -11,7 +11,7 @@ from modules.alerts.matchup_streak_analysis import (
     build_matchup_streak_context,
     should_send_streak_alert,
 )
-from modules.jobs.pre_start_check_job.pillar_event_context import EventContext
+from modules.pillars.context import EventContext
 from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)

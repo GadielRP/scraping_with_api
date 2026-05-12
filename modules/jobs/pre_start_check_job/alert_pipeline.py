@@ -14,7 +14,7 @@ from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_st
 from modules.alerts.alerts_formatter.odds_alert import send_odds_alert
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.alerts.dual_process.run_dual_process import prediction_engine
-from modules.jobs.pre_start_check_job.pillar_event_context import build_event_context
+from modules.pillars.context import build_event_context
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ class EventAlertProcessor:
         Delegates to the shared ``resolve_matchup_streak_analysis`` helper
         so that pillar_pipeline can reuse the same construction logic.
         """
-        from modules.jobs.pre_start_check_job.streak_analysis_resolver import (
+        from modules.pillars.streak_analysis_resolver import (
             resolve_matchup_streak_analysis,
         )
 
