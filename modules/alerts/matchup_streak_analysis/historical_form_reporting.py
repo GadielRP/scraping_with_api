@@ -20,17 +20,17 @@ def format_standings_table_for_telegram(
     """Format standings data into a Telegram-friendly table."""
     message = f"STANDINGS: <b>{title}</b>\n\n"
 
-    sorted_standings = sorted(standings.items(), key=lambda item: item[1].get("position", 999))
+    sorted_standings = sorted(standings.items(), key=lambda item: item[1].get("rank") or 999)
 
     for team_name, stats in sorted_standings:
-        pos = stats.get("rank", stats.get("position", "?"))
+        pos = stats.get("rank") or "?"
         pts = stats.get("points", 0)
         wins = stats.get("wins", 0)
         draws = stats.get("draws", 0)
         losses = stats.get("losses", 0)
-        gd = stats.get("diff", stats.get("goal_diff", 0))
+        gd = stats.get("diff", 0)
         gd_str = f"+{gd}" if gd > 0 else str(gd)
-        games = stats.get("gp", stats.get("games_played", 0))
+        games = stats.get("gp", 0)
         pct = stats.get("pct")
         method = standings_method or ""
         ot_losses = stats.get("ot_losses", 0)

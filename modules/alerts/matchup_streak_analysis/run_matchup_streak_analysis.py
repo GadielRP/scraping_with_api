@@ -300,9 +300,9 @@ def build_matchup_streak_context(
         # Calculate stats and process batches for home team
         home_team_final_real_ranking = 0
         if home_team_results:
-            home_team_wins = sum(1 for r in home_team_results if r['winner'] == '1')
-            home_team_losses = sum(1 for r in home_team_results if r['winner'] == '2')
-            home_team_draws = sum(1 for r in home_team_results if r['winner'] == 'X')
+            home_team_wins = sum(1 for r in home_team_results if r['team_result_code'] == '1')
+            home_team_losses = sum(1 for r in home_team_results if r['team_result_code'] == '2')
+            home_team_draws = sum(1 for r in home_team_results if r['team_result_code'] == 'X')
             home_team_batches = process_team_results_into_batches(home_team_results, home_team_name)
             home_team_final_real_ranking = _calculate_final_real_ranking(home_team_batches)
             logger.info(
@@ -314,9 +314,9 @@ def build_matchup_streak_context(
         # Calculate stats and process batches for away team
         away_team_final_real_ranking = 0
         if away_team_results:
-            away_team_wins = sum(1 for r in away_team_results if r['winner'] == '1')
-            away_team_losses = sum(1 for r in away_team_results if r['winner'] == '2')
-            away_team_draws = sum(1 for r in away_team_results if r['winner'] == 'X')
+            away_team_wins = sum(1 for r in away_team_results if r['team_result_code'] == '1')
+            away_team_losses = sum(1 for r in away_team_results if r['team_result_code'] == '2')
+            away_team_draws = sum(1 for r in away_team_results if r['team_result_code'] == 'X')
             away_team_batches = process_team_results_into_batches(away_team_results, away_team_name)
             away_team_final_real_ranking = _calculate_final_real_ranking(away_team_batches)
             logger.info(

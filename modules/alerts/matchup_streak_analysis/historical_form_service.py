@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_standing_snapshot(raw_standing: Dict, standings_method: str = None) -> Dict:
-    """Return a normalized standings snapshot with stable aliases."""
+    """Return a normalized standings snapshot with canonical fields."""
     standing = dict(raw_standing or {})
 
     rank = standing.get("rank", standing.get("position"))
@@ -27,11 +27,8 @@ def _normalize_standing_snapshot(raw_standing: Dict, standings_method: str = Non
     diff = standing.get("diff", standing.get("goal_diff"))
 
     standing["rank"] = rank
-    standing["position"] = standing.get("position", rank)
     standing["gp"] = gp
-    standing["games_played"] = standing.get("games_played", gp)
     standing["diff"] = diff
-    standing["goal_diff"] = standing.get("goal_diff", diff)
     standing["points"] = standing.get("points")
     standing["wins"] = standing.get("wins")
     standing["draws"] = standing.get("draws")
@@ -56,7 +53,7 @@ class HistoricalFormService:
 
         streak_count = 0
         for result in results:
-            if result.get("winner") == "1":
+            if result.get("team_result_code") == "1":
                 streak_count += 1
             else:
                 break
@@ -164,20 +161,11 @@ class HistoricalFormService:
                             "opponent_score": opponent_score,
                             "team_result_code": team_result_code,
                             "team_result": team_result,
-                            "winner": team_result_code,
-                            "home_score": team_score,
-                            "away_score": opponent_score,
                             "startTimestamp": int(game_timestamp),
-                            "role": team_role,
                             "opponent_ranking": opponent_standing.get("rank") or 0,
                             "own_ranking": team_standing.get("rank") or 0,
-                            "standings_position": team_standing.get("rank"),
-                            "standings_points": team_standing.get("points"),
-                            "opponent_standings_position": opponent_standing.get("rank"),
-                            "opponent_standings_points": opponent_standing.get("points"),
                             "team_standing": team_standing,
                             "opponent_standing": opponent_standing,
-                            "winner_code": team_result_code,
                         }
                     )
 

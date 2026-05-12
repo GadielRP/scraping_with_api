@@ -102,17 +102,13 @@ def _format_signed_metric(value: Any) -> str:
 
 def _format_compact_standing(
     standing: Optional[Dict],
-    legacy_position: Any = None,
-    legacy_points: Any = None,
-    legacy_gp: Any = None,
-    legacy_diff: Any = None,
 ) -> str:
-    """Format a standing snapshot with rank, points, GP and DIFF."""
+    """Format a canonical standing snapshot with rank, points, GP and DIFF."""
     standing = standing if isinstance(standing, dict) else {}
-    rank = standing.get("rank", standing.get("position", legacy_position))
-    points = standing.get("points", legacy_points)
-    gp = standing.get("gp", standing.get("games_played", legacy_gp))
-    diff = standing.get("diff", standing.get("goal_diff", legacy_diff))
+    rank = standing.get("rank")
+    points = standing.get("points")
+    gp = standing.get("gp")
+    diff = standing.get("diff")
 
     parts: List[str] = []
     if rank is not None:
@@ -399,26 +395,14 @@ def create_matchup_streak_message(streak) -> str:
                             date_prefix = f"{game_date} " if game_date else ""
 
                             game_net_score = game.get("net_score", 0)
-                            game_role = game.get("team_role", game.get("role", "home"))
+                            game_role = game["team_role"]
                             if game_role == "home":
                                 cumulative_home_net += game_net_score
                             else:
                                 cumulative_away_net += game_net_score
 
-                            team_standing_display = _format_compact_standing(
-                                game.get("team_standing"),
-                                legacy_position=game.get("standings_position"),
-                                legacy_points=game.get("standings_points"),
-                                legacy_gp=game.get("standings_gp"),
-                                legacy_diff=game.get("standings_diff"),
-                            )
-                            opponent_standing_display = _format_compact_standing(
-                                game.get("opponent_standing"),
-                                legacy_position=game.get("opponent_standings_position"),
-                                legacy_points=game.get("opponent_standings_points"),
-                                legacy_gp=game.get("opponent_standings_gp"),
-                                legacy_diff=game.get("opponent_standings_diff"),
-                            )
+                            team_standing_display = _format_compact_standing(game["team_standing"])
+                            opponent_standing_display = _format_compact_standing(game["opponent_standing"])
 
                             if is_tennis:
                                 team_prefix = f"[{team_standing_display}] " if team_standing_display else ""
@@ -435,7 +419,7 @@ def create_matchup_streak_message(streak) -> str:
 
                                 message += (
                                     f"{date_prefix}{role_indicator}{team_standings_str}{game['result']} vs "
-                                    f"{game['opponent']} ({game['score_for']}-{game['score_against']})"
+                                    f"{game['opponent']} ({game['team_score']}-{game['opponent_score']})"
                                     f"{opponent_standings_str}\n"
                                 )
 

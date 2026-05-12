@@ -84,6 +84,7 @@ def _build_team_standing_payload(
     payload = dict(stats)
     position = position_meta.get("position")
 
+    # Engine-level aliases kept for downstream callers that still expect them.
     payload["position"] = position
     payload["rank"] = position
     payload["games_played"] = stats.get("games_played")
