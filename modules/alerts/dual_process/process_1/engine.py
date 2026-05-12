@@ -26,6 +26,17 @@ class AlertEngine:
         self.candidate_search = candidate_search or Process1CandidateSearch()
         self.evaluator = evaluator or Process1Evaluator()
 
+    @staticmethod
+    def _get_normalized_event_parts(event) -> Tuple[str, str, str]:
+        home_participant = event.__dict__.get("home_participant")
+        away_participant = event.__dict__.get("away_participant")
+        competition_ref = event.__dict__.get("competition_ref")
+
+        if not home_participant or not away_participant or not competition_ref:
+            raise ValueError(f"Missing normalized participants/competition for event_id={getattr(event, 'id', '?')}")
+
+        return home_participant.name, away_participant.name, competition_ref.display_name
+
     def evaluate_upcoming_events(self, upcoming_events: List) -> List[Dict]:
         """Evaluate all upcoming events for Process 1 alerts."""
         alerts = []
@@ -66,9 +77,11 @@ class AlertEngine:
         cur_v2 = float(cur_v2 or 0)
 
         try:
-            participants = f"{getattr(event, 'home_team', '?')} vs {getattr(event, 'away_team', '?')}"
+            home_team, away_team, competition_name = self._get_normalized_event_parts(event)
+            participants = f"{home_team} vs {away_team}"
         except Exception:
-            participants = "? vs ?"
+            logger.warning("Missing normalized participants/competition for event %s", event.id)
+            return []
 
         logger.info(
             f"[P1] Event {event.id} ({participants}) vars: d1={cur_v1:.2f}, dx={(cur_vx if cur_vx is not None else 0):.2f}, "
@@ -102,6 +115,8 @@ class AlertEngine:
                 tier1_candidates=tier1_candidates,
                 current_vars=(cur_v1, cur_vx, cur_v2),
                 minutes_until_start=minutes_until_start,
+                participants=participants,
+                competition_name=competition_name,
             )
             return [candidate_report]
 
@@ -126,6 +141,8 @@ class AlertEngine:
         tier1_candidates: List[AlertMatch],
         current_vars: Tuple,
         minutes_until_start: int = None,
+        participants: str = "",
+        competition_name: str = "",
     ) -> Dict:
         """Create the report payload consumed by Process 1 and Dual Process formatters."""
         cur_v1, cur_vx, cur_v2 = current_vars
@@ -147,8 +164,8 @@ class AlertEngine:
         return {
             "event_id": event.id,
             "rule_key": f"candidate_report_{event.id}",
-            "participants": f"{event.home_team} vs {event.away_team}",
-            "competition": event.competition,
+            "participants": participants,
+            "competition": competition_name,
             "sport": event.sport,
             "discovery_source": event.discovery_source,
             "start_time": event.start_time_utc.strftime("%H:%M"),

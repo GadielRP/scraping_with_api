@@ -7,7 +7,7 @@ are added, this aggregator will weight them to produce a single pillar value.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from modules.pillars.context import EventContext
 from modules.pillars.pillar_1_team_structure.module_1.base_strength import (
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def calculate_pillar_1_team_structure(
     streak_analysis: Any,
-    event_context: Optional[EventContext] = None,
+    event_context: EventContext,
 ) -> Dict[str, Any]:
     """Calculate Pillar 1 — Team Structure for an event.
 

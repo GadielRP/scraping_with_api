@@ -50,14 +50,26 @@ class DualProcessRunner:
     def __init__(self):
         logger.info("[DUAL PROCESS] Runner initialized")
 
+    @staticmethod
+    def _get_normalized_event_parts(event) -> Tuple[str, str, str]:
+        home_participant = event.__dict__.get("home_participant")
+        away_participant = event.__dict__.get("away_participant")
+        competition_ref = event.__dict__.get("competition_ref")
+
+        if not home_participant or not away_participant or not competition_ref:
+            raise ValueError(f"Missing normalized participants/competition for event_id={getattr(event, 'id', '?')}")
+
+        return home_participant.name, away_participant.name, competition_ref.display_name
+
     def evaluate_dual_process(self, event, minutes_until_start: int = None) -> DualProcessReport:
         """Execute both processes and compare their results."""
         try:
+            home_team, away_team, _competition_name = self._get_normalized_event_parts(event)
             logger.info(
                 "[DUAL PROCESS] Evaluation starting for event %s (%s vs %s)",
                 event.id,
-                event.home_team,
-                event.away_team,
+                home_team,
+                away_team,
             )
 
             process1_report, process1_prediction, process1_status = self._execute_process1(event, minutes_until_start)
@@ -69,7 +81,7 @@ class DualProcessRunner:
 
             dual_report = DualProcessReport(
                 event_id=event.id,
-                participants=f"{event.home_team} vs {event.away_team}",
+                participants=f"{home_team} vs {away_team}",
                 sport=event.sport,
                 discovery_source=event.discovery_source,
                 season_id=getattr(event, "season_id", None),
@@ -258,9 +270,15 @@ class DualProcessRunner:
 
     def _create_error_report(self, event, error_message: str, minutes_until_start: int = None) -> DualProcessReport:
         """Create error report for failed dual-process evaluation."""
+        try:
+            home_team, away_team, _competition_name = self._get_normalized_event_parts(event)
+            participants = f"{home_team} vs {away_team}"
+        except Exception:
+            participants = f"Missing normalized participants for event_id={getattr(event, 'id', '?')}"
+
         return DualProcessReport(
             event_id=event.id if hasattr(event, "id") else 0,
-            participants=f"{getattr(event, 'home_team', '?')} vs {getattr(event, 'away_team', '?')}",
+            participants=participants,
             sport=getattr(event, "sport", "Unknown"),
             discovery_source=getattr(event, "discovery_source", "unknown"),
             season_id=getattr(event, "season_id", None),

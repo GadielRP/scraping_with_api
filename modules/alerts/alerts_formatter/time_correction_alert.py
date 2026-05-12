@@ -15,11 +15,11 @@ def create_time_correction_message(
 ) -> str:
     """Build the Telegram message for a time correction alert."""
     event = EventRepository.get_event_by_id(event_id)
-    if not event:
+    if not event or not event.home_participant or not event.away_participant or not event.competition_ref:
         logger.warning("Could not find event %s for time correction message", event_id)
-        participants = "Unknown vs Unknown"
+        participants = f"Missing normalized participants/competition for event_id {event_id}"
     else:
-        participants = f"{event.home_team} vs {event.away_team}"
+        participants = f"{event.home_participant.name} vs {event.away_participant.name}"
 
     current_time_str = current_starting_time.strftime("%H:%M")
     new_time_str = new_starting_time.strftime("%H:%M")
@@ -60,6 +60,9 @@ def send_time_correction_message(
             return False
 
         message = create_time_correction_message(event_id, current_starting_time, new_starting_time)
+        if message.startswith("Missing normalized participants/competition for event_id"):
+            logger.warning("Skipping time correction alert for event %s because normalized context is missing", event_id)
+            return False
         logger.info("Sending time correction message for event %s", event_id)
         return notifier.send_telegram_message(message)
     except Exception as e:

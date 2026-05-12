@@ -10,6 +10,7 @@ from infrastructure.persistence.models import refresh_materialized_views
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.alert_pipeline import evaluate_and_dispatch_alerts_batch
+from modules.jobs.pre_start_check_job.pillar_event_context import build_event_context
 from modules.jobs.pre_start_check_job.pillar_pipeline import evaluate_and_calculate_pillars_batch
 from modules.jobs.pre_start_check_job.in_game_checks import run_in_game_checks
 from modules.jobs.pre_start_check_job.oddsportal_worker import (
@@ -177,6 +178,18 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
 
                 meta = event_meta_lookup.get(event_data["id"], {})
                 initial_minutes = meta.get("minutes_until_start", minutes_until_start(event_obj.start_time_utc))
+                event_context = build_event_context(
+                    event_obj=event_obj,
+                    minutes_until_start=initial_minutes,
+                    metadata_snapshot=meta.get("metadata_snapshot"),
+                )
+                if event_context is None:
+                    logger.warning(
+                        "Skipping event %s because normalized EventContext could not be built",
+                        event_obj.id,
+                    )
+                    continue
+
                 events_for_alerts.append(
                     {
                         "event_obj": event_obj,
@@ -184,6 +197,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                         "observations": meta.get("observations"),
                         "odds_response": meta.get("odds_response"),
                         "metadata_snapshot": meta.get("metadata_snapshot"),
+                        "event_context": event_context,
                         "season_id": getattr(event_obj, "season_id", None),
                         "should_send_streak_alert": False,
                         "streak_analysis": None,

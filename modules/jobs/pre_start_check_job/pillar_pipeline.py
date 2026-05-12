@@ -14,8 +14,7 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories import CompetitionRepository
 from modules.jobs.pre_start_check_job.pillar_event_context import (
     build_event_context,
-    count_unique_teams_from_streak_analysis,
-    infer_number_of_teams_from_streak_analysis,
+    summarize_number_of_teams_from_streak_analysis,
 )
 from modules.jobs.pre_start_check_job.streak_analysis_resolver import (
     resolve_matchup_streak_analysis,
@@ -52,11 +51,19 @@ class EventPillarProcessor:
 
         minutes_until_start = event_payload.get("minutes_until_start")
         metadata_snapshot = event_payload.get("metadata_snapshot")
-        event_context = build_event_context(
-            event_obj=event_obj,
-            minutes_until_start=minutes_until_start,
-            metadata_snapshot=metadata_snapshot,
-        )
+        event_context = event_payload.get("event_context")
+        if event_context is None:
+            event_context = build_event_context(
+                event_obj=event_obj,
+                minutes_until_start=minutes_until_start,
+                metadata_snapshot=metadata_snapshot,
+            )
+        if event_context is None:
+            logger.warning(
+                "🧱 Pillar pipeline: missing_normalized_context for event %s; skipping pillar calculation",
+                event_obj.id,
+            )
+            return None
         season_id = event_context.season_id
         participants = event_context.participants_label
 
@@ -78,15 +85,11 @@ class EventPillarProcessor:
             )
             return None
 
-        inferred_number_of_teams = infer_number_of_teams_from_streak_analysis(streak_analysis)
-        unique_team_count = count_unique_teams_from_streak_analysis(streak_analysis)
+        number_of_teams_summary = summarize_number_of_teams_from_streak_analysis(streak_analysis)
+        inferred_number_of_teams = number_of_teams_summary.inferred_number_of_teams
+        unique_team_count = number_of_teams_summary.unique_team_count
         persisted_number_of_teams = False
         competition_id = event_context.competition.competition_id
-        legacy_status = (
-            event_context.context_status
-            if event_context.context_status in {"mixed", "legacy_compat"}
-            else None
-        )
 
         if inferred_number_of_teams is not None and event_context.competition.number_of_teams is None:
             event_context.competition.number_of_teams = inferred_number_of_teams
@@ -108,7 +111,7 @@ class EventPillarProcessor:
                     )
 
         logger.info(
-            "🧭 Pillar context for %s: context_status=%s, event_context_present=%s, competition_id=%s, competition_number_of_teams=%s, number_of_teams_source=%s, inferred_number_of_teams=%s, unique_team_count=%s, persisted=%s, legacy_status=%s",
+            "🧭 Pillar context for %s: context_status=%s, event_context_present=%s, competition_id=%s, competition_number_of_teams=%s, number_of_teams_source=%s, inferred_number_of_teams=%s, unique_team_count=%s, persisted=%s",
             participants,
             event_context.context_status,
             True,
@@ -118,7 +121,6 @@ class EventPillarProcessor:
             inferred_number_of_teams,
             unique_team_count,
             persisted_number_of_teams,
-            legacy_status,
         )
 
         # --- Calculate Pillar 1 ---
@@ -166,12 +168,10 @@ class EventPillarProcessor:
                 "competition_display_name": event_context.competition.display_name,
                 "competition_number_of_teams": event_context.competition.number_of_teams,
                 "competition_number_of_teams_source": event_context.competition.number_of_teams_source,
-                "legacy_compat_used": event_context.context_status != "normalized",
                 "inferred_number_of_teams": inferred_number_of_teams,
                 "inferred_number_of_teams_source": "streak_analysis_team_results",
                 "unique_team_count": unique_team_count,
                 "persisted_number_of_teams": persisted_number_of_teams,
-                "legacy_status": legacy_status,
             }
         )
 

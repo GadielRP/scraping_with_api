@@ -522,38 +522,17 @@ def _determine_m1_status(
 
 def calculate_base_strength(
     streak_analysis: Any,
-    event_context: Optional[EventContext] = None,
+    event_context: EventContext,
 ) -> ModuleResult:
     """Calculate M1 - Base Strength for an event."""
     home_results: List[Dict] = getattr(streak_analysis, "home_team_results", None) or []
     away_results: List[Dict] = getattr(streak_analysis, "away_team_results", None) or []
     event_id: int = getattr(streak_analysis, "event_id", 0)
     participants: str = getattr(streak_analysis, "participants", "")
-    event_context_present = event_context is not None
-    context_status = event_context.context_status if event_context is not None else "legacy_compat"
-    legacy_compat_used = event_context is None or context_status != "normalized"
-    competition_id = event_context.competition.competition_id if event_context is not None else None
-    competition_display_name = (
-        event_context.competition.display_name
-        if event_context is not None
-        else getattr(streak_analysis, "competition_name", None)
-    )
-    if event_context is not None:
-        competition_display_name = (
-            competition_display_name
-            or event_context.competition.canonical_name
-            or getattr(streak_analysis, "competition_name", None)
-        )
-    competition_number_of_teams = (
-        event_context.competition.number_of_teams
-        if event_context is not None
-        else None
-    )
-    competition_number_of_teams_source = (
-        event_context.competition.number_of_teams_source
-        if event_context is not None
-        else "missing"
-    )
+    competition_id = event_context.competition.competition_id
+    competition_display_name = event_context.competition.display_name or event_context.competition.canonical_name
+    competition_number_of_teams = event_context.competition.number_of_teams
+    competition_number_of_teams_source = event_context.competition.number_of_teams_source
     expected_league_size = competition_number_of_teams
 
     home_gd_series = _extract_game_gd_series(home_results)
@@ -607,9 +586,8 @@ def calculate_base_strength(
     raw_audit: Dict[str, Any] = {
         "home_team": getattr(streak_analysis, "home_team_name", None),
         "away_team": getattr(streak_analysis, "away_team_name", None),
-        "event_context_present": event_context_present,
-        "context_status": context_status,
-        "legacy_compat_used": legacy_compat_used,
+        "event_context_present": True,
+        "context_status": "normalized",
         "competition_id": competition_id,
         "competition_display_name": competition_display_name,
         "competition_number_of_teams": competition_number_of_teams,

@@ -14,6 +14,7 @@ from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_st
 from modules.alerts.alerts_formatter.odds_alert import send_odds_alert
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.alerts.dual_process.run_dual_process import prediction_engine
+from modules.jobs.pre_start_check_job.pillar_event_context import build_event_context
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +51,26 @@ class EventAlertProcessor:
         # for attr, value in event_obj.__dict__.items():
         #     print(attr, value)
 
-        season_id = getattr(event_obj, "season_id", None)
-        discovery_source = getattr(event_obj, "discovery_source", None)
         minutes_until_start = event_payload.get("minutes_until_start")
         odds_response = event_payload.get("odds_response")
         metadata = event_payload.get("metadata_snapshot", {})
+
+        event_context = event_payload.get("event_context")
+        if event_context is None:
+            event_context = build_event_context(
+                event_obj=event_obj,
+                minutes_until_start=minutes_until_start,
+                metadata_snapshot=metadata,
+            )
+        if event_context is None:
+            logger.warning(
+                "Alert pipeline missing_normalized_context for event %s; skipping new-runtime alerts",
+                event_obj.id,
+            )
+            return
+
+        season_id = event_context.season_id
+        discovery_source = getattr(event_obj, "discovery_source", None)
 
         #debugging prints:
         # print("metadata:")
@@ -69,7 +85,7 @@ class EventAlertProcessor:
 
         # 2. Evaluation (Perform analysis and generate prediction reports)
         streak_analysis, should_send_streak = self._ensure_matchup_streak_analysis(
-            event_payload, event_obj, season_id, minutes_until_start
+            event_payload, event_obj, event_context, season_id, minutes_until_start
         )
 
        
@@ -100,6 +116,7 @@ class EventAlertProcessor:
         # 3. Dispatch (Send the actual notifications based on evaluation results)
         self._dispatch_alerts(
             event_obj=event_obj,
+            event_context=event_context,
             season_id=season_id,
             is_tracked_season=is_tracked_season,
             minutes_until_start=minutes_until_start,
@@ -158,7 +175,7 @@ class EventAlertProcessor:
         return self.op_data_cache.get(event_obj.id) if self.op_data_cache else None
 
     def _ensure_matchup_streak_analysis(
-        self, event_payload: dict, event_obj, season_id, minutes_until_start: int
+        self, event_payload: dict, event_obj, event_context, season_id, minutes_until_start: int
     ) -> Tuple[Optional[dict], bool]:
         """Builds or retrieves matchup streak analysis.
 
@@ -174,6 +191,7 @@ class EventAlertProcessor:
             event_obj=event_obj,
             season_id=season_id,
             minutes_until_start=minutes_until_start,
+            event_context=event_context,
             debug_mode=self.debug_mode,
         )
 
@@ -197,6 +215,7 @@ class EventAlertProcessor:
     def _dispatch_alerts(
         self,
         event_obj,
+        event_context,
         season_id,
         is_tracked_season: bool,
         minutes_until_start: int,
@@ -211,10 +230,10 @@ class EventAlertProcessor:
         if odds_response:
             event_data_for_odds = {
                 "id": event_obj.id,
-                "home_team": event_obj.home_team,
-                "away_team": event_obj.away_team,
+                "home_team": event_context.home.name,
+                "away_team": event_context.away.name,
                 "sport": event_obj.sport,
-                "competition": getattr(event_obj, "competition", ""),
+                "competition": event_context.competition.display_name,
                 "slug": event_obj.slug,
                 "discovery_source": getattr(event_obj, "discovery_source", ""),
                 "season_id": season_id,

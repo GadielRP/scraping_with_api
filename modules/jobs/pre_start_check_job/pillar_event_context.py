@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Optional, Set
+from dataclasses import dataclass
+from typing import Optional
 
 from modules.pillars.context import (
     CompetitionContext,
@@ -12,93 +13,94 @@ from modules.pillars.context import (
 logger = logging.getLogger(__name__)
 
 
-def _build_participant_context(participant_obj, legacy_name: str) -> ParticipantContext:
-    if participant_obj is not None:
-        return ParticipantContext(
-            participant_id=getattr(participant_obj, "participant_id", None),
-            source=getattr(participant_obj, "source", None),
-            source_participant_id=getattr(participant_obj, "source_participant_id", None),
-            name=getattr(participant_obj, "name", legacy_name) or legacy_name,
-            slug=getattr(participant_obj, "slug", None),
-            short_name=getattr(participant_obj, "short_name", None),
-            source_status="normalized",
-        )
-
-    return ParticipantContext(
-        participant_id=None,
-        source=None,
-        source_participant_id=None,
-        name=legacy_name,
-        slug=None,
-        short_name=None,
-        source_status="legacy_fallback",
-    )
-
-
-def _build_competition_context(competition_obj, legacy_name: str) -> CompetitionContext:
-    if competition_obj is not None:
-        number_of_teams = getattr(competition_obj, "number_of_teams", None)
-        return CompetitionContext(
-            competition_id=getattr(competition_obj, "competition_id", None),
-            source=getattr(competition_obj, "source", None),
-            source_tournament_id=getattr(competition_obj, "source_tournament_id", None),
-            source_unique_tournament_id=getattr(competition_obj, "source_unique_tournament_id", None),
-            canonical_name=getattr(competition_obj, "canonical_name", None),
-            display_name=getattr(competition_obj, "display_name", None) or legacy_name,
-            slug=getattr(competition_obj, "slug", None),
-            unique_slug=getattr(competition_obj, "unique_slug", None),
-            category_id=getattr(competition_obj, "category_id", None),
-            category_name=getattr(competition_obj, "category_name", None),
-            number_of_teams=number_of_teams,
-            number_of_teams_source="db" if number_of_teams is not None else "missing",
-            source_status="normalized",
-        )
-
-    return CompetitionContext(
-        competition_id=None,
-        source=None,
-        source_tournament_id=None,
-        source_unique_tournament_id=None,
-        canonical_name=legacy_name,
-        display_name=legacy_name,
-        slug=None,
-        unique_slug=None,
-        category_id=None,
-        category_name=None,
-        number_of_teams=None,
-        number_of_teams_source="missing",
-        source_status="legacy_fallback",
-    )
-
-
-def _determine_context_status(
-    home_status: str,
-    away_status: str,
-    competition_status: str,
-) -> str:
-    statuses: Set[str] = {home_status, away_status, competition_status}
-    if statuses == {"normalized"}:
-        return "normalized"
-    if statuses == {"legacy_fallback"}:
-        return "legacy_compat"
-    return "mixed"
+def _missing_context_message(event_obj, missing: list[str]) -> str:
+    event_id = getattr(event_obj, "id", "?")
+    return f"event_id={event_id} missing_normalized_context_fields={','.join(missing)}"
 
 
 def build_event_context(
     event_obj,
     minutes_until_start: Optional[int] = None,
-    metadata_snapshot: Optional[Dict] = None,
-) -> EventContext:
-    metadata_snapshot = metadata_snapshot or {}
+    metadata_snapshot: Optional[dict] = None,
+) -> Optional[EventContext]:
+    """Build a strict, normalized EventContext or return None.
 
-    home_name = getattr(event_obj, "home_team", None) or "Unknown"
-    away_name = getattr(event_obj, "away_team", None) or "Unknown"
+    This intentionally refuses to fall back to legacy event fields. The new
+    runtime should only proceed when participants and competition relations
+    are already normalized.
+    """
+    del metadata_snapshot
 
-    home = _build_participant_context(getattr(event_obj, "home_participant", None), home_name)
-    away = _build_participant_context(getattr(event_obj, "away_participant", None), away_name)
-    competition = _build_competition_context(
-        getattr(event_obj, "competition_ref", None),
-        getattr(event_obj, "competition", None) or "Unknown",
+    missing: list[str] = []
+    home_participant = event_obj.__dict__.get("home_participant")
+    away_participant = event_obj.__dict__.get("away_participant")
+    competition_ref = event_obj.__dict__.get("competition_ref")
+
+    if home_participant is None:
+        missing.append("home_participant")
+    if away_participant is None:
+        missing.append("away_participant")
+    if competition_ref is None:
+        missing.append("competition_ref")
+
+    if missing:
+        logger.warning("Normalized EventContext unavailable: %s", _missing_context_message(event_obj, missing))
+        return None
+
+    home_name = getattr(home_participant, "name", None)
+    away_name = getattr(away_participant, "name", None)
+    competition_display_name = getattr(competition_ref, "display_name", None)
+
+    if not home_name:
+        missing.append("home_participant.name")
+    if not away_name:
+        missing.append("away_participant.name")
+    if not competition_display_name:
+        missing.append("competition_ref.display_name")
+
+    if missing:
+        logger.warning("Normalized EventContext unavailable: %s", _missing_context_message(event_obj, missing))
+        return None
+
+    start_time_utc = getattr(event_obj, "start_time_utc", None)
+    if start_time_utc is None:
+        missing.append("start_time_utc")
+    if missing:
+        logger.warning("Normalized EventContext unavailable: %s", _missing_context_message(event_obj, missing))
+        return None
+
+    home = ParticipantContext(
+        participant_id=getattr(home_participant, "participant_id", None),
+        source=getattr(home_participant, "source", None),
+        source_participant_id=getattr(home_participant, "source_participant_id", None),
+        name=home_name,
+        slug=getattr(home_participant, "slug", None),
+        short_name=getattr(home_participant, "short_name", None),
+        source_status="normalized",
+    )
+    away = ParticipantContext(
+        participant_id=getattr(away_participant, "participant_id", None),
+        source=getattr(away_participant, "source", None),
+        source_participant_id=getattr(away_participant, "source_participant_id", None),
+        name=away_name,
+        slug=getattr(away_participant, "slug", None),
+        short_name=getattr(away_participant, "short_name", None),
+        source_status="normalized",
+    )
+    competition = CompetitionContext(
+        competition_id=getattr(competition_ref, "competition_id", None),
+        source=getattr(competition_ref, "source", None),
+        source_tournament_id=getattr(competition_ref, "source_tournament_id", None),
+        source_unique_tournament_id=getattr(competition_ref, "source_unique_tournament_id", None),
+        canonical_name=getattr(competition_ref, "canonical_name", None),
+        display_name=competition_display_name,
+        slug=getattr(competition_ref, "slug", None),
+        unique_slug=getattr(competition_ref, "unique_slug", None),
+        category_id=getattr(competition_ref, "category_id", None),
+        category_name=getattr(competition_ref, "category_name", None),
+        number_of_teams=getattr(competition_ref, "number_of_teams", None),
+        number_of_teams_source="db" if getattr(competition_ref, "number_of_teams", None) is not None else "missing",
+        source_status="normalized",
     )
 
     return EventContext(
@@ -106,55 +108,50 @@ def build_event_context(
         custom_id=getattr(event_obj, "custom_id", None),
         sport=getattr(event_obj, "sport", None) or "Unknown",
         season_id=getattr(event_obj, "season_id", None),
-        season_name=metadata_snapshot.get("season_name"),
-        season_year=metadata_snapshot.get("season_year"),
-        start_time_utc=getattr(event_obj, "start_time_utc", None),
+        season_name=event_obj.__dict__.get("season").name if event_obj.__dict__.get("season") else None,
+        season_year=event_obj.__dict__.get("season").year if event_obj.__dict__.get("season") else None,
+        start_time_utc=start_time_utc,
         minutes_until_start=minutes_until_start,
         discovery_source=getattr(event_obj, "discovery_source", None),
         home=home,
         away=away,
         competition=competition,
-        participants_label=f"{home.name} vs {away.name}",
-        context_status=_determine_context_status(
-            home.source_status,
-            away.source_status,
-            competition.source_status,
-        ),
+        participants_label=f"{home_name} vs {away_name}",
+        context_status="normalized",
     )
 
 
-def infer_number_of_teams_from_streak_analysis(streak_analysis) -> Optional[int]:
+@dataclass(frozen=True)
+class NumberOfTeamsSummary:
+    unique_team_count: int
+    inferred_number_of_teams: Optional[int]
+
+
+def summarize_number_of_teams_from_streak_analysis(streak_analysis) -> NumberOfTeamsSummary:
     sport = getattr(streak_analysis, "sport", None)
-    if sport in {"Tennis", "Tennis Doubles"}:
-        return None
+    unique_team_names = set()
 
-    inferred_count = count_unique_teams_from_streak_analysis(streak_analysis)
-    if inferred_count <= 1:
-        return None
-    return inferred_count
+    for results in (
+        getattr(streak_analysis, "home_team_results", None) or [],
+        getattr(streak_analysis, "away_team_results", None) or [],
+    ):
+        for result in results:
+            for key in ("team_name", "opponent_name"):
+                value = result.get(key)
+                if value is None:
+                    continue
+                normalized = str(value).strip()
+                if not normalized or normalized == "Unknown":
+                    continue
+                unique_team_names.add(normalized)
 
+    unique_team_count = len(unique_team_names)
+    if sport in {"Tennis", "Tennis Doubles"} or unique_team_count <= 1:
+        inferred = None
+    else:
+        inferred = unique_team_count
 
-def count_unique_teams_from_streak_analysis(streak_analysis) -> int:
-    unique_team_names: Set[str] = set()
-
-    for result in (getattr(streak_analysis, "home_team_results", None) or []):
-        for key in ("team_name", "opponent_name"):
-            value = result.get(key)
-            if value is None:
-                continue
-            normalized = str(value).strip()
-            if not normalized or normalized == "Unknown":
-                continue
-            unique_team_names.add(normalized)
-
-    for result in (getattr(streak_analysis, "away_team_results", None) or []):
-        for key in ("team_name", "opponent_name"):
-            value = result.get(key)
-            if value is None:
-                continue
-            normalized = str(value).strip()
-            if not normalized or normalized == "Unknown":
-                continue
-            unique_team_names.add(normalized)
-
-    return len(unique_team_names)
+    return NumberOfTeamsSummary(
+        unique_team_count=unique_team_count,
+        inferred_number_of_teams=inferred,
+    )
