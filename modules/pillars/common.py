@@ -11,10 +11,10 @@ from typing import Any, Dict, List
 # ---------------------------------------------------------------------------
 
 _STRENGTH_THRESHOLDS: List[tuple[float, str]] = [
-    (0.05, "NONE"),
+    (0.05, "IGNORE"),
     (0.15, "LOW"),
-    (0.35, "MEDIUM"),
-    (0.70, "HIGH"),
+    (0.30, "MEDIUM"),
+    (0.60, "HIGH"),
 ]
 _STRENGTH_MAX_LABEL = "EXTREME"
 
