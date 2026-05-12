@@ -185,6 +185,14 @@ class Config:
     # Minimum number of past results required for at least one team to send streak alerts
     STREAK_ALERT_MIN_RESULTS = int(os.getenv('STREAK_ALERT_MIN_RESULTS', '15'))
 
+    # Matchup streak standings grouping toggle.
+    # True keeps natural conference/league grouping when available.
+    # False forces league-wide standings.
+    MATCHUP_STANDINGS_GROUP_BY_CONFERENCE = _parse_env_bool(
+        'MATCHUP_STANDINGS_GROUP_BY_CONFERENCE',
+        True
+    )
+
     # Sports to exclude from alert evaluation (but not odds extraction)
     EXCLUDED_SPORTS = _parse_env_list('EXCLUDED_SPORTS', ['Table tennis', 'Darts'])
 

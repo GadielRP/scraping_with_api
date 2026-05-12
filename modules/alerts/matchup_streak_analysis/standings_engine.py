@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import text
 
 from infrastructure.persistence.database import db_manager
+from infrastructure.settings import Config
 
 from .constants import (
     get_all_season_ids,
@@ -305,6 +306,9 @@ class HistoricalStandingsCalculator:
         cutoff_dt = datetime.fromtimestamp(cutoff_timestamp)
         standings_method = get_standings_method(season_id, sport)
         grouping_method = get_grouping_method(season_id, sport)
+        group_by_conference = getattr(Config, "MATCHUP_STANDINGS_GROUP_BY_CONFERENCE", True)
+        if not group_by_conference:
+            grouping_method = "league_wide"
 
         all_season_ids = get_all_season_ids(season_id)
         canonical_season_id = get_canonical_season_id(season_id)

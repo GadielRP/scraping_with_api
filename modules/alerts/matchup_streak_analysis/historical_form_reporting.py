@@ -11,6 +11,47 @@ from infrastructure.settings import Config
 
 logger = logging.getLogger(__name__)
 
+_GROUP_ORDER = {
+    "Eastern": 0,
+    "Western": 1,
+    "AFC": 2,
+    "NFC": 3,
+    "AL": 4,
+    "NL": 5,
+}
+
+
+def _format_standing_line(team_name: str, stats: Dict, standings_method: str = None) -> str:
+    """Format a single standings row using canonical fields."""
+    pos = stats.get("rank") or "?"
+    pts = stats.get("points", 0)
+    wins = stats.get("wins", 0)
+    draws = stats.get("draws", 0)
+    losses = stats.get("losses", 0)
+    gd = stats.get("diff", 0)
+    gd_str = f"+{gd}" if gd > 0 else str(gd)
+    games = stats.get("gp", 0)
+    pct = stats.get("pct")
+    method = standings_method or ""
+    ot_losses = stats.get("ot_losses", 0)
+    ties = stats.get("ties", 0)
+
+    if pct is not None and method == "win_pct":
+        return f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L) GP:{games} DIFF:{gd_str}"
+    if pct is not None and method == "win_pct_half_tie":
+        return f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L-{ties}T) GP:{games} DIFF:{gd_str}"
+    if method in {"nhl_2_1_0_otl", "hockey_3_2_1_0"} and ot_losses > 0:
+        return f"#{pos} {team_name}: {pts}pts ({wins}W-{losses}L-{ot_losses}OTL) GP:{games} DIFF:{gd_str}"
+    return f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, GP:{games}) DIFF:{gd_str}"
+
+
+def _group_sort_key(group_name: str) -> tuple:
+    if group_name == "UNKNOWN":
+        return (2, "", group_name)
+    if group_name in _GROUP_ORDER:
+        return (0, _GROUP_ORDER[group_name], group_name)
+    return (1, group_name.lower(), group_name)
+
 
 def format_standings_table_for_telegram(
     standings: Dict[str, Dict],
@@ -19,31 +60,28 @@ def format_standings_table_for_telegram(
 ) -> str:
     """Format standings data into a Telegram-friendly table."""
     message = f"STANDINGS: <b>{title}</b>\n\n"
+    has_groups = any((stats.get("group") or stats.get("conference")) for stats in standings.values())
 
-    sorted_standings = sorted(standings.items(), key=lambda item: item[1].get("rank") or 999)
+    if not has_groups:
+        sorted_standings = sorted(standings.items(), key=lambda item: item[1].get("rank") or 999)
+        for team_name, stats in sorted_standings:
+            message += _format_standing_line(team_name, stats, standings_method) + "\n"
+        return message
 
-    for team_name, stats in sorted_standings:
-        pos = stats.get("rank") or "?"
-        pts = stats.get("points", 0)
-        wins = stats.get("wins", 0)
-        draws = stats.get("draws", 0)
-        losses = stats.get("losses", 0)
-        gd = stats.get("diff", 0)
-        gd_str = f"+{gd}" if gd > 0 else str(gd)
-        games = stats.get("gp", 0)
-        pct = stats.get("pct")
-        method = standings_method or ""
-        ot_losses = stats.get("ot_losses", 0)
-        ties = stats.get("ties", 0)
+    grouped_standings: Dict[str, List[tuple]] = {}
+    for team_name, stats in standings.items():
+        group_name = stats.get("group") or stats.get("conference") or "UNKNOWN"
+        grouped_standings.setdefault(group_name, []).append((team_name, stats))
 
-        if pct is not None and method == "win_pct":
-            message += f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L) GP:{games} DIFF:{gd_str}\n"
-        elif pct is not None and method == "win_pct_half_tie":
-            message += f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L-{ties}T) GP:{games} DIFF:{gd_str}\n"
-        elif method in {"nhl_2_1_0_otl", "hockey_3_2_1_0"} and ot_losses > 0:
-            message += f"#{pos} {team_name}: {pts}pts ({wins}W-{losses}L-{ot_losses}OTL) GP:{games} DIFF:{gd_str}\n"
-        else:
-            message += f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, GP:{games}) DIFF:{gd_str}\n"
+    for group_name in sorted(grouped_standings.keys(), key=_group_sort_key):
+        message += f"<b>{group_name}</b>\n"
+        sorted_group = sorted(
+            grouped_standings[group_name],
+            key=lambda item: item[1].get("rank") or 999,
+        )
+        for team_name, stats in sorted_group:
+            message += _format_standing_line(team_name, stats, standings_method) + "\n"
+        message += "\n"
 
     return message
 

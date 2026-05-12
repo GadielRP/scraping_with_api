@@ -117,8 +117,9 @@ def _format_compact_standing(
         parts.append(f"{points}pts")
     if gp is not None:
         parts.append(f"GP:{gp}")
-    if diff is not None:
-        parts.append(f"DIFF:{_format_signed_metric(diff)}")
+    # point diff set as diff, removed for character limit purposes
+    # if diff is not None:
+    #     parts.append(f"DIFF:{_format_signed_metric(diff)}")
     return " ".join(parts)
 
 
@@ -224,7 +225,9 @@ def create_matchup_streak_message(streak) -> str:
                     parts.append(f" ({'-'.join(record_parts)})")
                 if matches is not None:
                     parts.append(f", GP:{matches}")
-                parts.append(f", DIFF:{goal_diff_display}")
+                # point diff set as diff, removed for character limit purposes
+                # if goal_diff is not None:
+                #     parts.append(f", DIFF:{goal_diff_display}")
                 return "".join(parts)
 
             if home_standing:
