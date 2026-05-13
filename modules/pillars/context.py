@@ -76,7 +76,7 @@ def build_event_context(
     metadata_snapshot: Optional[dict] = None,
 ) -> Optional[EventContext]:
     """Build EventContext, preferring normalized relations with temporary legacy fallback."""
-    del metadata_snapshot
+    metadata_snapshot = metadata_snapshot or {}
 
     missing: list[str] = []
     legacy_fallback_used = False
@@ -86,6 +86,10 @@ def build_event_context(
     legacy_home_name = _clean_text(getattr(event_obj, "home_team", None))
     legacy_away_name = _clean_text(getattr(event_obj, "away_team", None))
     legacy_competition_name = _clean_text(getattr(event_obj, "competition", None))
+    snapshot_home_team_id = metadata_snapshot.get("home_team_id")
+    snapshot_away_team_id = metadata_snapshot.get("away_team_id")
+    snapshot_competition_slug = _clean_text(metadata_snapshot.get("competition_slug"))
+    snapshot_unique_tournament_id = metadata_snapshot.get("unique_tournament_id")
 
     if home_participant is None and legacy_home_name is None:
         missing.append("home_participant")
@@ -149,10 +153,37 @@ def build_event_context(
         if legacy_competition_name is not None:
             legacy_fallback_used = True
 
+    home_source_participant_id = getattr(home_participant, "source_participant_id", None)
+    if home_source_participant_id is None:
+        home_source_participant_id = snapshot_home_team_id
+        if home_source_participant_id is not None:
+            legacy_fallback_used = True
+
+    away_source_participant_id = getattr(away_participant, "source_participant_id", None)
+    if away_source_participant_id is None:
+        away_source_participant_id = snapshot_away_team_id
+        if away_source_participant_id is not None:
+            legacy_fallback_used = True
+
+    competition_source_unique_tournament_id = getattr(competition_ref, "source_unique_tournament_id", None)
+    if competition_source_unique_tournament_id is None:
+        competition_source_unique_tournament_id = snapshot_unique_tournament_id
+        if competition_source_unique_tournament_id is not None:
+            legacy_fallback_used = True
+
+    competition_slug = _clean_text(getattr(competition_ref, "slug", None))
+    unique_competition_slug = _clean_text(getattr(competition_ref, "unique_slug", None))
+    if not competition_slug and snapshot_competition_slug:
+        competition_slug = snapshot_competition_slug
+        legacy_fallback_used = True
+    if not unique_competition_slug and snapshot_competition_slug:
+        unique_competition_slug = snapshot_competition_slug
+        legacy_fallback_used = True
+
     home = ParticipantContext(
         participant_id=home_participant_id,
         source=getattr(home_participant, "source", None),
-        source_participant_id=getattr(home_participant, "source_participant_id", None),
+        source_participant_id=home_source_participant_id,
         name=home_name,
         slug=getattr(home_participant, "slug", None),
         short_name=getattr(home_participant, "short_name", None),
@@ -161,7 +192,7 @@ def build_event_context(
     away = ParticipantContext(
         participant_id=away_participant_id,
         source=getattr(away_participant, "source", None),
-        source_participant_id=getattr(away_participant, "source_participant_id", None),
+        source_participant_id=away_source_participant_id,
         name=away_name,
         slug=getattr(away_participant, "slug", None),
         short_name=getattr(away_participant, "short_name", None),
@@ -171,11 +202,11 @@ def build_event_context(
         competition_id=competition_id,
         source=getattr(competition_ref, "source", None),
         source_tournament_id=getattr(competition_ref, "source_tournament_id", None),
-        source_unique_tournament_id=getattr(competition_ref, "source_unique_tournament_id", None),
+        source_unique_tournament_id=competition_source_unique_tournament_id,
         canonical_name=getattr(competition_ref, "canonical_name", None),
         display_name=competition_display_name,
-        slug=getattr(competition_ref, "slug", None),
-        unique_slug=getattr(competition_ref, "unique_slug", None),
+        slug=competition_slug,
+        unique_slug=unique_competition_slug,
         category_id=getattr(competition_ref, "category_id", None),
         category_name=getattr(competition_ref, "category_name", None),
         number_of_teams=getattr(competition_ref, "number_of_teams", None),

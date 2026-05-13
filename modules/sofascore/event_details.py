@@ -90,6 +90,7 @@ def _extract_metadata_snapshot(response: Dict) -> Optional[Dict]:
         home_team = event_data.get("homeTeam", {})
         away_team = event_data.get("awayTeam", {})
         tournament = event_data.get("tournament", {})
+        unique_tournament = tournament.get("uniqueTournament", {})
         season_data = event_data.get("season", {})
 
         season_year_raw = season_data.get("year")
@@ -115,7 +116,9 @@ def _extract_metadata_snapshot(response: Dict) -> Optional[Dict]:
             "away_team_ranking": away_team.get("ranking"),
             "tournament_id": tournament.get("id"),
             "tournament_name": tournament.get("name"),
-            "competition_slug": tournament.get("uniqueTournament", {}).get("slug"),
+            "unique_tournament_id": unique_tournament.get("id"),
+            "unique_tournament_name": unique_tournament.get("name"),
+            "competition_slug": unique_tournament.get("slug"),
             "season_id": str(season_data.get("id", "")) if season_data.get("id") else None,
             "season_name": season_data.get("name"),
             "season_year": season_year,
@@ -138,13 +141,13 @@ def get_event_results(
 ) -> Optional[Dict]:
     try:
         if update_court_type:
-            logger.info("Fetching /event/%s endpoint to update court type", event_id)
+            logger.info("✈️ Fetching /event/%s endpoint to update court type", event_id)
         elif update_time:
-            logger.info("Fetching /event/%s endpoint to update time", event_id)
+            logger.info("✈️ Fetching /event/%s endpoint to update time", event_id)
         elif return_snapshot and update_time==False:
-            logger.info("Fetching /event/%s endpoint to get metadata snapshot (timestamp correction bypassed)", event_id)
+            logger.info("✈️ Fetching /event/%s endpoint to get metadata snapshot (timestamp correction bypassed)", event_id)
         else:
-            logger.info("Fetching event results for event %s", event_id)
+            logger.info("✈️ Fetching event results for event %s", event_id)
 
         response = fetch_event_response(client, event_id, delete_event_on_404=True)
         if not response:
@@ -192,7 +195,7 @@ def get_event_results(
             return timing_result
 
         elif return_snapshot and update_time==False:
-            logger.info("Fetching metadata snapshot for event %s (timestamp correction bypassed)", event_id)
+            logger.info("Parsing metadata snapshot for event %s (timestamp correction bypassed)", event_id)
             return True, _extract_metadata_snapshot(response)
 
         result = extract_results_from_response(response)

@@ -36,11 +36,38 @@ logger = logging.getLogger(__name__)
 
 
 def _enrich_event_context_competition_metadata(event_context, event_obj) -> None:
+    logger.info("💧 started competition meta data hydration through _enrich_event_context_competition_metadata")
+    logger.info(
+        "Pre-start metadata check for event %s: competition_id=%s source_unique_tournament_id=%s season_id=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
+        event_context.event_id,
+        getattr(event_context.competition, "competition_id", None),
+        getattr(event_context.competition, "source_unique_tournament_id", None),
+        getattr(event_context, "season_id", None),
+        getattr(event_context.competition, "number_of_teams", None),
+        getattr(event_context.competition, "total_regular_season_games", None),
+        getattr(event_context.competition, "standings_grouping", None),
+        getattr(event_context.competition, "league_config_source", None),
+    )
     resolution = resolve_competition_metadata(event_context, event_obj=event_obj)
     apply_competition_metadata_resolution(event_context, resolution)
     event_context.competition.standings_response = resolution.raw.get("standings_response_raw")
+    logger.info(
+        "Pre-start metadata resolution result for event %s: source=%s standings_called=%s should_persist=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s",
+        event_context.event_id,
+        resolution.league_config_source,
+        resolution.standings_called,
+        resolution.should_persist,
+        resolution.number_of_teams,
+        resolution.total_regular_season_games,
+        resolution.standings_grouping,
+    )
 
     if not resolution.should_persist or event_context.competition.competition_id is None:
+        logger.info(
+            "Pre-start metadata resolution for event %s will not persist (competition_id=%s)",
+            event_context.event_id,
+            event_context.competition.competition_id,
+        )
         return
 
     competition_id = event_context.competition.competition_id
@@ -198,6 +225,34 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                     logger.warning("No market odds saved for event %s: %s", event_data["id"], ingestion_result.reason)
             except Exception as exc:
                 logger.error(f"Error processing upcoming event odds {event_info.get('event_id', 'unknown')}: {exc}")
+
+        for event_info in events_to_process:
+            if event_info.get("metadata_snapshot") is not None:
+                continue
+            if event_info.get("minutes_until_start") not in key_moments:
+                continue
+
+            event_id = event_info.get("event_id")
+            try:
+                logger.info(
+                    "Fetching metadata snapshot for event %s for pre-start context enrichment",
+                    event_id,
+                )
+                _, metadata_snapshot = api_client.get_event_results(
+                    event_id=event_id,
+                    update_time=False,
+                    return_snapshot=True,
+                    current_start_time=event_info.get("original_start_time"),
+                    minutes_until_start=event_info.get("minutes_until_start", 0),
+                )
+                if metadata_snapshot:
+                    event_info["metadata_snapshot"] = metadata_snapshot
+            except Exception as exc:
+                logger.warning(
+                    "Failed to fetch metadata snapshot for event %s during pre-start enrichment: %s",
+                    event_id,
+                    exc,
+                )
 
         if events_to_process:
             logger.info(f"Pre-start check completed: {len(events_to_process)} games starting soon!")

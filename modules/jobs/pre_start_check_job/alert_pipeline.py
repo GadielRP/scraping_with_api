@@ -110,7 +110,12 @@ class EventAlertProcessor:
 
 
         dual_report = self._ensure_dual_process_evaluation(
-            event_payload, event_obj, is_tracked_season, is_selected_source, minutes_until_start
+            event_payload,
+            event_obj,
+            event_context,
+            is_tracked_season,
+            is_selected_source,
+            minutes_until_start,
         )
 
         # 3. Dispatch (Send the actual notifications based on evaluation results)
@@ -196,7 +201,13 @@ class EventAlertProcessor:
         )
 
     def _ensure_dual_process_evaluation(
-        self, event_payload: dict, event_obj, is_tracked_season: bool, is_selected_source: bool, minutes_until_start: int
+        self,
+        event_payload: dict,
+        event_obj,
+        event_context,
+        is_tracked_season: bool,
+        is_selected_source: bool,
+        minutes_until_start: int,
     ):
         """Runs the dual process prediction engine if needed."""
         dual_report = event_payload.get("dual_report")
@@ -205,8 +216,11 @@ class EventAlertProcessor:
 
         if (is_selected_source or is_tracked_season) and minutes_until_start in {30, 0}:
             try:
-                
-                return prediction_engine.evaluate_dual_process(event_obj, minutes_until_start)
+                return prediction_engine.evaluate_dual_process(
+                    event_obj,
+                    minutes_until_start,
+                    event_context=event_context,
+                )
             except Exception as exc:
                 logger.error(f"Error running dual process evaluation for event {event_obj.id}: {exc}")
 

@@ -24,7 +24,7 @@ class ParsedStandingsCompetitionMetadata:
 
 def get_standings_response(client, season_id: int, unique_tournament_id: int) -> Optional[Dict]:
     response = client._request_json(f"/unique-tournament/{unique_tournament_id}/season/{season_id}/standings/total")
-    logger.info(f"fetching Sofascore's standing api endpoint /unique-tournament/{unique_tournament_id}/season/{season_id}/standings/total")
+    logger.info(f"✈️ fetching Sofascore's standing api endpoint /unique-tournament/{unique_tournament_id}/season/{season_id}/standings/total")
     if not response or "standings" not in response:
         logger.error("No standings found for season %s and uniquetournament %s", season_id, unique_tournament_id)
         return None

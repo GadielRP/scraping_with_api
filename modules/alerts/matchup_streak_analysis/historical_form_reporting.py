@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from sqlalchemy import text
 
@@ -106,12 +106,38 @@ def send_debug_telegram(message: str, chat_id: str) -> None:
         logger.error("Error sending debug Telegram: %s", exc)
 
 
-def get_round_cutoff_timestamps(season_id: int, rounds: List[int]) -> Dict[int, float]:
+def get_round_cutoff_timestamps(
+    source_unique_tournament_id: Optional[int],
+    source_tournament_id: Optional[int],
+    season_id: int,
+    rounds: List[int],
+) -> Dict[int, float]:
     """Find the timestamp when all teams in the season have completed N games."""
-    from .constants import get_all_season_ids
+    from modules.competition.league_config import get_included_season_ids
+    from modules.competition.league_config import get_collected_season_bundle
 
-    query = text(
-        """
+    if source_unique_tournament_id is None:
+        return {}
+
+    included_season_ids = get_included_season_ids(
+        source_unique_tournament_id,
+        source_tournament_id,
+        season_id,
+    )
+    collected_bundle = get_collected_season_bundle(
+        source_unique_tournament_id,
+        source_tournament_id,
+        season_id,
+    )
+    included_competition_identities = (
+        collected_bundle.included_competition_identities if collected_bundle else ()
+    )
+    tournament_ids = tuple(
+        identity.source_tournament_id
+        for identity in included_competition_identities
+        if identity.source_tournament_id is not None
+    )
+    query_sql = """
         SELECT
             home_team,
             away_team,
@@ -119,18 +145,34 @@ def get_round_cutoff_timestamps(season_id: int, rounds: List[int]) -> Dict[int, 
         FROM season_events_with_results
         WHERE season_id = ANY(:season_ids)
           AND round = 'regular_season'
-        ORDER BY start_time_utc ASC
-        """
-    )
+          AND source_unique_tournament_id = :source_unique_tournament_id
+    """
+    query_params = {
+        "season_ids": list(included_season_ids),
+        "source_unique_tournament_id": source_unique_tournament_id,
+    }
+    if tournament_ids:
+        query_sql += " AND source_tournament_id = ANY(:source_tournament_ids)"
+        query_params["source_tournament_ids"] = list(tournament_ids)
+    query_sql += " ORDER BY start_time_utc ASC"
+    query = text(query_sql)
 
     team_game_counts: Dict[str, int] = {}
     round_cutoffs: Dict[int, float] = {}
 
     with db_manager.get_session() as session:
-        result = session.execute(query, {"season_ids": get_all_season_ids(season_id)})
+        result = session.execute(query, query_params)
         all_rows = result.fetchall()
 
-        logger.info("ROUND CUTOFF: scanning %s events in season %s for rounds %s", len(all_rows), season_id, rounds)
+        logger.info(
+            "ROUND CUTOFF: scanning %s events in season %s for rounds %s (included_season_ids=%s, source_unique_tournament_id=%s, source_tournament_id=%s)",
+            len(all_rows),
+            season_id,
+            rounds,
+            included_season_ids,
+            source_unique_tournament_id,
+            source_tournament_id,
+        )
 
         for row in all_rows:
             home_team = row.home_team

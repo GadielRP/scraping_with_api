@@ -13,7 +13,12 @@ from datetime import datetime
 from modules.sofascore import api_client
 from infrastructure.persistence.repositories import SeasonRepository
 
-from .constants import is_season_collected
+from modules.competition.league_config import (
+    get_grouping_method,
+    get_included_season_ids,
+    get_standings_method,
+    is_collected_competition_scope,
+)
 from .historical_form_service import historical_form_processor
 
 logger = logging.getLogger(__name__)
@@ -558,7 +563,9 @@ def get_team_last_results_by_id(
     team_name: str,
     competition_slug: str,
     sport: str,
-    season_id: Optional[str] = None,
+    season_id: Optional[int] = None,
+    source_unique_tournament_id: Optional[int] = None,
+    source_tournament_id: Optional[int] = None,
     season_year: Optional[int] = None,
     observations: Optional[List[Dict]] = None,
     exclude_event_id: Optional[int] = None,
@@ -598,12 +605,42 @@ def get_team_last_results_by_id(
     # ROUTE 1: DB-based form retrieval for collected seasons
     # Uses the DB-backed historical form service instead of API calls
     # =====================================================================
-    if season_id and is_season_collected(int(season_id)):
-        logger.info(f"📊 Using DB-based form retrieval for {team_name} (season {season_id} is collected)")
+    season_id_int = int(season_id) if season_id is not None else None
+    if is_collected_competition_scope(
+        source_unique_tournament_id=source_unique_tournament_id,
+        source_tournament_id=source_tournament_id,
+        season_id=season_id_int,
+    ):
+        included_season_ids = get_included_season_ids(
+            source_unique_tournament_id,
+            source_tournament_id,
+            season_id_int,
+        )
+        standings_method = get_standings_method(
+            source_unique_tournament_id,
+            source_tournament_id,
+            sport,
+        )
+        grouping_method = get_grouping_method(
+            source_unique_tournament_id,
+            source_tournament_id,
+        )
+        logger.info(
+            "📊 Using DB-based form retrieval for %s (season_id=%s, included_season_ids=%s, source_unique_tournament_id=%s, source_tournament_id=%s, standings_method=%s, grouping_method=%s)",
+            team_name,
+            season_id,
+            included_season_ids,
+            source_unique_tournament_id,
+            source_tournament_id,
+            standings_method,
+            grouping_method,
+        )
         return historical_form_processor.get_team_form_from_db(
             team_name=team_name,
-            season_id=int(season_id),
+            season_id=season_id_int,
             sport=sport,
+            source_unique_tournament_id=source_unique_tournament_id,
+            source_tournament_id=source_tournament_id,
             exclude_event_id=exclude_event_id,
             current_event_timestamp=event_start_timestamp,
             send_debug_standings=debug_mode,  # Toggle: via .env global_debug_mode

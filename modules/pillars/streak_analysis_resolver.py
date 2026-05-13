@@ -30,8 +30,11 @@ def _normalized_context_is_complete(event_context: EventContext) -> Tuple[bool, 
         missing.append("competition.display_name")
     if not (event_context.competition.slug or event_context.competition.unique_slug):
         missing.append("competition.slug")
-    if event_context.competition.source_tournament_id is None:
-        missing.append("competition.source_tournament_id")
+    if (
+        event_context.competition.source_unique_tournament_id is None
+        and event_context.competition.source_tournament_id is None
+    ):
+        missing.append("competition.source_unique_tournament_id")
     if event_context.home.source_participant_id is None:
         missing.append("home.source_participant_id")
     if event_context.away.source_participant_id is None:
@@ -72,6 +75,7 @@ def resolve_matchup_streak_analysis(
         return streak_analysis, should_send
 
     if minutes_until_start != 30 or not getattr(event_obj, "custom_id", None):
+        logger.info(f"🚫 Skipping streak analysis for event {event_obj.id} with {minutes_until_start} minutes until start")
         return None, False
 
     if event_context is None:
@@ -80,6 +84,10 @@ def resolve_matchup_streak_analysis(
 
     is_complete, missing = _normalized_context_is_complete(event_context)
     if not is_complete:
+        logger.info(
+            "Skipping streak analysis for event %s due to incomplete normalized context",
+            getattr(event_obj, "id", "?"),
+        )
         logger.warning(
             "missing_normalized_context_field: event_id=%s missing=%s",
             getattr(event_obj, "id", "?"),
@@ -103,18 +111,14 @@ def resolve_matchup_streak_analysis(
             event_context.season_id,
         )
 
-        unique_tournament_id = (
-            event_context.competition.source_unique_tournament_id
-            or event_context.competition.source_tournament_id
-        )
-
         streak_analysis = build_matchup_streak_context(
             event_id=event_obj.id,
             event_custom_id=event_obj.custom_id,
             event_start_time=event_context.start_time_utc,
             sport=event_context.sport,
             discovery_source=event_context.discovery_source,
-            tournament_id=unique_tournament_id,
+            source_unique_tournament_id=event_context.competition.source_unique_tournament_id,
+            source_tournament_id=event_context.competition.source_tournament_id,
             competition_name=(
                 event_context.competition.display_name
                 or event_context.competition.canonical_name

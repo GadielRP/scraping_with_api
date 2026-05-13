@@ -302,9 +302,9 @@ class SofaScoreAPI:
         return _extract(response)
 
     def _extract_metadata_snapshot(self, response: Dict):
-        from .event_details import _extract_metadata_snapshot as _extract
+        from .event_details import _extract_metadata_snapshot
 
-        return _extract(response)
+        return _extract_metadata_snapshot(response)
 
     def get_event_results(
         self,

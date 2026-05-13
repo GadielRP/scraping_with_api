@@ -44,6 +44,7 @@ class Competition(Base):
     total_regular_season_games = Column(Integer)
     standings_grouping = Column(Text)
     league_config_source = Column(Text)
+    has_standings_source_endpoint = Column(Boolean)
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
 
@@ -634,10 +635,13 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
         e.id AS event_id,
         e.season_id,
         e.start_time_utc,
+        e.competition_id,
         hp.name AS home_team,
         ap.name AS away_team,
         e.sport,
         c.display_name AS competition,
+        c.source_tournament_id,
+        c.source_unique_tournament_id,
         r.home_score,
         r.away_score,
         r.winner,

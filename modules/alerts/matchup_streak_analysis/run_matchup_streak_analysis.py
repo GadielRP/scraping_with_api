@@ -114,7 +114,8 @@ def build_matchup_streak_context(
     event_start_time: datetime,
     sport: str,
     discovery_source: str,
-    tournament_id: str,
+    source_unique_tournament_id: Optional[int],
+    source_tournament_id: Optional[int],
     competition_name: str,
     competition_slug: str,
     season_id: int,
@@ -143,7 +144,8 @@ def build_matchup_streak_context(
         event_start_time: datetime of the upcoming event
         sport: Sport type (e.g. 'Basketball', 'Tennis')
         discovery_source: How the event was discovered
-        tournament_id: Tournament/competition ID for standings lookup
+        source_unique_tournament_id: SofaScore unique tournament id for standings lookup
+        source_tournament_id: SofaScore source tournament id for DB/identity filtering
         competition_name: Human-readable competition name
         competition_slug: URL slug for the competition
         season_id: Current season ID
@@ -256,6 +258,8 @@ def build_matchup_streak_context(
                     competition_slug,
                     sport,
                     season_id=season_id,
+                    source_unique_tournament_id=source_unique_tournament_id,
+                    source_tournament_id=source_tournament_id,
                     season_year=target_season_year,
                     observations=observations,
                     exclude_event_id=event_id,
@@ -273,6 +277,8 @@ def build_matchup_streak_context(
                     competition_slug,
                     sport,
                     season_id=season_id,
+                    source_unique_tournament_id=source_unique_tournament_id,
+                    source_tournament_id=source_tournament_id,
                     season_year=target_season_year,
                     observations=observations,
                     exclude_event_id=event_id,
@@ -360,16 +366,20 @@ def build_matchup_streak_context(
         away_team_standing = None
         resolved_standings_response = standings_response
 
-        if sport not in ['Tennis', 'Tennis Doubles'] and season_id and tournament_id and (home_team_id or away_team_id):
+        standings_api_unique_tournament_id = source_unique_tournament_id or source_tournament_id
+        if sport not in ['Tennis', 'Tennis Doubles'] and season_id and standings_api_unique_tournament_id and (home_team_id or away_team_id):
             raw_standings = standings_response
             if raw_standings is None:
-                logger.debug(
-                    "No preloaded standings response for event %s; falling back to SofaScore API",
+                logger.info(
+                    "No preloaded standings response for event %s; falling back to SofaScore API (season_id=%s, source_unique_tournament_id=%s, source_tournament_id=%s)",
                     event_id,
+                    season_id,
+                    source_unique_tournament_id,
+                    source_tournament_id,
                 )
-                raw_standings = api_client.get_standings_response(season_id, tournament_id)
+                raw_standings = api_client.get_standings_response(season_id, standings_api_unique_tournament_id)
             else:
-                logger.debug(
+                logger.info(
                     "Using preloaded standings response for event %s from pre-start payload",
                     event_id,
                 )

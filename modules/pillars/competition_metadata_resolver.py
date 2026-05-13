@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
 
 from infrastructure.settings import Config
-from modules.pillars.competition_metadata_config import get_manual_competition_metadata
+from modules.competition.league_config import get_league_config
 from modules.pillars.context import EventContext
 from modules.sofascore import api_client
 from modules.sofascore.standings import parse_competition_metadata_from_standings
@@ -228,8 +228,8 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
 
     regular_scope = _is_regular_competition_scope(event_context, event_obj=event_obj)
     raw["regular_competition_scope"] = regular_scope
-    manual_config = get_manual_competition_metadata(competition.source_unique_tournament_id) if regular_scope else None
-    raw["manual_config"] = manual_config
+    league_config = get_league_config(competition.source_unique_tournament_id, competition.source_tournament_id) if regular_scope else None
+    raw["manual_config"] = asdict(league_config) if league_config else None
 
     number_of_teams = db_number_of_teams
     total_regular_season_games = db_total_regular_season_games
@@ -238,28 +238,28 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
     source_detail = "db_cache" if source != "missing" else "missing"
     should_persist = False
 
-    if manual_config:
+    if league_config:
         number_of_teams, source = _merge_number(
             number_of_teams,
             source,
-            manual_config.get("number_of_teams"),
+            league_config.number_of_teams,
             "manual_config",
             raw,
         )
-        manual_total = _valid_total_games(manual_config.get("total_regular_season_games"))
+        manual_total = _valid_total_games(league_config.total_regular_season_games)
         if manual_total is not None and manual_total != total_regular_season_games:
             total_regular_season_games = manual_total
             source = "manual_config"
         if standings_grouping is None:
-            standings_grouping = _valid_grouping(manual_config.get("standings_grouping"))
+            standings_grouping = _valid_grouping(league_config.standings_grouping)
             if standings_grouping is not None:
                 source = "manual_config"
-        elif manual_config.get("standings_grouping") and manual_config.get("standings_grouping") != standings_grouping:
+        elif league_config.standings_grouping and league_config.standings_grouping != standings_grouping:
             raw.setdefault("conflicts", []).append(
                 {
                     "field": "standings_grouping",
                     "db_value": standings_grouping,
-                    "new_value": manual_config.get("standings_grouping"),
+                    "new_value": league_config.standings_grouping,
                     "source": "manual_config",
                     "resolution": "kept_db_value",
                 }
@@ -269,6 +269,14 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
 
     if not regular_scope:
         raw["skip_reason"] = "non_regular_competition_scope"
+        logger.info(
+            "Competition metadata resolver skipping standings for event_id=%s competition_id=%s source_unique_tournament_id=%s season_id=%s skip_reason=%s",
+            event_context.event_id,
+            competition.competition_id,
+            competition.source_unique_tournament_id,
+            event_context.season_id,
+            raw["skip_reason"],
+        )
         return CompetitionMetadataResolution(
             number_of_teams=number_of_teams,
             total_regular_season_games=total_regular_season_games,
@@ -288,7 +296,7 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
         number_of_teams,
         total_regular_season_games,
         standings_grouping,
-        manual_config,
+        league_config,
         db_total_regular_season_games,
     )
     already_attempted = competition_metadata_refresh_already_attempted(competition.competition_id)
@@ -310,9 +318,18 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
     standings_conflict = False
 
     if should_call_standings:
+        logger.info(
+            "Competition metadata resolver calling standings for event_id=%s competition_id=%s season_id=%s source_unique_tournament_id=%s force_refresh=%s standings_needed=%s already_attempted=%s",
+            event_context.event_id,
+            competition.competition_id,
+            event_context.season_id,
+            competition.source_unique_tournament_id,
+            force_refresh,
+            standings_needed,
+            already_attempted,
+        )
         standings_called = True
         mark_competition_metadata_refresh_attempted(competition.competition_id)
-        logger.info(f"debug: unique t {competition.source_unique_tournament_id}, season_id {event_context.season_id}")
         raw_standings = api_client.get_standings_response(
             int(event_context.season_id),
             int(competition.source_unique_tournament_id),
@@ -369,6 +386,14 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
 
     if already_attempted and not force_refresh and not standings_called:
         should_persist = False
+
+    if not standings_called:
+        logger.info(
+            "Competition metadata resolver did not call standings for competition_id=%s season_id=%s skip_reason=%s",
+            competition.competition_id,
+            event_context.season_id,
+            raw.get("skip_reason"),
+        )
 
     return CompetitionMetadataResolution(
         number_of_teams=number_of_teams,

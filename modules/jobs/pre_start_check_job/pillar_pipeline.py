@@ -44,18 +44,22 @@ class EventPillarProcessor:
 
         Returns a dictionary with pillar results or ``None`` on failure.
         """
-        if not event_payload.get("success"):
-            return None
-
         event_obj = event_payload.get("event_obj")
-        if event_obj is None:
+        event_id = getattr(event_obj, "id", event_payload.get("event_id", "?"))
+
+        if not event_payload.get("success"):
+            logger.warning(f"☢️ Pillar pipeline: success is false for event {event_id}, skipping pillar calculation")
             return None
 
+        if event_obj is None:
+            logger.warning(f"☢️ Pillar pipeline: event obj is empty for {event_id}, skipping pillar calculation")
+            return None
+
+        logger.info(f"🏛️ Started pillars processing for event {event_id}")
         round_value = event_obj.round
-        event_id = event_obj.id
         if round_value != "regular_season":
-            logger.warning(
-                "Pillar pipeline: round is %s for event_id %s, skipping pillar calculation",
+            logger.info(
+                "🚫 Pillar pipeline: round is %s for event_id %s, skipping pillar calculation",
                 round_value,
                 event_id,
             )
@@ -72,18 +76,44 @@ class EventPillarProcessor:
             )
         if event_context is None:
             logger.warning(
-                "Pillar pipeline: missing_normalized_context for event %s; skipping pillar calculation",
+                "☢️ Pillar pipeline: missing_normalized_context for event %s; skipping pillar calculation",
                 event_obj.id,
             )
             return None
+
+        logger.info(
+            "Pillar pipeline metadata check for event %s: competition_id=%s source_unique_tournament_id=%s season_id=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
+            event_id,
+            getattr(event_context.competition, "competition_id", None),
+            getattr(event_context.competition, "source_unique_tournament_id", None),
+            getattr(event_context, "season_id", None),
+            getattr(event_context.competition, "number_of_teams", None),
+            getattr(event_context.competition, "total_regular_season_games", None),
+            getattr(event_context.competition, "standings_grouping", None),
+            getattr(event_context.competition, "league_config_source", None),
+        )
 
         if (
             getattr(event_context.competition, "number_of_teams", None) is None
             or getattr(event_context.competition, "total_regular_season_games", None) is None
             or getattr(event_context.competition, "standings_grouping", None) is None
         ):
+            logger.info(
+                "Pillar pipeline metadata enrichment needed for event %s; calling competition metadata resolver",
+                event_id,
+            )
             resolution = resolve_competition_metadata(event_context, event_obj=event_obj)
             apply_competition_metadata_resolution(event_context, resolution)
+            logger.info(
+                "Pillar pipeline metadata enrichment result for event %s: source=%s standings_called=%s should_persist=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s",
+                event_id,
+                resolution.league_config_source,
+                resolution.standings_called,
+                resolution.should_persist,
+                resolution.number_of_teams,
+                resolution.total_regular_season_games,
+                resolution.standings_grouping,
+            )
 
         season_id = event_context.season_id
         participants = event_context.participants_label
@@ -99,8 +129,8 @@ class EventPillarProcessor:
         )
 
         if streak_analysis is None:
-            logger.debug(
-                "Pillar pipeline: no streak_analysis for event %s (%s), skipping",
+            logger.info(
+                "☢️ Pillar pipeline: no streak_analysis for event %s (%s), skipping",
                 event_obj.id,
                 participants,
             )

@@ -27,15 +27,39 @@ class AlertEngine:
         self.evaluator = evaluator or Process1Evaluator()
 
     @staticmethod
-    def _get_normalized_event_parts(event) -> Tuple[str, str, str]:
+    def _get_normalized_event_parts(event, event_context=None) -> Tuple[str, str, str]:
         home_participant = event.__dict__.get("home_participant")
         away_participant = event.__dict__.get("away_participant")
         competition_ref = event.__dict__.get("competition_ref")
 
-        if not home_participant or not away_participant or not competition_ref:
+        home_team = None
+        away_team = None
+        competition_name = None
+
+        if event_context is not None:
+            home_team = getattr(getattr(event_context, "home", None), "name", None)
+            away_team = getattr(getattr(event_context, "away", None), "name", None)
+            competition_name = getattr(getattr(event_context, "competition", None), "display_name", None) or getattr(
+                getattr(event_context, "competition", None),
+                "canonical_name",
+                None,
+            )
+
+        if home_team is None and home_participant is not None:
+            home_team = getattr(home_participant, "name", None)
+        if away_team is None and away_participant is not None:
+            away_team = getattr(away_participant, "name", None)
+        if competition_name is None and competition_ref is not None:
+            competition_name = getattr(competition_ref, "display_name", None) or getattr(competition_ref, "canonical_name", None)
+
+        home_team = home_team or getattr(event, "home_team", None)
+        away_team = away_team or getattr(event, "away_team", None)
+        competition_name = competition_name or getattr(event, "competition", None)
+
+        if not home_team or not away_team or not competition_name:
             raise ValueError(f"Missing normalized participants/competition for event_id={getattr(event, 'id', '?')}")
 
-        return home_participant.name, away_participant.name, competition_ref.display_name
+        return home_team, away_team, competition_name
 
     def evaluate_upcoming_events(self, upcoming_events: List) -> List[Dict]:
         """Evaluate all upcoming events for Process 1 alerts."""
@@ -55,7 +79,7 @@ class AlertEngine:
 
         return alerts
 
-    def evaluate_single_event(self, event, minutes_until_start: int = None) -> List[Dict]:
+    def evaluate_single_event(self, event, minutes_until_start: int = None, event_context=None) -> List[Dict]:
         """Evaluate a single event and return candidate reports."""
         event_odds = self._ensure_dual_process_odds_loaded(event)
         if not event_odds:
@@ -77,7 +101,7 @@ class AlertEngine:
         cur_v2 = float(cur_v2 or 0)
 
         try:
-            home_team, away_team, competition_name = self._get_normalized_event_parts(event)
+            home_team, away_team, competition_name = self._get_normalized_event_parts(event, event_context=event_context)
             participants = f"{home_team} vs {away_team}"
         except Exception:
             logger.warning("Missing normalized participants/competition for event %s", event.id)
