@@ -54,6 +54,9 @@ class CompetitionRepository:
             category_id=competition_data.get("category_id"),
             category_name=competition_data.get("category_name"),
             number_of_teams=competition_data.get("number_of_teams"),
+            total_regular_season_games=competition_data.get("total_regular_season_games"),
+            standings_grouping=competition_data.get("standings_grouping"),
+            league_config_source=competition_data.get("league_config_source"),
         )
 
         try:
@@ -85,6 +88,9 @@ class CompetitionRepository:
             "category_id",
             "category_name",
             "number_of_teams",
+            "total_regular_season_games",
+            "standings_grouping",
+            "league_config_source",
         ):
             value = competition_data.get(attr)
             if value is not None:
@@ -113,3 +119,112 @@ class CompetitionRepository:
         competition.number_of_teams = number_of_teams
         competition.updated_at = get_local_now()
         return True
+
+    @staticmethod
+    def update_competition_metadata_if_better(
+        session: Session,
+        competition_id: int,
+        number_of_teams: Optional[int] = None,
+        total_regular_season_games: Optional[int] = None,
+        standings_grouping: Optional[str] = None,
+        league_config_source: Optional[str] = None,
+    ) -> bool:
+        if competition_id is None:
+            return False
+
+        competition = (
+            session.query(Competition)
+            .filter(Competition.competition_id == competition_id)
+            .first()
+        )
+        if competition is None:
+            return False
+
+        from infrastructure.settings import Config
+
+        changed = False
+        source = league_config_source or "missing"
+
+        if number_of_teams is not None:
+            try:
+                number_of_teams = int(number_of_teams)
+            except (TypeError, ValueError):
+                number_of_teams = None
+
+        if number_of_teams is not None and number_of_teams > 1:
+            existing = competition.number_of_teams
+            if existing is None:
+                competition.number_of_teams = number_of_teams
+                changed = True
+            elif number_of_teams > existing:
+                logger.warning(
+                    "Competition metadata conflict for number_of_teams: competition_id=%s source_unique_tournament_id=%s db_value=%s new_value=%s source=%s; using greater value",
+                    competition_id,
+                    competition.source_unique_tournament_id,
+                    existing,
+                    number_of_teams,
+                    source,
+                )
+                competition.number_of_teams = number_of_teams
+                changed = True
+            elif number_of_teams < existing:
+                logger.warning(
+                    "Competition metadata conflict for number_of_teams: competition_id=%s source_unique_tournament_id=%s db_value=%s new_value=%s source=%s; keeping db value",
+                    competition_id,
+                    competition.source_unique_tournament_id,
+                    existing,
+                    number_of_teams,
+                    source,
+                )
+
+        if total_regular_season_games is not None:
+            try:
+                total_regular_season_games = int(total_regular_season_games)
+            except (TypeError, ValueError):
+                total_regular_season_games = None
+
+        if total_regular_season_games is not None and total_regular_season_games > 0:
+            existing = competition.total_regular_season_games
+            if existing is None:
+                competition.total_regular_season_games = total_regular_season_games
+                changed = True
+            elif source == "manual_config" and existing != total_regular_season_games:
+                logger.warning(
+                    "Competition metadata conflict for total_regular_season_games: competition_id=%s source_unique_tournament_id=%s db_value=%s new_value=%s source=%s; using manual_config",
+                    competition_id,
+                    competition.source_unique_tournament_id,
+                    existing,
+                    total_regular_season_games,
+                    source,
+                )
+                competition.total_regular_season_games = total_regular_season_games
+                changed = True
+
+        if standings_grouping is not None:
+            valid_groupings = {"single_table", "split_tables", "unknown"}
+            if standings_grouping not in valid_groupings:
+                standings_grouping = None
+
+        if standings_grouping is not None:
+            existing = competition.standings_grouping
+            if existing is None:
+                competition.standings_grouping = standings_grouping
+                changed = True
+            elif existing != standings_grouping:
+                logger.warning(
+                    "Competition metadata conflict for standings_grouping: competition_id=%s source_unique_tournament_id=%s db_value=%s new_value=%s source=%s",
+                    competition_id,
+                    competition.source_unique_tournament_id,
+                    existing,
+                    standings_grouping,
+                    source,
+                )
+                if source == "standings_response" and Config.FORCE_STANDINGS_COMPETITION_METADATA_REFRESH:
+                    competition.standings_grouping = standings_grouping
+                    changed = True
+
+        if changed:
+            competition.league_config_source = source
+            competition.updated_at = get_local_now()
+
+        return changed

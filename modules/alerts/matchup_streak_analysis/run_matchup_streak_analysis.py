@@ -101,6 +101,7 @@ class MatchupStreakContext:
     # Overall win streaks (unfiltered)
     home_current_win_streak: int = 0
     away_current_win_streak: int = 0
+    standings_response: Optional[List[Dict]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +129,7 @@ def build_matchup_streak_context(
     home_team_id: int = None,
     away_team_id: int = None,
     event_odds: Optional[Any] = None,
+    standings_response: Optional[List[Dict]] = None,
     debug_mode: bool = False,
 ) -> Optional[MatchupStreakContext]:
     """
@@ -356,9 +358,22 @@ def build_matchup_streak_context(
         sofascores_snapshot_away_team_ranking = None
         home_team_standing = None
         away_team_standing = None
+        resolved_standings_response = standings_response
 
         if sport not in ['Tennis', 'Tennis Doubles'] and season_id and tournament_id and (home_team_id or away_team_id):
-            raw_standings = api_client.get_standings_response(season_id, tournament_id)
+            raw_standings = standings_response
+            if raw_standings is None:
+                logger.debug(
+                    "No preloaded standings response for event %s; falling back to SofaScore API",
+                    event_id,
+                )
+                raw_standings = api_client.get_standings_response(season_id, tournament_id)
+            else:
+                logger.debug(
+                    "Using preloaded standings response for event %s from pre-start payload",
+                    event_id,
+                )
+            resolved_standings_response = raw_standings
             home_team_standing, away_team_standing = api_client.process_standings_response(
                 raw_standings,
                 home_team_id,
@@ -478,7 +493,8 @@ def build_matchup_streak_context(
             two_final=two_final,
             # Overall win streaks
             home_current_win_streak=home_overall_win_streak,
-            away_current_win_streak=away_overall_win_streak
+            away_current_win_streak=away_overall_win_streak,
+            standings_response=resolved_standings_response,
         )
 
     except Exception as e:

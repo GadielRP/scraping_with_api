@@ -1,7 +1,7 @@
 """Pillar pipeline for the pre-start job.
 
 Runs pillar/module calculations for events at key moments.
-Parallel to — but independent of — the existing alert pipeline.
+Parallel to, but independent of, the existing alert pipeline.
 """
 
 from __future__ import annotations
@@ -10,11 +10,13 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.repositories import CompetitionRepository
 from modules.pillars.context import (
     build_event_context,
     summarize_number_of_teams_from_streak_analysis,
+)
+from modules.pillars.competition_metadata_resolver import (
+    apply_competition_metadata_resolution,
+    resolve_competition_metadata,
 )
 from modules.pillars.streak_analysis_resolver import (
     resolve_matchup_streak_analysis,
@@ -49,12 +51,12 @@ class EventPillarProcessor:
         if event_obj is None:
             return None
 
-        round = event_obj.round
+        round_value = event_obj.round
         event_id = event_obj.id
-        if round != 'regular_season':
+        if round_value != "regular_season":
             logger.warning(
-                "🚫 Pillar pipeline: round is %s for event_id %s, skipping pillar calculation",
-                round,
+                "Pillar pipeline: round is %s for event_id %s, skipping pillar calculation",
+                round_value,
                 event_id,
             )
             return None
@@ -70,10 +72,19 @@ class EventPillarProcessor:
             )
         if event_context is None:
             logger.warning(
-                "🧱 Pillar pipeline: missing_normalized_context for event %s; skipping pillar calculation",
+                "Pillar pipeline: missing_normalized_context for event %s; skipping pillar calculation",
                 event_obj.id,
             )
             return None
+
+        if (
+            getattr(event_context.competition, "number_of_teams", None) is None
+            or getattr(event_context.competition, "total_regular_season_games", None) is None
+            or getattr(event_context.competition, "standings_grouping", None) is None
+        ):
+            resolution = resolve_competition_metadata(event_context, event_obj=event_obj)
+            apply_competition_metadata_resolution(event_context, resolution)
+
         season_id = event_context.season_id
         participants = event_context.participants_label
 
@@ -89,7 +100,7 @@ class EventPillarProcessor:
 
         if streak_analysis is None:
             logger.debug(
-                "🧱 Pillar pipeline: no streak_analysis for event %s (%s), skipping",
+                "Pillar pipeline: no streak_analysis for event %s (%s), skipping",
                 event_obj.id,
                 participants,
             )
@@ -98,30 +109,11 @@ class EventPillarProcessor:
         number_of_teams_summary = summarize_number_of_teams_from_streak_analysis(streak_analysis)
         inferred_number_of_teams = number_of_teams_summary.inferred_number_of_teams
         unique_team_count = number_of_teams_summary.unique_team_count
-        persisted_number_of_teams = False
+        inferred_number_of_teams_used = False
         competition_id = event_context.competition.competition_id
 
-        if inferred_number_of_teams is not None and event_context.competition.number_of_teams is None:
-            event_context.competition.number_of_teams = inferred_number_of_teams
-            event_context.competition.number_of_teams_source = "inferred_from_streak_analysis"
-
-            if competition_id is not None:
-                try:
-                    with db_manager.get_session() as session:
-                        persisted_number_of_teams = CompetitionRepository.update_number_of_teams_if_missing(
-                            session=session,
-                            competition_id=competition_id,
-                            number_of_teams=inferred_number_of_teams,
-                        )
-                except Exception as exc:
-                    logger.warning(
-                        "🧭 Pillar pipeline: failed to persist inferred number_of_teams for competition %s: %s",
-                        competition_id,
-                        exc,
-                    )
-
         logger.info(
-            "🧭 Pillar context for %s: context_status=%s, event_context_present=%s, competition_id=%s, competition_number_of_teams=%s, number_of_teams_source=%s, inferred_number_of_teams=%s, unique_team_count=%s, persisted=%s",
+            "Pillar context for %s: context_status=%s, event_context_present=%s, competition_id=%s, competition_number_of_teams=%s, number_of_teams_source=%s, inferred_number_of_teams=%s, unique_team_count=%s, inferred_used=%s",
             participants,
             event_context.context_status,
             True,
@@ -130,7 +122,7 @@ class EventPillarProcessor:
             event_context.competition.number_of_teams_source,
             inferred_number_of_teams,
             unique_team_count,
-            persisted_number_of_teams,
+            inferred_number_of_teams_used,
         )
 
         # --- Calculate Pillar 1 ---
@@ -141,27 +133,26 @@ class EventPillarProcessor:
             )
         except Exception as exc:
             logger.error(
-                "🧱 Error calculating P1 for event %s (%s): %s",
+                "Error calculating P1 for event %s (%s): %s",
                 event_obj.id,
                 participants,
                 exc,
             )
             return None
 
-        # Log the M1 result
+        # Log the M1 result.
         m1 = p1_result.get("modules", [{}])[0] if p1_result.get("modules") else {}
         logger.info(
-            "🧱 P1/M1 Base Strength calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/M1 Base Strength calculated for %s: value=%.3f, bias=%s, strength=%s",
             participants,
             m1.get("value", 0),
             m1.get("bias", "N/A"),
             m1.get("strength", "N/A"),
         )
 
-        # Log component details
         for comp in m1.get("components", []):
             logger.info(
-                "   ├─ %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
+                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
                 comp.get("name", "?"),
                 comp.get("edge", 0),
                 comp.get("weight", 0),
@@ -178,10 +169,15 @@ class EventPillarProcessor:
                 "competition_display_name": event_context.competition.display_name,
                 "competition_number_of_teams": event_context.competition.number_of_teams,
                 "competition_number_of_teams_source": event_context.competition.number_of_teams_source,
+                "total_regular_season_games": event_context.competition.total_regular_season_games,
+                "standings_grouping": event_context.competition.standings_grouping,
+                "league_config_source": event_context.competition.league_config_source,
                 "inferred_number_of_teams": inferred_number_of_teams,
+                "inferred_number_of_teams_from_streak_analysis": inferred_number_of_teams,
                 "inferred_number_of_teams_source": "streak_analysis_team_results",
+                "inferred_number_of_teams_used": inferred_number_of_teams_used,
                 "unique_team_count": unique_team_count,
-                "persisted_number_of_teams": persisted_number_of_teams,
+                "persisted_number_of_teams": False,
             }
         )
 
@@ -206,7 +202,7 @@ def evaluate_and_calculate_pillars_batch(
         return
 
     logger.info(
-        "🧱 Evaluating pillar modules for %d events...",
+        "Evaluating pillar modules for %d events...",
         len(events_for_pillars),
     )
 

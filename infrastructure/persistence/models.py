@@ -41,6 +41,9 @@ class Competition(Base):
     category_id = Column(BigInteger)
     category_name = Column(Text)
     number_of_teams = Column(Integer)
+    total_regular_season_games = Column(Integer)
+    standings_grouping = Column(Text)
+    league_config_source = Column(Text)
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
 

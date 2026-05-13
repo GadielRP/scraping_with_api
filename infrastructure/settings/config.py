@@ -199,6 +199,14 @@ class Config:
     # Pipeline toggles
     ENABLE_PILLAR_PIPELINE = _parse_env_bool('ENABLE_PILLAR_PIPELINE', True)
     ENABLE_LEGACY_ALERT_PIPELINE = _parse_env_bool('ENABLE_LEGACY_ALERT_PIPELINE', True)
+    ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT = _parse_env_bool(
+        'ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT',
+        True,
+    )
+    FORCE_STANDINGS_COMPETITION_METADATA_REFRESH = _parse_env_bool(
+        'FORCE_STANDINGS_COMPETITION_METADATA_REFRESH',
+        False,
+    )
 
     # Discovery sources to allow for alert sending
     DISCOVERY_SOURCES_FOR_ALERTS = _parse_env_list('DISCOVERY_SOURCES_FOR_ALERTS', ['dropping_odds'])

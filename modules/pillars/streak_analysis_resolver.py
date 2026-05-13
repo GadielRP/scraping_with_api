@@ -46,6 +46,16 @@ def _normalized_context_is_complete(event_context: EventContext) -> Tuple[bool, 
     return len(missing) == 0, missing
 
 
+def _resolve_preloaded_standings_response(event_payload: dict, event_context: EventContext):
+    preloaded = event_payload.get("competition_standings_response")
+    if preloaded is not None:
+        return preloaded
+    competition = getattr(event_context, "competition", None)
+    if competition is not None:
+        return getattr(competition, "standings_response", None)
+    return None
+
+
 def resolve_matchup_streak_analysis(
     event_payload: dict,
     event_obj,
@@ -83,14 +93,19 @@ def resolve_matchup_streak_analysis(
         dual_process_odds = DualProcessOddsRepository.get_event_odds(event_obj.id)
 
         logger.debug(
-            "normalized_context_audit: event_id=%s participants=%s competition_id=%s tournament_id=%s home_team_id=%s away_team_id=%s season_id=%s",
+            "normalized_context_audit: event_id=%s participants=%s competition_id=%s unique_tournament_id=%s home_team_id=%s away_team_id=%s season_id=%s",
             event_obj.id,
             event_context.participants_label,
             event_context.competition.competition_id,
-            event_context.competition.source_tournament_id,
+            event_context.competition.source_unique_tournament_id,
             event_context.home.source_participant_id,
             event_context.away.source_participant_id,
             event_context.season_id,
+        )
+
+        unique_tournament_id = (
+            event_context.competition.source_unique_tournament_id
+            or event_context.competition.source_tournament_id
         )
 
         streak_analysis = build_matchup_streak_context(
@@ -99,7 +114,7 @@ def resolve_matchup_streak_analysis(
             event_start_time=event_context.start_time_utc,
             sport=event_context.sport,
             discovery_source=event_context.discovery_source,
-            tournament_id=event_context.competition.source_tournament_id,
+            tournament_id=unique_tournament_id,
             competition_name=(
                 event_context.competition.display_name
                 or event_context.competition.canonical_name
@@ -119,6 +134,7 @@ def resolve_matchup_streak_analysis(
             observations=event_payload.get("observations"),
             home_team_id=event_context.home.source_participant_id,
             away_team_id=event_context.away.source_participant_id,
+            standings_response=_resolve_preloaded_standings_response(event_payload, event_context),
             event_odds=dual_process_odds,
             debug_mode=debug_mode,
         )

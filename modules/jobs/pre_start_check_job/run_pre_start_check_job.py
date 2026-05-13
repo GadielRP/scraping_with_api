@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import logging
+import pprint
 from datetime import datetime
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import refresh_materialized_views
-from infrastructure.persistence.repositories import EventRepository
+from infrastructure.persistence.repositories import CompetitionRepository, EventRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.alert_pipeline import evaluate_and_dispatch_alerts_batch
 from modules.pillars.context import build_event_context
+from modules.pillars.competition_metadata_resolver import (
+    apply_competition_metadata_resolution,
+    mark_competition_metadata_refresh_attempted,
+    resolve_competition_metadata,
+)
 from modules.jobs.pre_start_check_job.pillar_pipeline import evaluate_and_calculate_pillars_batch
 from modules.jobs.pre_start_check_job.in_game_checks import run_in_game_checks
 from modules.jobs.pre_start_check_job.oddsportal_worker import (
@@ -27,6 +33,44 @@ from modules.sofascore import api_client
 from modules.observations import sport_observation_service
 
 logger = logging.getLogger(__name__)
+
+
+def _enrich_event_context_competition_metadata(event_context, event_obj) -> None:
+    resolution = resolve_competition_metadata(event_context, event_obj=event_obj)
+    apply_competition_metadata_resolution(event_context, resolution)
+    event_context.competition.standings_response = resolution.raw.get("standings_response_raw")
+
+    if not resolution.should_persist or event_context.competition.competition_id is None:
+        return
+
+    competition_id = event_context.competition.competition_id
+    try:
+        with db_manager.get_session() as session:
+            updated = CompetitionRepository.update_competition_metadata_if_better(
+                session=session,
+                competition_id=competition_id,
+                number_of_teams=resolution.number_of_teams,
+                total_regular_season_games=resolution.total_regular_season_games,
+                standings_grouping=resolution.standings_grouping,
+                league_config_source=resolution.league_config_source,
+            )
+        mark_competition_metadata_refresh_attempted(competition_id)
+        logger.info(
+            "Competition metadata resolved for event_id=%s competition_id=%s source=%s standings_called=%s persisted=%s",
+            event_context.event_id,
+            competition_id,
+            resolution.league_config_source,
+            resolution.standings_called,
+            updated,
+        )
+    except Exception as exc:
+        mark_competition_metadata_refresh_attempted(competition_id)
+        logger.warning(
+            "Failed to persist competition metadata for event_id=%s competition_id=%s: %s",
+            event_context.event_id,
+            competition_id,
+            exc,
+        )
 
 
 def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
@@ -189,6 +233,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                         event_obj.id,
                     )
                     continue
+                _enrich_event_context_competition_metadata(event_context, event_obj)
 
                 events_for_alerts.append(
                     {
@@ -220,8 +265,27 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                         debug_mode=global_debug_mode
                     )
 
+
                 # New pillar pipeline
                 if Config.ENABLE_PILLAR_PIPELINE:
+
+                    if global_debug_mode:
+                        # print events for pillars for debugging
+                        logger.info("\n" + "═" * 80)
+                        logger.info("🚨 EVENTS FOR PILLARS (DEBUG MODE)")
+                        logger.info("═" * 80)
+                        for i, event in enumerate(events_for_alerts, 1):
+                            ctx = event.get('event_context')
+                            label = ctx.participants_label if ctx else f"Event {event.get('event_obj').id}"
+                            sport = ctx.sport if ctx else "Unknown"
+                            minutes = event.get('minutes_until_start')
+
+                            logger.info(f"\n📍 [{i}/{len(events_for_alerts)}] {label}")
+                            logger.info(f"   Sport: {sport} | Minutes until start: {minutes}")
+                            logger.info("-" * 40)
+                            logger.info(pprint.pformat(event, indent=2, width=120))
+                            logger.info("─" * 80)
+
                     evaluate_and_calculate_pillars_batch(
                         events_for_pillars=events_for_alerts,
                         key_moments=key_moments,
