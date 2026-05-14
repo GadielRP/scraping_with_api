@@ -265,8 +265,20 @@ class SofaScoreAPI:
     def get_winning_odds_response(self, event_id: int) -> Optional[Dict]:
         return get_winning_odds_response(self, event_id)
 
-    def get_standings_response(self, season_id: int, unique_tournament_id: int) -> Optional[Dict]:
-        return get_standings_response(self, season_id, unique_tournament_id)
+    def get_standings_response(
+        self,
+        season_id: int,
+        unique_tournament_id: int,
+        competition_context=None,
+        standings_endpoint_missing_competition_ids=None,
+    ) -> Optional[Dict]:
+        return get_standings_response(
+            self,
+            season_id,
+            unique_tournament_id,
+            competition_context=competition_context,
+            standings_endpoint_missing_competition_ids=standings_endpoint_missing_competition_ids,
+        )
 
     def process_standings_response(
         self,

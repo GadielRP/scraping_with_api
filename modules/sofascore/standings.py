@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.repositories import CompetitionRepository
+from .exceptions import SofaScoreNotFoundException
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +26,87 @@ class ParsedStandingsCompetitionMetadata:
     reason: Optional[str]
 
 
-def get_standings_response(client, season_id: int, unique_tournament_id: int) -> Optional[Dict]:
-    response = client._request_json(f"/unique-tournament/{unique_tournament_id}/season/{season_id}/standings/total")
-    logger.info(f"✈️ fetching Sofascore's standing api endpoint /unique-tournament/{unique_tournament_id}/season/{season_id}/standings/total")
+def _update_standings_source_endpoint(
+    competition_context: Optional[Any],
+    has_endpoint: bool,
+    persist: bool = True,
+) -> None:
+    if competition_context is None:
+        return
+
+    competition_id = getattr(competition_context, "competition_id", None)
+    if competition_id is None:
+        return
+
+    current = getattr(competition_context, "has_standings_source_endpoint", None)
+    if current == has_endpoint:
+        return
+
+    setattr(competition_context, "has_standings_source_endpoint", has_endpoint)
+
+    if not persist:
+        return
+
+    try:
+        with db_manager.get_session() as session:
+            CompetitionRepository.update_has_standings_source_endpoint(
+                session=session,
+                competition_id=competition_id,
+                has_standings_source_endpoint=has_endpoint,
+            )
+    except Exception as exc:
+        logger.warning(
+            "Failed to update has_standings_source_endpoint for competition_id=%s: %s",
+            competition_id,
+            exc,
+        )
+
+
+def get_standings_response(
+    client,
+    season_id: int,
+    unique_tournament_id: int,
+    competition_context: Optional[Any] = None,
+    standings_endpoint_missing_competition_ids: Optional[set[int]] = None,
+) -> Optional[Dict]:
+    if competition_context is not None and getattr(competition_context, "has_standings_source_endpoint", None) is False:
+        logger.info(
+            "Skipping standings fetch for competition_id=%s season_id=%s unique_tournament_id=%s because has_standings_source_endpoint is false",
+            getattr(competition_context, "competition_id", None),
+            season_id,
+            unique_tournament_id,
+        )
+        return None
+
+    endpoint = f"/unique-tournament/{unique_tournament_id}/season/{season_id}/standings/total"
+    logger.info("Fetching SofaScore standings endpoint %s", endpoint)
+    try:
+        response = client._make_request(endpoint, no_retry_on_404=True)
+    except SofaScoreNotFoundException:
+        competition_id = getattr(competition_context, "competition_id", None)
+        logger.warning(
+            "No standings source endpoint for competition_id=%s season=%s unique_tournament=%s",
+            competition_id,
+            season_id,
+            unique_tournament_id,
+        )
+        if standings_endpoint_missing_competition_ids is not None and competition_id is not None:
+            standings_endpoint_missing_competition_ids.add(int(competition_id))
+            _update_standings_source_endpoint(competition_context, False, persist=False)
+        else:
+            _update_standings_source_endpoint(competition_context, False)
+        if competition_id is not None:
+            logger.info(
+                "Marked competition_id=%s as missing standings endpoint in memory",
+                competition_id,
+            )
+        return None
+
     if not response or "standings" not in response:
         logger.error("No standings found for season %s and uniquetournament %s", season_id, unique_tournament_id)
         return None
+
+    _update_standings_source_endpoint(competition_context, True)
     return response["standings"]
 
 

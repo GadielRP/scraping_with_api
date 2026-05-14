@@ -143,7 +143,7 @@ def get_event_results(
         if update_court_type:
             logger.info("✈️ Fetching /event/%s endpoint to update court type", event_id)
         elif update_time:
-            logger.info("✈️ Fetching /event/%s endpoint to update time", event_id)
+            logger.info("⏱️ Fetching /event/%s endpoint to update time", event_id)
         elif return_snapshot and update_time==False:
             logger.info("✈️ Fetching /event/%s endpoint to get metadata snapshot (timestamp correction bypassed)", event_id)
         else:
@@ -174,7 +174,7 @@ def get_event_results(
             ]
 
         if update_time:
-            logger.info("Checking and updating starting time for event %s", event_id)
+            logger.info("🔎 Checking and updating starting time for event %s", event_id)
             event_data = response.get("event", {})
             start_timestamp = event_data.get("startTimestamp")
             if start_timestamp is None:

@@ -56,6 +56,7 @@ season_to_process = [
     {"season_name": "NFL 2020", "tournament_id": 9464, "season_id": 27719},
     {"season_name": "MLB 2026", "tournament_id": 11205, "season_id": 84695},
     {"season_name": "MLB 2025", "tournament_id": 11205, "season_id": 68611},
+    {"season_name": "MLB 2026", "tournament_id": 11205, "season_id": 84695},
     {"season_name": "MLB 2024", "tournament_id": 11205, "season_id": 57577},
     {"season_name": "NHL 2025", "tournament_id": 234, "season_id": 78476},
     {"season_name": "Serie A 2025", "tournament_id": 23, "season_id": 76457},
@@ -118,7 +119,7 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
     logger.info(f"Starting to fetch events for tournament {tournament_id}, season {season_id}")
     
     #set to True for full season, set currently to 5 for latest 5 batches per season.
-    while fetch_number < 1:
+    while True:
         endpoint = f"/unique-tournament/{tournament_id}/season/{season_id}/events/last/{fetch_number}"
         logger.info(f"Fetching batch {fetch_number}...")
         
@@ -222,7 +223,7 @@ def process_season(tournament_id: int, season_id: int):
                         
                         if final_odds_response:
                             # Save all markets using the new market-based flow
-                            saved_markets = MarketRepository.save_markets_from_response(event_id, final_odds_response)
+                            saved_markets = MarketRepository.save_markets_from_response(event_id, final_odds_response, bookie_id=1)
                             if saved_markets > 0:
                                 markets_processed_count += 1
                                 logger.debug(f"Saved {saved_markets} markets for event {event_id}")

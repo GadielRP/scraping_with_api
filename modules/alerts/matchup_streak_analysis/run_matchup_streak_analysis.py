@@ -131,6 +131,7 @@ def build_matchup_streak_context(
     away_team_id: int = None,
     event_odds: Optional[Any] = None,
     standings_response: Optional[List[Dict]] = None,
+    competition_context=None,
     debug_mode: bool = False,
 ) -> Optional[MatchupStreakContext]:
     """
@@ -370,14 +371,28 @@ def build_matchup_streak_context(
         if sport not in ['Tennis', 'Tennis Doubles'] and season_id and standings_api_unique_tournament_id and (home_team_id or away_team_id):
             raw_standings = standings_response
             if raw_standings is None:
-                logger.info(
-                    "No preloaded standings response for event %s; falling back to SofaScore API (season_id=%s, source_unique_tournament_id=%s, source_tournament_id=%s)",
-                    event_id,
-                    season_id,
-                    source_unique_tournament_id,
-                    source_tournament_id,
-                )
-                raw_standings = api_client.get_standings_response(season_id, standings_api_unique_tournament_id)
+                if competition_context is not None and getattr(competition_context, "has_standings_source_endpoint", None) is False:
+                    logger.info(
+                        "Skipping standings fetch for event %s because competition_id=%s has_standings_source_endpoint=false (season_id=%s, source_unique_tournament_id=%s, source_tournament_id=%s)",
+                        event_id,
+                        getattr(competition_context, "competition_id", None),
+                        season_id,
+                        source_unique_tournament_id,
+                        source_tournament_id,
+                    )
+                else:
+                    logger.info(
+                        "No preloaded standings response for event %s; falling back to SofaScore API (season_id=%s, source_unique_tournament_id=%s, source_tournament_id=%s)",
+                        event_id,
+                        season_id,
+                        source_unique_tournament_id,
+                        source_tournament_id,
+                    )
+                    raw_standings = api_client.get_standings_response(
+                        season_id,
+                        standings_api_unique_tournament_id,
+                        competition_context=competition_context,
+                    )
             else:
                 logger.info(
                     "Using preloaded standings response for event %s from pre-start payload",

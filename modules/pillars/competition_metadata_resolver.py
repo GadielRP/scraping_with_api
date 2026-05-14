@@ -167,8 +167,13 @@ def _has_critical_metadata_gap(
     return False
 
 
-def resolve_competition_metadata(event_context: EventContext, event_obj=None) -> CompetitionMetadataResolution:
+def resolve_competition_metadata(
+    event_context: EventContext,
+    event_obj=None,
+    standings_endpoint_missing_competition_ids: Optional[set[int]] = None,
+) -> CompetitionMetadataResolution:
     competition = event_context.competition
+    competition_id = getattr(competition, "competition_id", None)
     db_number_of_teams = _valid_number(getattr(competition, "number_of_teams", None))
     db_total_regular_season_games = _valid_total_games(getattr(competition, "total_regular_season_games", None))
     db_standings_grouping = _valid_grouping(getattr(competition, "standings_grouping", None))
@@ -181,10 +186,11 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
     )
 
     raw: Dict[str, Any] = {
-        "competition_id": competition.competition_id,
+        "competition_id": competition_id,
         "source": competition.source,
         "source_unique_tournament_id": competition.source_unique_tournament_id,
         "season_id": event_context.season_id,
+        "has_standings_source_endpoint": getattr(competition, "has_standings_source_endpoint", None),
         "db_cache": {
             "number_of_teams": db_number_of_teams,
             "total_regular_season_games": db_total_regular_season_games,
@@ -292,6 +298,15 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
         )
 
     force_refresh = bool(Config.FORCE_STANDINGS_COMPETITION_METADATA_REFRESH)
+    run_cache_hit = (
+        standings_endpoint_missing_competition_ids is not None
+        and competition_id is not None
+        and int(competition_id) in standings_endpoint_missing_competition_ids
+    )
+    known_missing_standings_endpoint = getattr(competition, "has_standings_source_endpoint", None) is False or run_cache_hit
+    if known_missing_standings_endpoint and getattr(competition, "has_standings_source_endpoint", None) is not False:
+        competition.has_standings_source_endpoint = False
+        raw["has_standings_source_endpoint"] = False
     standings_needed = _has_critical_metadata_gap(
         number_of_teams,
         total_regular_season_games,
@@ -310,6 +325,7 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
         and event_context.season_id is not None
         and competition.source_unique_tournament_id is not None
         and (force_refresh or not already_attempted)
+        and not known_missing_standings_endpoint
     )
 
     standings_called = False
@@ -321,7 +337,7 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
         logger.info(
             "Competition metadata resolver calling standings for event_id=%s competition_id=%s season_id=%s source_unique_tournament_id=%s force_refresh=%s standings_needed=%s already_attempted=%s",
             event_context.event_id,
-            competition.competition_id,
+            competition_id,
             event_context.season_id,
             competition.source_unique_tournament_id,
             force_refresh,
@@ -329,10 +345,12 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
             already_attempted,
         )
         standings_called = True
-        mark_competition_metadata_refresh_attempted(competition.competition_id)
+        mark_competition_metadata_refresh_attempted(competition_id)
         raw_standings = api_client.get_standings_response(
             int(event_context.season_id),
             int(competition.source_unique_tournament_id),
+            competition_context=competition,
+            standings_endpoint_missing_competition_ids=standings_endpoint_missing_competition_ids,
         )
         raw["standings_response_raw"] = raw_standings
         parsed = parse_competition_metadata_from_standings(raw_standings)
@@ -377,10 +395,14 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
             source_detail = f"standings_response_invalid:{parsed.reason}"
     elif not Config.ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT:
         raw["skip_reason"] = "standings_enrichment_disabled"
+    elif not standings_needed and not force_refresh:
+        raw["skip_reason"] = "not_needed_due_to_metadata_being_complete_already"
     elif event_context.season_id is None:
         raw["skip_reason"] = "missing_season_id"
     elif competition.source_unique_tournament_id is None:
         raw["skip_reason"] = "missing_source_unique_tournament_id"
+    elif known_missing_standings_endpoint:
+        raw["skip_reason"] = "known_missing_standings_source_endpoint"
     elif already_attempted and not force_refresh:
         raw["skip_reason"] = "competition_refresh_already_attempted"
 
@@ -390,7 +412,7 @@ def resolve_competition_metadata(event_context: EventContext, event_obj=None) ->
     if not standings_called:
         logger.info(
             "Competition metadata resolver did not call standings for competition_id=%s season_id=%s skip_reason=%s",
-            competition.competition_id,
+            competition_id,
             event_context.season_id,
             raw.get("skip_reason"),
         )

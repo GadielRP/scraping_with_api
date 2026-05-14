@@ -36,6 +36,7 @@ class CompetitionContext:
     total_regular_season_games: Optional[int]
     standings_grouping: Optional[str]
     league_config_source: Optional[str]
+    has_standings_source_endpoint: Optional[bool]
     source_status: str
     standings_response: Optional[list] = field(default=None, repr=False)
 
@@ -215,6 +216,7 @@ def build_event_context(
         total_regular_season_games=getattr(competition_ref, "total_regular_season_games", None),
         standings_grouping=getattr(competition_ref, "standings_grouping", None),
         league_config_source=getattr(competition_ref, "league_config_source", None) or "missing",
+        has_standings_source_endpoint=getattr(competition_ref, "has_standings_source_endpoint", None),
         standings_response=getattr(competition_ref, "standings_response", None),
         source_status="normalized"
         if competition_ref is not None and competition_display_name == _clean_text(getattr(competition_ref, "display_name", None))

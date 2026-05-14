@@ -228,3 +228,47 @@ class CompetitionRepository:
             competition.updated_at = get_local_now()
 
         return changed
+
+    @staticmethod
+    def update_has_standings_source_endpoint(
+        session: Session,
+        competition_id: int,
+        has_standings_source_endpoint: bool,
+    ) -> bool:
+        if competition_id is None:
+            return False
+
+        competition = (
+            session.query(Competition)
+            .filter(Competition.competition_id == competition_id)
+            .first()
+        )
+        if competition is None:
+            return False
+
+        existing = competition.has_standings_source_endpoint
+        if existing == has_standings_source_endpoint:
+            return False
+
+        competition.has_standings_source_endpoint = has_standings_source_endpoint
+        competition.updated_at = get_local_now()
+        return True
+
+    @staticmethod
+    def update_has_standings_source_endpoints(
+        session: Session,
+        competition_ids: set[int],
+        has_standings_source_endpoint: bool,
+    ) -> int:
+        if not competition_ids:
+            return 0
+
+        updated_count = 0
+        for competition_id in sorted(int(competition_id) for competition_id in competition_ids if competition_id is not None):
+            if CompetitionRepository.update_has_standings_source_endpoint(
+                session=session,
+                competition_id=competition_id,
+                has_standings_source_endpoint=has_standings_source_endpoint,
+            ):
+                updated_count += 1
+        return updated_count

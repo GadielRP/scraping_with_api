@@ -93,14 +93,19 @@ class EventPillarProcessor:
             getattr(event_context.competition, "league_config_source", None),
         )
 
-        if (
-            getattr(event_context.competition, "number_of_teams", None) is None
-            or getattr(event_context.competition, "total_regular_season_games", None) is None
-            or getattr(event_context.competition, "standings_grouping", None) is None
-        ):
+        missing_fields = []
+        if getattr(event_context.competition, "number_of_teams", None) is None:
+            missing_fields.append("number_of_teams")
+        if getattr(event_context.competition, "total_regular_season_games", None) is None:
+            missing_fields.append("total_regular_season_games")
+        if getattr(event_context.competition, "standings_grouping", None) is None:
+            missing_fields.append("standings_grouping")
+        
+        if missing_fields:
             logger.info(
-                "Pillar pipeline metadata enrichment needed for event %s; calling competition metadata resolver",
+                "Pillar pipeline metadata enrichment needed for event %s; missing fields: %s; calling competition metadata resolver",
                 event_id,
+                ", ".join(missing_fields),
             )
             resolution = resolve_competition_metadata(event_context, event_obj=event_obj)
             apply_competition_metadata_resolution(event_context, resolution)

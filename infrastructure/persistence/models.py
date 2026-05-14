@@ -44,7 +44,7 @@ class Competition(Base):
     total_regular_season_games = Column(Integer)
     standings_grouping = Column(Text)
     league_config_source = Column(Text)
-    has_standings_source_endpoint = Column(Boolean)
+    has_standings_source_endpoint = Column(Boolean, default=True)
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
 
@@ -63,9 +63,21 @@ class Event(Base):
     slug = Column(Text, nullable=False)
     start_time_utc = Column(DateTime, nullable=False)
     sport = Column(Text, nullable=False)
+    # LEGACY_EVENT_TEXT_FIELDS:
+    # Kept for backward compatibility with historical rows and old runtime paths.
+    # Do not use as source of truth when normalized Participant/Competition relations exist.
+    # Remove only after full DB backfill and downstream migration.
     competition = Column(Text, nullable=False)
     country = Column(Text)
+    # LEGACY_EVENT_TEXT_FIELDS:
+    # Kept for backward compatibility with historical rows and old runtime paths.
+    # Do not use as source of truth when normalized Participant/Competition relations exist.
+    # Remove only after full DB backfill and downstream migration.
     home_team = Column(Text, nullable=False)
+    # LEGACY_EVENT_TEXT_FIELDS:
+    # Kept for backward compatibility with historical rows and old runtime paths.
+    # Do not use as source of truth when normalized Participant/Competition relations exist.
+    # Remove only after full DB backfill and downstream migration.
     away_team = Column(Text, nullable=False)
     gender = Column(String(10), nullable=False, default="unknown")  # 'Men' or 'Women' or 'Mixed'
     discovery_source = Column(String(50), nullable=False, default='dropping_odds')  # 'dropping_odds', 'high_value_streaks', 'h2h', 'winning_odds', 'team_streaks'

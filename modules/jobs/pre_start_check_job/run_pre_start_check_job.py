@@ -35,7 +35,11 @@ from modules.observations import sport_observation_service
 logger = logging.getLogger(__name__)
 
 
-def _enrich_event_context_competition_metadata(event_context, event_obj) -> None:
+def _enrich_event_context_competition_metadata(
+    event_context,
+    event_obj,
+    standings_endpoint_missing_competition_ids,
+) -> None:
     logger.info("💧 started competition meta data hydration through _enrich_event_context_competition_metadata")
     logger.info(
         "Pre-start metadata check for event %s: competition_id=%s source_unique_tournament_id=%s season_id=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
@@ -48,11 +52,29 @@ def _enrich_event_context_competition_metadata(event_context, event_obj) -> None
         getattr(event_context.competition, "standings_grouping", None),
         getattr(event_context.competition, "league_config_source", None),
     )
-    resolution = resolve_competition_metadata(event_context, event_obj=event_obj)
+    resolution = resolve_competition_metadata(
+        event_context,
+        event_obj=event_obj,
+        standings_endpoint_missing_competition_ids=standings_endpoint_missing_competition_ids,
+    )
     apply_competition_metadata_resolution(event_context, resolution)
     event_context.competition.standings_response = resolution.raw.get("standings_response_raw")
+    competition_id = event_context.competition.competition_id
+    if (
+        competition_id is not None
+        and (
+            event_context.competition.has_standings_source_endpoint is False
+            or resolution.raw.get("skip_reason") == "known_missing_standings_source_endpoint"
+        )
+        and int(competition_id) not in standings_endpoint_missing_competition_ids
+    ):
+        standings_endpoint_missing_competition_ids.add(int(competition_id))
+        logger.info(
+            "Pre-start metadata marked competition_id=%s as missing standings endpoint in memory",
+            competition_id,
+        )
     logger.info(
-        "Pre-start metadata resolution result for event %s: source=%s standings_called=%s should_persist=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s",
+        "Pre-start metadata resolution result for event %s: source=%s standings_called=%s should_persist=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s skip_reason=%s",
         event_context.event_id,
         resolution.league_config_source,
         resolution.standings_called,
@@ -60,17 +82,17 @@ def _enrich_event_context_competition_metadata(event_context, event_obj) -> None
         resolution.number_of_teams,
         resolution.total_regular_season_games,
         resolution.standings_grouping,
+        resolution.raw.get("skip_reason"),
     )
 
-    if not resolution.should_persist or event_context.competition.competition_id is None:
+    if not resolution.should_persist or competition_id is None:
         logger.info(
             "Pre-start metadata resolution for event %s will not persist (competition_id=%s)",
             event_context.event_id,
-            event_context.competition.competition_id,
+            competition_id,
         )
         return
 
-    competition_id = event_context.competition.competition_id
     try:
         with db_manager.get_session() as session:
             updated = CompetitionRepository.update_competition_metadata_if_better(
@@ -100,10 +122,36 @@ def _enrich_event_context_competition_metadata(event_context, event_obj) -> None
         )
 
 
+def _flush_missing_standings_endpoints(standings_endpoint_missing_competition_ids) -> None:
+    if not standings_endpoint_missing_competition_ids:
+        return
+
+    competition_ids = sorted(int(competition_id) for competition_id in standings_endpoint_missing_competition_ids)
+    logger.info(
+        "Flushing %d competition(s) with missing standings endpoint before pillar evaluation: %s",
+        len(competition_ids),
+        competition_ids if len(competition_ids) <= 20 else competition_ids[:20],
+    )
+
+    with db_manager.get_session() as session:
+        updated_count = CompetitionRepository.update_has_standings_source_endpoints(
+            session=session,
+            competition_ids=standings_endpoint_missing_competition_ids,
+            has_standings_source_endpoint=False,
+        )
+
+    logger.info(
+        "Completed standings endpoint flush for %d competition(s) (updated=%d)",
+        len(competition_ids),
+        updated_count,
+    )
+
+
 def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
     """Run the pre-start check flow."""
     logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
 
+    standings_endpoint_missing_competition_ids: set[int] = set()
     try:
         tracked_season_ids = None
         if Config.TRACKED_SEASONS_ONLY:
@@ -288,7 +336,11 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                         event_obj.id,
                     )
                     continue
-                _enrich_event_context_competition_metadata(event_context, event_obj)
+                _enrich_event_context_competition_metadata(
+                    event_context,
+                    event_obj,
+                    standings_endpoint_missing_competition_ids,
+                )
 
                 events_for_alerts.append(
                     {
@@ -320,10 +372,10 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                         debug_mode=global_debug_mode
                     )
 
+                _flush_missing_standings_endpoints(standings_endpoint_missing_competition_ids)
 
                 # New pillar pipeline
                 if Config.ENABLE_PILLAR_PIPELINE:
-
                     if global_debug_mode:
                         # print events for pillars for debugging
                         logger.info("\n" + "═" * 80)
@@ -354,3 +406,5 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
             logger.debug("No events captured at key moments for alert evaluation")
     except Exception as exc:
         logger.error(f"Error in Job C: {exc}")
+
+

@@ -72,6 +72,10 @@ def resolve_matchup_streak_analysis(
     should_send = event_payload.get("should_send_streak_alert", False)
 
     if streak_analysis is not None:
+        logger.info(
+            "Reusing precomputed streak analysis for event %s",
+            getattr(event_obj, "id", "?"),
+        )
         return streak_analysis, should_send
 
     if minutes_until_start != 30 or not getattr(event_obj, "custom_id", None):
@@ -139,6 +143,7 @@ def resolve_matchup_streak_analysis(
             home_team_id=event_context.home.source_participant_id,
             away_team_id=event_context.away.source_participant_id,
             standings_response=_resolve_preloaded_standings_response(event_payload, event_context),
+            competition_context=event_context.competition,
             event_odds=dual_process_odds,
             debug_mode=debug_mode,
         )
