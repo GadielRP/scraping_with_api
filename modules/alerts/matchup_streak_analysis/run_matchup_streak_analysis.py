@@ -337,7 +337,9 @@ def build_matchup_streak_context(
         # -----------------------------------------------------------------
         # Winning odds
         # -----------------------------------------------------------------
-        winning_odds_data = get_winning_odds_data(event_id)
+        # commented since winning odds are no longer needed, at least for now
+        #winning_odds_data = get_winning_odds_data(event_id)
+        winning_odds_data = None
 
         # Log summary of what data we have
         data_summary = []
@@ -371,14 +373,22 @@ def build_matchup_streak_context(
         if sport not in ['Tennis', 'Tennis Doubles'] and season_id and standings_api_unique_tournament_id and (home_team_id or away_team_id):
             raw_standings = standings_response
             if raw_standings is None:
-                if competition_context is not None and getattr(competition_context, "has_standings_source_endpoint", None) is False:
+                # Determine if we should skip the API fetch based on existing metadata
+                should_skip_fetch = False
+                skip_reason = ""
+
+                if competition_context:
+                    if competition_context.has_standings_source_endpoint is False:
+                        should_skip_fetch = True
+                        skip_reason = "standings endpoint is explicitly disabled"
+                    elif competition_context.number_of_teams is not None:
+                        should_skip_fetch = True
+                        skip_reason = f"number_of_teams ({competition_context.number_of_teams}) is already known"
+
+                if should_skip_fetch:
                     logger.info(
-                        "Skipping standings fetch for event %s because competition_id=%s has_standings_source_endpoint=false (season_id=%s, source_unique_tournament_id=%s, source_tournament_id=%s)",
-                        event_id,
-                        getattr(competition_context, "competition_id", None),
-                        season_id,
-                        source_unique_tournament_id,
-                        source_tournament_id,
+                        "⏭️ Skipping standings fetch for event %s: %s (competition_id=%s)",
+                        event_id, skip_reason, getattr(competition_context, "competition_id", None)
                     )
                 else:
                     logger.info(
