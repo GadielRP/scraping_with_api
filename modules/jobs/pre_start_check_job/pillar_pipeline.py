@@ -135,7 +135,7 @@ class EventPillarProcessor:
 
         if streak_analysis is None:
             logger.info(
-                "☢️ Pillar pipeline: no streak_analysis for event %s (%s), skipping",
+                "🗑️ Pillar pipeline: no streak_analysis for event %s (%s), skipping",
                 event_obj.id,
                 participants,
             )

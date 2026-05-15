@@ -12,7 +12,7 @@ venv/
 logs/
 profile.yaml
 
-
+scratch/
 
 # test files
 Bets-Hoja24.csv
