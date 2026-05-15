@@ -196,6 +196,28 @@ class EventPillarProcessor:
                 comp.get("strength", "?"),
             )
 
+        # Log the M2 result.
+        modules = p1_result.get("modules", [])
+        m2 = modules[1] if len(modules) > 1 else {}
+        logger.info(
+            "P1/M2 Performance Profile calculated for %s: value=%.3f, bias=%s, strength=%s",
+            participants,
+            m2.get("value", 0),
+            m2.get("bias", "N/A"),
+            m2.get("strength", "N/A"),
+        )
+
+        for comp in m2.get("components", []):
+            logger.info(
+                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
+                comp.get("name", "?"),
+                comp.get("edge", 0),
+                comp.get("weight", 0),
+                comp.get("weighted_edge", 0),
+                comp.get("bias", "?"),
+                comp.get("strength", "?"),
+            )
+
         p1_result.setdefault("raw", {}).update(
             {
                 "event_context_present": True,
