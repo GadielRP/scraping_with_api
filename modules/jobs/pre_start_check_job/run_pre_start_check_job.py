@@ -24,13 +24,25 @@ from modules.jobs.pre_start_check_job.oddsportal_worker import (
     create_oddsportal_scrape_state,
     start_oddsportal_scrape_thread,
 )
+from modules.jobs.pre_start_check_job.intraday_result_freshness import (
+    process_intraday_result_freshness,
+)
 from modules.jobs.pre_start_check_job.rescheduled_events import handle_rescheduled_event
-from modules.jobs.pre_start_check_job.timestamp_corrections import check_recently_started_events_for_timestamp_corrections
-from modules.jobs.pre_start_check_job.timing import minutes_until_start, should_extract_odds_for_event
+from modules.jobs.pre_start_check_job.timestamp_corrections import (
+    check_recently_started_events_for_timestamp_corrections,
+)
+from modules.jobs.pre_start_check_job.timing import (
+    minutes_since_start,
+    minutes_until_start,
+    should_extract_odds_for_event,
+)
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
 from modules.observations import sport_observation_service
+from modules.alerts.matchup_streak_analysis.standings_engine import (
+    standings_calculator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -177,14 +189,40 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
         start_oddsportal_scrape_thread(scheduler, op_candidates, op_event_states, op_data_cache)
 
         events_started_recently = scheduler.event_repo.get_events_started_recently(
-            window_minutes=60,
+            window_minutes=Config.INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES,
             season_ids=tracked_season_ids,
         )
         logger.info(
-            f"Found {len(events_started_recently)} events that started recently (checking for late timestamp corrections)"
+            "Found %s started events without results within the last %s minutes",
+            len(events_started_recently),
+            Config.INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES,
         )
 
-        modified_event_ids = check_recently_started_events_for_timestamp_corrections(events_started_recently)
+        timestamp_correction_candidates = []
+        intraday_result_candidates = []
+
+        for event_data in events_started_recently:
+            try:
+                minutes_ago = abs(minutes_since_start(event_data["start_time_utc"]))
+            except Exception:
+                logger.warning(
+                    "Could not compute minutes_ago for started event %s",
+                    event_data.get("id"),
+                )
+                continue
+
+            if minutes_ago <= 60:
+                timestamp_correction_candidates.append(event_data)
+            else:
+                intraday_result_candidates.append(event_data)
+
+        logger.info(
+            "Started event split: timestamp_correction_candidates=%s, intraday_result_candidates=%s",
+            len(timestamp_correction_candidates),
+            len(intraday_result_candidates),
+        )
+
+        modified_event_ids = check_recently_started_events_for_timestamp_corrections(timestamp_correction_candidates)
         if modified_event_ids:
             upcoming_events = [event for event in upcoming_events if event["id"] not in modified_event_ids]
             logger.info(
@@ -194,12 +232,28 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
         scheduler._cleanup_recently_rescheduled()
         upcoming_events = [event for event in upcoming_events if event["id"] not in scheduler.recently_rescheduled]
 
+        logger.info(f"🏆 Starting intraday result freshness for {len(intraday_result_candidates)} events...")
+        intraday_result_stats = process_intraday_result_freshness(intraday_result_candidates)
+        logger.info(
+            "Intraday result freshness completed: %s",
+            intraday_result_stats,
+        )
+        if (
+            intraday_result_stats.get("results_upserted", 0) > 0
+            or intraday_result_stats.get("deleted_events", 0) > 0
+        ):
+            standings_calculator.clear_cache()
+            logger.info(
+                "Cleared standings calculator cache after intraday result freshness changes"
+            )
+
         run_in_game_checks()
 
         events_to_process = []
         event_meta_lookup = {}
         key_moments = [120, 30, 5, 0, -5]
 
+        logger.info(f"🚨 Starting pre-start checking for {len(upcoming_events)} events starting soon...")
         for event_data in upcoming_events:
             try:
                 event_id = event_data["id"]
@@ -280,27 +334,34 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
             if event_info.get("minutes_until_start") not in key_moments:
                 continue
 
-            event_id = event_info.get("event_id")
-            try:
-                logger.info(
-                    "Fetching metadata snapshot for event %s for pre-start context enrichment",
-                    event_id,
-                )
-                _, metadata_snapshot = api_client.get_event_results(
-                    event_id=event_id,
-                    update_time=False,
-                    return_snapshot=True,
-                    current_start_time=event_info.get("original_start_time"),
-                    minutes_until_start=event_info.get("minutes_until_start", 0),
-                )
-                if metadata_snapshot:
-                    event_info["metadata_snapshot"] = metadata_snapshot
-            except Exception as exc:
-                logger.warning(
-                    "Failed to fetch metadata snapshot for event %s during pre-start enrichment: %s",
-                    event_id,
-                    exc,
-                )
+            event_data = event_info.get("event_data", {})
+            sport = event_data.get("sport")
+
+            if sport in ["Tennis", "Tennis Doubles"]:
+                event_id = event_info.get("event_id")
+                event_obj = scheduler.event_repo.get_event_by_id(event_id)
+                if not event_obj or not event_obj.round:
+                    continue
+                try:
+                    logger.info(
+                        "Fetching metadata snapshot for event %s for pre-start context enrichment, useful for tennis events",
+                        event_id,
+                    )
+                    _, metadata_snapshot = api_client.get_event_results(
+                        event_id=event_id,
+                        update_time=False,
+                        return_snapshot=True,
+                        current_start_time=event_info.get("original_start_time"),
+                        minutes_until_start=event_info.get("minutes_until_start", 0),
+                    )
+                    if metadata_snapshot:
+                        event_info["metadata_snapshot"] = metadata_snapshot
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to fetch metadata snapshot for event %s during pre-start enrichment: %s",
+                        event_id,
+                        exc,
+                    )
 
         if events_to_process:
             logger.info(f"Pre-start check completed: {len(events_to_process)} games starting soon!")
@@ -332,10 +393,16 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                 )
                 if event_context is None:
                     logger.warning(
-                        "Skipping event %s because normalized EventContext could not be built",
+                        "⚠️ Skipping event %s because normalized EventContext could not be built",
                         event_obj.id,
                     )
                     continue
+
+                round = event_obj.round
+                if round != "regular_season":
+                    logger.info(f"🚫Skipping event {event_obj.id}, round: {round}")
+                    continue
+
                 _enrich_event_context_competition_metadata(
                     event_context,
                     event_obj,

@@ -540,19 +540,28 @@ class EventRepository:
     
     @staticmethod
     def get_events_started_recently(window_minutes: int = 15, season_ids: Optional[List[int]] = None) -> List[Dict]:
-        """Get events started recently"""
+        """Get recently started events without associated results."""
         try:     
             with db_manager.get_session() as session:
                 now = get_local_now()
                 window_start = now - timedelta(minutes=window_minutes, seconds=10)
                 window_start = window_start.replace(microsecond=0)
                 
-                query = session.query(Event).options(
-                    joinedload(Event.home_participant),
-                    joinedload(Event.away_participant),
-                    joinedload(Event.competition_ref),
-                ).filter(
-                    and_(Event.start_time_utc >= window_start, Event.start_time_utc < now)
+                query = (
+                    session.query(Event)
+                    .outerjoin(Result, Result.event_id == Event.id)
+                    .options(
+                        joinedload(Event.home_participant),
+                        joinedload(Event.away_participant),
+                        joinedload(Event.competition_ref),
+                    )
+                    .filter(
+                        and_(
+                            Event.start_time_utc >= window_start,
+                            Event.start_time_utc < now,
+                            Result.event_id.is_(None),
+                        )
+                    )
                 )
                 
                 if season_ids:

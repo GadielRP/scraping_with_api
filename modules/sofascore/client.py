@@ -302,7 +302,7 @@ class SofaScoreAPI:
 
     def get_event_final_odds(self, id: int, slug: str = None, no_retry_on_404: bool = False) -> Optional[Dict]:
         if slug:
-            logger.info("Fetching final odds for event %s - %s using dedicated endpoint", id, slug)
+            logger.info("✈️ Fetching final odds for event %s - %s using dedicated endpoint", id, slug)
         return self._request_json(f"/event/{id}/odds/1/all", no_retry_on_404=no_retry_on_404)
 
     def update_event_information_from_response(self, response: Dict) -> bool:
