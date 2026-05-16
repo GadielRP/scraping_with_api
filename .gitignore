@@ -13,7 +13,7 @@ logs/
 profile.yaml
 
 scratch/
-modulo2.txt
+modulo*.txt
 
 # test files
 Bets-Hoja24.csv

@@ -146,7 +146,6 @@ class HistoricalFormService:
 
             results = []
 
-            logger.info(f"query params: {query_params}")
 
             with db_manager.get_session() as session:
                 db_result = session.execute(query, query_params)

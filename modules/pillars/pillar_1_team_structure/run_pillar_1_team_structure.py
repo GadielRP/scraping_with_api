@@ -1,8 +1,4 @@
-"""Pillar 1 — Team Structure aggregator.
-
-Currently contains only Module 1 (Base Strength).  When additional modules
-are added, this aggregator will weight them to produce a single pillar value.
-"""
+"""Pillar 1 - Team Structure aggregator."""
 
 from __future__ import annotations
 
@@ -16,10 +12,14 @@ from modules.pillars.pillar_1_team_structure.module_1.base_strength import (
 from modules.pillars.pillar_1_team_structure.module_2.performance_profile import (
     calculate_performance_profile,
 )
+from modules.pillars.pillar_1_team_structure.module_3.direct_matchup_profile import (
+    calculate_direct_matchup_profile,
+)
 
 _MODULE_WEIGHTS: Dict[str, float] = {
-    "M1": 0.50,
-    "M2": 0.50,
+    "M1": 0.40,
+    "M2": 0.35,
+    "M3": 0.25,
 }
 
 
@@ -77,7 +77,11 @@ def _aggregate_module_results(module_results):
             "weight": module_weight,
         }
 
-        if module_status == "INSUFFICIENT_DATA" or module_status.startswith("INVALID"):
+        if (
+            module_status == "INSUFFICIENT_DATA"
+            or module_status == "INACTIVE"
+            or module_status.startswith("INVALID")
+        ):
             skipped_modules.append(module_entry)
             continue
 
@@ -123,10 +127,15 @@ def calculate_pillar_1_team_structure(
         streak_analysis,
         event_context=event_context,
     )
+    m3_result = calculate_direct_matchup_profile(
+        streak_analysis,
+        event_context=event_context,
+    )
 
     pillar_value, aggregation_raw = _aggregate_module_results([
         m1_result,
         m2_result,
+        m3_result,
     ])
 
     return {
@@ -137,6 +146,7 @@ def calculate_pillar_1_team_structure(
         "modules": [
             _serialize_module_result(m1_result),
             _serialize_module_result(m2_result),
+            _serialize_module_result(m3_result),
         ],
         "value": pillar_value,
         "raw": {
@@ -147,5 +157,6 @@ def calculate_pillar_1_team_structure(
             "skipped_modules": aggregation_raw["skipped_modules"],
             "m1_raw": m1_result.raw,
             "m2_raw": m2_result.raw,
+            "m3_raw": m3_result.raw,
         },
     }

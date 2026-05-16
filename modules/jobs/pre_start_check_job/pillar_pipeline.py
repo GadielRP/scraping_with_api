@@ -148,7 +148,7 @@ class EventPillarProcessor:
         competition_id = event_context.competition.competition_id
 
         logger.info(
-            "Pillar context for %s: context_status=%s, event_context_present=%s, competition_id=%s, competition_number_of_teams=%s, number_of_teams_source=%s, inferred_number_of_teams=%s, unique_team_count=%s, inferred_used=%s",
+            "Pillar context for %s: context_status=%s, event_context_present=%s, competition_id=%s, competition_number_of_teams=%s, number_of_teams_source=%s, inferred_number_of_teams=%s, unique_team_count=%s, inferred_used=%s, total_regular_season_games=%s",
             participants,
             event_context.context_status,
             True,
@@ -158,6 +158,7 @@ class EventPillarProcessor:
             inferred_number_of_teams,
             unique_team_count,
             inferred_number_of_teams_used,
+            event_context.competition.total_regular_season_games,
         )
 
         # --- Calculate Pillar 1 ---
@@ -208,6 +209,27 @@ class EventPillarProcessor:
         )
 
         for comp in m2.get("components", []):
+            logger.info(
+                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
+                comp.get("name", "?"),
+                comp.get("edge", 0),
+                comp.get("weight", 0),
+                comp.get("weighted_edge", 0),
+                comp.get("bias", "?"),
+                comp.get("strength", "?"),
+            )
+
+        # Log the M3 result.
+        m3 = modules[2] if len(modules) > 2 else {}
+        logger.info(
+            "P1/M3 Direct Matchup Profile calculated for %s: value=%.3f, bias=%s, strength=%s",
+            participants,
+            m3.get("value", 0),
+            m3.get("bias", "N/A"),
+            m3.get("strength", "N/A"),
+        )
+
+        for comp in m3.get("components", []):
             logger.info(
                 "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
                 comp.get("name", "?"),
