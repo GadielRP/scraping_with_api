@@ -320,6 +320,26 @@ class EventPillarProcessor:
                 comp.get("strength", "?"),
             )
 
+        m7 = modules[6] if len(modules) > 6 else {}
+        logger.info(
+            "P1/M7 Structural Drift Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            participants,
+            m7.get("value", 0),
+            m7.get("bias", "N/A"),
+            m7.get("strength", "N/A"),
+        )
+
+        for comp in m7.get("components", []):
+            logger.info(
+                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
+                comp.get("name", "?"),
+                comp.get("edge", 0),
+                comp.get("weight", 0),
+                comp.get("weighted_edge", 0),
+                comp.get("bias", "?"),
+                comp.get("strength", "?"),
+            )
+
         p1_result.setdefault("raw", {}).update(
             {
                 "event_context_present": True,

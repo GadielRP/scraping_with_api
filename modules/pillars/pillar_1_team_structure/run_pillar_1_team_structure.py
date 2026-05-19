@@ -24,14 +24,18 @@ from modules.pillars.pillar_1_team_structure.module_5.recent_inertia_engine impo
 from modules.pillars.pillar_1_team_structure.module_6.contextual_competitive_cost_engine import (
     calculate_contextual_competitive_cost_engine,
 )
+from modules.pillars.pillar_1_team_structure.module_7.structural_drift_engine import (
+    calculate_structural_drift_engine,
+)
 
 _MODULE_WEIGHTS: Dict[str, float] = {
-    "M1": 0.22,
-    "M2": 0.22,
-    "M3": 0.13,
-    "M4": 0.18,
-    "M5": 0.13,
-    "M6": 0.12,
+    "M1": 0.19,
+    "M2": 0.19,
+    "M3": 0.11,
+    "M4": 0.16,
+    "M5": 0.12,
+    "M6": 0.10,
+    "M7": 0.13,
 }
 
 
@@ -162,6 +166,11 @@ def calculate_pillar_1_team_structure(
         event_context=event_context,
         debug_mode=debug_mode,
     )
+    m7_result = calculate_structural_drift_engine(
+        streak_analysis,
+        event_context=event_context,
+        debug_mode=debug_mode,
+    )
 
     pillar_value, aggregation_raw = _aggregate_module_results([
         m1_result,
@@ -170,6 +179,7 @@ def calculate_pillar_1_team_structure(
         m4_result,
         m5_result,
         m6_result,
+        m7_result,
     ])
 
     return {
@@ -184,6 +194,7 @@ def calculate_pillar_1_team_structure(
             _serialize_module_result(m4_result),
             _serialize_module_result(m5_result),
             _serialize_module_result(m6_result),
+            _serialize_module_result(m7_result),
         ],
         "value": pillar_value,
         "raw": {
@@ -198,5 +209,6 @@ def calculate_pillar_1_team_structure(
             "m4_raw": m4_result.raw,
             "m5_raw": m5_result.raw,
             "m6_raw": m6_result.raw,
+            "m7_raw": m7_result.raw,
         },
     }
