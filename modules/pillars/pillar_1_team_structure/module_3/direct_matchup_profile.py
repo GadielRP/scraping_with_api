@@ -17,6 +17,16 @@ from modules.pillars.context import EventContext
 
 logger = logging.getLogger(__name__)
 
+M3_STRENGTH_THRESHOLDS = [
+    (0.05, "IGNORE"),
+    (0.15, "LOW"),
+    (0.30, "MEDIUM"),
+    (0.60, "HIGH"),
+    (0.85, "VERY_HIGH"),
+]
+M3_STRENGTH_MAX_LABEL = "EXTREME"
+M3_STRENGTH_PROFILE = "M3_v1_1"
+
 
 @dataclass(frozen=True)
 class ParsedH2HMatch:
@@ -134,18 +144,15 @@ def _component(name: str, edge: float, weight: float, raw: Dict[str, Any]) -> Mo
         name=name,
         edge=edge,
         bias=calculate_bias(edge),
-        strength=classify_strength(edge),
+        strength=classify_strength(
+            edge,
+            thresholds=M3_STRENGTH_THRESHOLDS,
+            max_label=M3_STRENGTH_MAX_LABEL,
+        ),
         weight=weight,
         weighted_edge=edge * weight,
         raw=raw,
     )
-
-
-def _manual_strength_hint(edge: float) -> Optional[str]:
-    abs_edge = abs(edge)
-    if 0.60 <= abs_edge < 0.85:
-        return "VERY_HIGH"
-    return None
 
 
 def _serialize_parsed_match(match: ParsedH2HMatch) -> Dict[str, Any]:
@@ -176,7 +183,11 @@ def _inactive_result(
         participants=participants,
         value=0.0,
         bias=calculate_bias(0.0),
-        strength=classify_strength(0.0),
+        strength=classify_strength(
+            0.0,
+            thresholds=M3_STRENGTH_THRESHOLDS,
+            max_label=M3_STRENGTH_MAX_LABEL,
+        ),
         components=[],
         raw={
             "home_team": home_team,
@@ -191,6 +202,9 @@ def _inactive_result(
             "m3_status_reason": "INSUFFICIENT_H2H_SAMPLE",
             "h2h_note": h2h_note,
             "parsed_h2h": parsed_h2h,
+            "strength_threshold_profile": M3_STRENGTH_PROFILE,
+            "strength_thresholds": M3_STRENGTH_THRESHOLDS,
+            "strength_max_label": M3_STRENGTH_MAX_LABEL,
         },
     )
 
@@ -289,7 +303,7 @@ def calculate_direct_matchup_profile(
         )
         logger.info(
             f"  [H2H_WIN_EDGE] (2 * {weighted_winrate_home:.12f}) - 1 = {h2h_win_edge:.12f}  "
-            f"bias={calculate_bias(h2h_win_edge)}  strength={classify_strength(h2h_win_edge)}"
+            f"bias={calculate_bias(h2h_win_edge)}  strength={classify_strength(h2h_win_edge, thresholds=M3_STRENGTH_THRESHOLDS, max_label=M3_STRENGTH_MAX_LABEL)}"
         )
 
     # -------------------------------------------------------------------------
@@ -334,7 +348,7 @@ def calculate_direct_matchup_profile(
             logger.info(
                 f"  [H2H_DIFF_EDGE] {weighted_diff:.12f} / {diff_scale:.12f} = "
                 f"{weighted_diff / diff_scale:.12f}  -> clamped={h2h_diff_edge:.12f}  "
-                f"bias={calculate_bias(h2h_diff_edge)}  strength={classify_strength(h2h_diff_edge)}"
+                f"bias={calculate_bias(h2h_diff_edge)}  strength={classify_strength(h2h_diff_edge, thresholds=M3_STRENGTH_THRESHOLDS, max_label=M3_STRENGTH_MAX_LABEL)}"
             )
 
     # -------------------------------------------------------------------------
@@ -362,7 +376,7 @@ def calculate_direct_matchup_profile(
             )
             logger.info(
                 f"  [H2H_VENUE_EDGE] (2 * {venue_winrate_home:.12f}) - 1 = {h2h_venue_edge:.12f}  "
-                f"bias={calculate_bias(h2h_venue_edge)}  strength={classify_strength(h2h_venue_edge)}"
+                f"bias={calculate_bias(h2h_venue_edge)}  strength={classify_strength(h2h_venue_edge, thresholds=M3_STRENGTH_THRESHOLDS, max_label=M3_STRENGTH_MAX_LABEL)}"
             )
     else:
         venue_winrate_home = 0.0
@@ -387,7 +401,7 @@ def calculate_direct_matchup_profile(
         )
         logger.info(
             f"  [M3_EDGE] clamped={m3_edge:.12f}  bias={calculate_bias(m3_edge)}  "
-            f"strength={classify_strength(m3_edge)}  status=ACTIVE"
+            f"strength={classify_strength(m3_edge, thresholds=M3_STRENGTH_THRESHOLDS, max_label=M3_STRENGTH_MAX_LABEL)}  status=ACTIVE"
         )
         logger.info("-" * 60)
 
@@ -445,11 +459,10 @@ def calculate_direct_matchup_profile(
         "venue_winrate_home": venue_winrate_home,
         "weights": weights,
         "parsed_h2h": parsed_h2h,
+        "strength_threshold_profile": M3_STRENGTH_PROFILE,
+        "strength_thresholds": M3_STRENGTH_THRESHOLDS,
+        "strength_max_label": M3_STRENGTH_MAX_LABEL,
     }
-
-    manual_hint = _manual_strength_hint(m3_edge)
-    if manual_hint is not None:
-        raw["manual_strength_hint"] = manual_hint
 
     return ModuleResult(
         pillar_id="pillar_1_team_structure",
@@ -459,7 +472,11 @@ def calculate_direct_matchup_profile(
         participants=participants,
         value=m3_edge,
         bias=calculate_bias(m3_edge),
-        strength=classify_strength(m3_edge),
+        strength=classify_strength(
+            m3_edge,
+            thresholds=M3_STRENGTH_THRESHOLDS,
+            max_label=M3_STRENGTH_MAX_LABEL,
+        ),
         components=components,
         raw=raw,
     )

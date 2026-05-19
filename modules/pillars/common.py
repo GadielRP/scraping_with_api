@@ -6,17 +6,17 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 
-# ---------------------------------------------------------------------------
-# Centralized strength thresholds (used by all modules)
-# ---------------------------------------------------------------------------
-
-_STRENGTH_THRESHOLDS: List[tuple[float, str]] = [
+DEFAULT_STRENGTH_THRESHOLDS: List[tuple[float, str]] = [
     (0.05, "IGNORE"),
     (0.15, "LOW"),
     (0.30, "MEDIUM"),
     (0.60, "HIGH"),
 ]
-_STRENGTH_MAX_LABEL = "EXTREME"
+DEFAULT_STRENGTH_MAX_LABEL = "EXTREME"
+
+# Backward-compatible aliases for older imports/internal references.
+_STRENGTH_THRESHOLDS = DEFAULT_STRENGTH_THRESHOLDS
+_STRENGTH_MAX_LABEL = DEFAULT_STRENGTH_MAX_LABEL
 
 
 # ---------------------------------------------------------------------------
@@ -37,16 +37,23 @@ def calculate_bias(edge: float) -> str:
     return "NEUTRAL"
 
 
-def classify_strength(edge: float) -> str:
+def classify_strength(
+    edge: float,
+    thresholds: list[tuple[float, str]] | None = None,
+    max_label: str = DEFAULT_STRENGTH_MAX_LABEL,
+) -> str:
     """Classify the absolute edge into a human-readable strength label.
 
-    Uses the centralized thresholds defined in ``_STRENGTH_THRESHOLDS``.
+    Uses the centralized thresholds defined in ``DEFAULT_STRENGTH_THRESHOLDS``
+    unless custom thresholds are provided.
     """
     abs_edge = abs(edge)
-    for threshold, label in _STRENGTH_THRESHOLDS:
+    active_thresholds = thresholds if thresholds is not None else DEFAULT_STRENGTH_THRESHOLDS
+
+    for threshold, label in active_thresholds:
         if abs_edge < threshold:
             return label
-    return _STRENGTH_MAX_LABEL
+    return max_label
 
 
 # ---------------------------------------------------------------------------
