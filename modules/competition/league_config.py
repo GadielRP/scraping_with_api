@@ -123,7 +123,7 @@ LALIGA_CONFIG = LeagueConfig(
     display_name="LaLiga",
     primary_identity=CompetitionIdentity(source_unique_tournament_id=8),
     collected=True,
-    standings_method="football_3_1_0",
+    standings_method="football_3_1_0_h2h",
     grouping_method="league_wide",
     number_of_teams=20,
     total_regular_season_games=38,
@@ -178,12 +178,13 @@ NHL_CONFIG = LeagueConfig(
     standings_grouping="split_tables",
 )
 
+# TODO: Final title/relegation playoff exceptions are not modeled yet.
 SERIE_A_CONFIG = LeagueConfig(
     code="serie_a",
     display_name="Serie A",
     primary_identity=CompetitionIdentity(source_unique_tournament_id=23),
     collected=True,
-    standings_method="football_3_1_0",
+    standings_method="football_3_1_0_h2h",
     grouping_method="league_wide",
     number_of_teams=20,
     total_regular_season_games=38,

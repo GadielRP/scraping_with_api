@@ -25,6 +25,7 @@ from .standings_rules import (
     assign_positions_with_ties,
     build_display_sort_key,
     normalize_result_subtype,
+    sort_football_h2h_items,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ def _create_team_stats(group: Optional[str]) -> Dict[str, object]:
 def _finalize_team_stats(stats: Dict[str, object], standings_method: str) -> None:
     stats["goal_diff"] = stats["goals_for"] - stats["goals_against"]
 
-    if standings_method == "football_3_1_0":
+    if standings_method in {"football_3_1_0", "football_3_1_0_h2h"}:
         stats["points"] = (stats["wins"] * 3) + stats["draws"]
         stats["pct"] = None
     elif standings_method == "win_pct":
@@ -120,7 +121,7 @@ def _apply_game_result(
     team_stats[away_team]["goals_against"] += home_score
     team_stats[away_team]["games_played"] += 1
 
-    if standings_method == "football_3_1_0":
+    if standings_method in {"football_3_1_0", "football_3_1_0_h2h"}:
         if winner == "1":
             team_stats[home_team]["wins"] += 1
             team_stats[away_team]["losses"] += 1
@@ -215,16 +216,24 @@ def _build_standings_payload(
     team_stats: Dict[str, Dict[str, object]],
     standings_method: str,
     grouping_method: str,
+    match_records: Optional[List[Dict[str, object]]] = None,
 ) -> Dict[str, Dict]:
     standings: Dict[str, Dict] = {}
 
     if grouping_method == "league_wide":
-        sorted_teams = sorted(
-            team_stats.items(),
-            key=lambda item: build_display_sort_key(item[0], item[1], standings_method),
-            reverse=True,
-        )
-        positions = assign_positions_with_ties(sorted_teams, standings_method)
+        if standings_method == "football_3_1_0_h2h":
+            sorted_teams, rank_key_by_team = sort_football_h2h_items(
+                team_stats.items(),
+                match_records or [],
+            )
+            positions = assign_positions_with_ties(sorted_teams, standings_method, rank_key_by_team)
+        else:
+            sorted_teams = sorted(
+                team_stats.items(),
+                key=lambda item: build_display_sort_key(item[0], item[1], standings_method),
+                reverse=True,
+            )
+            positions = assign_positions_with_ties(sorted_teams, standings_method)
 
         for team_name, stats in sorted_teams:
             pos_meta = positions[team_name]
@@ -237,12 +246,19 @@ def _build_standings_payload(
         grouped_teams.setdefault(group_name, []).append((team_name, stats))
 
     for group_name, teams in grouped_teams.items():
-        sorted_teams = sorted(
-            teams,
-            key=lambda item: build_display_sort_key(item[0], item[1], standings_method),
-            reverse=True,
-        )
-        positions = assign_positions_with_ties(sorted_teams, standings_method)
+        if standings_method == "football_3_1_0_h2h":
+            sorted_teams, rank_key_by_team = sort_football_h2h_items(
+                teams,
+                match_records or [],
+            )
+            positions = assign_positions_with_ties(sorted_teams, standings_method, rank_key_by_team)
+        else:
+            sorted_teams = sorted(
+                teams,
+                key=lambda item: build_display_sort_key(item[0], item[1], standings_method),
+                reverse=True,
+            )
+            positions = assign_positions_with_ties(sorted_teams, standings_method)
 
         for team_name, stats in sorted_teams:
             pos_meta = positions[team_name]
@@ -364,6 +380,8 @@ class HistoricalStandingsCalculator:
 
         query_sql = """
             SELECT
+                event_id,
+                start_time_utc,
                 home_team,
                 away_team,
                 home_score,
@@ -391,6 +409,7 @@ class HistoricalStandingsCalculator:
 
         team_stats: Dict[str, Dict[str, object]] = {}
         warned_unknown_group_teams = set()
+        match_records = []
 
         with db_manager.get_session() as session:
             result = session.execute(query, query_params)
@@ -440,10 +459,21 @@ class HistoricalStandingsCalculator:
                     standings_method=standings_method,
                 )
 
+                match_records.append({
+                    "event_id": row.event_id,
+                    "start_time_utc": row.start_time_utc,
+                    "home_team": home_team,
+                    "away_team": away_team,
+                    "home_score": int(row.home_score),
+                    "away_score": int(row.away_score),
+                    "winner": winner,
+                    "result_subtype": result_subtype,
+                })
+
         for stats in team_stats.values():
             _finalize_team_stats(stats, standings_method)
 
-        return _build_standings_payload(team_stats, standings_method, grouping_method)
+        return _build_standings_payload(team_stats, standings_method, grouping_method, match_records)
 
     def _compute_standings_internal(
         self,

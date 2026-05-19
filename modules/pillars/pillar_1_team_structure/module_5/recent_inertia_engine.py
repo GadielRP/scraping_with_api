@@ -210,48 +210,114 @@ def calculate_recent_inertia_engine(
 
     if debug_mode:
         logger.info(f"--- M5 Recent Inertia Engine Debug: Event {event_id} ({participants}) ---")
-        logger.info(f"  home_result_l5_encoded={home_result_l5_encoded}")
-        logger.info(f"  away_result_l5_encoded={away_result_l5_encoded}")
-        logger.info(f"  home_gd_l5={home_gd_l5}")
-        logger.info(f"  away_gd_l5={away_gd_l5}")
+        logger.info(f"  home_team={home_team} | away_team={away_team}")
+        logger.info(f"  home_result_l5_encoded={home_result_l5_encoded} (count={home_result_count})")
+        logger.info(f"  away_result_l5_encoded={away_result_l5_encoded} (count={away_result_count})")
+        logger.info(f"  home_gd_l5={home_gd_l5} (count={home_gd_count})")
+        logger.info(f"  away_gd_l5={away_gd_l5} (count={away_gd_count})")
+        logger.info(f"  activation_status={m5_status} ({m5_status_reason})")
+
+        # Active Streak
+        home_streak_formula = f"{home_active_streak['sign']} * ln(1 + {home_active_streak['length']})"
+        away_streak_formula = f"{away_active_streak['sign']} * ln(1 + {away_active_streak['length']})"
         logger.info(
-            "  active_streak_home=%s active_streak_away=%s",
-            home_active_streak,
-            away_active_streak,
+            f"  [ACTIVE_STREAK] home_streak={home_active_streak['type']} (length={home_active_streak['length']}) "
+            f"-> score = {home_streak_formula} = {float(home_active_streak['score']):.12f}"
         )
         logger.info(
-            "  [ACTIVE_STREAK_EDGE] home_score=%.12f away_score=%.12f edge=%.12f",
-            float(home_active_streak["score"]),
-            float(away_active_streak["score"]),
-            active_streak_edge,
+            f"  [ACTIVE_STREAK] away_streak={away_active_streak['type']} (length={away_active_streak['length']}) "
+            f"-> score = {away_streak_formula} = {float(away_active_streak['score']):.12f}"
+        )
+        
+        denom_streak = abs(float(home_active_streak["score"])) + abs(float(away_active_streak["score"]))
+        if denom_streak == 0:
+            logger.info(
+                f"  [ACTIVE_STREAK_EDGE] denominator = 0 -> edge = 0.000000000000"
+            )
+        else:
+            logger.info(
+                f"  [ACTIVE_STREAK_EDGE] edge = (home({float(home_active_streak['score']):.12f}) - away({float(away_active_streak['score']):.12f})) / "
+                f"denominator({denom_streak:.12f}) = {active_streak_edge:.12f}"
+            )
+
+        # Result Form
+        home_sum_res = sum(home_result_l5_encoded)
+        away_sum_res = sum(away_result_l5_encoded)
+        logger.info(
+            f"  [RESULT_FORM_EDGE] home_result_form_score = sum({home_sum_res}) / count({home_result_count}) = {home_result_form_score:.12f}"
         )
         logger.info(
-            "  [RESULT_FORM_EDGE] home_score=%.12f away_score=%.12f edge=%.12f",
-            home_result_form_score,
-            away_result_form_score,
-            result_form_edge,
+            f"  [RESULT_FORM_EDGE] away_result_form_score = sum({away_sum_res}) / count({away_result_count}) = {away_result_form_score:.12f}"
         )
         logger.info(
-            "  [PERFORMANCE_FORM_EDGE] home_avg_gd_l5=%.12f away_avg_gd_l5=%.12f edge=%.12f reason=%s",
-            home_avg_gd_l5,
-            away_avg_gd_l5,
-            performance_form_edge,
-            performance_form_reason,
+            f"  [RESULT_FORM_EDGE] edge = home({home_result_form_score:.12f}) - away({away_result_form_score:.12f}) = {result_form_edge:.12f}"
+        )
+
+        # Performance Form
+        if home_gd_count > 0:
+            home_sum_gd = sum(home_gd_l5)
+            logger.info(
+                f"  [PERFORMANCE_FORM_EDGE] home_avg_gd_l5 = sum({home_sum_gd:.2f}) / count({home_gd_count}) = {home_avg_gd_l5:.12f}"
+            )
+        else:
+            logger.info(
+                f"  [PERFORMANCE_FORM_EDGE] home_avg_gd_l5 = 0.000000000000 (no gd)"
+            )
+        if away_gd_count > 0:
+            away_sum_gd = sum(away_gd_l5)
+            logger.info(
+                f"  [PERFORMANCE_FORM_EDGE] away_avg_gd_l5 = sum({away_sum_gd:.2f}) / count({away_gd_count}) = {away_avg_gd_l5:.12f}"
+            )
+        else:
+            logger.info(
+                f"  [PERFORMANCE_FORM_EDGE] away_avg_gd_l5 = 0.000000000000 (no gd)"
+            )
+
+        if performance_form_reason != "active":
+            logger.info(
+                f"  [PERFORMANCE_FORM_EDGE] edge = 0.000000000000 (reason: {performance_form_reason})"
+            )
+        else:
+            denom_perf = abs(home_avg_gd_l5) + abs(away_avg_gd_l5)
+            logger.info(
+                f"  [PERFORMANCE_FORM_EDGE] edge = (home({home_avg_gd_l5:.12f}) - away({away_avg_gd_l5:.12f})) / "
+                f"denominator({denom_perf:.12f}) = {performance_form_edge:.12f}"
+            )
+
+        # M5 Final Edge
+        logger.info(
+            f"  [M5_EDGE_RAW] ({_WEIGHT_ACTIVE_STREAK:.2f} * active_streak_edge({active_streak_edge:.12f})) + "
+            f"({_WEIGHT_RESULT_FORM:.2f} * result_form_edge({result_form_edge:.12f})) + "
+            f"({_WEIGHT_PERFORMANCE_FORM:.2f} * performance_form_edge({performance_form_edge:.12f})) = "
+            f"({_WEIGHT_ACTIVE_STREAK * active_streak_edge:.12f}) + "
+            f"({_WEIGHT_RESULT_FORM * result_form_edge:.12f}) + "
+            f"({_WEIGHT_PERFORMANCE_FORM * performance_form_edge:.12f}) = {m5_edge_raw:.12f}"
         )
         logger.info(
-            "  [M5_EDGE_RAW] (0.25 * %.12f) + (0.45 * %.12f) + (0.30 * %.12f) = %.12f",
-            active_streak_edge,
-            result_form_edge,
-            performance_form_edge,
-            m5_edge_raw,
+            f"  [M5_EDGE] clamped = {m5_edge:.12f}"
+        )
+        
+        logger.info("  --- Component Summary ---")
+        logger.info(
+            f"  ACTIVE_STREAK_EDGE: edge={active_streak_edge:.12f}  weight={_WEIGHT_ACTIVE_STREAK:.2f}  "
+            f"weighted={active_streak_edge * _WEIGHT_ACTIVE_STREAK:.12f}  "
+            f"bias={calculate_bias(active_streak_edge)}  strength={classify_strength(active_streak_edge)}"
         )
         logger.info(
-            "  [M5_EDGE] clamped=%.12f bias=%s strength=%s status=%s (%s)",
-            m5_edge,
-            calculate_bias(m5_edge),
-            classify_strength(m5_edge),
-            m5_status,
-            m5_status_reason,
+            f"  RESULT_FORM_EDGE: edge={result_form_edge:.12f}  weight={_WEIGHT_RESULT_FORM:.2f}  "
+            f"weighted={result_form_edge * _WEIGHT_RESULT_FORM:.12f}  "
+            f"bias={calculate_bias(result_form_edge)}  strength={classify_strength(result_form_edge)}"
+        )
+        logger.info(
+            f"  PERFORMANCE_FORM_EDGE: edge={performance_form_edge:.12f}  weight={_WEIGHT_PERFORMANCE_FORM:.2f}  "
+            f"weighted={performance_form_edge * _WEIGHT_PERFORMANCE_FORM:.12f}  "
+            f"bias={calculate_bias(performance_form_edge)}  strength={classify_strength(performance_form_edge)}  "
+            f"reason={performance_form_reason}"
+        )
+        logger.info(
+            f"  M5 Final: edge_raw={m5_edge_raw:.12f}  edge_clamped={m5_edge:.12f}  "
+            f"bias={calculate_bias(m5_edge)}  strength={classify_strength(m5_edge)}  "
+            f"status={m5_status} ({m5_status_reason})"
         )
         logger.info("-" * 60)
 

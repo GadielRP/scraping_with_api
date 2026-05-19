@@ -500,50 +500,72 @@ def calculate_contextual_competitive_cost_engine(
 
     if debug_mode:
         logger.info(
-            "--- M6 Contextual Competitive Cost Engine Debug: Event %s (%s) ---",
-            event_id,
-            participants,
+            f"--- M6 Contextual Competitive Cost Engine Debug: Event {event_id} ({participants}) ---"
         )
         logger.info(
-            "  standings_source=%s cutoff_ts=%s ranking_source=%s",
-            current_standings_source,
-            current_standings_cutoff_timestamp,
-            "streak_analysis.current_standings",
+            f"  standings_source={current_standings_source} cutoff_ts={current_standings_cutoff_timestamp} "
+            f"ranking_source=streak_analysis.current_standings"
         )
         logger.info(
-            "  n_liga=%s total_regular_season_games=%s games_remaining=%s max_points_remaining=%s",
-            n_liga,
-            total_regular_season_games if not total_regular_season_games_missing else None,
-            games_remaining,
-            max_points_remaining,
+            f"  n_liga={n_liga} total_regular_season_games={total_regular_season_games} "
+            f"games_remaining={games_remaining} max_points_remaining={max_points_remaining}"
         )
+        logger.info(
+            f"  sport_football_like={football_like} activation_status={m6_status} ({m6_status_reason})"
+        )
+
         for label, context in (("HOME", home_context), ("AWAY", away_context)):
+            logger.info(f"  [{label}_CONTEXT] rank={context.rank} points={context.points:.12f} gp={context.games_played}")
             logger.info(
-                "  %s rank=%s points=%.12f gp=%s objective_type=%s regime_state=%s cutoff=%s gap=%s urgency=%.12f final_cost=%.12f",
-                label,
-                context.rank,
-                context.points,
-                context.games_played,
-                context.objective_type,
-                context.regime_state,
-                context.points_cutoff,
-                context.gap,
-                context.urgency_factor,
-                context.final_cost,
+                f"  [{label}_CONTEXT] objective_type={context.objective_type} regime_state={context.regime_state} "
+                f"points_cutoff={context.points_cutoff if context.points_cutoff is not None else 'None'} "
+                f"gap={context.gap if context.gap is not None else 'None'}"
+            )
+            logger.info(
+                f"  [{label}_CONTEXT] base_severity={context.base_severity:.12f} "
+                f"regime_multiplier={context.regime_multiplier:.12f}"
+            )
+            if context.gap is not None:
+                logger.info(
+                    f"  [{label}_CONTEXT] urgency_factor = max(0.0, min(1.0, 1.0 - ({context.gap:.12f} / {max_points_remaining:.12f}))) = {context.urgency_factor:.12f}"
+                )
+            else:
+                logger.info(
+                    f"  [{label}_CONTEXT] urgency_factor = 0.000000000000 (no gap context)"
+                )
+            logger.info(
+                f"  [{label}_CONTEXT] final_cost = base_severity({context.base_severity:.2f}) * "
+                f"regime_multiplier({context.regime_multiplier:.2f}) * urgency_factor({context.urgency_factor:.12f}) = {context.final_cost:.12f}"
+            )
+
+        # M6 Relative Edge
+        denom_cost = abs(home_context.final_cost) + abs(away_context.final_cost)
+        if denom_cost == 0:
+            logger.info(
+                f"  [M6_EDGE_RAW] denominator = 0 -> edge = 0.000000000000"
+            )
+        else:
+            logger.info(
+                f"  [M6_EDGE_RAW] edge = (home_cost({home_context.final_cost:.12f}) - away_cost({away_context.final_cost:.12f})) / "
+                f"denominator({denom_cost:.12f}) = {m6_edge_raw:.12f}"
             )
         logger.info(
-            "  [M6_EDGE_RAW] home_cost=%.12f away_cost=%.12f edge=%.12f",
-            home_context.final_cost,
-            away_context.final_cost,
-            m6_edge_raw,
+            f"  [M6_EDGE] clamped = {m6_edge:.12f}"
         )
+
+        logger.info("  --- Component Summary ---")
+        if m6_status != "INSUFFICIENT_DATA":
+            logger.info(
+                f"  CONTEXTUAL_COST_EDGE: edge={m6_edge:.12f}  weight=1.00  weighted={m6_edge * 1.0:.12f}  "
+                f"bias={calculate_bias(m6_edge)}  strength={classify_strength(m6_edge)}"
+            )
+        else:
+            logger.info("  (No components calculated due to INSUFFICIENT_DATA)")
+        
         logger.info(
-            "  [M6_EDGE] clamped=%.12f bias=%s strength=%s status=%s (%s)",
-            m6_edge,
-            calculate_bias(m6_edge),
-            classify_strength(m6_edge),
-            m6_status,
-            m6_status_reason,
+            f"  M6 Final: edge_raw={m6_edge_raw:.12f}  edge_clamped={m6_edge:.12f}  "
+            f"bias={calculate_bias(m6_edge)}  strength={classify_strength(m6_edge)}  "
+            f"status={m6_status} ({m6_status_reason})"
         )
         logger.info("-" * 60)
 
