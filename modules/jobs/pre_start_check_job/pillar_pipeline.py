@@ -133,6 +133,25 @@ class EventPillarProcessor:
             debug_mode=self.debug_mode,
         )
 
+        if streak_analysis and self.debug_mode == True:
+            import os
+            import pprint
+            
+            debug_dir = "debug/matchup_streak_analysis"
+            os.makedirs(debug_dir, exist_ok=True)
+            
+            # Format participants for filename
+            safe_participants = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in streak_analysis.participants).replace(' ', '_')
+            filename = f"{streak_analysis.event_id}_{safe_participants}.txt"
+            filepath = os.path.join(debug_dir, filename)
+            
+            try:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    for attr, value in streak_analysis.__dict__.items():
+                        f.write(f"{attr}:\n{pprint.pformat(value, width=120)}\n\n")
+            except Exception as e:
+                logger.error(f"Failed to save streak_analysis debug file: {e}")
+
         if streak_analysis is None:
             logger.info(
                 "🗑️ Pillar pipeline: no streak_analysis for event %s (%s), skipping",
@@ -231,6 +250,26 @@ class EventPillarProcessor:
         )
 
         for comp in m3.get("components", []):
+            logger.info(
+                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
+                comp.get("name", "?"),
+                comp.get("edge", 0),
+                comp.get("weight", 0),
+                comp.get("weighted_edge", 0),
+                comp.get("bias", "?"),
+                comp.get("strength", "?"),
+            )
+
+        m4 = modules[3] if len(modules) > 3 else {}
+        logger.info(
+            "P1/M4 Hybrid Structural Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            participants,
+            m4.get("value", 0),
+            m4.get("bias", "N/A"),
+            m4.get("strength", "N/A"),
+        )
+
+        for comp in m4.get("components", []):
             logger.info(
                 "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
                 comp.get("name", "?"),

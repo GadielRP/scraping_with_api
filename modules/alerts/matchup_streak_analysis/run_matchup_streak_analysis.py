@@ -29,6 +29,7 @@ from .historical_form import (
     _calculate_final_real_ranking,
     _get_filtering_criteria,
 )
+from .standings_engine import standings_calculator
 from .winning_odds import get_winning_odds_data
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,12 @@ class MatchupStreakContext:
     # Standings snapshots
     home_team_standing: Optional[Dict] = None
     away_team_standing: Optional[Dict] = None
+    home_team_current_standing: Optional[Dict] = None
+    away_team_current_standing: Optional[Dict] = None
+    home_team_current_rank: Optional[int] = None
+    away_team_current_rank: Optional[int] = None
+    current_standings_cutoff_timestamp: Optional[float] = None
+    current_standings_source: Optional[str] = None
     # Winning odds data
     winning_odds_data: Optional[Dict] = None  # Winning odds response data
     # Current event odds (for display in H2H streak messages)
@@ -363,13 +370,70 @@ def build_matchup_streak_context(
         # -----------------------------------------------------------------
         # Standings snapshot
         # -----------------------------------------------------------------
+        home_team_current_standing = None
+        away_team_current_standing = None
+        home_team_current_rank = None
+        away_team_current_rank = None
+        current_standings_cutoff_timestamp = None
+        current_standings_source = None
         sofascores_snapshot_home_team_ranking = None
         sofascores_snapshot_away_team_ranking = None
         home_team_standing = None
         away_team_standing = None
         resolved_standings_response = standings_response
+        current_standings = None
 
         standings_api_unique_tournament_id = source_unique_tournament_id or source_tournament_id
+        if (
+            sport not in ['Tennis', 'Tennis Doubles']
+            and season_id
+            and event_start_ts
+            and standings_api_unique_tournament_id
+        ):
+            try:
+                current_standings = standings_calculator.calculate_standings_at(
+                    season_id=season_id,
+                    cutoff_timestamp=event_start_ts,
+                    sport=sport,
+                    source_unique_tournament_id=source_unique_tournament_id,
+                    source_tournament_id=source_tournament_id,
+                    send_debug_standings=False,
+                )
+                home_team_current_standing = current_standings.get(home_team_name)
+                away_team_current_standing = current_standings.get(away_team_name)
+
+                if home_team_current_standing:
+                    home_team_current_rank = (
+                        home_team_current_standing.get("rank")
+                        or home_team_current_standing.get("position")
+                    )
+
+                if away_team_current_standing:
+                    away_team_current_rank = (
+                        away_team_current_standing.get("rank")
+                        or away_team_current_standing.get("position")
+                    )
+
+                if home_team_current_standing or away_team_current_standing:
+                    current_standings_cutoff_timestamp = event_start_ts
+                    current_standings_source = "db_standings_calculator"
+                    logger.info(
+                        "Current standings resolved for event %s: home=%s rank=%s away=%s rank=%s source=%s",
+                        event_id,
+                        home_team_name,
+                        home_team_current_rank,
+                        away_team_name,
+                        away_team_current_rank,
+                        current_standings_source,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Could not resolve current standings for event %s (%s): %s",
+                    event_id,
+                    participants,
+                    exc,
+                )
+
         if sport not in ['Tennis', 'Tennis Doubles'] and season_id and standings_api_unique_tournament_id and (home_team_id or away_team_id):
             raw_standings = standings_response
             if raw_standings is None:
@@ -483,6 +547,12 @@ def build_matchup_streak_context(
             away_team_name=away_team_name,
             sofascores_snapshot_home_team_ranking=sofascores_snapshot_home_team_ranking,
             sofascores_snapshot_away_team_ranking=sofascores_snapshot_away_team_ranking,
+            home_team_current_standing=home_team_current_standing,
+            away_team_current_standing=away_team_current_standing,
+            home_team_current_rank=home_team_current_rank,
+            away_team_current_rank=away_team_current_rank,
+            current_standings_cutoff_timestamp=current_standings_cutoff_timestamp,
+            current_standings_source=current_standings_source,
             raw_h2h_matchup_event_count=len(matchup_events),
             h2h_matchup_matches_analyzed=total,
             h2h_matchup_home_wins=h2h_matchup_home_wins,
