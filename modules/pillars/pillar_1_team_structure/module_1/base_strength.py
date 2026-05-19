@@ -256,6 +256,7 @@ def _pstdev(values: List[float]) -> float:
 def _calculate_result_edge(
     home_results: List[Dict],
     away_results: List[Dict],
+    debug_mode: bool = False,
 ) -> Tuple[float, Dict[str, Any]]:
     """Component 1 - RESULT_EDGE (win-rate differential)."""
     home_gp = len(home_results)
@@ -270,9 +271,14 @@ def _calculate_result_edge(
         "away_gp": away_gp,
     }
 
+    if debug_mode:
+        logger.info(f"  [RESULT_EDGE] home_wins={home_wins}/{home_gp}  away_wins={away_wins}/{away_gp}")
+
     if home_gp == 0 or away_gp == 0:
         raw["reason"] = "no_results"
         raw["final_edge_clamped"] = 0.0
+        if debug_mode:
+            logger.info("  [RESULT_EDGE] => SKIP (no_results) -> edge=0.0")
         return 0.0, raw
 
     home_win_rate = float(home_wins) / float(home_gp)
@@ -284,6 +290,13 @@ def _calculate_result_edge(
     raw["away_win_rate"] = away_win_rate
     raw["edge_raw"] = edge_raw
     raw["final_edge_clamped"] = edge
+
+    if debug_mode:
+        logger.info(
+            f"  [RESULT_EDGE] home_wr={home_win_rate:.4f}  away_wr={away_win_rate:.4f}  "
+            f"edge_raw={edge_raw:.4f}  edge_clamped={edge:.4f}"
+        )
+
     return edge, raw
 
 
@@ -293,6 +306,7 @@ def _calculate_gd_edge(
     home_results: List[Dict],
     away_results: List[Dict],
     expected_league_size: Optional[int] = None,
+    debug_mode: bool = False,
 ) -> Tuple[float, Dict[str, Any]]:
     """Component 2 - GD_EDGE (goal-difference per game, dynamically scaled)."""
     home_gp = len(home_gd_series)
@@ -307,11 +321,20 @@ def _calculate_gd_edge(
         "away_gp": away_gp,
     }
 
+    if debug_mode:
+        logger.info(
+            f"  [GD_EDGE] home_total_gd={home_total_gd:.2f}/{home_gp}gp  "
+            f"away_total_gd={away_total_gd:.2f}/{away_gp}gp  "
+            f"expected_league_size={expected_league_size}"
+        )
+
     if home_gp == 0 or away_gp == 0:
         raw["reason"] = "no_results"
         raw["dynamic_scale"] = None
         raw["m1_gd_dynamic_scale"] = None
         raw["final_edge_clamped"] = 0.0
+        if debug_mode:
+            logger.info("  [GD_EDGE] => SKIP (no_results) -> edge=0.0")
         return 0.0, raw
 
     home_gd_per_game = home_total_gd / float(home_gp)
@@ -334,22 +357,35 @@ def _calculate_gd_edge(
     raw["league_sample_size"] = sample_size
     raw["expected_league_size"] = expected_league_size
 
+    if debug_mode:
+        logger.info(
+            f"  [GD_EDGE] home_gd/g={home_gd_per_game:.4f}  away_gd/g={away_gd_per_game:.4f}  "
+            f"scale={scale}  scale_source={source}  league_samples={sample_size}"
+        )
+
     if scale is None or scale <= 0:
         raw["reason"] = "missing_dynamic_scale"
         raw["edge_raw"] = 0.0
         raw["final_edge_clamped"] = 0.0
+        if debug_mode:
+            logger.info("  [GD_EDGE] => SKIP (missing_dynamic_scale) -> edge=0.0")
         return 0.0, raw
 
     edge_raw = (home_gd_per_game - away_gd_per_game) / scale
     edge = clamp(edge_raw)
     raw["edge_raw"] = edge_raw
     raw["final_edge_clamped"] = edge
+
+    if debug_mode:
+        logger.info(f"  [GD_EDGE] edge_raw={edge_raw:.4f}  edge_clamped={edge:.4f}")
+
     return edge, raw
 
 
 def _calculate_consistency_edge(
     home_series: List[float],
     away_series: List[float],
+    debug_mode: bool = False,
 ) -> Tuple[float, Dict[str, Any]]:
     """Component 3 - CONSISTENCY_EDGE (STD of game-GD across rolling windows)."""
     n = min(len(home_series), len(away_series))
@@ -359,10 +395,15 @@ def _calculate_consistency_edge(
         "away_game_gd": away_series,
     }
 
+    if debug_mode:
+        logger.info(f"  [CONSISTENCY_EDGE] n_comparable_games={n}  windows_step={_CONSISTENCY_WINDOW_STEP}")
+
     if n < _CONSISTENCY_WINDOW_STEP:
         raw["reason"] = "insufficient_games"
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
+        if debug_mode:
+            logger.info(f"  [CONSISTENCY_EDGE] => SKIP (insufficient_games, need >={_CONSISTENCY_WINDOW_STEP}) -> edge=0.0")
         return 0.0, raw
 
     windows: List[int] = _build_cumulative_windows(n, _CONSISTENCY_WINDOW_STEP)
@@ -370,6 +411,8 @@ def _calculate_consistency_edge(
         raw["reason"] = "no_valid_windows"
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
+        if debug_mode:
+            logger.info("  [CONSISTENCY_EDGE] => SKIP (no_valid_windows) -> edge=0.0")
         return 0.0, raw
 
     home_window_stds: Dict[str, float] = {}
@@ -382,7 +425,13 @@ def _calculate_consistency_edge(
         away_std = _pstdev(away_series[:w])
         home_window_stds[label] = home_std
         away_window_stds[label] = away_std
-        consistency_edges_by_window[label] = away_std - home_std
+        window_edge = away_std - home_std
+        consistency_edges_by_window[label] = window_edge
+        if debug_mode:
+            logger.info(
+                f"  [CONSISTENCY_EDGE] {label}: home_std={home_std:.4f}  "
+                f"away_std={away_std:.4f}  edge={window_edge:.4f}"
+            )
 
     consistency_edge_raw_average = (
         sum(consistency_edges_by_window.values()) / len(consistency_edges_by_window)
@@ -390,6 +439,12 @@ def _calculate_consistency_edge(
         else 0.0
     )
     final_edge_clamped = clamp(consistency_edge_raw_average)
+
+    if debug_mode:
+        logger.info(
+            f"  [CONSISTENCY_EDGE] avg_raw={consistency_edge_raw_average:.4f}  "
+            f"edge_clamped={final_edge_clamped:.4f}"
+        )
 
     raw["windows"] = windows
     raw["home_window_stds"] = home_window_stds
@@ -404,16 +459,22 @@ def _calculate_consistency_edge(
 def _calculate_vol_direction_edge(
     home_series: List[float],
     away_series: List[float],
+    debug_mode: bool = False,
 ) -> Tuple[float, Dict[str, Any]]:
     """Component 4 - VOL_DIRECTION_EDGE (destroy/collapse power by window)."""
     n = min(len(home_series), len(away_series))
 
     raw: Dict[str, Any] = {}
 
+    if debug_mode:
+        logger.info(f"  [VOL_DIRECTION_EDGE] n_comparable_games={n}  batch_size={_BATCH_SIZE}")
+
     if n < _BATCH_SIZE:
         raw["reason"] = "insufficient_games"
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
+        if debug_mode:
+            logger.info(f"  [VOL_DIRECTION_EDGE] => SKIP (insufficient_games, need >={_BATCH_SIZE}) -> edge=0.0")
         return 0.0, raw
 
     windows: List[int] = _build_cumulative_windows(n, _BATCH_SIZE)
@@ -421,6 +482,8 @@ def _calculate_vol_direction_edge(
         raw["reason"] = "no_valid_windows"
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
+        if debug_mode:
+            logger.info("  [VOL_DIRECTION_EDGE] => SKIP (no_valid_windows) -> edge=0.0")
         return 0.0, raw
 
     def _powers(series: List[float]) -> Tuple[float, float, float]:
@@ -451,6 +514,7 @@ def _calculate_vol_direction_edge(
         label = f"L{w}"
         home_destroy, home_collapse, home_net = _powers(home_series[:w])
         away_destroy, away_collapse, away_net = _powers(away_series[:w])
+        window_edge = home_net - away_net
 
         home_destroy_power_by_window[label] = home_destroy
         home_collapse_power_by_window[label] = home_collapse
@@ -458,7 +522,15 @@ def _calculate_vol_direction_edge(
         away_destroy_power_by_window[label] = away_destroy
         away_collapse_power_by_window[label] = away_collapse
         away_net_vol_by_window[label] = away_net
-        vol_direction_edges_by_window[label] = home_net - away_net
+        vol_direction_edges_by_window[label] = window_edge
+
+        if debug_mode:
+            logger.info(
+                f"  [VOL_DIRECTION_EDGE] {label}: "
+                f"home(destroy={home_destroy:.4f}, collapse={home_collapse:.4f}, net={home_net:.4f})  "
+                f"away(destroy={away_destroy:.4f}, collapse={away_collapse:.4f}, net={away_net:.4f})  "
+                f"edge={window_edge:.4f}"
+            )
 
     vol_direction_edge_raw_average = (
         sum(vol_direction_edges_by_window.values()) / len(vol_direction_edges_by_window)
@@ -466,6 +538,12 @@ def _calculate_vol_direction_edge(
         else 0.0
     )
     final_edge_clamped = clamp(vol_direction_edge_raw_average)
+
+    if debug_mode:
+        logger.info(
+            f"  [VOL_DIRECTION_EDGE] avg_raw={vol_direction_edge_raw_average:.4f}  "
+            f"edge_clamped={final_edge_clamped:.4f}"
+        )
 
     raw["windows"] = windows
     raw["home_destroy_power_by_window"] = home_destroy_power_by_window
@@ -523,6 +601,7 @@ def _determine_m1_status(
 def calculate_base_strength(
     streak_analysis: Any,
     event_context: EventContext,
+    debug_mode: bool = False,
 ) -> ModuleResult:
     """Calculate M1 - Base Strength for an event."""
     home_results: List[Dict] = getattr(streak_analysis, "home_team_results", None) or []
@@ -541,21 +620,40 @@ def calculate_base_strength(
     home_gd_series = _extract_game_gd_series(home_results)
     away_gd_series = _extract_game_gd_series(away_results)
 
-    result_edge, result_raw = _calculate_result_edge(home_results, away_results)
+    if debug_mode:
+        logger.info(
+            f"--- M1 Base Strength Debug: Event {event_id} ({participants}) ---"
+        )
+        logger.info(
+            f"  competition={competition_display_name} (id={competition_id})  "
+            f"expected_league_size={expected_league_size}  "
+            f"home_results={len(home_results)}  away_results={len(away_results)}"
+        )
+        logger.info(
+            f"  home_gd_series ({len(home_gd_series)} games): {home_gd_series}"
+        )
+        logger.info(
+            f"  away_gd_series ({len(away_gd_series)} games): {away_gd_series}"
+        )
+
+    result_edge, result_raw = _calculate_result_edge(home_results, away_results, debug_mode=debug_mode)
     gd_edge, gd_raw = _calculate_gd_edge(
         home_gd_series,
         away_gd_series,
         home_results,
         away_results,
         expected_league_size=expected_league_size,
+        debug_mode=debug_mode,
     )
     consistency_edge, consistency_raw = _calculate_consistency_edge(
         home_gd_series,
         away_gd_series,
+        debug_mode=debug_mode,
     )
     vol_direction_edge, vol_raw = _calculate_vol_direction_edge(
         home_gd_series,
         away_gd_series,
+        debug_mode=debug_mode,
     )
 
     m1_status, m1_status_reason = _determine_m1_status(
@@ -585,6 +683,20 @@ def calculate_base_strength(
 
     base_value = sum(c.weighted_edge for c in components)
     final_value = clamp(base_value)
+
+    if debug_mode:
+        logger.info("  --- Component Summary ---")
+        for c in components:
+            logger.info(
+                f"  {c.name}: edge={c.edge:.4f}  weight={c.weight}  weighted={c.weighted_edge:.4f}  "
+                f"bias={c.bias}  strength={c.strength}"
+            )
+        logger.info(
+            f"  M1 Final: base_value={base_value:.4f}  final_clamped={final_value:.4f}  "
+            f"bias={calculate_bias(final_value)}  strength={classify_strength(final_value)}  "
+            f"status={m1_status} ({m1_status_reason})"
+        )
+        logger.info("-" * 60)
 
     raw_audit: Dict[str, Any] = {
         "home_team": getattr(streak_analysis, "home_team_name", None),

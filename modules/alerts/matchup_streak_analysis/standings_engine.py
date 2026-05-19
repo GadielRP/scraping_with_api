@@ -396,15 +396,15 @@ class HistoricalStandingsCalculator:
             result = session.execute(query, query_params)
             all_rows = result.fetchall()
 
-            if send_debug_standings:
-                logger.info(
-                    "STANDINGS DEBUG: Found %s events. Input season: %s, Canonical: %s, Bundle: %s before %s",
-                    len(all_rows),
-                    season_id,
-                    canonical_season_id,
-                    all_season_ids,
-                    cutoff_dt.strftime("%Y-%m-%d %H:%M:%S"),
-                )
+            # if send_debug_standings:
+            #     logger.info(
+            #         "STANDINGS DEBUG: Found %s events. Input season: %s, Canonical: %s, Bundle: %s before %s",
+            #         len(all_rows),
+            #         season_id,
+            #         canonical_season_id,
+            #         all_season_ids,
+            #         cutoff_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            #     )
 
             for row in all_rows:
                 home_team = row.home_team

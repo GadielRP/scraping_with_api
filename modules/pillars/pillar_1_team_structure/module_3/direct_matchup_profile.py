@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -13,6 +14,8 @@ from modules.pillars.common import (
     classify_strength,
 )
 from modules.pillars.context import EventContext
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -195,6 +198,7 @@ def _inactive_result(
 def calculate_direct_matchup_profile(
     streak_analysis: Any,
     event_context: EventContext,
+    debug_mode: bool = False,
 ) -> ModuleResult:
     """Calculate M3 - Direct Matchup Profile for an event."""
     home_team = getattr(streak_analysis, "home_team_name", None) or event_context.home.name
@@ -220,12 +224,22 @@ def calculate_direct_matchup_profile(
     total_h2h = len(h2h_matches)
     sample_h2h = len(parsed_matches)
 
+    if debug_mode:
+        logger.info(f"--- M3 Direct Matchup Profile Debug: Event {event_id} ({participants}) ---")
+        logger.info(
+            f"  home_team={home_team}  away_team={away_team}  sport={sport}  "
+            f"total_h2h_raw={total_h2h}  parsed_valid={sample_h2h}  "
+            f"min_required=2  activation={'ACTIVE' if sample_h2h >= 2 else 'INACTIVE'}"
+        )
+
     if sample_h2h < 2:
         h2h_note = (
             "Single recent H2H exists but sample is insufficient for operational edge."
             if total_h2h == 1
             else "No valid recent H2H sample."
         )
+        if debug_mode:
+            logger.info(f"  => M3 INACTIVE: {h2h_note}")
         return _inactive_result(
             event_id=event_id,
             participants=participants,
@@ -237,42 +251,145 @@ def calculate_direct_matchup_profile(
             parsed_h2h=parsed_h2h,
         )
 
+    # -------------------------------------------------------------------------
+    # Harmonic weights
+    # -------------------------------------------------------------------------
     weights = _harmonic_weights(sample_h2h)
-    weighted_winrate_home = sum(match.win * weight for match, weight in zip(parsed_matches, weights))
+    raw_weights = [1.0 / float(i + 1) for i in range(sample_h2h)]
+    sum_raw_weights = sum(raw_weights)
+
+    if debug_mode:
+        logger.info(f"  [PESOS] TOTAL_H2H={sample_h2h}  sum_raw={sum_raw_weights:.12f}")
+        for i, (match, rw, nw) in enumerate(zip(parsed_matches, raw_weights, weights)):
+            logger.info(
+                f"  [PESOS] i={i}  weight_raw=1/{i+1}={rw:.12f}  "
+                f"weight_norm={rw:.12f}/{sum_raw_weights:.12f}={nw:.12f}  "
+                f"diff={match.diff:+.1f}  win={match.win}"
+            )
+
+    # -------------------------------------------------------------------------
+    # H2H_WIN_EDGE
+    # -------------------------------------------------------------------------
+    win_terms = [(match.win, weight) for match, weight in zip(parsed_matches, weights)]
+    weighted_winrate_home = sum(w * nw for w, nw in win_terms)
     weighted_winrate_away = 1.0 - weighted_winrate_home
     h2h_win_edge = (2.0 * weighted_winrate_home) - 1.0
 
+    if debug_mode:
+        logger.info("  [H2H_WIN_EDGE] Sustitución:")
+        for i, (match, weight) in enumerate(zip(parsed_matches, weights)):
+            logger.info(
+                f"    i={i}: win={match.win} * weight={weight:.12f} = {match.win * weight:.12f}"
+            )
+        logger.info(
+            f"  [H2H_WIN_EDGE] H2H_WEIGHTED_WINRATE_HOME = {weighted_winrate_home:.12f}"
+        )
+        logger.info(
+            f"  [H2H_WIN_EDGE] H2H_WEIGHTED_WINRATE_AWAY = 1 - {weighted_winrate_home:.12f} = {weighted_winrate_away:.12f}"
+        )
+        logger.info(
+            f"  [H2H_WIN_EDGE] (2 * {weighted_winrate_home:.12f}) - 1 = {h2h_win_edge:.12f}  "
+            f"bias={calculate_bias(h2h_win_edge)}  strength={classify_strength(h2h_win_edge)}"
+        )
+
+    # -------------------------------------------------------------------------
+    # H2H_WEIGHTED_DIFF + H2H_DIFF_EDGE
+    # -------------------------------------------------------------------------
     weighted_diff = sum(match.diff * weight for match, weight in zip(parsed_matches, weights))
+
     if sample_h2h >= 5:
-        diff_scale = sum(abs(match.diff) for match in parsed_matches) / float(sample_h2h)
+        abs_diffs = [abs(match.diff) for match in parsed_matches]
+        diff_scale = sum(abs_diffs) / float(sample_h2h)
         diff_scale_source = "dynamic"
+        if debug_mode:
+            logger.info(
+                f"  [H2H_DIFF_EDGE] Escala dinámica (n={sample_h2h} >= 5): "
+                f"sum(|diff|)={sum(abs_diffs):.1f} / {sample_h2h} = {diff_scale:.12f}"
+            )
     else:
         diff_scale = _sport_factor(sport)
         diff_scale_source = "sport_factor"
+        if debug_mode:
+            logger.info(
+                f"  [H2H_DIFF_EDGE] Sport factor (n={sample_h2h} < 5): sport={sport} -> scale={diff_scale}"
+            )
+
+    if debug_mode:
+        logger.info("  [H2H_DIFF_EDGE] Sustitución weighted_diff:")
+        for i, (match, weight) in enumerate(zip(parsed_matches, weights)):
+            logger.info(
+                f"    i={i}: diff={match.diff:+.1f} * weight={weight:.12f} = {match.diff * weight:.12f}"
+            )
+        logger.info(f"  [H2H_DIFF_EDGE] H2H_WEIGHTED_DIFF = {weighted_diff:.12f}")
 
     h2h_diff_reason = "active"
     if diff_scale <= 0:
         h2h_diff_edge = 0.0
         h2h_diff_reason = "missing_diff_scale"
+        if debug_mode:
+            logger.info("  [H2H_DIFF_EDGE] => SKIP (diff_scale=0) -> edge=0.0")
     else:
         h2h_diff_edge = clamp(weighted_diff / diff_scale)
+        if debug_mode:
+            logger.info(
+                f"  [H2H_DIFF_EDGE] {weighted_diff:.12f} / {diff_scale:.12f} = "
+                f"{weighted_diff / diff_scale:.12f}  -> clamped={h2h_diff_edge:.12f}  "
+                f"bias={calculate_bias(h2h_diff_edge)}  strength={classify_strength(h2h_diff_edge)}"
+            )
 
+    # -------------------------------------------------------------------------
+    # H2H_VENUE_EDGE
+    # -------------------------------------------------------------------------
     venue_matches = [match for match in parsed_matches if match.current_home_was_home]
+
+    if debug_mode:
+        logger.info(
+            f"  [H2H_VENUE_EDGE] venue_matches (current_home_was_home=True): {len(venue_matches)}/{sample_h2h}"
+        )
+        for i, match in enumerate(venue_matches):
+            logger.info(
+                f"    venue[{i}]: diff={match.diff:+.1f}  win={match.win}"
+            )
+
     if venue_matches:
         venue_winrate_home = sum(match.win for match in venue_matches) / float(len(venue_matches))
         h2h_venue_edge = (2.0 * venue_winrate_home) - 1.0
         venue_reason = "active"
+        if debug_mode:
+            logger.info(
+                f"  [H2H_VENUE_EDGE] venue_wins={sum(m.win for m in venue_matches):.1f} / {len(venue_matches)} "
+                f"= {venue_winrate_home:.12f}"
+            )
+            logger.info(
+                f"  [H2H_VENUE_EDGE] (2 * {venue_winrate_home:.12f}) - 1 = {h2h_venue_edge:.12f}  "
+                f"bias={calculate_bias(h2h_venue_edge)}  strength={classify_strength(h2h_venue_edge)}"
+            )
     else:
         venue_winrate_home = 0.0
         h2h_venue_edge = 0.0
         venue_reason = "no_current_venue_h2h"
+        if debug_mode:
+            logger.info("  [H2H_VENUE_EDGE] => No venue matches -> edge=0.0")
 
-    m3_edge_raw = (
-        0.50 * h2h_win_edge
-        + 0.30 * h2h_diff_edge
-        + 0.20 * h2h_venue_edge
-    )
+    # -------------------------------------------------------------------------
+    # M3 Final
+    # -------------------------------------------------------------------------
+    win_weighted = 0.50 * h2h_win_edge
+    diff_weighted = 0.30 * h2h_diff_edge
+    venue_weighted = 0.20 * h2h_venue_edge
+    m3_edge_raw = win_weighted + diff_weighted + venue_weighted
     m3_edge = clamp(m3_edge_raw)
+
+    if debug_mode:
+        logger.info(
+            f"  [M3_EDGE_RAW] (0.50 * {h2h_win_edge:.12f}) + (0.30 * {h2h_diff_edge:.12f}) + (0.20 * {h2h_venue_edge:.12f})"
+            f" = {win_weighted:.12f} + {diff_weighted:.12f} + {venue_weighted:.12f} = {m3_edge_raw:.12f}"
+        )
+        logger.info(
+            f"  [M3_EDGE] clamped={m3_edge:.12f}  bias={calculate_bias(m3_edge)}  "
+            f"strength={classify_strength(m3_edge)}  status=ACTIVE"
+        )
+        logger.info("-" * 60)
 
     components = [
         _component(

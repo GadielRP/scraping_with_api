@@ -166,6 +166,7 @@ class EventPillarProcessor:
             p1_result = calculate_pillar_1_team_structure(
                 streak_analysis,
                 event_context=event_context,
+                debug_mode=self.debug_mode,
             )
         except Exception as exc:
             logger.error(

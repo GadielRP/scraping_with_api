@@ -255,13 +255,13 @@ class HistoricalFormService:
                             source_unique_tournament_id=source_unique_tournament_id,
                             source_tournament_id=source_tournament_id,
                         )
-                        title = f"Round {round_num} Standings ({cutoff_date})"
-                        message = format_standings_table_for_telegram(
-                            standings,
-                            title,
-                            standings_method=standings_method,
-                        )
-                        send_debug_telegram(message, personal_chat_id)
+                        # title = f"Round {round_num} Standings ({cutoff_date})"
+                        # message = format_standings_table_for_telegram(
+                        #     standings,
+                        #     title,
+                        #     standings_method=standings_method,
+                        # )
+                        # send_debug_telegram(message, personal_chat_id)
 
                     if current_event_timestamp:
                         current_standings = self.standings_calculator.calculate_standings_at(

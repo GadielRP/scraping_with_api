@@ -24,8 +24,8 @@ class CompetitionRepository:
             logger.warning("Skipping competition upsert because source_tournament_id is missing")
             return None
 
-        canonical_name = competition_data.get("canonical_name")
-        display_name = competition_data.get("display_name") or canonical_name
+        canonical_name = competition_data.get("canonical_name").strip()
+        display_name = competition_data.get("display_name").strip() or canonical_name
         if not canonical_name or not display_name:
             logger.warning("Skipping competition %s:%s because names are missing", source, source_tournament_id)
             return None

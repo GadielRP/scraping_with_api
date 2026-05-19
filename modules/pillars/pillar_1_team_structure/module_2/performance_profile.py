@@ -10,6 +10,7 @@ messages, or writes to the database.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -22,6 +23,8 @@ from modules.pillars.common import (
 )
 from modules.pillars.context import EventContext
 from modules.pillars.score_series import extract_gf_ga_series
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -72,21 +75,93 @@ def _safe_ratio(numerator: float, denominator: float) -> float:
     return numerator / denominator
 
 
-def _calculate_offense_edge(home_profile: TeamPerformanceProfile, away_profile: TeamPerformanceProfile) -> float:
+def _calculate_offense_edge(
+    home_profile: TeamPerformanceProfile,
+    away_profile: TeamPerformanceProfile,
+    debug_mode: bool = False,
+) -> float:
+    """OFFENSE_EDGE = (home_gf_mean - away_gf_mean) / (home_gf_mean + away_gf_mean)."""
+    numerator = home_profile.gf_mean - away_profile.gf_mean
     denominator = home_profile.gf_mean + away_profile.gf_mean
-    return _safe_ratio(home_profile.gf_mean - away_profile.gf_mean, denominator)
+    edge = _safe_ratio(numerator, denominator)
+
+    if debug_mode:
+        logger.info(
+            f"  [OFFENSE_EDGE] home_gf_mean={home_profile.gf_mean:.4f}  "
+            f"away_gf_mean={away_profile.gf_mean:.4f}  "
+            f"numerator=({home_profile.gf_mean:.4f} - {away_profile.gf_mean:.4f})={numerator:.4f}  "
+            f"denominator=({home_profile.gf_mean:.4f} + {away_profile.gf_mean:.4f})={denominator:.4f}  "
+            f"edge={numerator:.4f}/{denominator:.4f}={edge:.4f}"
+            if denominator != 0 else
+            f"  [OFFENSE_EDGE] denominator=0 -> edge=0.0"
+        )
+
+    return edge
 
 
-def _calculate_defense_edge(home_profile: TeamPerformanceProfile, away_profile: TeamPerformanceProfile) -> float:
+def _calculate_defense_edge(
+    home_profile: TeamPerformanceProfile,
+    away_profile: TeamPerformanceProfile,
+    debug_mode: bool = False,
+) -> float:
+    """DEFENSE_EDGE = (away_ga_mean - home_ga_mean) / (home_ga_mean + away_ga_mean).
+
+    Positive = home team concedes less (better defense).
+    """
+    numerator = away_profile.ga_mean - home_profile.ga_mean
     denominator = home_profile.ga_mean + away_profile.ga_mean
-    return _safe_ratio(away_profile.ga_mean - home_profile.ga_mean, denominator)
+    edge = _safe_ratio(numerator, denominator)
+
+    if debug_mode:
+        logger.info(
+            f"  [DEFENSE_EDGE] home_ga_mean={home_profile.ga_mean:.4f}  "
+            f"away_ga_mean={away_profile.ga_mean:.4f}  "
+            f"numerator=({away_profile.ga_mean:.4f} - {home_profile.ga_mean:.4f})={numerator:.4f}  "
+            f"denominator=({home_profile.ga_mean:.4f} + {away_profile.ga_mean:.4f})={denominator:.4f}  "
+            f"edge={numerator:.4f}/{denominator:.4f}={edge:.4f}"
+            if denominator != 0 else
+            f"  [DEFENSE_EDGE] denominator=0 -> edge=0.0"
+        )
+
+    return edge
 
 
-def _calculate_net_edge(home_profile: TeamPerformanceProfile, away_profile: TeamPerformanceProfile) -> float:
-    denominator = abs(home_profile.net_mean) + abs(away_profile.net_mean)
+def _calculate_net_edge(
+    home_profile: TeamPerformanceProfile,
+    away_profile: TeamPerformanceProfile,
+    debug_mode: bool = False,
+) -> float:
+    """NET_EDGE = (home_net_mean - away_net_mean) / (|home_net_mean| + |away_net_mean|).
+
+    Returns 0 if the combined absolute net is below the 0.10 noise threshold.
+    """
+    abs_home_net = abs(home_profile.net_mean)
+    abs_away_net = abs(away_profile.net_mean)
+    denominator = abs_home_net + abs_away_net
+    numerator = home_profile.net_mean - away_profile.net_mean
+
+    if debug_mode:
+        logger.info(
+            f"  [NET_EDGE] home_net_mean={home_profile.net_mean:.4f}  "
+            f"away_net_mean={away_profile.net_mean:.4f}  "
+            f"|home_net|={abs_home_net:.4f}  |away_net|={abs_away_net:.4f}  "
+            f"denominator=({abs_home_net:.4f} + {abs_away_net:.4f})={denominator:.4f}  "
+            f"numerator=({home_profile.net_mean:.4f} - {away_profile.net_mean:.4f})={numerator:.4f}"
+        )
+
     if denominator < 0.10:
+        if debug_mode:
+            logger.info(
+                f"  [NET_EDGE] denominator={denominator:.4f} < 0.10 noise threshold -> edge=0.0"
+            )
         return 0.0
-    return _safe_ratio(home_profile.net_mean - away_profile.net_mean, denominator)
+
+    edge = _safe_ratio(numerator, denominator)
+
+    if debug_mode:
+        logger.info(f"  [NET_EDGE] edge={numerator:.4f}/{denominator:.4f}={edge:.4f}")
+
+    return edge
 
 
 def _coerce_positive_int(value: Any) -> Optional[int]:
@@ -127,6 +202,7 @@ def _determine_status(
 def calculate_performance_profile(
     streak_analysis: Any,
     event_context: EventContext,
+    debug_mode: bool = False,
 ) -> ModuleResult:
     """Calculate M2 - Performance Profile for an event."""
     home_results: List[Dict] = getattr(streak_analysis, "home_team_results", None) or []
@@ -152,12 +228,57 @@ def calculate_performance_profile(
         maturity = min(1.0, max(0.0, common_n / float(total_regular_season_games)))
         maturity_source = "competition.total_regular_season_games"
 
-    offense_edge = _calculate_offense_edge(home_profile, away_profile)
-    defense_edge = _calculate_defense_edge(home_profile, away_profile)
-    net_edge = _calculate_net_edge(home_profile, away_profile)
+    if debug_mode:
+        logger.info(f"--- M2 Performance Profile Debug: Event {event_id} ({participants}) ---")
+        logger.info(
+            f"  home_results={len(home_results)}  away_results={len(away_results)}  "
+            f"total_regular_season_games={total_regular_season_games}"
+        )
+        logger.info(
+            f"  home_profile: n={home_profile.n}  total_gf={home_profile.total_gf:.2f}  "
+            f"total_ga={home_profile.total_ga:.2f}  "
+            f"gf_mean={home_profile.total_gf:.2f}/{home_profile.n}={home_profile.gf_mean:.4f}  "
+            f"ga_mean={home_profile.total_ga:.2f}/{home_profile.n}={home_profile.ga_mean:.4f}  "
+            f"net_mean=({home_profile.gf_mean:.4f} - {home_profile.ga_mean:.4f})={home_profile.net_mean:.4f}"
+        )
+        logger.info(
+            f"  away_profile: n={away_profile.n}  total_gf={away_profile.total_gf:.2f}  "
+            f"total_ga={away_profile.total_ga:.2f}  "
+            f"gf_mean={away_profile.total_gf:.2f}/{away_profile.n}={away_profile.gf_mean:.4f}  "
+            f"ga_mean={away_profile.total_ga:.2f}/{away_profile.n}={away_profile.ga_mean:.4f}  "
+            f"net_mean=({away_profile.gf_mean:.4f} - {away_profile.ga_mean:.4f})={away_profile.net_mean:.4f}"
+        )
+        if total_regular_season_games:
+            logger.info(
+                f"  maturity: min(1.0, max(0.0, common_n={common_n} / total_season_games={total_regular_season_games})) "
+                f"= {maturity:.4f}  source={maturity_source}"
+            )
+        else:
+            logger.info(f"  maturity={maturity:.4f}  source={maturity_source}")
 
-    m2_edge_raw = 0.40 * offense_edge + 0.30 * defense_edge + 0.30 * net_edge
-    m2_edge_effective = clamp(m2_edge_raw * maturity)
+    offense_edge = _calculate_offense_edge(home_profile, away_profile, debug_mode=debug_mode)
+    defense_edge = _calculate_defense_edge(home_profile, away_profile, debug_mode=debug_mode)
+    net_edge = _calculate_net_edge(home_profile, away_profile, debug_mode=debug_mode)
+
+    offense_weighted = 0.40 * offense_edge
+    defense_weighted = 0.30 * defense_edge
+    net_weighted = 0.30 * net_edge
+    m2_edge_raw = offense_weighted + defense_weighted + net_weighted
+
+    if debug_mode:
+        logger.info(
+            f"  [M2_EDGE_RAW] (0.40 * {offense_edge:.4f}) + (0.30 * {defense_edge:.4f}) + (0.30 * {net_edge:.4f})"
+            f" = {offense_weighted:.4f} + {defense_weighted:.4f} + {net_weighted:.4f} = {m2_edge_raw:.4f}"
+        )
+
+    m2_edge_before_clamp = m2_edge_raw * maturity
+    m2_edge_effective = clamp(m2_edge_before_clamp)
+
+    if debug_mode:
+        logger.info(
+            f"  [M2_EDGE_EFFECTIVE] m2_edge_raw={m2_edge_raw:.4f} * maturity={maturity:.4f} "
+            f"= {m2_edge_before_clamp:.4f}  -> clamped={m2_edge_effective:.4f}"
+        )
 
     status, status_reason = _determine_status(
         home_profile=home_profile,
@@ -169,6 +290,8 @@ def calculate_performance_profile(
     if status == "INSUFFICIENT_DATA":
         m2_edge_effective = 0.0
         m2_edge_raw = 0.0
+        if debug_mode:
+            logger.info("  [M2] INSUFFICIENT_DATA -> forcing edge=0.0")
 
     components = [
         _component(
@@ -190,6 +313,21 @@ def calculate_performance_profile(
             {"home_net_mean": home_profile.net_mean, "away_net_mean": away_profile.net_mean},
         ),
     ]
+
+    if debug_mode:
+        logger.info("  --- Component Summary ---")
+        for c in components:
+            logger.info(
+                f"  {c.name}: edge={c.edge:.4f}  weight={c.weight}  "
+                f"weighted={c.edge:.4f}*{c.weight}={c.weighted_edge:.4f}  "
+                f"bias={c.bias}  strength={c.strength}"
+            )
+        logger.info(
+            f"  M2 Final: edge_raw={m2_edge_raw:.4f}  edge_effective={m2_edge_effective:.4f}  "
+            f"bias={calculate_bias(m2_edge_effective)}  strength={classify_strength(m2_edge_effective)}  "
+            f"status={status} ({status_reason})"
+        )
+        logger.info("-" * 60)
 
     return ModuleResult(
         pillar_id="pillar_1_team_structure",

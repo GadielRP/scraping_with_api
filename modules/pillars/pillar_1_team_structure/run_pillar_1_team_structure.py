@@ -108,6 +108,7 @@ def _aggregate_module_results(module_results):
 def calculate_pillar_1_team_structure(
     streak_analysis: Any,
     event_context: EventContext,
+    debug_mode: bool = False,
 ) -> Dict[str, Any]:
     """Calculate Pillar 1 - Team Structure for an event.
 
@@ -122,14 +123,17 @@ def calculate_pillar_1_team_structure(
     m1_result = calculate_base_strength(
         streak_analysis,
         event_context=event_context,
+        debug_mode=debug_mode,
     )
     m2_result = calculate_performance_profile(
         streak_analysis,
         event_context=event_context,
+        debug_mode=debug_mode,
     )
     m3_result = calculate_direct_matchup_profile(
         streak_analysis,
         event_context=event_context,
+        debug_mode=debug_mode,
     )
 
     pillar_value, aggregation_raw = _aggregate_module_results([
