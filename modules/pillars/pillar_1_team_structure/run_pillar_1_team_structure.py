@@ -18,12 +18,16 @@ from modules.pillars.pillar_1_team_structure.module_3.direct_matchup_profile imp
 from modules.pillars.pillar_1_team_structure.module_4.hybrid_structural_engine import (
     calculate_hybrid_structural_engine,
 )
+from modules.pillars.pillar_1_team_structure.module_5.recent_inertia_engine import (
+    calculate_recent_inertia_engine,
+)
 
 _MODULE_WEIGHTS: Dict[str, float] = {
-    "M1": 0.30,
-    "M2": 0.30,
-    "M3": 0.20,
+    "M1": 0.25,
+    "M2": 0.25,
+    "M3": 0.15,
     "M4": 0.20,
+    "M5": 0.15,
 }
 
 
@@ -144,12 +148,18 @@ def calculate_pillar_1_team_structure(
         event_context=event_context,
         debug_mode=debug_mode,
     )
+    m5_result = calculate_recent_inertia_engine(
+        streak_analysis,
+        event_context=event_context,
+        debug_mode=debug_mode,
+    )
 
     pillar_value, aggregation_raw = _aggregate_module_results([
         m1_result,
         m2_result,
         m3_result,
         m4_result,
+        m5_result,
     ])
 
     return {
@@ -162,6 +172,7 @@ def calculate_pillar_1_team_structure(
             _serialize_module_result(m2_result),
             _serialize_module_result(m3_result),
             _serialize_module_result(m4_result),
+            _serialize_module_result(m5_result),
         ],
         "value": pillar_value,
         "raw": {
@@ -174,5 +185,6 @@ def calculate_pillar_1_team_structure(
             "m2_raw": m2_result.raw,
             "m3_raw": m3_result.raw,
             "m4_raw": m4_result.raw,
+            "m5_raw": m5_result.raw,
         },
     }
