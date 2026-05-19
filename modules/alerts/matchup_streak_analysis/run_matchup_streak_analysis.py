@@ -94,6 +94,7 @@ class MatchupStreakContext:
     away_team_current_standing: Optional[Dict] = None
     home_team_current_rank: Optional[int] = None
     away_team_current_rank: Optional[int] = None
+    current_standings: Optional[Dict[str, Dict]] = None
     current_standings_cutoff_timestamp: Optional[float] = None
     current_standings_source: Optional[str] = None
     # Winning odds data
@@ -551,6 +552,7 @@ def build_matchup_streak_context(
             away_team_current_standing=away_team_current_standing,
             home_team_current_rank=home_team_current_rank,
             away_team_current_rank=away_team_current_rank,
+            current_standings=current_standings,
             current_standings_cutoff_timestamp=current_standings_cutoff_timestamp,
             current_standings_source=current_standings_source,
             raw_h2h_matchup_event_count=len(matchup_events),

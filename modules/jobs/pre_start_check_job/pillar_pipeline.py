@@ -300,6 +300,26 @@ class EventPillarProcessor:
                 comp.get("strength", "?"),
             )
 
+        m6 = modules[5] if len(modules) > 5 else {}
+        logger.info(
+            "P1/M6 Contextual Competitive Cost Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            participants,
+            m6.get("value", 0),
+            m6.get("bias", "N/A"),
+            m6.get("strength", "N/A"),
+        )
+
+        for comp in m6.get("components", []):
+            logger.info(
+                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
+                comp.get("name", "?"),
+                comp.get("edge", 0),
+                comp.get("weight", 0),
+                comp.get("weighted_edge", 0),
+                comp.get("bias", "?"),
+                comp.get("strength", "?"),
+            )
+
         p1_result.setdefault("raw", {}).update(
             {
                 "event_context_present": True,
