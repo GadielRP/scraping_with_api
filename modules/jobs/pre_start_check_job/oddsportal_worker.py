@@ -191,7 +191,7 @@ def scrape_oddsportal_batch(
 
                 saved = MarketRepository.save_markets_from_oddsportal(event_id, op_data)
                 saved_counts[event_id] = saved
-                logger.info(f"✅ OddsPortal: Saved {saved} markets/bookies for event {event_id}")
+                logger.info(f"💾 OddsPortal: Saved {saved} markets/bookies for event {event_id}")
             except Exception as exc:
                 logger.error(f"❌ OddsPortal: Error saving data for event {event_id}: {exc}")
                 saved_counts[event_id] = None

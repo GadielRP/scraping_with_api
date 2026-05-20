@@ -170,7 +170,7 @@ class MarketRepository:
                         continue
 
                 session.commit()
-                logger.info(f"✅ Saved {saved_count} markets for event {event_id}")
+                logger.info(f"💾 Saved {saved_count} markets for event {event_id}")
                 return saved_count
 
         except Exception as e:

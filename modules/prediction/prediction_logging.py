@@ -1,232 +1,209 @@
 #!/usr/bin/env python3
 """
 Prediction Logging System
-
-PREDICTION LOGGING BOUNDARIES:
-=============================
-START: This file contains all prediction logging functionality
-END: Prediction logging system ends at the end of this file
-
-FUNCTIONALITY:
-- Logs successful predictions from Process 1 alerts
-- Updates predictions with actual results during midnight sync
-- Handles all edge cases (cancellations, missing results, duplicates)
-- Maintains data integrity with proper validations
-
-INTEGRATION:
-- Used by scheduler.py for prediction logging and result updates
-- Integrates with prediction_engine.py for winner extraction
-- Follows @rules.mdc Code Structure & Modularity guidelines
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+from sqlalchemy.orm import joinedload
 
 logger = logging.getLogger(__name__)
 
+
 class PredictionLogger:
-    """Handles all prediction logging operations"""
-    
+    """Handles all prediction logging operations."""
+
     def __init__(self):
-        logger.info("📊 Prediction Logger initialized")
-    
+        logger.info("Prediction Logger initialized")
+
     def log_prediction(self, event, prediction_data: Dict) -> bool:
-        """
-        Log a successful prediction to the prediction_logs table.
-        
-        Args:
-            event: Event object with event details
-            prediction_data: Dictionary containing prediction information from alert report
-            
-        Returns:
-            True if prediction was logged successfully, False otherwise
-        """
+        """Log a successful prediction to the prediction_logs table."""
         try:
             from infrastructure.persistence.database import db_manager
-            from infrastructure.persistence.models import PredictionLog
-            
-            # Check if prediction already exists for this event
+            from infrastructure.persistence.models import Event, PredictionLog
+
             with db_manager.get_session() as session:
+                normalized_event = (
+                    session.query(Event)
+                    .options(
+                        joinedload(Event.home_participant),
+                        joinedload(Event.away_participant),
+                        joinedload(Event.competition_ref),
+                    )
+                    .filter(Event.id == event.id)
+                    .first()
+                )
+                if (
+                    not normalized_event
+                    or not normalized_event.home_participant
+                    or not normalized_event.away_participant
+                    or not normalized_event.competition_ref
+                ):
+                    logger.warning(
+                        "Missing normalized participants/competition for prediction logging on event %s",
+                        event.id,
+                    )
+                    return False
+
                 existing_prediction = session.query(PredictionLog).filter_by(event_id=event.id).first()
                 if existing_prediction:
-                    logger.info(f"⚠️ Prediction already exists for event {event.id} (status: {existing_prediction.status}) - skipping duplicate")
+                    logger.info(
+                        "Prediction already exists for event %s (status: %s) - skipping duplicate",
+                        event.id,
+                        existing_prediction.status,
+                    )
                     return False
-                
-                # Extract prediction data from the report
-                status = prediction_data.get('status', 'unknown')
-                if status != 'success':
-                    logger.debug(f"Event {event.id} status is '{status}', not 'success' - skipping prediction logging")
+
+                status = prediction_data.get("status", "unknown")
+                if status != "success":
+                    logger.debug("Event %s status is '%s', not 'success' - skipping prediction logging", event.id, status)
                     return True
-                
-                # Extract prediction details
-                primary_prediction = prediction_data.get('primary_prediction', '')
-                primary_confidence = prediction_data.get('primary_confidence', '')
-                tier1_count = prediction_data.get('tier1_candidates', {}).get('count', 0)
-                tier2_count = prediction_data.get('tier2_candidates', {}).get('count', 0)
-                selected_tier = prediction_data.get('selected_tier', '')
-                
-                # Extract winner and point difference using prediction_engine logic
+
+                primary_prediction = prediction_data.get("primary_prediction", "")
+                primary_confidence = prediction_data.get("primary_confidence", "")
+                tier1_count = prediction_data.get("tier1_candidates", {}).get("count", 0)
+                tier2_count = prediction_data.get("tier2_candidates", {}).get("count", 0)
+
                 prediction_winner, prediction_point_diff = self._extract_prediction_details(primary_prediction)
-                
-                # Create prediction log entry
+
                 prediction_log = PredictionLog(
                     event_id=event.id,
-                    prediction_type='process1',
-                    confidence_level=primary_confidence.lower() if primary_confidence else 'medium',
+                    prediction_type="process1",
+                    confidence_level=primary_confidence.lower() if primary_confidence else "medium",
                     prediction_winner=prediction_winner,
                     prediction_point_diff=prediction_point_diff,
                     tier1_count=tier1_count,
                     tier2_count=tier2_count,
-                    
-                    sport=event.sport,
-                    participants=f"{event.home_team} vs {event.away_team}",
-                    competition=event.competition,
-                    status='pending'
+                    sport=normalized_event.sport,
+                    participants=f"{normalized_event.home_participant.name} vs {normalized_event.away_participant.name}",
+                    competition=normalized_event.competition_ref.display_name,
+                    status="pending",
                 )
-                
-                # Log detailed information about what's being inserted
-                logger.info(f"📊 DETAILED PREDICTION LOG INSERT:")
-                logger.info(f"   event_id: {event.id}")
-                logger.info(f"   prediction_type: 'process1'")
-                logger.info(f"   confidence_level: '{primary_confidence.lower() if primary_confidence else 'medium'}'")
-                logger.info(f"   prediction_winner: '{prediction_winner}'")
-                logger.info(f"   prediction_point_diff: {prediction_point_diff}")
-                logger.info(f"   tier1_count: {tier1_count}")
-                logger.info(f"   tier2_count: {tier2_count}")
-                
-                logger.info(f"   sport: '{event.sport}'")
-                logger.info(f"   participants: '{event.home_team} vs {event.away_team}'")
-                logger.info(f"   competition: '{event.competition}'")
-                logger.info(f"   status: 'pending'")
-                
+
+                logger.info("Prediction log insert:")
+                logger.info("   event_id: %s", event.id)
+                logger.info("   prediction_type: 'process1'")
+                logger.info(
+                    "   confidence_level: '%s'",
+                    primary_confidence.lower() if primary_confidence else "medium",
+                )
+                logger.info("   prediction_winner: '%s'", prediction_winner)
+                logger.info("   prediction_point_diff: %s", prediction_point_diff)
+                logger.info("   tier1_count: %s", tier1_count)
+                logger.info("   tier2_count: %s", tier2_count)
+                logger.info("   sport: '%s'", normalized_event.sport)
+                logger.info(
+                    "   participants: '%s vs %s'",
+                    normalized_event.home_participant.name,
+                    normalized_event.away_participant.name,
+                )
+                logger.info("   competition: '%s'", normalized_event.competition_ref.display_name)
+                logger.info("   status: 'pending'")
+
                 session.add(prediction_log)
                 session.commit()
-                
-                logger.info(f"✅ Prediction logged for event {event.id}: {prediction_winner} (confidence: {primary_confidence})")
+
+                logger.info("Prediction logged for event %s: %s (confidence: %s)", event.id, prediction_winner, primary_confidence)
                 return True
-                
         except Exception as e:
-            logger.error(f"Error logging prediction for event {event.id}: {e}")
+            logger.error("Error logging prediction for event %s: %s", event.id, e)
             return False
-    
+
     def _extract_prediction_details(self, prediction_text: str) -> Tuple[Optional[str], Optional[int]]:
-        """
-        Extract winner and point difference from prediction text using prediction_engine logic.
-        
-        Args:
-            prediction_text: Prediction text from Process 1
-            
-        Returns:
-            Tuple of (winner_side, point_diff) or (None, None)
-        """
+        """Extract winner and point difference from prediction text."""
         try:
             if not prediction_text:
                 return None, None
-            
-            # Import the proven extraction logic from the dual-process runner
+
             from modules.alerts.dual_process.run_dual_process import prediction_engine
-            
-            # Extract winner using the proven method
+
             prediction_winner = prediction_engine.extract_winner_from_process1_prediction(prediction_text)
-            
-            # Extract point difference from prediction text
+
             prediction_point_diff = None
             if prediction_text:
                 import re
-                # Look for patterns like "by point differential of: 2.00" or "diff: 2"
-                diff_match = re.search(r'(?:by point differential of:|diff:)\s*(\d+(?:\.\d+)?)', prediction_text)
+
+                diff_match = re.search(r"(?:by point differential of:|diff:)\s*(\d+(?:\.\d+)?)", prediction_text)
                 if diff_match:
                     prediction_point_diff = int(float(diff_match.group(1)))
-                elif prediction_winner == 'X':  # Draw
+                elif prediction_winner == "X":
                     prediction_point_diff = 0
-            
+
             return prediction_winner, prediction_point_diff
-            
         except Exception as e:
-            logger.error(f"Error extracting prediction details from '{prediction_text}': {e}")
+            logger.error("Error extracting prediction details from '%s': %s", prediction_text, e)
             return None, None
-    
+
     def update_predictions_with_results(self) -> Dict[str, int]:
-        """
-        Update prediction logs with actual results from completed events.
-        Only processes predictions for events from the previous day (matching results collection logic).
-        
-        Returns:
-            Dictionary with update statistics
-        """
+        """Update prediction logs with actual results from completed events."""
         try:
+            from datetime import timedelta
+
             from infrastructure.persistence.database import db_manager
-            from infrastructure.persistence.models import PredictionLog, Result, Event
-            from datetime import datetime, timedelta
-            
+            from infrastructure.persistence.models import Event, PredictionLog, Result
+
             with db_manager.get_session() as session:
-                # Only process predictions for events from the previous day (same logic as results collection)
                 yesterday = datetime.now() - timedelta(days=1)
                 yesterday_date = yesterday.date()
-                
-                logger.info(f"📊 Updating predictions for events from {yesterday_date}")
-                
-                # Get pending predictions for events from the previous day only
+
+                logger.info("Updating predictions for events from %s", yesterday_date)
+
                 pending_predictions = session.query(PredictionLog).join(Event, PredictionLog.event_id == Event.id).filter(
-                    PredictionLog.status == 'pending',
+                    PredictionLog.status == "pending",
                     Event.start_time_utc >= yesterday_date,
-                    Event.start_time_utc < yesterday_date + timedelta(days=1)
+                    Event.start_time_utc < yesterday_date + timedelta(days=1),
                 ).all()
-                
+
                 if not pending_predictions:
-                    logger.info(f"No pending predictions found for events from {yesterday_date}")
-                    return {'updated': 0, 'cancelled': 0, 'total': 0}
-                
-                logger.info(f"Found {len(pending_predictions)} pending predictions to update for events from {yesterday_date}")
-                
+                    logger.info("No pending predictions found for events from %s", yesterday_date)
+                    return {"updated": 0, "cancelled": 0, "total": 0}
+
+                logger.info("Found %s pending predictions to update for events from %s", len(pending_predictions), yesterday_date)
+
                 updated_count = 0
                 cancelled_count = 0
-                
+
                 for prediction in pending_predictions:
                     try:
-                        # Get the result for this event
                         result = session.query(Result).filter_by(event_id=prediction.event_id).first()
-                        
+
                         if result and result.home_score is not None and result.away_score is not None:
-                            # Event has a result - update prediction log
                             prediction.actual_result = f"{result.home_score}-{result.away_score}"
                             prediction.actual_winner = result.winner
-                            prediction.actual_point_diff = abs(result.home_score - result.away_score) if result.home_score is not None and result.away_score is not None else None
-                            
-                            prediction.status = 'completed'
-                            
+                            prediction.actual_point_diff = abs(result.home_score - result.away_score)
+                            prediction.status = "completed"
                             updated_count += 1
-                            logger.info(f"✅ Updated prediction for event {prediction.event_id}: {prediction.actual_result} (winner: {prediction.actual_winner})")
-                            
+                            logger.info(
+                                "Updated prediction for event %s: %s (winner: %s)",
+                                prediction.event_id,
+                                prediction.actual_result,
+                                prediction.actual_winner,
+                            )
                         else:
-                            # No result found - mark as cancelled
-                            prediction.status = 'cancelled'
+                            prediction.status = "cancelled"
                             cancelled_count += 1
-                            logger.info(f"❌ Marked prediction as cancelled for event {prediction.event_id} (no result found)")
-                            
+                            logger.info("Marked prediction as cancelled for event %s (no result found)", prediction.event_id)
                     except Exception as e:
-                        logger.error(f"Error updating prediction for event {prediction.event_id}: {e}")
-                        # Mark as cancelled if there's an error
-                        prediction.status = 'cancelled'
+                        logger.error("Error updating prediction for event %s: %s", prediction.event_id, e)
+                        prediction.status = "cancelled"
                         cancelled_count += 1
                         continue
-                
-                # Commit all changes
-                session.commit()
-                
-                stats = {
-                    'updated': updated_count,
-                    'cancelled': cancelled_count,
-                    'total': len(pending_predictions)
-                }
-                
-                logger.info(f"📊 Prediction logs updated: {updated_count} completed, {cancelled_count} cancelled")
-                return stats
-                
-        except Exception as e:
-            logger.error(f"Error updating prediction logs with results: {e}")
-            return {'updated': 0, 'cancelled': 0, 'total': 0, 'error': str(e)}
 
-# Global prediction logger instance
+                session.commit()
+
+                stats = {
+                    "updated": updated_count,
+                    "cancelled": cancelled_count,
+                    "total": len(pending_predictions),
+                }
+
+                logger.info("Prediction logs updated: %s completed, %s cancelled", updated_count, cancelled_count)
+                return stats
+        except Exception as e:
+            logger.error("Error updating prediction logs with results: %s", e)
+            return {"updated": 0, "cancelled": 0, "total": 0, "error": str(e)}
+
+
 prediction_logger = PredictionLogger()

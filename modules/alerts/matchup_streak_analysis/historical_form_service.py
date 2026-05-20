@@ -3,11 +3,16 @@
 import logging
 import os
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 
-from .constants import get_all_season_ids, get_standings_method
+from modules.competition.league_config import (
+    get_collected_season_bundle,
+    get_grouping_method,
+    get_included_season_ids,
+    get_standings_method,
+)
 from .historical_form_reporting import (
     format_standings_table_for_telegram,
     get_round_cutoff_timestamps,
@@ -64,6 +69,8 @@ class HistoricalFormService:
         team_name: str,
         season_id: int,
         sport: str,
+        source_unique_tournament_id: Optional[int] = None,
+        source_tournament_id: Optional[int] = None,
         exclude_event_id: int = None,
         current_event_timestamp: float = None,
         send_debug_standings: bool = True,
@@ -71,10 +78,46 @@ class HistoricalFormService:
         try:
             from infrastructure.persistence.database import db_manager
 
-            standings_method = get_standings_method(season_id, sport)
+            standings_method = get_standings_method(
+                source_unique_tournament_id,
+                source_tournament_id,
+                sport,
+            )
+            grouping_method = get_grouping_method(
+                source_unique_tournament_id,
+                source_tournament_id,
+            )
+            included_season_ids = get_included_season_ids(
+                source_unique_tournament_id,
+                source_tournament_id,
+                season_id,
+            )
+            collected_bundle = get_collected_season_bundle(
+                source_unique_tournament_id,
+                source_tournament_id,
+                season_id,
+            )
+            included_competition_identities = (
+                collected_bundle.included_competition_identities if collected_bundle else ()
+            )
+            tournament_ids = tuple(
+                identity.source_tournament_id
+                for identity in included_competition_identities
+                if identity.source_tournament_id is not None
+            )
 
-            query = text(
-                """
+            logger.info(
+                "DB historical form scope for %s: season_id=%s included_season_ids=%s source_unique_tournament_id=%s source_tournament_id=%s standings_method=%s grouping_method=%s",
+                team_name,
+                season_id,
+                included_season_ids,
+                source_unique_tournament_id,
+                source_tournament_id,
+                standings_method,
+                grouping_method,
+            )
+
+            query_sql = """
                 SELECT
                     event_id,
                     home_team,
@@ -86,18 +129,28 @@ class HistoricalFormService:
                 FROM season_events_with_results
                 WHERE season_id = ANY(:season_ids)
                   AND round = 'regular_season'
-                  AND (home_team = :team_name OR away_team = :team_name)
-                ORDER BY start_time_utc DESC
-                """
-            )
+                  AND source_unique_tournament_id = :source_unique_tournament_id
+            """
+            query_params = {
+                "season_ids": list(included_season_ids),
+                "source_unique_tournament_id": source_unique_tournament_id,
+                "team_name": team_name,
+            }
+            if tournament_ids:
+                
+                query_sql += " AND source_tournament_id = ANY(:source_tournament_ids)"
+                query_params["source_tournament_ids"] = list(tournament_ids)
+            query_sql += " AND (home_team = :team_name OR away_team = :team_name) ORDER BY start_time_utc DESC"
+
+            query = text(query_sql)
 
             results = []
-            all_season_ids = get_all_season_ids(season_id)
+
 
             with db_manager.get_session() as session:
-                db_result = session.execute(query, {"season_ids": all_season_ids, "team_name": team_name})
+                db_result = session.execute(query, query_params)
                 all_rows = db_result.fetchall()
-                logger.info("DB query returned %s events for %s in seasons %s", len(all_rows), team_name, all_season_ids)
+                logger.info("DB query returned %s events for %s in seasons %s", len(all_rows), team_name, included_season_ids)
 
                 for row in all_rows:
                     event_id = row.event_id
@@ -135,7 +188,9 @@ class HistoricalFormService:
                         season_id,
                         game_timestamp,
                         sport,
-                        send_debug_standings,
+                        source_unique_tournament_id=source_unique_tournament_id,
+                        source_tournament_id=source_tournament_id,
+                        send_debug_standings=send_debug_standings,
                     )
 
                     team_standing = _normalize_standing_snapshot(
@@ -182,33 +237,46 @@ class HistoricalFormService:
                 personal_chat_id = os.getenv("PERSONAL_CHAT_ID", "")
                 if personal_chat_id:
                     rounds_to_check = [5, 10, 15, 20, 25]
-                    round_cutoffs = get_round_cutoff_timestamps(season_id, rounds_to_check)
+                    round_cutoffs = get_round_cutoff_timestamps(
+                        source_unique_tournament_id=source_unique_tournament_id,
+                        source_tournament_id=source_tournament_id,
+                        season_id=season_id,
+                        rounds=rounds_to_check,
+                    )
 
                     for round_num in sorted(round_cutoffs.keys()):
                         cutoff_ts = round_cutoffs[round_num]
                         cutoff_date = datetime.fromtimestamp(cutoff_ts).strftime("%Y-%m-%d")
 
-                        standings = self.standings_calculator.calculate_standings_at(season_id, cutoff_ts, sport)
-                        title = f"Round {round_num} Standings ({cutoff_date})"
-                        message = format_standings_table_for_telegram(
-                            standings,
-                            title,
-                            standings_method=get_standings_method(season_id, sport),
+                        standings = self.standings_calculator.calculate_standings_at(
+                            season_id,
+                            cutoff_ts,
+                            sport,
+                            source_unique_tournament_id=source_unique_tournament_id,
+                            source_tournament_id=source_tournament_id,
                         )
-                        send_debug_telegram(message, personal_chat_id)
+                        # title = f"Round {round_num} Standings ({cutoff_date})"
+                        # message = format_standings_table_for_telegram(
+                        #     standings,
+                        #     title,
+                        #     standings_method=standings_method,
+                        # )
+                        # send_debug_telegram(message, personal_chat_id)
 
                     if current_event_timestamp:
                         current_standings = self.standings_calculator.calculate_standings_at(
                             season_id,
                             current_event_timestamp,
                             sport,
+                            source_unique_tournament_id=source_unique_tournament_id,
+                            source_tournament_id=source_tournament_id,
                         )
                         current_date = datetime.fromtimestamp(current_event_timestamp).strftime("%Y-%m-%d %H:%M")
                         title = f"CURRENT Standings (at {current_date})"
                         message = format_standings_table_for_telegram(
                             current_standings,
                             title,
-                            standings_method=get_standings_method(season_id, sport),
+                            standings_method=standings_method,
                         )
                         send_debug_telegram(message, personal_chat_id)
 

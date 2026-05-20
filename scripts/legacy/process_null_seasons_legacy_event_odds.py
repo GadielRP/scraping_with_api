@@ -188,7 +188,7 @@ def process_event(event_id: int, slug: str):
                     # Save all markets
                     try:
                         MarketRepository.save_markets_from_response(event_id, final_odds_response)
-                        logger.info(f"✅ Markets saved for event {event_id}")
+                        logger.info(f"💾 Markets saved for event {event_id}")
                     except Exception as e:
                         logger.warning(f"Error saving markets to DB for event {event_id}: {e}")
                 else:

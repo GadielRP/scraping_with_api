@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_, or_, event, DDL
 from sqlalchemy.orm import Session, joinedload
 
-from infrastructure.persistence.models import Event, Result, EventObservation, Season, Base
+from infrastructure.persistence.models import Competition, Event, Result, EventObservation, Season, Base
 from infrastructure.persistence.database import db_manager
 from shared.timezone_utils import get_local_now
 from .season_repository import SeasonRepository
@@ -27,15 +27,102 @@ class EventRepository:
 
     @staticmethod
     def _display_home_team(event_obj: Event) -> str:
-        return event_obj.home_participant.name if event_obj.home_participant else event_obj.home_team
+        if not event_obj.home_participant:
+            raise ValueError(f"Missing normalized home participant for event_id={event_obj.id}")
+        return event_obj.home_participant.name
 
     @staticmethod
     def _display_away_team(event_obj: Event) -> str:
-        return event_obj.away_participant.name if event_obj.away_participant else event_obj.away_team
+        if not event_obj.away_participant:
+            raise ValueError(f"Missing normalized away participant for event_id={event_obj.id}")
+        return event_obj.away_participant.name
 
     @staticmethod
     def _display_competition(event_obj: Event) -> str:
-        return event_obj.competition_ref.display_name if event_obj.competition_ref else event_obj.competition
+        if not event_obj.competition_ref:
+            raise ValueError(f"Missing normalized competition for event_id={event_obj.id}")
+        return event_obj.competition_ref.display_name
+
+    @staticmethod
+    def _build_normalized_event_data(event_obj: Event) -> Dict:
+        home_participant = event_obj.home_participant
+        away_participant = event_obj.away_participant
+        competition_ref = event_obj.competition_ref
+
+        if not home_participant or not away_participant or not competition_ref:
+            raise ValueError(f"Missing normalized participants/competition for event_id={event_obj.id}")
+
+        return {
+            "id": event_obj.id,
+            "home_team": EventRepository._display_home_team(event_obj),
+            "away_team": EventRepository._display_away_team(event_obj),
+            "competition": EventRepository._display_competition(event_obj),
+            "start_time_utc": event_obj.start_time_utc,
+            "sport": event_obj.sport,
+            "country": event_obj.country,
+            "slug": event_obj.slug,
+            "custom_id": event_obj.custom_id,
+            "season_id": event_obj.season_id,
+            "home_participant_id": event_obj.home_participant_id,
+            "away_participant_id": event_obj.away_participant_id,
+            "competition_id": event_obj.competition_id,
+            "home_source_participant_id": home_participant.source_participant_id,
+            "away_source_participant_id": away_participant.source_participant_id,
+            "competition_source_tournament_id": competition_ref.source_tournament_id,
+            "competition_source_unique_tournament_id": competition_ref.source_unique_tournament_id,
+        }
+
+    @staticmethod
+    def _build_event_data_with_legacy_fallback(event_obj: Event) -> Dict:
+        """Build event payloads for runtime use, falling back to legacy display fields when needed.
+
+        This is a temporary compatibility bridge while historical rows are backfilled.
+        Legacy-derived payloads are marked explicitly so they can be removed later.
+        """
+        home_participant = event_obj.__dict__.get("home_participant")
+        away_participant = event_obj.__dict__.get("away_participant")
+        competition_ref = event_obj.__dict__.get("competition_ref")
+
+        home_team = home_participant.name if home_participant else (event_obj.home_team or None)
+        away_team = away_participant.name if away_participant else (event_obj.away_team or None)
+        competition_name = (
+            competition_ref.display_name if competition_ref else (event_obj.competition or None)
+        )
+
+        if not home_team or not away_team or not competition_name:
+            raise ValueError(f"Missing normalized participants/competition for event_id={event_obj.id}")
+
+        legacy_compat_used = not (home_participant and away_participant and competition_ref)
+
+        return {
+            "id": event_obj.id,
+            "home_team": home_team,
+            "away_team": away_team,
+            "competition": competition_name,
+            "start_time_utc": event_obj.start_time_utc,
+            "sport": event_obj.sport,
+            "country": event_obj.country,
+            "slug": event_obj.slug,
+            "custom_id": event_obj.custom_id,
+            "season_id": event_obj.season_id,
+            "home_participant_id": event_obj.home_participant_id,
+            "away_participant_id": event_obj.away_participant_id,
+            "competition_id": event_obj.competition_id,
+            "home_source_participant_id": (
+                home_participant.source_participant_id if home_participant else None
+            ),
+            "away_source_participant_id": (
+                away_participant.source_participant_id if away_participant else None
+            ),
+            "competition_source_tournament_id": (
+                competition_ref.source_tournament_id if competition_ref else None
+            ),
+            "competition_source_unique_tournament_id": (
+                competition_ref.source_unique_tournament_id if competition_ref else None
+            ),
+            "context_status": "legacy_compat" if legacy_compat_used else "normalized",
+            "legacy_compat_used": legacy_compat_used,
+        }
     
     @staticmethod
     def upsert_event(event_data: Dict) -> Optional[Event]:
@@ -89,17 +176,26 @@ class EventRepository:
                 if home_participant_data and home_participant_data.get('source_participant_id') is not None:
                     home_participant = ParticipantRepository.upsert_participant(session, home_participant_data)
                 elif home_participant_data:
-                    logger.warning("Event %s has no home participant id; keeping legacy home_team only", event_id)
+                    logger.warning(
+                        "Event %s has no home participant id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for home_team persistence",
+                        event_id,
+                    )
 
                 if away_participant_data and away_participant_data.get('source_participant_id') is not None:
                     away_participant = ParticipantRepository.upsert_participant(session, away_participant_data)
                 elif away_participant_data:
-                    logger.warning("Event %s has no away participant id; keeping legacy away_team only", event_id)
+                    logger.warning(
+                        "Event %s has no away participant id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for away_team persistence",
+                        event_id,
+                    )
 
                 if competition_data and competition_data.get('source_tournament_id') is not None:
                     competition = CompetitionRepository.upsert_competition(session, competition_data)
                 elif competition_data:
-                    logger.warning("Event %s has no tournament id; keeping legacy competition only", event_id)
+                    logger.warning(
+                        "Event %s has no tournament id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for competition persistence",
+                        event_id,
+                    )
                 
                 event_obj = session.query(Event).filter(Event.id == event_id).first()
                 
@@ -108,9 +204,12 @@ class EventRepository:
                     event_obj.slug = event_payload.get('slug') or event_obj.slug
                     event_obj.start_time_utc = datetime.fromtimestamp(event_payload['startTimestamp'])
                     event_obj.sport = event_payload.get('sport') or event_obj.sport
-                    event_obj.competition = event_payload.get('competition') or event_obj.competition
                     event_obj.country = event_payload.get('country')
+                    # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
+                    event_obj.competition = event_payload.get('competition') or event_obj.competition
+                    # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
                     event_obj.home_team = event_payload.get('homeTeam') or event_obj.home_team
+                    # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
                     event_obj.away_team = event_payload.get('awayTeam') or event_obj.away_team
                     gender = event_payload.get('gender') or 'unknown'
                     event_obj.gender = gender[:10] if len(gender) > 10 else gender
@@ -149,9 +248,12 @@ class EventRepository:
                         slug=event_payload.get('slug') or str(event_id),
                         start_time_utc=datetime.fromtimestamp(event_payload['startTimestamp']),
                         sport=event_payload.get('sport') or 'Unknown',
+                        # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
                         competition=event_payload.get('competition') or 'Unknown',
                         country=event_payload.get('country'),
+                        # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
                         home_team=event_payload.get('homeTeam') or 'Unknown',
+                        # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
                         away_team=event_payload.get('awayTeam') or 'Unknown',
                         gender=gender,
                         discovery_source=event_payload.get('discovery_source', 'dropping_odds'),
@@ -182,6 +284,7 @@ class EventRepository:
                         joinedload(Event.home_participant),
                         joinedload(Event.away_participant),
                         joinedload(Event.competition_ref),
+                        joinedload(Event.season),
                     )
                     .filter(Event.id == event_id)
                     .first()
@@ -254,27 +357,24 @@ class EventRepository:
                 
                 # Add competition filter if specified
                 if competition:
-                    # Competition is stored as comma-separated values, so we need to use LIKE
-                    query = query.filter(Event.competition.like(f'%{competition}%'))
+                    query = query.join(Event.competition_ref).filter(
+                        or_(
+                            Competition.display_name.ilike(f"%{competition}%"),
+                            Competition.canonical_name.ilike(f"%{competition}%"),
+                            Competition.slug.ilike(f"%{competition}%"),
+                            Competition.unique_slug.ilike(f"%{competition}%"),
+                        )
+                    )
                 
                 events = query.all()
                 
                 # Convert to list of dictionaries
                 result = []
                 for event in events:
-                    event_data = {
-                        'id': event.id,
-                        'home_team': EventRepository._display_home_team(event),
-                        'away_team': EventRepository._display_away_team(event),
-                        'competition': EventRepository._display_competition(event),
-                        'start_time_utc': event.start_time_utc,
-                        'sport': event.sport,
-                        'country': event.country,
-                        'slug': event.slug,
-                        'custom_id': event.custom_id,
-                        'season_id': event.season_id
-                    }
-                    result.append(event_data)
+                    try:
+                        result.append(EventRepository._build_event_data_with_legacy_fallback(event))
+                    except ValueError as exc:
+                        logger.warning("Skipping event %s in minutes-range query: %s", event.id, exc)
                 
                 if result:
                     logger.info(f"Found {len(result)} {sport} events (competition: {competition or 'all'}) "
@@ -412,18 +512,12 @@ class EventRepository:
                 )
                 result = []
                 for event_obj in events_with_odds:
-                    event_data = {
-                        'id': event_obj.id,
-                        'home_team': EventRepository._display_home_team(event_obj),
-                        'away_team': EventRepository._display_away_team(event_obj),
-                        'competition': EventRepository._display_competition(event_obj),
-                        'start_time_utc': event_obj.start_time_utc,
-                        'sport': event_obj.sport,
-                        'country': event_obj.country,
-                        'slug': event_obj.slug,
-                        'season_id': event_obj.season_id,
-                        'odds': None
-                    }
+                    try:
+                        event_data = EventRepository._build_event_data_with_legacy_fallback(event_obj)
+                    except ValueError as exc:
+                        logger.warning("Skipping event %s in starting-soon query: %s", event_obj.id, exc)
+                        continue
+                    event_data['odds'] = None
                     odds = odds_by_event_id.get(event_obj.id)
                     if odds:
                         event_data['odds'] = {
@@ -446,19 +540,28 @@ class EventRepository:
     
     @staticmethod
     def get_events_started_recently(window_minutes: int = 15, season_ids: Optional[List[int]] = None) -> List[Dict]:
-        """Get events started recently"""
+        """Get recently started events without associated results."""
         try:     
             with db_manager.get_session() as session:
                 now = get_local_now()
                 window_start = now - timedelta(minutes=window_minutes, seconds=10)
                 window_start = window_start.replace(microsecond=0)
                 
-                query = session.query(Event).options(
-                    joinedload(Event.home_participant),
-                    joinedload(Event.away_participant),
-                    joinedload(Event.competition_ref),
-                ).filter(
-                    and_(Event.start_time_utc >= window_start, Event.start_time_utc < now)
+                query = (
+                    session.query(Event)
+                    .outerjoin(Result, Result.event_id == Event.id)
+                    .options(
+                        joinedload(Event.home_participant),
+                        joinedload(Event.away_participant),
+                        joinedload(Event.competition_ref),
+                    )
+                    .filter(
+                        and_(
+                            Event.start_time_utc >= window_start,
+                            Event.start_time_utc < now,
+                            Result.event_id.is_(None),
+                        )
+                    )
                 )
                 
                 if season_ids:
@@ -467,17 +570,10 @@ class EventRepository:
                 events_started_recently = query.all()
                 result = []
                 for event_obj in events_started_recently:
-                    result.append({
-                        'id': event_obj.id,
-                        'home_team': EventRepository._display_home_team(event_obj),
-                        'away_team': EventRepository._display_away_team(event_obj),
-                        'competition': EventRepository._display_competition(event_obj),
-                        'start_time_utc': event_obj.start_time_utc,
-                        'sport': event_obj.sport,
-                        'country': event_obj.country,
-                        'slug': event_obj.slug,
-                        'season_id': event_obj.season_id
-                    })
+                    try:
+                        result.append(EventRepository._build_event_data_with_legacy_fallback(event_obj))
+                    except ValueError as exc:
+                        logger.warning("Skipping event %s in recently-started query: %s", event_obj.id, exc)
                 return result
         except Exception as e:
             logger.error(f"Error getting events started recently: {e}")

@@ -61,6 +61,7 @@ class MarketOddsIngestionService:
             return MarketIngestionResult(event_id=event_id, source=source, skipped=True, reason=reason)
 
         try:
+            logger.info(f"\nsource: {source}")
             markets_saved = MarketRepository.save_markets_from_response(event_id, normalized_response, bookie_id=1)
             dual_process_available = DualProcessOddsRepository.event_has_dual_process_odds(event_id)
 

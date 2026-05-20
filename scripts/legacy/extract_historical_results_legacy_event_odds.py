@@ -416,7 +416,7 @@ def save_last_processed_date(processed_date: date):
         
         with open(state_file_path, 'a', encoding='utf-8') as f:
             f.write(f"{date_str}\n")
-        logger.info(f"✅ Saved state: Last processed date = {date_str} (file: {state_file_path})")
+        logger.info(f"💾 Saved state: Last processed date = {date_str} (file: {state_file_path})")
     except Exception as e:
         logger.error(f"❌ Error saving state file: {e}")
         import traceback
@@ -430,7 +430,7 @@ def save_last_processed_date(processed_date: date):
                 os.makedirs(dir_path, exist_ok=True)
             with open(script_file, 'a', encoding='utf-8') as f:
                 f.write(f"{date_str}\n")
-            logger.info(f"✅ Saved state to fallback location: {script_file}")
+            logger.info(f"💾 Saved state to fallback location: {script_file}")
         except Exception as e2:
             logger.error(f"❌ Failed to save to fallback location: {e2}")
 
