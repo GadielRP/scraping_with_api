@@ -257,6 +257,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
             logger.warning("No upcoming events found")
             return
 
+        logger.info(f"✅ Events confirmed available for processing")
         logger.info(f"🚨 Starting pre-start checking for {len(upcoming_events)} events starting soon...")
         for event_data in upcoming_events:
             try:
