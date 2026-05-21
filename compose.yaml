@@ -1,0 +1,76 @@
+name: sofascore
+
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    container_name: sofascore-pg
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sofascore_odds}
+      POSTGRES_USER: ${POSTGRES_USER:-sofascore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      TZ: ${TIMEZONE:-America/Mexico_City}
+
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5435}:5432"
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  app:
+    container_name: sofascore-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        REQUIREMENTS_FILE: ${REQUIREMENTS_FILE:-requirements_cloud.txt}
+
+    image: sofascore-app:latest
+    restart: unless-stopped
+    init: true
+
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+
+    environment:
+      # Important:
+      # This overrides the DATABASE_URL from .env only inside the app container.
+      # Outside Docker, python main.py still uses DATABASE_URL from .env.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sofascore}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sofascore_odds}
+      TIMEZONE: ${TIMEZONE:-America/Mexico_City}
+      TZ: ${TIMEZONE:-America/Mexico_City}
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+
+    shm_size: "1gb"
+
+    command: [ "python", "main.py", "start" ]
+
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c \"import os, sqlalchemy as sa; u=os.getenv('DATABASE_URL'); assert u, 'DATABASE_URL missing'; e=sa.create_engine(u); c=e.connect(); c.close(); print('ok')\"" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  default:
+    name: sofascore_network
+
+volumes:
+  pgdata:
+    name: sofascore_pgdata

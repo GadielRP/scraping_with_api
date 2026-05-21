@@ -1,42 +1,36 @@
-# Use Python 3.11 slim image for smaller size
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     curl \
-    libpq-dev \
     gcc \
+    libpq-dev \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements_cloud.txt .
+ARG REQUIREMENTS_FILE=requirements_cloud.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements_cloud.txt
+COPY ${REQUIREMENTS_FILE} /tmp/requirements.txt
 
-# Install Playwright browsers and system dependencies
-RUN playwright install --with-deps chromium
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install -r /tmp/requirements.txt \
+    && python -m playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy application code
-COPY . .
+RUN useradd --create-home --shell /bin/bash appuser \
+    && mkdir -p /app/logs /app/data /ms-playwright \
+    && chown -R appuser:appuser /app /ms-playwright
 
-# Create necessary directories
-RUN mkdir -p /app/logs /app/data
+COPY --chown=appuser:appuser . .
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash app && \
-    chown -R app:app /app
-USER app
+USER appuser
 
-# Expose port for health checks
-EXPOSE 8000
-
-# Health check: open a DB connection based on DATABASE_URL (defaults to SQLite)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import os,sqlalchemy as sa; u=os.getenv('DATABASE_URL','sqlite:////app/data/sofascore_odds.db'); e=sa.create_engine(u); c=e.connect(); c.close()"
-
-# Default command
 CMD ["python", "main.py", "start"]
