@@ -56,6 +56,7 @@ from modules.sofascore.exceptions import (
     SofaScoreNotFoundException,
     SofaScoreRateLimitException,
 )
+from scripts.sport_seasons_processing import season_to_process
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -79,6 +80,9 @@ logger = logging.getLogger("backfill_event_metadata")
 # Constants
 # ---------------------------------------------------------------------------
 MIN_EVENT_ID = 269
+MAX_CONSECUTIVE_EMPTY = 10
+IGNORED_SEASON_IDS = [s["season_id"] for s in season_to_process if "season_id" in s]
+
 DEFAULT_STATE_FILE = os.path.join("data", "backfill_event_metadata_state.json")
 DEFAULT_BATCH_SIZE = 100
 DEFAULT_SLEEP = 1.0
@@ -322,6 +326,12 @@ def get_candidate_dates(
             if args.missing_only:
                 query = query.filter(build_missing_filter())
 
+            # Ignore specified seasons
+            if IGNORED_SEASON_IDS:
+                query = query.filter(
+                    or_(Event.season_id.is_(None), Event.season_id.notin_(IGNORED_SEASON_IDS))
+                )
+
             # Resume
             if resume_date:
                 query = query.filter(cast(Event.start_time_utc, Date) >= resume_date)
@@ -365,6 +375,12 @@ def get_events_for_date(
 
             if args.missing_only:
                 query = query.filter(build_missing_filter())
+
+            # Ignore specified seasons
+            if IGNORED_SEASON_IDS:
+                query = query.filter(
+                    or_(Event.season_id.is_(None), Event.season_id.notin_(IGNORED_SEASON_IDS))
+                )
 
             # Fine-grained resume within the same date
             if resume_after:
