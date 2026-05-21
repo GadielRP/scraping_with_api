@@ -42,9 +42,14 @@ sofascore_api_backup.py
 
 # private
 .env
+.env.*
+.env.prod
+!.env.example
+env.cloud.template
 .cursor/
 sofascore.service 
 assets/
+scratch/
 
 
 # old files
