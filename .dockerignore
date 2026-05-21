@@ -1,13 +1,23 @@
+# Git
+.git/
+.gitignore
+
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Env and secrets
 .env
 .env.*
 !.env.example
 env.cloud.template
+
 
 # Local data & logs
 data/
@@ -22,10 +32,11 @@ exports/
 csv/
 old/
 
-# Tests and tooling
+# Tests and notebooks
 test_*.py
 *.ipynb
-.curer/
+
+# IDE/editor
 .cursor/
 .vscode/
 .idea/
@@ -34,6 +45,6 @@ test_*.py
 .DS_Store
 Thumbs.db
 
-# Deployment files you don’t want inside image
+# Deployment files not needed inside image
 *.service
 deploy_direct.sh
