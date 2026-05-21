@@ -113,10 +113,7 @@ def _format_compact_standing(
     parts: List[str] = []
     if rank is not None:
         parts.append(f"#{rank}")
-    if points is not None:
-        parts.append(f"{points}pts")
-    if gp is not None:
-        parts.append(f"GP:{gp}")
+
     # point diff set as diff, removed for character limit purposes
     # if diff is not None:
     #     parts.append(f"DIFF:{_format_signed_metric(diff)}")

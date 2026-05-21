@@ -92,11 +92,38 @@ def _is_knockout_round(text: str) -> bool:
     )
 
 
-def _derive_round(competition: str, season_name: str | None, round_info: Dict) -> str:
-    competition_lower = (competition or "").lower()
+def _derive_round(
+    competition: str,
+    season_name: str | None,
+    round_info: Dict,
+    competition_ref: Dict | None = None,
+) -> str:
+    # Prefer structured competition_ref fields when available so we compare
+    # against clean, source-of-truth text rather than the legacy hand-crafted string.
+    if competition_ref:
 
-    if _contains_any(competition_lower, ["releg", "relegation", "relegations", "descenso"]):
-        return "relegation"
+        # logger.info(f"competition_ref passed in: {competition_ref}")
+        competition_ref_text = " ".join(
+            str(value)
+            for value in [
+                competition_ref.get("canonical_name"),
+                competition_ref.get("display_name"),
+                competition_ref.get("slug"),
+                competition_ref.get("unique_slug"),
+            ]
+            if value
+        ).lower()
+    else:
+        competition_ref_text = ""
+
+    # logger.info(f"competition_ref_text constructed internally: {competition_ref_text}")
+    # LEGACY_COMPETITION_TEXT_FALLBACK:
+    # Keep competition text as temporary fallback until historical rows are backfilled
+    # and all runtime paths consume Competition/Participant relationships.
+    competition_lower = competition_ref_text or (competition or "").lower()
+
+    if _contains_any(competition_lower, ["releg", "relegation", "relegations", "descenso", "promotion"]):
+        return "relegation/promotion"
     if _contains_any(competition_lower, ["qualification", "qualifier", "qualif.", "qual."]):
         return "qualification"
     if _contains_any(competition_lower, ["friendly", "amistoso"]):
@@ -166,7 +193,28 @@ def get_event_information(event: Dict, discovery_source: str = "dropping_odds") 
 
         competition = _build_competition_text(event)
         round_info = event.get("roundInfo") or {}
-        round_name = _derive_round(competition, season_name, round_info)
+
+        # Build competition_ref before _derive_round() so the structured tournament
+        # fields (canonical_name, display_name, slug, unique_slug) can be used as
+        # the primary text source for keyword comparisons inside _derive_round().
+        # The same object is reused in event_data["competition_ref"] — no duplication.
+        competition_ref = {
+            "source": "sofascore",
+            "source_tournament_id": tournament.get("id"),
+            "source_unique_tournament_id": unique_tournament.get("id"),
+            # canonical name is unique tournament name
+            "canonical_name": unique_tournament.get("name"),
+            # display name is tournament name
+            "display_name": tournament.get("name"),
+            # slug is tournament slug
+            "slug": tournament.get("slug"),
+            # unique slug is unique tournament slug
+            "unique_slug": unique_tournament.get("slug"),
+            "category_id": category.get("id"),
+            "category_name": category.get("name"),
+        }
+
+        round_name = _derive_round(competition, season_name, round_info, competition_ref)
         country_name = (
             ((event.get("venue") or {}).get("country") or {}).get("name")
             or (category.get("country") or {}).get("name")
@@ -216,17 +264,7 @@ def get_event_information(event: Dict, discovery_source: str = "dropping_odds") 
                 "slug": away_team.get("slug"),
                 "short_name": away_team.get("shortName"),
             },
-            "competition_ref": {
-                "source": "sofascore",
-                "source_tournament_id": tournament.get("id"),
-                "source_unique_tournament_id": unique_tournament.get("id"),
-                "canonical_name": unique_tournament.get("name") or tournament.get("name"),
-                "display_name": tournament.get("name") or unique_tournament.get("name"),
-                "slug": tournament.get("slug"),
-                "unique_slug": unique_tournament.get("slug"),
-                "category_id": category.get("id"),
-                "category_name": category.get("name"),
-            },
+            "competition_ref": competition_ref,
         }
 
         if classified_sport != original_sport:

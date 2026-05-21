@@ -40,6 +40,11 @@ class Competition(Base):
     unique_slug = Column(Text)
     category_id = Column(BigInteger)
     category_name = Column(Text)
+    number_of_teams = Column(Integer)
+    total_regular_season_games = Column(Integer)
+    standings_grouping = Column(Text)
+    league_config_source = Column(Text)
+    has_standings_source_endpoint = Column(Boolean, default=True)
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
 
@@ -58,9 +63,21 @@ class Event(Base):
     slug = Column(Text, nullable=False)
     start_time_utc = Column(DateTime, nullable=False)
     sport = Column(Text, nullable=False)
+    # LEGACY_EVENT_TEXT_FIELDS:
+    # Kept for backward compatibility with historical rows and old runtime paths.
+    # Do not use as source of truth when normalized Participant/Competition relations exist.
+    # Remove only after full DB backfill and downstream migration.
     competition = Column(Text, nullable=False)
     country = Column(Text)
+    # LEGACY_EVENT_TEXT_FIELDS:
+    # Kept for backward compatibility with historical rows and old runtime paths.
+    # Do not use as source of truth when normalized Participant/Competition relations exist.
+    # Remove only after full DB backfill and downstream migration.
     home_team = Column(Text, nullable=False)
+    # LEGACY_EVENT_TEXT_FIELDS:
+    # Kept for backward compatibility with historical rows and old runtime paths.
+    # Do not use as source of truth when normalized Participant/Competition relations exist.
+    # Remove only after full DB backfill and downstream migration.
     away_team = Column(Text, nullable=False)
     gender = Column(String(10), nullable=False, default="unknown")  # 'Men' or 'Women' or 'Mixed'
     discovery_source = Column(String(50), nullable=False, default='dropping_odds')  # 'dropping_odds', 'high_value_streaks', 'h2h', 'winning_odds', 'team_streaks'
@@ -440,7 +457,7 @@ EVENT_ALL_ODDS_VIEW_SQL = (
     CREATE OR REPLACE VIEW event_all_odds AS
     SELECT
         e.start_time_utc AS start_time_utc,
-        (COALESCE(hp.name, e.home_team) || ' / ' || COALESCE(ap.name, e.away_team)) AS participants,
+        (hp.name || ' / ' || ap.name) AS participants,
         eo.one_open::numeric(6,2) AS odds1a,
         eo.one_final::numeric(6,2) AS odds1b,
         eo.x_open::numeric(6,2) AS momEa,
@@ -455,13 +472,13 @@ EVENT_ALL_ODDS_VIEW_SQL = (
             THEN (r.home_score::text || ' - ' || r.away_score::text)
             ELSE NULL
         END AS result,
-        COALESCE(c.display_name, e.competition) AS competition,
+        c.display_name AS competition,
         e.sport AS sport
     FROM v_dual_process_event_odds eo
     JOIN events e ON e.id = eo.event_id
-    LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
-    LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
-    LEFT JOIN competitions c ON c.competition_id = e.competition_id
+    JOIN participants hp ON hp.participant_id = e.home_participant_id
+    JOIN participants ap ON ap.participant_id = e.away_participant_id
+    JOIN competitions c ON c.competition_id = e.competition_id
     LEFT JOIN results r ON r.event_id = eo.event_id
     """
 )
@@ -475,8 +492,8 @@ BASKETBALL_RESULTS_VIEW_SQL = (
     CREATE OR REPLACE VIEW basketball_results AS
     SELECT
         e.id AS event_id,
-        COALESCE(hp.name, e.home_team) AS home_team,
-        COALESCE(ap.name, e.away_team) AS away_team,
+        hp.name AS home_team,
+        ap.name AS away_team,
         e.round,
         e.season_id,
         e.start_time_utc AS start_time,
@@ -540,8 +557,8 @@ BASKETBALL_RESULTS_VIEW_SQL = (
         END AS ot_away
     FROM events e
     JOIN results r ON r.event_id = e.id
-    LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
-    LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
+    JOIN participants hp ON hp.participant_id = e.home_participant_id
+    JOIN participants ap ON ap.participant_id = e.away_participant_id
     WHERE e.sport = 'Basketball'
       AND r.home_sets IS NOT NULL
       AND r.away_sets IS NOT NULL
@@ -561,10 +578,10 @@ MV_ALERT_EVENTS_SQL = (
         e.gender,
         e.discovery_source,
         e.start_time_utc,
-        (COALESCE(hp.name, e.home_team) || ' vs ' || COALESCE(ap.name, e.away_team)) AS participants,
-        COALESCE(hp.name, e.home_team) AS home_team,
-        COALESCE(ap.name, e.away_team) AS away_team,
-        COALESCE(c.display_name, e.competition) AS competition,
+        (hp.name || ' vs ' || ap.name) AS participants,
+        hp.name AS home_team,
+        ap.name AS away_team,
+        c.display_name AS competition,
         eo.one_open,
         eo.one_final,
         eo.x_open,
@@ -594,9 +611,9 @@ MV_ALERT_EVENTS_SQL = (
         END AS result_text
     FROM v_dual_process_event_odds eo
     JOIN events e ON e.id = eo.event_id
-    LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
-    LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
-    LEFT JOIN competitions c ON c.competition_id = e.competition_id
+    JOIN participants hp ON hp.participant_id = e.home_participant_id
+    JOIN participants ap ON ap.participant_id = e.away_participant_id
+    JOIN competitions c ON c.competition_id = e.competition_id
     LEFT JOIN results r ON r.event_id = eo.event_id
     WHERE r.home_score IS NOT NULL AND r.away_score IS NOT NULL  -- Only finished events
     """
@@ -630,10 +647,13 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
         e.id AS event_id,
         e.season_id,
         e.start_time_utc,
-        COALESCE(hp.name, e.home_team) AS home_team,
-        COALESCE(ap.name, e.away_team) AS away_team,
+        e.competition_id,
+        hp.name AS home_team,
+        ap.name AS away_team,
         e.sport,
-        COALESCE(c.display_name, e.competition) AS competition,
+        c.display_name AS competition,
+        c.source_tournament_id,
+        c.source_unique_tournament_id,
         r.home_score,
         r.away_score,
         r.winner,
@@ -650,9 +670,9 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
         e.round
     FROM events e
     JOIN results r ON r.event_id = e.id
-    LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
-    LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
-    LEFT JOIN competitions c ON c.competition_id = e.competition_id
+    JOIN participants hp ON hp.participant_id = e.home_participant_id
+    JOIN participants ap ON ap.participant_id = e.away_participant_id
+    JOIN competitions c ON c.competition_id = e.competition_id
     WHERE e.season_id IS NOT NULL
       AND r.home_score IS NOT NULL
       AND r.away_score IS NOT NULL;

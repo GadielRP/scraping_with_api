@@ -1,5 +1,7 @@
 import logging
 
+from sqlalchemy.orm import joinedload
+
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import DualProcessOddsRepository
@@ -13,6 +15,11 @@ def show_events(limit: int = 10):
         with db_manager.get_session() as session:
             events = (
                 session.query(Event)
+                .options(
+                    joinedload(Event.home_participant),
+                    joinedload(Event.away_participant),
+                    joinedload(Event.competition_ref),
+                )
                 .order_by(Event.start_time_utc.desc())
                 .limit(limit)
                 .all()
@@ -22,8 +29,11 @@ def show_events(limit: int = 10):
         for event in events:
             odds = DualProcessOddsRepository.get_event_odds(event.id)
             print(f"\nEvent ID: {event.id}")
-            print(f"Teams: {event.home_team} vs {event.away_team}")
-            print(f"Competition: {event.competition}")
+            if not event.home_participant or not event.away_participant or not event.competition_ref:
+                print(f"Missing normalized participants/competition for event_id {event.id}")
+                continue
+            print(f"Teams: {event.home_participant.name} vs {event.away_participant.name}")
+            print(f"Competition: {event.competition_ref.display_name}")
             print(f"Start Time: {event.start_time_utc}")
 
             if odds:

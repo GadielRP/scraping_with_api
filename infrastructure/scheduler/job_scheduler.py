@@ -142,7 +142,7 @@ class JobScheduler:
             logger.error(f"Error in Job B: {exc}")
 
     def job_pre_start_check(self):
-        logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
+        
         debug_mode = Config.global_debug_mode
         try:
             if debug_mode:

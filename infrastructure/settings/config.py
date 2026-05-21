@@ -53,6 +53,8 @@ class Config:
     DISCOVERY2_INTERVAL_HOURS = int(os.getenv('DISCOVERY2_INTERVAL_HOURS', '6'))  # Separate interval for Discovery2
     PRE_START_WINDOW_MINUTES = int(os.getenv('PRE_START_WINDOW_MINUTES', '30'))
     PRE_START_WORKERS = int(os.getenv('PRE_START_WORKERS', '5'))  # Number of parallel workers for pre-start checks
+    INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES", "390"))
+    INTRADAY_RESULT_FRESHNESS_WORKERS = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WORKERS", str(PRE_START_WORKERS)))
 
     # Daily Discovery Log/Queue Configuration
     DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES = int(os.getenv('DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES', '240'))
@@ -195,6 +197,18 @@ class Config:
 
     # Sports to exclude from alert evaluation (but not odds extraction)
     EXCLUDED_SPORTS = _parse_env_list('EXCLUDED_SPORTS', ['Table tennis', 'Darts'])
+
+    # Pipeline toggles
+    ENABLE_PILLAR_PIPELINE = _parse_env_bool('ENABLE_PILLAR_PIPELINE', True)
+    ENABLE_LEGACY_ALERT_PIPELINE = _parse_env_bool('ENABLE_LEGACY_ALERT_PIPELINE', True)
+    ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT = _parse_env_bool(
+        'ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT',
+        True,
+    )
+    FORCE_STANDINGS_COMPETITION_METADATA_REFRESH = _parse_env_bool(
+        'FORCE_STANDINGS_COMPETITION_METADATA_REFRESH',
+        False,
+    )
 
     # Discovery sources to allow for alert sending
     DISCOVERY_SOURCES_FOR_ALERTS = _parse_env_list('DISCOVERY_SOURCES_FOR_ALERTS', ['dropping_odds'])

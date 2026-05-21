@@ -1,0 +1,21 @@
+services:
+  postgres:
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  app:
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  pgdata:
+    external: true
+    name: sofascore_pgdata

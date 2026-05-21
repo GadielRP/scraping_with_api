@@ -265,8 +265,20 @@ class SofaScoreAPI:
     def get_winning_odds_response(self, event_id: int) -> Optional[Dict]:
         return get_winning_odds_response(self, event_id)
 
-    def get_standings_response(self, season_id: int, unique_tournament_id: int) -> Optional[Dict]:
-        return get_standings_response(self, season_id, unique_tournament_id)
+    def get_standings_response(
+        self,
+        season_id: int,
+        unique_tournament_id: int,
+        competition_context=None,
+        standings_endpoint_missing_competition_ids=None,
+    ) -> Optional[Dict]:
+        return get_standings_response(
+            self,
+            season_id,
+            unique_tournament_id,
+            competition_context=competition_context,
+            standings_endpoint_missing_competition_ids=standings_endpoint_missing_competition_ids,
+        )
 
     def process_standings_response(
         self,
@@ -290,7 +302,7 @@ class SofaScoreAPI:
 
     def get_event_final_odds(self, id: int, slug: str = None, no_retry_on_404: bool = False) -> Optional[Dict]:
         if slug:
-            logger.info("Fetching final odds for event %s - %s using dedicated endpoint", id, slug)
+            logger.info("✈️ Fetching final odds for event %s - %s using dedicated endpoint", id, slug)
         return self._request_json(f"/event/{id}/odds/1/all", no_retry_on_404=no_retry_on_404)
 
     def update_event_information_from_response(self, response: Dict) -> bool:
@@ -302,9 +314,9 @@ class SofaScoreAPI:
         return _extract(response)
 
     def _extract_metadata_snapshot(self, response: Dict):
-        from .event_details import _extract_metadata_snapshot as _extract
+        from .event_details import _extract_metadata_snapshot
 
-        return _extract(response)
+        return _extract_metadata_snapshot(response)
 
     def get_event_results(
         self,

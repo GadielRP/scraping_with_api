@@ -42,15 +42,51 @@ class Process2Engine:
     def __init__(self):
         logger.info("[PROCESS2] Engine initialized")
 
-    def evaluate_event(self, event) -> Optional[Process2Report]:
+    @staticmethod
+    def _get_normalized_event_parts(event, event_context=None) -> Tuple[str, str, str]:
+        home_participant = event.__dict__.get("home_participant")
+        away_participant = event.__dict__.get("away_participant")
+        competition_ref = event.__dict__.get("competition_ref")
+
+        home_team = None
+        away_team = None
+        competition_name = None
+
+        if event_context is not None:
+            home_team = getattr(getattr(event_context, "home", None), "name", None)
+            away_team = getattr(getattr(event_context, "away", None), "name", None)
+            competition_name = getattr(getattr(event_context, "competition", None), "display_name", None) or getattr(
+                getattr(event_context, "competition", None),
+                "canonical_name",
+                None,
+            )
+
+        if home_team is None and home_participant is not None:
+            home_team = getattr(home_participant, "name", None)
+        if away_team is None and away_participant is not None:
+            away_team = getattr(away_participant, "name", None)
+        if competition_name is None and competition_ref is not None:
+            competition_name = getattr(competition_ref, "display_name", None) or getattr(competition_ref, "canonical_name", None)
+
+        home_team = home_team or getattr(event, "home_team", None)
+        away_team = away_team or getattr(event, "away_team", None)
+        competition_name = competition_name or getattr(event, "competition", None)
+
+        if not home_team or not away_team or not competition_name:
+            raise ValueError(f"Missing normalized participants/competition for event_id={getattr(event, 'id', '?')}")
+
+        return home_team, away_team, competition_name
+
+    def evaluate_event(self, event, event_context=None) -> Optional[Process2Report]:
         """Evaluate a single event using Process 2 sport-specific rules."""
         try:
+            home_team, away_team, _competition_name = self._get_normalized_event_parts(event, event_context=event_context)
             sport = event.sport.lower()
             logger.info(
                 "[PROCESS2] Evaluating event %s (%s vs %s) - Sport: %s",
                 event.id,
-                event.home_team,
-                event.away_team,
+                home_team,
+                away_team,
                 sport,
             )
 
@@ -138,7 +174,7 @@ class Process2Engine:
             return Process2Report(
                 event_id=event.id,
                 sport=event.sport,
-                participants=f"{event.home_team} vs {event.away_team}",
+                participants=f"{home_team} vs {away_team}",
                 variables_calculated=variables_calculated,
                 activated_formulas=activated_formulas,
                 primary_prediction=primary_prediction,
@@ -184,10 +220,16 @@ class Process2Engine:
 
     def _create_error_report(self, event, error_message: str) -> Process2Report:
         """Create error report for failed evaluation."""
+        try:
+            home_team, away_team, _competition_name = self._get_normalized_event_parts(event)
+            participants = f"{home_team} vs {away_team}"
+        except Exception:
+            participants = f"Missing normalized participants for event_id={getattr(event, 'id', '?')}"
+
         return Process2Report(
             event_id=event.id,
             sport=event.sport if hasattr(event, "sport") else "Unknown",
-            participants=f"{getattr(event, 'home_team', '?')} vs {getattr(event, 'away_team', '?')}",
+            participants=participants,
             variables_calculated={},
             activated_formulas=[],
             primary_prediction=None,

@@ -52,6 +52,7 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
         return False, None, False
 
     if not Config.ENABLE_TIMESTAMP_CORRECTION:
+        
         if minutes_until == 30:
             logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - WILL EXTRACT ODDS (Running timestamp flow to fetch alert metadata)")
             is_timing_consistent, metadata_snapshot = api_client.get_event_results(
@@ -66,6 +67,7 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
             logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - WILL EXTRACT ODDS")
             return True, None, False
 
+    logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - TIMESTAMP CORRECTION ENABLED")
     is_timing_consistent, metadata_snapshot = api_client.get_event_results(
         event_id,
         update_time=True,
@@ -73,6 +75,8 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
         current_start_time=event_start_time,
         minutes_until_start=minutes_until,
     )
+    #PRINT DEBUG IS TIMING CONSISTENT AND METADATA SNAPSHOT
+    logger.debug(f"Timing consistency check for event {event_id}: is_timing_consistent={is_timing_consistent}, metadata_snapshot={metadata_snapshot}")
 
     if is_timing_consistent is None:
         logger.warning(f"⏭️ API error for event {event_id} - skipping odds extraction")
