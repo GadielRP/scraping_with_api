@@ -1,4 +1,4 @@
-"""M3 - Direct Matchup Profile / H2H module."""
+"""M3 - Matchup Engine / sample-aware direct matchup profile."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from modules.pillars.common import (
+    DEFAULT_STRENGTH_MAX_LABEL,
+    DEFAULT_STRENGTH_THRESHOLDS,
     ModuleComponentResult,
     ModuleResult,
     calculate_bias,
@@ -17,21 +19,20 @@ from modules.pillars.context import EventContext
 
 logger = logging.getLogger(__name__)
 
-M3_STRENGTH_THRESHOLDS = [
-    (0.05, "IGNORE"),
-    (0.15, "LOW"),
-    (0.30, "MEDIUM"),
-    (0.60, "HIGH"),
-    (0.85, "VERY_HIGH"),
-]
-M3_STRENGTH_MAX_LABEL = "EXTREME"
-M3_STRENGTH_PROFILE = "M3_v1_1"
+M3_STRENGTH_THRESHOLDS = DEFAULT_STRENGTH_THRESHOLDS
+M3_STRENGTH_MAX_LABEL = DEFAULT_STRENGTH_MAX_LABEL
+M3_STRENGTH_PROFILE = "M3_matchup_engine_sample_aware_v1"
+
+WIN_MATCHUP_WEIGHT = 0.70
+GOAL_MATCHUP_WEIGHT = 0.30
 
 
 @dataclass(frozen=True)
 class ParsedH2HMatch:
+    home_goals: float
+    away_goals: float
     diff: float
-    win: float
+    result_value_home: float
     current_home_was_home: bool
     start_timestamp: Optional[int]
     raw: Dict[str, Any]
@@ -79,19 +80,33 @@ def _infer_current_home_was_home(match: Dict[str, Any], home_name: str, away_nam
     return None
 
 
+def _classify_sample_confidence(sample_factor: float) -> str:
+    if sample_factor <= 0:
+        return "NONE"
+    if sample_factor < 0.25:
+        return "VERY LOW"
+    if sample_factor < 0.50:
+        return "LOW"
+    if sample_factor < 0.75:
+        return "MEDIUM"
+    if sample_factor <= 0.90:
+        return "HIGH"
+    return "VERY HIGH"
+
+
 def _parse_h2h_match(match: Dict[str, Any], home_name: str, away_name: str) -> Optional[ParsedH2HMatch]:
     current_home_was_home = _infer_current_home_was_home(match, home_name, away_name)
-    if current_home_was_home is None:
-        return None
 
     home_score = _coerce_float(match.get("home_score"))
     away_score = _coerce_float(match.get("away_score"))
     if home_score is not None and away_score is not None:
         diff = home_score - away_score
         return ParsedH2HMatch(
+            home_goals=home_score,
+            away_goals=away_score,
             diff=diff,
-            win=_win_from_diff(diff),
-            current_home_was_home=current_home_was_home,
+            result_value_home=_win_from_diff(diff),
+            current_home_was_home=bool(current_home_was_home) if current_home_was_home is not None else False,
             start_timestamp=_coerce_int(match.get("startTimestamp")),
             raw=match,
         )
@@ -103,40 +118,26 @@ def _parse_h2h_match(match: Dict[str, Any], home_name: str, away_name: str) -> O
     if hist_home_score is None or hist_away_score is None:
         return None
     if hist_home == home_name and hist_away == away_name:
-        diff = hist_home_score - hist_away_score
+        home_goals = hist_home_score
+        away_goals = hist_away_score
+        current_home_was_home = True
     elif hist_home == away_name and hist_away == home_name:
-        diff = hist_away_score - hist_home_score
+        home_goals = hist_away_score
+        away_goals = hist_home_score
+        current_home_was_home = False
     else:
         return None
 
+    diff = home_goals - away_goals
     return ParsedH2HMatch(
+        home_goals=home_goals,
+        away_goals=away_goals,
         diff=diff,
-        win=_win_from_diff(diff),
+        result_value_home=_win_from_diff(diff),
         current_home_was_home=current_home_was_home,
         start_timestamp=_coerce_int(match.get("startTimestamp")),
         raw=match,
     )
-
-
-def _harmonic_weights(n: int) -> List[float]:
-    if n <= 0:
-        return []
-    raw_weights = [1.0 / float(i + 1) for i in range(n)]
-    total = sum(raw_weights)
-    return [weight / total for weight in raw_weights] if total else []
-
-
-def _sport_factor(sport: str) -> float:
-    normalized = str(sport or "").lower()
-    if "football" in normalized or "soccer" in normalized:
-        return 1.25
-    if "hockey" in normalized:
-        return 2.0
-    if "basketball" in normalized:
-        return 10.0
-    if "baseball" in normalized:
-        return 3.0
-    return 1.0
 
 
 def _component(name: str, edge: float, weight: float, raw: Dict[str, Any]) -> ModuleComponentResult:
@@ -146,8 +147,8 @@ def _component(name: str, edge: float, weight: float, raw: Dict[str, Any]) -> Mo
         bias=calculate_bias(edge),
         strength=classify_strength(
             edge,
-            thresholds=M3_STRENGTH_THRESHOLDS,
-            max_label=M3_STRENGTH_MAX_LABEL,
+            thresholds=DEFAULT_STRENGTH_THRESHOLDS,
+            max_label=DEFAULT_STRENGTH_MAX_LABEL,
         ),
         weight=weight,
         weighted_edge=edge * weight,
@@ -157,14 +158,16 @@ def _component(name: str, edge: float, weight: float, raw: Dict[str, Any]) -> Mo
 
 def _serialize_parsed_match(match: ParsedH2HMatch) -> Dict[str, Any]:
     return {
+        "home_goals": match.home_goals,
+        "away_goals": match.away_goals,
         "diff": match.diff,
-        "win": match.win,
+        "result_value_home": match.result_value_home,
         "current_home_was_home": match.current_home_was_home,
         "start_timestamp": match.start_timestamp,
     }
 
 
-def _inactive_result(
+def _build_inactive_result(
     *,
     event_id: int,
     participants: str,
@@ -172,39 +175,58 @@ def _inactive_result(
     away_team: str,
     total_h2h: int,
     analyzed_total_h2h: Optional[int],
-    h2h_note: str,
     parsed_h2h: List[Dict[str, Any]],
 ) -> ModuleResult:
+    raw_edge = 0.0
+    sample_factor = 0.0
+    sample_confidence = _classify_sample_confidence(sample_factor)
+    strength = classify_strength(
+        0.0,
+        thresholds=DEFAULT_STRENGTH_THRESHOLDS,
+        max_label=DEFAULT_STRENGTH_MAX_LABEL,
+    )
     return ModuleResult(
         pillar_id="pillar_1_team_structure",
         module_id="M3",
-        module_name="Direct Matchup Profile",
+        module_name="Matchup Engine",
         event_id=event_id,
         participants=participants,
         value=0.0,
         bias=calculate_bias(0.0),
-        strength=classify_strength(
-            0.0,
-            thresholds=M3_STRENGTH_THRESHOLDS,
-            max_label=M3_STRENGTH_MAX_LABEL,
-        ),
+        strength=strength,
         components=[],
         raw={
             "home_team": home_team,
             "away_team": away_team,
             "total_h2h": total_h2h,
             "h2h_matchup_matches_analyzed": analyzed_total_h2h,
-            "parsed_h2h_count": len(parsed_h2h),
-            "m3_edge_raw": 0.0,
+            "parsed_h2h_count": 0,
+            "h2h_home_wins": 0,
+            "h2h_away_wins": 0,
+            "h2h_draws": 0,
+            "h2h_gf_home": 0.0,
+            "h2h_gf_away": 0.0,
+            "win_rate_home": 0.0,
+            "win_rate_away": 0.0,
+            "win_matchup_edge_raw": 0.0,
+            "goal_matchup_edge_raw": 0.0,
+            "win_matchup_weight": WIN_MATCHUP_WEIGHT,
+            "goal_matchup_weight": GOAL_MATCHUP_WEIGHT,
+            "m3_raw_edge": raw_edge,
+            "m3_edge_raw": raw_edge,
+            "m3_raw_strength": strength,
+            "m3_sample_factor": sample_factor,
+            "m3_sample_confidence": sample_confidence,
             "m3_edge": 0.0,
             "m3_abs_edge": 0.0,
+            "m3_strength": strength,
+            "m3_bias": calculate_bias(0.0),
             "m3_status": "INACTIVE",
-            "m3_status_reason": "INSUFFICIENT_H2H_SAMPLE",
-            "h2h_note": h2h_note,
+            "m3_status_reason": "NO_VALID_H2H_SAMPLE",
             "parsed_h2h": parsed_h2h,
             "strength_threshold_profile": M3_STRENGTH_PROFILE,
-            "strength_thresholds": M3_STRENGTH_THRESHOLDS,
-            "strength_max_label": M3_STRENGTH_MAX_LABEL,
+            "strength_thresholds": DEFAULT_STRENGTH_THRESHOLDS,
+            "strength_max_label": DEFAULT_STRENGTH_MAX_LABEL,
         },
     )
 
@@ -214,20 +236,19 @@ def calculate_direct_matchup_profile(
     event_context: EventContext,
     debug_mode: bool = False,
 ) -> ModuleResult:
-    """Calculate M3 - Direct Matchup Profile for an event."""
+    """Calculate M3 - Matchup Engine for an event."""
     home_team = getattr(streak_analysis, "home_team_name", None) or event_context.home.name
     away_team = getattr(streak_analysis, "away_team_name", None) or event_context.away.name
     participants = getattr(streak_analysis, "participants", None) or event_context.participants_label
     event_id = getattr(streak_analysis, "event_id", 0)
-    h2h_matches = getattr(streak_analysis, "h2h_matchup_matches", []) or []
+    h2h_matchup_matches = getattr(streak_analysis, "h2h_matchup_matches", []) or []
     analyzed_total_h2h = getattr(streak_analysis, "h2h_matchup_matches_analyzed", None)
-    sport = getattr(streak_analysis, "sport", None) or event_context.sport
 
     parsed_matches = [
         parsed
         for parsed in (
             _parse_h2h_match(match, _norm(home_team), _norm(away_team))
-            for match in h2h_matches
+            for match in h2h_matchup_matches
         )
         if parsed is not None
     ]
@@ -235,205 +256,142 @@ def calculate_direct_matchup_profile(
         parsed_matches.sort(key=lambda match: match.start_timestamp or 0, reverse=True)
 
     parsed_h2h = [_serialize_parsed_match(match) for match in parsed_matches]
-    total_h2h = len(h2h_matches)
-    sample_h2h = len(parsed_matches)
+    total_h2h = len(h2h_matchup_matches)
+    h2h_matches = len(parsed_matches)
 
     if debug_mode:
-        logger.info(f"--- M3 Direct Matchup Profile Debug: Event {event_id} ({participants}) ---")
+        logger.info(f"--- M3 Matchup Engine Debug: Event {event_id} ({participants}) ---")
         logger.info(
-            f"  home_team={home_team}  away_team={away_team}  sport={sport}  "
-            f"total_h2h_raw={total_h2h}  parsed_valid={sample_h2h}  "
-            f"min_required=2  activation={'ACTIVE' if sample_h2h >= 2 else 'INACTIVE'}"
+            f"  home_team={home_team}  away_team={away_team}  "
+            f"total_h2h_raw={total_h2h}  parsed_valid={h2h_matches}  "
+            f"activation={'ACTIVE' if h2h_matches >= 1 else 'INACTIVE'}"
         )
 
-    if sample_h2h < 2:
-        h2h_note = (
-            "Single recent H2H exists but sample is insufficient for operational edge."
-            if total_h2h == 1
-            else "No valid recent H2H sample."
-        )
+    if h2h_matches == 0:
         if debug_mode:
-            logger.info(f"  => M3 INACTIVE: {h2h_note}")
-        return _inactive_result(
+            logger.info("  => M3 INACTIVE: NO_VALID_H2H_SAMPLE")
+            logger.info("  [M3_RAW_EDGE] 0.000000000000  strength=IGNORE")
+            logger.info("  [SAMPLE_FACTOR] 0.000000000000")
+            logger.info("  [SAMPLE_CONFIDENCE] NONE")
+            logger.info(
+                "  [M3_EDGE] clamped=0.000000000000  bias=NEUTRAL  strength=IGNORE  status=INACTIVE"
+            )
+            logger.info("-" * 60)
+        return _build_inactive_result(
             event_id=event_id,
             participants=participants,
             home_team=home_team,
             away_team=away_team,
             total_h2h=total_h2h,
             analyzed_total_h2h=analyzed_total_h2h,
-            h2h_note=h2h_note,
             parsed_h2h=parsed_h2h,
         )
 
-    # -------------------------------------------------------------------------
-    # Harmonic weights
-    # -------------------------------------------------------------------------
-    weights = _harmonic_weights(sample_h2h)
-    raw_weights = [1.0 / float(i + 1) for i in range(sample_h2h)]
-    sum_raw_weights = sum(raw_weights)
+    home_wins = sum(1 for match in parsed_matches if match.diff > 0)
+    away_wins = sum(1 for match in parsed_matches if match.diff < 0)
+    draws = sum(1 for match in parsed_matches if match.diff == 0)
 
-    if debug_mode:
-        logger.info(f"  [PESOS] TOTAL_H2H={sample_h2h}  sum_raw={sum_raw_weights:.12f}")
-        for i, (match, rw, nw) in enumerate(zip(parsed_matches, raw_weights, weights)):
-            logger.info(
-                f"  [PESOS] i={i}  weight_raw=1/{i+1}={rw:.12f}  "
-                f"weight_norm={rw:.12f}/{sum_raw_weights:.12f}={nw:.12f}  "
-                f"diff={match.diff:+.1f}  win={match.win}"
-            )
+    win_rate_home = (home_wins + 0.5 * draws) / float(h2h_matches)
+    win_rate_away = (away_wins + 0.5 * draws) / float(h2h_matches)
+    win_matchup_edge_raw = clamp(win_rate_home - win_rate_away)
 
-    # -------------------------------------------------------------------------
-    # H2H_WIN_EDGE
-    # -------------------------------------------------------------------------
-    win_terms = [(match.win, weight) for match, weight in zip(parsed_matches, weights)]
-    weighted_winrate_home = sum(w * nw for w, nw in win_terms)
-    weighted_winrate_away = 1.0 - weighted_winrate_home
-    h2h_win_edge = (2.0 * weighted_winrate_home) - 1.0
-
-    if debug_mode:
-        logger.info("  [H2H_WIN_EDGE] Sustitución:")
-        for i, (match, weight) in enumerate(zip(parsed_matches, weights)):
-            logger.info(
-                f"    i={i}: win={match.win} * weight={weight:.12f} = {match.win * weight:.12f}"
-            )
-        logger.info(
-            f"  [H2H_WIN_EDGE] H2H_WEIGHTED_WINRATE_HOME = {weighted_winrate_home:.12f}"
-        )
-        logger.info(
-            f"  [H2H_WIN_EDGE] H2H_WEIGHTED_WINRATE_AWAY = 1 - {weighted_winrate_home:.12f} = {weighted_winrate_away:.12f}"
-        )
-        logger.info(
-            f"  [H2H_WIN_EDGE] (2 * {weighted_winrate_home:.12f}) - 1 = {h2h_win_edge:.12f}  "
-            f"bias={calculate_bias(h2h_win_edge)}  strength={classify_strength(h2h_win_edge, thresholds=M3_STRENGTH_THRESHOLDS, max_label=M3_STRENGTH_MAX_LABEL)}"
-        )
-
-    # -------------------------------------------------------------------------
-    # H2H_WEIGHTED_DIFF + H2H_DIFF_EDGE
-    # -------------------------------------------------------------------------
-    weighted_diff = sum(match.diff * weight for match, weight in zip(parsed_matches, weights))
-
-    if sample_h2h >= 5:
-        abs_diffs = [abs(match.diff) for match in parsed_matches]
-        diff_scale = sum(abs_diffs) / float(sample_h2h)
-        diff_scale_source = "dynamic"
-        if debug_mode:
-            logger.info(
-                f"  [H2H_DIFF_EDGE] Escala dinámica (n={sample_h2h} >= 5): "
-                f"sum(|diff|)={sum(abs_diffs):.1f} / {sample_h2h} = {diff_scale:.12f}"
-            )
+    h2h_gf_home = sum(match.home_goals for match in parsed_matches)
+    h2h_gf_away = sum(match.away_goals for match in parsed_matches)
+    goal_total = h2h_gf_home + h2h_gf_away
+    goal_matchup_reason = "active"
+    if goal_total > 0:
+        goal_matchup_edge_raw = clamp((h2h_gf_home - h2h_gf_away) / goal_total)
     else:
-        diff_scale = _sport_factor(sport)
-        diff_scale_source = "sport_factor"
-        if debug_mode:
-            logger.info(
-                f"  [H2H_DIFF_EDGE] Sport factor (n={sample_h2h} < 5): sport={sport} -> scale={diff_scale}"
-            )
+        goal_matchup_edge_raw = 0.0
+        goal_matchup_reason = "NO_GOALS_TOTAL"
+
+    m3_raw_edge = clamp(
+        WIN_MATCHUP_WEIGHT * win_matchup_edge_raw
+        + GOAL_MATCHUP_WEIGHT * goal_matchup_edge_raw
+    )
+    m3_sample_factor = min(h2h_matches / 5.0, 1.0)
+    m3_sample_confidence = _classify_sample_confidence(m3_sample_factor)
+    m3_edge = clamp(m3_raw_edge * m3_sample_factor)
+
+    m3_raw_strength = classify_strength(
+        m3_raw_edge,
+        thresholds=DEFAULT_STRENGTH_THRESHOLDS,
+        max_label=DEFAULT_STRENGTH_MAX_LABEL,
+    )
+    m3_strength = classify_strength(
+        m3_edge,
+        thresholds=DEFAULT_STRENGTH_THRESHOLDS,
+        max_label=DEFAULT_STRENGTH_MAX_LABEL,
+    )
+    m3_bias = calculate_bias(m3_edge)
 
     if debug_mode:
-        logger.info("  [H2H_DIFF_EDGE] Sustitución weighted_diff:")
-        for i, (match, weight) in enumerate(zip(parsed_matches, weights)):
+        logger.info("  [WIN_MATCHUP_LAYER] substitution:")
+        for i, match in enumerate(parsed_matches):
             logger.info(
-                f"    i={i}: diff={match.diff:+.1f} * weight={weight:.12f} = {match.diff * weight:.12f}"
+                f"    i={i}: home_goals={match.home_goals:.12f} "
+                f"away_goals={match.away_goals:.12f} diff={match.diff:+.12f} "
+                f"result_value_home={match.result_value_home:.12f}"
             )
-        logger.info(f"  [H2H_DIFF_EDGE] H2H_WEIGHTED_DIFF = {weighted_diff:.12f}")
-
-    h2h_diff_reason = "active"
-    if diff_scale <= 0:
-        h2h_diff_edge = 0.0
-        h2h_diff_reason = "missing_diff_scale"
-        if debug_mode:
-            logger.info("  [H2H_DIFF_EDGE] => SKIP (diff_scale=0) -> edge=0.0")
-    else:
-        h2h_diff_edge = clamp(weighted_diff / diff_scale)
-        if debug_mode:
-            logger.info(
-                f"  [H2H_DIFF_EDGE] {weighted_diff:.12f} / {diff_scale:.12f} = "
-                f"{weighted_diff / diff_scale:.12f}  -> clamped={h2h_diff_edge:.12f}  "
-                f"bias={calculate_bias(h2h_diff_edge)}  strength={classify_strength(h2h_diff_edge, thresholds=M3_STRENGTH_THRESHOLDS, max_label=M3_STRENGTH_MAX_LABEL)}"
-            )
-
-    # -------------------------------------------------------------------------
-    # H2H_VENUE_EDGE
-    # -------------------------------------------------------------------------
-    venue_matches = [match for match in parsed_matches if match.current_home_was_home]
-
-    if debug_mode:
         logger.info(
-            f"  [H2H_VENUE_EDGE] venue_matches (current_home_was_home=True): {len(venue_matches)}/{sample_h2h}"
-        )
-        for i, match in enumerate(venue_matches):
-            logger.info(
-                f"    venue[{i}]: diff={match.diff:+.1f}  win={match.win}"
-            )
-
-    if venue_matches:
-        venue_winrate_home = sum(match.win for match in venue_matches) / float(len(venue_matches))
-        h2h_venue_edge = (2.0 * venue_winrate_home) - 1.0
-        venue_reason = "active"
-        if debug_mode:
-            logger.info(
-                f"  [H2H_VENUE_EDGE] venue_wins={sum(m.win for m in venue_matches):.1f} / {len(venue_matches)} "
-                f"= {venue_winrate_home:.12f}"
-            )
-            logger.info(
-                f"  [H2H_VENUE_EDGE] (2 * {venue_winrate_home:.12f}) - 1 = {h2h_venue_edge:.12f}  "
-                f"bias={calculate_bias(h2h_venue_edge)}  strength={classify_strength(h2h_venue_edge, thresholds=M3_STRENGTH_THRESHOLDS, max_label=M3_STRENGTH_MAX_LABEL)}"
-            )
-    else:
-        venue_winrate_home = 0.0
-        h2h_venue_edge = 0.0
-        venue_reason = "no_current_venue_h2h"
-        if debug_mode:
-            logger.info("  [H2H_VENUE_EDGE] => No venue matches -> edge=0.0")
-
-    # -------------------------------------------------------------------------
-    # M3 Final
-    # -------------------------------------------------------------------------
-    win_weighted = 0.50 * h2h_win_edge
-    diff_weighted = 0.30 * h2h_diff_edge
-    venue_weighted = 0.20 * h2h_venue_edge
-    m3_edge_raw = win_weighted + diff_weighted + venue_weighted
-    m3_edge = clamp(m3_edge_raw)
-
-    if debug_mode:
-        logger.info(
-            f"  [M3_EDGE_RAW] (0.50 * {h2h_win_edge:.12f}) + (0.30 * {h2h_diff_edge:.12f}) + (0.20 * {h2h_venue_edge:.12f})"
-            f" = {win_weighted:.12f} + {diff_weighted:.12f} + {venue_weighted:.12f} = {m3_edge_raw:.12f}"
+            f"  [WIN_MATCHUP_LAYER] home_wins={home_wins}  away_wins={away_wins}  draws={draws}"
         )
         logger.info(
-            f"  [M3_EDGE] clamped={m3_edge:.12f}  bias={calculate_bias(m3_edge)}  "
-            f"strength={classify_strength(m3_edge, thresholds=M3_STRENGTH_THRESHOLDS, max_label=M3_STRENGTH_MAX_LABEL)}  status=ACTIVE"
+            f"  [WIN_MATCHUP_LAYER] win_rate_home={win_rate_home:.12f}  "
+            f"win_rate_away={win_rate_away:.12f}  edge_raw={win_matchup_edge_raw:.12f}  "
+            f"bias={calculate_bias(win_matchup_edge_raw)}  "
+            f"strength={classify_strength(win_matchup_edge_raw, thresholds=DEFAULT_STRENGTH_THRESHOLDS, max_label=DEFAULT_STRENGTH_MAX_LABEL)}"
+        )
+        logger.info("  [GOAL_MATCHUP_LAYER] substitution:")
+        for i, match in enumerate(parsed_matches):
+            logger.info(
+                f"    i={i}: home_goals={match.home_goals:.12f} "
+                f"away_goals={match.away_goals:.12f} diff={match.diff:+.12f}"
+            )
+        logger.info(
+            f"  [GOAL_MATCHUP_LAYER] h2h_gf_home={h2h_gf_home:.12f}  "
+            f"h2h_gf_away={h2h_gf_away:.12f}  goal_total={goal_total:.12f}  "
+            f"edge_raw={goal_matchup_edge_raw:.12f}  reason={goal_matchup_reason}  "
+            f"bias={calculate_bias(goal_matchup_edge_raw)}  "
+            f"strength={classify_strength(goal_matchup_edge_raw, thresholds=DEFAULT_STRENGTH_THRESHOLDS, max_label=DEFAULT_STRENGTH_MAX_LABEL)}"
+        )
+        logger.info(
+            f"  [M3_RAW_EDGE] ({WIN_MATCHUP_WEIGHT:.2f} * {win_matchup_edge_raw:.12f}) + "
+            f"({GOAL_MATCHUP_WEIGHT:.2f} * {goal_matchup_edge_raw:.12f}) = {m3_raw_edge:.12f}  "
+            f"strength={m3_raw_strength}"
+        )
+        logger.info(
+            f"  [SAMPLE_FACTOR] min({h2h_matches}/5, 1) = {m3_sample_factor:.12f}"
+        )
+        logger.info(f"  [SAMPLE_CONFIDENCE] {m3_sample_confidence}")
+        logger.info(
+            f"  [M3_EDGE] clamped={m3_edge:.12f}  bias={m3_bias}  "
+            f"strength={m3_strength}  status=ACTIVE"
         )
         logger.info("-" * 60)
 
     components = [
         _component(
-            "H2H_WIN_EDGE",
-            h2h_win_edge,
-            0.50,
+            "WIN_MATCHUP_EDGE_RAW",
+            win_matchup_edge_raw,
+            WIN_MATCHUP_WEIGHT,
             {
-                "weighted_winrate_home": weighted_winrate_home,
-                "weighted_winrate_away": weighted_winrate_away,
+                "home_wins": home_wins,
+                "away_wins": away_wins,
+                "draws": draws,
+                "win_rate_home": win_rate_home,
+                "win_rate_away": win_rate_away,
             },
         ),
         _component(
-            "H2H_DIFF_EDGE",
-            h2h_diff_edge,
-            0.30,
+            "GOAL_MATCHUP_EDGE_RAW",
+            goal_matchup_edge_raw,
+            GOAL_MATCHUP_WEIGHT,
             {
-                "weighted_diff": weighted_diff,
-                "diff_scale": diff_scale,
-                "diff_scale_source": diff_scale_source,
-                "reason": h2h_diff_reason,
-            },
-        ),
-        _component(
-            "H2H_VENUE_EDGE",
-            h2h_venue_edge,
-            0.20,
-            {
-                "venue_match_count": len(venue_matches),
-                "venue_winrate_home": venue_winrate_home,
-                "reason": venue_reason,
+                "h2h_gf_home": h2h_gf_home,
+                "h2h_gf_away": h2h_gf_away,
+                "goal_total": goal_total,
+                "reason": goal_matchup_reason,
             },
         ),
     ]
@@ -443,40 +401,44 @@ def calculate_direct_matchup_profile(
         "away_team": away_team,
         "total_h2h": total_h2h,
         "h2h_matchup_matches_analyzed": analyzed_total_h2h,
-        "parsed_h2h_count": sample_h2h,
-        "m3_edge_raw": m3_edge_raw,
+        "parsed_h2h_count": h2h_matches,
+        "h2h_home_wins": home_wins,
+        "h2h_away_wins": away_wins,
+        "h2h_draws": draws,
+        "h2h_gf_home": h2h_gf_home,
+        "h2h_gf_away": h2h_gf_away,
+        "win_rate_home": win_rate_home,
+        "win_rate_away": win_rate_away,
+        "win_matchup_edge_raw": win_matchup_edge_raw,
+        "goal_matchup_edge_raw": goal_matchup_edge_raw,
+        "win_matchup_weight": WIN_MATCHUP_WEIGHT,
+        "goal_matchup_weight": GOAL_MATCHUP_WEIGHT,
+        "m3_raw_edge": m3_raw_edge,
+        "m3_edge_raw": m3_raw_edge,
+        "m3_raw_strength": m3_raw_strength,
+        "m3_sample_factor": m3_sample_factor,
+        "m3_sample_confidence": m3_sample_confidence,
         "m3_edge": m3_edge,
         "m3_abs_edge": abs(m3_edge),
+        "m3_strength": m3_strength,
+        "m3_bias": m3_bias,
         "m3_status": "ACTIVE",
         "m3_status_reason": "active",
-        "h2h_weighted_winrate_home": weighted_winrate_home,
-        "h2h_weighted_winrate_away": weighted_winrate_away,
-        "h2h_weighted_diff": weighted_diff,
-        "h2h_diff_scale": diff_scale,
-        "h2h_diff_scale_source": diff_scale_source,
-        "sport_factor": _sport_factor(sport),
-        "venue_match_count": len(venue_matches),
-        "venue_winrate_home": venue_winrate_home,
-        "weights": weights,
         "parsed_h2h": parsed_h2h,
         "strength_threshold_profile": M3_STRENGTH_PROFILE,
-        "strength_thresholds": M3_STRENGTH_THRESHOLDS,
-        "strength_max_label": M3_STRENGTH_MAX_LABEL,
+        "strength_thresholds": DEFAULT_STRENGTH_THRESHOLDS,
+        "strength_max_label": DEFAULT_STRENGTH_MAX_LABEL,
     }
 
     return ModuleResult(
         pillar_id="pillar_1_team_structure",
         module_id="M3",
-        module_name="Direct Matchup Profile",
+        module_name="Matchup Engine",
         event_id=event_id,
         participants=participants,
         value=m3_edge,
-        bias=calculate_bias(m3_edge),
-        strength=classify_strength(
-            m3_edge,
-            thresholds=M3_STRENGTH_THRESHOLDS,
-            max_label=M3_STRENGTH_MAX_LABEL,
-        ),
+        bias=m3_bias,
+        strength=m3_strength,
         components=components,
         raw=raw,
     )
