@@ -160,7 +160,7 @@ class GenderReorganization:
             API response dictionary, None on error, or 'SKIP_404' if event not found
         """
         try:
-            logger.debug(f"Fetching API data for event {event_id}")
+            logger.debug(f"✈️Fetching API data for event {event_id}")
             
             # Use curl_cffi directly to get the status code for 404 detection
             url = f"{api_client.base_url}/event/{event_id}"

@@ -303,7 +303,7 @@ class Basketball4QPredictor:
                     },
                 }
 
-                logger.info("\n✅ PREDICTION COMPLETE:")
+                logger.info("✅ PREDICTION COMPLETE:")
                 logger.info(
                     f"   Q4 Prediction: {home_team} {result['predicted_q4_home']:.1f} - "
                     f"{result['predicted_q4_away']:.1f} {away_team}"
