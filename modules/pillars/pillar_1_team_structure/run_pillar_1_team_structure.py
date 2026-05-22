@@ -21,8 +21,8 @@ from modules.pillars.pillar_1_team_structure.module_4.hybrid_structural_engine i
 from modules.pillars.pillar_1_team_structure.module_5.recent_inertia_engine import (
     calculate_recent_inertia_engine,
 )
-from modules.pillars.pillar_1_team_structure.module_6.contextual_competitive_cost_engine import (
-    calculate_contextual_competitive_cost_engine,
+from modules.pillars.pillar_1_team_structure.module_6.structural_drift_engine import (
+    calculate_m6_structural_drift_engine,
 )
 from modules.pillars.pillar_1_team_structure.module_7.structural_drift_engine import (
     calculate_structural_drift_engine,
@@ -165,7 +165,7 @@ def calculate_pillar_1_team_structure(
         event_context=event_context,
         debug_mode=debug_mode,
     )
-    m6_result = calculate_contextual_competitive_cost_engine(
+    m6_result = calculate_m6_structural_drift_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,

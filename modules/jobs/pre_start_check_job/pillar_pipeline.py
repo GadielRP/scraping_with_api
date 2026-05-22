@@ -302,7 +302,7 @@ class EventPillarProcessor:
 
         m6 = modules[5] if len(modules) > 5 else {}
         logger.info(
-            "P1/M6 Contextual Competitive Cost Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/M6 Structural Drift Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
             participants,
             m6.get("value", 0),
             m6.get("bias", "N/A"),
