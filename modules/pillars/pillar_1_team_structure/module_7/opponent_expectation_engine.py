@@ -29,7 +29,6 @@ _GDOE_WEIGHT = 0.40
 
 _EXPECTED_GD_FACTOR = 1.5
 _GDOE_DIVISOR = 5.0
-_EDGE_DIVISOR = 2.0
 
 _MIN_VALID_GAMES_ACTIVE = 10
 _MIN_VALID_GAMES_DEGRADED = 5
@@ -43,35 +42,12 @@ _M7_STRENGTH_THRESHOLDS = [
 
 _M7_STRENGTH_MAX_LABEL = "VERY_HIGH"
 
-_OPPONENT_RANK_KEYS = (
-    "opponent_rank",
-    "opponent_current_rank",
-    "opponent_standing_rank",
-    "opponent_position",
-    "opponent_ranking",
-    "opponent_final_real_ranking",
-    "opponent_final_real_rank",
-    "opponent_real_ranking",
-    "opponent_sofascore_rank",
-    "rival_rank",
-    "rival_position",
-)
-
 _OPPONENT_NAME_KEYS = (
     "opponent_name",
     "opponent_team_name",
     "rival_name",
     "rival_team_name",
     "opponent",
-)
-
-_OWN_RANK_KEYS = (
-    "own_ranking",
-)
-
-_TEAM_STANDING_RANK_KEYS = (
-    "rank",
-    "position",
 )
 
 
@@ -194,22 +170,6 @@ def _resolve_max_rank(streak_analysis: Any, event_context: EventContext) -> Tupl
         return max_rank, "streak_analysis.standings_response.max_rank"
 
     return _MAX_RANK_DEFAULT, "max_rank_default"
-
-
-def _extract_nested_rank(game: Dict[str, Any]) -> Optional[int]:
-    nested_paths = (
-        ("opponent", ("rank", "position", "current_rank")),
-        ("opponent_standing", ("rank", "position")),
-    )
-    for parent_key, child_keys in nested_paths:
-        nested = game.get(parent_key)
-        if not isinstance(nested, dict):
-            continue
-        for child_key in child_keys:
-            rank = _coerce_int(nested.get(child_key))
-            if rank is not None and rank > 0:
-                return rank
-    return None
 
 
 def _extract_opponent_name(game: Dict[str, Any]) -> Optional[str]:
@@ -745,7 +705,7 @@ def calculate_m7_opponent_expectation_engine(
 
     home_team_context_score = float(home_agg["team_context_score"])
     away_team_context_score = float(away_agg["team_context_score"])
-    m7_edge_raw = (home_team_context_score - away_team_context_score) / _EDGE_DIVISOR
+    m7_edge_raw = home_team_context_score - away_team_context_score
     m7_edge = _clamp(m7_edge_raw)
     if m7_status == "INSUFFICIENT_DATA":
         m7_edge = 0.0
@@ -757,7 +717,7 @@ def calculate_m7_opponent_expectation_engine(
         logger.info(
             (
                 "M7 edge calculation: home_team_context_score=%.12f away_team_context_score=%.12f "
-                "formula=(home-away)/2 edge_raw=%.12f edge_clamped=%.12f"
+                "formula=home-away edge_raw=%.12f edge_clamped=%.12f"
             ),
             home_team_context_score,
             away_team_context_score,
@@ -776,7 +736,7 @@ def calculate_m7_opponent_expectation_engine(
                 weight=1.0,
                 weighted_edge=m7_edge,
                 raw={
-                    "formula": "(HOME_TEAM_CONTEXT_SCORE - AWAY_TEAM_CONTEXT_SCORE) / 2",
+                    "formula": "HOME_TEAM_CONTEXT_SCORE - AWAY_TEAM_CONTEXT_SCORE",
                     "home_team_context_score": home_team_context_score,
                     "away_team_context_score": away_team_context_score,
                     "home_avg_roe": home_agg["avg_roe"],
@@ -801,7 +761,6 @@ def calculate_m7_opponent_expectation_engine(
         "constants": {
             "expected_gd_factor": _EXPECTED_GD_FACTOR,
             "gdoe_divisor": _GDOE_DIVISOR,
-            "edge_divisor": _EDGE_DIVISOR,
         },
         "filters": {
             "initial_season_games_to_skip": initial_games_to_skip,
@@ -820,7 +779,7 @@ def calculate_m7_opponent_expectation_engine(
             "series": away_series,
             "skipped_games": away_skipped,
         },
-        "m7_edge_formula": "(HOME_TEAM_CONTEXT_SCORE - AWAY_TEAM_CONTEXT_SCORE) / 2",
+        "m7_edge_formula": "HOME_TEAM_CONTEXT_SCORE - AWAY_TEAM_CONTEXT_SCORE",
         "m7_edge_raw": m7_edge_raw,
         "m7_edge": m7_edge,
         "m7_abs_edge": abs(m7_edge),

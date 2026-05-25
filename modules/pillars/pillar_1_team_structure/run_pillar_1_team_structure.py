@@ -15,8 +15,8 @@ from modules.pillars.pillar_1_team_structure.module_2.performance_profile import
 from modules.pillars.pillar_1_team_structure.module_3.direct_matchup_profile import (
     calculate_direct_matchup_profile,
 )
-from modules.pillars.pillar_1_team_structure.module_4.recent_inertia_engine import (
-    calculate_recent_inertia_engine as calculate_recent_inertia_engine_m4,
+from modules.pillars.pillar_1_team_structure.module_4.quality_adjusted_immediate_state_engine import (
+    calculate_quality_adjusted_immediate_state_engine,
 )
 from modules.pillars.pillar_1_team_structure.module_5.contextual_competitive_cost_engine import (
     calculate_contextual_competitive_cost_engine,
@@ -151,7 +151,7 @@ def calculate_pillar_1_team_structure(
         event_context=event_context,
         debug_mode=debug_mode,
     )
-    m4_result = calculate_recent_inertia_engine_m4(
+    m4_result = calculate_quality_adjusted_immediate_state_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,

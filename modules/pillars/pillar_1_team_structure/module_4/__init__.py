@@ -1,5 +1,7 @@
-"""Module 4 - Recent Inertia Engine package."""
+"""Module 4 - Quality-Adjusted Immediate State Engine package."""
 
-from .recent_inertia_engine import calculate_recent_inertia_engine
+from .quality_adjusted_immediate_state_engine import (
+    calculate_quality_adjusted_immediate_state_engine,
+)
 
-__all__ = ["calculate_recent_inertia_engine"]
+__all__ = ["calculate_quality_adjusted_immediate_state_engine"]

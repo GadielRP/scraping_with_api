@@ -8,10 +8,9 @@ This module is pure: it receives a pre-built ``MatchupStreakContext`` and
 returns a structured ``ModuleResult``. It never calls external APIs, sends
 messages, or writes to the database.
 
-Data source:
-    All W/L/D, GP, and GD are computed from the form results
-    (``home_team_results`` / ``away_team_results``), not from the SofaScore
-    standings API endpoint.
+v4.0 separates the sources by layer:
+    - season records / standings drive RESULT_EDGE and GD_EDGE
+    - game GD series drive CONSISTENCY_EDGE and VOL_DIRECTION_EDGE
 
 Convention: + = HOME, - = AWAY, 0 = NEUTRAL.
 """
@@ -47,35 +46,77 @@ _CONSISTENCY_WINDOW_STEP = 5  # L5, L10, L15 ...
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers - form data extraction
+# Internal helpers - generic extraction
 # ---------------------------------------------------------------------------
+
+def _normalize_team_name(value: Optional[str]) -> str:
+    """Normalize team names for tolerant, case-insensitive matching."""
+    if value is None:
+        return ""
+    return " ".join(str(value).strip().split()).casefold()
+
+
+def _extract_int_field(data: Optional[Dict], keys: Tuple[str, ...]) -> Optional[int]:
+    """Extract an integer field without breaking valid zero values."""
+    if not isinstance(data, dict):
+        return None
+
+    for key in keys:
+        if key not in data:
+            continue
+        value = data.get(key)
+        if value is None or isinstance(value, bool):
+            continue
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            if value.is_integer():
+                return int(value)
+            continue
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                continue
+            try:
+                parsed = float(text)
+            except ValueError:
+                continue
+            if parsed.is_integer():
+                return int(parsed)
+    return None
+
+
+def _extract_float_field(data: Optional[Dict], keys: Tuple[str, ...]) -> Optional[float]:
+    """Extract a float field without breaking valid zero values."""
+    if not isinstance(data, dict):
+        return None
+
+    for key in keys:
+        if key not in data:
+            continue
+        value = data.get(key)
+        if value is None or isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                continue
+            try:
+                return float(text)
+            except ValueError:
+                continue
+    return None
+
 
 def _count_wins(results: List[Dict]) -> int:
     """Count wins from form results (team_result_code == '1')."""
     return sum(1 for r in results if r.get("team_result_code") == "1")
 
 
-def _get_games_played(standing: Optional[Dict]) -> Optional[int]:
-    """Extract games-played from a standing snapshot."""
-    if not standing:
-        return None
-    for key in ("matches", "gp", "games_played"):
-        val = standing.get(key)
-        if val is not None:
-            try:
-                val = int(val)
-                if val > 0:
-                    return val
-            except (ValueError, TypeError):
-                continue
-    return None
-
-
 def _try_extract_gd(game: Dict) -> Optional[float]:
-    """Return a single game GD from *game*, or ``None``.
-
-    The explicit goal_diff -> diff ordering keeps 0 as a valid value.
-    """
+    """Return a single game GD from *game*, or ``None``."""
     gd = game.get("goal_diff")
     if gd is not None:
         try:
@@ -137,18 +178,140 @@ def _build_cumulative_windows(n: int, step: int = 5) -> List[int]:
     return windows
 
 
+def _pstdev(values: List[float]) -> float:
+    """Population standard deviation (not sample)."""
+    if not values:
+        return 0.0
+    n = len(values)
+    mean = sum(values) / n
+    variance = sum((v - mean) ** 2 for v in values) / n
+    return math.sqrt(variance)
+
+
+def _format_record_summary(record: Dict[str, Any]) -> str:
+    return (
+        f"source={record.get('source')} "
+        f"W/GP/GD={record.get('wins')}/{record.get('gp')}/{record.get('goal_diff')}"
+    )
+
+
 # ---------------------------------------------------------------------------
-# GD dynamic scale
+# Internal helpers - standings / season records
 # ---------------------------------------------------------------------------
+
+def _extract_record_name(record: Any) -> Optional[str]:
+    if not isinstance(record, dict):
+        return None
+
+    for key in ("team_name", "teamName", "name", "display_name", "short_name", "team"):
+        value = record.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            nested_name = value.get("name") or value.get("display_name") or value.get("short_name")
+            if isinstance(nested_name, str) and nested_name.strip():
+                return nested_name.strip()
+    return None
+
+
+def _standings_items(current_standings: Any) -> List[Tuple[Any, Any]]:
+    """Return a flat list of ``(key, standing)`` pairs for dict/list payloads."""
+    if isinstance(current_standings, dict):
+        if "standings" in current_standings:
+            return _standings_items(current_standings.get("standings"))
+
+        items: List[Tuple[Any, Any]] = []
+        for key, value in current_standings.items():
+            if isinstance(value, dict):
+                items.append((key, value))
+            elif isinstance(value, list):
+                for index, item in enumerate(value):
+                    if isinstance(item, dict):
+                        items.append((f"{key}[{index}]", item))
+        return items
+
+    if isinstance(current_standings, list):
+        items: List[Tuple[Any, Any]] = []
+        for index, item in enumerate(current_standings):
+            if not isinstance(item, dict):
+                continue
+            rows = item.get("rows")
+            if isinstance(rows, list):
+                for row_index, row in enumerate(rows):
+                    if isinstance(row, dict):
+                        items.append((f"{index}:{row_index}", row))
+                continue
+            items.append((index, item))
+        return items
+
+    return []
+
+
+def _find_team_standing_in_current_standings(
+    current_standings: Any,
+    team_name: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """Find a team standing by name across dict/list standings payloads."""
+    normalized_team_name = _normalize_team_name(team_name)
+    if not normalized_team_name:
+        return None
+
+    if isinstance(current_standings, dict):
+        direct_record = current_standings.get(team_name)
+        if isinstance(direct_record, dict):
+            return direct_record
+
+    for key, record in _standings_items(current_standings):
+        if not isinstance(record, dict):
+            continue
+
+        if _normalize_team_name(str(key)) == normalized_team_name:
+            return record
+
+        record_name = _extract_record_name(record)
+        if _normalize_team_name(record_name) == normalized_team_name:
+            return record
+
+    return None
+
+
+def _collect_unique_standings(payload: Any) -> List[Dict[str, Any]]:
+    """Collect unique standing records by team name while preserving the best row."""
+    best_by_team: Dict[str, Tuple[Tuple[int, int, int, int], Dict[str, Any]]] = {}
+
+    for key, record in _standings_items(payload):
+        if not isinstance(record, dict):
+            continue
+
+        key_name = str(key).strip() if key is not None else ""
+        record_name = _extract_record_name(record)
+        normalized_name = _normalize_team_name(key_name or record_name)
+        if not normalized_name:
+            continue
+
+        wins = _extract_int_field(record, ("wins", "w"))
+        gp = _extract_int_field(record, ("gp", "games_played", "matches", "played"))
+        goal_diff = _extract_float_field(record, ("goal_diff", "diff"))
+        score = (
+            1 if wins is not None else 0,
+            1 if gp is not None else 0,
+            1 if goal_diff is not None else 0,
+            gp if gp is not None else -1,
+        )
+
+        existing = best_by_team.get(normalized_name)
+        if existing is None or score > existing[0]:
+            best_by_team[normalized_name] = (score, record)
+
+    return [record for _, record in best_by_team.values()]
+
 
 def _extract_gd_scale_samples(standings_list: List[Dict]) -> List[float]:
     """Return absolute GD-per-game samples used for the P75 dynamic scale."""
     gd_per_game_abs: List[float] = []
     for standing in standings_list:
-        gd = standing.get("goal_diff")
-        if gd is None:
-            gd = standing.get("diff")
-        gp = _get_games_played(standing)
+        gd = _extract_float_field(standing, ("goal_diff", "diff"))
+        gp = _extract_int_field(standing, ("gp", "games_played", "matches", "played"))
         if gd is None or gp is None or gp <= 0:
             continue
         try:
@@ -161,7 +324,6 @@ def _extract_gd_scale_samples(standings_list: List[Dict]) -> List[float]:
 def _calculate_p75_dynamic_scale(standings_list: List[Dict]) -> Optional[float]:
     """Compute P75 of ``|GD_PER_GAME|`` from a list of standing snapshots."""
     gd_per_game_abs = _extract_gd_scale_samples(standings_list)
-
     if not gd_per_game_abs:
         return None
 
@@ -172,27 +334,212 @@ def _calculate_p75_dynamic_scale(standings_list: List[Dict]) -> Optional[float]:
     return gd_per_game_abs[idx]
 
 
+def _build_fallback_season_record_from_results(results: List[Dict]) -> Dict[str, Any]:
+    """Build a season record from game results when standings are unavailable."""
+    if not results:
+        return {
+            "wins": None,
+            "gp": None,
+            "goal_diff": None,
+            "source": "missing",
+            "raw_standing": None,
+        }
+
+    goal_diff_values = [_try_extract_gd(game) for game in results]
+    goal_diff = sum(value for value in goal_diff_values if value is not None)
+    return {
+        "wins": _count_wins(results),
+        "gp": len(results),
+        "goal_diff": float(goal_diff),
+        "source": "fallback_results",
+        "raw_standing": None,
+    }
+
+
+def _select_best_result_standing(results: List[Dict]) -> Optional[Dict[str, Any]]:
+    """Return the best team standing snapshot found inside game results."""
+    best_standing: Optional[Dict[str, Any]] = None
+    best_score: Tuple[int, int, int, int] = (-1, -1, -1, -1)
+
+    for game in results:
+        if not isinstance(game, dict):
+            continue
+        for key in ("team_standing", "standing", "current_standing"):
+            standing = game.get(key)
+            if not isinstance(standing, dict):
+                continue
+
+            wins = _extract_int_field(standing, ("wins", "w"))
+            gp = _extract_int_field(standing, ("gp", "games_played", "matches", "played"))
+            goal_diff = _extract_float_field(standing, ("goal_diff", "diff"))
+            score = (
+                1 if wins is not None else 0,
+                1 if gp is not None else 0,
+                1 if goal_diff is not None else 0,
+                gp if gp is not None else -1,
+            )
+            if score > best_score:
+                best_score = score
+                best_standing = standing
+
+    return best_standing
+
+
+def _extract_team_name_from_results(results: List[Dict]) -> Optional[str]:
+    for game in results:
+        if not isinstance(game, dict):
+            continue
+        for key in ("team_name", "team", "name", "display_name"):
+            value = game.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        standing = game.get("team_standing")
+        if isinstance(standing, dict):
+            standing_name = _extract_record_name(standing)
+            if standing_name:
+                return standing_name
+    return None
+
+
+def _normalize_season_record(raw_standing: Optional[Dict[str, Any]], source: str) -> Dict[str, Any]:
+    """Normalize a standing snapshot into the season record schema."""
+    wins = _extract_int_field(raw_standing, ("wins", "w"))
+    gp = _extract_int_field(raw_standing, ("gp", "games_played", "matches", "played"))
+    goal_diff = _extract_float_field(raw_standing, ("goal_diff", "diff"))
+
+    return {
+        "wins": wins,
+        "gp": gp,
+        "goal_diff": goal_diff,
+        "source": source,
+        "raw_standing": raw_standing,
+    }
+
+
+def _season_record_has_required_result_data(record: Dict[str, Any]) -> bool:
+    wins = record.get("wins")
+    gp = record.get("gp")
+    return wins is not None and gp is not None and gp > 0
+
+
+def _season_record_has_required_gd_data(record: Dict[str, Any]) -> bool:
+    gp = record.get("gp")
+    goal_diff = record.get("goal_diff")
+    return gp is not None and gp > 0 and goal_diff is not None
+
+
+def _extract_team_season_record(
+    streak_analysis: Any,
+    side: str,
+    fallback_results: List[Dict],
+) -> Dict[str, Any]:
+    """Extract a season record from the best available source for one side."""
+    direct_attr = f"{side}_team_current_standing"
+    team_name_attr = f"{side}_team_name"
+
+    direct_current_standing = getattr(streak_analysis, direct_attr, None)
+    team_name = getattr(streak_analysis, team_name_attr, None) or _extract_team_name_from_results(fallback_results)
+    current_standings = getattr(streak_analysis, "current_standings", None)
+
+    candidates: List[Tuple[str, Optional[Dict[str, Any]]]] = [
+        ("direct_current_standing", direct_current_standing if isinstance(direct_current_standing, dict) else None),
+        (
+            "current_standings",
+            _find_team_standing_in_current_standings(current_standings, team_name),
+        ),
+        ("results_team_standing", _select_best_result_standing(fallback_results)),
+    ]
+
+    for source, raw_standing in candidates:
+        if not isinstance(raw_standing, dict):
+            continue
+        record = _normalize_season_record(raw_standing, source)
+        if (
+            record["gp"] is not None
+            and record["gp"] > 0
+            and (
+                record["wins"] is not None
+                or record["goal_diff"] is not None
+            )
+        ):
+            return record
+
+    return _build_fallback_season_record_from_results(fallback_results)
+
+
+# ---------------------------------------------------------------------------
+# GD dynamic scale
+# ---------------------------------------------------------------------------
+
+def _resolve_gd_dynamic_scale(
+    streak_analysis: Any,
+    home_results: List[Dict],
+    away_results: List[Dict],
+    expected_league_size: Optional[int] = None,
+) -> Tuple[Optional[float], str, int]:
+    """Determine the GD dynamic scale using the official v4 chain."""
+
+    def _resolve_from_payload(payload: Any, source_name: str) -> Tuple[Optional[float], str, int]:
+        standings_list = _collect_unique_standings(payload)
+        gd_scale_samples = _extract_gd_scale_samples(standings_list)
+        sample_size = len(gd_scale_samples)
+        if sample_size == 0:
+            return None, "missing", 0
+
+        scale = _calculate_p75_dynamic_scale(standings_list)
+        if scale is None or scale <= 0:
+            return None, "missing", sample_size
+
+        if expected_league_size is not None and sample_size < expected_league_size:
+            return scale, "incomplete_league_standings", sample_size
+        return scale, source_name, sample_size
+
+    current_standings = getattr(streak_analysis, "current_standings", None)
+    scale, source, sample_size = _resolve_from_payload(current_standings, "current_standings")
+    if scale is not None:
+        return scale, source, sample_size
+
+    standings_response = getattr(streak_analysis, "standings_response", None)
+    scale, source, sample_size = _resolve_from_payload(standings_response, "standings_response")
+    if scale is not None:
+        return scale, source, sample_size
+
+    fallback_payload = _gather_full_league_standings_from_results(home_results, away_results)
+    scale, source, sample_size = _resolve_from_payload(fallback_payload, "results_snapshots")
+    if scale is not None:
+        return scale, source, sample_size
+
+    return None, "missing", 0
+
+
 def _gather_full_league_standings_from_results(
     home_results: List[Dict],
     away_results: List[Dict],
 ) -> List[Dict]:
-    """Collect standing snapshots from the result payloads.
-
-    Each result dict may carry ``team_standing`` and ``opponent_standing``.
-    The team identity is inferred from the result-level ``team_name`` and
-    ``opponent_name`` keys.
-    """
-    best: Dict[str, Dict] = {}
+    """Collect standing snapshots from the result payloads."""
+    best_by_team: Dict[str, Tuple[Tuple[int, int, int, int], Dict[str, Any]]] = {}
 
     def _process(team_key: Optional[str], snapshot: Optional[Dict]) -> None:
         if not team_key or not snapshot or not isinstance(snapshot, dict):
             return
-        gp = _get_games_played(snapshot)
-        if gp is None or gp <= 0:
+
+        normalized_team = _normalize_team_name(team_key)
+        if not normalized_team:
             return
-        existing_gp = _get_games_played(best.get(team_key)) or 0
-        if gp > existing_gp:
-            best[team_key] = snapshot
+
+        wins = _extract_int_field(snapshot, ("wins", "w"))
+        gp = _extract_int_field(snapshot, ("gp", "games_played", "matches", "played"))
+        goal_diff = _extract_float_field(snapshot, ("goal_diff", "diff"))
+        score = (
+            1 if wins is not None else 0,
+            1 if gp is not None else 0,
+            1 if goal_diff is not None else 0,
+            gp if gp is not None else -1,
+        )
+
+        existing = best_by_team.get(normalized_team)
+        if existing is None or score > existing[0]:
+            best_by_team[normalized_team] = (score, snapshot)
 
     for game in home_results:
         _process(game.get("team_name"), game.get("team_standing"))
@@ -201,52 +548,7 @@ def _gather_full_league_standings_from_results(
         _process(game.get("team_name"), game.get("team_standing"))
         _process(game.get("opponent_name"), game.get("opponent_standing"))
 
-    return list(best.values())
-
-
-def _resolve_gd_dynamic_scale(
-    home_results: List[Dict],
-    away_results: List[Dict],
-    home_gd_per_game: float,
-    away_gd_per_game: float,
-    expected_league_size: Optional[int] = None,
-) -> Tuple[Optional[float], str, int]:
-    """Determine the GD dynamic scale using the official v4 chain."""
-    del home_gd_per_game, away_gd_per_game
-
-    league_standings = _gather_full_league_standings_from_results(home_results, away_results)
-    gd_scale_samples = _extract_gd_scale_samples(league_standings)
-    sample_size = len(gd_scale_samples)
-
-    if sample_size == 0:
-        return None, "missing", 0
-
-    if expected_league_size is not None and sample_size < expected_league_size:
-        return None, "incomplete_league_standings", sample_size
-
-    scale = _calculate_p75_dynamic_scale(league_standings)
-    if scale is not None and scale > 0:
-        if expected_league_size is None:
-            return scale, "missing_expected_league_size", sample_size
-        return scale, "computed_league_standings", sample_size
-
-    if expected_league_size is None:
-        return None, "missing_expected_league_size", sample_size
-    return None, "incomplete_league_standings", sample_size
-
-
-# ---------------------------------------------------------------------------
-# Population standard deviation helper
-# ---------------------------------------------------------------------------
-
-def _pstdev(values: List[float]) -> float:
-    """Population standard deviation (not sample)."""
-    if not values:
-        return 0.0
-    n = len(values)
-    mean = sum(values) / n
-    variance = sum((v - mean) ** 2 for v in values) / n
-    return math.sqrt(variance)
+    return [record for _, record in best_by_team.values()]
 
 
 # ---------------------------------------------------------------------------
@@ -254,38 +556,54 @@ def _pstdev(values: List[float]) -> float:
 # ---------------------------------------------------------------------------
 
 def _calculate_result_edge(
-    home_results: List[Dict],
-    away_results: List[Dict],
+    home_record: Dict[str, Any],
+    away_record: Dict[str, Any],
     debug_mode: bool = False,
 ) -> Tuple[float, Dict[str, Any]]:
     """Component 1 - RESULT_EDGE (win-rate differential)."""
-    home_gp = len(home_results)
-    away_gp = len(away_results)
-    home_wins = _count_wins(home_results)
-    away_wins = _count_wins(away_results)
+    home_wins = home_record.get("wins")
+    away_wins = away_record.get("wins")
+    home_gp = home_record.get("gp")
+    away_gp = away_record.get("gp")
 
     raw: Dict[str, Any] = {
         "home_wins": home_wins,
         "away_wins": away_wins,
         "home_gp": home_gp,
         "away_gp": away_gp,
+        "home_record_source": home_record.get("source"),
+        "away_record_source": away_record.get("source"),
     }
 
     if debug_mode:
-        logger.info(f"  [RESULT_EDGE] home_wins={home_wins}/{home_gp}  away_wins={away_wins}/{away_gp}")
+        logger.info(
+            "  [RESULT_EDGE] home_record=%s | away_record=%s",
+            _format_record_summary(home_record),
+            _format_record_summary(away_record),
+        )
 
-    if home_gp == 0 or away_gp == 0:
-        raw["reason"] = "no_results"
+    if (
+        home_wins is None
+        or away_wins is None
+        or home_gp is None
+        or away_gp is None
+        or home_gp <= 0
+        or away_gp <= 0
+    ):
+        raw["reason"] = "missing_season_record"
+        raw["home_win_rate"] = None
+        raw["away_win_rate"] = None
+        raw["edge_raw"] = 0.0
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info("  [RESULT_EDGE] => SKIP (no_results) -> edge=0.0")
+            logger.info("  [RESULT_EDGE] => SKIP (missing_season_record) -> edge=0.0")
         return 0.0, raw
 
     home_win_rate = float(home_wins) / float(home_gp)
     away_win_rate = float(away_wins) / float(away_gp)
-
     edge_raw = home_win_rate - away_win_rate
     edge = clamp(edge_raw)
+
     raw["home_win_rate"] = home_win_rate
     raw["away_win_rate"] = away_win_rate
     raw["edge_raw"] = edge_raw
@@ -293,61 +611,45 @@ def _calculate_result_edge(
 
     if debug_mode:
         logger.info(
-            f"  [RESULT_EDGE] home_wr={home_win_rate:.4f}  away_wr={away_win_rate:.4f}  "
-            f"edge_raw={edge_raw:.4f}  edge_clamped={edge:.4f}"
+            "  [RESULT_EDGE] home_wr=%.4f away_wr=%.4f edge_raw=%.4f edge_clamped=%.4f",
+            home_win_rate,
+            away_win_rate,
+            edge_raw,
+            edge,
         )
 
     return edge, raw
 
 
 def _calculate_gd_edge(
-    home_gd_series: List[float],
-    away_gd_series: List[float],
+    home_record: Dict[str, Any],
+    away_record: Dict[str, Any],
+    streak_analysis: Any,
     home_results: List[Dict],
     away_results: List[Dict],
     expected_league_size: Optional[int] = None,
     debug_mode: bool = False,
 ) -> Tuple[float, Dict[str, Any]]:
     """Component 2 - GD_EDGE (goal-difference per game, dynamically scaled)."""
-    home_gp = len(home_gd_series)
-    away_gp = len(away_gd_series)
-    home_total_gd = sum(home_gd_series)
-    away_total_gd = sum(away_gd_series)
+    home_total_gd = home_record.get("goal_diff")
+    away_total_gd = away_record.get("goal_diff")
+    home_gp = home_record.get("gp")
+    away_gp = away_record.get("gp")
 
     raw: Dict[str, Any] = {
         "home_total_gd": home_total_gd,
         "away_total_gd": away_total_gd,
         "home_gp": home_gp,
         "away_gp": away_gp,
+        "home_record_source": home_record.get("source"),
+        "away_record_source": away_record.get("source"),
+        "expected_league_size": expected_league_size,
     }
 
-    if debug_mode:
-        logger.info(
-            f"  [GD_EDGE] home_total_gd={home_total_gd:.2f}/{home_gp}gp  "
-            f"away_total_gd={away_total_gd:.2f}/{away_gp}gp  "
-            f"expected_league_size={expected_league_size}"
-        )
-
-    if home_gp == 0 or away_gp == 0:
-        raw["reason"] = "no_results"
-        raw["dynamic_scale"] = None
-        raw["m1_gd_dynamic_scale"] = None
-        raw["final_edge_clamped"] = 0.0
-        if debug_mode:
-            logger.info("  [GD_EDGE] => SKIP (no_results) -> edge=0.0")
-        return 0.0, raw
-
-    home_gd_per_game = home_total_gd / float(home_gp)
-    away_gd_per_game = away_total_gd / float(away_gp)
-
-    raw["home_gd_per_game"] = home_gd_per_game
-    raw["away_gd_per_game"] = away_gd_per_game
-
     scale, source, sample_size = _resolve_gd_dynamic_scale(
+        streak_analysis,
         home_results,
         away_results,
-        home_gd_per_game,
-        away_gd_per_game,
         expected_league_size=expected_league_size,
     )
 
@@ -355,29 +657,66 @@ def _calculate_gd_edge(
     raw["m1_gd_dynamic_scale"] = scale
     raw["scale_source"] = source
     raw["league_sample_size"] = sample_size
-    raw["expected_league_size"] = expected_league_size
 
     if debug_mode:
         logger.info(
-            f"  [GD_EDGE] home_gd/g={home_gd_per_game:.4f}  away_gd/g={away_gd_per_game:.4f}  "
-            f"scale={scale}  scale_source={source}  league_samples={sample_size}"
+            "  [GD_EDGE] home_record=%s | away_record=%s",
+            _format_record_summary(home_record),
+            _format_record_summary(away_record),
         )
+        logger.info(
+            "  [GD_EDGE] scale=%.12f source=%s sample_size=%s expected_league_size=%s",
+            scale if scale is not None else float("nan"),
+            source,
+            sample_size,
+            expected_league_size,
+        )
+
+    if (
+        home_total_gd is None
+        or away_total_gd is None
+        or home_gp is None
+        or away_gp is None
+        or home_gp <= 0
+        or away_gp <= 0
+    ):
+        raw["reason"] = "missing_season_record"
+        raw["home_gd_per_game"] = None
+        raw["away_gd_per_game"] = None
+        raw["edge_raw"] = 0.0
+        raw["final_edge_clamped"] = 0.0
+        if debug_mode:
+            logger.info("  [GD_EDGE] => SKIP (missing_season_record) -> edge=0.0")
+        return 0.0, raw
 
     if scale is None or scale <= 0:
         raw["reason"] = "missing_dynamic_scale"
+        raw["home_gd_per_game"] = float(home_total_gd) / float(home_gp)
+        raw["away_gd_per_game"] = float(away_total_gd) / float(away_gp)
         raw["edge_raw"] = 0.0
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
             logger.info("  [GD_EDGE] => SKIP (missing_dynamic_scale) -> edge=0.0")
         return 0.0, raw
 
+    home_gd_per_game = float(home_total_gd) / float(home_gp)
+    away_gd_per_game = float(away_total_gd) / float(away_gp)
     edge_raw = (home_gd_per_game - away_gd_per_game) / scale
     edge = clamp(edge_raw)
+
+    raw["home_gd_per_game"] = home_gd_per_game
+    raw["away_gd_per_game"] = away_gd_per_game
     raw["edge_raw"] = edge_raw
     raw["final_edge_clamped"] = edge
 
     if debug_mode:
-        logger.info(f"  [GD_EDGE] edge_raw={edge_raw:.4f}  edge_clamped={edge:.4f}")
+        logger.info(
+            "  [GD_EDGE] home_gd/g=%.4f away_gd/g=%.4f edge_raw=%.4f edge_clamped=%.4f",
+            home_gd_per_game,
+            away_gd_per_game,
+            edge_raw,
+            edge,
+        )
 
     return edge, raw
 
@@ -396,14 +735,17 @@ def _calculate_consistency_edge(
     }
 
     if debug_mode:
-        logger.info(f"  [CONSISTENCY_EDGE] n_comparable_games={n}  windows_step={_CONSISTENCY_WINDOW_STEP}")
+        logger.info("  [CONSISTENCY_EDGE] n_comparable_games=%s window_step=%s", n, _CONSISTENCY_WINDOW_STEP)
 
     if n < _CONSISTENCY_WINDOW_STEP:
         raw["reason"] = "insufficient_games"
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info(f"  [CONSISTENCY_EDGE] => SKIP (insufficient_games, need >={_CONSISTENCY_WINDOW_STEP}) -> edge=0.0")
+            logger.info(
+                "  [CONSISTENCY_EDGE] => SKIP (insufficient_games, need >=%s) -> edge=0.0",
+                _CONSISTENCY_WINDOW_STEP,
+            )
         return 0.0, raw
 
     windows: List[int] = _build_cumulative_windows(n, _CONSISTENCY_WINDOW_STEP)
@@ -419,18 +761,21 @@ def _calculate_consistency_edge(
     away_window_stds: Dict[str, float] = {}
     consistency_edges_by_window: Dict[str, float] = {}
 
-    for w in windows:
-        label = f"L{w}"
-        home_std = _pstdev(home_series[:w])
-        away_std = _pstdev(away_series[:w])
+    for window_size in windows:
+        label = f"L{window_size}"
+        home_std = _pstdev(home_series[:window_size])
+        away_std = _pstdev(away_series[:window_size])
         home_window_stds[label] = home_std
         away_window_stds[label] = away_std
         window_edge = away_std - home_std
         consistency_edges_by_window[label] = window_edge
         if debug_mode:
             logger.info(
-                f"  [CONSISTENCY_EDGE] {label}: home_std={home_std:.4f}  "
-                f"away_std={away_std:.4f}  edge={window_edge:.4f}"
+                "  [CONSISTENCY_EDGE] %s: home_std=%.4f away_std=%.4f edge=%.4f",
+                label,
+                home_std,
+                away_std,
+                window_edge,
             )
 
     consistency_edge_raw_average = (
@@ -442,8 +787,9 @@ def _calculate_consistency_edge(
 
     if debug_mode:
         logger.info(
-            f"  [CONSISTENCY_EDGE] avg_raw={consistency_edge_raw_average:.4f}  "
-            f"edge_clamped={final_edge_clamped:.4f}"
+            "  [CONSISTENCY_EDGE] avg_raw=%.4f edge_clamped=%.4f",
+            consistency_edge_raw_average,
+            final_edge_clamped,
         )
 
     raw["windows"] = windows
@@ -467,14 +813,17 @@ def _calculate_vol_direction_edge(
     raw: Dict[str, Any] = {}
 
     if debug_mode:
-        logger.info(f"  [VOL_DIRECTION_EDGE] n_comparable_games={n}  batch_size={_BATCH_SIZE}")
+        logger.info("  [VOL_DIRECTION_EDGE] n_comparable_games=%s batch_size=%s", n, _BATCH_SIZE)
 
     if n < _BATCH_SIZE:
         raw["reason"] = "insufficient_games"
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info(f"  [VOL_DIRECTION_EDGE] => SKIP (insufficient_games, need >={_BATCH_SIZE}) -> edge=0.0")
+            logger.info(
+                "  [VOL_DIRECTION_EDGE] => SKIP (insufficient_games, need >=%s) -> edge=0.0",
+                _BATCH_SIZE,
+            )
         return 0.0, raw
 
     windows: List[int] = _build_cumulative_windows(n, _BATCH_SIZE)
@@ -489,16 +838,8 @@ def _calculate_vol_direction_edge(
     def _powers(series: List[float]) -> Tuple[float, float, float]:
         positive_values = [value for value in series if value > 0]
         negative_values = [abs(value) for value in series if value < 0]
-        destroy_power = (
-            sum(positive_values) / len(positive_values)
-            if positive_values
-            else 0.0
-        )
-        collapse_power = (
-            sum(negative_values) / len(negative_values)
-            if negative_values
-            else 0.0
-        )
+        destroy_power = sum(positive_values) / len(positive_values) if positive_values else 0.0
+        collapse_power = sum(negative_values) / len(negative_values) if negative_values else 0.0
         net_vol = destroy_power - collapse_power
         return destroy_power, collapse_power, net_vol
 
@@ -510,10 +851,10 @@ def _calculate_vol_direction_edge(
     away_net_vol_by_window: Dict[str, float] = {}
     vol_direction_edges_by_window: Dict[str, float] = {}
 
-    for w in windows:
-        label = f"L{w}"
-        home_destroy, home_collapse, home_net = _powers(home_series[:w])
-        away_destroy, away_collapse, away_net = _powers(away_series[:w])
+    for window_size in windows:
+        label = f"L{window_size}"
+        home_destroy, home_collapse, home_net = _powers(home_series[:window_size])
+        away_destroy, away_collapse, away_net = _powers(away_series[:window_size])
         window_edge = home_net - away_net
 
         home_destroy_power_by_window[label] = home_destroy
@@ -526,10 +867,16 @@ def _calculate_vol_direction_edge(
 
         if debug_mode:
             logger.info(
-                f"  [VOL_DIRECTION_EDGE] {label}: "
-                f"home(destroy={home_destroy:.4f}, collapse={home_collapse:.4f}, net={home_net:.4f})  "
-                f"away(destroy={away_destroy:.4f}, collapse={away_collapse:.4f}, net={away_net:.4f})  "
-                f"edge={window_edge:.4f}"
+                "  [VOL_DIRECTION_EDGE] %s: home(destroy=%.4f collapse=%.4f net=%.4f) "
+                "away(destroy=%.4f collapse=%.4f net=%.4f) edge=%.4f",
+                label,
+                home_destroy,
+                home_collapse,
+                home_net,
+                away_destroy,
+                away_collapse,
+                away_net,
+                window_edge,
             )
 
     vol_direction_edge_raw_average = (
@@ -541,8 +888,9 @@ def _calculate_vol_direction_edge(
 
     if debug_mode:
         logger.info(
-            f"  [VOL_DIRECTION_EDGE] avg_raw={vol_direction_edge_raw_average:.4f}  "
-            f"edge_clamped={final_edge_clamped:.4f}"
+            "  [VOL_DIRECTION_EDGE] avg_raw=%.4f edge_clamped=%.4f",
+            vol_direction_edge_raw_average,
+            final_edge_clamped,
         )
 
     raw["windows"] = windows
@@ -560,36 +908,48 @@ def _calculate_vol_direction_edge(
 
 
 def _determine_m1_status(
+    home_record: Dict[str, Any],
+    away_record: Dict[str, Any],
     result_raw: Dict[str, Any],
     gd_raw: Dict[str, Any],
     consistency_raw: Dict[str, Any],
     vol_raw: Dict[str, Any],
-    ) -> Tuple[str, str]:
+) -> Tuple[str, str]:
     """Derive a v4 status label and reason for the module output."""
     if (
-        result_raw.get("reason") == "no_results"
-        or gd_raw.get("reason") == "no_results"
+        not _season_record_has_required_result_data(home_record)
+        or not _season_record_has_required_result_data(away_record)
+        or not _season_record_has_required_gd_data(home_record)
+        or not _season_record_has_required_gd_data(away_record)
+        or result_raw.get("reason") == "missing_season_record"
+        or gd_raw.get("reason") == "missing_season_record"
         or consistency_raw.get("reason") == "insufficient_games"
         or vol_raw.get("reason") == "insufficient_games"
     ):
-        return "INSUFFICIENT_DATA", "insufficient_results_or_series"
+        return "INSUFFICIENT_DATA", "missing_season_record_or_short_series"
 
     scale_source = gd_raw.get("scale_source")
     expected_league_size = gd_raw.get("expected_league_size")
     league_sample_size = gd_raw.get("league_sample_size")
 
-    if scale_source == "computed_league_standings" and expected_league_size and league_sample_size is not None:
-        if league_sample_size >= expected_league_size:
-            return "ACTIVE", "official_league_scale"
-        return "DEGRADED", "insufficient_league_sample_size"
-    if scale_source == "missing":
+    if scale_source in (None, "missing"):
         return "INVALID_GD_SCALE", "missing_league_standings"
-    if scale_source == "missing_expected_league_size":
-        if gd_raw.get("dynamic_scale") is None:
-            return "INVALID_GD_SCALE", "missing_expected_league_size"
-        return "DEGRADED", "missing_expected_league_size"
+
+    if scale_source == "current_standings":
+        if expected_league_size is None:
+            return "DEGRADED", "missing_expected_league_size"
+        if league_sample_size is None or league_sample_size < expected_league_size:
+            return "DEGRADED", "incomplete_league_standings"
+        return "ACTIVE", "official_league_scale"
+
     if scale_source == "incomplete_league_standings":
         return "DEGRADED", "incomplete_league_standings"
+
+    if scale_source in ("standings_response", "results_snapshots"):
+        return "DEGRADED", "fallback_league_scale"
+
+    if gd_raw.get("dynamic_scale") is None:
+        return "INVALID_GD_SCALE", "missing_league_standings"
 
     return "DEGRADED", "non_official_gd_scale"
 
@@ -617,29 +977,38 @@ def calculate_base_strength(
     league_config_source = getattr(event_context.competition, "league_config_source", None)
     expected_league_size = competition_number_of_teams
 
+    home_team_name = getattr(streak_analysis, "home_team_name", None)
+    away_team_name = getattr(streak_analysis, "away_team_name", None)
+
+    home_record = _extract_team_season_record(streak_analysis, "home", home_results)
+    away_record = _extract_team_season_record(streak_analysis, "away", away_results)
+
     home_gd_series = _extract_game_gd_series(home_results)
     away_gd_series = _extract_game_gd_series(away_results)
 
     if debug_mode:
+        logger.info("--- M1 Base Strength Debug: Event %s (%s) ---", event_id, participants)
         logger.info(
-            f"--- M1 Base Strength Debug: Event {event_id} ({participants}) ---"
+            "  competition=%s (id=%s) expected_league_size=%s home_results=%s away_results=%s",
+            competition_display_name,
+            competition_id,
+            expected_league_size,
+            len(home_results),
+            len(away_results),
         )
+        logger.info("  home_record=%s", _format_record_summary(home_record))
+        logger.info("  away_record=%s", _format_record_summary(away_record))
         logger.info(
-            f"  competition={competition_display_name} (id={competition_id})  "
-            f"expected_league_size={expected_league_size}  "
-            f"home_results={len(home_results)}  away_results={len(away_results)}"
-        )
-        logger.info(
-            f"  home_gd_series ({len(home_gd_series)} games): {home_gd_series}"
-        )
-        logger.info(
-            f"  away_gd_series ({len(away_gd_series)} games): {away_gd_series}"
+            "  home_gd_series_count=%s away_gd_series_count=%s",
+            len(home_gd_series),
+            len(away_gd_series),
         )
 
-    result_edge, result_raw = _calculate_result_edge(home_results, away_results, debug_mode=debug_mode)
+    result_edge, result_raw = _calculate_result_edge(home_record, away_record, debug_mode=debug_mode)
     gd_edge, gd_raw = _calculate_gd_edge(
-        home_gd_series,
-        away_gd_series,
+        home_record,
+        away_record,
+        streak_analysis,
         home_results,
         away_results,
         expected_league_size=expected_league_size,
@@ -657,6 +1026,8 @@ def calculate_base_strength(
     )
 
     m1_status, m1_status_reason = _determine_m1_status(
+        home_record,
+        away_record,
         result_raw,
         gd_raw,
         consistency_raw,
@@ -688,19 +1059,28 @@ def calculate_base_strength(
         logger.info("  --- Component Summary ---")
         for c in components:
             logger.info(
-                f"  {c.name}: edge={c.edge:.4f}  weight={c.weight}  weighted={c.weighted_edge:.4f}  "
-                f"bias={c.bias}  strength={c.strength}"
+                "  %s: edge=%.4f weight=%.2f weighted=%.4f bias=%s strength=%s",
+                c.name,
+                c.edge,
+                c.weight,
+                c.weighted_edge,
+                c.bias,
+                c.strength,
             )
         logger.info(
-            f"  M1 Final: base_value={base_value:.4f}  final_clamped={final_value:.4f}  "
-            f"bias={calculate_bias(final_value)}  strength={classify_strength(final_value)}  "
-            f"status={m1_status} ({m1_status_reason})"
+            "  M1 Final: base_value=%.4f final_clamped=%.4f bias=%s strength=%s status=%s reason=%s",
+            base_value,
+            final_value,
+            calculate_bias(final_value),
+            classify_strength(final_value),
+            m1_status,
+            m1_status_reason,
         )
         logger.info("-" * 60)
 
     raw_audit: Dict[str, Any] = {
-        "home_team": getattr(streak_analysis, "home_team_name", None),
-        "away_team": getattr(streak_analysis, "away_team_name", None),
+        "home_team": home_team_name,
+        "away_team": away_team_name,
         "event_context_present": True,
         "context_status": "normalized",
         "competition_id": competition_id,
@@ -711,6 +1091,8 @@ def calculate_base_strength(
         "standings_grouping": standings_grouping,
         "league_config_source": league_config_source,
         "expected_league_size": expected_league_size,
+        "home_season_record": home_record,
+        "away_season_record": away_record,
         "m1_edge": final_value,
         "m1_abs_edge": abs(final_value),
         "m1_bias": calculate_bias(final_value),
@@ -718,10 +1100,17 @@ def calculate_base_strength(
         "m1_status": m1_status,
         "m1_status_reason": m1_status_reason,
         "m1_gd_dynamic_scale": gd_raw.get("dynamic_scale"),
+        "m1_gd_dynamic_scale_source": gd_raw.get("scale_source"),
         "result_edge": result_edge,
         "gd_edge": gd_edge,
         "consistency_edge": consistency_edge,
         "vol_direction_edge": vol_direction_edge,
+        "m1_component_contributions": {
+            "result": result_edge * _WEIGHT_RESULT_EDGE,
+            "gd": gd_edge * _WEIGHT_GD_EDGE,
+            "consistency": consistency_edge * _WEIGHT_CONSISTENCY_EDGE,
+            "vol_direction": vol_direction_edge * _WEIGHT_VOL_DIRECTION_EDGE,
+        },
         "result_edge_raw": result_raw,
         "gd_edge_raw": gd_raw,
         "consistency_edge_raw": consistency_raw,
