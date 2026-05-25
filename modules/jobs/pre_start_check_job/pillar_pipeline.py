@@ -340,25 +340,6 @@ class EventPillarProcessor:
                 comp.get("strength", "?"),
             )
 
-        m8 = modules[7] if len(modules) > 7 else {}
-        logger.info(
-            "P1/M8 Opponent Expectation Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
-            participants,
-            m8.get("value", 0),
-            m8.get("bias", "N/A"),
-            m8.get("strength", "N/A"),
-        )
-
-        for comp in m8.get("components", []):
-            logger.info(
-                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                comp.get("name", "?"),
-                comp.get("edge", 0),
-                comp.get("weight", 0),
-                comp.get("weighted_edge", 0),
-                comp.get("bias", "?"),
-                comp.get("strength", "?"),
-            )
 
         p1_result.setdefault("raw", {}).update(
             {

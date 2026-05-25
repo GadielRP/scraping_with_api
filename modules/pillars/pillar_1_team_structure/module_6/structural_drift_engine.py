@@ -19,9 +19,8 @@ from modules.pillars.score_series import extract_score_for_against
 logger = logging.getLogger(__name__)
 
 _BLOCK_COUNT = 5
-_WEIGHT_TREND_GLOBAL = 0.35
-_WEIGHT_STABILITY = 0.20
-_WEIGHT_FINAL_ACCELERATION = 0.45
+_WEIGHT_TREND_GLOBAL = 0.65
+_WEIGHT_STABILITY = 0.35
 
 
 def _coerce_float(value: Any) -> Optional[float]:
@@ -220,14 +219,9 @@ def calculate_structural_drift_engine(
     away_volatility = _population_std(away_structural_vector, team_label="AWAY", debug=debug_mode)
     stability_edge = clamp(_relative_edge(away_volatility, home_volatility))
 
-    home_final_acceleration = home_structural_vector[4] - home_structural_vector[3] if len(home_structural_vector) >= 5 else 0.0
-    away_final_acceleration = away_structural_vector[4] - away_structural_vector[3] if len(away_structural_vector) >= 5 else 0.0
-    final_acceleration_edge = clamp(_relative_edge(home_final_acceleration, away_final_acceleration))
-
     m6_edge_raw = (
         (_WEIGHT_TREND_GLOBAL * trend_global_edge)
         + (_WEIGHT_STABILITY * stability_edge)
-        + (_WEIGHT_FINAL_ACCELERATION * final_acceleration_edge)
     )
     m6_edge = clamp(m6_edge_raw)
     if m6_status == "INSUFFICIENT_DATA":
@@ -257,13 +251,8 @@ def calculate_structural_drift_engine(
             f"edge={stability_edge:.12f}"
         )
         logger.info(
-            f"  [FINAL_ACCELERATION_EDGE] home_final_acceleration={home_final_acceleration:.12f} "
-            f"away_final_acceleration={away_final_acceleration:.12f} edge={final_acceleration_edge:.12f}"
-        )
-        logger.info(
             f"  [M6_EDGE_RAW] ({_WEIGHT_TREND_GLOBAL:.2f} * trend_global_edge({trend_global_edge:.12f})) + "
-            f"({_WEIGHT_STABILITY:.2f} * stability_edge({stability_edge:.12f})) + "
-            f"({_WEIGHT_FINAL_ACCELERATION:.2f} * final_acceleration_edge({final_acceleration_edge:.12f})) = "
+            f"({_WEIGHT_STABILITY:.2f} * stability_edge({stability_edge:.12f})) = "
             f"{m6_edge_raw:.12f}"
         )
         logger.info(f"  [M6_EDGE] clamped = {m6_edge:.12f}")
@@ -277,11 +266,6 @@ def calculate_structural_drift_engine(
             f"  STABILITY_EDGE: edge={stability_edge:.12f}  weight={_WEIGHT_STABILITY:.2f}  "
             f"weighted={stability_edge * _WEIGHT_STABILITY:.12f}  "
             f"bias={calculate_bias(stability_edge)}  strength={classify_strength(stability_edge)}"
-        )
-        logger.info(
-            f"  FINAL_ACCELERATION_EDGE: edge={final_acceleration_edge:.12f}  weight={_WEIGHT_FINAL_ACCELERATION:.2f}  "
-            f"weighted={final_acceleration_edge * _WEIGHT_FINAL_ACCELERATION:.12f}  "
-            f"bias={calculate_bias(final_acceleration_edge)}  strength={classify_strength(final_acceleration_edge)}"
         )
         logger.info(
             f"  M6 Final: edge_raw={m6_edge_raw:.12f}  edge_clamped={m6_edge:.12f}  "
@@ -311,16 +295,6 @@ def calculate_structural_drift_engine(
                 "formula": "(VOLATILITY_AWAY - VOLATILITY_HOME) / (VOLATILITY_AWAY + VOLATILITY_HOME)",
             },
         ),
-        _component(
-            "FINAL_ACCELERATION_EDGE",
-            final_acceleration_edge,
-            _WEIGHT_FINAL_ACCELERATION,
-            {
-                "home_final_acceleration": home_final_acceleration,
-                "away_final_acceleration": away_final_acceleration,
-                "formula": "(FINAL_ACCELERATION_HOME - FINAL_ACCELERATION_AWAY) / (abs(FINAL_ACCELERATION_HOME) + abs(FINAL_ACCELERATION_AWAY))",
-            },
-        ),
     ]
 
     raw = {
@@ -346,11 +320,6 @@ def calculate_structural_drift_engine(
             "home_volatility": home_volatility,
             "away_volatility": away_volatility,
             "edge": stability_edge,
-        },
-        "final_acceleration": {
-            "home_final_acceleration": home_final_acceleration,
-            "away_final_acceleration": away_final_acceleration,
-            "edge": final_acceleration_edge,
         },
         "m6_edge_raw": m6_edge_raw,
         "m6_edge": m6_edge,

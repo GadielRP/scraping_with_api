@@ -18,14 +18,14 @@ from modules.pillars.pillar_1_team_structure.module_3.direct_matchup_profile imp
 from modules.pillars.pillar_1_team_structure.module_4.recent_inertia_engine import (
     calculate_recent_inertia_engine as calculate_recent_inertia_engine_m4,
 )
-from modules.pillars.pillar_1_team_structure.module_5.recent_inertia_engine import (
-    calculate_recent_inertia_engine as calculate_recent_inertia_engine_m5,
+from modules.pillars.pillar_1_team_structure.module_5.contextual_competitive_cost_engine import (
+    calculate_contextual_competitive_cost_engine,
 )
 from modules.pillars.pillar_1_team_structure.module_6.structural_drift_engine import (
     calculate_structural_drift_engine,
 )
 from modules.pillars.pillar_1_team_structure.module_7.opponent_expectation_engine import (
-    calculate_opponent_expectation_engine,
+    calculate_m7_opponent_expectation_engine,
 )
 
 _MODULE_WEIGHTS: Dict[str, float] = {
@@ -156,7 +156,7 @@ def calculate_pillar_1_team_structure(
         event_context=event_context,
         debug_mode=debug_mode,
     )
-    m5_result = calculate_recent_inertia_engine_m5(
+    m5_result = calculate_contextual_competitive_cost_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
@@ -166,7 +166,7 @@ def calculate_pillar_1_team_structure(
         event_context=event_context,
         debug_mode=debug_mode,
     )
-    m7_result = calculate_opponent_expectation_engine(
+    m7_result = calculate_m7_opponent_expectation_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
