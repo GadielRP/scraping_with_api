@@ -1,4 +1,4 @@
-"""M8 - Opponent Expectation Engine v2.1."""
+"""M7 - Opponent Expectation Engine v2.1."""
 
 from __future__ import annotations
 
@@ -201,7 +201,7 @@ def _team_context(results: List[Dict[str, Any]], league_size: int) -> Dict[str, 
     }
 
 
-def _relative_m8_edge(home_score: float, away_score: float) -> float:
+def _relative_m7_edge(home_score: float, away_score: float) -> float:
     return (home_score - away_score) / 2.0
 
 
@@ -248,18 +248,18 @@ def calculate_opponent_expectation_engine(
     league_size, league_size_source = _league_size(streak_analysis, event_context)
     home_context = _team_context(home_results, league_size)
     away_context = _team_context(away_results, league_size)
-    m8_status, m8_status_reason = _determine_status(home_context, away_context, league_size_source)
+    m7_status, m7_status_reason = _determine_status(home_context, away_context, league_size_source)
 
     home_team_context_score = float(home_context["team_context_score"])
     away_team_context_score = float(away_context["team_context_score"])
-    m8_edge_raw = _relative_m8_edge(home_team_context_score, away_team_context_score)
-    m8_edge = clamp(m8_edge_raw)
-    if m8_status == "INSUFFICIENT_DATA":
-        m8_edge_raw = 0.0
-        m8_edge = 0.0
+    m7_edge_raw = _relative_m7_edge(home_team_context_score, away_team_context_score)
+    m7_edge = clamp(m7_edge_raw)
+    if m7_status == "INSUFFICIENT_DATA":
+        m7_edge_raw = 0.0
+        m7_edge = 0.0
 
     if debug_mode:
-        logger.info(f"--- M8 Opponent Expectation Engine Debug: Event {event_id} ({participants}) ---")
+        logger.info(f"--- M7 Opponent Expectation Engine Debug: Event {event_id} ({participants}) ---")
         logger.info(f"  home_team={home_team} | away_team={away_team}")
         logger.info(f"  league_size={league_size} source={league_size_source}")
         logger.info(
@@ -274,7 +274,7 @@ def calculate_opponent_expectation_engine(
         )
         if away_context.get("invalid_games"):
             logger.info(f"  [AWAY_INVALID_GAMES] {away_context['invalid_games']}")
-        logger.info(f"  activation_status={m8_status} ({m8_status_reason})")
+        logger.info(f"  activation_status={m7_status} ({m7_status_reason})")
         logger.info(f"  [HOME_CONTEXT_SCORE] team_context_score={home_team_context_score:.12f}")
         logger.info(f"  [AWAY_CONTEXT_SCORE] team_context_score={away_team_context_score:.12f}")
         logger.info(f"  [HOME_TOP_POSITIVE] {home_context['top_positive_games']}")
@@ -282,28 +282,28 @@ def calculate_opponent_expectation_engine(
         logger.info(f"  [AWAY_TOP_POSITIVE] {away_context['top_positive_games']}")
         logger.info(f"  [AWAY_TOP_NEGATIVE] {away_context['top_negative_games']}")
         logger.info(
-            f"  [M8_EDGE_RAW] edge = (home_context_score({home_team_context_score:.12f}) - "
-            f"away_context_score({away_team_context_score:.12f})) / 2 = {m8_edge_raw:.12f}"
+            f"  [M7_EDGE_RAW] edge = (home_context_score({home_team_context_score:.12f}) - "
+            f"away_context_score({away_team_context_score:.12f})) / 2 = {m7_edge_raw:.12f}"
         )
-        logger.info(f"  [M8_EDGE] clamped = {m8_edge:.12f}")
+        logger.info(f"  [M7_EDGE] clamped = {m7_edge:.12f}")
         logger.info("  --- Component Summary ---")
         logger.info(
-            f"  OPPONENT_EXPECTATION_EDGE: edge={m8_edge:.12f}  weight=1.00  "
-            f"weighted={m8_edge:.12f}  bias={calculate_bias(m8_edge)}  strength={classify_strength(m8_edge)}"
+            f"  OPPONENT_EXPECTATION_EDGE: edge={m7_edge:.12f}  weight=1.00  "
+            f"weighted={m7_edge:.12f}  bias={calculate_bias(m7_edge)}  strength={classify_strength(m7_edge)}"
         )
         logger.info(
-            f"  M8 Final: edge_raw={m8_edge_raw:.12f}  edge_clamped={m8_edge:.12f} "
-            f"bias={calculate_bias(m8_edge)}  strength={classify_strength(m8_edge)} "
-            f"status={m8_status} ({m8_status_reason})"
+            f"  M7 Final: edge_raw={m7_edge_raw:.12f}  edge_clamped={m7_edge:.12f} "
+            f"bias={calculate_bias(m7_edge)}  strength={classify_strength(m7_edge)} "
+            f"status={m7_status} ({m7_status_reason})"
         )
         logger.info("-" * 60)
 
     components = []
-    if m8_status != "INSUFFICIENT_DATA":
+    if m7_status != "INSUFFICIENT_DATA":
         components = [
             _component(
                 "OPPONENT_EXPECTATION_EDGE",
-                m8_edge,
+                m7_edge,
                 1.0,
                 {
                     "home_team_context_score": home_team_context_score,
@@ -320,23 +320,23 @@ def calculate_opponent_expectation_engine(
         "league_size_source": league_size_source,
         "home_context": home_context,
         "away_context": away_context,
-        "m8_edge_raw": m8_edge_raw,
-        "m8_edge": m8_edge,
-        "m8_abs_edge": abs(m8_edge),
-        "m8_status": m8_status,
-        "m8_status_reason": m8_status_reason,
+        "m7_edge_raw": m7_edge_raw,
+        "m7_edge": m7_edge,
+        "m7_abs_edge": abs(m7_edge),
+        "m7_status": m7_status,
+        "m7_status_reason": m7_status_reason,
         "engine_version": "opponent_expectation_v2_1",
     }
 
     return ModuleResult(
         pillar_id="pillar_1_team_structure",
-        module_id="M8",
+        module_id="M7",
         module_name="Opponent Expectation Engine",
         event_id=event_id,
         participants=participants,
-        value=m8_edge,
-        bias=calculate_bias(m8_edge),
-        strength=classify_strength(m8_edge),
+        value=m7_edge,
+        bias=calculate_bias(m7_edge),
+        strength=classify_strength(m7_edge),
         components=components,
         raw=raw,
     )

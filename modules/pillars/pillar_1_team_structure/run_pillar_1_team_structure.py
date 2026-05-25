@@ -15,19 +15,16 @@ from modules.pillars.pillar_1_team_structure.module_2.performance_profile import
 from modules.pillars.pillar_1_team_structure.module_3.direct_matchup_profile import (
     calculate_direct_matchup_profile,
 )
-from modules.pillars.pillar_1_team_structure.module_4.hybrid_structural_engine import (
-    calculate_hybrid_structural_engine,
+from modules.pillars.pillar_1_team_structure.module_4.recent_inertia_engine import (
+    calculate_recent_inertia_engine as calculate_recent_inertia_engine_m4,
 )
 from modules.pillars.pillar_1_team_structure.module_5.recent_inertia_engine import (
-    calculate_recent_inertia_engine,
+    calculate_recent_inertia_engine as calculate_recent_inertia_engine_m5,
 )
 from modules.pillars.pillar_1_team_structure.module_6.structural_drift_engine import (
-    calculate_m6_structural_drift_engine,
-)
-from modules.pillars.pillar_1_team_structure.module_7.structural_drift_engine import (
     calculate_structural_drift_engine,
 )
-from modules.pillars.pillar_1_team_structure.module_8.opponent_expectation_engine import (
+from modules.pillars.pillar_1_team_structure.module_7.opponent_expectation_engine import (
     calculate_opponent_expectation_engine,
 )
 
@@ -39,7 +36,6 @@ _MODULE_WEIGHTS: Dict[str, float] = {
     "M5": 0.11,
     "M6": 0.09,
     "M7": 0.11,
-    "M8": 0.11,
 }
 
 
@@ -155,27 +151,22 @@ def calculate_pillar_1_team_structure(
         event_context=event_context,
         debug_mode=debug_mode,
     )
-    m4_result = calculate_hybrid_structural_engine(
+    m4_result = calculate_recent_inertia_engine_m4(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
     )
-    m5_result = calculate_recent_inertia_engine(
+    m5_result = calculate_recent_inertia_engine_m5(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
     )
-    m6_result = calculate_m6_structural_drift_engine(
+    m6_result = calculate_structural_drift_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
     )
-    m7_result = calculate_structural_drift_engine(
-        streak_analysis,
-        event_context=event_context,
-        debug_mode=debug_mode,
-    )
-    m8_result = calculate_opponent_expectation_engine(
+    m7_result = calculate_opponent_expectation_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
@@ -189,7 +180,6 @@ def calculate_pillar_1_team_structure(
         m5_result,
         m6_result,
         m7_result,
-        m8_result,
     ])
 
     return {
@@ -205,7 +195,6 @@ def calculate_pillar_1_team_structure(
             _serialize_module_result(m5_result),
             _serialize_module_result(m6_result),
             _serialize_module_result(m7_result),
-            _serialize_module_result(m8_result),
         ],
         "value": pillar_value,
         "raw": {
@@ -221,6 +210,5 @@ def calculate_pillar_1_team_structure(
             "m5_raw": m5_result.raw,
             "m6_raw": m6_result.raw,
             "m7_raw": m7_result.raw,
-            "m8_raw": m8_result.raw,
         },
     }
