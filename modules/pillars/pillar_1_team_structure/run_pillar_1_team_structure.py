@@ -9,7 +9,7 @@ from modules.pillars.context import EventContext
 from modules.pillars.pillar_1_team_structure.module_1.base_strength import (
     calculate_base_strength,
 )
-from modules.pillars.pillar_1_team_structure.module_2.performance_profile import (
+from modules.pillars.pillar_1_team_structure.module_2.offensive_profile_engine import (
     calculate_performance_profile,
 )
 from modules.pillars.pillar_1_team_structure.module_3.direct_matchup_profile import (

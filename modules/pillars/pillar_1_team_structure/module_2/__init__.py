@@ -1,5 +1,5 @@
-"""Module 2 - Performance Profile package."""
+"""Module 2 - Offensive Profile Engine package."""
 
-from .performance_profile import calculate_performance_profile
+from .offensive_profile_engine import calculate_performance_profile
 
 __all__ = ["calculate_performance_profile"]

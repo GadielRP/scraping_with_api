@@ -221,7 +221,7 @@ class EventPillarProcessor:
         modules = p1_result.get("modules", [])
         m2 = modules[1] if len(modules) > 1 else {}
         logger.info(
-            "P1/M2 Performance Profile calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/M2 Offensive Profile Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
             participants,
             m2.get("value", 0),
             m2.get("bias", "N/A"),
