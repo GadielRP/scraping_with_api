@@ -49,6 +49,8 @@ class ParsedImmediateMatch:
 def _coerce_float(value: Any) -> Optional[float]:
     if value is None:
         return None
+    if isinstance(value, bool):
+        return None
     try:
         coerced = float(value)
     except (TypeError, ValueError):

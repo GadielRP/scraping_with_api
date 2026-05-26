@@ -262,7 +262,7 @@ class EventPillarProcessor:
 
         m4 = modules[3] if len(modules) > 3 else {}
         logger.info(
-            "P1/M4 Hybrid Structural Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/M4 Quality-Adjusted Immediate State Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
             participants,
             m4.get("value", 0),
             m4.get("bias", "N/A"),
