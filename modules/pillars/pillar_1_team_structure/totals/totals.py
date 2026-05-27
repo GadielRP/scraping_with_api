@@ -19,19 +19,14 @@ from modules.pillars.context import EventContext
 
 logger = logging.getLogger(__name__)
 
-TEMPORAL_WINDOW_SIZES: Dict[str, int] = {
-    "L5": 5,
-    "L20": 20,
-    "L40": 40,
-    "L60": 60,
-}
+TOTALS_TEMPORAL_WINDOW_CONFIG: Tuple[Tuple[str, float, float], ...] = (
+    ("TOTALS_SHORT", 0.15, 0.30),
+    ("TOTALS_RECENT", 0.35, 0.35),
+    ("TOTALS_MID", 0.60, 0.20),
+    ("TOTALS_FULL", 1.00, 0.15),
+)
 
-TEMPORAL_WINDOW_WEIGHTS: Dict[str, float] = {
-    "L5": 0.30,
-    "L20": 0.35,
-    "L40": 0.20,
-    "L60": 0.15,
-}
+TOTALS_TEMPORAL_WINDOW_NAMES: Tuple[str, ...] = tuple(name for name, _, _ in TOTALS_TEMPORAL_WINDOW_CONFIG)
 
 LAYER_BASE_WEIGHTS: Dict[str, float] = {
     "STRUCTURAL": 0.40,
@@ -77,6 +72,7 @@ class P1TotalsOutput:
     confidence_total: float
     status: str
     status_reason: str
+    TEMPORAL_CONFIG: Optional[Dict[str, Any]] = None
 
 
 _TEAM_TOTAL_G_KEYS = (
@@ -230,6 +226,89 @@ def _weighted_average(values_and_weights: List[Tuple[Optional[float], float]]) -
     weighted_sum = sum(value * weight for _, value, weight in active if value is not None)
     effective_weights = {str(index): weight / total_weight for index, _, weight in active}
     return weighted_sum / total_weight, total_weight, effective_weights
+
+
+def _resolve_window_size_from_ratio(n_season: int, ratio: float) -> int:
+    """Resolve an integer window size from a normalized season ratio.
+
+    The calculation uses half-up rounding instead of ``round()`` so the result
+    is deterministic and does not inherit Python's banker's rounding behavior.
+    The resolved size is then clamped to at least 1 and at most ``n_season``.
+    """
+
+    if n_season <= 0 or ratio <= 0:
+        return 1
+    resolved_size = int(math.floor((float(n_season) * float(ratio)) + 0.5))
+    return max(1, min(int(n_season), resolved_size))
+
+
+def _extract_positive_season_length_from_payload(payload: Any) -> Optional[int]:
+    if payload is None:
+        return None
+    payload_dict = payload if isinstance(payload, dict) else getattr(payload, "__dict__", None)
+    if not isinstance(payload_dict, dict):
+        return None
+    value = _extract_int_field(payload_dict, ("total_regular_season_games",))
+    if value is not None and value > 0:
+        return value
+    return None
+
+
+def _is_active_signal(signal: Optional[float]) -> bool:
+    return signal is not None and abs(signal) + EPSILON >= IGNORE_THRESHOLD
+
+
+def _resolve_totals_temporal_window_config(
+    event_context: EventContext,
+    league_totals_context: Dict[str, Any],
+    league_records: List[Dict[str, Any]],
+    home_results: List[Dict[str, Any]],
+    away_results: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    ratios = {name: ratio for name, ratio, _ in TOTALS_TEMPORAL_WINDOW_CONFIG}
+    weights = {name: weight for name, _, weight in TOTALS_TEMPORAL_WINDOW_CONFIG}
+
+    n_season = _extract_positive_season_length_from_payload(getattr(event_context, "competition", None))
+    n_season_source = "event_context.competition.total_regular_season_games" if n_season is not None else None
+
+    if n_season is None or n_season <= 0:
+        return {
+            "resolution_status": "INSUFFICIENT_DATA",
+            "abort_reason": "missing_total_regular_season_games",
+            "n_season": None,
+            "n_season_source": None,
+            "ratios": ratios,
+            "weights": weights,
+            "resolved_window_sizes": {},
+            "window_config": {},
+        }
+
+    resolved_window_sizes = {
+        name: _resolve_window_size_from_ratio(n_season, ratio)
+        for name, ratio, _ in TOTALS_TEMPORAL_WINDOW_CONFIG
+    }
+    resolved_window_sizes["TOTALS_FULL"] = int(n_season)
+
+    window_config = {
+        name: {
+            "ratio": ratio,
+            "weight": weight,
+            "target_window": resolved_window_sizes[name],
+            "resolved_size": resolved_window_sizes[name],
+        }
+        for name, ratio, weight in TOTALS_TEMPORAL_WINDOW_CONFIG
+    }
+
+    return {
+        "resolution_status": "RESOLVED",
+        "abort_reason": None,
+        "n_season": int(n_season),
+        "n_season_source": n_season_source,
+        "ratios": ratios,
+        "weights": weights,
+        "resolved_window_sizes": resolved_window_sizes,
+        "window_config": window_config,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1077,7 +1156,10 @@ def _calculate_volatility_layer(
     }
 
 
-def _calculate_team_temporal_windows(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _calculate_team_temporal_windows(
+    results: List[Dict[str, Any]],
+    window_config: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
     ordered_results = _ordered_results(results)
     score_series = _extract_team_score_series(ordered_results)
     available_games = len(score_series)
@@ -1086,11 +1168,16 @@ def _calculate_team_temporal_windows(results: List[Dict[str, Any]]) -> Dict[str,
     weighted_pairs: List[Tuple[Optional[float], float]] = []
     active_window_weights: Dict[str, float] = {}
 
-    for window_name, window_size in TEMPORAL_WINDOW_SIZES.items():
-        base_weight = TEMPORAL_WINDOW_WEIGHTS[window_name]
+    for window_name in TOTALS_TEMPORAL_WINDOW_NAMES:
+        window_metadata = window_config.get(window_name, {})
+        window_size = int(window_metadata.get("target_window") or 0)
+        base_weight = float(window_metadata.get("weight") or 0.0)
+        ratio = float(window_metadata.get("ratio") or 0.0)
         subset = score_series[: min(window_size, available_games)]
         if not subset:
             windows[window_name] = {
+                "ratio": ratio,
+                "weight": base_weight,
                 "total": None,
                 "gfpg": None,
                 "gapg": None,
@@ -1113,6 +1200,8 @@ def _calculate_team_temporal_windows(results: List[Dict[str, Any]]) -> Dict[str,
         total = gfpg + gapg
         is_partial = games_used < window_size
         windows[window_name] = {
+            "ratio": ratio,
+            "weight": base_weight,
             "total": total,
             "gfpg": gfpg,
             "gapg": gapg,
@@ -1128,25 +1217,40 @@ def _calculate_team_temporal_windows(results: List[Dict[str, Any]]) -> Dict[str,
 
     weighted_total, total_weight, effective_weights = _weighted_average(weighted_pairs)
     if total_weight > 0:
-        for index, window_name in enumerate(TEMPORAL_WINDOW_SIZES.keys()):
+        for index, window_name in enumerate(TOTALS_TEMPORAL_WINDOW_NAMES):
             if str(index) in effective_weights:
                 windows[window_name]["effective_weight"] = effective_weights[str(index)]
                 active_window_weights[window_name] = effective_weights[str(index)]
 
     return {
-        "L5": windows["L5"],
-        "L20": windows["L20"],
-        "L40": windows["L40"],
-        "L60": windows["L60"],
+        **windows,
         "weighted_total": weighted_total,
         "available_games": available_games,
         "active_window_weights": active_window_weights,
-        "base_window_weights": dict(TEMPORAL_WINDOW_WEIGHTS),
+        "base_window_weights": {name: weight for name, _, weight in TOTALS_TEMPORAL_WINDOW_CONFIG},
         "ordered_results_count": len(ordered_results),
         "game_scores": [
             {"gf": gf, "ga": ga, "total": gf + ga}
             for gf, ga in score_series
         ],
+    }
+
+
+def _debug_temporal_block_payload(team_payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    return {
+        block_name: {
+            "ratio": team_payload.get(block_name, {}).get("ratio"),
+            "target_window": team_payload.get(block_name, {}).get("target_window"),
+            "games_used": team_payload.get(block_name, {}).get("games_used"),
+            "is_partial": team_payload.get(block_name, {}).get("is_partial"),
+            "gfpg": team_payload.get(block_name, {}).get("gfpg"),
+            "gapg": team_payload.get(block_name, {}).get("gapg"),
+            "total": team_payload.get(block_name, {}).get("total"),
+            "weight": team_payload.get(block_name, {}).get("weight"),
+            "base_weight": team_payload.get(block_name, {}).get("base_weight"),
+            "effective_weight": team_payload.get(block_name, {}).get("effective_weight"),
+        }
+        for block_name in TOTALS_TEMPORAL_WINDOW_NAMES
     }
 
 
@@ -1156,10 +1260,11 @@ def _calculate_temporal_layer(
     away_results: List[Dict[str, Any]],
     league_total_baseline: Optional[float],
     total_dynamic_scale: Optional[float],
+    temporal_window_config: Dict[str, Dict[str, Any]],
     missing: List[str],
 ) -> Dict[str, Any]:
-    home_temporal = _calculate_team_temporal_windows(home_results)
-    away_temporal = _calculate_team_temporal_windows(away_results)
+    home_temporal = _calculate_team_temporal_windows(home_results, temporal_window_config)
+    away_temporal = _calculate_team_temporal_windows(away_results, temporal_window_config)
 
     if home_temporal["available_games"] == 0:
         _append_missing(missing, "home_temporal_missing")
@@ -1226,8 +1331,8 @@ def _calculate_trend_layer(
         }
         return profile, raw
 
-    home_short_term_profile, home_short_raw = _profile("L5", "L20")
-    home_long_term_profile, home_long_raw = _profile("L40", "L60")
+    home_short_term_profile, home_short_raw = _profile("TOTALS_SHORT", "TOTALS_RECENT")
+    home_long_term_profile, home_long_raw = _profile("TOTALS_MID", "TOTALS_FULL")
 
     def _away_profile(window_a: str, window_b: str) -> Tuple[float, Dict[str, Any]]:
         values_and_weights: List[Tuple[Optional[float], float]] = [
@@ -1251,8 +1356,8 @@ def _calculate_trend_layer(
         }
         return profile, raw
 
-    away_short_term_profile, away_short_raw = _away_profile("L5", "L20")
-    away_long_term_profile, away_long_raw = _away_profile("L40", "L60")
+    away_short_term_profile, away_short_raw = _away_profile("TOTALS_SHORT", "TOTALS_RECENT")
+    away_long_term_profile, away_long_raw = _away_profile("TOTALS_MID", "TOTALS_FULL")
 
     short_term_profile_matchup = (home_short_term_profile + away_short_term_profile) / 2.0
     long_term_profile_matchup = (home_long_term_profile + away_long_term_profile) / 2.0
@@ -1317,21 +1422,32 @@ def _determine_internal_state(layer_signals: Dict[str, Optional[float]], vol_edg
     temporal = layer_signals.get("TEMPORAL")
     trend = layer_signals.get("TREND")
 
-    if all(signal is not None and signal > 0 for signal in (structural, vol, temporal, trend)):
+    active_signals = {
+        layer_name: signal
+        for layer_name, signal in (
+            ("STRUCTURAL", structural),
+            ("VOL", vol),
+            ("TEMPORAL", temporal),
+            ("TREND", trend),
+        )
+        if _is_active_signal(signal)
+    }
+
+    if active_signals and all(signal is not None and signal > 0 for signal in active_signals.values()):
         states.append("CONSENSUS_OVER")
-    if all(signal is not None and signal < 0 for signal in (structural, vol, temporal, trend)):
+    if active_signals and all(signal is not None and signal < 0 for signal in active_signals.values()):
         states.append("CONSENSUS_UNDER")
-    if structural is not None and structural < 0 and trend is not None and trend > 0:
+    if _is_active_signal(active_signals.get("STRUCTURAL")) and _is_active_signal(active_signals.get("TREND")) and active_signals.get("STRUCTURAL") < 0 and active_signals.get("TREND") > 0:
         states.append("HEATING_CONFLICT")
-    if structural is not None and structural > 0 and trend is not None and trend < 0:
+    if _is_active_signal(active_signals.get("STRUCTURAL")) and _is_active_signal(active_signals.get("TREND")) and active_signals.get("STRUCTURAL") > 0 and active_signals.get("TREND") < 0:
         states.append("COOLING_CONFLICT")
 
     active_profile_signs = [
         math.copysign(1.0, signal)
-        for signal in (structural, temporal, trend)
-        if signal is not None and abs(signal) >= IGNORE_THRESHOLD
+        for signal in (active_signals.get("STRUCTURAL"), active_signals.get("TEMPORAL"), active_signals.get("TREND"))
+        if _is_active_signal(signal)
     ]
-    if vol is not None and vol >= 0.50 and len(set(active_profile_signs)) > 1:
+    if _is_active_signal(vol) and vol >= 0.50 and len(set(active_profile_signs)) > 1:
         states.append("CHAOTIC_CONFLICT")
 
     if not states:
@@ -1400,20 +1516,6 @@ def _debug_sample_summary(values: List[float]) -> Dict[str, Any]:
         "p50": _percentile_nearest_rank(samples, 0.50) if samples else None,
         "p75": _percentile_nearest_rank(samples, 0.75) if samples else None,
         "max": max(samples) if samples else None,
-    }
-
-
-def _debug_temporal_window_payload(team_payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    return {
-        window_name: {
-            "games_used": team_payload.get(window_name, {}).get("games_used"),
-            "gfpg": team_payload.get(window_name, {}).get("gfpg"),
-            "gapg": team_payload.get(window_name, {}).get("gapg"),
-            "total": team_payload.get(window_name, {}).get("total"),
-            "base_weight": team_payload.get(window_name, {}).get("base_weight"),
-            "effective_weight": team_payload.get(window_name, {}).get("effective_weight"),
-        }
-        for window_name in TEMPORAL_WINDOW_SIZES
     }
 
 
@@ -1512,6 +1614,56 @@ def calculate_p1_totals(
         event_context,
     )
 
+    temporal_window_config = _resolve_totals_temporal_window_config(
+        event_context=event_context,
+        league_totals_context=league_totals_context,
+        league_records=league_records,
+        home_results=home_results,
+        away_results=away_results,
+    )
+
+    if debug_mode:
+        logger.info(
+            "[P1_TOTALS][TEMPORAL_CONFIG] n_season=%s n_season_source=%s resolution_status=%s ratios=%s resolved_window_sizes=%s weights=%s",
+            temporal_window_config.get("n_season"),
+            temporal_window_config.get("n_season_source"),
+            temporal_window_config.get("resolution_status"),
+            temporal_window_config.get("ratios"),
+            temporal_window_config.get("resolved_window_sizes"),
+            temporal_window_config.get("weights"),
+        )
+
+    if temporal_window_config.get("resolution_status") != "RESOLVED":
+        if debug_mode:
+            logger.info(
+                "[P1_TOTALS][TEMPORAL_CONFIG][ABORT] reason=%s n_season_source=%s",
+                temporal_window_config.get("abort_reason"),
+                temporal_window_config.get("n_season_source"),
+            )
+        return P1TotalsOutput(
+            P1_TOTALS_SCORE=0.0,
+            P1_TOTALS_DIRECTION="NEUTRAL_PROFILE",
+            P1_TOTALS_STRENGTH="NONE",
+            P1_TOTALS_INTERNAL_STATE=[],
+            STRUCTURAL_PROFILE_SCORE=None,
+            VOL_EDGE=None,
+            TEMPORAL_PROFILE_SCORE=None,
+            TREND_SIGNAL=None,
+            EXPECTED_TOTAL_STRUCTURAL=None,
+            MATCHUP_VOLATILITY=None,
+            MATCHUP_TEMPORAL_TOTAL=None,
+            LEAGUE_TOTAL_BASELINE=None,
+            TOTAL_DYNAMIC_SCALE=None,
+            VOL_BASELINE=None,
+            VOL_DYNAMIC_SCALE=None,
+            active_layers=[],
+            ignored_layers=[],
+            confidence_total=0.0,
+            status="INSUFFICIENT_DATA",
+            status_reason="missing_total_regular_season_games",
+            TEMPORAL_CONFIG=temporal_window_config,
+        )
+
     # If league records are empty, keep the home/away fallback visible for audit.
     if not league_records:
         league_records = [
@@ -1561,6 +1713,7 @@ def calculate_p1_totals(
         away_results=away_results,
         league_total_baseline=structural_layer.get("league_total_baseline"),
         total_dynamic_scale=structural_layer.get("total_dynamic_scale"),
+        temporal_window_config=temporal_window_config.get("window_config", {}),
         missing=missing_data,
     )
 
@@ -1574,7 +1727,8 @@ def calculate_p1_totals(
     home_game_totals = volatility_layer["home_game_totals"]
     away_game_totals = volatility_layer["away_game_totals"]
     n_avail = min(len(home_game_totals), len(away_game_totals))
-    confidence_total = min(n_avail / 60.0, 1.0)
+    n_season = temporal_window_config.get("n_season") or 0
+    confidence_total = min(n_avail / float(n_season), 1.0) if n_season > 0 else 0.0
 
     if n_avail == 0:
         _append_missing(missing_data, "n_avail_zero")
@@ -1597,10 +1751,11 @@ def calculate_p1_totals(
         effective_weight = base_weight * confidence_total
         ignored_reason = None
         ignored = False
+        active_by_threshold = _is_active_signal(signal)
         if signal is None:
             ignored = True
             ignored_reason = "missing_signal"
-        elif abs(signal) + EPSILON < IGNORE_THRESHOLD:
+        elif not active_by_threshold:
             ignored = True
             ignored_reason = "below_ignore_threshold"
         elif effective_weight <= 0:
@@ -1703,8 +1858,9 @@ def calculate_p1_totals(
             league_totals_context.get("match_count") if league_totals_context else None,
         )
         logger.info(
-            "[P1_TOTALS][INPUTS] n_avail=%s confidence_total=%s",
+            "[P1_TOTALS][INPUTS] n_avail=%s denominator=%s confidence_total=%s",
             n_avail,
+            n_season,
             _debug_float(confidence_total),
         )
 
@@ -1787,11 +1943,22 @@ def calculate_p1_totals(
             ("home", temporal_layer["home_temporal"]),
             ("away", temporal_layer["away_temporal"]),
         ):
-            logger.info(
-                "[P1_TOTALS][TEMPORAL] %s windows=%s",
-                side_name,
-                _debug_temporal_window_payload(temporal_payload),
-            )
+            for block_name, block_payload in _debug_temporal_block_payload(temporal_payload).items():
+                logger.info(
+                    "[P1_TOTALS][TEMPORAL] side=%s block_name=%s ratio=%s target_window=%s games_used=%s is_partial=%s gfpg=%s gapg=%s total=%s weight=%s base_weight=%s effective_weight=%s",
+                    side_name,
+                    block_name,
+                    _debug_float(block_payload.get("ratio")),
+                    block_payload.get("target_window"),
+                    block_payload.get("games_used"),
+                    block_payload.get("is_partial"),
+                    _debug_float(block_payload.get("gfpg")),
+                    _debug_float(block_payload.get("gapg")),
+                    _debug_float(block_payload.get("total")),
+                    _debug_float(block_payload.get("weight")),
+                    _debug_float(block_payload.get("base_weight")),
+                    _debug_float(block_payload.get("effective_weight")),
+                )
         logger.info(
             "[P1_TOTALS][TEMPORAL] TEAM_TOTAL_WEIGHTED_HOME=%s TEAM_TOTAL_WEIGHTED_AWAY=%s MATCHUP_TEMPORAL_TOTAL=%s TEMPORAL_PROFILE_SCORE=%s",
             _debug_float(temporal_layer["home_temporal"].get("weighted_total")),
@@ -1801,7 +1968,7 @@ def calculate_p1_totals(
         )
 
         logger.info(
-            "[P1_TOTALS][TREND] SHORT_TERM_PROFILE_HOME=%s LONG_TERM_PROFILE_HOME=%s SHORT_TERM_PROFILE_AWAY=%s LONG_TERM_PROFILE_AWAY=%s",
+            "[P1_TOTALS][TREND] HOME_SHORT_TERM_PROFILE=%s from TOTALS_SHORT/TOTALS_RECENT HOME_LONG_TERM_PROFILE=%s from TOTALS_MID/TOTALS_FULL AWAY_SHORT_TERM_PROFILE=%s from TOTALS_SHORT/TOTALS_RECENT AWAY_LONG_TERM_PROFILE=%s from TOTALS_MID/TOTALS_FULL",
             _debug_float(trend_layer["home_trend"].get("short_term_profile")),
             _debug_float(trend_layer["home_trend"].get("long_term_profile")),
             _debug_float(trend_layer["away_trend"].get("short_term_profile")),
@@ -1819,10 +1986,13 @@ def calculate_p1_totals(
             layer_output = layer_audit.get(layer_name)
             signal = layer_signals.get(layer_name)
             logger.info(
-                "[P1_TOTALS][IGNORE_SCORE] layer=%s signal_raw=%s abs_signal=%s base_weight=%s effective_weight=%s weighted_signal=%s ignored=%s reason=%s",
+                "[P1_TOTALS][IGNORE_SCORE] layer=%s signal_raw=%s abs_signal=%s threshold=%s epsilon=%s active_by_threshold=%s base_weight=%s effective_weight=%s weighted_signal=%s ignored=%s reason=%s",
                 layer_name,
                 _debug_float(signal),
                 _debug_float(abs(signal) if signal is not None else None),
+                _debug_float(IGNORE_THRESHOLD),
+                _debug_float(EPSILON),
+                _is_active_signal(signal),
                 _debug_float(LAYER_BASE_WEIGHTS[layer_name]),
                 _debug_float(layer_output.effective_weight if layer_output else None),
                 _debug_float(layer_output.weighted_signal if layer_output else None),
@@ -1842,6 +2012,25 @@ def calculate_p1_totals(
             internal_state,
             p1_totals_status,
             p1_totals_status_reason,
+        )
+        internal_state_signals = {
+            key: value
+            for key, value in layer_signals.items()
+            if _is_active_signal(value)
+        }
+        logger.info(
+            "[P1_TOTALS][INTERNAL_STATE] signals_used=%s active_profile_signs=%s states_detected=%s",
+            {key: _debug_float(value) for key, value in internal_state_signals.items()},
+            [
+                math.copysign(1.0, signal)
+                for signal in (
+                    internal_state_signals.get("STRUCTURAL"),
+                    internal_state_signals.get("TEMPORAL"),
+                    internal_state_signals.get("TREND"),
+                )
+                if _is_active_signal(signal)
+            ],
+            internal_state,
         )
 
     return P1TotalsOutput(
@@ -1865,4 +2054,5 @@ def calculate_p1_totals(
         confidence_total=confidence_total,
         status=p1_totals_status,
         status_reason=p1_totals_status_reason,
+        TEMPORAL_CONFIG=temporal_window_config,
     )
