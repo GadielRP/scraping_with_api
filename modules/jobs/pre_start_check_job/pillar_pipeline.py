@@ -24,6 +24,7 @@ from modules.pillars.streak_analysis_resolver import (
 from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import (
     calculate_pillar_1_team_structure,
 )
+from modules.pillars.pillar_1_team_structure.totals import calculate_p1_totals
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,21 @@ class EventPillarProcessor:
             )
             return None
 
+        try:
+            p1_totals_result = calculate_p1_totals(
+                streak_analysis,
+                event_context=event_context,
+                debug_mode=self.debug_mode,
+            )
+        except Exception as exc:
+            logger.error(
+                "Error calculating P1_TOTALS for event %s (%s): %s",
+                event_obj.id,
+                participants,
+                exc,
+            )
+            p1_totals_result = None
+
         # Log the M1 result.
         m1 = p1_result.get("modules", [{}])[0] if p1_result.get("modules") else {}
         logger.info(
@@ -340,6 +356,39 @@ class EventPillarProcessor:
                 comp.get("strength", "?"),
             )
 
+        p1_final_raw = p1_result.get("raw", {}).get("final", {})
+        logger.info(
+            "P1/PILLAR 1 Final calculated for %s: value=%.3f, bias=%s, strength=%s, context_state=%s",
+            participants,
+            p1_result.get("value", 0),
+            p1_result.get("raw", {}).get("final", {}).get("p1_final_bias", p1_result.get("bias", "N/A")),
+            p1_result.get("raw", {}).get("final", {}).get("p1_final_strength", p1_result.get("strength", "N/A")),
+            p1_final_raw.get("p1_context_state", "N/A"),
+        )
+
+        if p1_totals_result is not None:
+            logger.info(
+                "P1/P1_TOTALS Totals calculated for %s: value=%.3f, bias=%s, strength=%s",
+                participants,
+                p1_totals_result.value,
+                p1_totals_result.bias,
+                p1_totals_result.strength,
+            )
+            for comp in p1_totals_result.components:
+                logger.info(
+                    "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
+                    comp.name,
+                    comp.edge,
+                    comp.weight,
+                    comp.weighted_edge,
+                    comp.bias,
+                    comp.strength,
+                )
+        else:
+            logger.info(
+                "P1/P1_TOTALS Totals skipped for %s: unavailable",
+                participants,
+            )
 
         p1_result.setdefault("raw", {}).update(
             {
@@ -365,6 +414,7 @@ class EventPillarProcessor:
             "event_id": event_obj.id,
             "participants": participants,
             "pillar_1": p1_result,
+            "pillar_1_totals": p1_totals_result,
         }
 
 

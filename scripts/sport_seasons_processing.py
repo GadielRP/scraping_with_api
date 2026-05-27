@@ -70,6 +70,10 @@ season_to_process = [
     {"season_name": "SHL 2025", "tournament_id": 261, "season_id": 75679},
     {"season_name": "PFL 2025", "tournament_id": 1654, "season_id": 81520},
     {"season_name": "CBA 2025", "tournament_id": 1566, "season_id": 85375},
+    {"season_name": "LPF Argentina Apertura 2026", "tournament_id": 155, "season_id": 87913},
+    {"season_name": "LPF Argentina Clausura 2025", "tournament_id": 155, "season_id": 77826},
+    {"season_name": "LPF Argentina Apertura 2025", "tournament_id": 155, "season_id": 70268},
+    
 ]
 
 
