@@ -285,6 +285,76 @@ def _find_team_standing(payload: Any, team_name: Optional[str]) -> Optional[Dict
     return None
 
 
+def _get_league_totals_context(streak_analysis: Any) -> Dict[str, Any]:
+    context = getattr(streak_analysis, "league_totals_context", None)
+    return context if isinstance(context, dict) else {}
+
+
+def _get_league_totals_teams(streak_analysis: Any) -> Dict[str, Dict[str, Any]]:
+    context = _get_league_totals_context(streak_analysis)
+    teams = context.get("teams")
+    return teams if isinstance(teams, dict) else {}
+
+
+def _find_league_totals_team_payload(
+    teams: Dict[str, Dict[str, Any]],
+    team_name: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    normalized_target = _normalize_team_name(team_name)
+    if not normalized_target:
+        return None
+
+    direct = teams.get(team_name)
+    if isinstance(direct, dict):
+        return direct
+
+    for candidate_name, payload in teams.items():
+        if _normalize_team_name(candidate_name) == normalized_target:
+            return payload if isinstance(payload, dict) else None
+
+        if isinstance(payload, dict):
+            payload_name = _first_text(
+                payload.get("team_name"),
+                payload.get("name"),
+                payload.get("display_name"),
+            )
+            if _normalize_team_name(payload_name) == normalized_target:
+                return payload
+
+    return None
+
+
+def _extract_team_results_from_league_totals_context(
+    streak_analysis: Any,
+    team_name: Optional[str],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    teams = _get_league_totals_teams(streak_analysis)
+    team_payload = _find_league_totals_team_payload(teams, team_name)
+
+    if not isinstance(team_payload, dict):
+        return [], {
+            "source": "missing",
+            "team_name": team_name,
+            "reason": "team_not_found_in_league_totals_context",
+        }
+
+    results = team_payload.get("results")
+    if not isinstance(results, list) or not results:
+        return [], {
+            "source": "streak_analysis.league_totals_context.teams",
+            "team_name": team_name,
+            "reason": "results_missing_or_empty",
+        }
+
+    return [
+        result for result in results if isinstance(result, dict)
+    ], {
+        "source": "streak_analysis.league_totals_context.teams",
+        "team_name": team_name,
+        "result_count": len(results),
+    }
+
+
 def _extract_team_totals_record_from_payload(
     payload: Any,
     team_name: Optional[str],
@@ -317,7 +387,21 @@ def _normalize_team_totals_record(
             nested_results = value
             break
 
-    game_totals_series = _extract_game_totals_series(nested_results or [])
+    explicit_game_totals = None
+    for key in ("game_totals", "game_totals_series"):
+        value = record.get(key)
+        if isinstance(value, list):
+            explicit_game_totals = value
+            break
+
+    explicit_game_totals_series = []
+    if explicit_game_totals:
+        for value in explicit_game_totals:
+            coerced = _coerce_float(value)
+            if coerced is not None:
+                explicit_game_totals_series.append(coerced)
+
+    game_totals_series = explicit_game_totals_series or _extract_game_totals_series(nested_results or [])
     score_series = _extract_team_score_series(nested_results or [])
 
     if (gf is None or ga is None or gp is None) and score_series:
@@ -421,7 +505,7 @@ def _collect_league_records(
     away_results: List[Dict[str, Any]],
     event_context: EventContext,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Collect best-effort league records from standings and result snapshots."""
+    """Collect best-effort league records from league context, standings and result snapshots."""
     payloads: List[Tuple[str, Any]] = [
         ("streak_analysis.current_standings", getattr(streak_analysis, "current_standings", None)),
         ("streak_analysis.standings_response", getattr(streak_analysis, "standings_response", None)),
@@ -446,6 +530,21 @@ def _collect_league_records(
         if existing is None or completeness > existing[0]:
             candidates[team_name] = (completeness, record)
             source_trace[team_name] = str(record.get("source") or "")
+
+    league_totals_context = _get_league_totals_context(streak_analysis)
+    league_totals_teams = _get_league_totals_teams(streak_analysis)
+
+    if league_totals_teams:
+        for team_name, team_payload in league_totals_teams.items():
+            if not isinstance(team_payload, dict):
+                continue
+
+            record = _normalize_team_totals_record(
+                team_payload,
+                source="streak_analysis.league_totals_context.teams",
+                team_name_hint=_first_text(team_name, team_payload.get("team_name")),
+            )
+            _consider(record)
 
     for payload_source, payload in payloads:
         for key, standing in _standings_items(payload):
@@ -511,9 +610,14 @@ def _collect_league_records(
     ]
 
     league_source = {
-        "payload_sources": [source for source, payload in payloads if payload is not None],
+        "payload_sources": (
+            ["streak_analysis.league_totals_context.teams"] if league_totals_teams else []
+        ) + [source for source, payload in payloads if payload is not None],
         "source_trace": source_trace,
         "sample_count": len(league_samples),
+        "league_totals_context_present": bool(league_totals_context),
+        "league_totals_context_team_count": league_totals_context.get("team_count"),
+        "league_totals_context_match_count": league_totals_context.get("match_count"),
     }
     return league_records, league_source
 
@@ -536,18 +640,18 @@ def _extract_team_totals_record(
         (f"streak_analysis.{side}_team_standing", getattr(streak_analysis, f"{side}_team_standing", None)),
     ]
 
-    for source_name, payload in direct_sources:
-        if isinstance(payload, dict):
-            record = _normalize_team_totals_record(payload, source=source_name, team_name_hint=team_name)
-            if record is not None:
-                return record, {"source": source_name, "mode": "direct"}, missing
-
     for source_name, payload in league_payloads:
         if not payload:
             continue
         record = _extract_team_totals_record_from_payload(payload, team_name, source_name)
         if record is not None:
             return record, {"source": source_name, "mode": "league_lookup"}, missing
+
+    for source_name, payload in direct_sources:
+        if isinstance(payload, dict):
+            record = _normalize_team_totals_record(payload, source=source_name, team_name_hint=team_name)
+            if record is not None:
+                return record, {"source": source_name, "mode": "direct"}, missing
 
     fallback_record = _build_record_from_results(results, team_name=team_name, source=f"{side}_results_fallback")
     if fallback_record is not None:
@@ -1329,10 +1433,53 @@ def calculate_p1_totals(
         else:
             participants = home_team or away_team
 
-    home_results = getattr(streak_analysis, "home_team_results", None) or []
-    away_results = getattr(streak_analysis, "away_team_results", None) or []
+    raw_home_results = getattr(streak_analysis, "home_team_results", None) or []
+    raw_away_results = getattr(streak_analysis, "away_team_results", None) or []
+
+    league_totals_context = _get_league_totals_context(streak_analysis)
+    league_totals_teams = _get_league_totals_teams(streak_analysis)
+    league_totals_context_source = {
+        "present": bool(league_totals_context),
+        "team_count": league_totals_context.get("team_count"),
+        "match_count": league_totals_context.get("match_count"),
+        "source": league_totals_context.get("source"),
+        "cutoff_timestamp": league_totals_context.get("cutoff_timestamp"),
+    }
+
+    league_home_results, league_home_results_source = _extract_team_results_from_league_totals_context(
+        streak_analysis,
+        home_team,
+    )
+    league_away_results, league_away_results_source = _extract_team_results_from_league_totals_context(
+        streak_analysis,
+        away_team,
+    )
+
+    home_results = league_home_results or raw_home_results
+    away_results = league_away_results or raw_away_results
+
+    home_results_source = (
+        league_home_results_source
+        if league_home_results
+        else {
+            "source": "streak_analysis.home_team_results",
+            "result_count": len(raw_home_results),
+            "fallback_reason": league_home_results_source.get("reason"),
+        }
+    )
+
+    away_results_source = (
+        league_away_results_source
+        if league_away_results
+        else {
+            "source": "streak_analysis.away_team_results",
+            "result_count": len(raw_away_results),
+            "fallback_reason": league_away_results_source.get("reason"),
+        }
+    )
 
     league_payloads: List[Tuple[str, Any]] = [
+        ("streak_analysis.league_totals_context.teams", league_totals_teams),
         ("streak_analysis.current_standings", getattr(streak_analysis, "current_standings", None)),
         ("streak_analysis.standings_response", getattr(streak_analysis, "standings_response", None)),
         ("event_context.competition.standings_response", getattr(getattr(event_context, "competition", None), "standings_response", None)),
@@ -1374,6 +1521,15 @@ def calculate_p1_totals(
     missing_data: List[str] = []
     for item in home_missing + away_missing:
         _append_missing(missing_data, item)
+    if not league_totals_context:
+        _append_missing(missing_data, "league_totals_context_missing")
+    elif not league_totals_teams:
+        _append_missing(missing_data, "league_totals_context_teams_missing")
+    else:
+        if not league_home_results:
+            _append_missing(missing_data, "home_league_totals_results_missing")
+        if not league_away_results:
+            _append_missing(missing_data, "away_league_totals_results_missing")
 
     structural_layer = _calculate_structural_layer(
         home_record=home_record,
@@ -1539,6 +1695,17 @@ def calculate_p1_totals(
         logger.info("--- P1_TOTALS Debug: Event %s (%s) ---", event_id, participants)
         logger.info("  home_team=%s away_team=%s", home_team, away_team)
         logger.info(
+            "  league_totals_context present=%s teams=%s matches=%s",
+            bool(league_totals_context),
+            league_totals_context.get("team_count") if league_totals_context else None,
+            league_totals_context.get("match_count") if league_totals_context else None,
+        )
+        logger.info(
+            "  home_results_source=%s away_results_source=%s",
+            home_results_source.get("source"),
+            away_results_source.get("source"),
+        )
+        logger.info(
             "  league baseline=%.4f source=%s dynamic_scale=%.4f source=%s",
             float(structural_layer.get("league_total_baseline") or 0.0),
             structural_layer.get("source", {}).get("league_baseline_source"),
@@ -1612,8 +1779,11 @@ def calculate_p1_totals(
             "structural": structural_layer.get("source", {}),
             "volatility": volatility_layer.get("source", {}),
             "league_records_source": league_source,
+            "league_totals_context": league_totals_context_source,
             "home_record_source": home_record_source,
             "away_record_source": away_record_source,
+            "home_results_source": home_results_source,
+            "away_results_source": away_results_source,
             "league_baseline_source": structural_layer.get("source", {}).get("league_baseline_source"),
             "vol_baseline_source": volatility_layer.get("source", {}).get("vol_baseline_source"),
             "vol_dynamic_scale_source": volatility_layer.get("source", {}).get("vol_dynamic_scale_source"),
@@ -1625,6 +1795,7 @@ def calculate_p1_totals(
             "trend": trend_layer["home_trend"],
             "game_totals_series": home_game_totals,
             "valid_game_totals_count": valid_home_game_totals_count,
+            "results_source": home_results_source,
         },
         "away_profile": {
             **_summarize_record(away_record),
@@ -1632,6 +1803,7 @@ def calculate_p1_totals(
             "trend": trend_layer["away_trend"],
             "game_totals_series": away_game_totals,
             "valid_game_totals_count": valid_away_game_totals_count,
+            "results_source": away_results_source,
         },
         "league_profile": {
             "structural": structural_layer.get("league_profile", {}),
@@ -1641,6 +1813,7 @@ def calculate_p1_totals(
                 "league_samples": volatility_layer.get("league_samples", []),
             },
             "league_source": league_source,
+            "league_totals_context": league_totals_context_source,
         },
         "temporal_windows": {
             "home": temporal_layer["home_temporal"],

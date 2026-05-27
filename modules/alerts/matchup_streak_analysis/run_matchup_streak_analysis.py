@@ -97,6 +97,57 @@ class MatchupStreakContext:
     current_standings: Optional[Dict[str, Dict]] = None
     current_standings_cutoff_timestamp: Optional[float] = None
     current_standings_source: Optional[str] = None
+    # League-wide totals payload built from the DB standings bundle at the
+    # current event cutoff. Structure:
+    # {
+    #   "source": "db_standings_calculator",
+    #   "season_id": int,
+    #   "canonical_season_id": int,
+    #   "cutoff_timestamp": float,
+    #   "cutoff_rule": "start_time_utc < cutoff_dt",
+    #   "sport": str,
+    #   "source_unique_tournament_id": Optional[int],
+    #   "source_tournament_id": Optional[int],
+    #   "match_count": int,
+    #   "team_count": int,
+    #   "matches": [
+    #       {
+    #           "event_id": int,
+    #           "startTimestamp": int,
+    #           "home_team": str,
+    #           "away_team": str,
+    #           "home_score": int,
+    #           "away_score": int,
+    #           "winner": "1" | "2" | "X",
+    #           "result_subtype": Optional[str],
+    #           "game_total": int,
+    #       }
+    #   ],
+    #   "teams": {
+    #       team_name: {
+    #           "team_name": str,
+    #           "games_played": int,
+    #           "goals_for": int,
+    #           "goals_against": int,
+    #           "team_total_per_game": Optional[float],
+    #           "game_totals": List[int],
+    #           "results": [
+    #               {
+    #                   "event_id": int,
+    #                   "startTimestamp": int,
+    #                   "team_role": "home" | "away",
+    #                   "opponent_name": str,
+    #                   "team_score": int,
+    #                   "opponent_score": int,
+    #                   "game_total": int,
+    #                   "team_result_code": "1" | "2" | "X",
+    #               }
+    #           ],
+    #           "standing": Dict[str, Any],
+    #       }
+    #   }
+    # }
+    league_totals_context: Optional[Dict[str, Any]] = None
     # Winning odds data
     winning_odds_data: Optional[Dict] = None  # Winning odds response data
     # Current event odds (for display in H2H streak messages)
@@ -383,6 +434,7 @@ def build_matchup_streak_context(
         away_team_standing = None
         resolved_standings_response = standings_response
         current_standings = None
+        league_totals_context = None
 
         standings_api_unique_tournament_id = source_unique_tournament_id or source_tournament_id
         if (
@@ -392,7 +444,7 @@ def build_matchup_streak_context(
             and standings_api_unique_tournament_id
         ):
             try:
-                current_standings = standings_calculator.calculate_standings_at(
+                standings_bundle = standings_calculator.calculate_standings_bundle_at(
                     season_id=season_id,
                     cutoff_timestamp=event_start_ts,
                     sport=sport,
@@ -400,40 +452,72 @@ def build_matchup_streak_context(
                     source_tournament_id=source_tournament_id,
                     send_debug_standings=False,
                 )
-                home_team_current_standing = current_standings.get(home_team_name)
-                away_team_current_standing = current_standings.get(away_team_name)
-
-                if home_team_current_standing:
-                    home_team_current_rank = (
-                        home_team_current_standing.get("rank")
-                        or home_team_current_standing.get("position")
+                bundle_status = standings_bundle.get("status")
+                bundle_error = standings_bundle.get("error")
+                if bundle_status == "ERROR":
+                    logger.warning(
+                        "Could not resolve standings bundle for event %s (%s): %s",
+                        event_id,
+                        participants,
+                        bundle_error,
                     )
-
-                if away_team_current_standing:
-                    away_team_current_rank = (
-                        away_team_current_standing.get("rank")
-                        or away_team_current_standing.get("position")
-                    )
-
-                if home_team_current_standing or away_team_current_standing:
+                    current_standings = None
+                    league_totals_context = None
+                    current_standings_cutoff_timestamp = None
+                    current_standings_source = None
+                else:
+                    current_standings = standings_bundle.get("standings") or {}
+                    league_totals_context = standings_bundle.get("league_totals_context")
                     current_standings_cutoff_timestamp = event_start_ts
                     current_standings_source = "db_standings_calculator"
-                    logger.info(
-                        "Current standings resolved for event %s: home=%s rank=%s away=%s rank=%s source=%s",
-                        event_id,
-                        home_team_name,
-                        home_team_current_rank,
-                        away_team_name,
-                        away_team_current_rank,
-                        current_standings_source,
-                    )
+                    home_team_current_standing = current_standings.get(home_team_name)
+                    away_team_current_standing = current_standings.get(away_team_name)
+
+                    if home_team_current_standing:
+                        home_team_current_rank = (
+                            home_team_current_standing.get("rank")
+                            or home_team_current_standing.get("position")
+                        )
+
+                    if away_team_current_standing:
+                        away_team_current_rank = (
+                            away_team_current_standing.get("rank")
+                            or away_team_current_standing.get("position")
+                        )
+
+                    if home_team_current_standing or away_team_current_standing:
+                        logger.info(
+                            "Current standings resolved for event %s: home=%s rank=%s away=%s rank=%s source=%s",
+                            event_id,
+                            home_team_name,
+                            home_team_current_rank,
+                            away_team_name,
+                            away_team_current_rank,
+                            current_standings_source,
+                        )
+                    if not current_standings and league_totals_context is None:
+                        logger.warning(
+                            "Standings bundle returned empty for event %s (%s): standings empty and league_totals_context missing",
+                            event_id,
+                            participants,
+                        )
+                    elif league_totals_context:
+                        logger.info(
+                            "League totals context resolved for event %s: teams=%s, matches=%s, cutoff=%s",
+                            event_id,
+                            league_totals_context.get("team_count"),
+                            league_totals_context.get("match_count"),
+                            event_start_ts,
+                        )
             except Exception as exc:
                 logger.warning(
-                    "Could not resolve current standings for event %s (%s): %s",
+                    "Could not resolve league totals context for event %s (%s): %s",
                     event_id,
                     participants,
                     exc,
                 )
+                current_standings = None
+                league_totals_context = None
 
         if sport not in ['Tennis', 'Tennis Doubles'] and season_id and standings_api_unique_tournament_id and (home_team_id or away_team_id):
             raw_standings = standings_response
@@ -555,6 +639,7 @@ def build_matchup_streak_context(
             current_standings=current_standings,
             current_standings_cutoff_timestamp=current_standings_cutoff_timestamp,
             current_standings_source=current_standings_source,
+            league_totals_context=league_totals_context,
             raw_h2h_matchup_event_count=len(matchup_events),
             h2h_matchup_matches_analyzed=total,
             h2h_matchup_home_wins=h2h_matchup_home_wins,
