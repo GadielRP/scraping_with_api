@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from modules.pillars.common import clamp
 from modules.pillars.context import EventContext
+from .totals_debug import _log_p1_totals_debug
 
 logger = logging.getLogger(__name__)
 
@@ -208,33 +209,8 @@ def _pstdev(values: List[float]) -> float:
     return math.sqrt(variance)
 
 
-def _safe_div(numerator: float, denominator: float, default: float = 0.0) -> float:
-    if denominator == 0:
-        return default
-    return numerator / denominator
-
-
-def _weighted_average(values_and_weights: List[Tuple[Optional[float], float]]) -> Tuple[float, float, Dict[str, float]]:
-    active = [(index, value, weight) for index, (value, weight) in enumerate(values_and_weights) if value is not None and weight > 0]
-    if not active:
-        return 0.0, 0.0, {}
-
-    total_weight = sum(weight for _, _, weight in active)
-    if total_weight <= 0:
-        return 0.0, 0.0, {}
-
-    weighted_sum = sum(value * weight for _, value, weight in active if value is not None)
-    effective_weights = {str(index): weight / total_weight for index, _, weight in active}
-    return weighted_sum / total_weight, total_weight, effective_weights
-
-
 def _resolve_window_size_from_ratio(n_season: int, ratio: float) -> int:
-    """Resolve an integer window size from a normalized season ratio.
-
-    The calculation uses half-up rounding instead of ``round()`` so the result
-    is deterministic and does not inherit Python's banker's rounding behavior.
-    The resolved size is then clamped to at least 1 and at most ``n_season``.
-    """
+    """Resolve a normalized window size using half-up rounding."""
 
     if n_season <= 0 or ratio <= 0:
         return 1
@@ -258,12 +234,22 @@ def _is_active_signal(signal: Optional[float]) -> bool:
     return signal is not None and abs(signal) + EPSILON >= IGNORE_THRESHOLD
 
 
+def _weighted_average(values_and_weights: List[Tuple[Optional[float], float]]) -> Tuple[float, float, Dict[str, float]]:
+    active = [(index, value, weight) for index, (value, weight) in enumerate(values_and_weights) if value is not None and weight > 0]
+    if not active:
+        return 0.0, 0.0, {}
+
+    total_weight = sum(weight for _, _, weight in active)
+    if total_weight <= 0:
+        return 0.0, 0.0, {}
+
+    weighted_sum = sum(value * weight for _, value, weight in active if value is not None)
+    effective_weights = {str(index): weight / total_weight for index, _, weight in active}
+    return weighted_sum / total_weight, total_weight, effective_weights
+
+
 def _resolve_totals_temporal_window_config(
     event_context: EventContext,
-    league_totals_context: Dict[str, Any],
-    league_records: List[Dict[str, Any]],
-    home_results: List[Dict[str, Any]],
-    away_results: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     ratios = {name: ratio for name, ratio, _ in TOTALS_TEMPORAL_WINDOW_CONFIG}
     weights = {name: weight for name, _, weight in TOTALS_TEMPORAL_WINDOW_CONFIG}
@@ -611,7 +597,7 @@ def _collect_league_records(
     home_results: List[Dict[str, Any]],
     away_results: List[Dict[str, Any]],
     event_context: EventContext,
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+) -> List[Dict[str, Any]]:
     """Collect best-effort league records from league context, standings and result snapshots."""
     payloads: List[Tuple[str, Any]] = [
         ("streak_analysis.current_standings", getattr(streak_analysis, "current_standings", None)),
@@ -624,8 +610,6 @@ def _collect_league_records(
         payloads.append(("streak_analysis.standings_source_metadata", source_metadata))
 
     candidates: Dict[str, Tuple[int, Dict[str, Any]]] = {}
-    source_trace: Dict[str, str] = {}
-
     def _consider(record: Optional[Dict[str, Any]]) -> None:
         if not record:
             return
@@ -636,9 +620,6 @@ def _collect_league_records(
         existing = candidates.get(team_name)
         if existing is None or completeness > existing[0]:
             candidates[team_name] = (completeness, record)
-            source_trace[team_name] = str(record.get("source") or "")
-
-    league_totals_context = _get_league_totals_context(streak_analysis)
     league_totals_teams = _get_league_totals_teams(streak_analysis)
 
     if league_totals_teams:
@@ -703,30 +684,7 @@ def _collect_league_records(
             _consider(record)
 
     league_records = [record for _, record in sorted(candidates.values(), key=lambda item: (item[0], _normalize_team_name(item[1].get("team_name"))), reverse=True)]
-    league_samples = [
-        {
-            "team_name": record.get("team_name"),
-            "team_total_per_game": record.get("team_total_per_game"),
-            "gf": record.get("gf"),
-            "ga": record.get("ga"),
-            "gp": record.get("gp"),
-            "std_dev_totals": record.get("std_dev_totals"),
-            "source": record.get("source"),
-        }
-        for record in league_records
-    ]
-
-    league_source = {
-        "payload_sources": (
-            ["streak_analysis.league_totals_context.teams"] if league_totals_teams else []
-        ) + [source for source, payload in payloads if payload is not None],
-        "source_trace": source_trace,
-        "sample_count": len(league_samples),
-        "league_totals_context_present": bool(league_totals_context),
-        "league_totals_context_team_count": league_totals_context.get("team_count"),
-        "league_totals_context_match_count": league_totals_context.get("match_count"),
-    }
-    return league_records, league_source
+    return league_records
 
 
 def _extract_team_totals_record(
@@ -1177,12 +1135,11 @@ def _calculate_team_temporal_windows(
         if not subset:
             windows[window_name] = {
                 "ratio": ratio,
-                "weight": base_weight,
                 "total": None,
                 "gfpg": None,
                 "gapg": None,
                 "games_used": 0,
-                "available_games": 0,
+                "available_games": available_games,
                 "target_window": window_size,
                 "is_partial": False,
                 "base_weight": base_weight,
@@ -1201,12 +1158,11 @@ def _calculate_team_temporal_windows(
         is_partial = games_used < window_size
         windows[window_name] = {
             "ratio": ratio,
-            "weight": base_weight,
             "total": total,
             "gfpg": gfpg,
             "gapg": gapg,
             "games_used": games_used,
-            "available_games": games_used,
+            "available_games": available_games,
             "target_window": window_size,
             "is_partial": is_partial,
             "base_weight": base_weight,
@@ -1233,24 +1189,6 @@ def _calculate_team_temporal_windows(
             {"gf": gf, "ga": ga, "total": gf + ga}
             for gf, ga in score_series
         ],
-    }
-
-
-def _debug_temporal_block_payload(team_payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    return {
-        block_name: {
-            "ratio": team_payload.get(block_name, {}).get("ratio"),
-            "target_window": team_payload.get(block_name, {}).get("target_window"),
-            "games_used": team_payload.get(block_name, {}).get("games_used"),
-            "is_partial": team_payload.get(block_name, {}).get("is_partial"),
-            "gfpg": team_payload.get(block_name, {}).get("gfpg"),
-            "gapg": team_payload.get(block_name, {}).get("gapg"),
-            "total": team_payload.get(block_name, {}).get("total"),
-            "weight": team_payload.get(block_name, {}).get("weight"),
-            "base_weight": team_payload.get(block_name, {}).get("base_weight"),
-            "effective_weight": team_payload.get(block_name, {}).get("effective_weight"),
-        }
-        for block_name in TOTALS_TEMPORAL_WINDOW_NAMES
     }
 
 
@@ -1415,7 +1353,7 @@ def _totals_direction(score: float) -> str:
     return "NEUTRAL_PROFILE"
 
 
-def _determine_internal_state(layer_signals: Dict[str, Optional[float]], vol_edge: float) -> List[str]:
+def _determine_internal_state(layer_signals: Dict[str, Optional[float]]) -> List[str]:
     states: List[str] = []
     structural = layer_signals.get("STRUCTURAL")
     vol = layer_signals.get("VOL")
@@ -1428,14 +1366,16 @@ def _determine_internal_state(layer_signals: Dict[str, Optional[float]], vol_edg
             ("STRUCTURAL", structural),
             ("VOL", vol),
             ("TEMPORAL", temporal),
-            ("TREND", trend),
+        ("TREND", trend),
         )
         if _is_active_signal(signal)
     }
 
-    if active_signals and all(signal is not None and signal > 0 for signal in active_signals.values()):
+    all_layers_active = len(active_signals) == 4
+
+    if all_layers_active and all(signal is not None and signal > 0 for signal in active_signals.values()):
         states.append("CONSENSUS_OVER")
-    if active_signals and all(signal is not None and signal < 0 for signal in active_signals.values()):
+    if all_layers_active and all(signal is not None and signal < 0 for signal in active_signals.values()):
         states.append("CONSENSUS_UNDER")
     if _is_active_signal(active_signals.get("STRUCTURAL")) and _is_active_signal(active_signals.get("TREND")) and active_signals.get("STRUCTURAL") < 0 and active_signals.get("TREND") > 0:
         states.append("HEATING_CONFLICT")
@@ -1485,38 +1425,6 @@ def _determine_status(
     if vol_source.get("vol_dynamic_scale_source") == "fallback_available_teams":
         return "DEGRADED", "fallback_or_low_sample"
     return "ACTIVE", "active"
-
-
-def _summarize_record(record: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "team_name": record.get("team_name"),
-        "source": record.get("source"),
-        "gf": record.get("gf"),
-        "ga": record.get("ga"),
-        "gp": record.get("gp"),
-        "gfpg": record.get("gfpg"),
-        "gapg": record.get("gapg"),
-        "team_total_per_game": record.get("team_total_per_game"),
-        "std_dev_totals": record.get("std_dev_totals"),
-    }
-
-
-def _debug_float(value: Any) -> str:
-    coerced = _coerce_float(value)
-    if coerced is None:
-        return "None"
-    return f"{coerced:.12g} (~{coerced:.4f})"
-
-
-def _debug_sample_summary(values: List[float]) -> Dict[str, Any]:
-    samples = [float(value) for value in values if _coerce_float(value) is not None]
-    return {
-        "count": len(samples),
-        "min": min(samples) if samples else None,
-        "p50": _percentile_nearest_rank(samples, 0.50) if samples else None,
-        "p75": _percentile_nearest_rank(samples, 0.75) if samples else None,
-        "max": max(samples) if samples else None,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -1607,20 +1515,14 @@ def calculate_p1_totals(
         league_payloads,
     )
 
-    league_records, league_source = _collect_league_records(
+    league_records = _collect_league_records(
         streak_analysis,
         home_results,
         away_results,
         event_context,
     )
 
-    temporal_window_config = _resolve_totals_temporal_window_config(
-        event_context=event_context,
-        league_totals_context=league_totals_context,
-        league_records=league_records,
-        home_results=home_results,
-        away_results=away_results,
-    )
+    temporal_window_config = _resolve_totals_temporal_window_config(event_context=event_context)
 
     if debug_mode:
         logger.info(
@@ -1671,9 +1573,6 @@ def calculate_p1_totals(
             for record in (home_record, away_record)
             if record.get("team_total_per_game") is not None
         ]
-        if league_records:
-            league_source["league_baseline_source"] = "fallback_home_away_only"
-            league_source["sample_count"] = len(league_records)
 
     missing_data: List[str] = []
     for item in home_missing + away_missing:
@@ -1798,7 +1697,7 @@ def calculate_p1_totals(
     p1_totals_direction = _totals_direction(p1_totals_score)
     p1_totals_strength = _classify_totals_strength(p1_totals_score)
 
-    internal_state = _determine_internal_state(layer_signals, float(volatility_layer.get("signal") or 0.0))
+    internal_state = _determine_internal_state(layer_signals)
 
     p1_totals_status, p1_totals_status_reason = _determine_status(
         confidence_total=confidence_total,
@@ -1829,208 +1728,40 @@ def calculate_p1_totals(
         p1_totals_score = 0.0
 
     if debug_mode:
-        league_samples = [
-            float(record.get("team_total_per_game"))
-            for record in league_records
-            if record.get("team_total_per_game") is not None
-        ]
-        total_distance_samples = structural_layer.get("league_profile", {}).get("total_distance_samples", [])
-        layer_audit = {layer.layer: layer for layer in active_layers + ignored_layers}
-
-        logger.info("[P1_TOTALS][INPUTS] event_id=%s participants=%s", event_id, participants)
-        logger.info("[P1_TOTALS][INPUTS] home_team=%s away_team=%s", home_team, away_team)
-        logger.info(
-            "[P1_TOTALS][INPUTS] home_results_source=%s result_count=%s fallback_reason=%s",
-            home_results_source.get("source"),
-            home_results_source.get("result_count"),
-            home_results_source.get("fallback_reason"),
-        )
-        logger.info(
-            "[P1_TOTALS][INPUTS] away_results_source=%s result_count=%s fallback_reason=%s",
-            away_results_source.get("source"),
-            away_results_source.get("result_count"),
-            away_results_source.get("fallback_reason"),
-        )
-        logger.info(
-            "[P1_TOTALS][INPUTS] league_totals_context present=%s team_count=%s match_count=%s",
-            bool(league_totals_context),
-            league_totals_context.get("team_count") if league_totals_context else None,
-            league_totals_context.get("match_count") if league_totals_context else None,
-        )
-        logger.info(
-            "[P1_TOTALS][INPUTS] n_avail=%s denominator=%s confidence_total=%s",
-            n_avail,
-            n_season,
-            _debug_float(confidence_total),
-        )
-
-        logger.info(
-            "[P1_TOTALS][STRUCTURAL] home GF=%s GA=%s GP=%s GFPG=%s GAPG=%s TEAM_TOTAL_PER_GAME=%s",
-            _debug_float(home_record.get("gf")),
-            _debug_float(home_record.get("ga")),
-            home_record.get("gp"),
-            _debug_float(home_record.get("gfpg")),
-            _debug_float(home_record.get("gapg")),
-            _debug_float(home_record.get("team_total_per_game")),
-        )
-        logger.info(
-            "[P1_TOTALS][STRUCTURAL] away GF=%s GA=%s GP=%s GFPG=%s GAPG=%s TEAM_TOTAL_PER_GAME=%s",
-            _debug_float(away_record.get("gf")),
-            _debug_float(away_record.get("ga")),
-            away_record.get("gp"),
-            _debug_float(away_record.get("gfpg")),
-            _debug_float(away_record.get("gapg")),
-            _debug_float(away_record.get("team_total_per_game")),
-        )
-        logger.info(
-            "[P1_TOTALS][STRUCTURAL] league_samples summary=%s",
-            _debug_sample_summary(league_samples),
-        )
-        logger.info(
-            "[P1_TOTALS][STRUCTURAL] league_samples by_team=%s",
-            [
-                {
-                    "team_name": record.get("team_name"),
-                    "team_total_per_game": record.get("team_total_per_game"),
-                    "source": record.get("source"),
-                }
-                for record in league_records
-                if record.get("team_total_per_game") is not None
-            ],
-        )
-        logger.info(
-            "[P1_TOTALS][STRUCTURAL] LEAGUE_TOTAL_BASELINE=%s TOTAL_DISTANCE summary=%s TOTAL_DYNAMIC_SCALE=%s",
-            _debug_float(structural_layer.get("league_total_baseline")),
-            _debug_sample_summary(total_distance_samples),
-            _debug_float(structural_layer.get("total_dynamic_scale")),
-        )
-        logger.info(
-            "[P1_TOTALS][STRUCTURAL] HOME_ATTACK_ENVIRONMENT=%s AWAY_ATTACK_ENVIRONMENT=%s EXPECTED_TOTAL_STRUCTURAL=%s STRUCTURAL_PROFILE_SCORE=%s",
-            _debug_float(structural_layer.get("home_attack_environment")),
-            _debug_float(structural_layer.get("away_attack_environment")),
-            _debug_float(structural_layer.get("expected_total_structural")),
-            _debug_float(structural_layer.get("signal")),
-        )
-
-        logger.info(
-            "[P1_TOTALS][VOLATILITY] home_game_totals=%s",
-            home_game_totals,
-        )
-        logger.info(
-            "[P1_TOTALS][VOLATILITY] away_game_totals=%s",
-            away_game_totals,
-        )
-        logger.info(
-            "[P1_TOTALS][VOLATILITY] STD_DEV_TOTALS_HOME=%s STD_DEV_TOTALS_AWAY=%s VOL_BASELINE=%s VOL_DYNAMIC_SCALE=%s MATCHUP_VOLATILITY=%s VOL_EDGE=%s",
-            _debug_float(volatility_layer.get("home_std")),
-            _debug_float(volatility_layer.get("away_std")),
-            _debug_float(volatility_layer.get("vol_baseline")),
-            _debug_float(volatility_layer.get("vol_dynamic_scale")),
-            _debug_float(volatility_layer.get("matchup_volatility")),
-            _debug_float(volatility_layer.get("signal")),
-        )
-        logger.info(
-            "[P1_TOTALS][VOLATILITY] league_std_samples summary=%s by_team=%s",
-            _debug_sample_summary([
-                sample.get("std_dev_totals")
-                for sample in volatility_layer.get("league_samples", [])
-                if sample.get("std_dev_totals") is not None
-            ]),
-            volatility_layer.get("league_samples", []),
-        )
-
-        for side_name, temporal_payload in (
-            ("home", temporal_layer["home_temporal"]),
-            ("away", temporal_layer["away_temporal"]),
-        ):
-            for block_name, block_payload in _debug_temporal_block_payload(temporal_payload).items():
-                logger.info(
-                    "[P1_TOTALS][TEMPORAL] side=%s block_name=%s ratio=%s target_window=%s games_used=%s is_partial=%s gfpg=%s gapg=%s total=%s weight=%s base_weight=%s effective_weight=%s",
-                    side_name,
-                    block_name,
-                    _debug_float(block_payload.get("ratio")),
-                    block_payload.get("target_window"),
-                    block_payload.get("games_used"),
-                    block_payload.get("is_partial"),
-                    _debug_float(block_payload.get("gfpg")),
-                    _debug_float(block_payload.get("gapg")),
-                    _debug_float(block_payload.get("total")),
-                    _debug_float(block_payload.get("weight")),
-                    _debug_float(block_payload.get("base_weight")),
-                    _debug_float(block_payload.get("effective_weight")),
-                )
-        logger.info(
-            "[P1_TOTALS][TEMPORAL] TEAM_TOTAL_WEIGHTED_HOME=%s TEAM_TOTAL_WEIGHTED_AWAY=%s MATCHUP_TEMPORAL_TOTAL=%s TEMPORAL_PROFILE_SCORE=%s",
-            _debug_float(temporal_layer["home_temporal"].get("weighted_total")),
-            _debug_float(temporal_layer["away_temporal"].get("weighted_total")),
-            _debug_float(temporal_layer.get("matchup_temporal_total")),
-            _debug_float(temporal_layer.get("signal")),
-        )
-
-        logger.info(
-            "[P1_TOTALS][TREND] HOME_SHORT_TERM_PROFILE=%s from TOTALS_SHORT/TOTALS_RECENT HOME_LONG_TERM_PROFILE=%s from TOTALS_MID/TOTALS_FULL AWAY_SHORT_TERM_PROFILE=%s from TOTALS_SHORT/TOTALS_RECENT AWAY_LONG_TERM_PROFILE=%s from TOTALS_MID/TOTALS_FULL",
-            _debug_float(trend_layer["home_trend"].get("short_term_profile")),
-            _debug_float(trend_layer["home_trend"].get("long_term_profile")),
-            _debug_float(trend_layer["away_trend"].get("short_term_profile")),
-            _debug_float(trend_layer["away_trend"].get("long_term_profile")),
-        )
-        logger.info(
-            "[P1_TOTALS][TREND] short_term_profile_matchup=%s long_term_profile_matchup=%s TREND_DELTA=%s TREND_SIGNAL=%s",
-            _debug_float(trend_layer.get("short_term_profile_matchup")),
-            _debug_float(trend_layer.get("long_term_profile_matchup")),
-            _debug_float(trend_layer.get("trend_delta")),
-            _debug_float(trend_layer.get("signal")),
-        )
-
-        for layer_name in ("STRUCTURAL", "VOL", "TEMPORAL", "TREND"):
-            layer_output = layer_audit.get(layer_name)
-            signal = layer_signals.get(layer_name)
-            logger.info(
-                "[P1_TOTALS][IGNORE_SCORE] layer=%s signal_raw=%s abs_signal=%s threshold=%s epsilon=%s active_by_threshold=%s base_weight=%s effective_weight=%s weighted_signal=%s ignored=%s reason=%s",
-                layer_name,
-                _debug_float(signal),
-                _debug_float(abs(signal) if signal is not None else None),
-                _debug_float(IGNORE_THRESHOLD),
-                _debug_float(EPSILON),
-                _is_active_signal(signal),
-                _debug_float(LAYER_BASE_WEIGHTS[layer_name]),
-                _debug_float(layer_output.effective_weight if layer_output else None),
-                _debug_float(layer_output.weighted_signal if layer_output else None),
-                layer_output.ignored if layer_output else None,
-                layer_output.ignored_reason if layer_output else None,
-            )
-        logger.info(
-            "[P1_TOTALS][IGNORE_SCORE] active_weight_sum=%s weighted_sum=%s",
-            _debug_float(active_weight_sum),
-            _debug_float(weighted_sum),
-        )
-        logger.info(
-            "[P1_TOTALS][IGNORE_SCORE] P1_TOTALS_SCORE=%s P1_TOTALS_DIRECTION=%s P1_TOTALS_STRENGTH=%s INTERNAL_STATE=%s status=%s status_reason=%s",
-            _debug_float(p1_totals_score),
-            p1_totals_direction,
-            p1_totals_strength,
-            internal_state,
-            p1_totals_status,
-            p1_totals_status_reason,
-        )
-        internal_state_signals = {
-            key: value
-            for key, value in layer_signals.items()
-            if _is_active_signal(value)
-        }
-        logger.info(
-            "[P1_TOTALS][INTERNAL_STATE] signals_used=%s active_profile_signs=%s states_detected=%s",
-            {key: _debug_float(value) for key, value in internal_state_signals.items()},
-            [
-                math.copysign(1.0, signal)
-                for signal in (
-                    internal_state_signals.get("STRUCTURAL"),
-                    internal_state_signals.get("TEMPORAL"),
-                    internal_state_signals.get("TREND"),
-                )
-                if _is_active_signal(signal)
-            ],
-            internal_state,
+        _log_p1_totals_debug(
+            logger=logger,
+            event_id=event_id,
+            participants=participants,
+            home_team=home_team,
+            away_team=away_team,
+            home_results_source=home_results_source,
+            away_results_source=away_results_source,
+            league_totals_context=league_totals_context,
+            n_avail=n_avail,
+            n_season=n_season,
+            confidence_total=confidence_total,
+            home_record=home_record,
+            away_record=away_record,
+            league_records=league_records,
+            structural_layer=structural_layer,
+            volatility_layer=volatility_layer,
+            temporal_layer=temporal_layer,
+            trend_layer=trend_layer,
+            layer_signals=layer_signals,
+            active_layers=active_layers,
+            ignored_layers=ignored_layers,
+            active_weight_sum=active_weight_sum,
+            weighted_sum=weighted_sum,
+            p1_totals_score=p1_totals_score,
+            p1_totals_direction=p1_totals_direction,
+            p1_totals_strength=p1_totals_strength,
+            internal_state=internal_state,
+            p1_totals_status=p1_totals_status,
+            p1_totals_status_reason=p1_totals_status_reason,
+            ignore_threshold=IGNORE_THRESHOLD,
+            epsilon=EPSILON,
+            layer_base_weights=LAYER_BASE_WEIGHTS,
+            block_names=list(TOTALS_TEMPORAL_WINDOW_NAMES),
         )
 
     return P1TotalsOutput(
