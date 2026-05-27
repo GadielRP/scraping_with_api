@@ -4,29 +4,20 @@ This module estimates whether a matchup lives in an over, under, or neutral
 goal environment using structural season totals, volatility, temporal form,
 and trend pressure. The implementation is pure and defensive: it reads only
 the provided ``streak_analysis`` and ``event_context`` inputs and returns a
-``ModuleResult``.
+``P1TotalsOutput``.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from modules.pillars.common import (
-    ModuleComponentResult,
-    ModuleResult,
-    calculate_bias,
-    clamp,
-    classify_strength,
-)
+from modules.pillars.common import clamp
 from modules.pillars.context import EventContext
 
 logger = logging.getLogger(__name__)
-
-MODULE_ID = "P1_TOTALS"
-MODULE_NAME = "P1 Totals"
-ENGINE_VERSION = "p1_totals_structural_temporal_engine_v1.0"
 
 TEMPORAL_WINDOW_SIZES: Dict[str, int] = {
     "L5": 5,
@@ -50,6 +41,43 @@ LAYER_BASE_WEIGHTS: Dict[str, float] = {
 }
 
 IGNORE_THRESHOLD = 0.05
+EPSILON = 1e-12
+
+
+@dataclass(frozen=True)
+class P1TotalsLayerOutput:
+    layer: str
+    signal: Optional[float]
+    base_weight: float
+    effective_weight: float
+    weighted_signal: float
+    ignored: bool
+    ignored_reason: Optional[str]
+
+
+@dataclass(frozen=True)
+class P1TotalsOutput:
+    P1_TOTALS_SCORE: float
+    P1_TOTALS_DIRECTION: str
+    P1_TOTALS_STRENGTH: str
+    P1_TOTALS_INTERNAL_STATE: List[str]
+    STRUCTURAL_PROFILE_SCORE: Optional[float]
+    VOL_EDGE: Optional[float]
+    TEMPORAL_PROFILE_SCORE: Optional[float]
+    TREND_SIGNAL: Optional[float]
+    EXPECTED_TOTAL_STRUCTURAL: Optional[float]
+    MATCHUP_VOLATILITY: Optional[float]
+    MATCHUP_TEMPORAL_TOTAL: Optional[float]
+    LEAGUE_TOTAL_BASELINE: Optional[float]
+    TOTAL_DYNAMIC_SCALE: Optional[float]
+    VOL_BASELINE: Optional[float]
+    VOL_DYNAMIC_SCALE: Optional[float]
+    active_layers: List[P1TotalsLayerOutput]
+    ignored_layers: List[P1TotalsLayerOutput]
+    confidence_total: float
+    status: str
+    status_reason: str
+
 
 _TEAM_TOTAL_G_KEYS = (
     "goals_for",
@@ -1311,51 +1339,11 @@ def _determine_internal_state(layer_signals: Dict[str, Optional[float]], vol_edg
     return states
 
 
-def _component_raw(
-    *,
-    layer_name: str,
-    signal: Optional[float],
-    base_weight: float,
-    effective_weight: float,
-    ignored: bool,
-    ignored_reason: Optional[str],
-    payload: Dict[str, Any],
-) -> Dict[str, Any]:
-    return {
-        "layer": layer_name,
-        "signal": signal,
-        "base_weight": base_weight,
-        "effective_weight": effective_weight,
-        "ignored": ignored,
-        "ignored_reason": ignored_reason,
-        "payload": payload,
-    }
-
-
-def _build_component(
-    name: str,
-    edge: float,
-    weight: float,
-    raw: Dict[str, Any],
-) -> ModuleComponentResult:
-    return ModuleComponentResult(
-        name=name,
-        edge=edge,
-        bias=calculate_bias(edge),
-        strength=classify_strength(edge),
-        weight=weight,
-        weighted_edge=edge * weight,
-        raw=raw,
-    )
-
-
 def _determine_status(
     *,
     confidence_total: float,
     league_total_baseline: Optional[float],
-    active_layers: List[str],
-    ignored_layers: List[Dict[str, Any]],
-    missing_data: List[str],
+    active_layers: List[P1TotalsLayerOutput],
     structural_source: Dict[str, Any],
     vol_source: Dict[str, Any],
     n_avail: int,
@@ -1397,12 +1385,36 @@ def _summarize_record(record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _sum_components(components: List[ModuleComponentResult]) -> Tuple[float, float]:
-    active_weight_sum = sum(component.weight for component in components if component.weight > 0)
-    if active_weight_sum <= 0:
-        return 0.0, 0.0
-    weighted_sum = sum(component.weighted_edge for component in components)
-    return weighted_sum, active_weight_sum
+def _debug_float(value: Any) -> str:
+    coerced = _coerce_float(value)
+    if coerced is None:
+        return "None"
+    return f"{coerced:.12g} (~{coerced:.4f})"
+
+
+def _debug_sample_summary(values: List[float]) -> Dict[str, Any]:
+    samples = [float(value) for value in values if _coerce_float(value) is not None]
+    return {
+        "count": len(samples),
+        "min": min(samples) if samples else None,
+        "p50": _percentile_nearest_rank(samples, 0.50) if samples else None,
+        "p75": _percentile_nearest_rank(samples, 0.75) if samples else None,
+        "max": max(samples) if samples else None,
+    }
+
+
+def _debug_temporal_window_payload(team_payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    return {
+        window_name: {
+            "games_used": team_payload.get(window_name, {}).get("games_used"),
+            "gfpg": team_payload.get(window_name, {}).get("gfpg"),
+            "gapg": team_payload.get(window_name, {}).get("gapg"),
+            "total": team_payload.get(window_name, {}).get("total"),
+            "base_weight": team_payload.get(window_name, {}).get("base_weight"),
+            "effective_weight": team_payload.get(window_name, {}).get("effective_weight"),
+        }
+        for window_name in TEMPORAL_WINDOW_SIZES
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1413,7 +1425,7 @@ def calculate_p1_totals(
     streak_analysis: Any,
     event_context: EventContext,
     debug_mode: bool = False,
-) -> ModuleResult:
+) -> P1TotalsOutput:
     event_id = getattr(streak_analysis, "event_id", 0)
     home_team = _first_text(
         getattr(streak_analysis, "home_team_name", None),
@@ -1438,13 +1450,6 @@ def calculate_p1_totals(
 
     league_totals_context = _get_league_totals_context(streak_analysis)
     league_totals_teams = _get_league_totals_teams(streak_analysis)
-    league_totals_context_source = {
-        "present": bool(league_totals_context),
-        "team_count": league_totals_context.get("team_count"),
-        "match_count": league_totals_context.get("match_count"),
-        "source": league_totals_context.get("source"),
-        "cutoff_timestamp": league_totals_context.get("cutoff_timestamp"),
-    }
 
     league_home_results, league_home_results_source = _extract_team_results_from_league_totals_context(
         streak_analysis,
@@ -1485,14 +1490,14 @@ def calculate_p1_totals(
         ("event_context.competition.standings_response", getattr(getattr(event_context, "competition", None), "standings_response", None)),
     ]
 
-    home_record, home_record_source, home_missing = _extract_team_totals_record(
+    home_record, _, home_missing = _extract_team_totals_record(
         streak_analysis,
         "home",
         home_results,
         event_context,
         league_payloads,
     )
-    away_record, away_record_source, away_missing = _extract_team_totals_record(
+    away_record, _, away_missing = _extract_team_totals_record(
         streak_analysis,
         "away",
         away_results,
@@ -1568,9 +1573,7 @@ def calculate_p1_totals(
 
     home_game_totals = volatility_layer["home_game_totals"]
     away_game_totals = volatility_layer["away_game_totals"]
-    valid_home_game_totals_count = len(home_game_totals)
-    valid_away_game_totals_count = len(away_game_totals)
-    n_avail = min(valid_home_game_totals_count, valid_away_game_totals_count)
+    n_avail = min(len(home_game_totals), len(away_game_totals))
     confidence_total = min(n_avail / 60.0, 1.0)
 
     if n_avail == 0:
@@ -1583,17 +1586,10 @@ def calculate_p1_totals(
         "TREND": trend_layer.get("signal"),
     }
 
-    layer_weights: Dict[str, Dict[str, float]] = {}
-    active_layers: List[str] = []
-    ignored_layers: List[Dict[str, Any]] = []
-    components: List[ModuleComponentResult] = []
-
-    layer_payloads = {
-        "STRUCTURAL": structural_layer,
-        "VOL": volatility_layer,
-        "TEMPORAL": temporal_layer,
-        "TREND": trend_layer,
-    }
+    active_layers: List[P1TotalsLayerOutput] = []
+    ignored_layers: List[P1TotalsLayerOutput] = []
+    weighted_sum = 0.0
+    active_weight_sum = 0.0
 
     for layer_name in ("STRUCTURAL", "VOL", "TEMPORAL", "TREND"):
         signal = layer_signals[layer_name]
@@ -1604,7 +1600,7 @@ def calculate_p1_totals(
         if signal is None:
             ignored = True
             ignored_reason = "missing_signal"
-        elif abs(signal) < IGNORE_THRESHOLD:
+        elif abs(signal) + EPSILON < IGNORE_THRESHOLD:
             ignored = True
             ignored_reason = "below_ignore_threshold"
         elif effective_weight <= 0:
@@ -1612,44 +1608,32 @@ def calculate_p1_totals(
             ignored_reason = "zero_confidence"
 
         if ignored:
-            effective_weight = 0.0
             ignored_layers.append(
-                {
-                    "layer": layer_name,
-                    "signal": signal,
-                    "reason": ignored_reason,
-                    "base_weight": base_weight,
-                }
+                P1TotalsLayerOutput(
+                    layer=layer_name,
+                    signal=signal,
+                    base_weight=base_weight,
+                    effective_weight=0.0,
+                    weighted_signal=0.0,
+                    ignored=True,
+                    ignored_reason=ignored_reason,
+                )
             )
         else:
-            active_layers.append(layer_name)
-
-        layer_weights[layer_name] = {
-            "base_weight": base_weight,
-            "confidence_total": confidence_total,
-            "effective_weight": effective_weight,
-        }
-
-        component_raw = _component_raw(
-            layer_name=layer_name,
-            signal=signal,
-            base_weight=base_weight,
-            effective_weight=effective_weight,
-            ignored=ignored,
-            ignored_reason=ignored_reason,
-            payload=layer_payloads[layer_name],
-        )
-        components.append(
-            _build_component(
-                layer_name + "_PROFILE_SCORE" if layer_name != "VOL" else "VOL_EDGE",
-                signal or 0.0,
-                effective_weight,
-                component_raw,
+            weighted_signal = float(signal or 0.0) * effective_weight
+            active_layers.append(
+                P1TotalsLayerOutput(
+                    layer=layer_name,
+                    signal=signal,
+                    base_weight=base_weight,
+                    effective_weight=effective_weight,
+                    weighted_signal=weighted_signal,
+                    ignored=False,
+                    ignored_reason=None,
+                )
             )
-        )
-
-    weighted_sum = sum(component.weighted_edge for component in components)
-    active_weight_sum = sum(component.weight for component in components if component.weight > 0)
+            weighted_sum += weighted_signal
+            active_weight_sum += effective_weight
 
     if active_weight_sum > 0:
         p1_totals_score = clamp(weighted_sum / float(active_weight_sum))
@@ -1665,8 +1649,6 @@ def calculate_p1_totals(
         confidence_total=confidence_total,
         league_total_baseline=structural_layer.get("league_total_baseline"),
         active_layers=active_layers,
-        ignored_layers=ignored_layers,
-        missing_data=missing_data,
         structural_source=structural_layer.get("source", {}),
         vol_source=volatility_layer.get("source", {}),
         n_avail=n_avail,
@@ -1692,145 +1674,195 @@ def calculate_p1_totals(
         p1_totals_score = 0.0
 
     if debug_mode:
-        logger.info("--- P1_TOTALS Debug: Event %s (%s) ---", event_id, participants)
-        logger.info("  home_team=%s away_team=%s", home_team, away_team)
+        league_samples = [
+            float(record.get("team_total_per_game"))
+            for record in league_records
+            if record.get("team_total_per_game") is not None
+        ]
+        total_distance_samples = structural_layer.get("league_profile", {}).get("total_distance_samples", [])
+        layer_audit = {layer.layer: layer for layer in active_layers + ignored_layers}
+
+        logger.info("[P1_TOTALS][INPUTS] event_id=%s participants=%s", event_id, participants)
+        logger.info("[P1_TOTALS][INPUTS] home_team=%s away_team=%s", home_team, away_team)
         logger.info(
-            "  league_totals_context present=%s teams=%s matches=%s",
+            "[P1_TOTALS][INPUTS] home_results_source=%s result_count=%s fallback_reason=%s",
+            home_results_source.get("source"),
+            home_results_source.get("result_count"),
+            home_results_source.get("fallback_reason"),
+        )
+        logger.info(
+            "[P1_TOTALS][INPUTS] away_results_source=%s result_count=%s fallback_reason=%s",
+            away_results_source.get("source"),
+            away_results_source.get("result_count"),
+            away_results_source.get("fallback_reason"),
+        )
+        logger.info(
+            "[P1_TOTALS][INPUTS] league_totals_context present=%s team_count=%s match_count=%s",
             bool(league_totals_context),
             league_totals_context.get("team_count") if league_totals_context else None,
             league_totals_context.get("match_count") if league_totals_context else None,
         )
         logger.info(
-            "  home_results_source=%s away_results_source=%s",
-            home_results_source.get("source"),
-            away_results_source.get("source"),
+            "[P1_TOTALS][INPUTS] n_avail=%s confidence_total=%s",
+            n_avail,
+            _debug_float(confidence_total),
+        )
+
+        logger.info(
+            "[P1_TOTALS][STRUCTURAL] home GF=%s GA=%s GP=%s GFPG=%s GAPG=%s TEAM_TOTAL_PER_GAME=%s",
+            _debug_float(home_record.get("gf")),
+            _debug_float(home_record.get("ga")),
+            home_record.get("gp"),
+            _debug_float(home_record.get("gfpg")),
+            _debug_float(home_record.get("gapg")),
+            _debug_float(home_record.get("team_total_per_game")),
         )
         logger.info(
-            "  league baseline=%.4f source=%s dynamic_scale=%.4f source=%s",
-            float(structural_layer.get("league_total_baseline") or 0.0),
-            structural_layer.get("source", {}).get("league_baseline_source"),
-            float(structural_layer.get("total_dynamic_scale") or 0.0),
-            structural_layer.get("source", {}).get("total_dynamic_scale_source"),
+            "[P1_TOTALS][STRUCTURAL] away GF=%s GA=%s GP=%s GFPG=%s GAPG=%s TEAM_TOTAL_PER_GAME=%s",
+            _debug_float(away_record.get("gf")),
+            _debug_float(away_record.get("ga")),
+            away_record.get("gp"),
+            _debug_float(away_record.get("gfpg")),
+            _debug_float(away_record.get("gapg")),
+            _debug_float(away_record.get("team_total_per_game")),
         )
         logger.info(
-            "  home_record=%s away_record=%s",
-            _summarize_record(home_record),
-            _summarize_record(away_record),
+            "[P1_TOTALS][STRUCTURAL] league_samples summary=%s",
+            _debug_sample_summary(league_samples),
         )
         logger.info(
-            "  structural=%.4f vol=%.4f temporal=%.4f trend=%.4f",
-            float(layer_signals["STRUCTURAL"] or 0.0),
-            float(layer_signals["VOL"] or 0.0),
-            float(layer_signals["TEMPORAL"] or 0.0),
-            float(layer_signals["TREND"] or 0.0),
+            "[P1_TOTALS][STRUCTURAL] league_samples by_team=%s",
+            [
+                {
+                    "team_name": record.get("team_name"),
+                    "team_total_per_game": record.get("team_total_per_game"),
+                    "source": record.get("source"),
+                }
+                for record in league_records
+                if record.get("team_total_per_game") is not None
+            ],
         )
-        logger.info("  active_layers=%s ignored_layers=%s", active_layers, ignored_layers)
         logger.info(
-            "  final score=%.4f direction=%s strength=%s status=%s reason=%s",
-            p1_totals_score,
+            "[P1_TOTALS][STRUCTURAL] LEAGUE_TOTAL_BASELINE=%s TOTAL_DISTANCE summary=%s TOTAL_DYNAMIC_SCALE=%s",
+            _debug_float(structural_layer.get("league_total_baseline")),
+            _debug_sample_summary(total_distance_samples),
+            _debug_float(structural_layer.get("total_dynamic_scale")),
+        )
+        logger.info(
+            "[P1_TOTALS][STRUCTURAL] HOME_ATTACK_ENVIRONMENT=%s AWAY_ATTACK_ENVIRONMENT=%s EXPECTED_TOTAL_STRUCTURAL=%s STRUCTURAL_PROFILE_SCORE=%s",
+            _debug_float(structural_layer.get("home_attack_environment")),
+            _debug_float(structural_layer.get("away_attack_environment")),
+            _debug_float(structural_layer.get("expected_total_structural")),
+            _debug_float(structural_layer.get("signal")),
+        )
+
+        logger.info(
+            "[P1_TOTALS][VOLATILITY] home_game_totals=%s",
+            home_game_totals,
+        )
+        logger.info(
+            "[P1_TOTALS][VOLATILITY] away_game_totals=%s",
+            away_game_totals,
+        )
+        logger.info(
+            "[P1_TOTALS][VOLATILITY] STD_DEV_TOTALS_HOME=%s STD_DEV_TOTALS_AWAY=%s VOL_BASELINE=%s VOL_DYNAMIC_SCALE=%s MATCHUP_VOLATILITY=%s VOL_EDGE=%s",
+            _debug_float(volatility_layer.get("home_std")),
+            _debug_float(volatility_layer.get("away_std")),
+            _debug_float(volatility_layer.get("vol_baseline")),
+            _debug_float(volatility_layer.get("vol_dynamic_scale")),
+            _debug_float(volatility_layer.get("matchup_volatility")),
+            _debug_float(volatility_layer.get("signal")),
+        )
+        logger.info(
+            "[P1_TOTALS][VOLATILITY] league_std_samples summary=%s by_team=%s",
+            _debug_sample_summary([
+                sample.get("std_dev_totals")
+                for sample in volatility_layer.get("league_samples", [])
+                if sample.get("std_dev_totals") is not None
+            ]),
+            volatility_layer.get("league_samples", []),
+        )
+
+        for side_name, temporal_payload in (
+            ("home", temporal_layer["home_temporal"]),
+            ("away", temporal_layer["away_temporal"]),
+        ):
+            logger.info(
+                "[P1_TOTALS][TEMPORAL] %s windows=%s",
+                side_name,
+                _debug_temporal_window_payload(temporal_payload),
+            )
+        logger.info(
+            "[P1_TOTALS][TEMPORAL] TEAM_TOTAL_WEIGHTED_HOME=%s TEAM_TOTAL_WEIGHTED_AWAY=%s MATCHUP_TEMPORAL_TOTAL=%s TEMPORAL_PROFILE_SCORE=%s",
+            _debug_float(temporal_layer["home_temporal"].get("weighted_total")),
+            _debug_float(temporal_layer["away_temporal"].get("weighted_total")),
+            _debug_float(temporal_layer.get("matchup_temporal_total")),
+            _debug_float(temporal_layer.get("signal")),
+        )
+
+        logger.info(
+            "[P1_TOTALS][TREND] SHORT_TERM_PROFILE_HOME=%s LONG_TERM_PROFILE_HOME=%s SHORT_TERM_PROFILE_AWAY=%s LONG_TERM_PROFILE_AWAY=%s",
+            _debug_float(trend_layer["home_trend"].get("short_term_profile")),
+            _debug_float(trend_layer["home_trend"].get("long_term_profile")),
+            _debug_float(trend_layer["away_trend"].get("short_term_profile")),
+            _debug_float(trend_layer["away_trend"].get("long_term_profile")),
+        )
+        logger.info(
+            "[P1_TOTALS][TREND] short_term_profile_matchup=%s long_term_profile_matchup=%s TREND_DELTA=%s TREND_SIGNAL=%s",
+            _debug_float(trend_layer.get("short_term_profile_matchup")),
+            _debug_float(trend_layer.get("long_term_profile_matchup")),
+            _debug_float(trend_layer.get("trend_delta")),
+            _debug_float(trend_layer.get("signal")),
+        )
+
+        for layer_name in ("STRUCTURAL", "VOL", "TEMPORAL", "TREND"):
+            layer_output = layer_audit.get(layer_name)
+            signal = layer_signals.get(layer_name)
+            logger.info(
+                "[P1_TOTALS][IGNORE_SCORE] layer=%s signal_raw=%s abs_signal=%s base_weight=%s effective_weight=%s weighted_signal=%s ignored=%s reason=%s",
+                layer_name,
+                _debug_float(signal),
+                _debug_float(abs(signal) if signal is not None else None),
+                _debug_float(LAYER_BASE_WEIGHTS[layer_name]),
+                _debug_float(layer_output.effective_weight if layer_output else None),
+                _debug_float(layer_output.weighted_signal if layer_output else None),
+                layer_output.ignored if layer_output else None,
+                layer_output.ignored_reason if layer_output else None,
+            )
+        logger.info(
+            "[P1_TOTALS][IGNORE_SCORE] active_weight_sum=%s weighted_sum=%s",
+            _debug_float(active_weight_sum),
+            _debug_float(weighted_sum),
+        )
+        logger.info(
+            "[P1_TOTALS][IGNORE_SCORE] P1_TOTALS_SCORE=%s P1_TOTALS_DIRECTION=%s P1_TOTALS_STRENGTH=%s INTERNAL_STATE=%s status=%s status_reason=%s",
+            _debug_float(p1_totals_score),
             p1_totals_direction,
             p1_totals_strength,
+            internal_state,
             p1_totals_status,
             p1_totals_status_reason,
         )
 
-    raw = {
-        "P1_TOTALS_SCORE": p1_totals_score,
-        "P1_TOTALS_DIRECTION": p1_totals_direction,
-        "P1_TOTALS_STRENGTH": p1_totals_strength,
-        "P1_TOTALS_INTERNAL_STATE": internal_state,
-        "STRUCTURAL_PROFILE_SCORE": structural_layer.get("signal"),
-        "VOL_EDGE": volatility_layer.get("signal"),
-        "TEMPORAL_PROFILE_SCORE": temporal_layer.get("signal"),
-        "TREND_SIGNAL": trend_layer.get("signal"),
-        "EXPECTED_TOTAL_STRUCTURAL": structural_layer.get("expected_total_structural"),
-        "MATCHUP_VOLATILITY": volatility_layer.get("matchup_volatility"),
-        "MATCHUP_TEMPORAL_TOTAL": temporal_layer.get("matchup_temporal_total"),
-        "LEAGUE_TOTAL_BASELINE": structural_layer.get("league_total_baseline"),
-        "TOTAL_DYNAMIC_SCALE": structural_layer.get("total_dynamic_scale"),
-        "VOL_BASELINE": volatility_layer.get("vol_baseline"),
-        "VOL_DYNAMIC_SCALE": volatility_layer.get("vol_dynamic_scale"),
-        "home_team": home_team,
-        "away_team": away_team,
-        "event_id": event_id,
-        "participants": participants,
-        "engine_version": ENGINE_VERSION,
-        "p1_totals_status": p1_totals_status,
-        "p1_totals_status_reason": p1_totals_status_reason,
-        "confidence_total": confidence_total,
-        "n_avail": n_avail,
-        "active_layers": active_layers,
-        "ignored_layers": ignored_layers,
-        "layer_weights": layer_weights,
-        "layer_signals": layer_signals,
-        "layer_contributions": [
-            {
-                "layer": component.name,
-                "signal": component.edge,
-                "weight": component.weight,
-                "weighted_edge": component.weighted_edge,
-                "bias": component.bias,
-                "strength": component.strength,
-                "raw": component.raw,
-            }
-            for component in components
-        ],
-        "data_sources": {
-            "structural": structural_layer.get("source", {}),
-            "volatility": volatility_layer.get("source", {}),
-            "league_records_source": league_source,
-            "league_totals_context": league_totals_context_source,
-            "home_record_source": home_record_source,
-            "away_record_source": away_record_source,
-            "home_results_source": home_results_source,
-            "away_results_source": away_results_source,
-            "league_baseline_source": structural_layer.get("source", {}).get("league_baseline_source"),
-            "vol_baseline_source": volatility_layer.get("source", {}).get("vol_baseline_source"),
-            "vol_dynamic_scale_source": volatility_layer.get("source", {}).get("vol_dynamic_scale_source"),
-        },
-        "missing_data": missing_data,
-        "home_profile": {
-            **_summarize_record(home_record),
-            "temporal": temporal_layer["home_temporal"],
-            "trend": trend_layer["home_trend"],
-            "game_totals_series": home_game_totals,
-            "valid_game_totals_count": valid_home_game_totals_count,
-            "results_source": home_results_source,
-        },
-        "away_profile": {
-            **_summarize_record(away_record),
-            "temporal": temporal_layer["away_temporal"],
-            "trend": trend_layer["away_trend"],
-            "game_totals_series": away_game_totals,
-            "valid_game_totals_count": valid_away_game_totals_count,
-            "results_source": away_results_source,
-        },
-        "league_profile": {
-            "structural": structural_layer.get("league_profile", {}),
-            "volatility": {
-                "vol_baseline": volatility_layer.get("vol_baseline"),
-                "vol_dynamic_scale": volatility_layer.get("vol_dynamic_scale"),
-                "league_samples": volatility_layer.get("league_samples", []),
-            },
-            "league_source": league_source,
-            "league_totals_context": league_totals_context_source,
-        },
-        "temporal_windows": {
-            "home": temporal_layer["home_temporal"],
-            "away": temporal_layer["away_temporal"],
-            "weights": dict(TEMPORAL_WINDOW_WEIGHTS),
-        },
-    }
-
-    return ModuleResult(
-        pillar_id="pillar_1_team_structure",
-        module_id=MODULE_ID,
-        module_name=MODULE_NAME,
-        event_id=event_id,
-        participants=participants,
-        value=p1_totals_score,
-        bias=calculate_bias(p1_totals_score),
-        strength=p1_totals_strength,
-        components=components,
-        raw=raw,
+    return P1TotalsOutput(
+        P1_TOTALS_SCORE=p1_totals_score,
+        P1_TOTALS_DIRECTION=p1_totals_direction,
+        P1_TOTALS_STRENGTH=p1_totals_strength,
+        P1_TOTALS_INTERNAL_STATE=internal_state,
+        STRUCTURAL_PROFILE_SCORE=structural_layer.get("signal"),
+        VOL_EDGE=volatility_layer.get("signal"),
+        TEMPORAL_PROFILE_SCORE=temporal_layer.get("signal"),
+        TREND_SIGNAL=trend_layer.get("signal"),
+        EXPECTED_TOTAL_STRUCTURAL=structural_layer.get("expected_total_structural"),
+        MATCHUP_VOLATILITY=volatility_layer.get("matchup_volatility"),
+        MATCHUP_TEMPORAL_TOTAL=temporal_layer.get("matchup_temporal_total"),
+        LEAGUE_TOTAL_BASELINE=structural_layer.get("league_total_baseline"),
+        TOTAL_DYNAMIC_SCALE=structural_layer.get("total_dynamic_scale"),
+        VOL_BASELINE=volatility_layer.get("vol_baseline"),
+        VOL_DYNAMIC_SCALE=volatility_layer.get("vol_dynamic_scale"),
+        active_layers=active_layers,
+        ignored_layers=ignored_layers,
+        confidence_total=confidence_total,
+        status=p1_totals_status,
+        status_reason=p1_totals_status_reason,
     )

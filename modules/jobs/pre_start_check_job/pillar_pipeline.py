@@ -7,6 +7,7 @@ Parallel to, but independent of, the existing alert pipeline.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
@@ -24,9 +25,16 @@ from modules.pillars.streak_analysis_resolver import (
 from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import (
     calculate_pillar_1_team_structure,
 )
-from modules.pillars.pillar_1_team_structure.totals import calculate_p1_totals
+from modules.pillars.pillar_1_team_structure.totals import (
+    P1TotalsOutput,
+    calculate_p1_totals,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_p1_totals_output(output: P1TotalsOutput) -> dict:
+    return asdict(output)
 
 
 class EventPillarProcessor:
@@ -368,21 +376,26 @@ class EventPillarProcessor:
 
         if p1_totals_result is not None:
             logger.info(
-                "P1/P1_TOTALS Totals calculated for %s: value=%.3f, bias=%s, strength=%s",
+                "P1/P1_TOTALS Totals calculated for %s: score=%.3f, direction=%s, strength=%s, status=%s",
                 participants,
-                p1_totals_result.value,
-                p1_totals_result.bias,
-                p1_totals_result.strength,
+                p1_totals_result.P1_TOTALS_SCORE,
+                p1_totals_result.P1_TOTALS_DIRECTION,
+                p1_totals_result.P1_TOTALS_STRENGTH,
+                p1_totals_result.status,
             )
-            for comp in p1_totals_result.components:
+            for layer in p1_totals_result.active_layers:
                 logger.info(
-                    "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                    comp.name,
-                    comp.edge,
-                    comp.weight,
-                    comp.weighted_edge,
-                    comp.bias,
-                    comp.strength,
+                    "   - active layer: %s signal=%s weighted=%s",
+                    layer.layer,
+                    layer.signal,
+                    layer.weighted_signal,
+                )
+            for layer in p1_totals_result.ignored_layers:
+                logger.info(
+                    "   - ignored layer: %s signal=%s reason=%s",
+                    layer.layer,
+                    layer.signal,
+                    layer.ignored_reason,
                 )
         else:
             logger.info(
@@ -414,7 +427,11 @@ class EventPillarProcessor:
             "event_id": event_obj.id,
             "participants": participants,
             "pillar_1": p1_result,
-            "pillar_1_totals": p1_totals_result,
+            "pillar_1_totals": (
+                _serialize_p1_totals_output(p1_totals_result)
+                if p1_totals_result is not None
+                else None
+            ),
         }
 
 
