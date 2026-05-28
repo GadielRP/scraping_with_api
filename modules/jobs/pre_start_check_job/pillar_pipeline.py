@@ -27,7 +27,6 @@ from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import 
 )
 from modules.pillars.pillar_1_team_structure.totals import (
     P1TotalsOutput,
-    calculate_p1_totals,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +76,8 @@ class EventPillarProcessor:
         minutes_until_start = event_payload.get("minutes_until_start")
         metadata_snapshot = event_payload.get("metadata_snapshot")
         event_context = event_payload.get("event_context")
+        odds_trajectory = event_payload.get("odds_trajectory", [])
+        logger.info(f"\nodds trajectory: {odds_trajectory}\n")
         if event_context is None:
             event_context = build_event_context(
                 event_obj=event_obj,
@@ -189,13 +190,15 @@ class EventPillarProcessor:
             event_context.competition.total_regular_season_games,
         )
 
-        # --- Calculate Pillar 1 ---
+        # --- Calculate Pillar 1 (Orchestrated) ---
         try:
-            p1_result = calculate_pillar_1_team_structure(
+            p1_output = calculate_pillar_1_team_structure(
                 streak_analysis,
                 event_context=event_context,
                 debug_mode=self.debug_mode,
             )
+            p1_result = p1_output["side"]
+            p1_totals_result = p1_output["totals"]
         except Exception as exc:
             logger.error(
                 "Error calculating P1 for event %s (%s): %s",
@@ -204,21 +207,6 @@ class EventPillarProcessor:
                 exc,
             )
             return None
-
-        try:
-            p1_totals_result = calculate_p1_totals(
-                streak_analysis,
-                event_context=event_context,
-                debug_mode=self.debug_mode,
-            )
-        except Exception as exc:
-            logger.error(
-                "Error calculating P1_TOTALS for event %s (%s): %s",
-                event_obj.id,
-                participants,
-                exc,
-            )
-            p1_totals_result = None
 
         # Log the M1 result.
         m1 = p1_result.get("modules", [{}])[0] if p1_result.get("modules") else {}
@@ -306,7 +294,7 @@ class EventPillarProcessor:
 
         m5 = modules[4] if len(modules) > 4 else {}
         logger.info(
-            "P1/M5 Recent Inertia Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/M5 Contextual Competitive Cost Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
             participants,
             m5.get("value", 0),
             m5.get("bias", "N/A"),
@@ -346,7 +334,7 @@ class EventPillarProcessor:
 
         m7 = modules[6] if len(modules) > 6 else {}
         logger.info(
-            "P1/M7 Structural Drift Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/M7 Opponent Expectation Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
             participants,
             m7.get("value", 0),
             m7.get("bias", "N/A"),
@@ -366,7 +354,7 @@ class EventPillarProcessor:
 
         p1_final_raw = p1_result.get("raw", {}).get("final", {})
         logger.info(
-            "P1/PILLAR 1 Final calculated for %s: value=%.3f, bias=%s, strength=%s, context_state=%s",
+            "P1/SIDE calculated for %s: value=%.3f, bias=%s, strength=%s, context_state=%s",
             participants,
             p1_result.get("value", 0),
             p1_result.get("raw", {}).get("final", {}).get("p1_final_bias", p1_result.get("bias", "N/A")),
