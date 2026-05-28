@@ -179,7 +179,9 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
         logger.info(
             f"Found {len(upcoming_events)} events starting within {Config.PRE_START_WINDOW_MINUTES} minutes"
         )
-
+        #print upcoming events to see structure
+        for event in upcoming_events:
+            logger.info(event)
         pre_calculated_timings = {event["id"]: minutes_until_start(event["start_time_utc"]) for event in upcoming_events}
 
         op_candidates = build_oddsportal_scrape_candidates(upcoming_events, pre_calculated_timings)

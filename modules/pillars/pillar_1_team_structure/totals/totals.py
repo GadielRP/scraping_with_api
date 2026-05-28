@@ -14,7 +14,6 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from modules.pillars.common import clamp
 from modules.pillars.context import EventContext
 from .totals_debug import _log_p1_totals_debug
 
@@ -43,7 +42,8 @@ EPSILON = 1e-12
 @dataclass(frozen=True)
 class P1TotalsLayerOutput:
     layer: str
-    signal: Optional[float]
+    raw_signal: Optional[float]
+    final_signal: Optional[float]
     base_weight: float
     effective_weight: float
     weighted_signal: float
@@ -57,10 +57,19 @@ class P1TotalsOutput:
     P1_TOTALS_DIRECTION: str
     P1_TOTALS_STRENGTH: str
     P1_TOTALS_INTERNAL_STATE: List[str]
+    STRUCTURAL_ANCHOR: Optional[float]
+    STRUCTURAL_FINAL: Optional[float]
+    VOL_FINAL: Optional[float]
+    TEMPORAL_FINAL: Optional[float]
+    TREND_FINAL: Optional[float]
     STRUCTURAL_PROFILE_SCORE: Optional[float]
     VOL_EDGE: Optional[float]
     TEMPORAL_PROFILE_SCORE: Optional[float]
     TREND_SIGNAL: Optional[float]
+    TREND_BASELINE: Optional[float]
+    TREND_DYNAMIC_SCALE: Optional[float]
+    MATCHUP_TREND_DELTA: Optional[float]
+    LEAGUE_TREND_SAMPLE_COUNT: Optional[int]
     EXPECTED_TOTAL_STRUCTURAL: Optional[float]
     MATCHUP_VOLATILITY: Optional[float]
     MATCHUP_TEMPORAL_TOTAL: Optional[float]
@@ -209,6 +218,18 @@ def _pstdev(values: List[float]) -> float:
     return math.sqrt(variance)
 
 
+def _clamp_range(value: Optional[float], min_value: float, max_value: float) -> Optional[float]:
+    if value is None:
+        return None
+    return max(min_value, min(max_value, float(value)))
+
+
+def _calculate_structural_anchor(structural_profile_score: Optional[float]) -> float:
+    if structural_profile_score is None:
+        return 0.50
+    return float(_clamp_range(0.50 + abs(structural_profile_score) * 0.50, 0.50, 1.00))
+
+
 def _resolve_window_size_from_ratio(n_season: int, ratio: float) -> int:
     """Resolve a normalized window size using half-up rounding."""
 
@@ -246,6 +267,160 @@ def _weighted_average(values_and_weights: List[Tuple[Optional[float], float]]) -
     weighted_sum = sum(value * weight for _, value, weight in active if value is not None)
     effective_weights = {str(index): weight / total_weight for index, _, weight in active}
     return weighted_sum / total_weight, total_weight, effective_weights
+
+
+def _calculate_profile_from_temporal_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _profile(window_a: str, window_b: str) -> Tuple[float, Dict[str, Any]]:
+        values_and_weights: List[Tuple[Optional[float], float]] = [
+            (payload.get(window_a, {}).get("total"), 0.60),
+            (payload.get(window_b, {}).get("total"), 0.40),
+        ]
+        profile, total_weight, effective_weights = _weighted_average(values_and_weights)
+        raw = {
+            "windows": [window_a, window_b],
+            "values": {
+                window_a: payload.get(window_a, {}).get("total"),
+                window_b: payload.get(window_b, {}).get("total"),
+            },
+            "base_weights": {
+                window_a: 0.60,
+                window_b: 0.40,
+            },
+            "effective_weight_sum": total_weight,
+            "effective_weights": effective_weights,
+            "profile": profile,
+        }
+        return profile, raw
+
+    short_term_profile, short_raw = _profile("TOTALS_SHORT", "TOTALS_RECENT")
+    long_term_profile, long_raw = _profile("TOTALS_MID", "TOTALS_FULL")
+
+    return {
+        "short_term_profile": short_term_profile,
+        "long_term_profile": long_term_profile,
+        "short_raw": short_raw,
+        "long_raw": long_raw,
+    }
+
+
+def _calculate_profile_from_total_series(
+    total_series: List[float],
+    temporal_window_config: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    ordered_totals: List[float] = []
+    for value in total_series:
+        coerced = _coerce_float(value)
+        if coerced is not None:
+            ordered_totals.append(float(coerced))
+    available_games = len(ordered_totals)
+
+    windows: Dict[str, Dict[str, Any]] = {}
+    weighted_pairs: List[Tuple[Optional[float], float]] = []
+    active_window_weights: Dict[str, float] = {}
+
+    for window_name in TOTALS_TEMPORAL_WINDOW_NAMES:
+        window_metadata = temporal_window_config.get(window_name, {})
+        window_size = int(window_metadata.get("target_window") or 0)
+        base_weight = float(window_metadata.get("weight") or 0.0)
+        ratio = float(window_metadata.get("ratio") or 0.0)
+        subset = ordered_totals[: min(window_size, available_games)]
+        if not subset:
+            windows[window_name] = {
+                "ratio": ratio,
+                "total": None,
+                "games_used": 0,
+                "available_games": available_games,
+                "target_window": window_size,
+                "is_partial": False,
+                "base_weight": base_weight,
+                "effective_weight": 0.0,
+                "missing_reason": "no_games",
+            }
+            weighted_pairs.append((None, base_weight))
+            continue
+
+        games_used = len(subset)
+        total = sum(subset) / float(games_used)
+        is_partial = games_used < window_size
+        windows[window_name] = {
+            "ratio": ratio,
+            "total": total,
+            "games_used": games_used,
+            "available_games": available_games,
+            "target_window": window_size,
+            "is_partial": is_partial,
+            "base_weight": base_weight,
+            "effective_weight": 0.0,
+            "missing_reason": None,
+        }
+        weighted_pairs.append((total, base_weight))
+
+    weighted_total, total_weight, effective_weights = _weighted_average(weighted_pairs)
+    if total_weight > 0:
+        for index, window_name in enumerate(TOTALS_TEMPORAL_WINDOW_NAMES):
+            if str(index) in effective_weights:
+                windows[window_name]["effective_weight"] = effective_weights[str(index)]
+                active_window_weights[window_name] = effective_weights[str(index)]
+
+    return {
+        **windows,
+        "weighted_total": weighted_total,
+        "available_games": available_games,
+        "active_window_weights": active_window_weights,
+        "base_window_weights": {
+            name: float(temporal_window_config.get(name, {}).get("weight", weight))
+            for name, _, weight in TOTALS_TEMPORAL_WINDOW_CONFIG
+        },
+        "ordered_results_count": available_games,
+    }
+
+
+def _calculate_trend_delta_from_score_series(
+    score_series: Optional[List[Tuple[float, float]]],
+    game_totals_series: Optional[List[float]],
+    temporal_window_config: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    total_series: List[float] = []
+    if score_series:
+        total_series = [float(gf) + float(ga) for gf, ga in score_series if gf is not None and ga is not None]
+    elif game_totals_series:
+        for value in game_totals_series:
+            coerced = _coerce_float(value)
+            if coerced is not None:
+                total_series.append(float(coerced))
+
+    if not total_series:
+        return {
+            "short_term_profile": None,
+            "long_term_profile": None,
+            "trend_delta": None,
+            "profile": None,
+            "score_series_used": bool(score_series),
+            "game_totals_series_used": not bool(score_series) and bool(game_totals_series),
+        }
+
+    profile = _calculate_profile_from_total_series(total_series, temporal_window_config)
+    short_term_profile = _weighted_average(
+        [
+            (profile.get("TOTALS_SHORT", {}).get("total"), 0.60),
+            (profile.get("TOTALS_RECENT", {}).get("total"), 0.40),
+        ]
+    )[0]
+    long_term_profile = _weighted_average(
+        [
+            (profile.get("TOTALS_MID", {}).get("total"), 0.60),
+            (profile.get("TOTALS_FULL", {}).get("total"), 0.40),
+        ]
+    )[0]
+
+    return {
+        "short_term_profile": short_term_profile,
+        "long_term_profile": long_term_profile,
+        "trend_delta": short_term_profile - long_term_profile,
+        "profile": profile,
+        "score_series_used": bool(score_series),
+        "game_totals_series_used": not bool(score_series) and bool(game_totals_series),
+    }
 
 
 def _resolve_totals_temporal_window_config(
@@ -967,8 +1142,10 @@ def _calculate_structural_layer(
         and total_dynamic_scale > 0
         and expected_total_structural is not None
     ):
-        structural_profile_score = clamp(
-            (expected_total_structural - league_total_baseline) / float(total_dynamic_scale)
+        structural_profile_score = _clamp_range(
+            (expected_total_structural - league_total_baseline) / float(total_dynamic_scale),
+            -1.0,
+            1.0,
         )
 
     league_profile = {
@@ -1086,7 +1263,7 @@ def _calculate_volatility_layer(
 
     vol_edge = 0.0
     if matchup_volatility is not None and vol_baseline is not None and vol_dynamic_scale is not None and vol_dynamic_scale > 0:
-        vol_edge = clamp((matchup_volatility - vol_baseline) / float(vol_dynamic_scale))
+        vol_edge = _clamp_range((matchup_volatility - vol_baseline) / float(vol_dynamic_scale), -1.0, 1.0)
 
     if home_std is None:
         _append_missing(missing, "home_std_missing")
@@ -1223,8 +1400,10 @@ def _calculate_temporal_layer(
         and total_dynamic_scale is not None
         and total_dynamic_scale > 0
     ):
-        temporal_profile_score = clamp(
-            (matchup_temporal_total - league_total_baseline) / float(total_dynamic_scale)
+        temporal_profile_score = _clamp_range(
+            (matchup_temporal_total - league_total_baseline) / float(total_dynamic_scale),
+            -1.0,
+            1.0,
         )
     else:
         _append_missing(missing, "temporal_score_missing_inputs")
@@ -1244,85 +1423,75 @@ def _calculate_trend_layer(
     *,
     home_temporal: Dict[str, Any],
     away_temporal: Dict[str, Any],
-    total_dynamic_scale: Optional[float],
+    league_records: List[Dict[str, Any]],
+    temporal_window_config: Dict[str, Dict[str, Any]],
     missing: List[str],
 ) -> Dict[str, Any]:
-    def _profile(window_a: str, window_b: str) -> Tuple[float, Dict[str, Any]]:
-        values_and_weights: List[Tuple[Optional[float], float]] = [
-            (home_temporal.get(window_a, {}).get("total"), 0.60),
-            (home_temporal.get(window_b, {}).get("total"), 0.40),
-        ]
-        profile, total_weight, effective_weights = _weighted_average(values_and_weights)
-        raw = {
-            "windows": [window_a, window_b],
-            "values": {
-                window_a: home_temporal.get(window_a, {}).get("total"),
-                window_b: home_temporal.get(window_b, {}).get("total"),
-            },
-            "base_weights": {
-                window_a: 0.60,
-                window_b: 0.40,
-            },
-            "effective_weight_sum": total_weight,
-            "effective_weights": effective_weights,
-            "profile": profile,
-        }
-        return profile, raw
+    home_profile = _calculate_profile_from_temporal_payload(home_temporal)
+    away_profile = _calculate_profile_from_temporal_payload(away_temporal)
 
-    home_short_term_profile, home_short_raw = _profile("TOTALS_SHORT", "TOTALS_RECENT")
-    home_long_term_profile, home_long_raw = _profile("TOTALS_MID", "TOTALS_FULL")
+    short_term_profile_matchup = (
+        home_profile["short_term_profile"] + away_profile["short_term_profile"]
+    ) / 2.0
+    long_term_profile_matchup = (
+        home_profile["long_term_profile"] + away_profile["long_term_profile"]
+    ) / 2.0
+    matchup_trend_delta = short_term_profile_matchup - long_term_profile_matchup
 
-    def _away_profile(window_a: str, window_b: str) -> Tuple[float, Dict[str, Any]]:
-        values_and_weights: List[Tuple[Optional[float], float]] = [
-            (away_temporal.get(window_a, {}).get("total"), 0.60),
-            (away_temporal.get(window_b, {}).get("total"), 0.40),
-        ]
-        profile, total_weight, effective_weights = _weighted_average(values_and_weights)
-        raw = {
-            "windows": [window_a, window_b],
-            "values": {
-                window_a: away_temporal.get(window_a, {}).get("total"),
-                window_b: away_temporal.get(window_b, {}).get("total"),
-            },
-            "base_weights": {
-                window_a: 0.60,
-                window_b: 0.40,
-            },
-            "effective_weight_sum": total_weight,
-            "effective_weights": effective_weights,
-            "profile": profile,
-        }
-        return profile, raw
+    league_trend_deltas: List[float] = []
+    league_trend_samples: List[Dict[str, Any]] = []
+    for record in league_records:
+        score_series = record.get("score_series") if isinstance(record, dict) else None
+        game_totals_series = record.get("game_totals_series") if isinstance(record, dict) else None
+        trend_delta_payload = _calculate_trend_delta_from_score_series(score_series, game_totals_series, temporal_window_config)
+        trend_delta = trend_delta_payload.get("trend_delta")
+        if trend_delta is None:
+            continue
+        league_trend_deltas.append(float(trend_delta))
+        league_trend_samples.append(
+            {
+                "team_name": record.get("team_name"),
+                "source": record.get("source"),
+                "score_series_used": trend_delta_payload.get("score_series_used"),
+                "game_totals_series_used": trend_delta_payload.get("game_totals_series_used"),
+                "trend_delta": trend_delta,
+            }
+        )
 
-    away_short_term_profile, away_short_raw = _away_profile("TOTALS_SHORT", "TOTALS_RECENT")
-    away_long_term_profile, away_long_raw = _away_profile("TOTALS_MID", "TOTALS_FULL")
-
-    short_term_profile_matchup = (home_short_term_profile + away_short_term_profile) / 2.0
-    long_term_profile_matchup = (home_long_term_profile + away_long_term_profile) / 2.0
-    trend_delta = short_term_profile_matchup - long_term_profile_matchup
+    league_trend_sample_count = len(league_trend_deltas)
+    trend_baseline = _percentile_nearest_rank(league_trend_deltas, 0.50)
+    trend_deviation_samples: List[float] = []
+    trend_dynamic_scale = None
+    if trend_baseline is not None:
+        trend_deviation_samples = [abs(delta - trend_baseline) for delta in league_trend_deltas]
+        trend_dynamic_scale = _percentile_nearest_rank(trend_deviation_samples, 0.75)
 
     trend_signal = 0.0
-    if total_dynamic_scale is not None and total_dynamic_scale > 0:
-        trend_signal = clamp(trend_delta / float(total_dynamic_scale))
+    if trend_baseline is not None and trend_dynamic_scale is not None and trend_dynamic_scale > 0:
+        trend_signal = _clamp_range(
+            (matchup_trend_delta - trend_baseline) / float(trend_dynamic_scale),
+            -1.0,
+            1.0,
+        )
     else:
-        _append_missing(missing, "trend_scale_missing")
+        _append_missing(missing, "trend_dynamic_scale_missing_or_zero")
 
     return {
         "signal": trend_signal,
-        "trend_delta": trend_delta,
+        "matchup_trend_delta": matchup_trend_delta,
+        "trend_baseline": trend_baseline,
+        "trend_deviation_samples": trend_deviation_samples,
+        "trend_dynamic_scale": trend_dynamic_scale,
+        "league_trend_deltas": league_trend_deltas,
+        "league_trend_samples": league_trend_samples,
+        "league_trend_sample_count": league_trend_sample_count,
         "short_term_profile_matchup": short_term_profile_matchup,
         "long_term_profile_matchup": long_term_profile_matchup,
         "home_trend": {
-            "short_term_profile": home_short_term_profile,
-            "long_term_profile": home_long_term_profile,
-            "short_raw": home_short_raw,
-            "long_raw": home_long_raw,
+            **home_profile,
         },
         "away_trend": {
-            "short_term_profile": away_short_term_profile,
-            "long_term_profile": away_long_term_profile,
-            "short_raw": away_short_raw,
-            "long_raw": away_long_raw,
+            **away_profile,
         },
         "missing": missing,
     }
@@ -1547,10 +1716,19 @@ def calculate_p1_totals(
             P1_TOTALS_DIRECTION="NEUTRAL_PROFILE",
             P1_TOTALS_STRENGTH="NONE",
             P1_TOTALS_INTERNAL_STATE=[],
+            STRUCTURAL_ANCHOR=None,
+            STRUCTURAL_FINAL=None,
+            VOL_FINAL=None,
+            TEMPORAL_FINAL=None,
+            TREND_FINAL=None,
             STRUCTURAL_PROFILE_SCORE=None,
             VOL_EDGE=None,
             TEMPORAL_PROFILE_SCORE=None,
             TREND_SIGNAL=None,
+            TREND_BASELINE=None,
+            TREND_DYNAMIC_SCALE=None,
+            MATCHUP_TREND_DELTA=None,
+            LEAGUE_TREND_SAMPLE_COUNT=None,
             EXPECTED_TOTAL_STRUCTURAL=None,
             MATCHUP_VOLATILITY=None,
             MATCHUP_TEMPORAL_TOTAL=None,
@@ -1619,7 +1797,8 @@ def calculate_p1_totals(
     trend_layer = _calculate_trend_layer(
         home_temporal=temporal_layer["home_temporal"],
         away_temporal=temporal_layer["away_temporal"],
-        total_dynamic_scale=structural_layer.get("total_dynamic_scale"),
+        league_records=league_records,
+        temporal_window_config=temporal_window_config.get("window_config", {}),
         missing=missing_data,
     )
 
@@ -1632,11 +1811,22 @@ def calculate_p1_totals(
     if n_avail == 0:
         _append_missing(missing_data, "n_avail_zero")
 
-    layer_signals: Dict[str, Optional[float]] = {
+    raw_layer_signals: Dict[str, Optional[float]] = {
         "STRUCTURAL": structural_layer.get("signal"),
         "VOL": volatility_layer.get("signal"),
         "TEMPORAL": temporal_layer.get("signal"),
         "TREND": trend_layer.get("signal"),
+    }
+
+    structural_anchor = _calculate_structural_anchor(raw_layer_signals.get("STRUCTURAL"))
+    if raw_layer_signals.get("STRUCTURAL") is None:
+        _append_missing(missing_data, "structural_anchor_missing")
+
+    final_layer_signals: Dict[str, Optional[float]] = {
+        "STRUCTURAL": raw_layer_signals.get("STRUCTURAL"),
+        "VOL": raw_layer_signals.get("VOL") * structural_anchor if raw_layer_signals.get("VOL") is not None else None,
+        "TEMPORAL": raw_layer_signals.get("TEMPORAL") * structural_anchor if raw_layer_signals.get("TEMPORAL") is not None else None,
+        "TREND": raw_layer_signals.get("TREND") * structural_anchor if raw_layer_signals.get("TREND") is not None else None,
     }
 
     active_layers: List[P1TotalsLayerOutput] = []
@@ -1645,18 +1835,22 @@ def calculate_p1_totals(
     active_weight_sum = 0.0
 
     for layer_name in ("STRUCTURAL", "VOL", "TEMPORAL", "TREND"):
-        signal = layer_signals[layer_name]
+        raw_signal = raw_layer_signals[layer_name]
+        final_signal = final_layer_signals[layer_name]
         base_weight = LAYER_BASE_WEIGHTS[layer_name]
         effective_weight = base_weight * confidence_total
         ignored_reason = None
         ignored = False
-        active_by_threshold = _is_active_signal(signal)
-        if signal is None:
+        active_by_threshold = _is_active_signal(raw_signal)
+        if raw_signal is None:
             ignored = True
             ignored_reason = "missing_signal"
         elif not active_by_threshold:
             ignored = True
             ignored_reason = "below_ignore_threshold"
+        elif final_signal is None:
+            ignored = True
+            ignored_reason = "missing_final_signal"
         elif effective_weight <= 0:
             ignored = True
             ignored_reason = "zero_confidence"
@@ -1665,7 +1859,8 @@ def calculate_p1_totals(
             ignored_layers.append(
                 P1TotalsLayerOutput(
                     layer=layer_name,
-                    signal=signal,
+                    raw_signal=raw_signal,
+                    final_signal=final_signal,
                     base_weight=base_weight,
                     effective_weight=0.0,
                     weighted_signal=0.0,
@@ -1674,11 +1869,12 @@ def calculate_p1_totals(
                 )
             )
         else:
-            weighted_signal = float(signal or 0.0) * effective_weight
+            weighted_signal = float(final_signal or 0.0) * effective_weight
             active_layers.append(
                 P1TotalsLayerOutput(
                     layer=layer_name,
-                    signal=signal,
+                    raw_signal=raw_signal,
+                    final_signal=final_signal,
                     base_weight=base_weight,
                     effective_weight=effective_weight,
                     weighted_signal=weighted_signal,
@@ -1690,14 +1886,14 @@ def calculate_p1_totals(
             active_weight_sum += effective_weight
 
     if active_weight_sum > 0:
-        p1_totals_score = clamp(weighted_sum / float(active_weight_sum))
+        p1_totals_score = _clamp_range(weighted_sum / float(active_weight_sum), -1.0, 1.0) or 0.0
     else:
         p1_totals_score = 0.0
 
     p1_totals_direction = _totals_direction(p1_totals_score)
     p1_totals_strength = _classify_totals_strength(p1_totals_score)
 
-    internal_state = _determine_internal_state(layer_signals)
+    internal_state = _determine_internal_state(raw_layer_signals)
 
     p1_totals_status, p1_totals_status_reason = _determine_status(
         confidence_total=confidence_total,
@@ -1721,7 +1917,7 @@ def calculate_p1_totals(
         p1_totals_status = "INACTIVE"
         p1_totals_status_reason = "all_layers_ignored_or_missing"
 
-    p1_totals_score = clamp(p1_totals_score)
+    p1_totals_score = _clamp_range(p1_totals_score, -1.0, 1.0) or 0.0
     p1_totals_direction = _totals_direction(p1_totals_score) if p1_totals_status != "INSUFFICIENT_DATA" else "NEUTRAL_PROFILE"
     if p1_totals_status == "INSUFFICIENT_DATA":
         p1_totals_strength = "NONE"
@@ -1747,7 +1943,9 @@ def calculate_p1_totals(
             volatility_layer=volatility_layer,
             temporal_layer=temporal_layer,
             trend_layer=trend_layer,
-            layer_signals=layer_signals,
+            raw_layer_signals=raw_layer_signals,
+            final_layer_signals=final_layer_signals,
+            structural_anchor=structural_anchor,
             active_layers=active_layers,
             ignored_layers=ignored_layers,
             active_weight_sum=active_weight_sum,
@@ -1769,10 +1967,19 @@ def calculate_p1_totals(
         P1_TOTALS_DIRECTION=p1_totals_direction,
         P1_TOTALS_STRENGTH=p1_totals_strength,
         P1_TOTALS_INTERNAL_STATE=internal_state,
-        STRUCTURAL_PROFILE_SCORE=structural_layer.get("signal"),
-        VOL_EDGE=volatility_layer.get("signal"),
-        TEMPORAL_PROFILE_SCORE=temporal_layer.get("signal"),
-        TREND_SIGNAL=trend_layer.get("signal"),
+        STRUCTURAL_ANCHOR=structural_anchor,
+        STRUCTURAL_FINAL=final_layer_signals.get("STRUCTURAL"),
+        VOL_FINAL=final_layer_signals.get("VOL"),
+        TEMPORAL_FINAL=final_layer_signals.get("TEMPORAL"),
+        TREND_FINAL=final_layer_signals.get("TREND"),
+        STRUCTURAL_PROFILE_SCORE=raw_layer_signals.get("STRUCTURAL"),
+        VOL_EDGE=raw_layer_signals.get("VOL"),
+        TEMPORAL_PROFILE_SCORE=raw_layer_signals.get("TEMPORAL"),
+        TREND_SIGNAL=raw_layer_signals.get("TREND"),
+        TREND_BASELINE=trend_layer.get("trend_baseline"),
+        TREND_DYNAMIC_SCALE=trend_layer.get("trend_dynamic_scale"),
+        MATCHUP_TREND_DELTA=trend_layer.get("matchup_trend_delta"),
+        LEAGUE_TREND_SAMPLE_COUNT=trend_layer.get("league_trend_sample_count"),
         EXPECTED_TOTAL_STRUCTURAL=structural_layer.get("expected_total_structural"),
         MATCHUP_VOLATILITY=volatility_layer.get("matchup_volatility"),
         MATCHUP_TEMPORAL_TOTAL=temporal_layer.get("matchup_temporal_total"),

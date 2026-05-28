@@ -385,16 +385,18 @@ class EventPillarProcessor:
             )
             for layer in p1_totals_result.active_layers:
                 logger.info(
-                    "   - active layer: %s signal=%s weighted=%s",
+                    "   - active layer: %s raw_signal=%s final_signal=%s weighted=%s",
                     layer.layer,
-                    layer.signal,
+                    layer.raw_signal,
+                    layer.final_signal,
                     layer.weighted_signal,
                 )
             for layer in p1_totals_result.ignored_layers:
                 logger.info(
-                    "   - ignored layer: %s signal=%s reason=%s",
+                    "   - ignored layer: %s raw_signal=%s final_signal=%s reason=%s",
                     layer.layer,
-                    layer.signal,
+                    layer.raw_signal,
+                    layer.final_signal,
                     layer.ignored_reason,
                 )
         else:

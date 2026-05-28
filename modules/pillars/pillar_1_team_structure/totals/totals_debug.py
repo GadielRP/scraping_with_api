@@ -95,7 +95,9 @@ def _log_p1_totals_debug(
     volatility_layer: Dict[str, Any],
     temporal_layer: Dict[str, Any],
     trend_layer: Dict[str, Any],
-    layer_signals: Dict[str, Optional[float]],
+    raw_layer_signals: Dict[str, Optional[float]],
+    final_layer_signals: Dict[str, Optional[float]],
+    structural_anchor: float,
     active_layers: List[Any],
     ignored_layers: List[Any],
     active_weight_sum: float,
@@ -273,6 +275,23 @@ def _log_p1_totals_debug(
         _debug_float(structural_layer.get("league_total_baseline")),
         _debug_float(structural_layer.get("total_dynamic_scale")),
         _debug_float(structural_layer.get("signal")),
+    )
+    logger.info(
+        "[P1_TOTALS][ANCHOR] STRUCTURAL_PROFILE_SCORE=%s STRUCTURAL_ANCHOR = 0.50 + abs(STRUCTURAL_PROFILE_SCORE) * 0.50 = %s",
+        _debug_float(raw_layer_signals.get("STRUCTURAL")),
+        _debug_float(structural_anchor),
+    )
+    logger.info(
+        "[P1_TOTALS][ANCHOR] VOL_FINAL = VOL_EDGE * STRUCTURAL_ANCHOR = %s",
+        _debug_float(final_layer_signals.get("VOL")),
+    )
+    logger.info(
+        "[P1_TOTALS][ANCHOR] TEMPORAL_FINAL = TEMPORAL_PROFILE_SCORE * STRUCTURAL_ANCHOR = %s",
+        _debug_float(final_layer_signals.get("TEMPORAL")),
+    )
+    logger.info(
+        "[P1_TOTALS][ANCHOR] TREND_FINAL = TREND_SIGNAL * STRUCTURAL_ANCHOR = %s",
+        _debug_float(final_layer_signals.get("TREND")),
     )
 
     logger.info("[P1_TOTALS][VOLATILITY] home_game_totals=%s", volatility_layer.get("home_game_totals"))
@@ -471,36 +490,58 @@ def _log_p1_totals_debug(
         _debug_float(trend_layer.get("long_term_profile_matchup")),
     )
     logger.info(
-        "[P1_TOTALS][TREND_CALC] TREND_DELTA = short_term_profile_matchup - long_term_profile_matchup = %s - %s = %s",
-        _debug_float(trend_layer.get("short_term_profile_matchup")),
-        _debug_float(trend_layer.get("long_term_profile_matchup")),
-        _debug_float(trend_layer.get("trend_delta")),
+        "[P1_TOTALS][TREND_SCALE] league_trend_deltas summary=%s",
+        _debug_sample_summary(trend_layer.get("league_trend_deltas") or []),
     )
     logger.info(
-        "[P1_TOTALS][TREND_CALC] TREND_SIGNAL = clamp(TREND_DELTA / TOTAL_DYNAMIC_SCALE) = clamp(%s / %s) = %s",
-        _debug_float(trend_layer.get("trend_delta")),
-        _debug_float(structural_layer.get("total_dynamic_scale")),
+        "[P1_TOTALS][TREND_SCALE] league_trend_sample_count=%s",
+        trend_layer.get("league_trend_sample_count"),
+    )
+    logger.info(
+        "[P1_TOTALS][TREND_SCALE] TREND_BASELINE=%s",
+        _debug_float(trend_layer.get("trend_baseline")),
+    )
+    logger.info(
+        "[P1_TOTALS][TREND_SCALE] trend_deviation_samples summary=%s",
+        _debug_sample_summary(trend_layer.get("trend_deviation_samples") or []),
+    )
+    logger.info(
+        "[P1_TOTALS][TREND_SCALE] TREND_DYNAMIC_SCALE=%s",
+        _debug_float(trend_layer.get("trend_dynamic_scale")),
+    )
+    logger.info(
+        "[P1_TOTALS][TREND_SCALE] MATCHUP_TREND_DELTA=%s",
+        _debug_float(trend_layer.get("matchup_trend_delta")),
+    )
+    logger.info(
+        "[P1_TOTALS][TREND_SCALE] TREND_SIGNAL = clamp((MATCHUP_TREND_DELTA - TREND_BASELINE) / TREND_DYNAMIC_SCALE) = clamp((%s - %s) / %s) = %s",
+        _debug_float(trend_layer.get("matchup_trend_delta")),
+        _debug_float(trend_layer.get("trend_baseline")),
+        _debug_float(trend_layer.get("trend_dynamic_scale")),
         _debug_float(trend_layer.get("signal")),
     )
     logger.info(
-        "[P1_TOTALS][TREND] short_term_profile_matchup=%s long_term_profile_matchup=%s TREND_DELTA=%s TREND_SIGNAL=%s",
+        "[P1_TOTALS][TREND] short_term_profile_matchup=%s long_term_profile_matchup=%s MATCHUP_TREND_DELTA=%s TREND_SIGNAL=%s",
         _debug_float(trend_layer.get("short_term_profile_matchup")),
         _debug_float(trend_layer.get("long_term_profile_matchup")),
-        _debug_float(trend_layer.get("trend_delta")),
+        _debug_float(trend_layer.get("matchup_trend_delta")),
         _debug_float(trend_layer.get("signal")),
     )
 
     for layer_name in ("STRUCTURAL", "VOL", "TEMPORAL", "TREND"):
         layer_output = layer_audit.get(layer_name)
-        signal = layer_signals.get(layer_name)
+        raw_signal = raw_layer_signals.get(layer_name)
+        final_signal = final_layer_signals.get(layer_name)
         logger.info(
-            "[P1_TOTALS][IGNORE_SCORE] layer=%s signal_raw=%s abs_signal=%s threshold=%s epsilon=%s active_by_threshold=%s base_weight=%s effective_weight=%s weighted_signal=%s ignored=%s reason=%s",
+            "[P1_TOTALS][IGNORE_SCORE] layer=%s raw_signal=%s abs_raw_signal=%s threshold=%s epsilon=%s active_by_threshold=%s structural_anchor=%s final_signal=%s base_weight=%s effective_weight=%s weighted_signal=%s ignored=%s reason=%s",
             layer_name,
-            _debug_float(signal),
-            _debug_float(abs(signal) if signal is not None else None),
+            _debug_float(raw_signal),
+            _debug_float(abs(raw_signal) if raw_signal is not None else None),
             _debug_float(ignore_threshold),
             _debug_float(epsilon),
-            signal_is_active(signal, ignore_threshold, epsilon),
+            signal_is_active(raw_signal, ignore_threshold, epsilon),
+            _debug_float(structural_anchor),
+            _debug_float(final_signal),
             _debug_float(layer_base_weights.get(layer_name)),
             _debug_float(layer_output.effective_weight if layer_output else None),
             _debug_float(layer_output.weighted_signal if layer_output else None),
@@ -510,7 +551,8 @@ def _log_p1_totals_debug(
     logger.info("[P1_TOTALS][IGNORE_SCORE_CALC] --- LAYER WEIGHTING AND SCORE CALCULATION ---")
     for layer_name in ("STRUCTURAL", "VOL", "TEMPORAL", "TREND"):
         layer_output = layer_audit.get(layer_name)
-        signal = layer_signals.get(layer_name)
+        raw_signal = raw_layer_signals.get(layer_name)
+        final_signal = final_layer_signals.get(layer_name)
         base_weight = layer_base_weights.get(layer_name)
         if layer_output and not layer_output.ignored:
             logger.info(
@@ -521,9 +563,9 @@ def _log_p1_totals_debug(
                 _debug_float(layer_output.effective_weight),
             )
             logger.info(
-                "[P1_TOTALS][IGNORE_SCORE_CALC] layer=%s: weighted_signal = signal * effective_weight = %s * %s = %s",
+                "[P1_TOTALS][IGNORE_SCORE_CALC] layer=%s: weighted_signal = final_signal * effective_weight = %s * %s = %s",
                 layer_name,
-                _debug_float(signal),
+                _debug_float(final_signal),
                 _debug_float(layer_output.effective_weight),
                 _debug_float(layer_output.weighted_signal),
             )
@@ -558,6 +600,9 @@ def _log_p1_totals_debug(
         _debug_float(p1_totals_score),
     )
     logger.info(
+        "[P1_TOTALS][IGNORE_SCORE_CALC] raw_signal decides activity; final_signal contributes to score.",
+    )
+    logger.info(
         "[P1_TOTALS][IGNORE_SCORE] active_weight_sum=%s weighted_sum=%s",
         _debug_float(active_weight_sum),
         _debug_float(weighted_sum),
@@ -571,7 +616,11 @@ def _log_p1_totals_debug(
         p1_totals_status,
         p1_totals_status_reason,
     )
-    internal_state_signals = {key: value for key, value in layer_signals.items() if signal_is_active(value, ignore_threshold, epsilon)}
+    internal_state_signals = {
+        key: value
+        for key, value in raw_layer_signals.items()
+        if signal_is_active(value, ignore_threshold, epsilon)
+    }
     logger.info(
         "[P1_TOTALS][INTERNAL_STATE] signals_used=%s active_profile_signs=%s states_detected=%s",
         {key: _debug_float(value) for key, value in internal_state_signals.items()},
