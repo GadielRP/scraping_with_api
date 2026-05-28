@@ -79,7 +79,7 @@ def get_standings_response(
         return None
 
     endpoint = f"/unique-tournament/{unique_tournament_id}/season/{season_id}/standings/total"
-    logger.info("Fetching SofaScore standings endpoint %s", endpoint)
+    logger.info("✈️ Fetching SofaScore standings endpoint %s", endpoint)
     try:
         response = client._make_request(endpoint, no_retry_on_404=True)
     except SofaScoreNotFoundException:

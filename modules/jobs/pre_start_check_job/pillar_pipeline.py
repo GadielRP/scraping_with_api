@@ -7,6 +7,7 @@ Parallel to, but independent of, the existing alert pipeline.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
@@ -24,8 +25,16 @@ from modules.pillars.streak_analysis_resolver import (
 from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import (
     calculate_pillar_1_team_structure,
 )
+from modules.pillars.pillar_1_team_structure.totals import (
+    P1TotalsOutput,
+    calculate_p1_totals,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_p1_totals_output(output: P1TotalsOutput) -> dict:
+    return asdict(output)
 
 
 class EventPillarProcessor:
@@ -196,6 +205,21 @@ class EventPillarProcessor:
             )
             return None
 
+        try:
+            p1_totals_result = calculate_p1_totals(
+                streak_analysis,
+                event_context=event_context,
+                debug_mode=self.debug_mode,
+            )
+        except Exception as exc:
+            logger.error(
+                "Error calculating P1_TOTALS for event %s (%s): %s",
+                event_obj.id,
+                participants,
+                exc,
+            )
+            p1_totals_result = None
+
         # Log the M1 result.
         m1 = p1_result.get("modules", [{}])[0] if p1_result.get("modules") else {}
         logger.info(
@@ -221,7 +245,7 @@ class EventPillarProcessor:
         modules = p1_result.get("modules", [])
         m2 = modules[1] if len(modules) > 1 else {}
         logger.info(
-            "P1/M2 Performance Profile calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/M2 Offensive Profile Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
             participants,
             m2.get("value", 0),
             m2.get("bias", "N/A"),
@@ -262,7 +286,7 @@ class EventPillarProcessor:
 
         m4 = modules[3] if len(modules) > 3 else {}
         logger.info(
-            "P1/M4 Hybrid Structural Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/M4 Quality-Adjusted Immediate State Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
             participants,
             m4.get("value", 0),
             m4.get("bias", "N/A"),
@@ -302,7 +326,7 @@ class EventPillarProcessor:
 
         m6 = modules[5] if len(modules) > 5 else {}
         logger.info(
-            "P1/M6 Contextual Competitive Cost Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/M6 Structural Drift Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
             participants,
             m6.get("value", 0),
             m6.get("bias", "N/A"),
@@ -340,24 +364,45 @@ class EventPillarProcessor:
                 comp.get("strength", "?"),
             )
 
-        m8 = modules[7] if len(modules) > 7 else {}
+        p1_final_raw = p1_result.get("raw", {}).get("final", {})
         logger.info(
-            "P1/M8 Opponent Expectation Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
+            "P1/PILLAR 1 Final calculated for %s: value=%.3f, bias=%s, strength=%s, context_state=%s",
             participants,
-            m8.get("value", 0),
-            m8.get("bias", "N/A"),
-            m8.get("strength", "N/A"),
+            p1_result.get("value", 0),
+            p1_result.get("raw", {}).get("final", {}).get("p1_final_bias", p1_result.get("bias", "N/A")),
+            p1_result.get("raw", {}).get("final", {}).get("p1_final_strength", p1_result.get("strength", "N/A")),
+            p1_final_raw.get("p1_context_state", "N/A"),
         )
 
-        for comp in m8.get("components", []):
+        if p1_totals_result is not None:
             logger.info(
-                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                comp.get("name", "?"),
-                comp.get("edge", 0),
-                comp.get("weight", 0),
-                comp.get("weighted_edge", 0),
-                comp.get("bias", "?"),
-                comp.get("strength", "?"),
+                "P1/P1_TOTALS Totals calculated for %s: score=%.3f, direction=%s, strength=%s, status=%s",
+                participants,
+                p1_totals_result.P1_TOTALS_SCORE,
+                p1_totals_result.P1_TOTALS_DIRECTION,
+                p1_totals_result.P1_TOTALS_STRENGTH,
+                p1_totals_result.status,
+            )
+            for layer in p1_totals_result.active_layers:
+                logger.info(
+                    "   - active layer: %s raw_signal=%s final_signal=%s weighted=%s",
+                    layer.layer,
+                    layer.raw_signal,
+                    layer.final_signal,
+                    layer.weighted_signal,
+                )
+            for layer in p1_totals_result.ignored_layers:
+                logger.info(
+                    "   - ignored layer: %s raw_signal=%s final_signal=%s reason=%s",
+                    layer.layer,
+                    layer.raw_signal,
+                    layer.final_signal,
+                    layer.ignored_reason,
+                )
+        else:
+            logger.info(
+                "P1/P1_TOTALS Totals skipped for %s: unavailable",
+                participants,
             )
 
         p1_result.setdefault("raw", {}).update(
@@ -384,6 +429,11 @@ class EventPillarProcessor:
             "event_id": event_obj.id,
             "participants": participants,
             "pillar_1": p1_result,
+            "pillar_1_totals": (
+                _serialize_p1_totals_output(p1_totals_result)
+                if p1_totals_result is not None
+                else None
+            ),
         }
 
 

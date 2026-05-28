@@ -193,8 +193,8 @@ def create_matchup_streak_message(streak) -> str:
             for line in overall_streak_lines:
                 message += f"{line}\n"
 
-        home_standing = getattr(streak, "home_team_standing", None)
-        away_standing = getattr(streak, "away_team_standing", None)
+        home_standing = getattr(streak, "home_team_standing", None) or getattr(streak, "home_team_current_standing", None)
+        away_standing = getattr(streak, "away_team_standing", None) or getattr(streak, "away_team_current_standing", None)
         if home_standing or away_standing:
             message += "\n🏆 Standings Snapshot:\n"
 

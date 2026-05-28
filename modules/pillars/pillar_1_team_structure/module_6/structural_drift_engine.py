@@ -1,4 +1,4 @@
-"""M7 - Structural Drift Engine."""
+"""M6 - Structural Drift Engine."""
 
 from __future__ import annotations
 
@@ -19,9 +19,8 @@ from modules.pillars.score_series import extract_score_for_against
 logger = logging.getLogger(__name__)
 
 _BLOCK_COUNT = 5
-_WEIGHT_TREND_GLOBAL = 0.35
-_WEIGHT_STABILITY = 0.20
-_WEIGHT_FINAL_ACCELERATION = 0.45
+_WEIGHT_TREND_GLOBAL = 0.65
+_WEIGHT_STABILITY = 0.35
 
 
 def _coerce_float(value: Any) -> Optional[float]:
@@ -205,7 +204,7 @@ def calculate_structural_drift_engine(
         for i in range(_BLOCK_COUNT)
     ]
 
-    m7_status, m7_status_reason = _determine_status(
+    m6_status, m6_status_reason = _determine_status(
         home_goal_diffs,
         away_goal_diffs,
         home_structural_vector,
@@ -220,21 +219,16 @@ def calculate_structural_drift_engine(
     away_volatility = _population_std(away_structural_vector, team_label="AWAY", debug=debug_mode)
     stability_edge = clamp(_relative_edge(away_volatility, home_volatility))
 
-    home_final_acceleration = home_structural_vector[4] - home_structural_vector[3] if len(home_structural_vector) >= 5 else 0.0
-    away_final_acceleration = away_structural_vector[4] - away_structural_vector[3] if len(away_structural_vector) >= 5 else 0.0
-    final_acceleration_edge = clamp(_relative_edge(home_final_acceleration, away_final_acceleration))
-
-    m7_edge_raw = (
+    m6_edge_raw = (
         (_WEIGHT_TREND_GLOBAL * trend_global_edge)
         + (_WEIGHT_STABILITY * stability_edge)
-        + (_WEIGHT_FINAL_ACCELERATION * final_acceleration_edge)
     )
-    m7_edge = clamp(m7_edge_raw)
-    if m7_status == "INSUFFICIENT_DATA":
-        m7_edge = 0.0
+    m6_edge = clamp(m6_edge_raw)
+    if m6_status == "INSUFFICIENT_DATA":
+        m6_edge = 0.0
 
     if debug_mode:
-        logger.info(f"--- M7 Structural Drift Engine Debug: Event {event_id} ({participants}) ---")
+        logger.info(f"--- M6 Structural Drift Engine Debug: Event {event_id} ({participants}) ---")
         logger.info(f"  home_team={home_team} | away_team={away_team}")
         logger.info(
             f"  home_games_available={len(home_goal_diffs)} | away_games_available={len(away_goal_diffs)}"
@@ -246,7 +240,7 @@ def calculate_structural_drift_engine(
         logger.info(f"  away_block_sizes={away_block_sizes}")
         logger.info(f"  home_structural_vector={home_structural_vector}")
         logger.info(f"  away_structural_vector={away_structural_vector}")
-        logger.info(f"  activation_status={m7_status} ({m7_status_reason})")
+        logger.info(f"  activation_status={m6_status} ({m6_status_reason})")
 
         logger.info(
             f"  [TREND_GLOBAL_EDGE] home_trend={home_trend:.12f} away_trend={away_trend:.12f} "
@@ -257,16 +251,11 @@ def calculate_structural_drift_engine(
             f"edge={stability_edge:.12f}"
         )
         logger.info(
-            f"  [FINAL_ACCELERATION_EDGE] home_final_acceleration={home_final_acceleration:.12f} "
-            f"away_final_acceleration={away_final_acceleration:.12f} edge={final_acceleration_edge:.12f}"
+            f"  [M6_EDGE_RAW] ({_WEIGHT_TREND_GLOBAL:.2f} * trend_global_edge({trend_global_edge:.12f})) + "
+            f"({_WEIGHT_STABILITY:.2f} * stability_edge({stability_edge:.12f})) = "
+            f"{m6_edge_raw:.12f}"
         )
-        logger.info(
-            f"  [M7_EDGE_RAW] ({_WEIGHT_TREND_GLOBAL:.2f} * trend_global_edge({trend_global_edge:.12f})) + "
-            f"({_WEIGHT_STABILITY:.2f} * stability_edge({stability_edge:.12f})) + "
-            f"({_WEIGHT_FINAL_ACCELERATION:.2f} * final_acceleration_edge({final_acceleration_edge:.12f})) = "
-            f"{m7_edge_raw:.12f}"
-        )
-        logger.info(f"  [M7_EDGE] clamped = {m7_edge:.12f}")
+        logger.info(f"  [M6_EDGE] clamped = {m6_edge:.12f}")
         logger.info("  --- Component Summary ---")
         logger.info(
             f"  TREND_GLOBAL_EDGE: edge={trend_global_edge:.12f}  weight={_WEIGHT_TREND_GLOBAL:.2f}  "
@@ -279,14 +268,9 @@ def calculate_structural_drift_engine(
             f"bias={calculate_bias(stability_edge)}  strength={classify_strength(stability_edge)}"
         )
         logger.info(
-            f"  FINAL_ACCELERATION_EDGE: edge={final_acceleration_edge:.12f}  weight={_WEIGHT_FINAL_ACCELERATION:.2f}  "
-            f"weighted={final_acceleration_edge * _WEIGHT_FINAL_ACCELERATION:.12f}  "
-            f"bias={calculate_bias(final_acceleration_edge)}  strength={classify_strength(final_acceleration_edge)}"
-        )
-        logger.info(
-            f"  M7 Final: edge_raw={m7_edge_raw:.12f}  edge_clamped={m7_edge:.12f}  "
-            f"bias={calculate_bias(m7_edge)}  strength={classify_strength(m7_edge)}  "
-            f"status={m7_status} ({m7_status_reason})"
+            f"  M6 Final: edge_raw={m6_edge_raw:.12f}  edge_clamped={m6_edge:.12f}  "
+            f"bias={calculate_bias(m6_edge)}  strength={classify_strength(m6_edge)}  "
+            f"status={m6_status} ({m6_status_reason})"
         )
         logger.info("-" * 60)
 
@@ -309,16 +293,6 @@ def calculate_structural_drift_engine(
                 "home_volatility": home_volatility,
                 "away_volatility": away_volatility,
                 "formula": "(VOLATILITY_AWAY - VOLATILITY_HOME) / (VOLATILITY_AWAY + VOLATILITY_HOME)",
-            },
-        ),
-        _component(
-            "FINAL_ACCELERATION_EDGE",
-            final_acceleration_edge,
-            _WEIGHT_FINAL_ACCELERATION,
-            {
-                "home_final_acceleration": home_final_acceleration,
-                "away_final_acceleration": away_final_acceleration,
-                "formula": "(FINAL_ACCELERATION_HOME - FINAL_ACCELERATION_AWAY) / (abs(FINAL_ACCELERATION_HOME) + abs(FINAL_ACCELERATION_AWAY))",
             },
         ),
     ]
@@ -347,27 +321,22 @@ def calculate_structural_drift_engine(
             "away_volatility": away_volatility,
             "edge": stability_edge,
         },
-        "final_acceleration": {
-            "home_final_acceleration": home_final_acceleration,
-            "away_final_acceleration": away_final_acceleration,
-            "edge": final_acceleration_edge,
-        },
-        "m7_edge_raw": m7_edge_raw,
-        "m7_edge": m7_edge,
-        "m7_abs_edge": abs(m7_edge),
-        "m7_status": m7_status,
-        "m7_status_reason": m7_status_reason,
+        "m6_edge_raw": m6_edge_raw,
+        "m6_edge": m6_edge,
+        "m6_abs_edge": abs(m6_edge),
+        "m6_status": m6_status,
+        "m6_status_reason": m6_status_reason,
     }
 
     return ModuleResult(
         pillar_id="pillar_1_team_structure",
-        module_id="M7",
+        module_id="M6",
         module_name="Structural Drift Engine",
         event_id=event_id,
         participants=participants,
-        value=m7_edge,
-        bias=calculate_bias(m7_edge),
-        strength=classify_strength(m7_edge),
+        value=m6_edge,
+        bias=calculate_bias(m6_edge),
+        strength=classify_strength(m6_edge),
         components=components,
         raw=raw,
     )

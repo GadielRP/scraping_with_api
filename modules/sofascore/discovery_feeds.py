@@ -13,30 +13,30 @@ logger = logging.getLogger(__name__)
 def get_dropping_odds_with_odds_and_events_response(client, sport: str = None):
     if sport:
         endpoint = f"/odds/1/dropping/{sport}"
-        logger.info("Fetching dropping odds feed for sport %s - /odds/1/dropping/%s", sport, sport)
+        logger.info("✈️ Fetching dropping odds feed for sport %s - /odds/1/dropping/%s", sport, sport)
     else:
         endpoint = "/odds/1/dropping/all"
-        logger.info("Fetching dropping odds feed for all sports")
+        logger.info("✈️ Fetching dropping odds feed for all sports")
     return client._request_json(endpoint)
 
 
 def get_high_value_streaks_events(client):
-    logger.info("Fetching high value streaks feed")
+    logger.info("✈️ Fetching high value streaks feed")
     return client._request_json("/odds/1/high-value-streaks")
 
 
 def get_team_streaks_events(client):
-    logger.info("Fetching team streaks feed")
+    logger.info("✈️ Fetching team streaks feed")
     return client._request_json("/odds/top-team-streaks/wins/all")
 
 
 def get_h2h_events(client):
-    logger.info("Fetching top H2H feed")
+    logger.info("✈️ Fetching top H2H feed")
     return client._request_json("/odds/1/top-h2h/all")
 
 
 def get_winning_odds_events(client):
-    logger.info("Fetching winning odds discovery feed")
+    logger.info("✈️ Fetching winning odds discovery feed")
     return client._request_json("/odds/1/winning/all")
 
 

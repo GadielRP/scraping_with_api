@@ -36,13 +36,16 @@ def _format_standing_line(team_name: str, stats: Dict, standings_method: str = N
     ot_losses = stats.get("ot_losses", 0)
     ties = stats.get("ties", 0)
 
+    gf = stats.get("goals_for", 0)
+    ga = stats.get("goals_against", 0)
+
     if pct is not None and method == "win_pct":
-        return f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L) GP:{games} DIFF:{gd_str}"
+        return f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L) GP:{games} GF:{gf} GA:{ga} DIFF:{gd_str}"
     if pct is not None and method == "win_pct_half_tie":
-        return f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L-{ties}T) GP:{games} DIFF:{gd_str}"
+        return f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L-{ties}T) GP:{games} GF:{gf} GA:{ga} DIFF:{gd_str}"
     if method in {"nhl_2_1_0_otl", "hockey_3_2_1_0"} and ot_losses > 0:
-        return f"#{pos} {team_name}: {pts}pts ({wins}W-{losses}L-{ot_losses}OTL) GP:{games} DIFF:{gd_str}"
-    return f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, GP:{games}) DIFF:{gd_str}"
+        return f"#{pos} {team_name}: {pts}pts ({wins}W-{losses}L-{ot_losses}OTL) GP:{games} GF:{gf} GA:{ga} DIFF:{gd_str}"
+    return f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, GP:{games}) GF:{gf} GA:{ga} DIFF:{gd_str}"
 
 
 def _group_sort_key(group_name: str) -> tuple:

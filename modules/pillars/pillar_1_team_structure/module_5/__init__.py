@@ -1,5 +1,5 @@
-"""Module 5 - Recent Inertia Engine package."""
+"""Module 5 - Contextual Competitive Cost Engine package."""
 
-from .recent_inertia_engine import calculate_recent_inertia_engine
+from .contextual_competitive_cost_engine import calculate_contextual_competitive_cost_engine
 
-__all__ = ["calculate_recent_inertia_engine"]
+__all__ = ["calculate_contextual_competitive_cost_engine"]

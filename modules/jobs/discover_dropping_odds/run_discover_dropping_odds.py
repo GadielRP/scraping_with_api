@@ -87,7 +87,7 @@ def run_discover_dropping_odds() -> None:
         logger.info(f"Step 2: Fetching and processing {len(dropping_sports)} individual sports")
         for sport in dropping_sports:
             try:
-                logger.info(f"Fetching dropping odds for sport: {sport}")
+                logger.info(f"✈️ Fetching dropping odds for sport: {sport}")
                 response_sport = api_client.get_dropping_odds_with_odds_and_events_response(sport=sport)
                 if not response_sport:
                     logger.warning(f"No response for sport {sport}, skipping")

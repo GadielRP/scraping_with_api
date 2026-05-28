@@ -1,4 +1,5 @@
-"""M7 - Structural Drift Engine."""
+"""Module 7 - Opponent Expectation Engine package."""
 
-from .structural_drift_engine import calculate_structural_drift_engine
+from .opponent_expectation_engine import calculate_m7_opponent_expectation_engine
 
+__all__ = ["calculate_m7_opponent_expectation_engine"]
