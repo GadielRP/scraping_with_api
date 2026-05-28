@@ -20,6 +20,20 @@ def _parse_env_list(env_name, default_value):
         return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def _parse_env_int_list(env_name, default_value):
+    value = os.getenv(env_name)
+    if not value:
+        return default_value
+
+    try:
+        parsed = ast.literal_eval(value)
+        if isinstance(parsed, list):
+            return [int(item) for item in parsed]
+        return [int(parsed)]
+    except (ValueError, SyntaxError, TypeError):
+        return [int(item.strip()) for item in value.split(',') if item.strip()]
+
+
 def _parse_env_list_alias(primary_name, alias_name, default_value):
     if os.getenv(primary_name):
         return _parse_env_list(primary_name, default_value)
@@ -55,6 +69,13 @@ class Config:
     PRE_START_WORKERS = int(os.getenv('PRE_START_WORKERS', '5'))  # Number of parallel workers for pre-start checks
     INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES", "390"))
     INTRADAY_RESULT_FRESHNESS_WORKERS = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WORKERS", str(PRE_START_WORKERS)))
+    PRE_START_ODDS_MOMENTS = _parse_env_int_list(
+        "PRE_START_ODDS_MOMENTS",
+        [120, 60, 30, 5, 0, -5],
+    )
+    PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES = int(
+        os.getenv("PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", "3")
+    )
 
     # Daily Discovery Log/Queue Configuration
     DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES = int(os.getenv('DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES', '240'))

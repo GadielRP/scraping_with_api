@@ -44,7 +44,7 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
         logger.info(f"🚫 ODDS EXTRACTION DISABLED: Skipping odds extraction for event {event_id}")
         return False, None, False
 
-    key_moments = [120, 30, 5, 0, -5]
+    key_moments = Config.PRE_START_ODDS_MOMENTS
     if minutes_until not in key_moments:
         logger.debug(
             f"⏭️ Not a key moment for event {event_id}: {minutes_until} minutes until start - SKIPPING API CALL AND ODDS EXTRACTION"

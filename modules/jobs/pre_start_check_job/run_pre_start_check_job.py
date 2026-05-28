@@ -8,7 +8,7 @@ from datetime import datetime
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import refresh_materialized_views
-from infrastructure.persistence.repositories import CompetitionRepository, EventRepository
+from infrastructure.persistence.repositories import CompetitionRepository, EventRepository, OddsTrajectoryRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.alert_pipeline import evaluate_and_dispatch_alerts_batch
 from modules.pillars.context import build_event_context
@@ -179,9 +179,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
         logger.info(
             f"Found {len(upcoming_events)} events starting within {Config.PRE_START_WINDOW_MINUTES} minutes"
         )
-        #print upcoming events to see structure
-        for event in upcoming_events:
-            logger.info(event)
+        
         pre_calculated_timings = {event["id"]: minutes_until_start(event["start_time_utc"]) for event in upcoming_events}
 
         op_candidates = build_oddsportal_scrape_candidates(upcoming_events, pre_calculated_timings)
@@ -253,7 +251,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
 
         events_to_process = []
         event_meta_lookup = {}
-        key_moments = [120, 30, 5, 0, -5]
+        key_moments = Config.PRE_START_ODDS_MOMENTS
 
         if not upcoming_events:
             logger.warning("No upcoming events found")
@@ -381,10 +379,26 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
             logger.info(f"🔍 Evaluating {len(all_key_moment_event_ids)} events at key moments for alerts (main thread)...")
             refresh_materialized_views(db_manager.engine)
 
+            trajectory_by_event_id = OddsTrajectoryRepository.get_pre_start_trajectory_map(
+                event_ids=list(all_key_moment_event_ids),
+                target_minutes=key_moments,
+                tolerance_minutes=Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES,
+            )
+            logger.info(
+                "Loaded odds trajectory for %s/%s key-moment events",
+                len(trajectory_by_event_id),
+                len(all_key_moment_event_ids),
+            )
+            trajectory_payload_by_event_id = {
+                event_id: [point.to_dict() for point in points]
+                for event_id, points in trajectory_by_event_id.items()
+            }
+
             events_for_alerts = []
             for event_data in upcoming_events:
                 if event_data["id"] not in all_key_moment_event_ids:
                     continue
+                event_data["odds_trajectory"] = trajectory_payload_by_event_id.get(event_data["id"], [])
                 event_obj = scheduler.event_repo.get_event_by_id(event_data["id"])
                 if not event_obj or event_obj.sport in Config.EXCLUDED_SPORTS:
                     continue
@@ -422,6 +436,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                         "initial_minutes": initial_minutes,
                         "observations": meta.get("observations"),
                         "odds_response": meta.get("odds_response"),
+                        "odds_trajectory": event_data.get("odds_trajectory", []),
                         "metadata_snapshot": meta.get("metadata_snapshot"),
                         "event_context": event_context,
                         "season_id": getattr(event_obj, "season_id", None),

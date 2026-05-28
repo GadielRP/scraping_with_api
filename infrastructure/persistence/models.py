@@ -635,6 +635,12 @@ DUAL_PROCESS_MARKET_INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_choice_collected ON market_choice_snapshots (choice_id, collected_at);",
 ]
 
+PRE_START_ODDS_TRAJECTORY_INDEXES_SQL = [
+    "CREATE INDEX IF NOT EXISTS idx_events_start_time_utc ON events (start_time_utc);",
+    "CREATE INDEX IF NOT EXISTS idx_events_season_start_time_utc ON events (season_id, start_time_utc);",
+    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_choice_collected_desc ON market_choice_snapshots (choice_id, collected_at DESC, snapshot_id DESC);",
+]
+
 # ---------------------------------------------------------------------------
 # View for historical standings: season events with results
 # Used to compute standings at any point in time for collected seasons
@@ -704,12 +710,44 @@ MARKET_CHOICE_TRAJECTORY_VIEW_SQL = (
 )
 
 
+PRE_START_ODDS_TRAJECTORY_VIEW_SQL = (
+    """
+    CREATE OR REPLACE VIEW v_pre_start_odds_trajectory AS
+    SELECT
+        e.id AS event_id,
+        e.start_time_utc,
+        m.market_id,
+        m.market_name,
+        m.market_group,
+        m.market_period,
+        m.choice_group,
+        m.bookie_id,
+        b.name AS bookie_name,
+        mc.choice_id,
+        mc.choice_name,
+        mc.initial_odds,
+        mcs.snapshot_id,
+        mcs.odds_value,
+        mcs.collected_at,
+        ROUND(EXTRACT(EPOCH FROM (e.start_time_utc - mcs.collected_at)) / 60)::int AS minutes_before_start
+    FROM market_choice_snapshots mcs
+    JOIN market_choices mc ON mc.choice_id = mcs.choice_id
+    JOIN markets m ON m.market_id = mc.market_id
+    JOIN events e ON e.id = m.event_id
+    JOIN bookies b ON b.bookie_id = m.bookie_id
+    WHERE m.is_live = false;
+    """
+)
+
+
 def create_or_replace_views(engine):
     """Create or replace reporting SQL views. Call this after engine init."""
     from infrastructure.settings import Config
 
     with engine.begin() as conn:
         for index_sql in DUAL_PROCESS_MARKET_INDEXES_SQL:
+            conn.exec_driver_sql(index_sql)
+        for index_sql in PRE_START_ODDS_TRAJECTORY_INDEXES_SQL:
             conn.exec_driver_sql(index_sql)
         conn.exec_driver_sql(build_dual_process_event_odds_view_sql(Config.MARKETS_DUAL_PROCESS, Config.PERIODS_DUAL_PROCESS))
         conn.exec_driver_sql(EVENT_ALL_ODDS_VIEW_SQL)
@@ -722,6 +760,7 @@ def create_or_replace_views(engine):
         conn.exec_driver_sql(SEASON_EVENTS_WITH_RESULTS_VIEW_SQL)
         # Create market choice trajectory view
         conn.exec_driver_sql(MARKET_CHOICE_TRAJECTORY_VIEW_SQL)
+        conn.exec_driver_sql(PRE_START_ODDS_TRAJECTORY_VIEW_SQL)
 
 def create_or_replace_materialized_views(engine):
     """Create or replace materialized views for alerts. Call this after engine init."""
@@ -729,6 +768,8 @@ def create_or_replace_materialized_views(engine):
 
     with engine.begin() as conn:
         for index_sql in DUAL_PROCESS_MARKET_INDEXES_SQL:
+            conn.exec_driver_sql(index_sql)
+        for index_sql in PRE_START_ODDS_TRAJECTORY_INDEXES_SQL:
             conn.exec_driver_sql(index_sql)
         conn.exec_driver_sql(build_dual_process_event_odds_view_sql(Config.MARKETS_DUAL_PROCESS, Config.PERIODS_DUAL_PROCESS))
         # Drop existing materialized view to recreate with new schema
