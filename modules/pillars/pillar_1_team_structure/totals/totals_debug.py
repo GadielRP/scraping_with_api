@@ -156,10 +156,46 @@ def _log_p1_totals_debug(
         _debug_float(home_record.get("team_total_per_game")),
     )
     logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] home_gfpg = home_gf / home_gp = %s / %s = %s",
+        _debug_float(home_record.get("gf")),
+        home_record.get("gp"),
+        _debug_float(home_record.get("gfpg")),
+    )
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] home_gapg = home_ga / home_gp = %s / %s = %s",
+        _debug_float(home_record.get("ga")),
+        home_record.get("gp"),
+        _debug_float(home_record.get("gapg")),
+    )
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] home_team_total_per_game = home_gfpg + home_gapg = %s + %s = %s",
+        _debug_float(home_record.get("gfpg")),
+        _debug_float(home_record.get("gapg")),
+        _debug_float(home_record.get("team_total_per_game")),
+    )
+    logger.info(
         "[P1_TOTALS][STRUCTURAL] away GF=%s GA=%s GP=%s GFPG=%s GAPG=%s TEAM_TOTAL_PER_GAME=%s",
         _debug_float(away_record.get("gf")),
         _debug_float(away_record.get("ga")),
         away_record.get("gp"),
+        _debug_float(away_record.get("gfpg")),
+        _debug_float(away_record.get("gapg")),
+        _debug_float(away_record.get("team_total_per_game")),
+    )
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] away_gfpg = away_gf / away_gp = %s / %s = %s",
+        _debug_float(away_record.get("gf")),
+        away_record.get("gp"),
+        _debug_float(away_record.get("gfpg")),
+    )
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] away_gapg = away_ga / away_gp = %s / %s = %s",
+        _debug_float(away_record.get("ga")),
+        away_record.get("gp"),
+        _debug_float(away_record.get("gapg")),
+    )
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] away_team_total_per_game = away_gfpg + away_gapg = %s + %s = %s",
         _debug_float(away_record.get("gfpg")),
         _debug_float(away_record.get("gapg")),
         _debug_float(away_record.get("team_total_per_game")),
@@ -184,10 +220,58 @@ def _log_p1_totals_debug(
         _debug_float(structural_layer.get("total_dynamic_scale")),
     )
     logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] LEAGUE_TOTAL_BASELINE = median(league_samples) = %s",
+        _debug_float(structural_layer.get("league_total_baseline")),
+    )
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] total_distances = [abs(sample - LEAGUE_TOTAL_BASELINE) for sample in league_samples]"
+    )
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] TOTAL_DYNAMIC_SCALE = percentile(total_distances, 75) = %s",
+        _debug_float(structural_layer.get("total_dynamic_scale")),
+    )
+    logger.info(
         "[P1_TOTALS][STRUCTURAL] HOME_ATTACK_ENVIRONMENT=%s AWAY_ATTACK_ENVIRONMENT=%s EXPECTED_TOTAL_STRUCTURAL=%s STRUCTURAL_PROFILE_SCORE=%s",
         _debug_float(structural_layer.get("home_attack_environment")),
         _debug_float(structural_layer.get("away_attack_environment")),
         _debug_float(structural_layer.get("expected_total_structural")),
+        _debug_float(structural_layer.get("signal")),
+    )
+    home_attack_components = []
+    if home_record.get("gfpg") is not None:
+        home_attack_components.append(f"home_gfpg={_debug_float(home_record.get('gfpg'))}")
+    if away_record.get("gapg") is not None:
+        home_attack_components.append(f"away_gapg={_debug_float(away_record.get('gapg'))}")
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] HOME_ATTACK_ENVIRONMENT = avg(%s) = %s",
+        ", ".join(home_attack_components) if home_attack_components else "None",
+        _debug_float(structural_layer.get("home_attack_environment")),
+    )
+    away_attack_components = []
+    if away_record.get("gfpg") is not None:
+        away_attack_components.append(f"away_gfpg={_debug_float(away_record.get('gfpg'))}")
+    if home_record.get("gapg") is not None:
+        away_attack_components.append(f"home_gapg={_debug_float(home_record.get('gapg'))}")
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] AWAY_ATTACK_ENVIRONMENT = avg(%s) = %s",
+        ", ".join(away_attack_components) if away_attack_components else "None",
+        _debug_float(structural_layer.get("away_attack_environment")),
+    )
+    expected_components = []
+    if structural_layer.get("home_attack_environment") is not None:
+        expected_components.append(_debug_float(structural_layer.get("home_attack_environment")))
+    if structural_layer.get("away_attack_environment") is not None:
+        expected_components.append(_debug_float(structural_layer.get("away_attack_environment")))
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] EXPECTED_TOTAL_STRUCTURAL = %s = %s",
+        " + ".join(expected_components) if expected_components else "None",
+        _debug_float(structural_layer.get("expected_total_structural")),
+    )
+    logger.info(
+        "[P1_TOTALS][STRUCTURAL_CALC] STRUCTURAL_PROFILE_SCORE = clamp((EXPECTED_TOTAL_STRUCTURAL - LEAGUE_TOTAL_BASELINE) / TOTAL_DYNAMIC_SCALE) = clamp((%s - %s) / %s) = %s",
+        _debug_float(structural_layer.get("expected_total_structural")),
+        _debug_float(structural_layer.get("league_total_baseline")),
+        _debug_float(structural_layer.get("total_dynamic_scale")),
         _debug_float(structural_layer.get("signal")),
     )
 
@@ -200,6 +284,42 @@ def _log_p1_totals_debug(
         _debug_float(volatility_layer.get("vol_baseline")),
         _debug_float(volatility_layer.get("vol_dynamic_scale")),
         _debug_float(volatility_layer.get("matchup_volatility")),
+        _debug_float(volatility_layer.get("signal")),
+    )
+    logger.info(
+        "[P1_TOTALS][VOLATILITY_CALC] STD_DEV_TOTALS_HOME = pstdev(home_game_totals) = %s",
+        _debug_float(volatility_layer.get("home_std")),
+    )
+    logger.info(
+        "[P1_TOTALS][VOLATILITY_CALC] STD_DEV_TOTALS_AWAY = pstdev(away_game_totals) = %s",
+        _debug_float(volatility_layer.get("away_std")),
+    )
+    logger.info(
+        "[P1_TOTALS][VOLATILITY_CALC] VOL_BASELINE = median(league_std_samples) = %s",
+        _debug_float(volatility_layer.get("vol_baseline")),
+    )
+    logger.info(
+        "[P1_TOTALS][VOLATILITY_CALC] deviation_samples = [abs(sample - VOL_BASELINE) for sample in league_std_samples]"
+    )
+    logger.info(
+        "[P1_TOTALS][VOLATILITY_CALC] VOL_DYNAMIC_SCALE = percentile(deviation_samples, 75) = %s",
+        _debug_float(volatility_layer.get("vol_dynamic_scale")),
+    )
+    vol_components = []
+    if volatility_layer.get("home_std") is not None:
+        vol_components.append(f"home_std={_debug_float(volatility_layer.get('home_std'))}")
+    if volatility_layer.get("away_std") is not None:
+        vol_components.append(f"away_std={_debug_float(volatility_layer.get('away_std'))}")
+    logger.info(
+        "[P1_TOTALS][VOLATILITY_CALC] MATCHUP_VOLATILITY = avg(%s) = %s",
+        ", ".join(vol_components) if vol_components else "None",
+        _debug_float(volatility_layer.get("matchup_volatility")),
+    )
+    logger.info(
+        "[P1_TOTALS][VOLATILITY_CALC] VOL_EDGE = clamp((MATCHUP_VOLATILITY - VOL_BASELINE) / VOL_DYNAMIC_SCALE) = clamp((%s - %s) / %s) = %s",
+        _debug_float(volatility_layer.get("matchup_volatility")),
+        _debug_float(volatility_layer.get("vol_baseline")),
+        _debug_float(volatility_layer.get("vol_dynamic_scale")),
         _debug_float(volatility_layer.get("signal")),
     )
     logger.info(
@@ -229,6 +349,79 @@ def _log_p1_totals_debug(
                 _debug_float(block_payload.get("base_weight")),
                 _debug_float(block_payload.get("effective_weight")),
             )
+    for side_name, temporal_payload in (("home", temporal_layer["home_temporal"]), ("away", temporal_layer["away_temporal"])):
+        logger.info("[P1_TOTALS][TEMPORAL_CALC] --- %s TEMPORAL BLOCKS ---", side_name.upper())
+        for block_name, block_payload in _debug_temporal_block_payload(temporal_payload, block_names).items():
+            games_used = block_payload.get("games_used") or 0
+            if games_used > 0:
+                gf_sum = sum(item["gf"] for item in (temporal_payload.get("game_scores") or [])[:games_used])
+                ga_sum = sum(item["ga"] for item in (temporal_payload.get("game_scores") or [])[:games_used])
+                logger.info(
+                    "[P1_TOTALS][TEMPORAL_CALC] %s %s: gfpg = gf / games_used = %s / %s = %s",
+                    side_name,
+                    block_name,
+                    _debug_float(gf_sum),
+                    games_used,
+                    _debug_float(block_payload.get("gfpg")),
+                )
+                logger.info(
+                    "[P1_TOTALS][TEMPORAL_CALC] %s %s: gapg = ga / games_used = %s / %s = %s",
+                    side_name,
+                    block_name,
+                    _debug_float(ga_sum),
+                    games_used,
+                    _debug_float(block_payload.get("gapg")),
+                )
+                logger.info(
+                    "[P1_TOTALS][TEMPORAL_CALC] %s %s: total = gfpg + gapg = %s + %s = %s",
+                    side_name,
+                    block_name,
+                    _debug_float(block_payload.get("gfpg")),
+                    _debug_float(block_payload.get("gapg")),
+                    _debug_float(block_payload.get("total")),
+                )
+            else:
+                logger.info(
+                    "[P1_TOTALS][TEMPORAL_CALC] %s %s: no games available",
+                    side_name,
+                    block_name,
+                )
+        weighted_terms = []
+        for block_name, block_payload in _debug_temporal_block_payload(temporal_payload, block_names).items():
+            total_val = block_payload.get("total")
+            weight_val = block_payload.get("base_weight")
+            if total_val is not None and weight_val is not None:
+                weighted_terms.append(f"({_debug_float(total_val)} * {_debug_float(weight_val)})")
+        active_weights = [
+            block_payload.get("base_weight")
+            for block_name, block_payload in _debug_temporal_block_payload(temporal_payload, block_names).items()
+            if block_payload.get("total") is not None
+        ]
+        sum_weights = sum(active_weights) if active_weights else 0.0
+        logger.info(
+            "[P1_TOTALS][TEMPORAL_CALC] %s TEAM_TOTAL_WEIGHTED = (%s) / %s = %s",
+            side_name.upper(),
+            " + ".join(weighted_terms) if weighted_terms else "0",
+            _debug_float(sum_weights),
+            _debug_float(temporal_payload.get("weighted_total")),
+        )
+    temporal_components = []
+    if temporal_layer["home_temporal"].get("weighted_total") is not None:
+        temporal_components.append(f"home={_debug_float(temporal_layer['home_temporal'].get('weighted_total'))}")
+    if temporal_layer["away_temporal"].get("weighted_total") is not None:
+        temporal_components.append(f"away={_debug_float(temporal_layer['away_temporal'].get('weighted_total'))}")
+    logger.info(
+        "[P1_TOTALS][TEMPORAL_CALC] MATCHUP_TEMPORAL_TOTAL = avg(%s) = %s",
+        ", ".join(temporal_components) if temporal_components else "None",
+        _debug_float(temporal_layer.get("matchup_temporal_total")),
+    )
+    logger.info(
+        "[P1_TOTALS][TEMPORAL_CALC] TEMPORAL_PROFILE_SCORE = clamp((MATCHUP_TEMPORAL_TOTAL - LEAGUE_TOTAL_BASELINE) / TOTAL_DYNAMIC_SCALE) = clamp((%s - %s) / %s) = %s",
+        _debug_float(temporal_layer.get("matchup_temporal_total")),
+        _debug_float(temporal_layer.get("league_total_baseline")),
+        _debug_float(temporal_layer.get("total_dynamic_scale")),
+        _debug_float(temporal_layer.get("signal")),
+    )
     logger.info(
         "[P1_TOTALS][TEMPORAL] TEAM_TOTAL_WEIGHTED_HOME=%s TEAM_TOTAL_WEIGHTED_AWAY=%s MATCHUP_TEMPORAL_TOTAL=%s TEMPORAL_PROFILE_SCORE=%s",
         _debug_float(temporal_layer["home_temporal"].get("weighted_total")),
@@ -243,6 +436,51 @@ def _log_p1_totals_debug(
         _debug_float(trend_layer["home_trend"].get("long_term_profile")),
         _debug_float(trend_layer["away_trend"].get("short_term_profile")),
         _debug_float(trend_layer["away_trend"].get("long_term_profile")),
+    )
+    for side in ("home", "away"):
+        side_trend = trend_layer.get(f"{side}_trend", {})
+        side_temporal = temporal_layer[f"{side}_temporal"]
+        short_val_a = side_temporal.get("TOTALS_SHORT", {}).get("total")
+        short_val_b = side_temporal.get("TOTALS_RECENT", {}).get("total")
+        long_val_a = side_temporal.get("TOTALS_MID", {}).get("total")
+        long_val_b = side_temporal.get("TOTALS_FULL", {}).get("total")
+        logger.info(
+            "[P1_TOTALS][TREND_CALC] %s_SHORT_TERM_PROFILE = (TOTALS_SHORT * 0.6 + TOTALS_RECENT * 0.4) = (%s * 0.6 + %s * 0.4) = %s",
+            side.upper(),
+            _debug_float(short_val_a),
+            _debug_float(short_val_b),
+            _debug_float(side_trend.get("short_term_profile")),
+        )
+        logger.info(
+            "[P1_TOTALS][TREND_CALC] %s_LONG_TERM_PROFILE = (TOTALS_MID * 0.6 + TOTALS_FULL * 0.4) = (%s * 0.6 + %s * 0.4) = %s",
+            side.upper(),
+            _debug_float(long_val_a),
+            _debug_float(long_val_b),
+            _debug_float(side_trend.get("long_term_profile")),
+        )
+    logger.info(
+        "[P1_TOTALS][TREND_CALC] short_term_profile_matchup = (HOME_SHORT_TERM_PROFILE + AWAY_SHORT_TERM_PROFILE) / 2 = (%s + %s) / 2 = %s",
+        _debug_float(trend_layer.get("home_trend", {}).get("short_term_profile")),
+        _debug_float(trend_layer.get("away_trend", {}).get("short_term_profile")),
+        _debug_float(trend_layer.get("short_term_profile_matchup")),
+    )
+    logger.info(
+        "[P1_TOTALS][TREND_CALC] long_term_profile_matchup = (HOME_LONG_TERM_PROFILE + AWAY_LONG_TERM_PROFILE) / 2 = (%s + %s) / 2 = %s",
+        _debug_float(trend_layer.get("home_trend", {}).get("long_term_profile")),
+        _debug_float(trend_layer.get("away_trend", {}).get("long_term_profile")),
+        _debug_float(trend_layer.get("long_term_profile_matchup")),
+    )
+    logger.info(
+        "[P1_TOTALS][TREND_CALC] TREND_DELTA = short_term_profile_matchup - long_term_profile_matchup = %s - %s = %s",
+        _debug_float(trend_layer.get("short_term_profile_matchup")),
+        _debug_float(trend_layer.get("long_term_profile_matchup")),
+        _debug_float(trend_layer.get("trend_delta")),
+    )
+    logger.info(
+        "[P1_TOTALS][TREND_CALC] TREND_SIGNAL = clamp(TREND_DELTA / TOTAL_DYNAMIC_SCALE) = clamp(%s / %s) = %s",
+        _debug_float(trend_layer.get("trend_delta")),
+        _debug_float(structural_layer.get("total_dynamic_scale")),
+        _debug_float(trend_layer.get("signal")),
     )
     logger.info(
         "[P1_TOTALS][TREND] short_term_profile_matchup=%s long_term_profile_matchup=%s TREND_DELTA=%s TREND_SIGNAL=%s",
@@ -269,6 +507,56 @@ def _log_p1_totals_debug(
             layer_output.ignored if layer_output else None,
             layer_output.ignored_reason if layer_output else None,
         )
+    logger.info("[P1_TOTALS][IGNORE_SCORE_CALC] --- LAYER WEIGHTING AND SCORE CALCULATION ---")
+    for layer_name in ("STRUCTURAL", "VOL", "TEMPORAL", "TREND"):
+        layer_output = layer_audit.get(layer_name)
+        signal = layer_signals.get(layer_name)
+        base_weight = layer_base_weights.get(layer_name)
+        if layer_output and not layer_output.ignored:
+            logger.info(
+                "[P1_TOTALS][IGNORE_SCORE_CALC] layer=%s: effective_weight = base_weight * confidence_total = %s * %s = %s",
+                layer_name,
+                _debug_float(base_weight),
+                _debug_float(confidence_total),
+                _debug_float(layer_output.effective_weight),
+            )
+            logger.info(
+                "[P1_TOTALS][IGNORE_SCORE_CALC] layer=%s: weighted_signal = signal * effective_weight = %s * %s = %s",
+                layer_name,
+                _debug_float(signal),
+                _debug_float(layer_output.effective_weight),
+                _debug_float(layer_output.weighted_signal),
+            )
+        else:
+            reason = layer_output.ignored_reason if layer_output else "missing"
+            logger.info(
+                "[P1_TOTALS][IGNORE_SCORE_CALC] layer=%s: IGNORED (reason: %s)",
+                layer_name,
+                reason,
+            )
+    weighted_terms = []
+    weight_terms = []
+    for layer_name in ("STRUCTURAL", "VOL", "TEMPORAL", "TREND"):
+        layer_output = layer_audit.get(layer_name)
+        if layer_output and not layer_output.ignored:
+            weighted_terms.append(f"{_debug_float(layer_output.weighted_signal)} ({layer_name})")
+            weight_terms.append(f"{_debug_float(layer_output.effective_weight)} ({layer_name})")
+    logger.info(
+        "[P1_TOTALS][IGNORE_SCORE_CALC] weighted_sum = %s = %s",
+        " + ".join(weighted_terms) if weighted_terms else "0",
+        _debug_float(weighted_sum),
+    )
+    logger.info(
+        "[P1_TOTALS][IGNORE_SCORE_CALC] active_weight_sum = %s = %s",
+        " + ".join(weight_terms) if weight_terms else "0",
+        _debug_float(active_weight_sum),
+    )
+    logger.info(
+        "[P1_TOTALS][IGNORE_SCORE_CALC] P1_TOTALS_SCORE = clamp(weighted_sum / active_weight_sum) = clamp(%s / %s) = %s",
+        _debug_float(weighted_sum),
+        _debug_float(active_weight_sum),
+        _debug_float(p1_totals_score),
+    )
     logger.info(
         "[P1_TOTALS][IGNORE_SCORE] active_weight_sum=%s weighted_sum=%s",
         _debug_float(active_weight_sum),
