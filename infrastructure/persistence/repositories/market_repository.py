@@ -1,8 +1,8 @@
-﻿import logging
+import logging
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.models import Bookie, Market, MarketChoice, MarketChoiceSnapshot
@@ -45,6 +45,13 @@ class MarketRepository:
             return None
 
     @staticmethod
+    def _normalize_string_or_none(val: str) -> Optional[str]:
+        if val is None:
+            return None
+        val_stripped = str(val).strip()
+        return val_stripped if val_stripped else None
+
+    @staticmethod
     def save_markets_from_response(event_id: int, odds_response: Dict, bookie_id: int) -> int:
         """
         Save all markets from an odds API response to the database.
@@ -67,8 +74,8 @@ class MarketRepository:
                         with session.begin_nested():
                             market_name = MarketRepository._normalize_market_name(market_data.get('marketName'))
                             market_group = MarketRepository._normalize_market_group(market_data.get('marketGroup'))
-                            market_period = MarketRepository._normalize_market_period(market_data.get('marketPeriod'))
-                            choice_group = market_data.get('choiceGroup')
+                            market_period_normalized = MarketRepository._normalize_string_or_none(MarketRepository._normalize_market_period(market_data.get('marketPeriod')))
+                            choice_group_normalized = MarketRepository._normalize_string_or_none(market_data.get('choiceGroup'))
                             is_live = market_data.get('isLive', False)
 
                             if not market_name:
@@ -81,8 +88,8 @@ class MarketRepository:
                                     Market.event_id == event_id,
                                     Market.bookie_id == bookie_id,
                                     Market.market_name == market_name,
-                                    Market.market_period == market_period,
-                                    Market.choice_group == choice_group,
+                                    or_(Market.market_period == market_period_normalized, Market.market_period == "") if market_period_normalized is None else Market.market_period == market_period_normalized,
+                                    or_(Market.choice_group == choice_group_normalized, Market.choice_group == "") if choice_group_normalized is None else Market.choice_group == choice_group_normalized,
                                     Market.is_live == is_live
                                 )
                             ).first()
@@ -90,7 +97,7 @@ class MarketRepository:
                             if existing_market:
                                 market = existing_market
                                 market.market_group = market_group
-                                market.market_period = market_period
+                                market.market_period = market_period_normalized
                                 market.collected_at = market_collected_at
                             else:
                                 market = Market(
@@ -98,8 +105,8 @@ class MarketRepository:
                                     bookie_id=bookie_id,
                                     market_name=market_name,
                                     market_group=market_group,
-                                    market_period=market_period,
-                                    choice_group=choice_group,
+                                    market_period=market_period_normalized,
+                                    choice_group=choice_group_normalized,
                                     is_live=is_live,
                                     collected_at=market_collected_at
                                 )
@@ -390,18 +397,20 @@ class MarketRepository:
 
             with db_manager.get_session() as session:
                 for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
-                    market_period = MarketRepository._normalize_market_period(market_period)
+                    market_period_normalized = MarketRepository._normalize_string_or_none(MarketRepository._normalize_market_period(market_period))
                     for b_odds in bookie_odds_list:
                         try:
                             bookie = MarketRepository._get_or_create_bookie(session, b_odds.name)
+
+                            handicap_normalized = MarketRepository._normalize_string_or_none(getattr(b_odds, 'handicap', None))
 
                             market = session.query(Market).filter(
                                  and_(
                                      Market.event_id == event_id,
                                      Market.bookie_id == bookie.bookie_id,
                                      Market.market_name == market_name,
-                                     Market.market_period == market_period,
-                                     Market.choice_group == getattr(b_odds, 'handicap', None),
+                                     or_(Market.market_period == market_period_normalized, Market.market_period == "") if market_period_normalized is None else Market.market_period == market_period_normalized,
+                                     or_(Market.choice_group == handicap_normalized, Market.choice_group == "") if handicap_normalized is None else Market.choice_group == handicap_normalized,
                                      Market.is_live == False
                                  )
                             ).first()
@@ -412,8 +421,8 @@ class MarketRepository:
                                     bookie_id=bookie.bookie_id,
                                     market_name=market_name,
                                     market_group=market_group,
-                                    market_period=market_period,
-                                    choice_group=getattr(b_odds, 'handicap', None),
+                                    market_period=market_period_normalized,
+                                    choice_group=handicap_normalized,
                                     is_live=False,
                                     collected_at=get_local_now()
                                 )
@@ -421,7 +430,7 @@ class MarketRepository:
                                 session.flush()
                             else:
                                 market.market_group = market_group
-                                market.market_period = market_period
+                                market.market_period = market_period_normalized
                                 market.collected_at = get_local_now()
 
                             is_ou = market_group == "Over/Under"
@@ -543,14 +552,16 @@ class MarketRepository:
                                 bf_cg = group_name
                                 if getattr(betfair_data, 'handicap', None):
                                     bf_cg = f"{group_name} {betfair_data.handicap}"
+                                
+                                bf_cg_normalized = MarketRepository._normalize_string_or_none(bf_cg)
 
                                 market = session.query(Market).filter(
                                      and_(
                                          Market.event_id == event_id,
                                          Market.bookie_id == bookie.bookie_id,
                                          Market.market_name == market_name,
-                                         Market.market_period == market_period,
-                                         Market.choice_group == bf_cg,
+                                         or_(Market.market_period == market_period_normalized, Market.market_period == "") if market_period_normalized is None else Market.market_period == market_period_normalized,
+                                         or_(Market.choice_group == bf_cg_normalized, Market.choice_group == "") if bf_cg_normalized is None else Market.choice_group == bf_cg_normalized,
                                          Market.is_live == False
                                      )
                                 ).first()
@@ -561,8 +572,8 @@ class MarketRepository:
                                         bookie_id=bookie.bookie_id,
                                         market_name=market_name,
                                         market_group=market_group,
-                                        market_period=market_period,
-                                        choice_group=bf_cg,
+                                        market_period=market_period_normalized,
+                                        choice_group=bf_cg_normalized,
                                         is_live=False,
                                         collected_at=get_local_now()
                                     )
@@ -570,7 +581,7 @@ class MarketRepository:
                                     session.flush()
                                 else:
                                     market.market_group = market_group
-                                    market.market_period = market_period
+                                    market.market_period = market_period_normalized
                                     market.collected_at = get_local_now()
 
                                 for choice_name, val_str in choices_map.items():

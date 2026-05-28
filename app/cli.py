@@ -179,7 +179,6 @@ def _build_parser():
             "backfill-results",
             "status",
             "events",
-            "alerts",
             "refresh-alerts",
         ],
         help="Command to run",
@@ -197,7 +196,6 @@ def _build_parser():
 def _run_command(args):
     from .commands import (
         refresh_alert_data,
-        run_alerts,
         run_backfill_results,
         show_events,
         show_status,
@@ -238,8 +236,6 @@ def _run_command(args):
         show_status()
     elif args.command == "events":
         show_events(args.limit)
-    elif args.command == "alerts":
-        run_alerts()
     elif args.command == "refresh-alerts":
         refresh_alert_data()
 

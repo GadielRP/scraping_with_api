@@ -172,7 +172,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                 f"Pre-start check restricted to {len(tracked_season_ids)} tracked seasons (TRACKED_SEASONS_ONLY=True)"
             )
 
-        upcoming_events = scheduler.event_repo.get_events_starting_soon_with_odds(
+        upcoming_events = scheduler.event_repo.get_events_starting_soon(
             Config.PRE_START_WINDOW_MINUTES,
             season_ids=tracked_season_ids,
         )
@@ -465,22 +465,22 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
 
                 # New pillar pipeline
                 if Config.ENABLE_PILLAR_PIPELINE:
-                    # if global_debug_mode:
-                    #     # print events for pillars for debugging
-                    #     logger.info("\n" + "═" * 80)
-                    #     logger.info("🚨 EVENTS FOR PILLARS (DEBUG MODE)")
-                    #     logger.info("═" * 80)
-                    #     for i, event in enumerate(events_for_alerts, 1):
-                    #         ctx = event.get('event_context')
-                    #         label = ctx.participants_label if ctx else f"Event {event.get('event_obj').id}"
-                    #         sport = ctx.sport if ctx else "Unknown"
-                    #         minutes = event.get('minutes_until_start')
+                    if global_debug_mode:
+                        # print events for pillars for debugging
+                        logger.info("\n" + "═" * 80)
+                        logger.info("🚨 EVENTS FOR PILLARS (DEBUG MODE)")
+                        logger.info("═" * 80)
+                        for i, event in enumerate(events_for_alerts, 1):
+                            ctx = event.get('event_context')
+                            label = ctx.participants_label if ctx else f"Event {event.get('event_obj').id}"
+                            sport = ctx.sport if ctx else "Unknown"
+                            minutes = event.get('minutes_until_start')
 
-                    #         logger.info(f"\n📍 [{i}/{len(events_for_alerts)}] {label}")
-                    #         logger.info(f"   Sport: {sport} | Minutes until start: {minutes}")
-                    #         logger.info("-" * 40)
-                    #         logger.info(pprint.pformat(event, indent=2, width=120))
-                    #         logger.info("─" * 80)
+                            logger.info(f"\n📍 [{i}/{len(events_for_alerts)}] {label}")
+                            logger.info(f"   Sport: {sport} | Minutes until start: {minutes}")
+                            logger.info("-" * 40)
+                            logger.info(pprint.pformat(event, indent=2, width=120))
+                            logger.info("─" * 80)
 
                     evaluate_and_calculate_pillars_batch(
                         events_for_pillars=events_for_alerts,

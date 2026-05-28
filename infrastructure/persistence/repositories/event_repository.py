@@ -465,28 +465,50 @@ class EventRepository:
             logger.error(f"Error batch deleting events: {e}")
             return 0
 
-    def get_events_starting_soon(self, window_minutes: int = 30):
-        """Get events starting soon"""
+    @staticmethod
+    def get_events_starting_soon(
+        window_minutes: int = 30,
+        season_ids: Optional[List[int]] = None,
+    ) -> List[Dict]:
+        """Get events starting soon.
+        
+        Modern pre_start_check_job flow should use this method as it returns 
+        the event payloads without querying latest odds.
+        """
         try:
             with db_manager.get_session() as session:
                 now = datetime.now()
                 window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=5)
-                start_window = now + timedelta(minutes=window_minutes)
+                window_end = now + timedelta(minutes=window_minutes)
                 
-                return session.query(Event).options(
+                query = session.query(Event).options(
                     joinedload(Event.home_participant),
                     joinedload(Event.away_participant),
                     joinedload(Event.competition_ref),
                 ).filter(
-                    Event.start_time_utc.between(window_start, start_window)
-                ).all()
+                    and_(Event.start_time_utc >= window_start, Event.start_time_utc <= window_end)
+                )
+                
+                if season_ids:
+                    query = query.filter(Event.season_id.in_(season_ids))
+                
+                events = query.all()
+                result = []
+                for event_obj in events:
+                    try:
+                        event_data = EventRepository._build_event_data_with_legacy_fallback(event_obj)
+                        result.append(event_data)
+                    except ValueError as exc:
+                        logger.warning("Skipping event %s in starting-soon query: %s", event_obj.id, exc)
+                return result
         except Exception as e:
             logger.error(f"Error getting events starting soon: {e}")
             return []
 
     @staticmethod
     def get_events_starting_soon_with_odds(window_minutes: int = 30, season_ids: Optional[List[int]] = None) -> List[Dict]:
-        """Get events starting soon with odds data"""
+        """Legacy helper that returns upcoming event payloads with latest dual-process odds.
+        Modern pre_start_check_job flow should use get_events_starting_soon()."""
         try:
             with db_manager.get_session() as session:
                 now = datetime.now()
