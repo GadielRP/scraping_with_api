@@ -15,6 +15,7 @@ from modules.pillars.context import (
     build_event_context,
     summarize_number_of_teams_from_streak_analysis,
 )
+from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
 from modules.pillars.competition_metadata_resolver import (
     apply_competition_metadata_resolution,
     resolve_competition_metadata,
@@ -76,8 +77,22 @@ class EventPillarProcessor:
         minutes_until_start = event_payload.get("minutes_until_start")
         metadata_snapshot = event_payload.get("metadata_snapshot")
         event_context = event_payload.get("event_context")
-        odds_trajectory = event_payload.get("odds_trajectory", [])
-        logger.info(f"\nodds trajectory: {odds_trajectory}\n")
+        odds_trajectory_context = build_odds_trajectory_context(
+            event_payload.get("odds_trajectory")
+        )
+        logger.info(
+            "Pillar odds trajectory context for event %s: available=%s markets=%s present_minutes=%s missing_minutes=%s",
+            event_id,
+            odds_trajectory_context.available,
+            len(odds_trajectory_context.markets),
+            odds_trajectory_context.target_minutes_present,
+            odds_trajectory_context.missing_target_minutes,
+        )
+        import pprint
+        logger.info(
+            "Odds trajectory context structure:\n%s",
+            pprint.pformat(asdict(odds_trajectory_context)),
+        )
         if event_context is None:
             event_context = build_event_context(
                 event_obj=event_obj,
@@ -207,6 +222,12 @@ class EventPillarProcessor:
                 exc,
             )
             return None
+
+        p1_result.setdefault("raw", {}).update({
+            "odds_trajectory_available": odds_trajectory_context.available,
+            "odds_trajectory_target_minutes_present": odds_trajectory_context.target_minutes_present,
+            "odds_trajectory_missing_target_minutes": odds_trajectory_context.missing_target_minutes,
+        })
 
         # Log the M1 result.
         m1 = p1_result.get("modules", [{}])[0] if p1_result.get("modules") else {}

@@ -71,7 +71,7 @@ class Config:
     INTRADAY_RESULT_FRESHNESS_WORKERS = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WORKERS", str(PRE_START_WORKERS)))
     PRE_START_ODDS_MOMENTS = _parse_env_int_list(
         "PRE_START_ODDS_MOMENTS",
-        [120, 60, 30, 5, 0, -5],
+        [120, 30, 5, 0, -5],
     )
     PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES = int(
         os.getenv("PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", "3")
