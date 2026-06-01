@@ -132,7 +132,7 @@ class ChoiceOddsTrajectory:
     choice_name: str
     choice_id: Optional[int]
     initial_odds: Optional[Decimal]
-    points: Dict[int, Decimal] = field(default_factory=dict)
+    odds_values: Dict[int, Decimal] = field(default_factory=dict)
     meta_by_minute: Dict[int, OddsPointMeta] = field(default_factory=dict)
 
 
@@ -241,7 +241,7 @@ def _get_choice_container(
             choice_name=choice.choice_name,
             choice_id=choice_id if choice.choice_id is None and choice_id is not None else choice.choice_id,
             initial_odds=initial_odds if choice.initial_odds is None and initial_odds is not None else choice.initial_odds,
-            points=choice.points,
+            odds_values=choice.odds_values,
             meta_by_minute=choice.meta_by_minute,
         )
         bookie.choices[choice_name] = choice
@@ -252,6 +252,55 @@ def build_odds_trajectory_context(
     odds_trajectory: Optional[List[Dict[str, Any]]],
     target_minutes_expected: Optional[List[int]] = None,
 ) -> OddsTrajectoryContext:
+    """
+    {
+    "available": bool,
+    "event_id": event_id,
+    "target_minutes_expected": List[int] ex. [120, 30, 5, 0, -5],
+    "target_minutes_present": [...],
+    "missing_target_minutes": [...],
+    "markets": {
+        market_group: {
+            market_period: {
+                market_name: {
+                    choice_group_key: {
+                        "market_id": ...,
+                        "market_group": ...,
+                        "market_period": ...,
+                        "market_name": ...,
+                        "choice_group": ...,
+                        "bookies": {
+                            bookie_name: {
+                                "bookie_id": ...,
+                                "bookie_name": ...,
+                                "choices": {
+                                    choice_name: {
+                                        "choice_id": ...,
+                                        "choice_name": ...,
+                                        "initial_odds": ...,
+                                        "odds_values": {
+                                            target_minute: odds_value
+                                        },
+                                        "meta_by_minute": {
+                                            target_minute: {
+                                                "snapshot_id": ...,
+                                                "collected_at": ...,
+                                                "minutes_before_start": ...,
+                                                "target_minute": ...,
+                                                "distance_from_target": ...
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    """
     expected_minutes = _normalize_expected_minutes(target_minutes_expected)
 
     if not isinstance(odds_trajectory, list) or not odds_trajectory:
@@ -330,7 +379,7 @@ def build_odds_trajectory_context(
 
         existing_meta = choice.meta_by_minute.get(target_minute)
         if existing_meta is None or _is_better_candidate(meta, existing_meta):
-            choice.points[target_minute] = odds_value
+            choice.odds_values[target_minute] = odds_value
             choice.meta_by_minute[target_minute] = meta
             present_minutes.add(target_minute)
             available = True
@@ -377,7 +426,7 @@ def get_market_line(
     return market_lines.get(choice_group_key)
 
 
-def get_choice_points(
+def get_choice_odds_values(
     market_line: MarketLineOddsTrajectory,
     choice_name: str,
     bookie_name: str = "SofaScore",
@@ -393,4 +442,4 @@ def get_choice_points(
     if choice is None:
         return {}
 
-    return choice.points
+    return choice.odds_values

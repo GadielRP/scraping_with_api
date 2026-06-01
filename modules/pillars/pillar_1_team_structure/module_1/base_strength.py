@@ -210,13 +210,32 @@ def _try_extract_gd(game: Dict) -> Optional[float]:
     return None
 
 
-def _extract_game_gd_series(results: List[Dict]) -> List[float]:
+def _extract_game_gd_series(results: List[Dict], side: str = "", debug_mode: bool = False) -> List[float]:
     """Build a list of per-game GD values from *results*."""
     series: List[float] = []
-    for game in results:
+    if debug_mode:
+        _debug_line("Extracting per-game GD values from results for %s (n=%s):", side, len(results))
+    for idx, game in enumerate(results):
         gd = _try_extract_gd(game)
         if gd is not None:
             series.append(float(gd))
+            if debug_mode:
+                opponent = game.get("opponent_name") or game.get("opponent") or "opponent"
+                detail = []
+                if game.get("goal_diff") is not None:
+                    detail.append(f"goal_diff field = {game.get('goal_diff')}")
+                if game.get("diff") is not None:
+                    detail.append(f"diff field = {game.get('diff')}")
+                ts = game.get("team_score")
+                os_ = game.get("opponent_score")
+                if ts is not None and os_ is not None:
+                    detail.append(f"team_score({ts}) - opponent_score({os_}) = {float(ts)-float(os_)}")
+                detail_str = " | ".join(detail)
+                _debug_line("  Game %s vs %s: gd=%s (%s)", idx + 1, opponent, gd, detail_str)
+        else:
+            if debug_mode:
+                opponent = game.get("opponent_name") or game.get("opponent") or "opponent"
+                _debug_line("  Game %s vs %s: GD could not be extracted", idx + 1, opponent)
     return series
 
 
@@ -387,9 +406,11 @@ def _calculate_p75_dynamic_scale(standings_list: List[Dict]) -> Optional[float]:
     return gd_per_game_abs[idx]
 
 
-def _build_fallback_season_record_from_results(results: List[Dict]) -> Dict[str, Any]:
+def _build_fallback_season_record_from_results(results: List[Dict], side: str = "", debug_mode: bool = False) -> Dict[str, Any]:
     """Build a season record from game results when standings are unavailable."""
     if not results:
+        if debug_mode:
+            _debug_line("No results available for %s to build fallback season record", side)
         return {
             "wins": None,
             "gp": None,
@@ -398,10 +419,29 @@ def _build_fallback_season_record_from_results(results: List[Dict]) -> Dict[str,
             "raw_standing": None,
         }
 
-    goal_diff_values = [_try_extract_gd(game) for game in results]
-    goal_diff = sum(value for value in goal_diff_values if value is not None)
+    goal_diff_values = []
+    wins_count = 0
+    if debug_mode:
+        _debug_line("Aggregating past results for fallback season record of %s (n=%s matches):", side, len(results))
+
+    for idx, game in enumerate(results):
+        gd = _try_extract_gd(game)
+        goal_diff_values.append(gd)
+        is_win = game.get("team_result_code") == "1"
+        if is_win:
+            wins_count += 1
+        if debug_mode:
+            opponent = game.get("opponent_name") or game.get("opponent") or "opponent"
+            score_str = f"{game.get('team_score')}-{game.get('opponent_score')}" if game.get('team_score') is not None else "N/A"
+            _debug_line("  Match %s vs %s: score=%s, gd=%s, win=%s", idx + 1, opponent, score_str, gd, is_win)
+
+    non_none_gds = [v for v in goal_diff_values if v is not None]
+    goal_diff = sum(non_none_gds)
+    if debug_mode:
+        _debug_line("  Fallback totals for %s: wins=%s, gp=%s, goal_diff=%s", side, wins_count, len(results), goal_diff)
+
     return {
-        "wins": _count_wins(results),
+        "wins": wins_count,
         "gp": len(results),
         "goal_diff": float(goal_diff),
         "source": "fallback_results",
@@ -485,6 +525,7 @@ def _extract_team_season_record(
     streak_analysis: Any,
     side: str,
     fallback_results: List[Dict],
+    debug_mode: bool = False,
 ) -> Dict[str, Any]:
     """Extract a season record from the best available source for one side."""
     direct_attr = f"{side}_team_current_standing"
@@ -515,9 +556,14 @@ def _extract_team_season_record(
                 or record["goal_diff"] is not None
             )
         ):
+            if debug_mode:
+                _debug_line("Season record for %s extracted from %s -> wins=%s, gp=%s, goal_diff=%s",
+                            side.upper(), source, record.get("wins"), record.get("gp"), record.get("goal_diff"))
             return record
 
-    return _build_fallback_season_record_from_results(fallback_results)
+    if debug_mode:
+        _debug_line("No standing candidates found for %s, falling back to result aggregation", side.upper())
+    return _build_fallback_season_record_from_results(fallback_results, side=side.upper(), debug_mode=debug_mode)
 
 
 # ---------------------------------------------------------------------------
@@ -868,13 +914,35 @@ def _calculate_consistency_edge(
 
     for window_size in windows:
         label = f"L{window_size}"
-        home_std = _pstdev(home_series[:window_size])
-        away_std = _pstdev(away_series[:window_size])
+        home_sub = home_series[:window_size]
+        away_sub = away_series[:window_size]
+        home_std = _pstdev(home_sub)
+        away_std = _pstdev(away_sub)
         home_window_stds[label] = home_std
         away_window_stds[label] = away_std
         window_edge = away_std - home_std
         consistency_edges_by_window[label] = window_edge
+        
         if debug_mode:
+            home_mean = sum(home_sub) / len(home_sub) if home_sub else 0.0
+            home_dev2_sum = sum((v - home_mean) ** 2 for v in home_sub) if home_sub else 0.0
+            away_mean = sum(away_sub) / len(away_sub) if away_sub else 0.0
+            away_dev2_sum = sum((v - away_mean) ** 2 for v in away_sub) if away_sub else 0.0
+            
+            _debug_line("  Window %s HOME values: %s", label, _fmt(home_sub))
+            _debug_formula(
+                f"STD_HOME_{label}",
+                "STD = sqrt( sum( (GD_i - mean)^2 ) / N )",
+                f"mean = {home_mean:.6f} | sum((GD_i - mean)^2) = {home_dev2_sum:.6f} | N = {len(home_sub)}",
+                f"{home_std:.6f}"
+            )
+            _debug_line("  Window %s AWAY values: %s", label, _fmt(away_sub))
+            _debug_formula(
+                f"STD_AWAY_{label}",
+                "STD = sqrt( sum( (GD_i - mean)^2 ) / N )",
+                f"mean = {away_mean:.6f} | sum((GD_i - mean)^2) = {away_dev2_sum:.6f} | N = {len(away_sub)}",
+                f"{away_std:.6f}"
+            )
             _debug_line("  %s\t%f\t%f\t%+f", label, home_std, away_std, window_edge)
 
     consistency_edge_raw_average = (
@@ -943,12 +1011,43 @@ def _calculate_vol_direction_edge(
             _debug_line("=> SKIP (no_valid_windows) -> edge=0.0")
         return 0.0, raw
 
-    def _powers(series: List[float]) -> Tuple[float, float, float]:
+    def _powers(series: List[float], side_label: str = "", win_label: str = "") -> Tuple[float, float, float]:
         positive_values = [value for value in series if value > 0]
         negative_values = [abs(value) for value in series if value < 0]
-        destroy_power = sum(positive_values) / len(positive_values) if positive_values else 0.0
-        collapse_power = sum(negative_values) / len(negative_values) if negative_values else 0.0
+        
+        pos_sum = sum(positive_values)
+        pos_count = len(positive_values)
+        destroy_power = pos_sum / pos_count if pos_count > 0 else 0.0
+        
+        neg_sum = sum(negative_values)
+        neg_count = len(negative_values)
+        collapse_power = neg_sum / neg_count if neg_count > 0 else 0.0
+        
         net_vol = destroy_power - collapse_power
+        
+        if debug_mode and side_label and win_label:
+            _debug_line("  Window %s %s values: %s", win_label, side_label, _fmt(series))
+            _debug_formula(
+                f"DESTROY_POWER_{side_label}_{win_label}",
+                "DESTROY_POWER = sum(positive_values) / count(positive_values)",
+                f"{pos_sum:.6f} / {pos_count}" if pos_count > 0 else "0.0 / 0",
+                f"{destroy_power:.6f}",
+                "Promedio de los diferenciales de gol positivos (picos de ataque)."
+            )
+            _debug_formula(
+                f"COLLAPSE_POWER_{side_label}_{win_label}",
+                "COLLAPSE_POWER = sum(negative_values) / count(negative_values)",
+                f"{neg_sum:.6f} / {neg_count}" if neg_count > 0 else "0.0 / 0",
+                f"{collapse_power:.6f}",
+                "Promedio de las caídas de goles (valores absolutos)."
+            )
+            _debug_formula(
+                f"NET_VOL_{side_label}_{win_label}",
+                "NET_VOL = DESTROY_POWER - COLLAPSE_POWER",
+                f"{destroy_power:.6f} - {collapse_power:.6f}",
+                f"{net_vol:.6f}",
+                "Poder de volatilidad neto."
+            )
         return destroy_power, collapse_power, net_vol
 
     home_destroy_power_by_window: Dict[str, float] = {}
@@ -965,8 +1064,8 @@ def _calculate_vol_direction_edge(
 
     for window_size in windows:
         label = f"L{window_size}"
-        home_destroy, home_collapse, home_net = _powers(home_series[:window_size])
-        away_destroy, away_collapse, away_net = _powers(away_series[:window_size])
+        home_destroy, home_collapse, home_net = _powers(home_series[:window_size], "HOME", label)
+        away_destroy, away_collapse, away_net = _powers(away_series[:window_size], "AWAY", label)
         window_edge = home_net - away_net
 
         home_destroy_power_by_window[label] = home_destroy
@@ -1100,12 +1199,6 @@ def calculate_base_strength(
     home_team_name = getattr(streak_analysis, "home_team_name", None)
     away_team_name = getattr(streak_analysis, "away_team_name", None)
 
-    home_record = _extract_team_season_record(streak_analysis, "home", home_results)
-    away_record = _extract_team_season_record(streak_analysis, "away", away_results)
-
-    home_gd_series = _extract_game_gd_series(home_results)
-    away_gd_series = _extract_game_gd_series(away_results)
-
     if debug_mode:
         _debug_section("INICIO")
         _debug_line("Event ID: %s", _fmt(event_id))
@@ -1115,10 +1208,17 @@ def calculate_base_strength(
         _debug_line("Competition: %s (ID=%s)", competition_display_name, competition_id)
         _debug_line("Expected League Size: %s", expected_league_size)
 
+    home_record = _extract_team_season_record(streak_analysis, "home", home_results, debug_mode=debug_mode)
+    away_record = _extract_team_season_record(streak_analysis, "away", away_results, debug_mode=debug_mode)
+
+    home_gd_series = _extract_game_gd_series(home_results, "HOME", debug_mode=debug_mode)
+    away_gd_series = _extract_game_gd_series(away_results, "AWAY", debug_mode=debug_mode)
+
+    if debug_mode:
         _debug_section("INPUTS BASE")
-        _debug_line("HOME season record extracted: wins=%s, gp=%s, goal_diff=%s, source=%s",
+        _debug_line("HOME season record: wins=%s, gp=%s, goal_diff=%s, source=%s",
                     _fmt(home_record.get("wins")), _fmt(home_record.get("gp")), _fmt(home_record.get("goal_diff")), home_record.get("source"))
-        _debug_line("AWAY season record extracted: wins=%s, gp=%s, goal_diff=%s, source=%s",
+        _debug_line("AWAY season record: wins=%s, gp=%s, goal_diff=%s, source=%s",
                     _fmt(away_record.get("wins")), _fmt(away_record.get("gp")), _fmt(away_record.get("goal_diff")), away_record.get("source"))
         _debug_line("HOME game GD series: count=%s, values=%s", len(home_gd_series), _fmt(home_gd_series))
         _debug_line("AWAY game GD series: count=%s, values=%s", len(away_gd_series), _fmt(away_gd_series))

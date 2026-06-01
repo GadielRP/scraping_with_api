@@ -479,7 +479,8 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                             logger.info(f"\n📍 [{i}/{len(events_for_alerts)}] {label}")
                             logger.info(f"   Sport: {sport} | Minutes until start: {minutes}")
                             logger.info("-" * 40)
-                            logger.info(pprint.pformat(event, indent=2, width=120))
+                            filtered_event = {k: v for k, v in event.items() if k not in ('odds_response', 'odds_trajectory')}
+                            logger.info(pprint.pformat(filtered_event, indent=2, width=120))
                             logger.info("─" * 80)
 
                     evaluate_and_calculate_pillars_batch(

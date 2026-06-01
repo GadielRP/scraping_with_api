@@ -20,6 +20,26 @@ def _parse_env_list(env_name, default_value):
         return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def _parse_optional_env_list(env_name, default_value=None):
+    value = os.getenv(env_name)
+    if value is None:
+        return default_value
+
+    if not value.strip():
+        return None
+
+    try:
+        parsed = ast.literal_eval(value)
+        if isinstance(parsed, list):
+            cleaned = [str(item).strip() for item in parsed if str(item).strip()]
+            return cleaned or None
+        cleaned_value = str(parsed).strip()
+        return [cleaned_value] if cleaned_value else None
+    except (ValueError, SyntaxError):
+        cleaned = [item.strip() for item in value.split(',') if item.strip()]
+        return cleaned or None
+
+
 def _parse_env_int_list(env_name, default_value):
     value = os.getenv(env_name)
     if not value:
@@ -132,6 +152,16 @@ class Config:
     MARKETS_DUAL_PROCESS = _parse_env_list_alias('MARKETS_DUAL_PROCESS', 'markets_dual_process', ['1X2', 'Home/Away'])
 
     PERIODS_DUAL_PROCESS = _parse_env_list_alias('PERIODS_DUAL_PROCESS', 'periods_dual_process', ['Full-time', 'Match'])
+
+    PRE_START_ODDS_TRAJECTORY_MARKETS = _parse_optional_env_list(
+        "PRE_START_ODDS_TRAJECTORY_MARKETS",
+        None,
+    )
+
+    PRE_START_ODDS_TRAJECTORY_PERIODS = _parse_optional_env_list(
+        "PRE_START_ODDS_TRAJECTORY_PERIODS",
+        None,
+    )
 
     # OddsPortal scraping activation toggle for the pre-start flow
     ODDSPORTAL_SCRAPING_ENABLED = _parse_env_bool('ODDSPORTAL_SCRAPING_ENABLED', True)

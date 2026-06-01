@@ -96,10 +96,10 @@ class OddsTrajectoryRepository:
             else tolerance_minutes
         )
 
-        markets = Config.MARKETS_DUAL_PROCESS
-        periods = Config.PERIODS_DUAL_PROCESS
+        markets = Config.PRE_START_ODDS_TRAJECTORY_MARKETS
+        periods = Config.PRE_START_ODDS_TRAJECTORY_PERIODS
 
-        if not target_minutes or not markets or not periods:
+        if not target_minutes:
             return {}
 
         target_value_rows = ", ".join(
@@ -109,6 +109,35 @@ class OddsTrajectoryRepository:
             f"target_minute_{idx}": target_minute
             for idx, target_minute in enumerate(target_minutes)
         }
+
+        where_clauses = [
+            "traj.event_id IN :event_ids",
+            "traj.bookie_id = 1",
+            "ABS(traj.minutes_before_start - tm.target_minute) <= :tolerance_minutes",
+        ]
+        query_params = {
+            "event_ids": event_ids,
+            "tolerance_minutes": tolerance_minutes,
+            **target_minute_params,
+        }
+        bind_params = [
+            bindparam("event_ids", expanding=True),
+        ]
+
+        if markets is not None and markets:
+            where_clauses.append(
+                "("
+                "traj.market_name IN :markets "
+                "OR traj.market_group IN :markets"
+                ")"
+            )
+            query_params["markets"] = markets
+            bind_params.append(bindparam("markets", expanding=True))
+
+        if periods is not None and periods:
+            where_clauses.append("traj.market_period IN :periods")
+            query_params["periods"] = periods
+            bind_params.append(bindparam("periods", expanding=True))
 
         query = text(
             f"""
@@ -123,15 +152,7 @@ class OddsTrajectoryRepository:
                     ABS(traj.minutes_before_start - tm.target_minute) AS distance_from_target
                 FROM v_pre_start_odds_trajectory traj
                 CROSS JOIN target_moments tm
-                WHERE traj.event_id IN :event_ids
-                  AND traj.bookie_id = 1
-                  AND (
-                        traj.market_name IN :markets
-                        OR traj.market_group IN :markets
-                  )
-                  AND traj.market_period IN :periods
-                  AND traj.choice_name IN ('1', 'X', '2')
-                  AND ABS(traj.minutes_before_start - tm.target_minute) <= :tolerance_minutes
+                WHERE {" AND ".join(where_clauses)}
             ),
             ranked AS (
                 SELECT
@@ -162,23 +183,13 @@ class OddsTrajectoryRepository:
                 target_minute DESC,
                 choice_name;
             """
-        ).bindparams(
-            bindparam("event_ids", expanding=True),
-            bindparam("markets", expanding=True),
-            bindparam("periods", expanding=True),
-        )
+        ).bindparams(*bind_params)
 
         try:
             with db_manager.get_session() as session:
                 rows = session.execute(
                     query,
-                    {
-                        "event_ids": event_ids,
-                        "markets": markets,
-                        "periods": periods,
-                        "tolerance_minutes": tolerance_minutes,
-                        **target_minute_params,
-                    },
+                    query_params,
                 ).mappings().all()
         except Exception as exc:
             logger.warning("Failed to load pre-start odds trajectory: %s", exc, exc_info=True)
