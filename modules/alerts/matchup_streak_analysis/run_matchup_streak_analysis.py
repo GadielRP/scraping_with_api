@@ -92,8 +92,8 @@ class MatchupStreakContext:
     away_team_standing: Optional[Dict] = None
     home_team_current_standing: Optional[Dict] = None
     away_team_current_standing: Optional[Dict] = None
-    home_team_current_rank: Optional[int] = None
-    away_team_current_rank: Optional[int] = None
+    home_team_current_rank: Optional[int] = None # home team standing as of starting time of event
+    away_team_current_rank: Optional[int] = None # away team standing as of starting time of event
     current_standings: Optional[Dict[str, Dict]] = None
     current_standings_cutoff_timestamp: Optional[float] = None
     current_standings_source: Optional[str] = None
