@@ -33,6 +33,59 @@ from modules.pillars.context import EventContext
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Debug logging helpers
+# ---------------------------------------------------------------------------
+
+def _debug_section(title: str) -> None:
+    logger.info("========== M1_BASE_STRENGTH DEBUG | %s ==========", title)
+
+
+def _debug_line(message: str, *args: Any) -> None:
+    logger.info("M1_BASE_STRENGTH DEBUG | " + message, *args)
+
+
+def _debug_formula(
+    name: str,
+    formula: str,
+    substitution: str,
+    result: Any,
+    meaning: Optional[str] = None,
+) -> None:
+    logger.info("M1_BASE_STRENGTH DEBUG | %s", name)
+    logger.info("M1_BASE_STRENGTH DEBUG |   Formula: %s", formula)
+    logger.info("M1_BASE_STRENGTH DEBUG |   Sustitución: %s", substitution)
+    logger.info("M1_BASE_STRENGTH DEBUG |   Resultado: %s", result)
+    if meaning:
+        logger.info("M1_BASE_STRENGTH DEBUG |   Lectura: %s", meaning)
+
+
+def _fmt(value: Any, decimals: int = 6) -> str:
+    if value is None:
+        return "N/A"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return f"{value:.{decimals}f}"
+        return str(value)
+    if isinstance(value, dict):
+        items = list(value.items())
+        preview = ", ".join(f"{k}: {_fmt(v, decimals)}" for k, v in items[:4])
+        if len(items) > 4:
+            preview += ", ..."
+        return f"{{{preview}}} (n={len(items)})"
+    if isinstance(value, (list, tuple, set)):
+        sequence = list(value)
+        preview = ", ".join(_fmt(item, decimals) for item in sequence[:5])
+        if len(sequence) > 5:
+            preview += ", ..."
+        return f"[{preview}] (n={len(sequence)})"
+    return str(value)
+
+
+# ---------------------------------------------------------------------------
 # Component weights
 # ---------------------------------------------------------------------------
 
@@ -576,11 +629,9 @@ def _calculate_result_edge(
     }
 
     if debug_mode:
-        logger.info(
-            "  [RESULT_EDGE] home_record=%s | away_record=%s",
-            _format_record_summary(home_record),
-            _format_record_summary(away_record),
-        )
+        _debug_section("RESULT_EDGE")
+        _debug_line("home_record: %s", _format_record_summary(home_record))
+        _debug_line("away_record: %s", _format_record_summary(away_record))
 
     if (
         home_wins is None
@@ -596,7 +647,7 @@ def _calculate_result_edge(
         raw["edge_raw"] = 0.0
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info("  [RESULT_EDGE] => SKIP (missing_season_record) -> edge=0.0")
+            _debug_line("=> SKIP (missing_season_record) -> edge=0.0")
         return 0.0, raw
 
     home_win_rate = float(home_wins) / float(home_gp)
@@ -610,12 +661,33 @@ def _calculate_result_edge(
     raw["final_edge_clamped"] = edge
 
     if debug_mode:
-        logger.info(
-            "  [RESULT_EDGE] home_wr=%.4f away_wr=%.4f edge_raw=%.4f edge_clamped=%.4f",
-            home_win_rate,
-            away_win_rate,
-            edge_raw,
-            edge,
+        _debug_formula(
+            "WIN_RATE_HOME",
+            "WIN_RATE_HOME = W_HOME / GP_HOME",
+            f"{home_wins} / {home_gp}",
+            _fmt(home_win_rate),
+            "Frecuencia con la que HOME transforma partidos en victorias."
+        )
+        _debug_formula(
+            "WIN_RATE_AWAY",
+            "WIN_RATE_AWAY = W_AWAY / GP_AWAY",
+            f"{away_wins} / {away_gp}",
+            _fmt(away_win_rate),
+            "Frecuencia con la que AWAY transforma partidos en victorias."
+        )
+        _debug_formula(
+            "RESULT_EDGE_RAW",
+            "RESULT_EDGE = WIN_RATE_HOME - WIN_RATE_AWAY",
+            f"{_fmt(home_win_rate)} - {_fmt(away_win_rate)}",
+            f"{edge_raw:+.12f}",
+            "Diferencial crudo de tasa de victorias."
+        )
+        _debug_formula(
+            "RESULT_EDGE_CLAMPED",
+            "RESULT_EDGE = clamp(RESULT_EDGE_RAW)",
+            f"clamp({_fmt(edge_raw)})",
+            f"{edge:+.12f}",
+            f"RESULT_BIAS = {calculate_bias(edge)} | RESULT_STRENGTH = {classify_strength(edge)}"
         )
 
     return edge, raw
@@ -659,18 +731,26 @@ def _calculate_gd_edge(
     raw["league_sample_size"] = sample_size
 
     if debug_mode:
-        logger.info(
-            "  [GD_EDGE] home_record=%s | away_record=%s",
-            _format_record_summary(home_record),
-            _format_record_summary(away_record),
-        )
-        logger.info(
-            "  [GD_EDGE] scale=%.12f source=%s sample_size=%s expected_league_size=%s",
-            scale if scale is not None else float("nan"),
-            source,
-            sample_size,
-            expected_league_size,
-        )
+        _debug_section("GD_EDGE")
+        _debug_line("home_record: %s", _format_record_summary(home_record))
+        _debug_line("away_record: %s", _format_record_summary(away_record))
+        _debug_line("Resolving GD Dynamic Scale. Source: %s. Sample size: %s. Expected size: %s", source, sample_size, expected_league_size)
+
+        current_standings = getattr(streak_analysis, "current_standings", None)
+        if current_standings is None:
+            current_standings = getattr(streak_analysis, "standings_response", None)
+        if current_standings is not None:
+            standings_list = _collect_unique_standings(current_standings)
+        else:
+            standings_list = _gather_full_league_standings_from_results(home_results, away_results)
+        
+        gd_scale_samples = _extract_gd_scale_samples(standings_list)
+        gd_scale_samples.sort()
+        _debug_line("Ordered absolute GD per game samples (n=%s): %s", len(gd_scale_samples), _fmt(gd_scale_samples))
+        if gd_scale_samples:
+            pos = math.ceil(0.75 * len(gd_scale_samples))
+            idx = pos - 1
+            _debug_line("P75 Position: %s (index %s)", pos, idx)
 
     if (
         home_total_gd is None
@@ -686,7 +766,7 @@ def _calculate_gd_edge(
         raw["edge_raw"] = 0.0
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info("  [GD_EDGE] => SKIP (missing_season_record) -> edge=0.0")
+            _debug_line("=> SKIP (missing_season_record) -> edge=0.0")
         return 0.0, raw
 
     if scale is None or scale <= 0:
@@ -696,7 +776,7 @@ def _calculate_gd_edge(
         raw["edge_raw"] = 0.0
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info("  [GD_EDGE] => SKIP (missing_dynamic_scale) -> edge=0.0")
+            _debug_line("=> SKIP (missing_dynamic_scale) -> edge=0.0")
         return 0.0, raw
 
     home_gd_per_game = float(home_total_gd) / float(home_gp)
@@ -710,12 +790,33 @@ def _calculate_gd_edge(
     raw["final_edge_clamped"] = edge
 
     if debug_mode:
-        logger.info(
-            "  [GD_EDGE] home_gd/g=%.4f away_gd/g=%.4f edge_raw=%.4f edge_clamped=%.4f",
-            home_gd_per_game,
-            away_gd_per_game,
-            edge_raw,
-            edge,
+        _debug_formula(
+            "GD_PER_GAME_HOME",
+            "GD_PER_GAME_HOME = GD_HOME / GP_HOME",
+            f"{home_total_gd} / {home_gp}",
+            _fmt(home_gd_per_game),
+            "Diferencial de goles promedio de HOME por partido."
+        )
+        _debug_formula(
+            "GD_PER_GAME_AWAY",
+            "GD_PER_GAME_AWAY = GD_AWAY / GP_AWAY",
+            f"{away_total_gd} / {away_gp}",
+            _fmt(away_gd_per_game),
+            "Diferencial de goles promedio de AWAY por partido."
+        )
+        _debug_formula(
+            "GD_EDGE_RAW",
+            "GD_EDGE_RAW = (GD_PER_GAME_HOME - GD_PER_GAME_AWAY) / M1_GD_DYNAMIC_SCALE",
+            f"({_fmt(home_gd_per_game)} - ({_fmt(away_gd_per_game)})) / {_fmt(scale)}",
+            f"{edge_raw:+.12f}",
+            "Margen competitivo relativo normalizado."
+        )
+        _debug_formula(
+            "GD_EDGE_CLAMPED",
+            "GD_EDGE = clamp(GD_EDGE_RAW)",
+            f"clamp({_fmt(edge_raw)})",
+            f"{edge:+.12f}",
+            f"GD_BIAS = {calculate_bias(edge)} | GD_STRENGTH = {classify_strength(edge)}"
         )
 
     return edge, raw
@@ -735,17 +836,17 @@ def _calculate_consistency_edge(
     }
 
     if debug_mode:
-        logger.info("  [CONSISTENCY_EDGE] n_comparable_games=%s window_step=%s", n, _CONSISTENCY_WINDOW_STEP)
+        _debug_section("CONSISTENCY_EDGE")
+        _debug_line("n_comparable_games = min(len(home_series), len(away_series))")
+        _debug_line("  n_comparable_games = min(%s, %s) = %s", len(home_series), len(away_series), n)
+        _debug_line("  window_step = %s", _CONSISTENCY_WINDOW_STEP)
 
     if n < _CONSISTENCY_WINDOW_STEP:
         raw["reason"] = "insufficient_games"
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info(
-                "  [CONSISTENCY_EDGE] => SKIP (insufficient_games, need >=%s) -> edge=0.0",
-                _CONSISTENCY_WINDOW_STEP,
-            )
+            _debug_line("=> SKIP (insufficient_games, need >=%s) -> edge=0.0", _CONSISTENCY_WINDOW_STEP)
         return 0.0, raw
 
     windows: List[int] = _build_cumulative_windows(n, _CONSISTENCY_WINDOW_STEP)
@@ -754,12 +855,16 @@ def _calculate_consistency_edge(
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info("  [CONSISTENCY_EDGE] => SKIP (no_valid_windows) -> edge=0.0")
+            _debug_line("=> SKIP (no_valid_windows) -> edge=0.0")
         return 0.0, raw
 
     home_window_stds: Dict[str, float] = {}
     away_window_stds: Dict[str, float] = {}
     consistency_edges_by_window: Dict[str, float] = {}
+
+    if debug_mode:
+        _debug_line("Suma y promedio por ventana:")
+        _debug_line("  Ventana\tSTD HOME\tSTD AWAY\tEdge (AWAY - HOME)")
 
     for window_size in windows:
         label = f"L{window_size}"
@@ -770,13 +875,7 @@ def _calculate_consistency_edge(
         window_edge = away_std - home_std
         consistency_edges_by_window[label] = window_edge
         if debug_mode:
-            logger.info(
-                "  [CONSISTENCY_EDGE] %s: home_std=%.4f away_std=%.4f edge=%.4f",
-                label,
-                home_std,
-                away_std,
-                window_edge,
-            )
+            _debug_line("  %s\t%f\t%f\t%+f", label, home_std, away_std, window_edge)
 
     consistency_edge_raw_average = (
         sum(consistency_edges_by_window.values()) / len(consistency_edges_by_window)
@@ -785,19 +884,28 @@ def _calculate_consistency_edge(
     )
     final_edge_clamped = clamp(consistency_edge_raw_average)
 
-    if debug_mode:
-        logger.info(
-            "  [CONSISTENCY_EDGE] avg_raw=%.4f edge_clamped=%.4f",
-            consistency_edge_raw_average,
-            final_edge_clamped,
-        )
-
     raw["windows"] = windows
     raw["home_window_stds"] = home_window_stds
     raw["away_window_stds"] = away_window_stds
     raw["consistency_edges_by_window"] = consistency_edges_by_window
     raw["consistency_edge_raw_average"] = consistency_edge_raw_average
     raw["final_edge_clamped"] = final_edge_clamped
+
+    if debug_mode:
+        _debug_formula(
+            "CONSISTENCY_EDGE_RAW_AVERAGE",
+            "CONSISTENCY_EDGE_RAW_AVERAGE = sum(window_edges) / count",
+            f"{sum(consistency_edges_by_window.values()):.12f} / {len(consistency_edges_by_window)}",
+            _fmt(consistency_edge_raw_average),
+            "Promedio de la dispersión de diferencias de goles."
+        )
+        _debug_formula(
+            "CONSISTENCY_EDGE_CLAMPED",
+            "CONSISTENCY_EDGE = clamp(CONSISTENCY_EDGE_RAW_AVERAGE)",
+            f"clamp({_fmt(consistency_edge_raw_average)})",
+            f"{final_edge_clamped:+.12f}",
+            f"CONSISTENCY_BIAS = {calculate_bias(final_edge_clamped)} | CONSISTENCY_STRENGTH = {classify_strength(final_edge_clamped)}"
+        )
 
     return final_edge_clamped, raw
 
@@ -813,17 +921,17 @@ def _calculate_vol_direction_edge(
     raw: Dict[str, Any] = {}
 
     if debug_mode:
-        logger.info("  [VOL_DIRECTION_EDGE] n_comparable_games=%s batch_size=%s", n, _BATCH_SIZE)
+        _debug_section("VOL_DIRECTION_EDGE")
+        _debug_line("n_comparable_games = min(len(home_series), len(away_series))")
+        _debug_line("  n_comparable_games = min(%s, %s) = %s", len(home_series), len(away_series), n)
+        _debug_line("  batch_size = %s", _BATCH_SIZE)
 
     if n < _BATCH_SIZE:
         raw["reason"] = "insufficient_games"
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info(
-                "  [VOL_DIRECTION_EDGE] => SKIP (insufficient_games, need >=%s) -> edge=0.0",
-                _BATCH_SIZE,
-            )
+            _debug_line("=> SKIP (insufficient_games, need >=%s) -> edge=0.0", _BATCH_SIZE)
         return 0.0, raw
 
     windows: List[int] = _build_cumulative_windows(n, _BATCH_SIZE)
@@ -832,7 +940,7 @@ def _calculate_vol_direction_edge(
         raw["available_games"] = n
         raw["final_edge_clamped"] = 0.0
         if debug_mode:
-            logger.info("  [VOL_DIRECTION_EDGE] => SKIP (no_valid_windows) -> edge=0.0")
+            _debug_line("=> SKIP (no_valid_windows) -> edge=0.0")
         return 0.0, raw
 
     def _powers(series: List[float]) -> Tuple[float, float, float]:
@@ -851,6 +959,10 @@ def _calculate_vol_direction_edge(
     away_net_vol_by_window: Dict[str, float] = {}
     vol_direction_edges_by_window: Dict[str, float] = {}
 
+    if debug_mode:
+        _debug_line("Suma y promedio por ventana:")
+        _debug_line("  Ventana\tNET HOME (D - C)\tNET AWAY (D - C)\tEdge (HOME - AWAY)")
+
     for window_size in windows:
         label = f"L{window_size}"
         home_destroy, home_collapse, home_net = _powers(home_series[:window_size])
@@ -866,16 +978,15 @@ def _calculate_vol_direction_edge(
         vol_direction_edges_by_window[label] = window_edge
 
         if debug_mode:
-            logger.info(
-                "  [VOL_DIRECTION_EDGE] %s: home(destroy=%.4f collapse=%.4f net=%.4f) "
-                "away(destroy=%.4f collapse=%.4f net=%.4f) edge=%.4f",
+            _debug_line(
+                "  %s\t%f (%f - %f)\t%f (%f - %f)\t%+f",
                 label,
+                home_net,
                 home_destroy,
                 home_collapse,
-                home_net,
+                away_net,
                 away_destroy,
                 away_collapse,
-                away_net,
                 window_edge,
             )
 
@@ -885,13 +996,6 @@ def _calculate_vol_direction_edge(
         else 0.0
     )
     final_edge_clamped = clamp(vol_direction_edge_raw_average)
-
-    if debug_mode:
-        logger.info(
-            "  [VOL_DIRECTION_EDGE] avg_raw=%.4f edge_clamped=%.4f",
-            vol_direction_edge_raw_average,
-            final_edge_clamped,
-        )
 
     raw["windows"] = windows
     raw["home_destroy_power_by_window"] = home_destroy_power_by_window
@@ -903,6 +1007,22 @@ def _calculate_vol_direction_edge(
     raw["vol_direction_edges_by_window"] = vol_direction_edges_by_window
     raw["vol_direction_edge_raw_average"] = vol_direction_edge_raw_average
     raw["final_edge_clamped"] = final_edge_clamped
+
+    if debug_mode:
+        _debug_formula(
+            "VOL_DIRECTION_EDGE_RAW_AVERAGE",
+            "VOL_DIRECTION_EDGE_RAW_AVERAGE = sum(window_edges) / count",
+            f"{sum(vol_direction_edges_by_window.values()):.12f} / {len(vol_direction_edges_by_window)}",
+            _fmt(vol_direction_edge_raw_average),
+            "Promedio de la dirección de volatilidad de goles."
+        )
+        _debug_formula(
+            "VOL_DIRECTION_EDGE_CLAMPED",
+            "VOL_DIRECTION_EDGE = clamp(VOL_DIRECTION_EDGE_RAW_AVERAGE)",
+            f"clamp({_fmt(vol_direction_edge_raw_average)})",
+            f"{final_edge_clamped:+.12f}",
+            f"VOL_DIRECTION_BIAS = {calculate_bias(final_edge_clamped)} | VOL_DIRECTION_STRENGTH = {classify_strength(final_edge_clamped)}"
+        )
 
     return final_edge_clamped, raw
 
@@ -987,22 +1107,21 @@ def calculate_base_strength(
     away_gd_series = _extract_game_gd_series(away_results)
 
     if debug_mode:
-        logger.info("--- M1 Base Strength Debug: Event %s (%s) ---", event_id, participants)
-        logger.info(
-            "  competition=%s (id=%s) expected_league_size=%s home_results=%s away_results=%s",
-            competition_display_name,
-            competition_id,
-            expected_league_size,
-            len(home_results),
-            len(away_results),
-        )
-        logger.info("  home_record=%s", _format_record_summary(home_record))
-        logger.info("  away_record=%s", _format_record_summary(away_record))
-        logger.info(
-            "  home_gd_series_count=%s away_gd_series_count=%s",
-            len(home_gd_series),
-            len(away_gd_series),
-        )
+        _debug_section("INICIO")
+        _debug_line("Event ID: %s", _fmt(event_id))
+        _debug_line("Participantes: %s", participants or "N/A")
+        _debug_line("Home team: %s", home_team_name or "N/A")
+        _debug_line("Away team: %s", away_team_name or "N/A")
+        _debug_line("Competition: %s (ID=%s)", competition_display_name, competition_id)
+        _debug_line("Expected League Size: %s", expected_league_size)
+
+        _debug_section("INPUTS BASE")
+        _debug_line("HOME season record extracted: wins=%s, gp=%s, goal_diff=%s, source=%s",
+                    _fmt(home_record.get("wins")), _fmt(home_record.get("gp")), _fmt(home_record.get("goal_diff")), home_record.get("source"))
+        _debug_line("AWAY season record extracted: wins=%s, gp=%s, goal_diff=%s, source=%s",
+                    _fmt(away_record.get("wins")), _fmt(away_record.get("gp")), _fmt(away_record.get("goal_diff")), away_record.get("source"))
+        _debug_line("HOME game GD series: count=%s, values=%s", len(home_gd_series), _fmt(home_gd_series))
+        _debug_line("AWAY game GD series: count=%s, values=%s", len(away_gd_series), _fmt(away_gd_series))
 
     result_edge, result_raw = _calculate_result_edge(home_record, away_record, debug_mode=debug_mode)
     gd_edge, gd_raw = _calculate_gd_edge(
@@ -1056,27 +1175,57 @@ def calculate_base_strength(
     final_value = clamp(base_value)
 
     if debug_mode:
-        logger.info("  --- Component Summary ---")
-        for c in components:
-            logger.info(
-                "  %s: edge=%.4f weight=%.2f weighted=%.4f bias=%s strength=%s",
-                c.name,
-                c.edge,
-                c.weight,
-                c.weighted_edge,
-                c.bias,
-                c.strength,
-            )
-        logger.info(
-            "  M1 Final: base_value=%.4f final_clamped=%.4f bias=%s strength=%s status=%s reason=%s",
-            base_value,
-            final_value,
-            calculate_bias(final_value),
-            classify_strength(final_value),
-            m1_status,
-            m1_status_reason,
+        _debug_section("FORMULA FINAL M1")
+        _debug_formula(
+            "M1_EDGE_RAW",
+            "M1_EDGE_RAW = 0.35(RESULT_EDGE) + 0.35(GD_EDGE) + 0.15(CONSISTENCY_EDGE) + 0.15(VOL_DIRECTION_EDGE)",
+            f"0.35 * ({_fmt(result_edge)}) + 0.35 * ({_fmt(gd_edge)}) + 0.15 * ({_fmt(consistency_edge)}) + 0.15 * ({_fmt(vol_direction_edge)})",
+            _fmt(base_value),
+            "Suma ponderada de las ventajas de los 4 componentes."
         )
-        logger.info("-" * 60)
+        _debug_formula(
+            "M1_EDGE_FINAL",
+            "M1_EDGE = clamp(M1_EDGE_RAW)",
+            f"clamp({_fmt(base_value)})",
+            f"{final_value:+.12f}",
+            f"M1_BIAS = {calculate_bias(final_value)} | M1_STRENGTH = {classify_strength(final_value)} | M1_STATUS = {m1_status}"
+        )
+        
+        _debug_section("STRENGTH CLASSIFICATION")
+        _debug_line("Nivel de magnitud:")
+        _debug_line("  <0.05       -> IGNORE")
+        _debug_line("  0.05 - 0.15 -> LOW")
+        _debug_line("  0.15 - 0.30 -> MEDIUM")
+        _debug_line("  0.30 - 0.60 -> HIGH")
+        _debug_line("  >0.60       -> EXTREME")
+        _debug_line("Aplicación: ABS_EDGE = %s -> M1_STRENGTH = %s", _fmt(abs(final_value)), classify_strength(final_value))
+
+        _debug_section("OUTPUT FINAL")
+        _debug_line("M1_EDGE = %+f", final_value)
+        _debug_line("M1_ABS_EDGE = %f", abs(final_value))
+        _debug_line("M1_BIAS = %s", calculate_bias(final_value))
+        _debug_line("M1_STRENGTH = %s", classify_strength(final_value))
+        _debug_line("M1_STATUS = %s (Reason: %s)", m1_status, m1_status_reason)
+        _debug_line("")
+        _debug_line("Submódulos:")
+        _debug_line("  RESULT_EDGE = %+f", result_edge)
+        _debug_line("  GD_EDGE = %+f", gd_edge)
+        _debug_line("  CONSISTENCY_EDGE = %+f", consistency_edge)
+        _debug_line("  VOL_DIRECTION_EDGE = %+f", vol_direction_edge)
+        _debug_line("")
+        _debug_line("Escala dinámica:")
+        _debug_line("  M1_GD_DYNAMIC_SCALE = %s", _fmt(gd_raw.get("dynamic_scale")))
+        
+        _debug_section("LECTURA CORTA PARA NOTES")
+        bias_team = home_team_name if final_value > 0 else (away_team_name if final_value < 0 else "Ninguno")
+        _debug_line("M1 favorece claramente a %s.", bias_team)
+        _debug_line("La ventaja no viene solo de ganar más partidos.")
+        _debug_line("Viene sobre todo de:")
+        _debug_line("  1) mejor diferencial de goles contra la escala real de la liga")
+        _debug_line("  2) menor dispersión en resultados")
+        _debug_line("  3) mejor relación entre picos positivos y caídas")
+        
+        _debug_section("ESTADO FINAL")
 
     raw_audit: Dict[str, Any] = {
         "home_team": home_team_name,

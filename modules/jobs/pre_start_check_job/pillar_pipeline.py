@@ -385,11 +385,12 @@ class EventPillarProcessor:
 
         if p1_totals_result is not None:
             logger.info(
-                "P1/P1_TOTALS Totals calculated for %s: score=%.3f, direction=%s, strength=%s, status=%s",
+                "P1/P1_TOTALS Totals calculated for %s: directional_score=%.3f, direction=%s, strength=%s, variance_state=%s, status=%s",
                 participants,
-                p1_totals_result.P1_TOTALS_SCORE,
+                p1_totals_result.P1_TOTALS_DIRECTIONAL_SCORE,
                 p1_totals_result.P1_TOTALS_DIRECTION,
                 p1_totals_result.P1_TOTALS_STRENGTH,
+                p1_totals_result.P1_TOTALS_VARIANCE_STATE,
                 p1_totals_result.status,
             )
             for layer in p1_totals_result.active_layers:

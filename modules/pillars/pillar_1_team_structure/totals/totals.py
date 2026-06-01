@@ -1,4 +1,4 @@
-"""P1 Totals structural-anchored engine.
+"""P1 Totals directional engine with separated variance handling.
 
 Pure totals profile engine for Pillar 1. It consumes matchup streak context
 and normalized event context, then returns a structured OVER/UNDER profile.
@@ -17,7 +17,7 @@ from modules.pillars.context import EventContext
 
 logger = logging.getLogger(__name__)
 
-_ENGINE_VERSION = "p1_totals_structural_anchored_v2_1"
+_ENGINE_VERSION = "p1_totals_directional_vol_separated_v2_2"
 
 TOTALS_TEMPORAL_WINDOW_NAMES = ("SHORT", "RECENT", "MID", "FULL")
 
@@ -31,10 +31,9 @@ WINDOW_BASE_WEIGHT_RECENT = 0.35
 WINDOW_BASE_WEIGHT_MID = 0.20
 WINDOW_BASE_WEIGHT_FULL = 0.15
 
-W_STRUCTURAL = 0.40
-W_VOL = 0.20
-W_TEMPORAL = 0.25
-W_TREND = 0.15
+W_STRUCTURAL = 0.45
+W_TEMPORAL = 0.30
+W_TREND = 0.25
 
 IGNORE_THRESHOLD = 0.05
 
@@ -75,16 +74,17 @@ class P1TotalsOutput:
     status: str
     status_reason: Optional[str]
 
-    P1_TOTALS_SCORE: float
+    P1_TOTALS_DIRECTIONAL_SCORE: float
     P1_TOTALS_DIRECTION: str
     P1_TOTALS_STRENGTH: str
+    P1_TOTALS_VARIANCE_STATE: str
     P1_TOTALS_INTERNAL_STATE: Dict[str, Any]
 
+    P1_TOTALS_STRUCTURAL_SCORE: float
     STRUCTURAL_PROFILE_SCORE: float
     STRUCTURAL_ANCHOR: float
 
-    VOL_EDGE: float
-    VOL_FINAL: float
+    VOL_EDGE: Optional[float]
 
     TEMPORAL_PROFILE_SCORE: float
     TEMPORAL_FINAL: float
@@ -96,13 +96,16 @@ class P1TotalsOutput:
     TREND_FINAL: float
 
     EXPECTED_TOTAL_STRUCTURAL: float
-    MATCHUP_VOLATILITY: float
+    MATCHUP_VOLATILITY: Optional[float]
     MATCHUP_TEMPORAL_TOTAL: float
 
     LEAGUE_MATCH_TOTAL_BASELINE: float
     TOTAL_DYNAMIC_SCALE: float
-    VOL_BASELINE: float
-    VOL_DYNAMIC_SCALE: float
+    VOL_BASELINE: Optional[float]
+    VOL_DYNAMIC_SCALE: Optional[float]
+    VOL_EDGE_P50: Optional[float]
+    VOL_EDGE_P75: Optional[float]
+    VOL_EDGE_P90: Optional[float]
 
     ACTIVE_WEIGHT_SUM: float
 
@@ -113,7 +116,6 @@ class P1TotalsOutput:
     ACTIVE_LAYER_COUNT: int
 
     STRUCTURAL_STATUS: str
-    VOL_STATUS: str
     TEMPORAL_STATUS: str
     TREND_STATUS: str
 
@@ -701,13 +703,13 @@ def _explain_abort_reason(reason: str) -> str:
             "normalizar STRUCTURAL_PROFILE_SCORE."
         ),
         "ABORT_VOL_DYNAMIC_SCALE_ZERO": (
-            "La escala dinámica de volatilidad es 0 o no existe. No se puede normalizar VOL_EDGE."
+            "La escala dinámica de volatilidad no está disponible. La varianza quedará como UNKNOWN_VARIANCE."
         ),
         "ABORT_TREND_DYNAMIC_SCALE_ZERO": (
             "La escala dinámica de tendencia es 0 o no existe. No se puede normalizar TREND_SIGNAL."
         ),
         "ABORT_ACTIVE_WEIGHT_SUM_ZERO": (
-            "Todas las capas quedaron sin peso activo. No se puede calcular P1_TOTALS_SCORE."
+            "Todas las capas quedaron sin peso activo. No se puede calcular P1_TOTALS_DIRECTIONAL_SCORE."
         ),
     }
     return mapping.get(reason, "Motivo no documentado en el blueprint.")
@@ -774,7 +776,7 @@ def calculate_p1_totals(
     event_context: EventContext,
     debug_mode: bool = False,
 ) -> Optional[P1TotalsOutput]:
-    """Calculate P1_TOTALS v2.1 structural-anchored totals profile."""
+    """Calculate P1_TOTALS v2.2 directional profile with separated variance handling."""
     event_id = _resolve_event_id(streak_analysis, event_context)
     participants = _resolve_participants(streak_analysis, event_context)
     home_team_name = getattr(streak_analysis, "home_team_name", None)
@@ -951,11 +953,11 @@ def calculate_p1_totals(
     league_match_total_baseline = _percentile_cont(game_totals_league, 0.50)
     total_dynamic_scale = None
     if league_match_total_baseline is not None:
-        total_distance_samples = [
+        goal_environment_extremeness_samples = [
             abs(game_total - league_match_total_baseline)
             for game_total in game_totals_league
         ]
-        total_dynamic_scale = _percentile_cont(total_distance_samples, 0.75)
+        total_dynamic_scale = _percentile_cont(goal_environment_extremeness_samples, 0.75)
 
     if (
         league_match_total_baseline is None
@@ -1097,37 +1099,33 @@ def calculate_p1_totals(
             _fmt(league_match_total_baseline),
             "Total típico real de goles por partido en esta liga.",
         )
-        total_distance_samples = [
-            abs(game_total - league_match_total_baseline)
-            for game_total in game_totals_league
-        ]
-        total_distance_summary = _summarize_numeric_series(total_distance_samples)
+        goal_environment_extremeness_summary = _summarize_numeric_series(goal_environment_extremeness_samples)
         _debug_line(
-            "TOTAL_DISTANCE_SAMPLES: count=%s min=%s max=%s avg=%s sample=%s",
-            _fmt(total_distance_summary["count"]),
-            _fmt(total_distance_summary["min"]),
-            _fmt(total_distance_summary["max"]),
-            _fmt(total_distance_summary["avg"]),
-            _fmt(total_distance_summary["sample"]),
+            "GOAL_ENVIRONMENT_EXTREMENESS_SAMPLES: count=%s min=%s max=%s avg=%s sample=%s",
+            _fmt(goal_environment_extremeness_summary["count"]),
+            _fmt(goal_environment_extremeness_summary["min"]),
+            _fmt(goal_environment_extremeness_summary["max"]),
+            _fmt(goal_environment_extremeness_summary["avg"]),
+            _fmt(goal_environment_extremeness_summary["sample"]),
         )
         _debug_percentile_cont(
             "TOTAL_DYNAMIC_SCALE",
-            total_distance_samples,
+            goal_environment_extremeness_samples,
             0.75,
             total_dynamic_scale,
             "Escala usada para saber qué tan fuerte es una desviación del entorno normal de goles.",
         )
         _debug_formula(
-            "TOTAL_DISTANCE_SAMPLES",
-            "TOTAL_DISTANCE_i = abs(GAME_TOTAL_i - LEAGUE_MATCH_TOTAL_BASELINE)",
-            f"abs(GAME_TOTAL_0 - LEAGUE_MATCH_TOTAL_BASELINE) = abs({_fmt(game_totals_league[0])} - {_fmt(league_match_total_baseline)}) = {_fmt(total_distance_samples[0])}" if game_totals_league else "N/A",
-            _fmt(total_distance_summary["count"]),
-            f"Se generaron {_fmt(total_distance_summary['count'])} distancias.",
+            "GOAL_ENVIRONMENT_EXTREMENESS_SAMPLES",
+            "GOAL_ENVIRONMENT_EXTREMENESS_i = abs(GAME_TOTAL_i - LEAGUE_MATCH_TOTAL_BASELINE)",
+            f"abs(GAME_TOTAL_0 - LEAGUE_MATCH_TOTAL_BASELINE) = abs({_fmt(game_totals_league[0])} - {_fmt(league_match_total_baseline)}) = {_fmt(goal_environment_extremeness_samples[0])}" if game_totals_league else "N/A",
+            _fmt(goal_environment_extremeness_summary["count"]),
+            f"Se generaron {_fmt(goal_environment_extremeness_summary['count'])} distancias extremas del entorno de goles.",
         )
         _debug_formula(
             "TOTAL_DYNAMIC_SCALE",
-            "TOTAL_DYNAMIC_SCALE = P75(TOTAL_DISTANCE_SAMPLES)",
-            f"P75 sobre {_fmt(total_distance_summary['count'])} distancias",
+            "TOTAL_DYNAMIC_SCALE = P75(GOAL_ENVIRONMENT_EXTREMENESS_SAMPLES)",
+            f"P75 sobre {_fmt(goal_environment_extremeness_summary['count'])} distancias extremas",
             _fmt(total_dynamic_scale),
             "Escala usada para saber qué tan fuerte es una desviación del entorno normal de goles.",
         )
@@ -1150,7 +1148,9 @@ def calculate_p1_totals(
     game_totals_away = [result["game_total"] for result in match_results_away_used]
     std_dev_totals_home = _pstdev(game_totals_home)
     std_dev_totals_away = _pstdev(game_totals_away)
-    matchup_volatility = (float(std_dev_totals_home) + float(std_dev_totals_away)) / 2
+    matchup_volatility = None
+    if std_dev_totals_home is not None and std_dev_totals_away is not None:
+        matchup_volatility = (float(std_dev_totals_home) + float(std_dev_totals_away)) / 2
 
     league_team_game_totals_by_team = _extract_league_team_game_totals_by_team(league_totals_context)
     league_team_results_by_team = _extract_league_team_results_by_team(league_totals_context)
@@ -1166,31 +1166,62 @@ def calculate_p1_totals(
         team_volatility_by_name[team_name] = team_std_dev
     vol_baseline = _percentile_cont(team_volatilities, 0.50)
     vol_dynamic_scale = None
+    league_vol_edge_samples: List[float] = []
     if vol_baseline is not None:
         vol_deviations = [
             abs(team_volatility - vol_baseline)
             for team_volatility in team_volatilities
         ]
         vol_dynamic_scale = _percentile_cont(vol_deviations, 0.75)
-
-    if vol_baseline is None or vol_dynamic_scale is None or vol_dynamic_scale == 0:
-        _abort(
-            "ABORT_VOL_DYNAMIC_SCALE_ZERO",
-            event_id,
-            participants,
+    vol_edge: Optional[float] = None
+    vol_edge_p50: Optional[float] = None
+    vol_edge_p75: Optional[float] = None
+    vol_edge_p90: Optional[float] = None
+    p1_totals_variance_state = "UNKNOWN_VARIANCE"
+    vol_available = (
+        matchup_volatility is not None
+        and vol_baseline is not None
+        and vol_dynamic_scale is not None
+        and vol_dynamic_scale != 0
+    )
+    if vol_available:
+        vol_edge = clamp((matchup_volatility - vol_baseline) / vol_dynamic_scale)
+        league_vol_edge_samples = [
+            abs(clamp((team_volatility - vol_baseline) / vol_dynamic_scale))
+            for team_volatility in team_volatilities
+        ]
+        vol_edge_p50 = _percentile_cont(league_vol_edge_samples, 0.50)
+        vol_edge_p75 = _percentile_cont(league_vol_edge_samples, 0.75)
+        vol_edge_p90 = _percentile_cont(league_vol_edge_samples, 0.90)
+        abs_vol_edge = abs(vol_edge)
+        if (
+            vol_edge_p50 is None
+            or vol_edge_p75 is None
+            or vol_edge_p90 is None
+        ):
+            p1_totals_variance_state = "UNKNOWN_VARIANCE"
+        elif abs_vol_edge < vol_edge_p50:
+            p1_totals_variance_state = "NORMAL_VARIANCE"
+        elif abs_vol_edge < vol_edge_p75:
+            p1_totals_variance_state = "ELEVATED_VARIANCE"
+        elif abs_vol_edge < vol_edge_p90:
+            p1_totals_variance_state = "HIGH_VARIANCE"
+        else:
+            p1_totals_variance_state = "EXTREME_VARIANCE"
+    else:
+        logger.warning(
+            "P1_TOTALS variance unavailable; directional score will continue. context=%s",
             {
-                "team_volatility_count": len(team_volatilities),
+                "matchup_volatility": matchup_volatility,
                 "vol_baseline": vol_baseline,
                 "vol_dynamic_scale": vol_dynamic_scale,
+                "team_volatility_count": len(team_volatilities),
             },
-            debug_mode=debug_mode,
         )
-        return None
-    vol_edge = clamp((matchup_volatility - vol_baseline) / vol_dynamic_scale)
-    vol_final = clamp(vol_edge * structural_anchor)
 
     if debug_mode:
         _debug_section("VOLATILITY LAYER")
+        _debug_line("VOL_EDGE is variance-only and is not used as OVER/UNDER direction.")
         _debug_line(
             "  Formula GAME_TOTALS_HOME = [r['game_total'] for r in match_results_home_used]"
         )
@@ -1310,60 +1341,86 @@ def calculate_p1_totals(
             _debug_line("    Sustitución: abs(%s - %s)", _fmt(t_std), _fmt(vol_baseline))
             _debug_line("    Resultado: VOL_DEVIATION = %s", _fmt(t_dev))
 
-        team_volatility_summary = _summarize_numeric_series(team_volatilities)
-        _debug_line(
-            "VOL baseline team summary: count=%s min=%s max=%s avg=%s sample=%s",
-            _fmt(team_volatility_summary["count"]),
-            _fmt(team_volatility_summary["min"]),
-            _fmt(team_volatility_summary["max"]),
-            _fmt(team_volatility_summary["avg"]),
-            _fmt(team_volatility_summary["sample"]),
-        )
-        _debug_formula(
-            "VOL_BASELINE",
-            "VOL_BASELINE = P50(STD_DEV_TOTALS_TEAM de todos los equipos de la liga)",
-            f"P50 sobre {_fmt(team_volatility_summary['count'])} equipos con totals válidos",
-            _fmt(vol_baseline),
-            "Volatilidad típica de la liga.",
-        )
-        vol_deviations = [abs(team_volatility - vol_baseline) for team_volatility in team_volatilities]
-        vol_deviation_summary = _summarize_numeric_series(vol_deviations)
-        _debug_line(
-            "VOL_DEVIATIONS: count=%s min=%s max=%s avg=%s sample=%s",
-            _fmt(vol_deviation_summary["count"]),
-            _fmt(vol_deviation_summary["min"]),
-            _fmt(vol_deviation_summary["max"]),
-            _fmt(vol_deviation_summary["avg"]),
-            _fmt(vol_deviation_summary["sample"]),
-        )
-        _debug_percentile_cont(
-            "VOL_DYNAMIC_SCALE",
-            vol_deviations,
-            0.75,
-            vol_dynamic_scale,
-            "Escala para saber qué tan inusual es la volatilidad del matchup frente a la liga.",
-        )
-        _debug_formula(
-            "VOL_DYNAMIC_SCALE",
-            "VOL_DYNAMIC_SCALE = P75(abs(STD_DEV_TOTALS_TEAM_i - VOL_BASELINE))",
-            f"P75 sobre {_fmt(vol_deviation_summary['count'])} desviaciones",
-            _fmt(vol_dynamic_scale),
-            "Escala para saber qué tan inusual es la volatilidad del matchup frente a la liga.",
-        )
-        _debug_formula(
-            "VOL_EDGE",
-            "VOL_EDGE = (MATCHUP_VOLATILITY - VOL_BASELINE) / VOL_DYNAMIC_SCALE",
-            f"({_fmt(matchup_volatility)} - {_fmt(vol_baseline)}) / {_fmt(vol_dynamic_scale)}",
-            _fmt(vol_edge),
-            "Positivo indica matchup más caótico que la liga. Negativo indica matchup más estable.",
-        )
-        _debug_formula(
-            "VOL_FINAL",
-            "VOL_FINAL = VOL_EDGE × STRUCTURAL_ANCHOR",
-            f"{_fmt(vol_edge)} × {_fmt(structural_anchor)}",
-            _fmt(vol_final),
-            "La volatilidad queda anclada por la fuerza estructural.",
-        )
+        if vol_available:
+            team_volatility_summary = _summarize_numeric_series(team_volatilities)
+            _debug_line(
+                "VOL baseline team summary: count=%s min=%s max=%s avg=%s sample=%s",
+                _fmt(team_volatility_summary["count"]),
+                _fmt(team_volatility_summary["min"]),
+                _fmt(team_volatility_summary["max"]),
+                _fmt(team_volatility_summary["avg"]),
+                _fmt(team_volatility_summary["sample"]),
+            )
+            _debug_formula(
+                "VOL_BASELINE",
+                "VOL_BASELINE = P50(STD_DEV_TOTALS_TEAM de todos los equipos de la liga)",
+                f"P50 sobre {_fmt(team_volatility_summary['count'])} equipos con totals válidos",
+                _fmt(vol_baseline),
+                "Volatilidad típica de la liga.",
+            )
+            vol_deviations = [abs(team_volatility - vol_baseline) for team_volatility in team_volatilities]
+            vol_deviation_summary = _summarize_numeric_series(vol_deviations)
+            _debug_line(
+                "VOL_DEVIATIONS: count=%s min=%s max=%s avg=%s sample=%s",
+                _fmt(vol_deviation_summary["count"]),
+                _fmt(vol_deviation_summary["min"]),
+                _fmt(vol_deviation_summary["max"]),
+                _fmt(vol_deviation_summary["avg"]),
+                _fmt(vol_deviation_summary["sample"]),
+            )
+            _debug_percentile_cont(
+                "VOL_DYNAMIC_SCALE",
+                vol_deviations,
+                0.75,
+                vol_dynamic_scale,
+                "Escala para saber qué tan inusual es la volatilidad del matchup frente a la liga.",
+            )
+            _debug_formula(
+                "VOL_DYNAMIC_SCALE",
+                "VOL_DYNAMIC_SCALE = P75(abs(STD_DEV_TOTALS_TEAM_i - VOL_BASELINE))",
+                f"P75 sobre {_fmt(vol_deviation_summary['count'])} desviaciones",
+                _fmt(vol_dynamic_scale),
+                "Escala para saber qué tan inusual es la volatilidad del matchup frente a la liga.",
+            )
+            _debug_formula(
+                "VOL_EDGE",
+                "VOL_EDGE = (MATCHUP_VOLATILITY - VOL_BASELINE) / VOL_DYNAMIC_SCALE",
+                f"({_fmt(matchup_volatility)} - {_fmt(vol_baseline)}) / {_fmt(vol_dynamic_scale)}",
+                _fmt(vol_edge),
+                "Positivo indica matchup más variable que la liga. Negativo indica matchup más estable.",
+            )
+            _debug_formula(
+                "VOL_EDGE_P50",
+                "VOL_EDGE_P50 = P50(abs(clamp((STD_DEV_TOTALS_TEAM_i - VOL_BASELINE) / VOL_DYNAMIC_SCALE)))",
+                f"P50 sobre {_fmt(len(league_vol_edge_samples))} muestras",
+                _fmt(vol_edge_p50),
+                "Percentil 50 del edge absoluto de varianza en la liga.",
+            )
+            _debug_formula(
+                "VOL_EDGE_P75",
+                "VOL_EDGE_P75 = P75(abs(clamp((STD_DEV_TOTALS_TEAM_i - VOL_BASELINE) / VOL_DYNAMIC_SCALE)))",
+                f"P75 sobre {_fmt(len(league_vol_edge_samples))} muestras",
+                _fmt(vol_edge_p75),
+                "Percentil 75 del edge absoluto de varianza en la liga.",
+            )
+            _debug_formula(
+                "VOL_EDGE_P90",
+                "VOL_EDGE_P90 = P90(abs(clamp((STD_DEV_TOTALS_TEAM_i - VOL_BASELINE) / VOL_DYNAMIC_SCALE)))",
+                f"P90 sobre {_fmt(len(league_vol_edge_samples))} muestras",
+                _fmt(vol_edge_p90),
+                "Percentil 90 del edge absoluto de varianza en la liga.",
+            )
+            _debug_formula(
+                "P1_TOTALS_VARIANCE_STATE",
+                "if abs(VOL_EDGE) < P50 => NORMAL_VARIANCE; < P75 => ELEVATED_VARIANCE; < P90 => HIGH_VARIANCE; else EXTREME_VARIANCE",
+                f"abs(VOL_EDGE) = {_fmt(abs(vol_edge) if vol_edge is not None else None)}",
+                p1_totals_variance_state,
+                "Clasificación dinámica de incertidumbre del matchup.",
+            )
+        else:
+            _debug_line("VOL variance unavailable; skipping detailed variance percentiles and classification.")
+        _debug_line("VOL_AVAILABLE: %s", _fmt(vol_available))
+        _debug_line("VOL_EDGE_SAMPLE_COUNT: %s", _fmt(len(league_vol_edge_samples)))
 
     games_used_by_window = window_config["games_used"]
     effective_weights = window_config["effective_weights"]
@@ -1398,7 +1455,7 @@ def calculate_p1_totals(
     temporal_profile_score = clamp(
         (matchup_temporal_total - league_match_total_baseline) / total_dynamic_scale
     )
-    temporal_final = clamp(temporal_profile_score * structural_anchor)
+    temporal_final = temporal_profile_score
 
     if debug_mode:
         _debug_section("TEMPORAL PROFILE LAYER")
@@ -1457,10 +1514,10 @@ def calculate_p1_totals(
         )
         _debug_formula(
             "TEMPORAL_FINAL",
-            "TEMPORAL_FINAL = TEMPORAL_PROFILE_SCORE × STRUCTURAL_ANCHOR",
-            f"{_fmt(temporal_profile_score)} × {_fmt(structural_anchor)}",
+            "TEMPORAL_FINAL = TEMPORAL_PROFILE_SCORE",
+            _fmt(temporal_profile_score),
             _fmt(temporal_final),
-            "Temporalidad final anclada por la estructura.",
+            "Temporalidad final usada como señal direccional pura.",
         )
 
     team_trend_delta_home = _calculate_team_trend_delta(home_window_totals)
@@ -1510,7 +1567,7 @@ def calculate_p1_totals(
         return None
 
     trend_signal = clamp((matchup_trend_delta - trend_baseline) / trend_dynamic_scale)
-    trend_final = clamp(trend_signal * structural_anchor)
+    trend_final = trend_signal
 
     if debug_mode:
         _debug_section("TREND ENGINE")
@@ -1673,10 +1730,10 @@ def calculate_p1_totals(
         )
         _debug_formula(
             "TREND_FINAL",
-            "TREND_FINAL = TREND_SIGNAL × STRUCTURAL_ANCHOR",
-            f"{_fmt(trend_signal)} × {_fmt(structural_anchor)}",
+            "TREND_FINAL = TREND_SIGNAL",
+            _fmt(trend_signal),
             _fmt(trend_final),
-            "Tendencia final anclada por la estructura.",
+            "Tendencia final usada como señal direccional pura.",
         )
 
     layers = [
@@ -1686,13 +1743,6 @@ def calculate_p1_totals(
             structural_profile_score,
             W_STRUCTURAL,
             {"structural_anchor": structural_anchor},
-        ),
-        _build_layer(
-            "VOL",
-            vol_edge,
-            vol_final,
-            W_VOL,
-            {"matchup_volatility": matchup_volatility},
         ),
         _build_layer(
             "TEMPORAL",
@@ -1768,49 +1818,49 @@ def calculate_p1_totals(
                 layer.ignored_reason or "N/A",
             )
 
-    p1_totals_numerator = sum(layer.weight * layer.final_signal for layer in active_layers)
-    p1_totals_score = clamp(
-        p1_totals_numerator / active_weight_sum
+    p1_totals_directional_numerator = sum(layer.weight * layer.final_signal for layer in active_layers)
+    p1_totals_directional_score = clamp(
+        p1_totals_directional_numerator / active_weight_sum
     )
-    p1_totals_direction = _totals_direction(p1_totals_score)
-    p1_totals_strength = _classify_totals_strength(p1_totals_score)
+    p1_totals_direction = _totals_direction(p1_totals_directional_score)
+    p1_totals_strength = _classify_totals_strength(p1_totals_directional_score)
 
     if debug_mode:
         _debug_section("SCORE FINAL")
         _debug_formula(
-            "ACTIVE_WEIGHT_SUM",
-            "ACTIVE_WEIGHT_SUM = suma de pesos de capas ACTIVE",
+            "ACTIVE_DIRECTIONAL_WEIGHT_SUM",
+            "ACTIVE_DIRECTIONAL_WEIGHT_SUM = suma de pesos de capas direccionales ACTIVE",
             f"{' + '.join(_fmt(layer.weight) for layer in active_layers)}",
             _fmt(active_weight_sum),
-            "Peso total de las capas que sí participaron en el score final.",
+            "Peso total de las capas direccionales que sí participaron en el score final.",
         )
         _debug_formula(
-            "NUMERATOR",
-            "NUMERATOR = Σ(weight_i × final_signal_i) solo para capas ACTIVE",
+            "DIRECTIONAL_NUMERATOR",
+            "DIRECTIONAL_NUMERATOR = Σ(weight_i × final_signal_i) solo para capas direccionales ACTIVE",
             " + ".join(
                 f"({_fmt(layer.weight)}×{_fmt(layer.final_signal)})" for layer in active_layers
             ),
-            _fmt(p1_totals_numerator),
-            "Suma ponderada de las señales activas antes de normalizar por peso activo.",
+            _fmt(p1_totals_directional_numerator),
+            "Suma ponderada de las señales direccionales activas antes de normalizar por peso activo.",
         )
         _debug_formula(
-            "P1_TOTALS_SCORE",
-            "P1_TOTALS_SCORE = NUMERATOR / ACTIVE_WEIGHT_SUM",
-            f"{_fmt(p1_totals_numerator)} / {_fmt(active_weight_sum)}",
-            _fmt(p1_totals_score),
-            "Score final del ecosistema de goles. Positivo favorece OVER_PROFILE; negativo favorece UNDER_PROFILE.",
+            "P1_TOTALS_DIRECTIONAL_SCORE",
+            "P1_TOTALS_DIRECTIONAL_SCORE = DIRECTIONAL_NUMERATOR / ACTIVE_DIRECTIONAL_WEIGHT_SUM",
+            f"{_fmt(p1_totals_directional_numerator)} / {_fmt(active_weight_sum)}",
+            _fmt(p1_totals_directional_score),
+            "Score direccional del ecosistema de goles. Positivo favorece OVER_PROFILE; negativo favorece UNDER_PROFILE.",
         )
         _debug_formula(
             "P1_TOTALS_DIRECTION",
-            "si score > 0 => OVER_PROFILE; si score < 0 => UNDER_PROFILE; si score = 0 => NEUTRAL_PROFILE",
-            f"score = {_fmt(p1_totals_score)}",
+            "si directional_score > 0 => OVER_PROFILE; si directional_score < 0 => UNDER_PROFILE; si directional_score = 0 => NEUTRAL_PROFILE",
+            f"directional_score = {_fmt(p1_totals_directional_score)}",
             p1_totals_direction,
             "La dirección final resume hacia dónde empuja el conjunto de capas activas.",
         )
         _debug_formula(
             "P1_TOTALS_STRENGTH",
-            "se clasifica por abs(P1_TOTALS_SCORE)",
-            f"abs({_fmt(p1_totals_score)}) = {_fmt(abs(p1_totals_score))}",
+            "se clasifica por abs(P1_TOTALS_DIRECTIONAL_SCORE)",
+            f"abs({_fmt(p1_totals_directional_score)}) = {_fmt(abs(p1_totals_directional_score))}",
             p1_totals_strength,
             "La intensidad crece a medida que la magnitud del score se aleja de 0.",
         )
@@ -1828,19 +1878,19 @@ def calculate_p1_totals(
 
     layer_by_name = {layer.layer: layer for layer in layers}
     structural_status = layer_by_name["STRUCTURAL"].status
-    vol_status = layer_by_name["VOL"].status
     temporal_status = layer_by_name["TEMPORAL"].status
     trend_status = layer_by_name["TREND"].status
 
     active_secondary_layers = [
         layer
-        for layer in (layer_by_name["VOL"], layer_by_name["TEMPORAL"], layer_by_name["TREND"])
+        for layer in (layer_by_name["TEMPORAL"], layer_by_name["TREND"])
         if layer.status == "ACTIVE"
     ]
     secondary_signs = [_sign(layer.final_signal) for layer in active_secondary_layers]
     secondary_nonzero_signs = [value for value in secondary_signs if value != 0]
 
     p1_totals_internal_state = {
+        "P1_TOTALS_VARIANCE_STATE": p1_totals_variance_state,
         "CONSENSUS_OVER": (
             active_layer_count >= 2
             and all(layer.final_signal > 0 for layer in active_layers)
@@ -1864,7 +1914,7 @@ def calculate_p1_totals(
             and trend_final < 0
         ),
         "CHAOTIC_CONFLICT": (
-            vol_final > 0.30
+            p1_totals_variance_state in {"HIGH_VARIANCE", "EXTREME_VARIANCE"}
             and structural_status == "ACTIVE"
             and temporal_status == "ACTIVE"
             and _sign(structural_profile_score) != _sign(temporal_profile_score)
@@ -1889,14 +1939,14 @@ def calculate_p1_totals(
         ignored_layer_names = [layer.layer for layer in ignored_layers]
         _debug_formula(
             "OVER_COUNT",
-            "OVER_COUNT = count(active_layers final_signal > 0)",
+            "OVER_COUNT = count(active directional layers final_signal > 0)",
             f"{_fmt(over_layers)}",
             _fmt(over_count),
             "Capas activas que empujan hacia OVER.",
         )
         _debug_formula(
             "UNDER_COUNT",
-            "UNDER_COUNT = count(active_layers final_signal < 0)",
+            "UNDER_COUNT = count(active directional layers final_signal < 0)",
             f"{_fmt(under_layers)}",
             _fmt(under_count),
             "Capas activas que empujan hacia UNDER.",
@@ -1932,21 +1982,21 @@ def calculate_p1_totals(
         )
         _debug_formula(
             "CHAOTIC_CONFLICT",
-            "VOL_FINAL > 0.30 AND STRUCTURAL_STATUS == ACTIVE AND TEMPORAL_STATUS == ACTIVE AND sign(STRUCTURAL_PROFILE_SCORE) != sign(TEMPORAL_PROFILE_SCORE)",
-            f"VOL_FINAL={_fmt(vol_final)} | STRUCTURAL_STATUS={structural_status} | TEMPORAL_STATUS={temporal_status} | sign(STRUCTURAL_PROFILE_SCORE)={_sign(structural_profile_score)} | sign(TEMPORAL_PROFILE_SCORE)={_sign(temporal_profile_score)}",
+            "P1_TOTALS_VARIANCE_STATE in {'HIGH_VARIANCE', 'EXTREME_VARIANCE'} AND STRUCTURAL_STATUS == ACTIVE AND TEMPORAL_STATUS == ACTIVE AND sign(STRUCTURAL_PROFILE_SCORE) != sign(TEMPORAL_PROFILE_SCORE)",
+            f"VARIANCE_STATE={p1_totals_variance_state} | STRUCTURAL_STATUS={structural_status} | TEMPORAL_STATUS={temporal_status} | sign(STRUCTURAL_PROFILE_SCORE)={_sign(structural_profile_score)} | sign(TEMPORAL_PROFILE_SCORE)={_sign(temporal_profile_score)}",
             _fmt(p1_totals_internal_state["CHAOTIC_CONFLICT"]),
-            "La volatilidad es alta y estructura/temporalidad están en signos opuestos.",
+            "La varianza es alta y estructura/temporalidad están en signos opuestos.",
         )
         _debug_line(
-            "CONSENSUS_OVER: all ACTIVE layers > 0 and ACTIVE_LAYER_COUNT >= 2 -> %s",
+            "CONSENSUS_OVER: all ACTIVE directional layers > 0 and ACTIVE_LAYER_COUNT >= 2 -> %s",
             _fmt(p1_totals_internal_state["CONSENSUS_OVER"]),
         )
         _debug_line(
-            "CONSENSUS_UNDER: all ACTIVE layers < 0 and ACTIVE_LAYER_COUNT >= 2 -> %s",
+            "CONSENSUS_UNDER: all ACTIVE directional layers < 0 and ACTIVE_LAYER_COUNT >= 2 -> %s",
             _fmt(p1_totals_internal_state["CONSENSUS_UNDER"]),
         )
         _debug_line(
-            "STRUCTURAL_NEUTRAL_SECONDARY_PUSH: STRUCTURAL IGNORE y al menos 2 secundarias ACTIVE con mismo signo -> %s",
+            "STRUCTURAL_NEUTRAL_SECONDARY_PUSH: STRUCTURAL IGNORE y al menos 2 secundarias direccionales ACTIVE con mismo signo -> %s",
             _fmt(p1_totals_internal_state["STRUCTURAL_NEUTRAL_SECONDARY_PUSH"]),
         )
         if p1_totals_internal_state["CONSENSUS_OVER"]:
@@ -1956,6 +2006,46 @@ def calculate_p1_totals(
         else:
             global_reading = "DIVIDED"
         _debug_line("Lectura global: las capas activas están alineadas hacia %s.", global_reading)
+
+        _debug_section("AUDIT SNAPSHOT")
+        _debug_line("WINDOW_GAMES_USED: %s", _fmt(games_used_by_window))
+        _debug_line("WINDOW_EFFECTIVE_WEIGHTS: %s", _fmt(effective_weights))
+        _debug_line("HOME_WINDOW_TOTALS: %s", _fmt(home_window_totals))
+        _debug_line("AWAY_WINDOW_TOTALS: %s", _fmt(away_window_totals))
+        _debug_line("EXPECTED_TOTAL_STRUCTURAL: %s", _fmt(expected_total_structural))
+        _debug_line("LEAGUE_MATCH_TOTAL_BASELINE: %s", _fmt(league_match_total_baseline))
+        _debug_line("TOTAL_DYNAMIC_SCALE: %s", _fmt(total_dynamic_scale))
+        _debug_line("STRUCTURAL_PROFILE_SCORE: %s", _fmt(structural_profile_score))
+        _debug_line("STRUCTURAL_ANCHOR: %s", _fmt(structural_anchor))
+        _debug_line("P1_TOTALS_STRUCTURAL_SCORE: %s", _fmt(structural_profile_score))
+        _debug_line("TEAM_TOTAL_WEIGHTED_HOME: %s", _fmt(team_total_weighted_home))
+        _debug_line("TEAM_TOTAL_WEIGHTED_AWAY: %s", _fmt(team_total_weighted_away))
+        _debug_line("MATCHUP_TEMPORAL_TOTAL: %s", _fmt(matchup_temporal_total))
+        _debug_line("MATCHUP_TREND_DELTA: %s", _fmt(matchup_trend_delta))
+        _debug_line("TREND_BASELINE: %s", _fmt(trend_baseline))
+        _debug_line("TREND_DYNAMIC_SCALE: %s", _fmt(trend_dynamic_scale))
+        _debug_line("TREND_SIGNAL: %s", _fmt(trend_signal))
+        _debug_line("TREND_FINAL: %s", _fmt(trend_final))
+        _debug_line("MATCHUP_VOLATILITY: %s", _fmt(matchup_volatility))
+        _debug_line("VOL_BASELINE: %s", _fmt(vol_baseline))
+        _debug_line("VOL_DYNAMIC_SCALE: %s", _fmt(vol_dynamic_scale))
+        _debug_line("VOL_EDGE: %s", _fmt(vol_edge))
+        _debug_line("VOL_EDGE_P50: %s", _fmt(vol_edge_p50))
+        _debug_line("VOL_EDGE_P75: %s", _fmt(vol_edge_p75))
+        _debug_line("VOL_EDGE_P90: %s", _fmt(vol_edge_p90))
+        _debug_line("P1_TOTALS_VARIANCE_STATE: %s", p1_totals_variance_state)
+        _debug_line("P1_TOTALS_DIRECTIONAL_SCORE: %s", _fmt(p1_totals_directional_score))
+        _debug_line("P1_TOTALS_DIRECTION: %s", p1_totals_direction)
+        _debug_line("P1_TOTALS_STRENGTH: %s", p1_totals_strength)
+        _debug_line("ACTIVE_WEIGHT_SUM: %s", _fmt(active_weight_sum))
+        _debug_line("ALIGNMENT_SCORE: %s", _fmt(alignment_score))
+        _debug_line("OVER_COUNT: %s", _fmt(over_count))
+        _debug_line("UNDER_COUNT: %s", _fmt(under_count))
+        _debug_line("IGNORE_COUNT: %s", _fmt(ignore_count))
+        _debug_line("ACTIVE_LAYER_COUNT: %s", _fmt(active_layer_count))
+        _debug_line("LAYERS_ACTIVE: %s", _fmt([layer.layer for layer in active_layers]))
+        _debug_line("LAYERS_IGNORED: %s", _fmt([layer.layer for layer in ignored_layers]))
+        _debug_line("INTERNAL_STATE: %s", _fmt(p1_totals_internal_state))
 
     raw = {
         "engine_version": _ENGINE_VERSION,
@@ -1992,7 +2082,13 @@ def calculate_p1_totals(
             "league_match_total_baseline": league_match_total_baseline,
             "total_dynamic_scale": total_dynamic_scale,
         },
-        "volatility": {
+        "directional_components": {
+            "STRUCTURAL_PROFILE_SCORE": structural_profile_score,
+            "TEMPORAL_PROFILE_SCORE": temporal_profile_score,
+            "TREND_SIGNAL": trend_signal,
+            "P1_TOTALS_DIRECTIONAL_SCORE": p1_totals_directional_score,
+        },
+        "variance_components": {
             "std_dev_totals_home": std_dev_totals_home,
             "std_dev_totals_away": std_dev_totals_away,
             "matchup_volatility": matchup_volatility,
@@ -2000,7 +2096,10 @@ def calculate_p1_totals(
             "vol_baseline": vol_baseline,
             "vol_dynamic_scale": vol_dynamic_scale,
             "vol_edge": vol_edge,
-            "vol_final": vol_final,
+            "vol_edge_p50": vol_edge_p50,
+            "vol_edge_p75": vol_edge_p75,
+            "vol_edge_p90": vol_edge_p90,
+            "P1_TOTALS_VARIANCE_STATE": p1_totals_variance_state,
         },
         "temporal": {
             "home_window_totals": home_window_totals,
@@ -2031,11 +2130,12 @@ def calculate_p1_totals(
 
     if debug_mode:
         _debug_section("OUTPUT FINAL")
-        _debug_line("P1_TOTALS_SCORE: %s", _fmt(p1_totals_score))
+        _debug_line("P1_TOTALS_DIRECTIONAL_SCORE: %s", _fmt(p1_totals_directional_score))
         _debug_line("P1_TOTALS_DIRECTION: %s", p1_totals_direction)
         _debug_line("P1_TOTALS_STRENGTH: %s", p1_totals_strength)
+        _debug_line("P1_TOTALS_VARIANCE_STATE: %s", p1_totals_variance_state)
+        _debug_line("P1_TOTALS_STRUCTURAL_SCORE: %s", _fmt(structural_profile_score))
         _debug_line("STRUCTURAL_STATUS: %s", structural_status)
-        _debug_line("VOL_STATUS: %s", vol_status)
         _debug_line("TEMPORAL_STATUS: %s", temporal_status)
         _debug_line("TREND_STATUS: %s", trend_status)
         _debug_line("ACTIVE_WEIGHT_SUM: %s", _fmt(active_weight_sum))
@@ -2060,14 +2160,15 @@ def calculate_p1_totals(
         participants=participants,
         status="OK",
         status_reason=None,
-        P1_TOTALS_SCORE=p1_totals_score,
+        P1_TOTALS_DIRECTIONAL_SCORE=p1_totals_directional_score,
         P1_TOTALS_DIRECTION=p1_totals_direction,
         P1_TOTALS_STRENGTH=p1_totals_strength,
+        P1_TOTALS_VARIANCE_STATE=p1_totals_variance_state,
         P1_TOTALS_INTERNAL_STATE=p1_totals_internal_state,
+        P1_TOTALS_STRUCTURAL_SCORE=structural_profile_score,
         STRUCTURAL_PROFILE_SCORE=structural_profile_score,
         STRUCTURAL_ANCHOR=structural_anchor,
         VOL_EDGE=vol_edge,
-        VOL_FINAL=vol_final,
         TEMPORAL_PROFILE_SCORE=temporal_profile_score,
         TEMPORAL_FINAL=temporal_final,
         MATCHUP_TREND_DELTA=matchup_trend_delta,
@@ -2082,6 +2183,9 @@ def calculate_p1_totals(
         TOTAL_DYNAMIC_SCALE=total_dynamic_scale,
         VOL_BASELINE=vol_baseline,
         VOL_DYNAMIC_SCALE=vol_dynamic_scale,
+        VOL_EDGE_P50=vol_edge_p50,
+        VOL_EDGE_P75=vol_edge_p75,
+        VOL_EDGE_P90=vol_edge_p90,
         ACTIVE_WEIGHT_SUM=active_weight_sum,
         ALIGNMENT_SCORE=alignment_score,
         OVER_COUNT=over_count,
@@ -2089,7 +2193,6 @@ def calculate_p1_totals(
         IGNORE_COUNT=ignore_count,
         ACTIVE_LAYER_COUNT=active_layer_count,
         STRUCTURAL_STATUS=structural_status,
-        VOL_STATUS=vol_status,
         TEMPORAL_STATUS=temporal_status,
         TREND_STATUS=trend_status,
         WINDOWS_USED=window_config["windows"],
