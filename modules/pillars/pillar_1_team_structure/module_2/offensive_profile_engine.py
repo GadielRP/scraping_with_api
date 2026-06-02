@@ -17,6 +17,59 @@ from modules.pillars.context import EventContext
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Debug logging helpers
+# ---------------------------------------------------------------------------
+
+def _debug_section(title: str) -> None:
+    logger.info("========== M2_OFFENSIVE_PROFILE_ENGINE DEBUG | %s ==========", title)
+
+
+def _debug_line(message: str, *args: Any) -> None:
+    logger.info("M2_OFFENSIVE_PROFILE_ENGINE DEBUG | " + message, *args)
+
+
+def _debug_formula(
+    name: str,
+    formula: str,
+    substitution: str,
+    result: Any,
+    meaning: Optional[str] = None,
+) -> None:
+    logger.info("M2_OFFENSIVE_PROFILE_ENGINE DEBUG | %s", name)
+    logger.info("M2_OFFENSIVE_PROFILE_ENGINE DEBUG |   Formula: %s", formula)
+    logger.info("M2_OFFENSIVE_PROFILE_ENGINE DEBUG |   Sustitución: %s", substitution)
+    logger.info("M2_OFFENSIVE_PROFILE_ENGINE DEBUG |   Resultado: %s", result)
+    if meaning:
+        logger.info("M2_OFFENSIVE_PROFILE_ENGINE DEBUG |   Lectura: %s", meaning)
+
+
+def _fmt(value: Any, decimals: int = 6) -> str:
+    if value is None:
+        return "N/A"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return f"{value:.{decimals}f}"
+        return str(value)
+    if isinstance(value, dict):
+        items = list(value.items())
+        preview = ", ".join(f"{k}: {_fmt(v, decimals)}" for k, v in items[:4])
+        if len(items) > 4:
+            preview += ", ..."
+        return f"{{{preview}}} (n={len(items)})"
+    if isinstance(value, (list, tuple, set)):
+        sequence = list(value)
+        preview = ", ".join(_fmt(item, decimals) for item in sequence[:5])
+        if len(sequence) > 5:
+            preview += ", ..."
+        return f"[{preview}] (n={len(sequence)})"
+    return str(value)
+
+
 _ENGINE_VERSION = "offensive_profile_engine_v2.0"
 _STRENGTH_THRESHOLD_PROFILE = "common.DEFAULT_STRENGTH_THRESHOLDS"
 _COMPONENT_WEIGHTS = {
@@ -80,34 +133,29 @@ def _extract_game_gf_trace(game: Dict[str, Any]) -> tuple[Optional[float], Optio
 
 def _extract_gf_series(results: Any, side_label: str, debug_mode: bool = False) -> List[float]:
     if not isinstance(results, (list, tuple)):
+        if debug_mode:
+            _debug_line("Results for %s is not a list/tuple: %r", side_label, results)
         return []
 
     series: List[float] = []
+    if debug_mode:
+        _debug_line("Extracting GF values from results for %s (n=%s matches):", side_label, len(results))
+
     for index, result in enumerate(results):
         if not isinstance(result, dict):
             if debug_mode:
-                logger.info("[M2 EXTRACT_SKIP] %s idx=%s reason=non_dict raw=%r", side_label, index, result)
+                _debug_line("  Game %s skipped: non-dict result raw=%r", index + 1, result)
             continue
         gf, source_key, raw_value, reason = _extract_game_gf_trace(result)
         if gf is None:
             if debug_mode:
-                logger.info(
-                    "[M2 EXTRACT_SKIP] %s idx=%s reason=%s raw=%r",
-                    side_label,
-                    index,
-                    reason,
-                    result,
-                )
+                opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
+                _debug_line("  Game %s vs %s: GF could not be extracted (reason=%s, raw=%r)", index + 1, opponent, reason, raw_value)
             continue
         if debug_mode:
-            logger.info(
-                "[M2 EXTRACT] %s idx=%s source_key=%s raw_value=%r gf=%s",
-                side_label,
-                index,
-                source_key,
-                raw_value,
-                gf,
-            )
+            opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
+            _debug_line("  Game %s vs %s: gf=%s (extracted from key '%s' with raw value %r)",
+                        index + 1, opponent, gf, source_key, raw_value)
         series.append(gf)
     return series
 
@@ -253,6 +301,14 @@ def calculate_performance_profile(
         getattr(getattr(event_context, "away", None), "name", None) if event_context is not None else None,
     )
 
+    if debug_mode:
+        _debug_section("INICIO")
+        _debug_line("Event ID: %s", _fmt(event_id))
+        _debug_line("Participantes: %s", participants or "N/A")
+        _debug_line("Home team: %s", home_team or "N/A")
+        _debug_line("Away team: %s", away_team or "N/A")
+        _debug_line("Engine version: %s", _ENGINE_VERSION)
+
     home_results = getattr(streak_analysis, "home_team_results", None) or []
     away_results = getattr(streak_analysis, "away_team_results", None) or []
 
@@ -269,42 +325,21 @@ def calculate_performance_profile(
     away_explosion_indexes = [index for index, gf in enumerate(away_gf_series) if gf >= _EXPLOSION_THRESHOLD]
 
     if debug_mode:
-        logger.info(
-            "[M2 SERIES] HOME gp=%s sum=%.12f zeros=%s ge2=%s series=%s",
-            home_gp,
-            home_sum,
-            len(home_zero_indexes),
-            len(home_explosion_indexes),
-            home_gf_series,
-        )
-        logger.info(
-            "[M2 SERIES] AWAY gp=%s sum=%.12f zeros=%s ge2=%s series=%s",
-            away_gp,
-            away_sum,
-            len(away_zero_indexes),
-            len(away_explosion_indexes),
-            away_gf_series,
-        )
-        logger.info("[M2 ZERO_INDEXES] HOME=%s AWAY=%s", home_zero_indexes, away_zero_indexes)
-        logger.info(
-            "[M2 EXPLOSION_INDEXES] HOME=%s AWAY=%s",
-            home_explosion_indexes,
-            away_explosion_indexes,
-        )
+        _debug_section("INPUTS BASE")
+        _debug_line("HOME GF series: count=%s, sum=%s, series=%s", home_gp, home_sum, _fmt(home_gf_series))
+        _debug_line("AWAY GF series: count=%s, sum=%s, series=%s", away_gp, away_sum, _fmt(away_gf_series))
+        _debug_line("Blanks (0 goals): HOME count=%s, indexes=%s | AWAY count=%s, indexes=%s",
+                    len(home_zero_indexes), home_zero_indexes, len(away_zero_indexes), away_zero_indexes)
+        _debug_line("Explosions (>=%s goals): HOME count=%s, indexes=%s | AWAY count=%s, indexes=%s",
+                    _EXPLOSION_THRESHOLD, len(home_explosion_indexes), home_explosion_indexes,
+                    len(away_explosion_indexes), away_explosion_indexes)
 
     if not home_gf_series or not away_gf_series:
+        m2_status_reason = "missing_game_gf_series"
         if debug_mode:
-            logger.info(
-                "[M2 FINAL CHECK] edge_raw=%.12f edge_clamped=%.12f abs=%.12f bias=%s label=%s strength=%s status=%s reason=%s",
-                0.0,
-                0.0,
-                0.0,
-                calculate_bias(0.0),
-                _m2_bias_label(0.0),
-                classify_strength(0.0),
-                "INSUFFICIENT_DATA",
-                "missing_game_gf_series",
-            )
+            _debug_line("=> ABORT: missing_game_gf_series")
+            _debug_section("OUTPUT FINAL")
+            _debug_line("m2_status = INSUFFICIENT_DATA (Reason: %s)", m2_status_reason)
         return _inactive_result(
             event_id=event_id,
             participants=participants,
@@ -312,16 +347,64 @@ def calculate_performance_profile(
             away_team=away_team,
             home_gf_series=home_gf_series,
             away_gf_series=away_gf_series,
-            m2_status_reason="missing_game_gf_series",
+            m2_status_reason=m2_status_reason,
         )
 
     std_gf_home, mean_home, home_squared_diffs, variance_home = _population_std_trace(home_gf_series)
     std_gf_away, mean_away, away_squared_diffs, variance_away = _population_std_trace(away_gf_series)
     scoring_consistency_edge = std_gf_away - std_gf_home
 
+    if debug_mode:
+        _debug_section("SCORING_CONSISTENCY_EDGE")
+        _debug_formula(
+            "STD_GF_HOME",
+            "STD_GF = sqrt( sum( (GF_i - mean)^2 ) / N )",
+            f"mean = {mean_home:.6f} | sum((GF_i - mean)^2) = {sum(home_squared_diffs):.6f} | N = {home_gp}",
+            f"{std_gf_home:.6f}"
+        )
+        _debug_formula(
+            "STD_GF_AWAY",
+            "STD_GF = sqrt( sum( (GF_i - mean)^2 ) / N )",
+            f"mean = {mean_away:.6f} | sum((GF_i - mean)^2) = {sum(away_squared_diffs):.6f} | N = {away_gp}",
+            f"{std_gf_away:.6f}"
+        )
+        _debug_formula(
+            "SCORING_CONSISTENCY_EDGE_RAW",
+            "SCORING_CONSISTENCY_EDGE = std_gf_away - std_gf_home",
+            f"{std_gf_away:.6f} - {std_gf_home:.6f}",
+            f"{scoring_consistency_edge:+.12f}",
+            "Diferencia de consistencia anotadora (menor desviación estándar favorece al equipo)."
+        )
+
     top_gf_home, offensive_ceiling_home, top_n_home = _top_n_average(home_gf_series, 5)
     top_gf_away, offensive_ceiling_away, top_n_away = _top_n_average(away_gf_series, 5)
     offensive_ceiling_edge = offensive_ceiling_home - offensive_ceiling_away
+
+    if debug_mode:
+        _debug_section("OFFENSIVE_CEILING_EDGE")
+        _debug_line("HOME GF sorted descending: %s", sorted(home_gf_series, reverse=True))
+        _debug_formula(
+            "OFFENSIVE_CEILING_HOME",
+            "OFFENSIVE_CEILING = sum(top_5_GF) / count(top_5_GF)",
+            f"sum({_fmt(top_gf_home)}) / {top_n_home}",
+            f"{offensive_ceiling_home:.6f}",
+            "Capacidad ofensiva máxima promedio de HOME."
+        )
+        _debug_line("AWAY GF sorted descending: %s", sorted(away_gf_series, reverse=True))
+        _debug_formula(
+            "OFFENSIVE_CEILING_AWAY",
+            "OFFENSIVE_CEILING = sum(top_5_GF) / count(top_5_GF)",
+            f"sum({_fmt(top_gf_away)}) / {top_n_away}",
+            f"{offensive_ceiling_away:.6f}",
+            "Capacidad ofensiva máxima promedio de AWAY."
+        )
+        _debug_formula(
+            "OFFENSIVE_CEILING_EDGE_RAW",
+            "OFFENSIVE_CEILING_EDGE = offensive_ceiling_home - offensive_ceiling_away",
+            f"{offensive_ceiling_home:.6f} - {offensive_ceiling_away:.6f}",
+            f"{offensive_ceiling_edge:+.12f}",
+            "Diferencia de potencial de ataque máximo."
+        )
 
     blanks_home = sum(1 for gf in home_gf_series if gf == 0)
     blanks_away = sum(1 for gf in away_gf_series if gf == 0)
@@ -329,11 +412,59 @@ def calculate_performance_profile(
     blank_rate_away = _rate(blanks_away, away_gp)
     blank_rate_edge = blank_rate_away - blank_rate_home
 
+    if debug_mode:
+        _debug_section("BLANK_RATE_EDGE")
+        _debug_formula(
+            "BLANK_RATE_HOME",
+            "BLANK_RATE = blank_games / GP",
+            f"{blanks_home} / {home_gp}",
+            f"{blank_rate_home:.6f}",
+            "Frecuencia con la que HOME se queda sin anotar goles."
+        )
+        _debug_formula(
+            "BLANK_RATE_AWAY",
+            "BLANK_RATE = blank_games / GP",
+            f"{blanks_away} / {away_gp}",
+            f"{blank_rate_away:.6f}",
+            "Frecuencia con la que AWAY se queda sin anotar goles."
+        )
+        _debug_formula(
+            "BLANK_RATE_EDGE_RAW",
+            "BLANK_RATE_EDGE = blank_rate_away - blank_rate_home",
+            f"{blank_rate_away:.6f} - {blank_rate_home:.6f}",
+            f"{blank_rate_edge:+.12f}",
+            "Diferencial de partidos en blanco (frecuencia de inactividad goleadora)."
+        )
+
     explosion_games_home = sum(1 for gf in home_gf_series if gf >= _EXPLOSION_THRESHOLD)
     explosion_games_away = sum(1 for gf in away_gf_series if gf >= _EXPLOSION_THRESHOLD)
     explosion_rate_home = _rate(explosion_games_home, home_gp)
     explosion_rate_away = _rate(explosion_games_away, away_gp)
     explosion_frequency_edge = explosion_rate_home - explosion_rate_away
+
+    if debug_mode:
+        _debug_section("EXPLOSION_FREQUENCY_EDGE")
+        _debug_formula(
+            "EXPLOSION_RATE_HOME",
+            "EXPLOSION_RATE = explosion_games / GP",
+            f"{explosion_games_home} / {home_gp}",
+            f"{explosion_rate_home:.6f}",
+            f"Frecuencia con la que HOME anota >= {_EXPLOSION_THRESHOLD} goles."
+        )
+        _debug_formula(
+            "EXPLOSION_RATE_AWAY",
+            "EXPLOSION_RATE = explosion_games / GP",
+            f"{explosion_games_away} / {away_gp}",
+            f"{explosion_rate_away:.6f}",
+            f"Frecuencia con la que AWAY anota >= {_EXPLOSION_THRESHOLD} goles."
+        )
+        _debug_formula(
+            "EXPLOSION_FREQUENCY_EDGE_RAW",
+            "EXPLOSION_FREQUENCY_EDGE = explosion_rate_home - explosion_rate_away",
+            f"{explosion_rate_home:.6f} - {explosion_rate_away:.6f}",
+            f"{explosion_frequency_edge:+.12f}",
+            "Diferencial de frecuencia de explosión goleadora."
+        )
 
     consistency_weighted = scoring_consistency_edge * _COMPONENT_WEIGHTS["SCORING_CONSISTENCY_EDGE"]
     ceiling_weighted = offensive_ceiling_edge * _COMPONENT_WEIGHTS["OFFENSIVE_CEILING_EDGE"]
@@ -353,87 +484,51 @@ def calculate_performance_profile(
         m2_status_reason = "low_sample_size"
 
     if debug_mode:
-        logger.info(
-            "--- M2 Offensive Profile Engine Debug: Event %s (%s) ---",
-            event_id,
-            participants,
+        _debug_section("FORMULA FINAL M2")
+        _debug_formula(
+            "M2_EDGE_RAW",
+            "M2_EDGE_RAW = 0.35(SCORING_CONSISTENCY_EDGE) + 0.30(OFFENSIVE_CEILING_EDGE) + 0.20(BLANK_RATE_EDGE) + 0.15(EXPLOSION_FREQUENCY_EDGE)",
+            f"0.35 * ({_fmt(scoring_consistency_edge)}) + 0.30 * ({_fmt(offensive_ceiling_edge)}) + 0.20 * ({_fmt(blank_rate_edge)}) + 0.15 * ({_fmt(explosion_frequency_edge)})",
+            _fmt(m2_edge_raw),
+            "Suma ponderada de los 4 componentes ofensivos."
         )
-        logger.info(
-            "[M2 STD TRACE] HOME mean=%.12f squared_diffs=%s variance=%.12f std=%.12f",
-            mean_home,
-            home_squared_diffs,
-            variance_home,
-            std_gf_home,
+        _debug_formula(
+            "M2_EDGE_FINAL",
+            "M2_EDGE = clamp(M2_EDGE_RAW)",
+            f"clamp({_fmt(m2_edge_raw)})",
+            f"{m2_edge:+.12f}",
+            f"M2_BIAS = {m2_bias} (Label: {m2_bias_label}) | M2_STRENGTH = {m2_strength} | M2_STATUS = {m2_status}"
         )
-        logger.info(
-            "[M2 STD TRACE] AWAY mean=%.12f squared_diffs=%s variance=%.12f std=%.12f",
-            mean_away,
-            away_squared_diffs,
-            variance_away,
-            std_gf_away,
-        )
-        logger.info(
-            "[M2 COMPONENT] SCORING_CONSISTENCY_EDGE = std_away(%.12f) - std_home(%.12f) = %.12f",
-            std_gf_away,
-            std_gf_home,
-            scoring_consistency_edge,
-        )
-        logger.info(
-            "[M2 TOP SORTED] HOME sorted_desc=%s top=%s top_n=%s",
-            sorted(home_gf_series, reverse=True),
-            top_gf_home,
-            top_n_home,
-        )
-        logger.info(
-            "[M2 TOP SORTED] AWAY sorted_desc=%s top=%s top_n=%s",
-            sorted(away_gf_series, reverse=True),
-            top_gf_away,
-            top_n_away,
-        )
-        logger.info(
-            "[M2 COMPONENT] OFFENSIVE_CEILING_EDGE = ceiling_home(%.12f) - ceiling_away(%.12f) = %.12f",
-            offensive_ceiling_home,
-            offensive_ceiling_away,
-            offensive_ceiling_edge,
-        )
-        logger.info(
-            "[M2 COMPONENT] BLANK_RATE_EDGE = blank_rate_away(%.12f) - blank_rate_home(%.12f) = %.12f",
-            blank_rate_away,
-            blank_rate_home,
-            blank_rate_edge,
-        )
-        logger.info(
-            "[M2 COMPONENT] EXPLOSION_FREQUENCY_EDGE = explosion_rate_home(%.12f) - explosion_rate_away(%.12f) = %.12f",
-            explosion_rate_home,
-            explosion_rate_away,
-            explosion_frequency_edge,
-        )
-        logger.info(
-            "[M2 FINAL FORMULA] edge_raw =\n0.35*%.12f\n+ 0.30*%.12f\n+ 0.20*%.12f\n+ 0.15*%.12f",
-            scoring_consistency_edge,
-            offensive_ceiling_edge,
-            blank_rate_edge,
-            explosion_frequency_edge,
-        )
-        logger.info(
-            "[M2 FINAL WEIGHTED] consistency=%.12f ceiling=%.12f blank=%.12f explosion=%.12f sum=%.12f",
-            consistency_weighted,
-            ceiling_weighted,
-            blank_weighted,
-            explosion_weighted,
-            m2_edge_raw,
-        )
-        logger.info(
-            "[M2 FINAL CHECK] edge_raw=%.12f edge_clamped=%.12f abs=%.12f bias=%s label=%s strength=%s status=%s reason=%s",
-            m2_edge_raw,
-            m2_edge,
-            abs(m2_edge),
-            m2_bias,
-            m2_bias_label,
-            m2_strength,
-            m2_status,
-            m2_status_reason,
-        )
+        
+        _debug_section("STRENGTH CLASSIFICATION")
+        _debug_line("Nivel de magnitud:")
+        _debug_line("  <0.05       -> IGNORE")
+        _debug_line("  0.05 - 0.15 -> LOW")
+        _debug_line("  0.15 - 0.30 -> MEDIUM")
+        _debug_line("  0.30 - 0.60 -> HIGH")
+        _debug_line("  >0.60       -> EXTREME")
+        _debug_line("Aplicación: ABS_EDGE = %s -> M2_STRENGTH = %s", _fmt(abs(m2_edge)), m2_strength)
+
+        _debug_section("OUTPUT FINAL")
+        _debug_line("M2_EDGE = %+f", m2_edge)
+        _debug_line("M2_ABS_EDGE = %f", abs(m2_edge))
+        _debug_line("M2_BIAS = %s", m2_bias)
+        _debug_line("M2_BIAS_LABEL = %s", m2_bias_label)
+        _debug_line("M2_STRENGTH = %s", m2_strength)
+        _debug_line("M2_STATUS = %s (Reason: %s)", m2_status, m2_status_reason)
+        _debug_line("")
+        _debug_line("Submódulos:")
+        _debug_line("  SCORING_CONSISTENCY_EDGE = %+f (Weighted: %+f)", scoring_consistency_edge, consistency_weighted)
+        _debug_line("  OFFENSIVE_CEILING_EDGE = %+f (Weighted: %+f)", offensive_ceiling_edge, ceiling_weighted)
+        _debug_line("  BLANK_RATE_EDGE = %+f (Weighted: %+f)", blank_rate_edge, blank_weighted)
+        _debug_line("  EXPLOSION_FREQUENCY_EDGE = %+f (Weighted: %+f)", explosion_frequency_edge, explosion_weighted)
+        _debug_line("")
+        
+        _debug_section("LECTURA CORTA PARA NOTES")
+        bias_team = home_team if m2_edge > 0 else (away_team if m2_edge < 0 else "Ninguno")
+        _debug_line("M2 favorece ofensivamente a %s.", bias_team)
+        _debug_line("La ventaja se determina combinando consistencia, techo goleador, menor tasa de partidos sin gol y mayor frecuencia de partidos con múltiples goles.")
+        _debug_section("ESTADO FINAL")
 
     components = [
         _component(
