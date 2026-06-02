@@ -138,25 +138,37 @@ def _extract_gf_series(results: Any, side_label: str, debug_mode: bool = False) 
         return []
 
     series: List[float] = []
-    if debug_mode:
-        _debug_line("Extracting GF values from results for %s (n=%s matches):", side_label, len(results))
+    log_lines = []
 
     for index, result in enumerate(results):
         if not isinstance(result, dict):
             if debug_mode:
-                _debug_line("  Game %s skipped: non-dict result raw=%r", index + 1, result)
+                log_lines.append(f"  Game {len(results) - index} skipped: non-dict result raw={result!r}")
             continue
         gf, source_key, raw_value, reason = _extract_game_gf_trace(result)
         if gf is None:
             if debug_mode:
                 opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
-                _debug_line("  Game %s vs %s: GF could not be extracted (reason=%s, raw=%r)", index + 1, opponent, reason, raw_value)
+                game_date = ""
+                if "startTimestamp" in result:
+                    import datetime
+                    game_date = f" [{datetime.datetime.fromtimestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                log_lines.append(f"  Game {len(results) - index}{game_date} vs {opponent}: GF could not be extracted (reason={reason}, raw={raw_value!r})")
             continue
         if debug_mode:
             opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
-            _debug_line("  Game %s vs %s: gf=%s (extracted from key '%s' with raw value %r)",
-                        index + 1, opponent, gf, source_key, raw_value)
+            game_date = ""
+            if "startTimestamp" in result:
+                import datetime
+                game_date = f" [{datetime.datetime.fromtimestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+            log_lines.append(f"  Game {len(results) - index}{game_date} vs {opponent}: gf={gf} (extracted from key '{source_key}' with raw value {raw_value!r})")
         series.append(gf)
+
+    if debug_mode:
+        _debug_line("Extracting GF values from results for %s (n=%s matches, Orden Cronológico):", side_label, len(results))
+        for line in reversed(log_lines):
+            logger.info("M2_OFFENSIVE_PROFILE_ENGINE DEBUG | " + line)
+
     return series
 
 

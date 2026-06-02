@@ -213,29 +213,42 @@ def _try_extract_gd(game: Dict) -> Optional[float]:
 def _extract_game_gd_series(results: List[Dict], side: str = "", debug_mode: bool = False) -> List[float]:
     """Build a list of per-game GD values from *results*."""
     series: List[float] = []
+    log_lines = []
+    
+    for index, result in enumerate(results):
+        if not isinstance(result, dict):
+            if debug_mode:
+                log_lines.append(f"  Game {len(results) - index} skipped: non-dict result raw={result!r}")
+            continue
+
+        gd = _try_extract_gd(result)
+        if gd is None:
+            if debug_mode:
+                opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
+                game_date = ""
+                if "startTimestamp" in result:
+                    import datetime
+                    game_date = f" [{datetime.datetime.fromtimestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                log_lines.append(f"  Game {len(results) - index}{game_date} vs {opponent}: GD could not be extracted")
+            continue
+
+        if debug_mode:
+            opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
+            game_date = ""
+            if "startTimestamp" in result:
+                import datetime
+                game_date = f" [{datetime.datetime.fromtimestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+            ts = result.get("team_score")
+            os_ = result.get("opponent_score")
+            log_lines.append(f"  Game {len(results) - index}{game_date} vs {opponent}: gd={_fmt(gd, 1)} (team_score({ts}) - opponent_score({os_}) = {_fmt(gd, 1)})")
+        
+        series.append(float(gd))
+
     if debug_mode:
-        _debug_line("Extracting per-game GD values from results for %s (n=%s):", side, len(results))
-    for idx, game in enumerate(results):
-        gd = _try_extract_gd(game)
-        if gd is not None:
-            series.append(float(gd))
-            if debug_mode:
-                opponent = game.get("opponent_name") or game.get("opponent") or "opponent"
-                detail = []
-                if game.get("goal_diff") is not None:
-                    detail.append(f"goal_diff field = {game.get('goal_diff')}")
-                if game.get("diff") is not None:
-                    detail.append(f"diff field = {game.get('diff')}")
-                ts = game.get("team_score")
-                os_ = game.get("opponent_score")
-                if ts is not None and os_ is not None:
-                    detail.append(f"team_score({ts}) - opponent_score({os_}) = {float(ts)-float(os_)}")
-                detail_str = " | ".join(detail)
-                _debug_line("  Game %s vs %s: gd=%s (%s)", idx + 1, opponent, gd, detail_str)
-        else:
-            if debug_mode:
-                opponent = game.get("opponent_name") or game.get("opponent") or "opponent"
-                _debug_line("  Game %s vs %s: GD could not be extracted", idx + 1, opponent)
+        _debug_line("Extracting per-game GD values from results for %s (n=%s matches, Orden Cronológico):", side, len(results))
+        for line in reversed(log_lines):
+            logger.info("M1_BASE_STRENGTH DEBUG | " + line)
+
     return series
 
 
@@ -373,6 +386,8 @@ def _collect_unique_standings(payload: Any) -> List[Dict[str, Any]]:
 
         existing = best_by_team.get(normalized_name)
         if existing is None or score > existing[0]:
+            if "name" not in record and "team_name" not in record and key_name:
+                record["team_name"] = key_name
             best_by_team[normalized_name] = (score, record)
 
     return [record for _, record in best_by_team.values()]
@@ -1207,6 +1222,58 @@ def calculate_base_strength(
         _debug_line("Away team: %s", away_team_name or "N/A")
         _debug_line("Competition: %s (ID=%s)", competition_display_name, competition_id)
         _debug_line("Expected League Size: %s", expected_league_size)
+
+        _debug_section("TABLA DE POSICIONES (STANDINGS RECIBIDOS)")
+        _debug_line("Esta es la tabla exacta que recibe y procesa el M1 para calcular el record de la temporada y la escala dinámica.")
+        
+        _event_ts = getattr(streak_analysis, "current_event_timestamp", None)
+        if _event_ts is None and getattr(event_context, "event", None):
+            _event = event_context.event
+            _event_ts = getattr(_event, "start_timestamp", None) or getattr(_event, "startTimestamp", None)
+        if _event_ts:
+            import datetime
+            _event_date_str = datetime.datetime.fromtimestamp(_event_ts).strftime("%Y-%m-%d %H:%M:%S")
+            _debug_line("Momento exacto de la tabla (Corte temporal): %s", _event_date_str)
+            
+        _current_standings = getattr(streak_analysis, "current_standings", None)
+        if _current_standings is not None:
+            _debug_line("Fuente utilizada: current_standings (Tabla dinámica generada al momento exacto del partido)")
+            _standings_list = _collect_unique_standings(_current_standings)
+        else:
+            _standings_response = getattr(streak_analysis, "standings_response", None)
+            if _standings_response is not None:
+                _debug_line("Fuente utilizada: standings_response (API Fallback)")
+                _standings_list = _collect_unique_standings(_standings_response)
+            else:
+                _debug_line("Fuente utilizada: Reconstrucción desde el historial de partidos (Resultados Fallback)")
+                _standings_list = _gather_full_league_standings_from_results(home_results, away_results)
+
+        def _sort_key(record):
+            rank = _extract_int_field(record, ("rank", "position", "pos"))
+            if rank is not None:
+                return -1000 + rank
+            pts = _extract_int_field(record, ("points", "pts"))
+            if pts is not None:
+                return -pts
+            return 999
+
+        _standings_list.sort(key=_sort_key)
+        
+        for _record in _standings_list:
+            _name = _extract_record_name(_record) or "Unknown"
+            _pos = _extract_int_field(_record, ("rank", "position", "pos")) or "?"
+            _gp = _extract_int_field(_record, ("gp", "games_played", "matches", "played")) or 0
+            _w = _extract_int_field(_record, ("wins", "w")) or 0
+            _d = _extract_int_field(_record, ("draws", "d", "ties")) or 0
+            _l = _extract_int_field(_record, ("losses", "l")) or 0
+            _pts = _extract_int_field(_record, ("points", "pts")) or 0
+            _gd = _extract_float_field(_record, ("goal_diff", "diff")) or 0
+            _gf = _extract_int_field(_record, ("goals_for", "gf")) or 0
+            _ga = _extract_int_field(_record, ("goals_against", "ga")) or 0
+            _gd_str = f"+{_gd}" if _gd > 0 else str(_gd)
+            
+            _debug_line("  #%s %s: %spts (%sW-%sD-%sL, GP:%s) GF:%s GA:%s DIFF:%s", _pos, _name, _pts, _w, _d, _l, _gp, _gf, _ga, _gd_str)
+        _debug_line("Total de equipos en la tabla procesada: %s", len(_standings_list))
 
     home_record = _extract_team_season_record(streak_analysis, "home", home_results, debug_mode=debug_mode)
     away_record = _extract_team_season_record(streak_analysis, "away", away_results, debug_mode=debug_mode)
