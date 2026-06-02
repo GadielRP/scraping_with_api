@@ -22,9 +22,26 @@ class DailyDiscoveryExtractor:
     def __init__(self, api_client=None):
         self.api_client = api_client or default_api_client
 
-    def discover_events_for_date(self, date: str, sports: List[str] | None = None) -> Dict[str, int]:
+    def discover_events_for_date(
+        self,
+        date: str,
+        sports: List[str] | None = None,
+        run_slot: str | None = None,
+    ) -> Dict[str, int]:
         if sports is None:
             sports = DEFAULT_DAILY_DISCOVERY_SPORTS
+
+        normalized_run_slot = (run_slot or "AM").strip().upper()
+        if normalized_run_slot not in {"AM", "PM"}:
+            logger.warning(
+                "Daily discovery extractor received invalid run_slot=%s; defaulting to AM.",
+                run_slot,
+            )
+            normalized_run_slot = "AM"
+        elif run_slot is None:
+            logger.warning(
+                "Daily discovery extractor invoked without run_slot; defaulting to AM for backward compatibility."
+            )
 
         logger.info("Starting daily discovery for date: %s", date)
 
@@ -41,12 +58,13 @@ class DailyDiscoveryExtractor:
 
                     if not odds_response:
                         logger.warning("No odds response for %s, skipping", sport)
-                        DailyDiscoveryRepository.update_sport_status(date, sport, "failed")
+                        DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "failed")
                         continue
 
                     odds_map = parse_today_market_odds_response(odds_response)
                     if not odds_map:
                         logger.info("No events with odds found for %s", sport)
+                        DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
                         continue
 
                     odds_event_ids = set(odds_map.keys())
@@ -57,17 +75,19 @@ class DailyDiscoveryExtractor:
 
                     if not events_response:
                         logger.warning("No events response for %s, skipping", sport)
-                        DailyDiscoveryRepository.update_sport_status(date, sport, "failed")
+                        DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "failed")
                         continue
 
                     filtered_events = filter_events_present_in_odds_feed(events_response, odds_event_ids)
                     if not filtered_events:
                         logger.info("No matching %s events found after filtering", sport)
+                        DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
                         continue
 
                     upcoming_events = filter_events_starting_after_threshold(filtered_events, min_minutes_away=10)
                     if not upcoming_events:
                         logger.info("No upcoming %s events found after time filtering", sport)
+                        DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
                         continue
 
                     logger.info("Processing %s %s events...", len(upcoming_events), sport)
@@ -89,7 +109,7 @@ class DailyDiscoveryExtractor:
                             sport_events_inserted += 1
                             sport_odds_inserted += 1
 
-                    DailyDiscoveryRepository.update_sport_status(date, sport, "completed")
+                    DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
                     logger.info(
                         "%s completed: %s/%s events inserted, %s with odds",
                         sport,
@@ -103,7 +123,7 @@ class DailyDiscoveryExtractor:
                     total_odds_inserted += sport_odds_inserted
                 except Exception as exc:
                     logger.error("Error processing %s: %s", sport, exc)
-                    DailyDiscoveryRepository.update_sport_status(date, sport, "failed")
+                    DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "failed")
                     continue
 
             logger.info(

@@ -50,11 +50,14 @@ class JobScheduler:
         self._setup_pre_start_jobs()
 
         schedule.every().day.at("04:00").do(self.job_midnight_sync)
-        schedule.every().day.at("05:21").do(self.job_daily_discovery)
         schedule.every(3).days.at("05:00").do(self.job_clean_league_cache)
 
-        retry_interval = getattr(Config, "DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES", 60)
-        schedule.every(retry_interval).minutes.do(self.job_daily_discovery_retry)
+        daily_discovery_interval = getattr(
+            Config,
+            "DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES",
+            getattr(Config, "DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES", 240),
+        )
+        schedule.every(daily_discovery_interval).minutes.do(self.job_daily_discovery)
 
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
@@ -63,9 +66,13 @@ class JobScheduler:
             f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes (includes tennis timestamp checks + NBA 4th quarter checks)"
         )
         logger.info("  - Midnight sync: daily at 04:00")
-        logger.info("  - Daily discovery: daily at 05:21")
+        logger.info(
+            "  - Daily discovery heartbeat: every %s minutes; AM opens at %s:00, PM opens at %s:00",
+            daily_discovery_interval,
+            Config.DAILY_DISCOVERY_AM_OPEN_HOUR,
+            Config.DAILY_DISCOVERY_PM_OPEN_HOUR,
+        )
         logger.info("  - League cache cleanup: every 3 days at 05:00")
-        logger.info(f"  - Daily discovery retry: every {retry_interval} minutes")
 
     def _setup_pre_start_jobs(self):
         interval_minutes = Config.POLL_INTERVAL_MINUTES
@@ -180,7 +187,7 @@ class JobScheduler:
             logger.error(f"Error in Job D: {exc}")
 
     def job_daily_discovery(self):
-        logger.info("Starting Job E: Daily discovery of today's scheduled events with odds")
+        logger.info("Starting Job E: Daily discovery heartbeat")
         try:
             run_daily_discovery_job()
         except Exception as exc:
@@ -194,7 +201,7 @@ class JobScheduler:
             logger.error(f"Error in Job F (Clean up OddsPortal league cache): {exc}")
 
     def job_daily_discovery_retry(self):
-        logger.info("Starting Job E_Retry: Checking for failed daily discovery sports")
+        logger.info("Starting Job E_Retry: Delegating to slot-aware daily discovery heartbeat")
         try:
             run_daily_discovery_retry_job()
         except Exception as exc:
@@ -266,7 +273,7 @@ class JobScheduler:
                 )
             elif job.job_func.__name__ == "job_daily_discovery":
                 job_info["display"] = (
-                    f"Daily discovery: Daily at {job.at_time}" if job.at_time else f"Daily discovery: Every {job.interval} {job.unit}"
+                    f"Daily discovery heartbeat: Every {job.interval} {job.unit}"
                 )
             else:
                 job_info["display"] = f"{job.job_func.__name__}: Every {job.interval} {job.unit}"

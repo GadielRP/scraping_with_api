@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
+from shared.timezone_utils import get_local_now
 
 from .constants import DEFAULT_DAILY_DISCOVERY_SPORTS
 from .extractor import DailyDiscoveryExtractor
@@ -13,15 +13,33 @@ from .extractor import DailyDiscoveryExtractor
 logger = logging.getLogger(__name__)
 
 
-def run_daily_discovery(sports=None):
-    today = datetime.now().strftime("%Y-%m-%d")
+def resolve_daily_discovery_slot(now=None) -> str | None:
+    from infrastructure.settings import Config
+
+    if now is None:
+        now = get_local_now()
+
+    current_hour = now.hour
+
+    if current_hour >= Config.DAILY_DISCOVERY_PM_OPEN_HOUR:
+        return "PM"
+
+    if current_hour >= Config.DAILY_DISCOVERY_AM_OPEN_HOUR:
+        return "AM"
+
+    return None
+
+
+def run_daily_discovery(sports=None, date_str=None, run_slot=None):
+    if date_str is None:
+        date_str = get_local_now().strftime("%Y-%m-%d")
     if sports is None:
         sports = DEFAULT_DAILY_DISCOVERY_SPORTS
-    return DailyDiscoveryExtractor().discover_events_for_date(today, sports=sports)
+    return DailyDiscoveryExtractor().discover_events_for_date(date_str, sports=sports, run_slot=run_slot)
 
 
 def run_daily_discovery_job() -> None:
-    logger.info("Starting Job E: Daily discovery of today's scheduled events")
+    logger.info("Starting Job E: Daily discovery heartbeat")
 
     try:
         from infrastructure.settings import Config
@@ -32,37 +50,41 @@ def run_daily_discovery_job() -> None:
         logger.warning("Failed to cleanup DailyDiscovery logs: %s", exc)
 
     try:
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        DailyDiscoveryRepository.initialize_sports_for_date(today_str, DEFAULT_DAILY_DISCOVERY_SPORTS)
+        now = get_local_now()
+        today_str = now.strftime("%Y-%m-%d")
+        run_slot = resolve_daily_discovery_slot(now)
 
-        pending_sports = DailyDiscoveryRepository.get_pending_sports(today_str)
-        if not pending_sports:
-            logger.info("All sports already completed for daily discovery.")
+        if not run_slot:
+            logger.info(
+                "No Daily Discovery slot is open yet for %s. Skipping.",
+                today_str,
+            )
             return
 
-        stats = run_daily_discovery(sports=pending_sports)
+        DailyDiscoveryRepository.initialize_sports_for_slot(
+            today_str,
+            run_slot,
+            DEFAULT_DAILY_DISCOVERY_SPORTS,
+        )
+
+        pending_sports = DailyDiscoveryRepository.get_pending_sports(today_str, run_slot)
+        if not pending_sports:
+            logger.info(
+                "Daily discovery slot %s for %s is already completed for all sports.",
+                run_slot,
+                today_str,
+            )
+            return
+
+        stats = run_daily_discovery(sports=pending_sports, date_str=today_str, run_slot=run_slot)
         if stats:
-            logger.info("Daily discovery completed successfully: %s", stats)
+            logger.info("Daily discovery slot %s completed successfully: %s", run_slot, stats)
         else:
-            logger.warning("Daily discovery completed with no results")
+            logger.warning("Daily discovery slot %s completed with no results", run_slot)
     except Exception as exc:
         logger.error("Error in Job E (Daily Discovery): %s", exc)
 
 
 def run_daily_discovery_retry_job() -> None:
-    logger.info("Starting Job E_Retry: Checking for failed daily discovery sports")
-    try:
-        today = datetime.now().strftime("%Y-%m-%d")
-        failed_sports = DailyDiscoveryRepository.get_pending_sports(today)
-        if not failed_sports:
-            logger.info("All sports completed for daily discovery. No retry needed.")
-            return
-
-        logger.info("Retrying daily discovery for sports: %s", failed_sports)
-        stats = run_daily_discovery(sports=failed_sports)
-        if stats:
-            logger.info("Daily discovery retry completed: %s", stats)
-        else:
-            logger.warning("Daily discovery retry completed with no results")
-    except Exception as exc:
-        logger.error("Error in Job E_Retry: %s", exc)
+    logger.info("Starting Job E_Retry: Delegating to slot-aware Daily Discovery heartbeat")
+    run_daily_discovery_job()

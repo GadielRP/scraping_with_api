@@ -99,6 +99,15 @@ class Config:
 
     # Daily Discovery Log/Queue Configuration
     DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES = int(os.getenv('DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES', '240'))
+    DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES = int(
+        os.getenv(
+            'DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES',
+            str(DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES),
+        )
+    )
+    DAILY_DISCOVERY_AM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_AM_OPEN_HOUR', '5'))
+    DAILY_DISCOVERY_PM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_PM_OPEN_HOUR', '16'))
+    DAILY_DISCOVERY_SLOTS = _parse_env_list('DAILY_DISCOVERY_SLOTS', ['AM', 'PM'])
     DAILY_DISCOVERY_DAYS_TO_KEEP = int(os.getenv('DAILY_DISCOVERY_DAYS_TO_KEEP', '1'))
     
     # Discovery Schedule Times (dynamically generated based on DISCOVERY_INTERVAL_HOURS)

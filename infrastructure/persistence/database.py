@@ -118,6 +118,7 @@ class DatabaseManager:
 
             # Ensure normalized event entity tables/links exist before generic column sync.
             self._migrate_events_to_participants_competitions()
+            self._migrate_daily_discovery_log_run_slots()
             
             # Re-create inspector after manual migrations may have changed schema
             inspector = inspect(self.engine)
@@ -688,6 +689,117 @@ class DatabaseManager:
 
         except Exception as e:
             logger.error(f"Events participant/competition migration failed: {e}")
+            logger.error(traceback.format_exc())
+
+    def _migrate_daily_discovery_log_run_slots(self):
+        """Backfill run slots and rebuild DailyDiscoveryLog uniqueness."""
+        try:
+            from sqlalchemy import inspect
+            from infrastructure.persistence.models import DailyDiscoveryLog
+
+            inspector = inspect(self.engine)
+            table_names = set(inspector.get_table_names())
+            if 'daily_discovery_log' not in table_names:
+                return
+
+            db_columns = {col['name'] for col in inspector.get_columns('daily_discovery_log')}
+            unique_constraints = {
+                tuple(uc.get('column_names') or ()): uc.get('name')
+                for uc in inspector.get_unique_constraints('daily_discovery_log')
+            }
+
+            has_legacy_unique = ('date', 'sport') in unique_constraints
+            has_expected_unique = ('date', 'run_slot', 'sport') in unique_constraints
+            has_run_slot_column = 'run_slot' in db_columns
+            dialect_name = self.engine.dialect.name
+
+            with self.get_session() as session:
+                connection = session.connection()
+
+                if dialect_name == 'sqlite' and has_legacy_unique:
+                    logger.info("Rebuilding daily_discovery_log for SQLite slot migration")
+                    session.execute(text("DROP TABLE IF EXISTS daily_discovery_log_old"))
+                    session.execute(text("ALTER TABLE daily_discovery_log RENAME TO daily_discovery_log_old"))
+                    DailyDiscoveryLog.__table__.create(connection, checkfirst=True)
+                    run_slot_select = "COALESCE(NULLIF(run_slot, ''), 'AM')" if has_run_slot_column else "'AM'"
+                    insert_sql = f"""
+                        INSERT INTO daily_discovery_log (
+                            id, date, run_slot, sport, status, attempts, last_attempt_at, created_at
+                        )
+                        SELECT
+                            id,
+                            date,
+                            {run_slot_select},
+                            sport,
+                            status,
+                            attempts,
+                            last_attempt_at,
+                            created_at
+                        FROM daily_discovery_log_old
+                    """
+                    session.execute(text(insert_sql))
+                    session.execute(text("DROP TABLE daily_discovery_log_old"))
+                    session.execute(text(
+                        "CREATE INDEX IF NOT EXISTS idx_daily_discovery_log_date_slot_status "
+                        "ON daily_discovery_log (date, run_slot, status)"
+                    ))
+                    session.execute(text(
+                        "CREATE INDEX IF NOT EXISTS idx_daily_discovery_log_date_slot_sport "
+                        "ON daily_discovery_log (date, run_slot, sport)"
+                    ))
+                    session.commit()
+                    logger.info("DailyDiscoveryLog run-slot migration completed for SQLite")
+                    return
+
+                if 'run_slot' not in db_columns:
+                    session.execute(text(
+                        "ALTER TABLE daily_discovery_log "
+                        "ADD COLUMN run_slot VARCHAR(20) NOT NULL DEFAULT 'AM'"
+                    ))
+                    logger.info("Added run_slot column to daily_discovery_log")
+
+                session.execute(text(
+                    "UPDATE daily_discovery_log "
+                    "SET run_slot = 'AM' "
+                    "WHERE run_slot IS NULL OR run_slot = ''"
+                ))
+
+                if dialect_name != 'sqlite':
+                    session.execute(text(
+                        "ALTER TABLE daily_discovery_log DROP CONSTRAINT IF EXISTS unique_date_sport_discovery"
+                    ))
+                    session.execute(text(
+                        "ALTER TABLE daily_discovery_log DROP CONSTRAINT IF EXISTS unique_date_slot_sport_discovery"
+                    ))
+                    if not has_expected_unique:
+                        session.execute(text(
+                            "ALTER TABLE daily_discovery_log "
+                            "ADD CONSTRAINT unique_date_slot_sport_discovery "
+                            "UNIQUE (date, run_slot, sport)"
+                        ))
+                        logger.info("Added unique_date_slot_sport_discovery constraint")
+                else:
+                    if not has_expected_unique:
+                        session.execute(text(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS unique_date_slot_sport_discovery "
+                            "ON daily_discovery_log (date, run_slot, sport)"
+                        ))
+                        logger.info("Added unique index unique_date_slot_sport_discovery")
+
+                session.execute(text(
+                    "CREATE INDEX IF NOT EXISTS idx_daily_discovery_log_date_slot_status "
+                    "ON daily_discovery_log (date, run_slot, status)"
+                ))
+                session.execute(text(
+                    "CREATE INDEX IF NOT EXISTS idx_daily_discovery_log_date_slot_sport "
+                    "ON daily_discovery_log (date, run_slot, sport)"
+                ))
+
+                session.commit()
+                logger.info("DailyDiscoveryLog run-slot migration completed")
+
+        except Exception as e:
+            logger.error(f"DailyDiscoveryLog run-slot migration failed: {e}")
             logger.error(traceback.format_exc())
 
     def _drop_legacy_odds_tables(self):

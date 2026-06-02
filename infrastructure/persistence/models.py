@@ -327,6 +327,7 @@ class DailyDiscoveryLog(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(String(10), nullable=False)  # 'YYYY-MM-DD'
+    run_slot = Column(String(20), nullable=False, default='AM')
     sport = Column(String(50), nullable=False)
     status = Column(String(20), nullable=False, default='pending')  # 'pending', 'completed', 'failed'
     attempts = Column(Integer, default=0)
@@ -334,7 +335,9 @@ class DailyDiscoveryLog(Base):
     created_at = Column(DateTime, default=get_local_now)
     
     __table_args__ = (
-        UniqueConstraint('date', 'sport', name='unique_date_sport_discovery'),
+        UniqueConstraint('date', 'run_slot', 'sport', name='unique_date_slot_sport_discovery'),
+        Index('idx_daily_discovery_log_date_slot_status', 'date', 'run_slot', 'status'),
+        Index('idx_daily_discovery_log_date_slot_sport', 'date', 'run_slot', 'sport'),
     )
 
 

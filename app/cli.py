@@ -3,7 +3,7 @@ import logging
 import signal
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from infrastructure.settings import Config
 
@@ -90,7 +90,7 @@ def run_results_for_date(date_str: str):
 def run_daily_discovery():
     """Run daily discovery job."""
     logger = logging.getLogger(__name__)
-    logger.info("Running daily discovery (today's scheduled events with odds)...")
+    logger.info("Running daily discovery heartbeat (slot-aware scheduled events with odds)...")
 
     from infrastructure.scheduler import job_scheduler
 
@@ -114,10 +114,6 @@ def start_scheduler():
         f"  - Discovery 2 (streaks, top team streaks, h2h, winning odds): Daily at {', '.join(Config.DISCOVERY2_TIMES)}"
     )
 
-    interval_minutes = Config.POLL_INTERVAL_MINUTES
-    intervals_per_hour = 60 // interval_minutes
-    _fixed_times = [f"{i * interval_minutes:02d}" for i in range(intervals_per_hour)]
-
     print(
         "  - Pre-start check: Every 5 minutes at clock intervals "
         "(00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)"
@@ -126,22 +122,11 @@ def start_scheduler():
     print("    - Fetches final odds only when games are starting soon")
 
     print("  - Results collection: Daily at 00:05 (collect results from finished games)")
-    print("  - Daily discovery: Daily at 05:21 (today's scheduled events with odds)")
-    print("\nNext Discovery Run:")
-
-    now = datetime.now()
-    next_discovery = None
-
-    for time_str in Config.DISCOVERY_TIMES:
-        hour, minute = map(int, time_str.split(":"))
-        next_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if next_time <= now:
-            next_time += timedelta(days=1)
-        if next_discovery is None or next_time < next_discovery:
-            next_discovery = next_time
-
-    if next_discovery:
-        print(f"  - {next_discovery.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  - Daily discovery heartbeat: Every {Config.DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES} minutes")
+    print(
+        f"    - Real runs are limited by DB slots: AM opens at {Config.DAILY_DISCOVERY_AM_OPEN_HOUR}:00, "
+        f"PM opens at {Config.DAILY_DISCOVERY_PM_OPEN_HOUR}:00"
+    )
 
     print("\nSystem is running in background. Press Ctrl+C to stop.")
     print("=" * 50)

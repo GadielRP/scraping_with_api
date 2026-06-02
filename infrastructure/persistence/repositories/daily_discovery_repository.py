@@ -1,6 +1,6 @@
 import logging
-from typing import List, Optional, Dict
-from datetime import datetime, timedelta
+from typing import List
+from datetime import timedelta
 
 from infrastructure.persistence.models import DailyDiscoveryLog
 from infrastructure.persistence.database import db_manager
@@ -13,68 +13,102 @@ class DailyDiscoveryRepository:
     """Repository for managing the Daily Discovery retry queue/logs."""
 
     @staticmethod
-    def initialize_sports_for_date(date_str: str, sports: List[str]) -> bool:
+    def initialize_sports_for_slot(date_str: str, run_slot: str, sports: List[str]) -> bool:
         """
-        Creates 'pending' entries for all given sports for a specific date if they don't exist.
+        Creates 'pending' entries for all given sports for a specific date/slot if they don't exist.
         """
+        normalized_run_slot = (run_slot or "AM").strip().upper()
         try:
             with db_manager.get_session() as session:
                 for sport in sports:
                     existing = session.query(DailyDiscoveryLog).filter(
                         DailyDiscoveryLog.date == date_str,
+                        DailyDiscoveryLog.run_slot == normalized_run_slot,
                         DailyDiscoveryLog.sport == sport
                     ).first()
 
                     if not existing:
                         new_log = DailyDiscoveryLog(
                             date=date_str,
+                            run_slot=normalized_run_slot,
                             sport=sport,
                             status='pending'
                         )
                         session.add(new_log)
-                logger.info(f"Initialized DailyDiscoveryLog for date {date_str} and sports {sports}")
+                logger.info(
+                    "Initialized DailyDiscoveryLog for date %s, slot %s and sports %s",
+                    date_str,
+                    normalized_run_slot,
+                    sports,
+                )
                 return True
         except Exception as e:
-            logger.error(f"Error initializing DailyDiscoveryLog for {date_str}: {e}")
+            logger.error(
+                "Error initializing DailyDiscoveryLog for %s slot %s: %s",
+                date_str,
+                normalized_run_slot,
+                e,
+            )
             return False
 
     @staticmethod
-    def get_pending_sports(date_str: str) -> List[str]:
+    def get_pending_sports(date_str: str, run_slot: str) -> List[str]:
         """
-        Returns a list of sports that are 'pending' or 'failed' for the given date.
+        Returns a list of sports that are 'pending' or 'failed' for the given date/slot.
         """
+        normalized_run_slot = (run_slot or "AM").strip().upper()
         try:
             with db_manager.get_session() as session:
                 pending_logs = session.query(DailyDiscoveryLog).filter(
                     DailyDiscoveryLog.date == date_str,
+                    DailyDiscoveryLog.run_slot == normalized_run_slot,
                     DailyDiscoveryLog.status != 'completed'
-                ).all()
+                ).order_by(DailyDiscoveryLog.id).all()
 
                 return [log.sport for log in pending_logs]
         except Exception as e:
-            logger.error(f"Error getting pending sports for {date_str}: {e}")
+            logger.error(
+                "Error getting pending sports for %s slot %s: %s",
+                date_str,
+                normalized_run_slot,
+                e,
+            )
             return []
 
     @staticmethod
-    def update_sport_status(date_str: str, sport: str, status: str) -> bool:
+    def update_sport_status(date_str: str, run_slot: str, sport: str, status: str) -> bool:
         """
-        Updates the status of a specific sport for a date, increments attempts.
+        Updates the status of a specific sport for a date/slot, increments attempts.
         """
+        normalized_run_slot = (run_slot or "AM").strip().upper()
         try:
             with db_manager.get_session() as session:
                 log = session.query(DailyDiscoveryLog).filter(
                     DailyDiscoveryLog.date == date_str,
+                    DailyDiscoveryLog.run_slot == normalized_run_slot,
                     DailyDiscoveryLog.sport == sport
                 ).first()
                 if log:
                     log.status = status
-                    log.attempts += 1
+                    log.attempts = (log.attempts or 0) + 1
                     log.last_attempt_at = get_local_now()
-                    logger.info(f"Updated DailyDiscoveryLog {date_str} - {sport} to {status}")
+                    logger.info(
+                        "Updated DailyDiscoveryLog %s - %s - %s to %s",
+                        date_str,
+                        normalized_run_slot,
+                        sport,
+                        status,
+                    )
                     return True
                 return False
         except Exception as e:
-            logger.error(f"Error updating DailyDiscoveryLog for {date_str} - {sport}: {e}")
+            logger.error(
+                "Error updating DailyDiscoveryLog for %s - %s - %s: %s",
+                date_str,
+                normalized_run_slot,
+                sport,
+                e,
+            )
             return False
 
     @staticmethod
