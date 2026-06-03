@@ -10,7 +10,6 @@ from infrastructure.settings import Config
 
 import logging
 
-
 logger = logging.getLogger(__name__)
 
 

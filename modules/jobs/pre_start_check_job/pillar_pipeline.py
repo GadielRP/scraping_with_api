@@ -26,6 +26,7 @@ from modules.pillars.streak_analysis_resolver import (
 from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import (
     calculate_pillar_1_team_structure,
 )
+from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 from modules.pillars.pillar_1_team_structure.totals import (
     P1TotalsOutput,
 )
@@ -35,6 +36,41 @@ logger = logging.getLogger(__name__)
 
 def _serialize_p1_totals_output(output: P1TotalsOutput) -> dict:
     return asdict(output)
+
+
+def _resolve_event_payload_value(event_payload: dict, key: str, default=None):
+    if key in event_payload:
+        return event_payload.get(key), "top_level"
+
+    event_data = event_payload.get("event_data")
+    if isinstance(event_data, dict) and key in event_data:
+        return event_data.get(key), "event_data"
+
+    return default, "missing"
+
+
+def _build_p4_error_result(event_context, odds_trajectory_context, exc: Exception) -> dict:
+    return {
+        "pillar_id": "pillar_4",
+        "pillar_name": "Temporal Market Drift",
+        "event_id": getattr(event_context, "event_id", None),
+        "participants": getattr(event_context, "participants_label", None),
+        "P4_STATUS": "ERROR",
+        "status": "ERROR",
+        "modules": [],
+        "market_period_results": {},
+        "market_period_count": 0,
+        "active_market_period_count": 0,
+        "insufficient_market_period_count": 0,
+        "error": str(exc),
+        "raw": {
+            "reason": "pillar_4_exception",
+            "odds_trajectory_available": getattr(odds_trajectory_context, "available", False),
+            "target_minutes_expected": getattr(odds_trajectory_context, "target_minutes_expected", []),
+            "target_minutes_present": getattr(odds_trajectory_context, "target_minutes_present", []),
+            "missing_target_minutes": getattr(odds_trajectory_context, "missing_target_minutes", []),
+        },
+    }
 
 
 class EventPillarProcessor:
@@ -53,7 +89,7 @@ class EventPillarProcessor:
 
         Returns a dictionary with pillar results or ``None`` on failure.
         """
-        event_obj = event_payload.get("event_obj")
+        event_obj, event_obj_source = _resolve_event_payload_value(event_payload, "event_obj")
         event_id = getattr(event_obj, "id", event_payload.get("event_id", "?"))
 
         if not event_payload.get("success"):
@@ -74,24 +110,19 @@ class EventPillarProcessor:
             )
             return None
 
-        minutes_until_start = event_payload.get("minutes_until_start")
-        metadata_snapshot = event_payload.get("metadata_snapshot")
-        event_context = event_payload.get("event_context")
-        odds_trajectory_context = build_odds_trajectory_context(
-            event_payload.get("odds_trajectory")
-        )
+        minutes_until_start, minutes_source = _resolve_event_payload_value(event_payload, "minutes_until_start")
+        metadata_snapshot, metadata_source = _resolve_event_payload_value(event_payload, "metadata_snapshot")
+        event_context, event_context_source = _resolve_event_payload_value(event_payload, "event_context")
+        odds_trajectory, odds_trajectory_source = _resolve_event_payload_value(event_payload, "odds_trajectory")
+        odds_trajectory_context = build_odds_trajectory_context(odds_trajectory)
         logger.info(
-            "Pillar odds trajectory context for event %s: available=%s markets=%s present_minutes=%s missing_minutes=%s",
+            "Pillar payload resolution for event %s: event_obj=%s minutes_until_start=%s metadata_snapshot=%s event_context=%s odds_trajectory=%s",
             event_id,
-            odds_trajectory_context.available,
-            len(odds_trajectory_context.markets),
-            odds_trajectory_context.target_minutes_present,
-            odds_trajectory_context.missing_target_minutes,
-        )
-        import pprint
-        logger.info(
-            "Odds trajectory context structure:\n%s",
-            pprint.pformat(asdict(odds_trajectory_context)),
+            event_obj_source,
+            minutes_source,
+            metadata_source,
+            event_context_source,
+            odds_trajectory_source,
         )
         if event_context is None:
             event_context = build_event_context(
@@ -105,6 +136,55 @@ class EventPillarProcessor:
                 event_obj.id,
             )
             return None
+
+        logger.info(
+            "Pillar odds trajectory context for event %s: available=%s market_groups=%s present_minutes=%s missing_minutes=%s",
+            event_id,
+            odds_trajectory_context.available,
+            len(odds_trajectory_context.markets),
+            odds_trajectory_context.target_minutes_present,
+            odds_trajectory_context.missing_target_minutes,
+        )
+        if self.debug_mode and odds_trajectory_context.available:
+            trajectory_keys = []
+            for market_group, periods in odds_trajectory_context.markets.items():
+                for market_period in periods:
+                    trajectory_keys.append(f"{market_group}/{market_period}")
+            logger.info(
+                "P4 pre-check trajectory sample for event %s: %s",
+                event_id,
+                trajectory_keys[:10],
+            )
+
+        try:
+            p4_result = calculate_pillar_4(
+                event_context=event_context,
+                odds_trajectory_context=odds_trajectory_context,
+                debug_mode=self.debug_mode,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Error calculating P4 for event %s (%s): %s",
+                event_obj.id,
+                event_context.participants_label,
+                exc,
+            )
+            p4_result = _build_p4_error_result(event_context, odds_trajectory_context, exc)
+
+        logger.info(
+            "P4 calculated for %s: status=%s market_periods=%s active=%s insufficient=%s",
+            event_context.participants_label,
+            p4_result.get("P4_STATUS"),
+            p4_result.get("market_period_count"),
+            p4_result.get("active_market_period_count"),
+            p4_result.get("insufficient_market_period_count"),
+        )
+        if self.debug_mode:
+            logger.info(
+                "P4 debug summary for %s: trajectory_keys=%s",
+                event_context.participants_label,
+                list((p4_result.get("market_period_results") or {}).keys())[:10],
+            )
 
         logger.info(
             "Pillar pipeline metadata check for event %s: competition_id=%s source_unique_tournament_id=%s season_id=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
@@ -179,11 +259,17 @@ class EventPillarProcessor:
 
         if streak_analysis is None:
             logger.info(
-                "🗑️ Pillar pipeline: no streak_analysis for event %s (%s), skipping",
+                "Pillar pipeline: no streak_analysis for event %s (%s), returning P4 only",
                 event_obj.id,
                 participants,
             )
-            return None
+            return {
+                "event_id": event_obj.id,
+                "participants": participants,
+                "pillar_1": None,
+                "pillar_1_totals": None,
+                "pillar_4": p4_result,
+            }
 
         number_of_teams_summary = summarize_number_of_teams_from_streak_analysis(streak_analysis)
         inferred_number_of_teams = number_of_teams_summary.inferred_number_of_teams
@@ -221,7 +307,13 @@ class EventPillarProcessor:
                 participants,
                 exc,
             )
-            return None
+            return {
+                "event_id": event_obj.id,
+                "participants": participants,
+                "pillar_1": None,
+                "pillar_1_totals": None,
+                "pillar_4": p4_result,
+            }
 
         p1_result.setdefault("raw", {}).update({
             "odds_trajectory_available": odds_trajectory_context.available,
@@ -444,6 +536,7 @@ class EventPillarProcessor:
                 if p1_totals_result is not None
                 else None
             ),
+            "pillar_4": p4_result,
         }
 
 
