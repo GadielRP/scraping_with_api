@@ -7,6 +7,8 @@ import math
 from typing import Any, Dict, List, Optional
 
 from modules.pillars.common import (
+    DEFAULT_STRENGTH_MAX_LABEL,
+    DEFAULT_STRENGTH_THRESHOLDS,
     ModuleComponentResult,
     ModuleResult,
     calculate_bias,
@@ -497,10 +499,14 @@ def calculate_performance_profile(
 
     if debug_mode:
         _debug_section("FORMULA FINAL M2")
+        w_cons = _COMPONENT_WEIGHTS["SCORING_CONSISTENCY_EDGE"]
+        w_ceil = _COMPONENT_WEIGHTS["OFFENSIVE_CEILING_EDGE"]
+        w_blank = _COMPONENT_WEIGHTS["BLANK_RATE_EDGE"]
+        w_expl = _COMPONENT_WEIGHTS["EXPLOSION_FREQUENCY_EDGE"]
         _debug_formula(
             "M2_EDGE_RAW",
-            "M2_EDGE_RAW = 0.35(SCORING_CONSISTENCY_EDGE) + 0.30(OFFENSIVE_CEILING_EDGE) + 0.20(BLANK_RATE_EDGE) + 0.15(EXPLOSION_FREQUENCY_EDGE)",
-            f"0.35 * ({_fmt(scoring_consistency_edge)}) + 0.30 * ({_fmt(offensive_ceiling_edge)}) + 0.20 * ({_fmt(blank_rate_edge)}) + 0.15 * ({_fmt(explosion_frequency_edge)})",
+            f"M2_EDGE_RAW = {w_cons:.2f}(SCORING_CONSISTENCY_EDGE) + {w_ceil:.2f}(OFFENSIVE_CEILING_EDGE) + {w_blank:.2f}(BLANK_RATE_EDGE) + {w_expl:.2f}(EXPLOSION_FREQUENCY_EDGE)",
+            f"{w_cons:.2f} * ({_fmt(scoring_consistency_edge)}) + {w_ceil:.2f} * ({_fmt(offensive_ceiling_edge)}) + {w_blank:.2f} * ({_fmt(blank_rate_edge)}) + {w_expl:.2f} * ({_fmt(explosion_frequency_edge)})",
             _fmt(m2_edge_raw),
             "Suma ponderada de los 4 componentes ofensivos."
         )
@@ -514,11 +520,14 @@ def calculate_performance_profile(
         
         _debug_section("STRENGTH CLASSIFICATION")
         _debug_line("Nivel de magnitud:")
-        _debug_line("  <0.05       -> IGNORE")
-        _debug_line("  0.05 - 0.15 -> LOW")
-        _debug_line("  0.15 - 0.30 -> MEDIUM")
-        _debug_line("  0.30 - 0.60 -> HIGH")
-        _debug_line("  >0.60       -> EXTREME")
+        prev_t = 0.0
+        for threshold, label in DEFAULT_STRENGTH_THRESHOLDS:
+            if prev_t == 0.0:
+                _debug_line(f"  <{threshold:.2f}       -> {label}")
+            else:
+                _debug_line(f"  {prev_t:.2f} - {threshold:.2f} -> {label}")
+            prev_t = threshold
+        _debug_line(f"  >{prev_t:.2f}       -> {DEFAULT_STRENGTH_MAX_LABEL}")
         _debug_line("Aplicación: ABS_EDGE = %s -> M2_STRENGTH = %s", _fmt(abs(m2_edge)), m2_strength)
 
         _debug_section("OUTPUT FINAL")

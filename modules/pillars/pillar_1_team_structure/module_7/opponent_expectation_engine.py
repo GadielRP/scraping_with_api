@@ -528,8 +528,8 @@ def _build_team_context_series(
                 (
                     "[M7_FORMULA_TRACE] OPP_STRENGTH = (max_rank - opponent_rank) / (max_rank - 1) = %.12f; "
                     "EXPECTED_RESULT = 1 - (2 * opp_strength) = %.12f; REAL_RESULT = sign(game_gd) = %s; "
-                    "ROE = (real_result - expected_result) / 2 = %.12f; EXPECTED_GD = expected_result * 1.5 = %.12f; "
-                    "GDOE = (game_gd - expected_gd) / 5 = %.12f; GAME_CONTEXT_SCORE = (0.60 * roe) + (0.40 * gdoe) = %.12f"
+                    f"ROE = (real_result - expected_result) / 2 = %.12f; EXPECTED_GD = expected_result * {_EXPECTED_GD_FACTOR:.1f} = %.12f; "
+                    f"GDOE = (game_gd - expected_gd) / {_GDOE_DIVISOR:.1f} = %.12f; GAME_CONTEXT_SCORE = ({_ROE_WEIGHT:.2f} * roe) + ({_GDOE_WEIGHT:.2f} * gdoe) = %.12f"
                 ),
                 opp_strength,
                 expected_result,

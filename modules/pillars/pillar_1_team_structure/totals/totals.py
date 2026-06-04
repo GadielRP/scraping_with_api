@@ -1589,15 +1589,15 @@ def calculate_p1_totals(
         )
         _debug_formula(
             "SHORT_TERM_PROFILE_HOME",
-            "SHORT_TERM_PROFILE_HOME = (0.60 × TEAM_TOTAL_SHORT_HOME) + (0.40 × TEAM_TOTAL_RECENT_HOME)",
-            f"(0.60 × {_fmt(home_window_totals['SHORT'])}) + (0.40 × {_fmt(home_window_totals['RECENT'])})",
+            f"SHORT_TERM_PROFILE_HOME = ({TREND_SHORT_WEIGHT_SHORT:.2f} × TEAM_TOTAL_SHORT_HOME) + ({TREND_SHORT_WEIGHT_RECENT:.2f} × TEAM_TOTAL_RECENT_HOME)",
+            f"({TREND_SHORT_WEIGHT_SHORT:.2f} × {_fmt(home_window_totals['SHORT'])}) + ({TREND_SHORT_WEIGHT_RECENT:.2f} × {_fmt(home_window_totals['RECENT'])})",
             _fmt(short_term_profile_home),
             "Lectura corta del HOME para detectar cambios recientes de volumen.",
         )
         _debug_formula(
             "LONG_TERM_PROFILE_HOME",
-            "LONG_TERM_PROFILE_HOME = (0.60 × TEAM_TOTAL_MID_HOME) + (0.40 × TEAM_TOTAL_FULL_HOME)",
-            f"(0.60 × {_fmt(home_window_totals['MID'])}) + (0.40 × {_fmt(home_window_totals['FULL'])})",
+            f"LONG_TERM_PROFILE_HOME = ({TREND_LONG_WEIGHT_MID:.2f} × TEAM_TOTAL_MID_HOME) + ({TREND_LONG_WEIGHT_FULL:.2f} × TEAM_TOTAL_FULL_HOME)",
+            f"({TREND_LONG_WEIGHT_MID:.2f} × {_fmt(home_window_totals['MID'])}) + ({TREND_LONG_WEIGHT_FULL:.2f} × {_fmt(home_window_totals['FULL'])})",
             _fmt(long_term_profile_home),
             "Lectura larga del HOME para comparar contra la tendencia reciente.",
         )
@@ -1610,15 +1610,15 @@ def calculate_p1_totals(
         )
         _debug_formula(
             "SHORT_TERM_PROFILE_AWAY",
-            "SHORT_TERM_PROFILE_AWAY = (0.60 × TEAM_TOTAL_SHORT_AWAY) + (0.40 × TEAM_TOTAL_RECENT_AWAY)",
-            f"(0.60 × {_fmt(away_window_totals['SHORT'])}) + (0.40 × {_fmt(away_window_totals['RECENT'])})",
+            f"SHORT_TERM_PROFILE_AWAY = ({TREND_SHORT_WEIGHT_SHORT:.2f} × TEAM_TOTAL_SHORT_AWAY) + ({TREND_SHORT_WEIGHT_RECENT:.2f} × TEAM_TOTAL_RECENT_AWAY)",
+            f"({TREND_SHORT_WEIGHT_SHORT:.2f} × {_fmt(away_window_totals['SHORT'])}) + ({TREND_SHORT_WEIGHT_RECENT:.2f} × {_fmt(away_window_totals['RECENT'])})",
             _fmt(short_term_profile_away),
             "Lectura corta del AWAY para detectar cambios recientes de volumen.",
         )
         _debug_formula(
             "LONG_TERM_PROFILE_AWAY",
-            "LONG_TERM_PROFILE_AWAY = (0.60 × TEAM_TOTAL_MID_AWAY) + (0.40 × TEAM_TOTAL_FULL_AWAY)",
-            f"(0.60 × {_fmt(away_window_totals['MID'])}) + (0.40 × {_fmt(away_window_totals['FULL'])})",
+            f"LONG_TERM_PROFILE_AWAY = ({TREND_LONG_WEIGHT_MID:.2f} × TEAM_TOTAL_MID_AWAY) + ({TREND_LONG_WEIGHT_FULL:.2f} × TEAM_TOTAL_FULL_AWAY)",
+            f"({TREND_LONG_WEIGHT_MID:.2f} × {_fmt(away_window_totals['MID'])}) + ({TREND_LONG_WEIGHT_FULL:.2f} × {_fmt(away_window_totals['FULL'])})",
             _fmt(long_term_profile_away),
             "Lectura larga del AWAY para comparar contra la tendencia reciente.",
         )
@@ -1689,10 +1689,10 @@ def calculate_p1_totals(
                 "    Promedios Ventanas: SHORT=%s, RECENT=%s, MID=%s, FULL=%s",
                 _fmt(t_short), _fmt(t_recent), _fmt(t_mid), _fmt(t_full)
             )
-            _debug_line("    Formula SHORT_TERM_PROFILE = 0.60 * SHORT + 0.40 * RECENT")
-            _debug_line("    Sustitución: 0.60 * %s + 0.40 * %s = %s", _fmt(t_short), _fmt(t_recent), _fmt(t_short_profile))
-            _debug_line("    Formula LONG_TERM_PROFILE = 0.60 * MID + 0.40 * FULL")
-            _debug_line("    Sustitución: 0.60 * %s + 0.40 * %s = %s", _fmt(t_mid), _fmt(t_full), _fmt(t_long_profile))
+            _debug_line(f"    Formula SHORT_TERM_PROFILE = {TREND_SHORT_WEIGHT_SHORT:.2f} * SHORT + {TREND_SHORT_WEIGHT_RECENT:.2f} * RECENT")
+            _debug_line(f"    Sustitución: {TREND_SHORT_WEIGHT_SHORT:.2f} * %s + {TREND_SHORT_WEIGHT_RECENT:.2f} * %s = %s", _fmt(t_short), _fmt(t_recent), _fmt(t_short_profile))
+            _debug_line(f"    Formula LONG_TERM_PROFILE = {TREND_LONG_WEIGHT_MID:.2f} * MID + {TREND_LONG_WEIGHT_FULL:.2f} * FULL")
+            _debug_line(f"    Sustitución: {TREND_LONG_WEIGHT_MID:.2f} * %s + {TREND_LONG_WEIGHT_FULL:.2f} * %s = %s", _fmt(t_mid), _fmt(t_full), _fmt(t_long_profile))
             _debug_line("    Formula TREND_DELTA = SHORT_TERM_PROFILE - LONG_TERM_PROFILE")
             _debug_line("    Sustitución: %s - %s = %s", _fmt(t_short_profile), _fmt(t_long_profile), _fmt(t_delta))
             _debug_line("    Formula TREND_DEVIATION = abs(TREND_DELTA - TREND_BASELINE)")
@@ -1775,7 +1775,7 @@ def calculate_p1_totals(
     if debug_mode:
         _debug_section("POLICY IGNORE")
         _debug_line(
-            "Regla: una capa queda ACTIVE si abs(signal) >= 0.05. Queda IGNORE si abs(signal) < 0.05."
+            f"Regla: una capa queda ACTIVE si abs(signal) >= {IGNORE_THRESHOLD:.2f}. Queda IGNORE si abs(signal) < {IGNORE_THRESHOLD:.2f}."
         )
         for layer in layers:
             evaluated_signal = layer.final_signal
@@ -1789,7 +1789,7 @@ def calculate_p1_totals(
                 layer.status,
             )
             _debug_line(
-                "  status = ACTIVE si abs(final_signal) >= 0.05, si no IGNORE -> %s",
+                f"  status = ACTIVE si abs(final_signal) >= {IGNORE_THRESHOLD:.2f}, si no IGNORE -> %s",
                 layer.status,
             )
         _debug_line("active_layers:")

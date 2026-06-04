@@ -258,7 +258,7 @@ def _aggregate_multilayer_side_engine_v2(module_results):
                 "effective_value": m4_edge,
                 "context_adj_max": _M4_CONTEXT_ADJ_MAX,
                 "m4_context_adj": m4_context_adj,
-                "formula": "CLAMP(M4_EDGE, -0.06, +0.06)",
+                "formula": f"CLAMP(M4_EDGE, -{_M4_CONTEXT_ADJ_MAX:.2f}, +{_M4_CONTEXT_ADJ_MAX:.2f})",
             },
             "p1_after_m4": p1_after_m4,
             "m5": {

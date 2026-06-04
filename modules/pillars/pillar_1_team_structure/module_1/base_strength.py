@@ -22,6 +22,8 @@ import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from modules.pillars.common import (
+    DEFAULT_STRENGTH_MAX_LABEL,
+    DEFAULT_STRENGTH_THRESHOLDS,
     ModuleComponentResult,
     ModuleResult,
     calculate_bias,
@@ -1345,10 +1347,10 @@ def calculate_base_strength(
         _debug_section("FORMULA FINAL M1")
         _debug_formula(
             "M1_EDGE_RAW",
-            "M1_EDGE_RAW = 0.35(RESULT_EDGE) + 0.35(GD_EDGE) + 0.15(CONSISTENCY_EDGE) + 0.15(VOL_DIRECTION_EDGE)",
-            f"0.35 * ({_fmt(result_edge)}) + 0.35 * ({_fmt(gd_edge)}) + 0.15 * ({_fmt(consistency_edge)}) + 0.15 * ({_fmt(vol_direction_edge)})",
+            f"M1_EDGE_RAW = {_WEIGHT_RESULT_EDGE:.2f}(RESULT_EDGE) + {_WEIGHT_GD_EDGE:.2f}(GD_EDGE) + {_WEIGHT_CONSISTENCY_EDGE:.2f}(CONSISTENCY_EDGE) + {_WEIGHT_VOL_DIRECTION_EDGE:.2f}(VOL_DIRECTION_EDGE)",
+            f"{_WEIGHT_RESULT_EDGE:.2f} * ({_fmt(result_edge)}) + {_WEIGHT_GD_EDGE:.2f} * ({_fmt(gd_edge)}) + {_WEIGHT_CONSISTENCY_EDGE:.2f} * ({_fmt(consistency_edge)}) + {_WEIGHT_VOL_DIRECTION_EDGE:.2f} * ({_fmt(vol_direction_edge)})",
             _fmt(base_value),
-            "Suma ponderada de las ventajas de los 4 componentes."
+            "Suma ponderada de las ventajas de los 4 componentes.",
         )
         _debug_formula(
             "M1_EDGE_FINAL",
@@ -1360,11 +1362,14 @@ def calculate_base_strength(
         
         _debug_section("STRENGTH CLASSIFICATION")
         _debug_line("Nivel de magnitud:")
-        _debug_line("  <0.05       -> IGNORE")
-        _debug_line("  0.05 - 0.15 -> LOW")
-        _debug_line("  0.15 - 0.30 -> MEDIUM")
-        _debug_line("  0.30 - 0.60 -> HIGH")
-        _debug_line("  >0.60       -> EXTREME")
+        prev_t = 0.0
+        for threshold, label in DEFAULT_STRENGTH_THRESHOLDS:
+            if prev_t == 0.0:
+                _debug_line(f"  <{threshold:.2f}       -> {label}")
+            else:
+                _debug_line(f"  {prev_t:.2f} - {threshold:.2f} -> {label}")
+            prev_t = threshold
+        _debug_line(f"  >{prev_t:.2f}       -> {DEFAULT_STRENGTH_MAX_LABEL}")
         _debug_line("Aplicación: ABS_EDGE = %s -> M1_STRENGTH = %s", _fmt(abs(final_value)), classify_strength(final_value))
 
         _debug_section("OUTPUT FINAL")
