@@ -77,7 +77,8 @@ def _fmt(value: Any, decimals: int = 6) -> str:
 
 MIN_MOVE_THRESHOLD = Decimal("0.02")
 MIN_MOVE_THRESHOLD_STATUS = "EMPIRICAL_PENDING"
-ENGINE_VERSION = "p4_temporal_market_engine_v2_0"
+P4_EDGE_STATUS = "NOT_NORMALIZED"
+ENGINE_VERSION = "p4_temporal_market_engine_v2_1"
 MODULE_ID = "DRIFT_ENGINE"
 MODULE_NAME = "Temporal Market Drift Engine"
 
@@ -89,7 +90,7 @@ _REQUIRED_INPUT_LABELS = (
     "t5_odds",
     "kickoff_odds",
 )
-_META_MINUTES = (120, 30, 5, 0)
+_META_MINUTES = (120, 30, 5, 0, -5)
 
 
 def _format_decimal(value: Any) -> Any:
@@ -112,6 +113,24 @@ def _to_decimal_or_none(value: Any) -> Optional[Decimal]:
         return Decimal(text)
     except (ArithmeticError, InvalidOperation, TypeError, ValueError):
         return None
+
+
+def _calculate_implied_prob(odds: Optional[Decimal]) -> Optional[Decimal]:
+    if odds is None:
+        return None
+    if odds <= 0:
+        return None
+    return Decimal("1") / odds
+
+
+def _prob_direction(value: Optional[Decimal]) -> int:
+    if value is None:
+        return 0
+    if value > 0:
+        return 1
+    if value < 0:
+        return -1
+    return 0
 
 
 def _decimal_to_serializable(value: Any) -> Any:
@@ -209,17 +228,82 @@ def _count_sign_changes(non_zero_dirs: Iterable[int]) -> int:
     return sign_changes
 
 
-def _classify_drift_pattern(direction_sequence: list[int]) -> tuple[str, list[int], int]:
-    non_zero_dirs = [direction for direction in direction_sequence if direction != 0]
-    if not non_zero_dirs:
-        return "NO_MOVE", non_zero_dirs, 0
+def _calculate_correction_metrics(
+    deltas: Dict[str, Decimal],
+    dirs: Dict[str, int],
+) -> Dict[str, Any]:
+    initial_sign: Optional[int] = None
+    initial_segments: list[str] = []
+    correction_segments: list[str] = []
+    mode = "NO_REAL_MOVE"
+    correction_started = False
 
-    sign_change_count = _count_sign_changes(non_zero_dirs)
+    for segment in _SEGMENTS:
+        current_dir = dirs[segment]
+
+        if current_dir == 0:
+            continue
+
+        if initial_sign is None:
+            initial_sign = current_dir
+            initial_segments.append(segment)
+            mode = "FIRST_DIRECTIONAL_LEG"
+            continue
+
+        if current_dir == initial_sign and not correction_started:
+            initial_segments.append(segment)
+            continue
+
+        if current_dir != initial_sign:
+            correction_started = True
+            correction_segments.append(segment)
+            mode = "FIRST_CORRECTION_LEG"
+            continue
+
+        if correction_started and current_dir == initial_sign:
+            break
+
+    initial_move_abs = abs(sum((deltas[segment] for segment in initial_segments), Decimal("0")))
+    correction_abs = abs(sum((deltas[segment] for segment in correction_segments), Decimal("0")))
+
+    if initial_move_abs == 0:
+        correction_ratio = None
+        move_retention = Decimal("1.00")
+        if not initial_segments:
+            mode = "NO_REAL_MOVE"
+    elif not correction_segments:
+        correction_ratio = None
+        move_retention = Decimal("1.00")
+    else:
+        correction_ratio = correction_abs / initial_move_abs
+        move_retention = max(Decimal("0"), Decimal("1") - correction_ratio)
+
+    return {
+        "INITIAL_MOVE_ABS": initial_move_abs,
+        "CORRECTION_ABS": correction_abs,
+        "CORRECTION_RATIO": correction_ratio,
+        "MOVE_RETENTION": move_retention,
+        "CORRECTION_CALC_MODE": mode,
+        "INITIAL_MOVE_SEGMENTS": initial_segments,
+        "CORRECTION_SEGMENTS": correction_segments,
+    }
+
+
+def _classify_drift_pattern(direction_sequence: list[int]) -> tuple[str, int]:
+    directions_for_sign_change = [
+        direction for direction in direction_sequence if direction != 0
+    ]
+
+    if not directions_for_sign_change:
+        return "NO_MOVE", 0
+
+    sign_change_count = _count_sign_changes(directions_for_sign_change)
+
     if sign_change_count == 0:
-        return "UNIDIRECTIONAL", non_zero_dirs, sign_change_count
+        return "UNIDIRECTIONAL", sign_change_count
     if sign_change_count == 1:
-        return "REVERSAL", non_zero_dirs, sign_change_count
-    return "CHOPPY", non_zero_dirs, sign_change_count
+        return "REVERSAL", sign_change_count
+    return "CHOPPY", sign_change_count
 
 
 def _classify_drift_confidence(pattern: str) -> str:
@@ -325,6 +409,10 @@ def _build_missing_result(
         "choice_group": choice_group,
         "bookie_name": bookie_name,
         "choice_name": choice_name,
+        "post_kickoff_odds": _to_decimal_or_none(choice.odds_values.get(-5)),
+        "effective_kickoff_odds": None,
+        "POST_KICKOFF_AUDIT_STATUS": "NOT_AVAILABLE",
+        "POST_KICKOFF_REPLACED_KICKOFF": False,
         "raw": {
             "required_inputs": {key: required_inputs.get(key) for key in _REQUIRED_INPUT_LABELS},
             "meta_by_minute": _serialize_meta_by_minute(choice),
@@ -341,6 +429,8 @@ def _build_active_result(
     choice_name: str,
     required_inputs: Dict[str, Decimal],
     choice: ChoiceOddsTrajectory,
+    event_id: Optional[int],
+    trajectory_key: str,
     debug_mode: bool = False,
 ) -> Dict[str, Any]:
     open_odds = required_inputs["open_odds"]
@@ -349,23 +439,80 @@ def _build_active_result(
     t5_odds = required_inputs["t5_odds"]
     kickoff_odds = required_inputs["kickoff_odds"]
 
+    post_kickoff_odds = _to_decimal_or_none(choice.odds_values.get(-5))
+
+    if post_kickoff_odds is None:
+        post_kickoff_audit_status = "NOT_AVAILABLE"
+        effective_kickoff_odds = kickoff_odds
+        post_kickoff_replaced_kickoff = False
+    elif post_kickoff_odds == kickoff_odds:
+        post_kickoff_audit_status = "UNCHANGED"
+        effective_kickoff_odds = kickoff_odds
+        post_kickoff_replaced_kickoff = False
+    else:
+        post_kickoff_audit_status = "CHANGED_AFTER_KICKOFF"
+        effective_kickoff_odds = post_kickoff_odds
+        post_kickoff_replaced_kickoff = True
+
+        msg = (
+            f"WARNING:\n"
+            f"P4_POST_KICKOFF_ODDS_CHANGED\n"
+            f"event_id={event_id}\n"
+            f"trajectory_key={trajectory_key}\n"
+            f"market_group={market_group}\n"
+            f"market_period={market_period}\n"
+            f"bookie={bookie_name}\n"
+            f"choice={choice_name}\n"
+            f"kickoff_odds={kickoff_odds}\n"
+            f"post_kickoff_odds={post_kickoff_odds}\n"
+            f"target_minute=-5\n"
+            f"reason=odds_changed_after_kickoff"
+        )
+        logger.warning(msg)
+
     deltas = {
         "D1": t120_odds - open_odds,
         "D2": t30_odds - t120_odds,
         "D3": t5_odds - t30_odds,
-        "D4": kickoff_odds - t5_odds,
+        "D4": effective_kickoff_odds - t5_odds,
     }
     dirs, abs_deltas, effective_abs_deltas = _calculate_dirs(deltas)
     direction_sequence = [dirs[segment] for segment in _SEGMENTS]
-    drift_pattern, non_zero_dirs_for_pattern, sign_change_count = _classify_drift_pattern(direction_sequence)
+    drift_pattern, sign_change_count = _classify_drift_pattern(direction_sequence)
     drift_confidence = _classify_drift_confidence(drift_pattern)
-    total_move = kickoff_odds - open_odds
+    total_move = effective_kickoff_odds - open_odds
     total_move_abs = abs(total_move)
     drift_direction = 0 if drift_pattern == "NO_MOVE" else _sign_decimal(total_move)
 
     move_timing, move_timing_raw = _calculate_move_timing(abs_deltas)
     if drift_pattern == "NO_MOVE":
         move_timing = "N/A"
+
+    correction_metrics = _calculate_correction_metrics(
+        deltas=deltas,
+        dirs=dirs,
+    )
+    initial_move_abs = correction_metrics["INITIAL_MOVE_ABS"]
+    correction_abs = correction_metrics["CORRECTION_ABS"]
+    correction_ratio = correction_metrics["CORRECTION_RATIO"]
+    move_retention = correction_metrics["MOVE_RETENTION"]
+    correction_calc_mode = correction_metrics["CORRECTION_CALC_MODE"]
+    initial_move_segments = correction_metrics["INITIAL_MOVE_SEGMENTS"]
+    correction_segments = correction_metrics["CORRECTION_SEGMENTS"]
+
+    open_implied_prob = _calculate_implied_prob(open_odds)
+    close_implied_prob = _calculate_implied_prob(effective_kickoff_odds)
+    if open_implied_prob is not None and close_implied_prob is not None:
+        implied_prob_move = close_implied_prob - open_implied_prob
+    else:
+        implied_prob_move = None
+    p4_prob_direction = _prob_direction(implied_prob_move)
+    close_implied_prob_odds_source = "effective_kickoff_odds"
+
+    if implied_prob_move is None:
+        raw_market_transfer_pp = None
+    else:
+        raw_market_transfer_pp = implied_prob_move * move_retention * Decimal("100")
 
     if debug_mode:
         _debug_section(f"CHOICE ACTIVE: {market_group} | {market_period} | {bookie_name} | {choice_name}")
@@ -375,12 +522,16 @@ def _build_active_result(
         _debug_line("  t30_odds (30)   = %s", _fmt(t30_odds))
         _debug_line("  t5_odds (5)     = %s", _fmt(t5_odds))
         _debug_line("  kickoff_odds (K)= %s", _fmt(kickoff_odds))
+        _debug_line("  post_kickoff_odds (PK) = %s", _fmt(post_kickoff_odds))
+        _debug_line("  effective_kickoff_odds = %s", _fmt(effective_kickoff_odds))
+        _debug_line("  post_kickoff_audit_status = %s", post_kickoff_audit_status)
+        _debug_line("  post_kickoff_replaced_kickoff = %s", post_kickoff_replaced_kickoff)
 
         _debug_section("CALCULO DE DELTAS")
         _debug_formula("Delta 1 (D1)", "t120_odds - open_odds", f"{_fmt(t120_odds)} - {_fmt(open_odds)}", deltas["D1"])
         _debug_formula("Delta 2 (D2)", "t30_odds - t120_odds", f"{_fmt(t30_odds)} - {_fmt(t120_odds)}", deltas["D2"])
         _debug_formula("Delta 3 (D3)", "t5_odds - t30_odds", f"{_fmt(t5_odds)} - {_fmt(t30_odds)}", deltas["D3"])
-        _debug_formula("Delta 4 (D4)", "kickoff_odds - t5_odds", f"{_fmt(kickoff_odds)} - {_fmt(t5_odds)}", deltas["D4"])
+        _debug_formula("Delta 4 (D4)", "effective_kickoff_odds - t5_odds", f"{_fmt(effective_kickoff_odds)} - {_fmt(t5_odds)}", deltas["D4"])
 
         _debug_line("Umbral de movimiento minimo (MIN_MOVE_THRESHOLD): %s", _fmt(MIN_MOVE_THRESHOLD))
         for segment in _SEGMENTS:
@@ -388,10 +539,9 @@ def _build_active_result(
                         segment, _fmt(deltas[segment]), _fmt(abs_deltas[segment]), _fmt(effective_abs_deltas[segment]), dirs[segment])
 
         _debug_section("CLASIFICACION DE PATRON DE DRIFT")
-        _debug_formula("Movimiento Total (total_move)", "kickoff_odds - open_odds", f"{_fmt(kickoff_odds)} - {_fmt(open_odds)}", total_move)
-        _debug_line("Secuencia de direcciones: %s", direction_sequence)
-        _debug_line("Direcciones no-cero: %s", non_zero_dirs_for_pattern)
-        _debug_line("Cambios de signo: %s", sign_change_count)
+        _debug_formula("Movimiento Total (total_move)", "effective_kickoff_odds - open_odds", f"{_fmt(effective_kickoff_odds)} - {_fmt(open_odds)}", total_move)
+        _debug_line("DIRECTION_SEQUENCE: %s", direction_sequence)
+        _debug_line("SIGN_CHANGE_COUNT ignorando ceros: %s", sign_change_count)
         _debug_line("Patron clasificado: %s", drift_pattern)
         _debug_line("Confianza clasificada: %s", drift_confidence)
         _debug_line("Direccion final del drift: %s", drift_direction)
@@ -405,57 +555,36 @@ def _build_active_result(
             _debug_line("Segmento(s) dominante(s): %s", move_timing_raw["dominant_segments"])
             _debug_line("Timing clasificado: %s", move_timing)
 
-    return {
-        "status": "ACTIVE",
-        "P4_STATUS": "ACTIVE",
-        "market_group": market_group,
-        "market_period": market_period,
-        "market_name": market_name,
-        "choice_group": choice_group,
-        "bookie_name": bookie_name,
-        "choice_name": choice_name,
-        "open_odds": open_odds,
-        "t120_odds": t120_odds,
-        "t30_odds": t30_odds,
-        "t5_odds": t5_odds,
-        "kickoff_odds": kickoff_odds,
-        "DRIFT_PATTERN": drift_pattern,
-        "DRIFT_DIRECTION": drift_direction,
-        "DRIFT_CONFIDENCE": drift_confidence,
-        "MOVE_TIMING": move_timing,
-        "TOTAL_MOVE": total_move,
-        "TOTAL_MOVE_ABS": total_move_abs,
-        "D1": deltas["D1"],
-        "D2": deltas["D2"],
-        "D3": deltas["D3"],
-        "D4": deltas["D4"],
-        "ABS_D1": abs_deltas["D1"],
-        "ABS_D2": abs_deltas["D2"],
-        "ABS_D3": abs_deltas["D3"],
-        "ABS_D4": abs_deltas["D4"],
-        "DIR1": dirs["D1"],
-        "DIR2": dirs["D2"],
-        "DIR3": dirs["D3"],
-        "DIR4": dirs["D4"],
-        "DIRECTION_SEQUENCE": direction_sequence,
-        "MISSING_INPUTS": [],
-        "raw": {
-            "min_move_threshold": MIN_MOVE_THRESHOLD,
-            "min_move_threshold_status": MIN_MOVE_THRESHOLD_STATUS,
-            "effective_abs": effective_abs_deltas,
-            "total_effective_segment_move": move_timing_raw["total_effective_segment_move"],
-            "max_effective_segment_move": move_timing_raw["max_effective_segment_move"],
-            "max_share": move_timing_raw["max_share"],
-            "dominant_segments": move_timing_raw["dominant_segments"],
-            "non_zero_dirs_for_pattern": non_zero_dirs_for_pattern,
-            "sign_change_count": sign_change_count,
-            "meta_by_minute": _serialize_meta_by_minute(choice),
-        },
-    }
+        _debug_section("IMPLIED PROBABILITY TRANSFER")
+        _debug_line("open_odds = %s", _fmt(open_odds))
+        _debug_line("effective_kickoff_odds = %s", _fmt(effective_kickoff_odds))
+        _debug_line("OPEN_IMPLIED_PROB = %s", _fmt(open_implied_prob))
+        _debug_line("CLOSE_IMPLIED_PROB = %s", _fmt(close_implied_prob))
+        _debug_line("CLOSE_IMPLIED_PROB_ODDS_SOURCE = %s", close_implied_prob_odds_source)
+        _debug_line("IMPLIED_PROB_MOVE = %s", _fmt(implied_prob_move))
+        _debug_line("P4_PROB_DIRECTION = %s", p4_prob_direction)
+
+        _debug_section("CORRECTION / RETENTION")
+        _debug_line("DIRECTION_SEQUENCE = %s", direction_sequence)
+        _debug_line("SIGN_CHANGE_COUNT = %s", sign_change_count)
+        _debug_line("INITIAL_MOVE_SEGMENTS = %s", initial_move_segments)
+        _debug_line("INITIAL_MOVE_ABS = %s", _fmt(initial_move_abs))
+        _debug_line("CORRECTION_SEGMENTS = %s", correction_segments)
+        _debug_line("CORRECTION_ABS = %s", _fmt(correction_abs))
+        _debug_line("CORRECTION_RATIO = %s", _fmt(correction_ratio))
+        _debug_line("MOVE_RETENTION = %s", _fmt(move_retention))
+        _debug_line("CORRECTION_CALC_MODE = %s", correction_calc_mode)
+
+        _debug_section("RAW MARKET TRANSFER")
+        _debug_line("RAW_MARKET_TRANSFER_PP = %s", _fmt(raw_market_transfer_pp))
+        _debug_line("P4_EDGE_STATUS = %s", P4_EDGE_STATUS)
+        _debug_line("raw_transfer_is_normalized = %s", False)
+        _debug_line("normalization_pending = %s", True)
 
     return {
         "status": "ACTIVE",
         "P4_STATUS": "ACTIVE",
+        "P4_EDGE_STATUS": P4_EDGE_STATUS,
         "market_group": market_group,
         "market_period": market_period,
         "market_name": market_name,
@@ -467,12 +596,26 @@ def _build_active_result(
         "t30_odds": t30_odds,
         "t5_odds": t5_odds,
         "kickoff_odds": kickoff_odds,
+        "post_kickoff_odds": post_kickoff_odds,
+        "effective_kickoff_odds": effective_kickoff_odds,
+        "POST_KICKOFF_AUDIT_STATUS": post_kickoff_audit_status,
+        "POST_KICKOFF_REPLACED_KICKOFF": post_kickoff_replaced_kickoff,
         "DRIFT_PATTERN": drift_pattern,
         "DRIFT_DIRECTION": drift_direction,
         "DRIFT_CONFIDENCE": drift_confidence,
         "MOVE_TIMING": move_timing,
         "TOTAL_MOVE": total_move,
         "TOTAL_MOVE_ABS": total_move_abs,
+        "OPEN_IMPLIED_PROB": open_implied_prob,
+        "CLOSE_IMPLIED_PROB": close_implied_prob,
+        "IMPLIED_PROB_MOVE": implied_prob_move,
+        "P4_PROB_DIRECTION": p4_prob_direction,
+        "CLOSE_IMPLIED_PROB_ODDS_SOURCE": close_implied_prob_odds_source,
+        "INITIAL_MOVE_ABS": initial_move_abs,
+        "CORRECTION_ABS": correction_abs,
+        "CORRECTION_RATIO": correction_ratio,
+        "MOVE_RETENTION": move_retention,
+        "RAW_MARKET_TRANSFER_PP": raw_market_transfer_pp,
         "D1": deltas["D1"],
         "D2": deltas["D2"],
         "D3": deltas["D3"],
@@ -487,6 +630,7 @@ def _build_active_result(
         "DIR4": dirs["D4"],
         "DIRECTION_SEQUENCE": direction_sequence,
         "MISSING_INPUTS": [],
+        "SIGN_CHANGE_COUNT": sign_change_count,
         "raw": {
             "min_move_threshold": MIN_MOVE_THRESHOLD,
             "min_move_threshold_status": MIN_MOVE_THRESHOLD_STATUS,
@@ -495,9 +639,35 @@ def _build_active_result(
             "max_effective_segment_move": move_timing_raw["max_effective_segment_move"],
             "max_share": move_timing_raw["max_share"],
             "dominant_segments": move_timing_raw["dominant_segments"],
-            "non_zero_dirs_for_pattern": non_zero_dirs_for_pattern,
             "sign_change_count": sign_change_count,
             "meta_by_minute": _serialize_meta_by_minute(choice),
+            "post_kickoff_odds": post_kickoff_odds,
+            "effective_kickoff_odds": effective_kickoff_odds,
+            "post_kickoff_audit_status": post_kickoff_audit_status,
+            "post_kickoff_replaced_kickoff": post_kickoff_replaced_kickoff,
+            "implied_probability": {
+                "open_implied_prob": open_implied_prob,
+                "close_implied_prob": close_implied_prob,
+                "close_implied_prob_odds_source": close_implied_prob_odds_source,
+                "implied_prob_move": implied_prob_move,
+                "p4_prob_direction": p4_prob_direction,
+            },
+            "correction_metrics": {
+                "initial_move_abs": initial_move_abs,
+                "correction_abs": correction_abs,
+                "correction_ratio": correction_ratio,
+                "move_retention": move_retention,
+                "correction_calc_mode": correction_calc_mode,
+                "initial_move_segments": initial_move_segments,
+                "correction_segments": correction_segments,
+            },
+            "raw_market_transfer": {
+                "raw_market_transfer_pp": raw_market_transfer_pp,
+                "p4_edge_status": P4_EDGE_STATUS,
+                "raw_transfer_is_normalized": False,
+                "raw_transfer_uses_edge_threshold": False,
+                "normalization_pending": True,
+            },
         },
     }
 
@@ -652,6 +822,8 @@ def calculate_p4_drift_engine(
                                     choice_name=choice.choice_name,
                                     required_inputs=required_inputs,
                                     choice=choice,
+                                    event_id=event_context.event_id,
+                                    trajectory_key=trajectory_key,
                                     debug_mode=debug_mode,
                                 )
                                 active_choice_count += 1
@@ -676,6 +848,7 @@ def calculate_p4_drift_engine(
                 "market_period": market_period,
                 "status": group_status,
                 "P4_STATUS": group_status,
+                "market_group_period_status": group_status,
                 "choice_count": choice_count,
                 "active_choice_count": active_choice_count,
                 "insufficient_choice_count": insufficient_choice_count,
