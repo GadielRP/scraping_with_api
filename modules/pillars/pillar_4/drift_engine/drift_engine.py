@@ -722,6 +722,7 @@ def calculate_p4_drift_engine(
             "missing_target_minutes": odds_trajectory_context.missing_target_minutes,
             "min_move_threshold": MIN_MOVE_THRESHOLD,
             "min_move_threshold_status": MIN_MOVE_THRESHOLD_STATUS,
+            "p4_edge_status": P4_EDGE_STATUS,
         },
     }
 
