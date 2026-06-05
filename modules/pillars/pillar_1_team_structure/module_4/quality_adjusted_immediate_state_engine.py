@@ -1,12 +1,111 @@
 """M4 - Quality-Adjusted Immediate State Engine.
 
-This module measures how teams are arriving right now using only the most
-recent valid matches and adjusting each result by the quality of the rival
-faced in that match.
+PURPOSE
+-------
+M4 measures how teams are arriving RIGHT NOW, adjusting recent results by
+the quality of the rivals faced. It answers the question:
+
+    "How is each team performing lately, considering WHO they played against?"
+
+A win vs the league leader counts more than a win vs the last-place team.
+A loss vs the top rival penalises less than a loss vs a weak opponent.
+
+WHAT M4 MEASURES
+----------------
+- Adjusted recent form: recent results and score margins weighted by
+  opponent strength.
+- Quality-corrected momentum: eliminates "fake momentum" from soft schedules.
+
+WHAT M4 DOES NOT MEASURE
+-------------------------
+- Long-term structural strength              → M1
+- Offensive production profile               → M2
+- Head-to-head historical matchup            → M3
+- Competitive schedule cost (fixture burden) → M5
+- Long-term structural trajectory / drift    → M6
+- Expectation vs opponent level              → M7
+
+KEY PARAMETERS (SEALED)
+-----------------------
+- WINDOW_SIZE = 5           Last 5 valid matches per team (most recent first).
+- RESULT_SCORE_WEIGHT = 0.60  Weight of adjusted win/draw/loss score.
+- GD_SCORE_WEIGHT     = 0.40  Weight of adjusted points-difference score.
+
+CORE FORMULAS
+-------------
+1. OPP_STRENGTH (opponent strength by league rank):
+       OPP_STRENGTH = 1 - (rank - 1) / (n_liga - 1)
+       Range: 0.0 (last place) → 1.0 (first place).
+
+2. RESULT_VALUE (numeric result encoding):
+       WIN  → +1.0
+       DRAW →  0.0
+       LOSS → -1.0
+
+3. ADJUSTED_RESULT (quality-adjusted result per match):
+       ADJUSTED_RESULT = RESULT_VALUE × OPP_STRENGTH
+
+4. ADJUSTED_GD (quality-adjusted points difference per match):
+       ADJUSTED_GD = points_difference × OPP_STRENGTH
+
+5. HOME/AWAY sums over the window:
+       home_adjusted_result = Σ ADJUSTED_RESULT  (home team, last 5)
+       away_adjusted_result = Σ ADJUSTED_RESULT  (away team, last 5)
+       home_adjusted_gd     = Σ ADJUSTED_GD      (home team, last 5)
+       away_adjusted_gd     = Σ ADJUSTED_GD      (away team, last 5)
+
+6. RESULT_SCORE (relative result score, normalised):
+       RESULT_SCORE = (home_adjusted_result - away_adjusted_result)
+                      / (|home_adjusted_result| + |away_adjusted_result|)
+       Range: [-1.0, +1.0]. Positive → home advantage.
+
+7. GD_SCORE (relative points-difference score, normalised):
+       GD_SCORE = (home_adjusted_gd - away_adjusted_gd)
+                  / (|home_adjusted_gd| + |away_adjusted_gd|)
+       Range: [-1.0, +1.0]. Positive → home advantage.
+
+8. M4_EDGE_RAW (weighted aggregation):
+       M4_EDGE_RAW = RESULT_SCORE_WEIGHT × RESULT_SCORE
+                   + GD_SCORE_WEIGHT     × GD_SCORE
+
+9. M4_EDGE (final, clamped):
+       M4_EDGE = clamp(M4_EDGE_RAW, -1.0, 1.0)
+
+OUTPUT
+------
+- value     : M4_EDGE  (float in [-1.0, +1.0], positive = home advantage)
+- bias      : HOME | NEUTRAL | AWAY
+- strength  : IGNORE | LOW | MEDIUM | HIGH | EXTREME  (based on |M4_EDGE|)
+- status    : ACTIVE (5 valid matches each) | DEGRADED (3–4) | INSUFFICIENT_DATA
+- components: RESULT_SCORE and GD_SCORE with their individual edge, weight,
+              weighted_edge, bias, and strength.
+
+STRENGTH THRESHOLDS
+-------------------
+    |edge| < 0.05              → IGNORE
+    0.05 ≤ |edge| < 0.15      → LOW
+    0.15 ≤ |edge| < 0.30      → MEDIUM
+    0.30 ≤ |edge| < 0.60      → HIGH
+    |edge| ≥ 0.60             → EXTREME
+
+DATA REQUIREMENTS
+-----------------
+Each match record must supply:
+    opponent_ranking  : int   (league rank of the opponent, 1 = strongest)
+    team_result       : str   (W/WIN/1, D/DRAW/X/0, L/LOSS/2/-1)
+    team_score        : float (points scored by the team)
+    opponent_score    : float (points scored by the opponent)
+    startTimestamp    : int   (Unix timestamp, used for recency ordering)
+
+League size (n_liga) is resolved from, in priority order:
+    1. streak_analysis.current_standings  (number of entries)
+    2. event_context.competition.number_of_teams
+    3. max opponent rank inferred from match records
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import logging
 import math
 from dataclasses import dataclass
@@ -44,6 +143,59 @@ class ParsedImmediateMatch:
     opponent_strength: float
     adjusted_result: float
     adjusted_gd: float
+
+
+# ---------------------------------------------------------------------------
+# Debug logging helpers
+# ---------------------------------------------------------------------------
+
+def _debug_section(title: str) -> None:
+    logger.info("========== M4_IMMEDIATE_STATE_ENGINE DEBUG | %s ==========", title)
+
+
+def _debug_line(message: str, *args: Any) -> None:
+    logger.info("M4_IMMEDIATE_STATE_ENGINE DEBUG | " + message, *args)
+
+
+def _debug_formula(
+    name: str,
+    formula: str,
+    substitution: str,
+    result: Any,
+    meaning: Optional[str] = None,
+) -> None:
+    logger.info("M4_IMMEDIATE_STATE_ENGINE DEBUG | %s", name)
+    logger.info("M4_IMMEDIATE_STATE_ENGINE DEBUG |   Formula: %s", formula)
+    logger.info("M4_IMMEDIATE_STATE_ENGINE DEBUG |   Sustitución: %s", substitution)
+    logger.info("M4_IMMEDIATE_STATE_ENGINE DEBUG |   Resultado: %s", result)
+    if meaning:
+        logger.info("M4_IMMEDIATE_STATE_ENGINE DEBUG |   Lectura: %s", meaning)
+
+
+def _fmt(value: Any, decimals: int = 6) -> str:
+    if value is None:
+        return "N/A"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return f"{value:.{decimals}f}"
+        return str(value)
+    if isinstance(value, dict):
+        items = list(value.items())
+        preview = ", ".join(f"{k}: {_fmt(v, decimals)}" for k, v in items[:4])
+        if len(items) > 4:
+            preview += ", ..."
+        return f"{{{preview}}} (n={len(items)})"
+    if isinstance(value, (list, tuple, set)):
+        sequence = list(value)
+        preview = ", ".join(_fmt(item, decimals) for item in sequence[:5])
+        if len(sequence) > 5:
+            preview += ", ..."
+        return f"[{preview}] (n={len(sequence)})"
+    return str(value)
 
 
 def _coerce_float(value: Any) -> Optional[float]:
@@ -213,9 +365,10 @@ def _parse_match(
     match: dict,
     team_name: str,
     n_liga: int,
+    debug_mode: bool = False,
 ) -> Tuple[Optional[ParsedImmediateMatch], Optional[dict]]:
     if not isinstance(match, dict):
-        return None, {
+        invalid_match = {
             "event_id": None,
             "opponent_name": None,
             "reason": "invalid_match_type",
@@ -226,6 +379,9 @@ def _parse_match(
                 "opponent_score": None,
             },
         }
+        if debug_mode:
+            _debug_line("    Encuentro omitido: Tipo de partido no es diccionario (invalid_match_type)")
+        return None, invalid_match
 
     opponent_name = _extract_opponent_name(match)
     event_id = _extract_event_id(match)
@@ -235,7 +391,7 @@ def _parse_match(
     raw_opponent_score = match.get("opponent_score")
 
     if n_liga is None or n_liga <= 1:
-        return None, {
+        invalid_match = {
             "event_id": event_id,
             "opponent_name": opponent_name,
             "reason": "invalid_n_liga",
@@ -246,10 +402,13 @@ def _parse_match(
                 "opponent_score": raw_opponent_score,
             },
         }
+        if debug_mode:
+            _debug_line("    Encuentro omitido: n_liga inválido (n_liga=%s)", _fmt(n_liga))
+        return None, invalid_match
 
     opponent_rank = _coerce_int(raw_opponent_ranking)
     if opponent_rank is None:
-        return None, {
+        invalid_match = {
             "event_id": event_id,
             "opponent_name": opponent_name,
             "reason": "missing_opponent_ranking",
@@ -260,8 +419,16 @@ def _parse_match(
                 "opponent_score": raw_opponent_score,
             },
         }
+        if debug_mode:
+            _debug_line(
+                "    Encuentro omitido: event_id=%s, rival=%s | Razón: missing_opponent_ranking | ranking_crudo=%s",
+                _fmt(event_id),
+                _fmt(opponent_name),
+                _fmt(raw_opponent_ranking),
+            )
+        return None, invalid_match
     if opponent_rank < 1 or opponent_rank > n_liga:
-        return None, {
+        invalid_match = {
             "event_id": event_id,
             "opponent_name": opponent_name,
             "reason": "invalid_opponent_rank",
@@ -272,10 +439,19 @@ def _parse_match(
                 "opponent_score": raw_opponent_score,
             },
         }
+        if debug_mode:
+            _debug_line(
+                "    Encuentro omitido: event_id=%s, rival=%s | Razón: invalid_opponent_rank | ranking=%s (n_liga=%s)",
+                _fmt(event_id),
+                _fmt(opponent_name),
+                _fmt(opponent_rank),
+                _fmt(n_liga),
+            )
+        return None, invalid_match
 
     normalized_result = _normalize_result(raw_team_result)
     if normalized_result is None:
-        return None, {
+        invalid_match = {
             "event_id": event_id,
             "opponent_name": opponent_name,
             "reason": "missing_or_uninterpretable_team_result",
@@ -286,10 +462,18 @@ def _parse_match(
                 "opponent_score": raw_opponent_score,
             },
         }
+        if debug_mode:
+            _debug_line(
+                "    Encuentro omitido: event_id=%s, rival=%s | Razón: missing_or_uninterpretable_team_result | resultado_crudo=%s",
+                _fmt(event_id),
+                _fmt(opponent_name),
+                _fmt(raw_team_result),
+            )
+        return None, invalid_match
 
     team_score = _coerce_float(raw_team_score)
     if team_score is None:
-        return None, {
+        invalid_match = {
             "event_id": event_id,
             "opponent_name": opponent_name,
             "reason": "missing_team_score",
@@ -300,10 +484,18 @@ def _parse_match(
                 "opponent_score": raw_opponent_score,
             },
         }
+        if debug_mode:
+            _debug_line(
+                "    Encuentro omitido: event_id=%s, rival=%s | Razón: missing_team_score | marcador_equipo_crudo=%s",
+                _fmt(event_id),
+                _fmt(opponent_name),
+                _fmt(raw_team_score),
+            )
+        return None, invalid_match
 
     opponent_score = _coerce_float(raw_opponent_score)
     if opponent_score is None:
-        return None, {
+        invalid_match = {
             "event_id": event_id,
             "opponent_name": opponent_name,
             "reason": "missing_opponent_score",
@@ -314,6 +506,14 @@ def _parse_match(
                 "opponent_score": raw_opponent_score,
             },
         }
+        if debug_mode:
+            _debug_line(
+                "    Encuentro omitido: event_id=%s, rival=%s | Razón: missing_opponent_score | marcador_rival_crudo=%s",
+                _fmt(event_id),
+                _fmt(opponent_name),
+                _fmt(raw_opponent_score),
+            )
+        return None, invalid_match
 
     result_value = _result_value(normalized_result)
     goal_difference = team_score - opponent_score
@@ -321,7 +521,7 @@ def _parse_match(
     adjusted_result = result_value * opponent_strength
     adjusted_gd = goal_difference * opponent_strength
 
-    return ParsedImmediateMatch(
+    parsed_match = ParsedImmediateMatch(
         event_id=event_id,
         start_timestamp=_extract_match_timestamp(match),
         team_name=str(team_name or ""),
@@ -335,7 +535,29 @@ def _parse_match(
         opponent_strength=opponent_strength,
         adjusted_result=adjusted_result,
         adjusted_gd=adjusted_gd,
-    ), None
+    )
+
+    if debug_mode:
+        start_ts = parsed_match.start_timestamp
+        date_str = "N/A"
+        if start_ts is not None:
+            date_str = datetime.fromtimestamp(start_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+        _debug_line(
+            "    Encuentro parseado: event_id=%s, rival=%s, rank=%s, fuerza_rival=%s, resultado=%s, "
+            "valor_resultado=%s, diferencia_puntos (gd)=%s, resultado_ajustado=%s, diferencia_puntos_ajustada (adjusted_gd)=%s | fecha=%s",
+            _fmt(event_id),
+            _fmt(opponent_name),
+            _fmt(opponent_rank),
+            _fmt(opponent_strength),
+            _fmt(normalized_result),
+            _fmt(result_value),
+            _fmt(goal_difference),
+            _fmt(adjusted_result),
+            _fmt(adjusted_gd),
+            date_str,
+        )
+
+    return parsed_match, None
 
 
 def _serialize_parsed_match(match: ParsedImmediateMatch) -> Dict[str, Any]:
@@ -361,15 +583,18 @@ def _build_team_window(
     team_name: str,
     n_liga: int,
     window_size: int,
+    debug_mode: bool = False,
 ) -> Tuple[List[ParsedImmediateMatch], List[dict]]:
     parsed_matches: List[ParsedImmediateMatch] = []
     invalid_matches: List[dict] = []
 
     for match in _sort_matches_recent_first(matches):
-        parsed_match, invalid_match = _parse_match(match, team_name, n_liga)
+        parsed_match, invalid_match = _parse_match(match, team_name, n_liga, debug_mode)
         if parsed_match is not None:
             parsed_matches.append(parsed_match)
             if len(parsed_matches) >= window_size:
+                if debug_mode:
+                    _debug_line("    Límite de ventana alcanzado (window_size=%s)", _fmt(window_size))
                 break
             continue
         if invalid_match is not None:
@@ -442,6 +667,20 @@ def calculate_quality_adjusted_immediate_state_engine(
     event_id = getattr(streak_analysis, "event_id", getattr(event_context, "event_id", 0)) or 0
     participants = getattr(streak_analysis, "participants", None) or getattr(event_context, "participants_label", None) or f"{home_team} vs {away_team}"
 
+    if debug_mode:
+        _debug_section("INICIO M4 IMMEDIATE STATE ENGINE")
+        _debug_section("CONFIGURACIÓN GLOBAL / CONSTANTES")
+        _debug_line("WINDOW_SIZE: %s", _fmt(WINDOW_SIZE))
+        _debug_line("RESULT_SCORE_WEIGHT: %s", _fmt(RESULT_SCORE_WEIGHT))
+        _debug_line("GD_SCORE_WEIGHT (PD_SCORE_WEIGHT): %s", _fmt(GD_SCORE_WEIGHT))
+        _debug_line("ENGINE_PROFILE: %s", ENGINE_PROFILE)
+        _debug_line("Event ID: %s", _fmt(event_id))
+        _debug_line("Participantes: %s", _fmt(participants))
+        _debug_line("Home Team: %s", _fmt(home_team))
+        _debug_line("Away Team: %s", _fmt(away_team))
+        _debug_line("Home Results (Total): %s", _fmt(len(home_results)))
+        _debug_line("Away Results (Total): %s", _fmt(len(away_results)))
+
     if not home_results or not away_results:
         raw = {
             "home_team": home_team,
@@ -473,12 +712,9 @@ def calculate_quality_adjusted_immediate_state_engine(
             "engine_profile": ENGINE_PROFILE,
         }
         if debug_mode:
-            logger.info(
-                "M4 [%s] insufficient: missing_team_results home_results=%s away_results=%s",
-                event_id,
-                len(home_results),
-                len(away_results),
-            )
+            _debug_line("Estado: INACTIVE (INSUFFICIENT_DATA)")
+            _debug_line("Razón: missing_team_results")
+            _debug_section("FIN M4 IMMEDIATE STATE ENGINE")
         return _build_insufficient_result(
             pillar_id="pillar_1_team_structure",
             module_id="M4",
@@ -491,7 +727,13 @@ def calculate_quality_adjusted_immediate_state_engine(
     all_matches: List[dict] = [
         match for match in home_results + away_results if isinstance(match, dict)
     ]
+    if debug_mode:
+        _debug_line("Resolviendo tamaño de la liga (n_liga)...")
     n_liga, n_liga_source = _resolve_n_liga(streak_analysis, event_context, all_matches)
+    if debug_mode:
+        _debug_line("  Fuente utilizada: %s", n_liga_source)
+        _debug_line("  Valor resuelto (n_liga): %s", _fmt(n_liga))
+
     if n_liga is None or n_liga <= 1:
         raw = {
             "home_team": home_team,
@@ -523,12 +765,9 @@ def calculate_quality_adjusted_immediate_state_engine(
             "engine_profile": ENGINE_PROFILE,
         }
         if debug_mode:
-            logger.info(
-                "M4 [%s] insufficient: missing_league_size source=%s resolved=%s",
-                event_id,
-                n_liga_source,
-                n_liga,
-            )
+            _debug_line("Estado: INACTIVE (INSUFFICIENT_DATA)")
+            _debug_line("Razón: missing_league_size")
+            _debug_section("FIN M4 IMMEDIATE STATE ENGINE")
         return _build_insufficient_result(
             pillar_id="pillar_1_team_structure",
             module_id="M4",
@@ -538,11 +777,23 @@ def calculate_quality_adjusted_immediate_state_engine(
             raw=raw,
         )
 
-    home_window, invalid_home_matches = _build_team_window(home_results, str(home_team), n_liga, WINDOW_SIZE)
-    away_window, invalid_away_matches = _build_team_window(away_results, str(away_team), n_liga, WINDOW_SIZE)
+    if debug_mode:
+        _debug_section("PROCESAMIENTO DE PARTIDOS - LOCAL (%s)" % home_team)
+    home_window, invalid_home_matches = _build_team_window(home_results, str(home_team), n_liga, WINDOW_SIZE, debug_mode)
+    
+    if debug_mode:
+        _debug_section("PROCESAMIENTO DE PARTIDOS - VISITANTE (%s)" % away_team)
+    away_window, invalid_away_matches = _build_team_window(away_results, str(away_team), n_liga, WINDOW_SIZE, debug_mode)
 
     home_valid_matches = len(home_window)
     away_valid_matches = len(away_window)
+
+    if debug_mode:
+        _debug_section("RESUMEN DE PARTIDOS PARSEADOS")
+        _debug_line("Home Valid Matches Count: %s", _fmt(home_valid_matches))
+        _debug_line("Away Valid Matches Count: %s", _fmt(away_valid_matches))
+        _debug_line("Invalid Home Matches Count: %s", _fmt(len(invalid_home_matches)))
+        _debug_line("Invalid Away Matches Count: %s", _fmt(len(invalid_away_matches)))
 
     if home_valid_matches == 0 or away_valid_matches == 0:
         status_reason = "invalid_match_data" if (invalid_home_matches or invalid_away_matches) else "not_enough_valid_matches"
@@ -576,15 +827,9 @@ def calculate_quality_adjusted_immediate_state_engine(
             "engine_profile": ENGINE_PROFILE,
         }
         if debug_mode:
-            logger.info(
-                "M4 [%s] insufficient: status_reason=%s home_valid=%s away_valid=%s n_liga=%s source=%s",
-                event_id,
-                status_reason,
-                home_valid_matches,
-                away_valid_matches,
-                n_liga,
-                n_liga_source,
-            )
+            _debug_line("Estado: INACTIVE (INSUFFICIENT_DATA)")
+            _debug_line("Razón: %s", status_reason)
+            _debug_section("FIN M4 IMMEDIATE STATE ENGINE")
         return _build_insufficient_result(
             pillar_id="pillar_1_team_structure",
             module_id="M4",
@@ -626,15 +871,9 @@ def calculate_quality_adjusted_immediate_state_engine(
             "engine_profile": ENGINE_PROFILE,
         }
         if debug_mode:
-            logger.info(
-                "M4 [%s] insufficient: status_reason=%s home_valid=%s away_valid=%s n_liga=%s source=%s",
-                event_id,
-                status_reason,
-                home_valid_matches,
-                away_valid_matches,
-                n_liga,
-                n_liga_source,
-            )
+            _debug_line("Estado: INACTIVE (INSUFFICIENT_DATA)")
+            _debug_line("Razón: %s", status_reason)
+            _debug_section("FIN M4 IMMEDIATE STATE ENGINE")
         return _build_insufficient_result(
             pillar_id="pillar_1_team_structure",
             module_id="M4",
@@ -649,8 +888,52 @@ def calculate_quality_adjusted_immediate_state_engine(
     home_adjusted_gd = sum(match.adjusted_gd for match in home_window)
     away_adjusted_gd = sum(match.adjusted_gd for match in away_window)
 
+    if debug_mode:
+        _debug_section("CÁLCULO DE SUMAS AJUSTADAS POR CALIDAD DEL RIVAL")
+        _debug_line("Suma ajustada del resultado Local (home_adjusted_result): %s", _fmt(home_adjusted_result))
+        _debug_line("Suma ajustada del resultado Visitante (away_adjusted_result): %s", _fmt(away_adjusted_result))
+        _debug_line("Suma ajustada de diferencia de puntos Local (home_adjusted_gd): %s", _fmt(home_adjusted_gd))
+        _debug_line("Suma ajustada de diferencia de puntos Visitante (away_adjusted_gd): %s", _fmt(away_adjusted_gd))
+
     result_score, result_denominator = _relative_score(home_adjusted_result, away_adjusted_result)
     gd_score, gd_denominator = _relative_score(home_adjusted_gd, away_adjusted_gd)
+
+    if debug_mode:
+        _debug_section("RESULT SCORE LAYER")
+        if result_denominator == 0:
+            _debug_formula(
+                "RESULT_SCORE",
+                "(home_adjusted_result - away_adjusted_result) / (abs(home_adjusted_result) + abs(away_adjusted_result))",
+                f"({_fmt(home_adjusted_result)} - {_fmt(away_adjusted_result)}) / 0.0",
+                "0.0",
+                "Denominador es cero, result_score es 0.0"
+            )
+        else:
+            _debug_formula(
+                "RESULT_SCORE",
+                "(home_adjusted_result - away_adjusted_result) / (abs(home_adjusted_result) + abs(away_adjusted_result))",
+                f"({_fmt(home_adjusted_result)} - {_fmt(away_adjusted_result)}) / {_fmt(result_denominator)}",
+                _fmt(result_score),
+                "Puntaje de resultado relativo ajustado"
+            )
+
+        _debug_section("POINTS DIFFERENCE (GD) SCORE LAYER")
+        if gd_denominator == 0:
+            _debug_formula(
+                "GD_SCORE",
+                "(home_adjusted_gd - away_adjusted_gd) / (abs(home_adjusted_gd) + abs(away_adjusted_gd))",
+                f"({_fmt(home_adjusted_gd)} - {_fmt(away_adjusted_gd)}) / 0.0",
+                "0.0",
+                "Denominador es cero, gd_score es 0.0"
+            )
+        else:
+            _debug_formula(
+                "GD_SCORE",
+                "(home_adjusted_gd - away_adjusted_gd) / (abs(home_adjusted_gd) + abs(away_adjusted_gd))",
+                f"({_fmt(home_adjusted_gd)} - {_fmt(away_adjusted_gd)}) / {_fmt(gd_denominator)}",
+                _fmt(gd_score),
+                "Puntaje de diferencia de puntos relativo ajustado"
+            )
 
     m4_edge_raw = (RESULT_SCORE_WEIGHT * result_score) + (GD_SCORE_WEIGHT * gd_score)
     m4_edge = clamp(m4_edge_raw, -1.0, 1.0)
@@ -661,96 +944,30 @@ def calculate_quality_adjusted_immediate_state_engine(
     m4_status_reason = "active" if m4_status == "ACTIVE" else "partial_window"
 
     if debug_mode:
-        logger.info("--- M4 Quality-Adjusted Immediate State Engine Debug: Event %s (%s) ---", event_id, participants)
-        logger.info("  home_team=%s | away_team=%s", home_team, away_team)
-        logger.info("  window_size=%s", WINDOW_SIZE)
-        logger.info("  n_liga=%s | n_liga_source=%s", n_liga, n_liga_source)
-        logger.info("  home_valid_matches=%s | away_valid_matches=%s", home_valid_matches, away_valid_matches)
-        logger.info("  home_window=%s", [_serialize_parsed_match(match) for match in home_window])
-        logger.info("  away_window=%s", [_serialize_parsed_match(match) for match in away_window])
-        logger.info("  invalid_home_matches=%s", invalid_home_matches)
-        logger.info("  invalid_away_matches=%s", invalid_away_matches)
+        _debug_section("AGREGACIÓN DE CAPAS (SUMA PONDERADA)")
+        _debug_line("Parámetros y variables de entrada para la agregación:")
+        _debug_line("  RESULT_SCORE_WEIGHT: %s", _fmt(RESULT_SCORE_WEIGHT))
+        _debug_line("  GD_SCORE_WEIGHT (PD_SCORE_WEIGHT): %s", _fmt(GD_SCORE_WEIGHT))
+        _debug_line("  result_score: %s", _fmt(result_score))
+        _debug_line("  gd_score (pd_score): %s", _fmt(gd_score))
 
-        for label, window in (("HOME", home_window), ("AWAY", away_window)):
-            for index, match in enumerate(window):
-                logger.info(
-                    (
-                        "  [%s][%s] opponent=%s rank=%s strength=%.12f result=%s "
-                        "result_value=%.12f gd=%.12f adjusted_result=%.12f adjusted_gd=%.12f"
-                    ),
-                    label,
-                    index,
-                    match.opponent_name,
-                    match.opponent_rank,
-                    match.opponent_strength,
-                    match.team_result,
-                    match.result_value,
-                    match.goal_difference,
-                    match.adjusted_result,
-                    match.adjusted_gd,
-                )
-
-        logger.info(
-            "  [HOME_SUMS] adjusted_result=%.12f adjusted_gd=%.12f",
-            home_adjusted_result,
-            home_adjusted_gd,
+        _debug_formula(
+            "M4_EDGE_RAW (UNCLAMPED)",
+            "RESULT_SCORE_WEIGHT * result_score + GD_SCORE_WEIGHT * gd_score",
+            f"{_fmt(RESULT_SCORE_WEIGHT)} * {_fmt(result_score)} + {_fmt(GD_SCORE_WEIGHT)} * {_fmt(gd_score)}",
+            _fmt(m4_edge_raw),
+            "Suma ponderada de puntaje de resultado y de diferencia de puntos"
         )
-        logger.info(
-            "  [AWAY_SUMS] adjusted_result=%.12f adjusted_gd=%.12f",
-            away_adjusted_result,
-            away_adjusted_gd,
+        _debug_formula(
+            "M4_EDGE",
+            "clamp(m4_edge_raw, -1.0, 1.0)",
+            f"clamp({_fmt(m4_edge_raw)})",
+            _fmt(m4_edge),
+            "M4 edge final (clamped)"
         )
-        if result_denominator == 0:
-            logger.info(
-                "  [RESULT_SCORE] denominator=0 -> score=0.000000000000 reason=ZERO_DENOMINATOR"
-            )
-        else:
-            logger.info(
-                "  [RESULT_SCORE] (home_adjusted_result=%.12f - away_adjusted_result=%.12f) / denominator=%.12f = %.12f",
-                home_adjusted_result,
-                away_adjusted_result,
-                result_denominator,
-                result_score,
-            )
-        if gd_denominator == 0:
-            logger.info(
-                "  [GD_SCORE] denominator=0 -> score=0.000000000000 reason=ZERO_DENOMINATOR"
-            )
-        else:
-            logger.info(
-                "  [GD_SCORE] (home_adjusted_gd=%.12f - away_adjusted_gd=%.12f) / denominator=%.12f = %.12f",
-                home_adjusted_gd,
-                away_adjusted_gd,
-                gd_denominator,
-                gd_score,
-            )
-        logger.info(
-            "  [M4_EDGE_RAW] (%.2f * %.12f) + (%.2f * %.12f) = %.12f",
-            RESULT_SCORE_WEIGHT,
-            result_score,
-            GD_SCORE_WEIGHT,
-            gd_score,
-            m4_edge_raw,
-        )
-        logger.info("  [M4_EDGE] clamped=%.12f bias=%s strength=%s status=%s (%s)", m4_edge, m4_bias, m4_strength, m4_status, m4_status_reason)
-        logger.info("  --- Component Summary ---")
-        logger.info(
-            "  RESULT_SCORE: edge=%.12f weight=%.2f weighted=%.12f bias=%s strength=%s",
-            result_score,
-            RESULT_SCORE_WEIGHT,
-            result_score * RESULT_SCORE_WEIGHT,
-            calculate_bias(result_score),
-            classify_strength(result_score),
-        )
-        logger.info(
-            "  GD_SCORE: edge=%.12f weight=%.2f weighted=%.12f bias=%s strength=%s",
-            gd_score,
-            GD_SCORE_WEIGHT,
-            gd_score * GD_SCORE_WEIGHT,
-            calculate_bias(gd_score),
-            classify_strength(gd_score),
-        )
-        logger.info("------------------------------------------------------------")
+        _debug_line("M4 Bias: %s", m4_bias)
+        _debug_line("M4 Strength: %s", m4_strength)
+        _debug_line("M4 Status: %s (%s)", m4_status, m4_status_reason)
 
     components = [
         _component(
@@ -808,6 +1025,24 @@ def calculate_quality_adjusted_immediate_state_engine(
         "invalid_away_matches": invalid_away_matches,
         "engine_profile": ENGINE_PROFILE,
     }
+
+    if debug_mode:
+        _debug_section("M4 OUTPUT FINAL")
+        _debug_line("value: %s", _fmt(m4_edge))
+        _debug_line("bias: %s", _fmt(m4_bias))
+        _debug_line("strength: %s", _fmt(m4_strength))
+        _debug_line("components count: %s", _fmt(len(components)))
+        for comp in components:
+            _debug_line(
+                "  Component %s | edge=%s | weight=%s | weighted_edge=%s | bias=%s | strength=%s",
+                comp.name,
+                _fmt(comp.edge),
+                _fmt(comp.weight),
+                _fmt(comp.weighted_edge),
+                comp.bias,
+                comp.strength,
+            )
+        _debug_section("FIN M4 IMMEDIATE STATE ENGINE")
 
     return ModuleResult(
         pillar_id="pillar_1_team_structure",
