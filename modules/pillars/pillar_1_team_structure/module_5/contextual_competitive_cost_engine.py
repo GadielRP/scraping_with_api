@@ -13,7 +13,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from modules.pillars.common import (
     ModuleComponentResult,
     ModuleResult,
-    calculate_bias,
     clamp,
     classify_strength,
 )
@@ -61,6 +60,14 @@ def _coerce_int(value: Any) -> Optional[int]:
     if not float_value.is_integer():
         return None
     return int(float_value)
+
+
+def _pressure_side_from_edge(m5_edge: float) -> str:
+    if m5_edge > 0:
+        return "HOME"
+    if m5_edge < 0:
+        return "AWAY"
+    return "NONE"
 
 
 def _normalize_name(value: Any) -> str:
@@ -368,10 +375,11 @@ def _build_team_metrics(
 
 
 def _build_component(name: str, edge: float, weight: float, raw: Dict[str, Any]) -> ModuleComponentResult:
+    pressure_side = _pressure_side_from_edge(edge)
     return ModuleComponentResult(
         name=name,
         edge=edge,
-        bias=calculate_bias(edge),
+        bias=pressure_side,
         strength=classify_strength(edge),
         weight=weight,
         weighted_edge=edge * weight,
@@ -537,7 +545,7 @@ def calculate_contextual_competitive_cost_engine(
     else:
         m5_edge = clamp(m5_numerator / m5_denominator)
     m5_abs_edge = abs(m5_edge)
-    m5_bias = calculate_bias(m5_edge)
+    m5_pressure_side = _pressure_side_from_edge(m5_edge)
     m5_strength = classify_strength(m5_edge)
 
     if debug_mode:
@@ -606,12 +614,12 @@ def calculate_contextual_competitive_cost_engine(
             away_metrics["final_cost"],
         )
         logger.info(
-            "  [M5_EDGE] numerator=%s denominator=%s division=%s edge=%s bias=%s strength=%s status=%s (%s)",
+            "  [M5_EDGE] numerator=%s denominator=%s division=%s edge=%s pressure_side=%s strength=%s status=%s (%s)",
             m5_numerator,
             m5_denominator,
             0.0 if m5_denominator == 0 else m5_numerator / m5_denominator,
             m5_edge,
-            m5_bias,
+            m5_pressure_side,
             m5_strength,
             m5_status,
             m5_status_reason,
@@ -696,7 +704,7 @@ def calculate_contextual_competitive_cost_engine(
         "m5_denominator": m5_denominator,
         "m5_edge": m5_edge,
         "m5_abs_edge": m5_abs_edge,
-        "m5_bias": m5_bias,
+        "m5_pressure_side": m5_pressure_side,
         "m5_strength": m5_strength,
         "m5_status": m5_status,
         "m5_status_reason": m5_status_reason,
@@ -715,6 +723,7 @@ def calculate_contextual_competitive_cost_engine(
             "The cutoff is defined by points, not only ranking.",
             "FINAL_COST = BASE_SEVERITY * REGIME_MULTIPLIER * URGENCY_FACTOR.",
             "M5_EDGE uses the relative formula.",
+            "M5 emits M5_PRESSURE_SIDE, not M5_BIAS.",
             "The side with greater FINAL_COST has greater measurable competitive pressure.",
         ],
     }
@@ -726,7 +735,7 @@ def calculate_contextual_competitive_cost_engine(
         event_id=event_id,
         participants=participants,
         value=m5_edge if m5_status == "ACTIVE" else 0.0,
-        bias=m5_bias,
+        bias=m5_pressure_side,
         strength=m5_strength,
         components=components,
         raw=raw,
