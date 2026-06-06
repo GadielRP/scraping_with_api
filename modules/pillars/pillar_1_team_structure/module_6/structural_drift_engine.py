@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple
@@ -23,6 +24,55 @@ _WEIGHT_TREND_GLOBAL = 0.65
 _WEIGHT_STABILITY = 0.35
 
 
+# ---------------------------------------------------------------------------
+# Debug logging helpers
+# ---------------------------------------------------------------------------
+
+def _debug_section(title: str) -> None:
+    logger.info("========== M6_STRUCTURAL_DRIFT_ENGINE DEBUG | %s ==========", title)
+
+
+def _debug_line(message: str, *args: Any) -> None:
+    logger.info("M6_STRUCTURAL_DRIFT_ENGINE DEBUG | " + message, *args)
+
+
+def _debug_formula(
+    name: str,
+    formula: str,
+    substitution: str,
+    result: Any,
+    meaning: Optional[str] = None,
+) -> None:
+    logger.info("M6_STRUCTURAL_DRIFT_ENGINE DEBUG | %s", name)
+    logger.info("M6_STRUCTURAL_DRIFT_ENGINE DEBUG |   Formula: %s", formula)
+    logger.info("M6_STRUCTURAL_DRIFT_ENGINE DEBUG |   Sustitución: %s", substitution)
+    logger.info("M6_STRUCTURAL_DRIFT_ENGINE DEBUG |   Resultado: %s", result)
+    if meaning:
+        logger.info("M6_STRUCTURAL_DRIFT_ENGINE DEBUG |   Lectura: %s", meaning)
+
+
+def _fmt(value: Any, decimals: int = 6) -> str:
+    if value is None:
+        return "N/A"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return f"{value:.{decimals}f}"
+        return str(value)
+    if isinstance(value, dict):
+        items = list(value.items())
+        preview = ", ".join(f"{k}: {_fmt(v, decimals)}" for k, v in items)
+        return f"{{{preview}}} (n={len(items)})"
+    if isinstance(value, (list, tuple, set)):
+        sequence = list(value)
+        preview = ", ".join(_fmt(item, decimals) for item in sequence)
+        return f"[{preview}] (n={len(sequence)})"
+    return str(value)
+
+
 def _coerce_float(value: Any) -> Optional[float]:
     try:
         return float(value)
@@ -42,8 +92,14 @@ def _extract_goal_diff(result: Dict[str, Any]) -> Optional[float]:
     return float(team_score) - float(opponent_score)
 
 
-def _ordered_goal_diffs(results: List[Dict[str, Any]]) -> Tuple[List[float], str]:
+def _ordered_goal_diffs(
+    results: List[Dict[str, Any]],
+    team_label: str = "",
+    debug: bool = False,
+) -> Tuple[List[float], str]:
     if not results:
+        if debug:
+            _debug_line("  [%s] No hay resultados históricos disponibles.", team_label)
         return [], "reversed_fallback"
 
     timestamps = [_coerce_float(result.get("startTimestamp")) for result in results]
@@ -54,9 +110,34 @@ def _ordered_goal_diffs(results: List[Dict[str, Any]]) -> Tuple[List[float], str
         ordered_results = list(reversed(results))
         ordering = "reversed_fallback"
 
+    if debug:
+        _debug_line("  [%s] Procesamiento de encuentros históricos (orden: %s):", team_label, ordering)
+
     goal_diffs: List[float] = []
-    for result in ordered_results:
+    for idx, result in enumerate(ordered_results):
+        ts = result.get("startTimestamp")
+        net_score = result.get("net_score")
+        score = extract_score_for_against(result)
         goal_diff = _extract_goal_diff(result)
+        
+        if debug:
+            date_str = "N/A"
+            if ts is not None:
+                try:
+                    date_str = datetime.fromtimestamp(float(ts), tz=timezone.utc).strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+            ts_str = str(ts) if ts is not None else "N/A"
+            net_str = str(net_score) if net_score is not None else "N/A"
+            score_str = f"{score[0]} - {score[1]}" if score is not None else "N/A"
+            gd_str = str(goal_diff) if goal_diff is not None else "N/A"
+            opp_name = result.get("opponent_name") or result.get("opponent_team_name") or result.get("opponentName") or result.get("opponent") or "Rival Desconocido"
+            if isinstance(opp_name, dict):
+                opp_name = opp_name.get("name") or opp_name.get("display_name") or opp_name.get("shortName") or opp_name.get("short_name") or "Rival Desconocido"
+            opp_name = str(opp_name).strip()
+            _debug_line("    [%s] Encuentro %d: fecha=%s, timestamp=%s, rival=%s, net_score=%s, score_for_against=%s -> goal_difference=%s",
+                        team_label, idx + 1, date_str, ts_str, opp_name, net_str, score_str, gd_str)
+
         if goal_diff is not None:
             goal_diffs.append(goal_diff)
     return goal_diffs, ordering
@@ -82,9 +163,9 @@ def _build_structural_vector(
         avg = sum(block) / float(len(block)) if block else 0.0
         vector.append(avg)
         if debug:
-            logger.info(
-                f"  [Vector Build - {team_label}] Block {i+1} (indices {start} to {end-1}): "
-                f"games={block} -> avg={avg:.12f}"
+            _debug_line(
+                "  [Vector Build - %s] Bloque %d (índices %d a %d): partidos=%s -> promedio=%s",
+                team_label, i + 1, start, end - 1 if end > start else start, _fmt(block), _fmt(avg)
             )
     return vector
 
@@ -101,16 +182,22 @@ def _linear_trend(vector: List[float], team_label: str = "", debug: bool = False
     for index, value in enumerate(vector):
         term = (index + 1 - mean_x) * (value - mean_y)
         numerator += term
-        numerator_terms.append(f"((x={index+1} - {mean_x:.1f}) * (y={value:.12f} - {mean_y:.12f})) = {term:.12f}")
+        numerator_terms.append(f"((x={index+1} - {mean_x:.1f}) * (y={_fmt(value)} - {_fmt(mean_y)})) = {_fmt(term)}")
     denominator = sum((index + 1 - mean_x) ** 2 for index in range(n))
     slope = numerator / denominator if denominator != 0 else 0.0
     
     if debug:
-        logger.info(f"  [Linear Trend - {team_label}] vector={vector}")
-        logger.info(f"    mean_x={mean_x:.1f}, mean_y={mean_y:.12f}")
+        _debug_line("  [Linear Trend - %s] vector=%s", team_label, _fmt(vector))
+        _debug_line("    mean_x=%s, mean_y=%s", _fmt(mean_x), _fmt(mean_y))
         for term_str in numerator_terms:
-            logger.info(f"    term: {term_str}")
-        logger.info(f"    numerator={numerator:.12f}, denominator={denominator:.12f} -> slope={slope:.12f}")
+            _debug_line("    term: %s", term_str)
+        _debug_formula(
+            f"SLOPE_{team_label}",
+            "numerator / denominator",
+            f"{_fmt(numerator)} / {_fmt(denominator)}",
+            _fmt(slope),
+            f"Pendiente de la tendencia lineal para el equipo {team_label}"
+        )
         
     return slope
 
@@ -125,16 +212,22 @@ def _population_std(vector: List[float], team_label: str = "", debug: bool = Fal
     for value in vector:
         sq_diff = (value - mean) ** 2
         sum_sq_diff += sq_diff
-        devs_sq.append(f"({value:.12f} - mean={mean:.12f})^2 = {sq_diff:.12f}")
+        devs_sq.append(f"({_fmt(value)} - mean={_fmt(mean)})^2 = {_fmt(sq_diff)}")
     variance = sum_sq_diff / float(n)
     std = math.sqrt(variance)
     
     if debug:
-        logger.info(f"  [Stability - {team_label}] vector={vector}")
-        logger.info(f"    mean={mean:.12f}")
+        _debug_line("  [Stability - %s] vector=%s", team_label, _fmt(vector))
+        _debug_line("    mean=%s", _fmt(mean))
         for dev_str in devs_sq:
-            logger.info(f"    sq_diff: {dev_str}")
-        logger.info(f"    variance={variance:.12f} -> std={std:.12f}")
+            _debug_line("    sq_diff: %s", dev_str)
+        _debug_formula(
+            f"STD_DEV_{team_label}",
+            "sqrt(sum((x - mean)^2) / n)",
+            f"sqrt({_fmt(sum_sq_diff)} / {n})",
+            _fmt(std),
+            f"Desviación estándar de los bloques (volatilidad) para el equipo {team_label}"
+        )
         
     return std
 
@@ -189,10 +282,35 @@ def calculate_structural_drift_engine(
     event_id = getattr(streak_analysis, "event_id", 0)
     participants = getattr(streak_analysis, "participants", "") or ""
 
-    home_goal_diffs, home_ordering = _ordered_goal_diffs(home_results)
-    away_goal_diffs, away_ordering = _ordered_goal_diffs(away_results)
+    if debug_mode:
+        _debug_section("Propósito del módulo")
+        _debug_line("M6 mide la trayectoria estructural a largo plazo y la deriva de estabilidad de cada equipo.")
+        _debug_line("Se calcula dividiendo el historial de diferencia de puntos en 5 bloques secuenciales.")
+
+        _debug_section("Parámetros Globales y Constantes")
+        _debug_line("BLOCK_COUNT: %s", _fmt(_BLOCK_COUNT))
+        _debug_line("WEIGHT_TREND_GLOBAL: %s", _fmt(_WEIGHT_TREND_GLOBAL))
+        _debug_line("WEIGHT_STABILITY: %s", _fmt(_WEIGHT_STABILITY))
+
+        _debug_section("Datos del Evento")
+        _debug_line("Event ID: %s", _fmt(event_id))
+        _debug_line("Participantes: %s", _fmt(participants))
+        _debug_line("Equipo Local (Home): %s", _fmt(home_team))
+        _debug_line("Equipo Visitante (Away): %s", _fmt(away_team))
+
+        _debug_section("Muestras Históricas y Ordenamiento")
+
+    home_goal_diffs, home_ordering = _ordered_goal_diffs(home_results, team_label="HOME", debug=debug_mode)
+    away_goal_diffs, away_ordering = _ordered_goal_diffs(away_results, team_label="AWAY", debug=debug_mode)
+
+    if debug_mode:
+        _debug_section("Construcción del Vector Estructural (HOME)")
 
     home_structural_vector = _build_structural_vector(home_goal_diffs, _BLOCK_COUNT, team_label="HOME", debug=debug_mode)
+
+    if debug_mode:
+        _debug_section("Construcción del Vector Estructural (AWAY)")
+
     away_structural_vector = _build_structural_vector(away_goal_diffs, _BLOCK_COUNT, team_label="AWAY", debug=debug_mode)
 
     home_block_sizes = [
@@ -211,9 +329,23 @@ def calculate_structural_drift_engine(
         away_structural_vector,
     )
 
+    if debug_mode:
+        _debug_section("Validación de Estado")
+        _debug_line("Tamaños de bloques HOME: %s", _fmt(home_block_sizes))
+        _debug_line("Tamaños de bloques AWAY: %s", _fmt(away_block_sizes))
+        _debug_line("Vectores construidos:")
+        _debug_line("  HOME_VECTOR: %s", _fmt(home_structural_vector))
+        _debug_line("  AWAY_VECTOR: %s", _fmt(away_structural_vector))
+        _debug_line("Estado del motor M6: %s (razón: %s)", _fmt(m6_status), _fmt(m6_status_reason))
+
+        _debug_section("Cálculo de la Pendiente de Tendencia (Linear Trend)")
+
     home_trend = _linear_trend(home_structural_vector, team_label="HOME", debug=debug_mode)
     away_trend = _linear_trend(away_structural_vector, team_label="AWAY", debug=debug_mode)
     trend_global_edge = clamp(_relative_edge(home_trend, away_trend))
+
+    if debug_mode:
+        _debug_section("Cálculo de la Volatilidad/Desviación Estándar (Stability)")
 
     home_volatility = _population_std(home_structural_vector, team_label="HOME", debug=debug_mode)
     away_volatility = _population_std(away_structural_vector, team_label="AWAY", debug=debug_mode)
@@ -228,51 +360,45 @@ def calculate_structural_drift_engine(
         m6_edge = 0.0
 
     if debug_mode:
-        logger.info(f"--- M6 Structural Drift Engine Debug: Event {event_id} ({participants}) ---")
-        logger.info(f"  home_team={home_team} | away_team={away_team}")
-        logger.info(
-            f"  home_games_available={len(home_goal_diffs)} | away_games_available={len(away_goal_diffs)}"
+        _debug_section("Cálculo de Relaciones de Ventaja (Edges)")
+        _debug_formula(
+            "TREND_GLOBAL_EDGE",
+            "(home_trend - away_trend) / (abs(home_trend) + abs(away_trend))",
+            f"({_fmt(home_trend)} - {_fmt(away_trend)}) / (abs({_fmt(home_trend)}) + abs({_fmt(away_trend)}))",
+            _fmt(trend_global_edge),
+            f"Ventaja de tendencia global (clamped), bias={_fmt(calculate_bias(trend_global_edge))}"
         )
-        logger.info(f"  home_ordering={home_ordering} | away_ordering={away_ordering}")
-        logger.info(f"  home_goal_diffs_ascending={home_goal_diffs}")
-        logger.info(f"  away_goal_diffs_ascending={away_goal_diffs}")
-        logger.info(f"  home_block_sizes={home_block_sizes}")
-        logger.info(f"  away_block_sizes={away_block_sizes}")
-        logger.info(f"  home_structural_vector={home_structural_vector}")
-        logger.info(f"  away_structural_vector={away_structural_vector}")
-        logger.info(f"  activation_status={m6_status} ({m6_status_reason})")
+        _debug_formula(
+            "STABILITY_EDGE",
+            "(away_volatility - home_volatility) / (away_volatility + home_volatility)",
+            f"({_fmt(away_volatility)} - {_fmt(home_volatility)}) / ({_fmt(away_volatility)} + {_fmt(home_volatility)})",
+            _fmt(stability_edge),
+            f"Ventaja de estabilidad global (clamped), bias={_fmt(calculate_bias(stability_edge))}"
+        )
 
-        logger.info(
-            f"  [TREND_GLOBAL_EDGE] home_trend={home_trend:.12f} away_trend={away_trend:.12f} "
-            f"edge={trend_global_edge:.12f}"
+        _debug_section("Agregación y Edge Final")
+        _debug_formula(
+            "M6_EDGE_RAW",
+            "WEIGHT_TREND_GLOBAL * trend_global_edge + WEIGHT_STABILITY * stability_edge",
+            f"{_fmt(_WEIGHT_TREND_GLOBAL)} * {_fmt(trend_global_edge)} + {_fmt(_WEIGHT_STABILITY)} * {_fmt(stability_edge)}",
+            _fmt(m6_edge_raw),
+            "Agregación ponderada de los componentes"
         )
-        logger.info(
-            f"  [STABILITY_EDGE] home_volatility={home_volatility:.12f} away_volatility={away_volatility:.12f} "
-            f"edge={stability_edge:.12f}"
-        )
-        logger.info(
-            f"  [M6_EDGE_RAW] ({_WEIGHT_TREND_GLOBAL:.2f} * trend_global_edge({trend_global_edge:.12f})) + "
-            f"({_WEIGHT_STABILITY:.2f} * stability_edge({stability_edge:.12f})) = "
-            f"{m6_edge_raw:.12f}"
-        )
-        logger.info(f"  [M6_EDGE] clamped = {m6_edge:.12f}")
-        logger.info("  --- Component Summary ---")
-        logger.info(
-            f"  TREND_GLOBAL_EDGE: edge={trend_global_edge:.12f}  weight={_WEIGHT_TREND_GLOBAL:.2f}  "
-            f"weighted={trend_global_edge * _WEIGHT_TREND_GLOBAL:.12f}  "
-            f"bias={calculate_bias(trend_global_edge)}  strength={classify_strength(trend_global_edge)}"
-        )
-        logger.info(
-            f"  STABILITY_EDGE: edge={stability_edge:.12f}  weight={_WEIGHT_STABILITY:.2f}  "
-            f"weighted={stability_edge * _WEIGHT_STABILITY:.12f}  "
-            f"bias={calculate_bias(stability_edge)}  strength={classify_strength(stability_edge)}"
-        )
-        logger.info(
-            f"  M6 Final: edge_raw={m6_edge_raw:.12f}  edge_clamped={m6_edge:.12f}  "
-            f"bias={calculate_bias(m6_edge)}  strength={classify_strength(m6_edge)}  "
-            f"status={m6_status} ({m6_status_reason})"
-        )
-        logger.info("-" * 60)
+        _debug_line("M6_EDGE (Clamped): %s", _fmt(m6_edge))
+
+        _debug_section("Resumen del Output")
+        _debug_line("M6_EDGE: %s", _fmt(m6_edge))
+        _debug_line("M6_BIAS (Dirección): %s", _fmt(calculate_bias(m6_edge)))
+        _debug_line("M6_STRENGTH (Intensidad): %s", _fmt(classify_strength(m6_edge)))
+        _debug_line("M6_STATUS: %s (%s)", _fmt(m6_status), _fmt(m6_status_reason))
+        _debug_line("Componentes:")
+        _debug_line("  - TREND_GLOBAL_EDGE: edge=%s, weight=%s, weighted=%s, bias=%s, strength=%s",
+                    _fmt(trend_global_edge), _fmt(_WEIGHT_TREND_GLOBAL), _fmt(trend_global_edge * _WEIGHT_TREND_GLOBAL),
+                    _fmt(calculate_bias(trend_global_edge)), _fmt(classify_strength(trend_global_edge)))
+        _debug_line("  - STABILITY_EDGE: edge=%s, weight=%s, weighted=%s, bias=%s, strength=%s",
+                    _fmt(stability_edge), _fmt(_WEIGHT_STABILITY), _fmt(stability_edge * _WEIGHT_STABILITY),
+                    _fmt(calculate_bias(stability_edge)), _fmt(classify_strength(stability_edge)))
+        _debug_line("-" * 60)
 
     components = [
         _component(
@@ -340,4 +466,3 @@ def calculate_structural_drift_engine(
         components=components,
         raw=raw,
     )
-
