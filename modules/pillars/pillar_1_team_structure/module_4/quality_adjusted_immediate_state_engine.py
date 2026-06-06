@@ -2,8 +2,9 @@
 
 PURPOSE
 -------
-M4 measures how teams are arriving RIGHT NOW, adjusting recent results by
-the quality of the rivals faced. It answers the question:
+M4 measures how teams are arriving RIGHT NOW, adjusting recent results and
+score margins asymmetrically by the quality of the rivals faced. It answers
+the question:
 
     "How is each team performing lately, considering WHO they played against?"
 
@@ -12,8 +13,9 @@ A loss vs the top rival penalises less than a loss vs a weak opponent.
 
 WHAT M4 MEASURES
 ----------------
-- Adjusted recent form: recent results and score margins weighted by
-  opponent strength.
+- Adjusted recent form: recent results and score margins weighted
+  asymmetrically by opponent strength for positive outcomes and opponent
+  weakness for negative outcomes.
 - Quality-corrected momentum: eliminates "fake momentum" from soft schedules.
 
 WHAT M4 DOES NOT MEASURE
@@ -42,11 +44,22 @@ CORE FORMULAS
        DRAW →  0.0
        LOSS → -1.0
 
-3. ADJUSTED_RESULT (quality-adjusted result per match):
-       ADJUSTED_RESULT = RESULT_VALUE × OPP_STRENGTH
+   Canonical result encoding for traceability; the adjusted metrics use the
+   asymmetric rules below instead of a simple multiplication.
+
+3. OPP_WEAKNESS and ADJUSTED_RESULT (quality-adjusted result per match):
+       OPP_WEAKNESS = 1 - OPP_STRENGTH
+
+       ADJUSTED_RESULT:
+       - WIN  => +1.0 * OPP_STRENGTH
+       - DRAW => 0.0
+       - LOSS => -1.0 * OPP_WEAKNESS
 
 4. ADJUSTED_GD (quality-adjusted points difference per match):
-       ADJUSTED_GD = points_difference × OPP_STRENGTH
+       ADJUSTED_GD:
+       - GD > 0 => GD * OPP_STRENGTH
+       - GD = 0 => 0.0
+       - GD < 0 => GD * OPP_WEAKNESS
 
 5. HOME/AWAY sums over the window:
        home_adjusted_result = Σ ADJUSTED_RESULT  (home team, last 5)
@@ -125,7 +138,7 @@ logger = logging.getLogger(__name__)
 WINDOW_SIZE = 5
 RESULT_SCORE_WEIGHT = 0.60
 GD_SCORE_WEIGHT = 0.40
-ENGINE_PROFILE = "quality_adjusted_immediate_state_v1"
+ENGINE_PROFILE = "quality_adjusted_immediate_state_v2_asymmetric_quality_adjustment"
 
 
 @dataclass(frozen=True)
@@ -141,6 +154,7 @@ class ParsedImmediateMatch:
     opponent_score: float
     goal_difference: float
     opponent_strength: float
+    opponent_weakness: float
     adjusted_result: float
     adjusted_gd: float
 
@@ -251,6 +265,33 @@ def _opponent_strength(rank: int, n_liga: int) -> float:
         return 0.0
     raw_strength = 1.0 - ((float(rank) - 1.0) / float(n_liga - 1))
     return clamp(raw_strength, 0.0, 1.0)
+
+
+def _clean_signed_zero(value: float, epsilon: float = 1e-12) -> float:
+    if abs(value) < epsilon:
+        return 0.0
+    return value
+
+
+def _adjustment_trace_metadata() -> Dict[str, Any]:
+    return {
+        "adjustment_model": "ASYMMETRIC_OPP_STRENGTH_WEAKNESS",
+        "adjustment_model_version": ENGINE_PROFILE,
+        "adjustment_rules": {
+            "opponent_strength": "1 - ((rank - 1) / (n_liga - 1))",
+            "opponent_weakness": "1 - opponent_strength",
+            "adjusted_result": {
+                "WIN": "+1.0 * opponent_strength",
+                "DRAW": "0.0",
+                "LOSS": "-1.0 * opponent_weakness",
+            },
+            "adjusted_gd": {
+                "positive": "goal_difference * opponent_strength",
+                "zero": "0.0",
+                "negative": "goal_difference * opponent_weakness",
+            },
+        },
+    }
 
 
 def _sort_matches_recent_first(matches: List[dict]) -> List[dict]:
@@ -518,8 +559,42 @@ def _parse_match(
     result_value = _result_value(normalized_result)
     goal_difference = team_score - opponent_score
     opponent_strength = _opponent_strength(opponent_rank, n_liga)
-    adjusted_result = result_value * opponent_strength
-    adjusted_gd = goal_difference * opponent_strength
+    opponent_weakness = clamp(1.0 - opponent_strength, 0.0, 1.0)
+
+    if normalized_result == "WIN":
+        adjusted_result = 1.0 * opponent_strength
+        result_adjustment_branch = "WIN_USES_OPP_STRENGTH"
+        result_adjustment_formula = "+1.0 * OPP_STRENGTH"
+        result_adjustment_factor = opponent_strength
+    elif normalized_result == "DRAW":
+        adjusted_result = 0.0
+        result_adjustment_branch = "DRAW_NEUTRAL"
+        result_adjustment_formula = "0.0"
+        result_adjustment_factor = 0.0
+    else:  # LOSS
+        adjusted_result = -1.0 * opponent_weakness
+        result_adjustment_branch = "LOSS_USES_OPP_WEAKNESS"
+        result_adjustment_formula = "-1.0 * OPP_WEAKNESS"
+        result_adjustment_factor = opponent_weakness
+
+    if goal_difference > 0:
+        adjusted_gd = goal_difference * opponent_strength
+        gd_adjustment_branch = "POSITIVE_GD_USES_OPP_STRENGTH"
+        gd_adjustment_formula = "GD * OPP_STRENGTH"
+        gd_adjustment_factor = opponent_strength
+    elif goal_difference < 0:
+        adjusted_gd = goal_difference * opponent_weakness
+        gd_adjustment_branch = "NEGATIVE_GD_USES_OPP_WEAKNESS"
+        gd_adjustment_formula = "GD * OPP_WEAKNESS"
+        gd_adjustment_factor = opponent_weakness
+    else:
+        adjusted_gd = 0.0
+        gd_adjustment_branch = "ZERO_GD_NEUTRAL"
+        gd_adjustment_formula = "0.0"
+        gd_adjustment_factor = 0.0
+
+    adjusted_result = _clean_signed_zero(adjusted_result)
+    adjusted_gd = _clean_signed_zero(adjusted_gd)
 
     parsed_match = ParsedImmediateMatch(
         event_id=event_id,
@@ -533,6 +608,7 @@ def _parse_match(
         opponent_score=opponent_score,
         goal_difference=goal_difference,
         opponent_strength=opponent_strength,
+        opponent_weakness=opponent_weakness,
         adjusted_result=adjusted_result,
         adjusted_gd=adjusted_gd,
     )
@@ -542,14 +618,30 @@ def _parse_match(
         date_str = "N/A"
         if start_ts is not None:
             date_str = datetime.fromtimestamp(start_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+        _debug_formula(
+            "ADJUSTED_RESULT",
+            result_adjustment_formula,
+            f"result={_fmt(normalized_result)}, opponent_strength={_fmt(opponent_strength)}, opponent_weakness={_fmt(opponent_weakness)}, factor={_fmt(result_adjustment_factor)}",
+            _fmt(adjusted_result),
+            f"Branch: {result_adjustment_branch}",
+        )
+        _debug_formula(
+            "ADJUSTED_GD",
+            gd_adjustment_formula,
+            f"gd={_fmt(goal_difference)}, opponent_strength={_fmt(opponent_strength)}, opponent_weakness={_fmt(opponent_weakness)}, factor={_fmt(gd_adjustment_factor)}",
+            _fmt(adjusted_gd),
+            f"Branch: {gd_adjustment_branch}",
+        )
         _debug_line(
-            "    Encuentro parseado: event_id=%s, rival=%s, rank=%s, fuerza_rival=%s, resultado=%s, "
-            "valor_resultado=%s, diferencia_puntos (gd)=%s, resultado_ajustado=%s, diferencia_puntos_ajustada (adjusted_gd)=%s | fecha=%s",
+            "    Encuentro parseado: event_id=%s, rival=%s, rank=%s, fuerza_rival=%s, debilidad_rival=%s, resultado=%s, result_branch=%s, gd_branch=%s, valor_resultado=%s, diferencia_puntos (gd)=%s, resultado_ajustado=%s, adjusted_gd=%s | fecha=%s",
             _fmt(event_id),
             _fmt(opponent_name),
             _fmt(opponent_rank),
             _fmt(opponent_strength),
+            _fmt(opponent_weakness),
             _fmt(normalized_result),
+            result_adjustment_branch,
+            gd_adjustment_branch,
             _fmt(result_value),
             _fmt(goal_difference),
             _fmt(adjusted_result),
@@ -573,6 +665,7 @@ def _serialize_parsed_match(match: ParsedImmediateMatch) -> Dict[str, Any]:
         "opponent_score": match.opponent_score,
         "goal_difference": match.goal_difference,
         "opponent_strength": match.opponent_strength,
+        "opponent_weakness": match.opponent_weakness,
         "adjusted_result": match.adjusted_result,
         "adjusted_gd": match.adjusted_gd,
     }
@@ -711,6 +804,7 @@ def calculate_quality_adjusted_immediate_state_engine(
             "invalid_away_matches": [],
             "engine_profile": ENGINE_PROFILE,
         }
+        raw.update(_adjustment_trace_metadata())
         if debug_mode:
             _debug_line("Estado: INACTIVE (INSUFFICIENT_DATA)")
             _debug_line("Razón: missing_team_results")
@@ -764,6 +858,7 @@ def calculate_quality_adjusted_immediate_state_engine(
             "invalid_away_matches": [],
             "engine_profile": ENGINE_PROFILE,
         }
+        raw.update(_adjustment_trace_metadata())
         if debug_mode:
             _debug_line("Estado: INACTIVE (INSUFFICIENT_DATA)")
             _debug_line("Razón: missing_league_size")
@@ -826,6 +921,7 @@ def calculate_quality_adjusted_immediate_state_engine(
             "invalid_away_matches": invalid_away_matches,
             "engine_profile": ENGINE_PROFILE,
         }
+        raw.update(_adjustment_trace_metadata())
         if debug_mode:
             _debug_line("Estado: INACTIVE (INSUFFICIENT_DATA)")
             _debug_line("Razón: %s", status_reason)
@@ -870,6 +966,7 @@ def calculate_quality_adjusted_immediate_state_engine(
             "invalid_away_matches": invalid_away_matches,
             "engine_profile": ENGINE_PROFILE,
         }
+        raw.update(_adjustment_trace_metadata())
         if debug_mode:
             _debug_line("Estado: INACTIVE (INSUFFICIENT_DATA)")
             _debug_line("Razón: %s", status_reason)
@@ -1025,6 +1122,7 @@ def calculate_quality_adjusted_immediate_state_engine(
         "invalid_away_matches": invalid_away_matches,
         "engine_profile": ENGINE_PROFILE,
     }
+    raw.update(_adjustment_trace_metadata())
 
     if debug_mode:
         _debug_section("M4 OUTPUT FINAL")
