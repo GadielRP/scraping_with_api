@@ -17,7 +17,7 @@ from modules.pillars.context import EventContext
 
 logger = logging.getLogger(__name__)
 
-_ENGINE_VERSION = "p1_totals_directional_vol_separated_v2_2"
+_ENGINE_VERSION = "p1_totals_directional_vol_separated_v2_3_composite_breakout"
 
 TOTALS_TEMPORAL_WINDOW_NAMES = ("SHORT", "RECENT", "MID", "FULL")
 
@@ -108,6 +108,31 @@ class P1TotalsOutput:
     VOL_EDGE_P90: Optional[float]
 
     ACTIVE_WEIGHT_SUM: float
+
+    STRUCTURAL_FINAL: float
+    STRUCTURAL_WEIGHT: float
+    STRUCTURAL_WEIGHTED: float
+
+    TEMPORAL_WEIGHT: float
+    TEMPORAL_WEIGHTED: float
+
+    TREND_WEIGHT: float
+    TREND_WEIGHTED: float
+
+    BASE_SIGNAL: float
+    BREAKOUT_CONDITION: bool
+    BREAKOUT_SCORE: float
+
+    HEATING_PRESSURE: float
+    COOLING_PRESSURE: float
+
+    P1_TOTALS_DRIVER: str
+    P1_TOTALS_DRIVER_SIGNAL: float
+    P1_TOTALS_DRIVER_WEIGHTED: float
+
+    P1_TOTALS_COMPOSITE: float
+    P1_TOTALS_COMPOSITE_DIRECTION: str
+    P1_TOTALS_COMPOSITE_STRENGTH: str
 
     ALIGNMENT_SCORE: float
     OVER_COUNT: int
@@ -776,7 +801,7 @@ def calculate_p1_totals(
     event_context: EventContext,
     debug_mode: bool = False,
 ) -> Optional[P1TotalsOutput]:
-    """Calculate P1_TOTALS v2.2 directional profile with separated variance handling."""
+    """Calculate P1_TOTALS v2.3 directional profile with composite breakout layer."""
     event_id = _resolve_event_id(streak_analysis, event_context)
     participants = _resolve_participants(streak_analysis, event_context)
     home_team_name = getattr(streak_analysis, "home_team_name", None)
@@ -1762,6 +1787,13 @@ def calculate_p1_totals(
 
     active_layers, ignored_layers = _split_layers_by_status(layers)
     active_weight_sum = sum(layer.weight for layer in active_layers)
+    layer_by_name = {layer.layer: layer for layer in layers}
+    structural_layer = layer_by_name["STRUCTURAL"]
+    temporal_layer = layer_by_name["TEMPORAL"]
+    trend_layer = layer_by_name["TREND"]
+    structural_status = structural_layer.status
+    temporal_status = temporal_layer.status
+    trend_status = trend_layer.status
     if active_weight_sum == 0:
         _abort(
             "ABORT_ACTIVE_WEIGHT_SUM_ZERO",
@@ -1874,12 +1906,68 @@ def calculate_p1_totals(
     under_count = sum(1 for layer in active_layers if layer.final_signal < 0)
     ignore_count = len(ignored_layers)
     active_layer_count = over_count + under_count
-    alignment_score = (over_count - under_count) / active_layer_count
+    alignment_denominator = (
+        abs(structural_profile_score) + abs(temporal_final) + abs(trend_final)
+    )
+    if alignment_denominator == 0:
+        alignment_score = 0.0
+    else:
+        alignment_score = (
+            structural_profile_score + temporal_final + trend_final
+        ) / alignment_denominator
 
-    layer_by_name = {layer.layer: layer for layer in layers}
-    structural_status = layer_by_name["STRUCTURAL"].status
-    temporal_status = layer_by_name["TEMPORAL"].status
-    trend_status = layer_by_name["TREND"].status
+    structural_final = structural_profile_score
+    structural_weight = W_STRUCTURAL
+    structural_weighted = (
+        structural_final * structural_weight if structural_status == "ACTIVE" else 0.0
+    )
+
+    temporal_weight = W_TEMPORAL
+    temporal_weighted = (
+        temporal_final * temporal_weight if temporal_status == "ACTIVE" else 0.0
+    )
+
+    trend_weight = W_TREND
+    trend_weighted = trend_final * trend_weight if trend_status == "ACTIVE" else 0.0
+
+    base_signal = structural_final + temporal_final
+    breakout_condition = (
+        _sign(base_signal) != _sign(trend_final)
+        and abs(base_signal) >= IGNORE_THRESHOLD
+        and abs(trend_final) >= IGNORE_THRESHOLD
+    )
+    if breakout_condition:
+        breakout_denominator = abs(trend_final) + abs(base_signal)
+        breakout_score = (
+            abs(trend_final) / breakout_denominator
+            if breakout_denominator > 0
+            else 0.0
+        )
+        breakout_score = breakout_score if trend_final > 0 else -breakout_score
+    else:
+        breakout_score = 0.0
+
+    heating_pressure = (
+        trend_final - base_signal
+        if base_signal < 0 and trend_final > 0
+        else 0.0
+    )
+    cooling_pressure = (
+        trend_final - base_signal
+        if base_signal > 0 and trend_final < 0
+        else 0.0
+    )
+
+    driver_layer = max(active_layers, key=lambda layer: abs(layer.weighted_signal))
+    p1_totals_driver = driver_layer.layer
+    p1_totals_driver_signal = driver_layer.final_signal
+    p1_totals_driver_weighted = driver_layer.weighted_signal
+
+    p1_totals_composite = clamp(
+        (0.70 * p1_totals_directional_score) + (0.30 * breakout_score)
+    )
+    p1_totals_composite_direction = _totals_direction(p1_totals_composite)
+    p1_totals_composite_strength = _classify_totals_strength(p1_totals_composite)
 
     active_secondary_layers = [
         layer
@@ -1930,6 +2018,17 @@ def calculate_p1_totals(
         "UNDER_COUNT": under_count,
         "IGNORE_COUNT": ignore_count,
         "ACTIVE_LAYER_COUNT": active_layer_count,
+        "BASE_SIGNAL": base_signal,
+        "BREAKOUT_CONDITION": breakout_condition,
+        "BREAKOUT_SCORE": breakout_score,
+        "HEATING_PRESSURE": heating_pressure,
+        "COOLING_PRESSURE": cooling_pressure,
+        "P1_TOTALS_DRIVER": p1_totals_driver,
+        "P1_TOTALS_DRIVER_SIGNAL": p1_totals_driver_signal,
+        "P1_TOTALS_DRIVER_WEIGHTED": p1_totals_driver_weighted,
+        "P1_TOTALS_COMPOSITE": p1_totals_composite,
+        "P1_TOTALS_COMPOSITE_DIRECTION": p1_totals_composite_direction,
+        "P1_TOTALS_COMPOSITE_STRENGTH": p1_totals_composite_strength,
     }
 
     if debug_mode:
@@ -1939,32 +2038,33 @@ def calculate_p1_totals(
         ignored_layer_names = [layer.layer for layer in ignored_layers]
         _debug_formula(
             "OVER_COUNT",
-            "OVER_COUNT = count(active directional layers final_signal > 0)",
+            "OVER_COUNT = count(active directional layers final_signal > 0) [audit]",
             f"{_fmt(over_layers)}",
             _fmt(over_count),
-            "Capas activas que empujan hacia OVER.",
+            "Conteo de auditoría de capas activas que empujan hacia OVER.",
         )
         _debug_formula(
             "UNDER_COUNT",
-            "UNDER_COUNT = count(active directional layers final_signal < 0)",
+            "UNDER_COUNT = count(active directional layers final_signal < 0) [audit]",
             f"{_fmt(under_layers)}",
             _fmt(under_count),
-            "Capas activas que empujan hacia UNDER.",
+            "Conteo de auditoría de capas activas que empujan hacia UNDER.",
         )
         _debug_formula(
             "IGNORE_COUNT",
-            "IGNORE_COUNT = count(ignored_layers)",
+            "IGNORE_COUNT = count(ignored_layers) [audit]",
             f"{_fmt(ignored_layer_names)}",
             _fmt(ignore_count),
-            "Capas que quedaron por debajo del umbral de ignorado.",
+            "Conteo de auditoría de capas que quedaron por debajo del umbral de ignorado.",
         )
-        _debug_line("ACTIVE_LAYER_COUNT: OVER_COUNT + UNDER_COUNT = %s", _fmt(active_layer_count))
+        _debug_line("ACTIVE_LAYER_COUNT (audit): OVER_COUNT + UNDER_COUNT = %s", _fmt(active_layer_count))
         _debug_formula(
             "ALIGNMENT_SCORE",
-            "ALIGNMENT_SCORE = (OVER_COUNT - UNDER_COUNT) / ACTIVE_LAYER_COUNT",
-            f"({_fmt(over_count)} - {_fmt(under_count)}) / {_fmt(active_layer_count)}",
+            "ALIGNMENT_SCORE = (STRUCTURAL_FINAL + TEMPORAL_FINAL + TREND_FINAL) / (abs(STRUCTURAL_FINAL) + abs(TEMPORAL_FINAL) + abs(TREND_FINAL))",
+            f"{_fmt(structural_final)} + {_fmt(temporal_final)} + {_fmt(trend_final)} / "
+            f"({_fmt(abs(structural_final))} + {_fmt(abs(temporal_final))} + {_fmt(abs(trend_final))})",
             _fmt(alignment_score),
-            "Mide qué tan alineadas están las capas activas entre sí.",
+            "Mide la inclinación neta de las tres señales finales. Los counts quedan solo como auditoría.",
         )
         _debug_formula(
             "HEATING_CONFLICT",
@@ -2038,14 +2138,228 @@ def calculate_p1_totals(
         _debug_line("P1_TOTALS_DIRECTION: %s", p1_totals_direction)
         _debug_line("P1_TOTALS_STRENGTH: %s", p1_totals_strength)
         _debug_line("ACTIVE_WEIGHT_SUM: %s", _fmt(active_weight_sum))
+        _debug_line("STRUCTURAL_FINAL: %s", _fmt(structural_final))
+        _debug_line("STRUCTURAL_WEIGHT: %s", _fmt(structural_weight))
+        _debug_line("STRUCTURAL_WEIGHTED: %s", _fmt(structural_weighted))
+        _debug_line("TEMPORAL_FINAL: %s", _fmt(temporal_final))
+        _debug_line("TEMPORAL_WEIGHT: %s", _fmt(temporal_weight))
+        _debug_line("TEMPORAL_WEIGHTED: %s", _fmt(temporal_weighted))
+        _debug_line("TREND_FINAL: %s", _fmt(trend_final))
+        _debug_line("TREND_WEIGHT: %s", _fmt(trend_weight))
+        _debug_line("TREND_WEIGHTED: %s", _fmt(trend_weighted))
+        _debug_line("BASE_SIGNAL: %s", _fmt(base_signal))
+        _debug_line("BREAKOUT_CONDITION: %s", _fmt(breakout_condition))
+        _debug_line("BREAKOUT_SCORE: %s", _fmt(breakout_score))
         _debug_line("ALIGNMENT_SCORE: %s", _fmt(alignment_score))
+        _debug_line("HEATING_PRESSURE: %s", _fmt(heating_pressure))
+        _debug_line("COOLING_PRESSURE: %s", _fmt(cooling_pressure))
+        _debug_line("P1_TOTALS_DRIVER: %s", p1_totals_driver)
+        _debug_line("P1_TOTALS_DRIVER_SIGNAL: %s", _fmt(p1_totals_driver_signal))
+        _debug_line("P1_TOTALS_DRIVER_WEIGHTED: %s", _fmt(p1_totals_driver_weighted))
+        _debug_line("P1_TOTALS_COMPOSITE: %s", _fmt(p1_totals_composite))
+        _debug_line("P1_TOTALS_COMPOSITE_DIRECTION: %s", p1_totals_composite_direction)
+        _debug_line("P1_TOTALS_COMPOSITE_STRENGTH: %s", p1_totals_composite_strength)
         _debug_line("OVER_COUNT: %s", _fmt(over_count))
         _debug_line("UNDER_COUNT: %s", _fmt(under_count))
         _debug_line("IGNORE_COUNT: %s", _fmt(ignore_count))
         _debug_line("ACTIVE_LAYER_COUNT: %s", _fmt(active_layer_count))
+        _debug_section("COMPOSITE BREAKOUT")
+        _debug_formula(
+            "STRUCTURAL_FINAL",
+            "STRUCTURAL_FINAL = alias numérico de structural_profile_score",
+            _fmt(structural_profile_score),
+            _fmt(structural_final),
+            "Lectura estructural final usada como base del composite breakout.",
+        )
+        _debug_formula(
+            "TEMPORAL_FINAL",
+            "TEMPORAL_FINAL = temporal_final",
+            _fmt(temporal_final),
+            _fmt(temporal_final),
+            "Lectura temporal final usada como parte de la base.",
+        )
+        _debug_formula(
+            "TREND_FINAL",
+            "TREND_FINAL = trend_final",
+            _fmt(trend_final),
+            _fmt(trend_final),
+            "Empuje final del trend sobre la estructura base.",
+        )
+        _debug_formula(
+            "BASE_SIGNAL",
+            "BASE_SIGNAL = STRUCTURAL_FINAL + TEMPORAL_FINAL",
+            f"{_fmt(structural_final)} + {_fmt(temporal_final)}",
+            _fmt(base_signal),
+            "Base estructural + temporal antes del empuje del trend.",
+        )
+        _debug_formula(
+            "BREAKOUT_CONDITION",
+            "sign(BASE_SIGNAL) != sign(TREND_FINAL) AND abs(BASE_SIGNAL) >= IGNORE_THRESHOLD AND abs(TREND_FINAL) >= IGNORE_THRESHOLD",
+            f"sign({_fmt(base_signal)}) != sign({_fmt(trend_final)})",
+            _fmt(breakout_condition),
+            "Hay breakout cuando la base y el trend significativo apuntan a lados opuestos.",
+        )
+        _debug_formula(
+            "BREAKOUT_SCORE",
+            "si BREAKOUT_CONDITION: abs(TREND_FINAL) / (abs(TREND_FINAL) + abs(BASE_SIGNAL)) con signo de TREND_FINAL",
+            f"{_fmt(abs(trend_final))} / ({_fmt(abs(trend_final))} + {_fmt(abs(base_signal))})",
+            _fmt(breakout_score),
+            "Mide cuánto domina el trend sobre la base cuando existe conflicto direccional real.",
+        )
+        _debug_formula(
+            "HEATING_PRESSURE",
+            "si BASE_SIGNAL < 0 and TREND_FINAL > 0: TREND_FINAL - BASE_SIGNAL",
+            (
+                f"{_fmt(trend_final)} - {_fmt(base_signal)}"
+                if base_signal < 0 and trend_final > 0
+                else "Condición no cumplida -> 0.0"
+            ),
+            _fmt(heating_pressure),
+            (
+                "Presión de calentamiento cuando la base era UNDER pero el trend empuja OVER."
+                if base_signal < 0 and trend_final > 0
+                else "La condición no se cumplió, así que la presión es 0.0."
+            ),
+        )
+        _debug_formula(
+            "COOLING_PRESSURE",
+            "si BASE_SIGNAL > 0 and TREND_FINAL < 0: TREND_FINAL - BASE_SIGNAL",
+            (
+                f"{_fmt(trend_final)} - {_fmt(base_signal)}"
+                if base_signal > 0 and trend_final < 0
+                else "Condición no cumplida -> 0.0"
+            ),
+            _fmt(cooling_pressure),
+            (
+                "Presión de enfriamiento cuando la base era OVER pero el trend empuja UNDER."
+                if base_signal > 0 and trend_final < 0
+                else "La condición no se cumplió, así que la presión es 0.0."
+            ),
+        )
+        _debug_formula(
+            "P1_TOTALS_DRIVER",
+            "capas activas con mayor abs(weighted_signal)",
+            "max(abs(weighted_signal_i active))",
+            p1_totals_driver,
+            "Capa activa con mayor impacto ponderado absoluto.",
+        )
+        _debug_formula(
+            "P1_TOTALS_COMPOSITE",
+            "P1_TOTALS_COMPOSITE = clamp(0.70 * P1_TOTALS_DIRECTIONAL_SCORE + 0.30 * BREAKOUT_SCORE)",
+            f"(0.70×{_fmt(p1_totals_directional_score)}) + (0.30×{_fmt(breakout_score)})",
+            _fmt(p1_totals_composite),
+            "Lectura adicional de edge global sin reemplazar el score base oficial.",
+        )
+        _debug_line("P1_TOTALS_COMPOSITE_DIRECTION: %s", p1_totals_composite_direction)
+        _debug_line("P1_TOTALS_COMPOSITE_STRENGTH: %s", p1_totals_composite_strength)
         _debug_line("LAYERS_ACTIVE: %s", _fmt([layer.layer for layer in active_layers]))
         _debug_line("LAYERS_IGNORED: %s", _fmt([layer.layer for layer in ignored_layers]))
         _debug_line("INTERNAL_STATE: %s", _fmt(p1_totals_internal_state))
+
+        _debug_section("COMPOSITE BREAKOUT AUDIT")
+        sum_active_final_signals = structural_final + temporal_final + trend_final
+        _debug_formula(
+            "ALIGNMENT_SCORE",
+            "ALIGNMENT_SCORE = (STRUCTURAL_FINAL + TEMPORAL_FINAL + TREND_FINAL) / (abs(STRUCTURAL_FINAL) + abs(TEMPORAL_FINAL) + abs(TREND_FINAL))",
+            (
+                f"STRUCTURAL_FINAL={_fmt(structural_final)} | "
+                f"TEMPORAL_FINAL={_fmt(temporal_final)} | "
+                f"TREND_FINAL={_fmt(trend_final)} | "
+                f"numerator={_fmt(sum_active_final_signals)} | "
+                f"denominator={_fmt(alignment_denominator)}"
+            ),
+            _fmt(alignment_score),
+            (
+                "Denominator is 0, so ALIGNMENT_SCORE = 0.0."
+                if alignment_denominator == 0
+                else "If denominator != 0, ALIGNMENT_SCORE follows the net signal ratio."
+            ),
+        )
+        _debug_formula(
+            "BASE_SIGNAL",
+            "BASE_SIGNAL = STRUCTURAL_FINAL + TEMPORAL_FINAL",
+            f"{_fmt(structural_final)} + {_fmt(temporal_final)}",
+            _fmt(base_signal),
+            "Base structural plus temporal signal.",
+        )
+        _debug_formula(
+            "BREAKOUT_CONDITION",
+            "BREAKOUT_CONDITION = sign(BASE_SIGNAL) != sign(TREND_FINAL) AND abs(BASE_SIGNAL) >= IGNORE_THRESHOLD AND abs(TREND_FINAL) >= IGNORE_THRESHOLD",
+            (
+                f"sign(BASE_SIGNAL)={_sign(base_signal)} | "
+                f"sign(TREND_FINAL)={_sign(trend_final)} | "
+                f"abs(BASE_SIGNAL)={_fmt(abs(base_signal))} | "
+                f"abs(TREND_FINAL)={_fmt(abs(trend_final))} | "
+                f"IGNORE_THRESHOLD={_fmt(IGNORE_THRESHOLD)}"
+            ),
+            _fmt(breakout_condition),
+            "Condition not met -> False." if not breakout_condition else "Condition met.",
+        )
+        _debug_formula(
+            "BREAKOUT_SCORE",
+            "if BREAKOUT_CONDITION: BREAKOUT_SCORE = sign(TREND_FINAL) * abs(TREND_FINAL) / (abs(TREND_FINAL) + abs(BASE_SIGNAL)); else 0.0",
+            (
+                "Condicion no cumplida -> 0.0"
+                if not breakout_condition
+                else (
+                    f"sign(TREND_FINAL)={_sign(trend_final)} | "
+                    f"abs(TREND_FINAL)={_fmt(abs(trend_final))} | "
+                    f"abs(BASE_SIGNAL)={_fmt(abs(base_signal))} | "
+                    f"denominator={_fmt(abs(trend_final) + abs(base_signal))}"
+                )
+            ),
+            _fmt(breakout_score),
+            "Condicion no cumplida -> 0.0" if not breakout_condition else "Signed breakout contribution.",
+        )
+        _debug_formula(
+            "HEATING_PRESSURE",
+            "if BASE_SIGNAL < 0 and TREND_FINAL > 0: HEATING_PRESSURE = TREND_FINAL - BASE_SIGNAL; else 0.0",
+            (
+                f"BASE_SIGNAL={_fmt(base_signal)} | TREND_FINAL={_fmt(trend_final)}"
+                if base_signal < 0 and trend_final > 0
+                else "Condicion no cumplida -> 0.0"
+            ),
+            _fmt(heating_pressure),
+            "Pressure of heating breakout." if base_signal < 0 and trend_final > 0 else "Condition not met.",
+        )
+        _debug_formula(
+            "COOLING_PRESSURE",
+            "if BASE_SIGNAL > 0 and TREND_FINAL < 0: COOLING_PRESSURE = TREND_FINAL - BASE_SIGNAL; else 0.0",
+            (
+                f"BASE_SIGNAL={_fmt(base_signal)} | TREND_FINAL={_fmt(trend_final)}"
+                if base_signal > 0 and trend_final < 0
+                else "Condicion no cumplida -> 0.0"
+            ),
+            _fmt(cooling_pressure),
+            "Pressure of cooling breakout." if base_signal > 0 and trend_final < 0 else "Condition not met.",
+        )
+        _debug_formula(
+            "P1_TOTALS_DRIVER",
+            "P1_TOTALS_DRIVER = active layer with max(abs(weighted_signal))",
+            f"active_layers={_fmt([layer.layer for layer in active_layers])}",
+            p1_totals_driver,
+            "Selected by maximum absolute weighted signal.",
+        )
+        for layer in active_layers:
+            _debug_line(
+                "ACTIVE_LAYER %s | final_signal=%s | weight=%s | weighted_signal=%s | abs(weighted_signal)=%s",
+                layer.layer,
+                _fmt(layer.final_signal),
+                _fmt(layer.weight),
+                _fmt(layer.weighted_signal),
+                _fmt(abs(layer.weighted_signal)),
+            )
+        _debug_line("P1_TOTALS_DRIVER_SIGNAL: %s", _fmt(p1_totals_driver_signal))
+        _debug_line("P1_TOTALS_DRIVER_WEIGHTED: %s", _fmt(p1_totals_driver_weighted))
+        _debug_formula(
+            "P1_TOTALS_COMPOSITE",
+            "P1_TOTALS_COMPOSITE = clamp((0.70 * P1_TOTALS_DIRECTIONAL_SCORE) + (0.30 * BREAKOUT_SCORE))",
+            f"0.70 * {_fmt(p1_totals_directional_score)} + 0.30 * {_fmt(breakout_score)}",
+            _fmt(p1_totals_composite),
+            "Composite edge reading derived from base directional score plus breakout contribution.",
+        )
+        _debug_line("P1_TOTALS_COMPOSITE_DIRECTION: %s", p1_totals_composite_direction)
+        _debug_line("P1_TOTALS_COMPOSITE_STRENGTH: %s", p1_totals_composite_strength)
 
     raw = {
         "engine_version": _ENGINE_VERSION,
@@ -2087,6 +2401,9 @@ def calculate_p1_totals(
             "TEMPORAL_PROFILE_SCORE": temporal_profile_score,
             "TREND_SIGNAL": trend_signal,
             "P1_TOTALS_DIRECTIONAL_SCORE": p1_totals_directional_score,
+            "P1_TOTALS_COMPOSITE": p1_totals_composite,
+            "P1_TOTALS_COMPOSITE_DIRECTION": p1_totals_composite_direction,
+            "P1_TOTALS_COMPOSITE_STRENGTH": p1_totals_composite_strength,
         },
         "variance_components": {
             "std_dev_totals_home": std_dev_totals_home,
@@ -2120,6 +2437,29 @@ def calculate_p1_totals(
             "trend_signal": trend_signal,
             "trend_final": trend_final,
         },
+        "composite_breakout": {
+            "STRUCTURAL_FINAL": structural_final,
+            "STRUCTURAL_WEIGHT": structural_weight,
+            "STRUCTURAL_WEIGHTED": structural_weighted,
+            "TEMPORAL_FINAL": temporal_final,
+            "TEMPORAL_WEIGHT": temporal_weight,
+            "TEMPORAL_WEIGHTED": temporal_weighted,
+            "TREND_FINAL": trend_final,
+            "TREND_WEIGHT": trend_weight,
+            "TREND_WEIGHTED": trend_weighted,
+            "BASE_SIGNAL": base_signal,
+            "BREAKOUT_CONDITION": breakout_condition,
+            "BREAKOUT_SCORE": breakout_score,
+            "HEATING_PRESSURE": heating_pressure,
+            "COOLING_PRESSURE": cooling_pressure,
+            "ALIGNMENT_SCORE": alignment_score,
+            "P1_TOTALS_DRIVER": p1_totals_driver,
+            "P1_TOTALS_DRIVER_SIGNAL": p1_totals_driver_signal,
+            "P1_TOTALS_DRIVER_WEIGHTED": p1_totals_driver_weighted,
+            "P1_TOTALS_COMPOSITE": p1_totals_composite,
+            "P1_TOTALS_COMPOSITE_DIRECTION": p1_totals_composite_direction,
+            "P1_TOTALS_COMPOSITE_STRENGTH": p1_totals_composite_strength,
+        },
         "policy_ignore": {
             "active_layers": [_serialize_layer_summary(layer) for layer in active_layers],
             "ignored_layers": [_serialize_layer_summary(layer) for layer in ignored_layers],
@@ -2127,6 +2467,46 @@ def calculate_p1_totals(
         "internal_state": p1_totals_internal_state,
         "debug_logging_mode": "step_by_step_human_readable" if debug_mode else "off",
     }
+
+    if debug_mode:
+        _debug_section("RAW OUTPUT AUDIT")
+        composite_breakout_raw = raw.get("composite_breakout")
+        directional_components_raw = raw.get("directional_components")
+        policy_ignore_raw = raw.get("policy_ignore")
+        internal_state_raw = raw.get("internal_state")
+        _debug_line("raw[\"composite_breakout\"]: %s", _fmt(composite_breakout_raw))
+        _debug_line("raw[\"directional_components\"]: %s", _fmt(directional_components_raw))
+        _debug_line("raw[\"policy_ignore\"]: %s", _fmt(policy_ignore_raw))
+        _debug_line("raw[\"internal_state\"]: %s", _fmt(internal_state_raw))
+        expected_composite_breakout_fields = [
+            "STRUCTURAL_FINAL",
+            "STRUCTURAL_WEIGHT",
+            "STRUCTURAL_WEIGHTED",
+            "TEMPORAL_FINAL",
+            "TEMPORAL_WEIGHT",
+            "TEMPORAL_WEIGHTED",
+            "TREND_FINAL",
+            "TREND_WEIGHT",
+            "TREND_WEIGHTED",
+            "BASE_SIGNAL",
+            "BREAKOUT_CONDITION",
+            "BREAKOUT_SCORE",
+            "HEATING_PRESSURE",
+            "COOLING_PRESSURE",
+            "ALIGNMENT_SCORE",
+            "P1_TOTALS_DRIVER",
+            "P1_TOTALS_DRIVER_SIGNAL",
+            "P1_TOTALS_DRIVER_WEIGHTED",
+            "P1_TOTALS_COMPOSITE",
+            "P1_TOTALS_COMPOSITE_DIRECTION",
+            "P1_TOTALS_COMPOSITE_STRENGTH",
+        ]
+        missing_fields = [
+            field
+            for field in expected_composite_breakout_fields
+            if not isinstance(composite_breakout_raw, dict) or field not in composite_breakout_raw
+        ]
+        _debug_line("RAW_COMPOSITE_BREAKOUT_MISSING_FIELDS = %s", _fmt(missing_fields))
 
     if debug_mode:
         _debug_section("OUTPUT FINAL")
@@ -2140,6 +2520,35 @@ def calculate_p1_totals(
         _debug_line("TREND_STATUS: %s", trend_status)
         _debug_line("ACTIVE_WEIGHT_SUM: %s", _fmt(active_weight_sum))
         _debug_line("ALIGNMENT_SCORE: %s", _fmt(alignment_score))
+        _debug_line("STRUCTURAL_FINAL: %s", _fmt(structural_final))
+        _debug_line("STRUCTURAL_WEIGHT: %s", _fmt(structural_weight))
+        _debug_line("STRUCTURAL_WEIGHTED: %s", _fmt(structural_weighted))
+        _debug_line("TEMPORAL_WEIGHT: %s", _fmt(temporal_weight))
+        _debug_line("TEMPORAL_WEIGHTED: %s", _fmt(temporal_weighted))
+        _debug_line("TREND_WEIGHT: %s", _fmt(trend_weight))
+        _debug_line("TREND_WEIGHTED: %s", _fmt(trend_weighted))
+        _debug_line("BASE_SIGNAL: %s", _fmt(base_signal))
+        _debug_line("BREAKOUT_CONDITION: %s", _fmt(breakout_condition))
+        _debug_line("BREAKOUT_SCORE: %s", _fmt(breakout_score))
+        _debug_line("HEATING_PRESSURE: %s", _fmt(heating_pressure))
+        _debug_line("COOLING_PRESSURE: %s", _fmt(cooling_pressure))
+        _debug_line("P1_TOTALS_DRIVER: %s", p1_totals_driver)
+        _debug_line("P1_TOTALS_DRIVER_SIGNAL: %s", _fmt(p1_totals_driver_signal))
+        _debug_line("P1_TOTALS_DRIVER_WEIGHTED: %s", _fmt(p1_totals_driver_weighted))
+        _debug_line("P1_TOTALS_COMPOSITE: %s", _fmt(p1_totals_composite))
+        _debug_line("P1_TOTALS_COMPOSITE_DIRECTION: %s", p1_totals_composite_direction)
+        _debug_line("P1_TOTALS_COMPOSITE_STRENGTH: %s", p1_totals_composite_strength)
+        _debug_line(
+            "Resultado composite breakout: %s con intensidad %s",
+            p1_totals_composite_direction,
+            p1_totals_composite_strength,
+        )
+        _debug_line(
+            "Lectura: score base %s, composite %s, driver %s.",
+            p1_totals_strength,
+            p1_totals_composite_strength,
+            p1_totals_driver,
+        )
         direction_reading = {
             "OVER_PROFILE": "alto",
             "UNDER_PROFILE": "bajo",
@@ -2187,6 +2596,24 @@ def calculate_p1_totals(
         VOL_EDGE_P75=vol_edge_p75,
         VOL_EDGE_P90=vol_edge_p90,
         ACTIVE_WEIGHT_SUM=active_weight_sum,
+        STRUCTURAL_FINAL=structural_final,
+        STRUCTURAL_WEIGHT=structural_weight,
+        STRUCTURAL_WEIGHTED=structural_weighted,
+        TEMPORAL_WEIGHT=temporal_weight,
+        TEMPORAL_WEIGHTED=temporal_weighted,
+        TREND_WEIGHT=trend_weight,
+        TREND_WEIGHTED=trend_weighted,
+        BASE_SIGNAL=base_signal,
+        BREAKOUT_CONDITION=breakout_condition,
+        BREAKOUT_SCORE=breakout_score,
+        HEATING_PRESSURE=heating_pressure,
+        COOLING_PRESSURE=cooling_pressure,
+        P1_TOTALS_DRIVER=p1_totals_driver,
+        P1_TOTALS_DRIVER_SIGNAL=p1_totals_driver_signal,
+        P1_TOTALS_DRIVER_WEIGHTED=p1_totals_driver_weighted,
+        P1_TOTALS_COMPOSITE=p1_totals_composite,
+        P1_TOTALS_COMPOSITE_DIRECTION=p1_totals_composite_direction,
+        P1_TOTALS_COMPOSITE_STRENGTH=p1_totals_composite_strength,
         ALIGNMENT_SCORE=alignment_score,
         OVER_COUNT=over_count,
         UNDER_COUNT=under_count,
