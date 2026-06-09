@@ -17,7 +17,7 @@ from modules.pillars.context import EventContext
 
 logger = logging.getLogger(__name__)
 
-_ENGINE_VERSION = "p1_totals_directional_vol_separated_v2_3_composite_breakout"
+_ENGINE_VERSION = "p1_totals_directional_vol_separated_v2_5_composite_trend_dominance"
 
 TOTALS_TEMPORAL_WINDOW_NAMES = ("SHORT", "RECENT", "MID", "FULL")
 
@@ -125,6 +125,8 @@ class P1TotalsOutput:
 
     HEATING_PRESSURE: float
     COOLING_PRESSURE: float
+
+    TREND_DOMINANCE: float
 
     P1_TOTALS_DRIVER: str
     P1_TOTALS_DRIVER_SIGNAL: float
@@ -727,9 +729,6 @@ def _explain_abort_reason(reason: str) -> str:
             "La escala dinámica estructural de la liga es 0 o no existe. No se puede "
             "normalizar STRUCTURAL_PROFILE_SCORE."
         ),
-        "ABORT_VOL_DYNAMIC_SCALE_ZERO": (
-            "La escala dinámica de volatilidad no está disponible. La varianza quedará como UNKNOWN_VARIANCE."
-        ),
         "ABORT_TREND_DYNAMIC_SCALE_ZERO": (
             "La escala dinámica de tendencia es 0 o no existe. No se puede normalizar TREND_SIGNAL."
         ),
@@ -801,7 +800,7 @@ def calculate_p1_totals(
     event_context: EventContext,
     debug_mode: bool = False,
 ) -> Optional[P1TotalsOutput]:
-    """Calculate P1_TOTALS v2.3 directional profile with composite breakout layer."""
+    """Calculate P1_TOTALS v2.5 directional profile with trend-dominance composite layer."""
     event_id = _resolve_event_id(streak_analysis, event_context)
     participants = _resolve_participants(streak_analysis, event_context)
     home_team_name = getattr(streak_analysis, "home_team_name", None)
@@ -1958,13 +1957,18 @@ def calculate_p1_totals(
         else 0.0
     )
 
+    trend_dominance = clamp(trend_final - base_signal)
+
     driver_layer = max(active_layers, key=lambda layer: abs(layer.weighted_signal))
     p1_totals_driver = driver_layer.layer
     p1_totals_driver_signal = driver_layer.final_signal
     p1_totals_driver_weighted = driver_layer.weighted_signal
 
+    # ALIGNMENT_SCORE remains audit/debug only; it is not a composite component.
     p1_totals_composite = clamp(
-        (0.70 * p1_totals_directional_score) + (0.30 * breakout_score)
+        (0.55 * p1_totals_directional_score)
+        + (0.30 * breakout_score)
+        + (0.15 * trend_dominance)
     )
     p1_totals_composite_direction = _totals_direction(p1_totals_composite)
     p1_totals_composite_strength = _classify_totals_strength(p1_totals_composite)
@@ -2023,6 +2027,7 @@ def calculate_p1_totals(
         "BREAKOUT_SCORE": breakout_score,
         "HEATING_PRESSURE": heating_pressure,
         "COOLING_PRESSURE": cooling_pressure,
+        "TREND_DOMINANCE": trend_dominance,
         "P1_TOTALS_DRIVER": p1_totals_driver,
         "P1_TOTALS_DRIVER_SIGNAL": p1_totals_driver_signal,
         "P1_TOTALS_DRIVER_WEIGHTED": p1_totals_driver_weighted,
@@ -2150,7 +2155,7 @@ def calculate_p1_totals(
         _debug_line("BASE_SIGNAL: %s", _fmt(base_signal))
         _debug_line("BREAKOUT_CONDITION: %s", _fmt(breakout_condition))
         _debug_line("BREAKOUT_SCORE: %s", _fmt(breakout_score))
-        _debug_line("ALIGNMENT_SCORE: %s", _fmt(alignment_score))
+        _debug_line("ALIGNMENT_SCORE: %s (audit/debug only; not composite component)", _fmt(alignment_score))
         _debug_line("HEATING_PRESSURE: %s", _fmt(heating_pressure))
         _debug_line("COOLING_PRESSURE: %s", _fmt(cooling_pressure))
         _debug_line("P1_TOTALS_DRIVER: %s", p1_totals_driver)
@@ -2245,8 +2250,8 @@ def calculate_p1_totals(
         )
         _debug_formula(
             "P1_TOTALS_COMPOSITE",
-            "P1_TOTALS_COMPOSITE = clamp(0.70 * P1_TOTALS_DIRECTIONAL_SCORE + 0.30 * BREAKOUT_SCORE)",
-            f"(0.70×{_fmt(p1_totals_directional_score)}) + (0.30×{_fmt(breakout_score)})",
+            "P1_TOTALS_COMPOSITE = clamp((0.55 * P1_TOTALS_DIRECTIONAL_SCORE) + (0.30 * BREAKOUT_SCORE) + (0.15 * TREND_DOMINANCE))",
+            f"0.55 * {_fmt(p1_totals_directional_score)} + 0.30 * {_fmt(breakout_score)} + 0.15 * {_fmt(trend_dominance)}",
             _fmt(p1_totals_composite),
             "Lectura adicional de edge global sin reemplazar el score base oficial.",
         )
@@ -2334,6 +2339,13 @@ def calculate_p1_totals(
             "Pressure of cooling breakout." if base_signal > 0 and trend_final < 0 else "Condition not met.",
         )
         _debug_formula(
+            "TREND_DOMINANCE",
+            "TREND_DOMINANCE = clamp(TREND_FINAL - BASE_SIGNAL, -1, +1)",
+            f"{_fmt(trend_final)} - {_fmt(base_signal)}",
+            _fmt(trend_dominance),
+            "Dominancia direccional del trend sobre la base; se usa como componente del composite oficial.",
+        )
+        _debug_formula(
             "P1_TOTALS_DRIVER",
             "P1_TOTALS_DRIVER = active layer with max(abs(weighted_signal))",
             f"active_layers={_fmt([layer.layer for layer in active_layers])}",
@@ -2353,10 +2365,10 @@ def calculate_p1_totals(
         _debug_line("P1_TOTALS_DRIVER_WEIGHTED: %s", _fmt(p1_totals_driver_weighted))
         _debug_formula(
             "P1_TOTALS_COMPOSITE",
-            "P1_TOTALS_COMPOSITE = clamp((0.70 * P1_TOTALS_DIRECTIONAL_SCORE) + (0.30 * BREAKOUT_SCORE))",
-            f"0.70 * {_fmt(p1_totals_directional_score)} + 0.30 * {_fmt(breakout_score)}",
+            "P1_TOTALS_COMPOSITE = clamp((0.55 * P1_TOTALS_DIRECTIONAL_SCORE) + (0.30 * BREAKOUT_SCORE) + (0.15 * TREND_DOMINANCE))",
+            f"0.55 * {_fmt(p1_totals_directional_score)} + 0.30 * {_fmt(breakout_score)} + 0.15 * {_fmt(trend_dominance)}",
             _fmt(p1_totals_composite),
-            "Composite edge reading derived from base directional score plus breakout contribution.",
+            "Composite edge reading derived from base directional score, breakout contribution, and trend dominance.",
         )
         _debug_line("P1_TOTALS_COMPOSITE_DIRECTION: %s", p1_totals_composite_direction)
         _debug_line("P1_TOTALS_COMPOSITE_STRENGTH: %s", p1_totals_composite_strength)
@@ -2453,6 +2465,9 @@ def calculate_p1_totals(
             "HEATING_PRESSURE": heating_pressure,
             "COOLING_PRESSURE": cooling_pressure,
             "ALIGNMENT_SCORE": alignment_score,
+            "ALIGNMENT_SCORE_ROLE": "AUDIT_DEBUG_ONLY_NOT_COMPOSITE_COMPONENT",
+            "TREND_DOMINANCE": trend_dominance,
+            "composite_formula": "clamp((0.55 * P1_TOTALS_DIRECTIONAL_SCORE) + (0.30 * BREAKOUT_SCORE) + (0.15 * TREND_DOMINANCE))",
             "P1_TOTALS_DRIVER": p1_totals_driver,
             "P1_TOTALS_DRIVER_SIGNAL": p1_totals_driver_signal,
             "P1_TOTALS_DRIVER_WEIGHTED": p1_totals_driver_weighted,
@@ -2494,6 +2509,8 @@ def calculate_p1_totals(
             "HEATING_PRESSURE",
             "COOLING_PRESSURE",
             "ALIGNMENT_SCORE",
+            "ALIGNMENT_SCORE_ROLE",
+            "TREND_DOMINANCE",
             "P1_TOTALS_DRIVER",
             "P1_TOTALS_DRIVER_SIGNAL",
             "P1_TOTALS_DRIVER_WEIGHTED",
@@ -2519,7 +2536,7 @@ def calculate_p1_totals(
         _debug_line("TEMPORAL_STATUS: %s", temporal_status)
         _debug_line("TREND_STATUS: %s", trend_status)
         _debug_line("ACTIVE_WEIGHT_SUM: %s", _fmt(active_weight_sum))
-        _debug_line("ALIGNMENT_SCORE: %s", _fmt(alignment_score))
+        _debug_line("ALIGNMENT_SCORE: %s (audit/debug only; not composite component)", _fmt(alignment_score))
         _debug_line("STRUCTURAL_FINAL: %s", _fmt(structural_final))
         _debug_line("STRUCTURAL_WEIGHT: %s", _fmt(structural_weight))
         _debug_line("STRUCTURAL_WEIGHTED: %s", _fmt(structural_weighted))
@@ -2532,6 +2549,7 @@ def calculate_p1_totals(
         _debug_line("BREAKOUT_SCORE: %s", _fmt(breakout_score))
         _debug_line("HEATING_PRESSURE: %s", _fmt(heating_pressure))
         _debug_line("COOLING_PRESSURE: %s", _fmt(cooling_pressure))
+        _debug_line("TREND_DOMINANCE: %s", _fmt(trend_dominance))
         _debug_line("P1_TOTALS_DRIVER: %s", p1_totals_driver)
         _debug_line("P1_TOTALS_DRIVER_SIGNAL: %s", _fmt(p1_totals_driver_signal))
         _debug_line("P1_TOTALS_DRIVER_WEIGHTED: %s", _fmt(p1_totals_driver_weighted))
@@ -2608,6 +2626,7 @@ def calculate_p1_totals(
         BREAKOUT_SCORE=breakout_score,
         HEATING_PRESSURE=heating_pressure,
         COOLING_PRESSURE=cooling_pressure,
+        TREND_DOMINANCE=trend_dominance,
         P1_TOTALS_DRIVER=p1_totals_driver,
         P1_TOTALS_DRIVER_SIGNAL=p1_totals_driver_signal,
         P1_TOTALS_DRIVER_WEIGHTED=p1_totals_driver_weighted,
