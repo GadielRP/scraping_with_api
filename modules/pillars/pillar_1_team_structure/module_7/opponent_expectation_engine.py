@@ -6,6 +6,7 @@ alone. Positive values favor HOME; negative values favor AWAY.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple
@@ -49,6 +50,68 @@ _OPPONENT_NAME_KEYS = (
     "rival_team_name",
     "opponent",
 )
+
+
+# ---------------------------------------------------------------------------
+# Debug logging helpers
+# ---------------------------------------------------------------------------
+
+def _debug_section(title: str) -> None:
+    logger.info("========== M7_OPPONENT_EXPECTATION_ENGINE DEBUG | %s ==========", title)
+
+
+def _debug_line(message: str, *args: Any) -> None:
+    logger.info("M7_OPPONENT_EXPECTATION_ENGINE DEBUG | " + message, *args)
+
+
+def _debug_formula(
+    name: str,
+    formula: str,
+    substitution: str,
+    result: Any,
+    meaning: Optional[str] = None,
+) -> None:
+    logger.info("M7_OPPONENT_EXPECTATION_ENGINE DEBUG | %s", name)
+    logger.info("M7_OPPONENT_EXPECTATION_ENGINE DEBUG |   Formula: %s", formula)
+    logger.info("M7_OPPONENT_EXPECTATION_ENGINE DEBUG |   Sustitución: %s", substitution)
+    logger.info("M7_OPPONENT_EXPECTATION_ENGINE DEBUG |   Resultado: %s", result)
+    if meaning:
+        logger.info("M7_OPPONENT_EXPECTATION_ENGINE DEBUG |   Lectura: %s", meaning)
+
+
+def _fmt(value: Any, decimals: int = 6) -> str:
+    if value is None:
+        return "N/A"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return f"{value:.{decimals}f}"
+        return str(value)
+    if isinstance(value, dict):
+        items = list(value.items())
+        preview = ", ".join(f"{k}: {_fmt(v, decimals)}" for k, v in items)
+        return f"{{{preview}}} (n={len(items)})"
+    if isinstance(value, (list, tuple, set)):
+        sequence = list(value)
+        preview = ", ".join(_fmt(item, decimals) for item in sequence)
+        return f"[{preview}] (n={len(sequence)})"
+    return str(value)
+
+
+def _format_timestamp(ts: Any) -> str:
+    if ts is None:
+        return "N/A"
+    try:
+        val = float(ts)
+        if val > 0:
+            dt = datetime.datetime.fromtimestamp(val, tz=datetime.timezone.utc)
+            return dt.strftime("%y-%m-%d")
+    except Exception:
+        pass
+    return str(ts)
 
 
 def _coerce_float(value: Any) -> Optional[float]:
@@ -146,29 +209,41 @@ def _max_rank_from_standings(standings: Any) -> Optional[int]:
     return max(ranks)
 
 
-def _resolve_max_rank(streak_analysis: Any, event_context: EventContext) -> Tuple[int, str]:
+def _resolve_max_rank(streak_analysis: Any, event_context: EventContext, debug_mode: bool = False) -> Tuple[int, str]:
     """Resolve competition size using the most specific available source."""
     competition = getattr(event_context, "competition", None)
     number_of_teams = _coerce_int(getattr(competition, "number_of_teams", None))
+    if debug_mode:
+        _debug_line("Intento 1: number_of_teams de event_context.competition = %s", _fmt(number_of_teams))
     if number_of_teams is not None and number_of_teams > 1:
         return number_of_teams, "event_context.competition.number_of_teams"
 
     current_standings = getattr(streak_analysis, "current_standings", None)
+    if debug_mode:
+        _debug_line("Intento 2: len de current_standings = %s", _fmt(len(current_standings) if isinstance(current_standings, dict) else None))
     if isinstance(current_standings, dict) and len(current_standings) > 1:
         return len(current_standings), "streak_analysis.current_standings.len"
 
     standings_response = getattr(streak_analysis, "standings_response", None)
+    if debug_mode:
+        _debug_line("Intento 3: len de standings_response = %s", _fmt(len(standings_response) if isinstance(standings_response, list) else None))
     if isinstance(standings_response, list) and len(standings_response) > 1:
         return len(standings_response), "streak_analysis.standings_response.len"
 
     max_rank = _max_rank_from_standings(current_standings)
+    if debug_mode:
+        _debug_line("Intento 4: max_rank de current_standings = %s", _fmt(max_rank))
     if max_rank is not None and max_rank > 1:
         return max_rank, "streak_analysis.current_standings.max_rank"
 
     max_rank = _max_rank_from_standings(standings_response)
+    if debug_mode:
+        _debug_line("Intento 5: max_rank de standings_response = %s", _fmt(max_rank))
     if max_rank is not None and max_rank > 1:
         return max_rank, "streak_analysis.standings_response.max_rank"
 
+    if debug_mode:
+        _debug_line("Intento 6: Usando fallback predeterminado = %d", _MAX_RANK_DEFAULT)
     return _MAX_RANK_DEFAULT, "max_rank_default"
 
 
@@ -223,6 +298,8 @@ def _standing_name_matches(standing_key: Any, standing_value: Any, opponent_name
 def _filter_initial_season_games(
     results: List[Dict[str, Any]],
     initial_games_to_skip: int = _INITIAL_SEASON_GAMES_TO_SKIP,
+    team_label: str = "",
+    debug_mode: bool = False,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     if initial_games_to_skip <= 0:
         return results, []
@@ -247,15 +324,20 @@ def _filter_initial_season_games(
 
     for index, game in enumerate(results):
         if index in filtered_indices:
+            opp_name = _extract_opponent_name(game) if isinstance(game, dict) else None
+            ts = _extract_timestamp_value(game) if isinstance(game, dict) else None
             filtered_out_games.append(
                 {
                     "original_index": index,
                     "event_id": game.get("event_id") if isinstance(game, dict) else None,
-                    "opponent_name": _extract_opponent_name(game) if isinstance(game, dict) else None,
-                    "startTimestamp": _extract_timestamp_value(game) if isinstance(game, dict) else None,
+                    "opponent_name": opp_name,
+                    "startTimestamp": ts,
                     "reason": "initial_season_games_filter",
                 }
             )
+            if debug_mode:
+                _debug_line("  [%s] Encuentro inicial OMITIDO (filtro de inicio de temporada): index=%d, event_id=%s, rival=%s, timestamp=%s",
+                            team_label, index, _fmt(game.get("event_id") if isinstance(game, dict) else None), _fmt(opp_name), _format_timestamp(ts))
         else:
             filtered_results.append(game)
 
@@ -286,19 +368,28 @@ def _extract_opponent_rank(
     game: Dict[str, Any],
     current_standings: Optional[Dict[str, Dict[str, Any]]] = None,
     max_rank: int = _MAX_RANK_DEFAULT,
+    team_label: str = "",
+    game_index: int = 0,
+    debug_mode: bool = False,
 ) -> Tuple[Optional[int], Optional[str]]:
     """Extract opponent ranking from game payload or standings by rival name."""
     rank = _coerce_int(game.get("opponent_ranking"))
     if rank is not None and 1 <= rank <= max_rank:
+        if debug_mode:
+            _debug_line("    [%s][%d] Rank del rival encontrado en: game.opponent_ranking = %d", team_label, game_index, rank)
         return rank, "game.opponent_ranking"
 
     opponent_standing = game.get("opponent_standing")
     if isinstance(opponent_standing, dict):
         rank = _coerce_int(opponent_standing.get("rank"))
         if rank is not None and 1 <= rank <= max_rank:
+            if debug_mode:
+                _debug_line("    [%s][%d] Rank del rival encontrado en: game.opponent_standing.rank = %d", team_label, game_index, rank)
             return rank, "game.opponent_standing.rank"
         rank = _coerce_int(opponent_standing.get("position"))
         if rank is not None and 1 <= rank <= max_rank:
+            if debug_mode:
+                _debug_line("    [%s][%d] Rank del rival encontrado en: game.opponent_standing.position = %d", team_label, game_index, rank)
             return rank, "game.opponent_standing.position"
 
     for key in (
@@ -315,12 +406,19 @@ def _extract_opponent_rank(
     ):
         rank = _coerce_int(game.get(key))
         if rank is not None and 1 <= rank <= max_rank:
+            if debug_mode:
+                _debug_line("    [%s][%d] Rank del rival encontrado en: game.%s = %d", team_label, game_index, key, rank)
             return rank, f"game.{key}"
 
     opponent_name = _extract_opponent_name(game)
     standing_rank = _extract_rank_from_current_standings(opponent_name, current_standings)
     if standing_rank is not None and 1 <= standing_rank <= max_rank:
+        if debug_mode:
+            _debug_line("    [%s][%d] Rank del rival encontrado buscando por nombre '%s' en standings: %d", team_label, game_index, opponent_name, standing_rank)
         return standing_rank, "current_standings.by_name.rank"
+    
+    if debug_mode:
+        _debug_line("    [%s][%d] Rank del rival NO pudo ser resuelto para '%s'", team_label, game_index, opponent_name)
     return None, None
 
 
@@ -411,67 +509,46 @@ def _build_team_context_series(
     skipped_games: List[Dict[str, Any]] = []
 
     if debug_mode:
-        logger.info(
-            "M7 [%s] building context series: total_games=%s max_rank=%s",
-            team_label,
-            len(results),
-            max_rank,
-        )
+        _debug_section(f"Procesamiento de la Serie Contextual ({team_label})")
+        _debug_line("building context series: total_games=%s max_rank=%s", len(results), max_rank)
 
     for index, game in enumerate(results):
+        opp_name = _extract_opponent_name(game) if isinstance(game, dict) else "Desconocido"
+        ts = _extract_timestamp_value(game) if isinstance(game, dict) else None
+        
+        if debug_mode:
+            _debug_line("  [%s] Analizando partido %d: rival=%s, timestamp=%s", team_label, index + 1, opp_name, _format_timestamp(ts))
+
         if not isinstance(game, dict):
             skipped_games.append(_skipped_game(index, team_label, "not_a_dict", game))
             if debug_mode:
-                logger.info(
-                    "M7 [%s][%s] skipped: reason=not_a_dict raw_type=%s",
-                    team_label,
-                    index,
-                    type(game).__name__,
-                )
+                _debug_line("    -> Omitido: el partido no es un diccionario")
             continue
 
         score = extract_score_for_against(game)
         if score is None:
             skipped_games.append(_skipped_game(index, team_label, "missing_score", game))
             if debug_mode:
-                logger.info(
-                    "M7 [%s][%s] skipped: reason=missing_score opponent_name=%s keys=%s",
-                    team_label,
-                    index,
-                    _extract_opponent_name(game),
-                    sorted(game.keys()),
-                )
+                _debug_line("    -> Omitido: marcador no interpretable (missing_score)")
             continue
 
         goals_for, goals_against = score
         game_gd = goals_for - goals_against
-        opponent_rank, opponent_rank_source = _extract_opponent_rank(game, current_standings, max_rank)
+        
+        opponent_rank, opponent_rank_source = _extract_opponent_rank(
+            game, current_standings, max_rank, team_label, index + 1, debug_mode
+        )
         if opponent_rank is None:
             skipped_games.append(_skipped_game(index, team_label, "missing_opponent_rank", game))
             if debug_mode:
-                logger.info(
-                    "M7 [%s][%s] skipped: reason=missing_opponent_rank opponent_name=%s gf=%.12f ga=%.12f gd=%.12f",
-                    team_label,
-                    index,
-                    _extract_opponent_name(game),
-                    goals_for,
-                    goals_against,
-                    game_gd,
-            )
+                _debug_line("    -> Omitido: ranking del rival no encontrado (missing_opponent_rank)")
             continue
 
         opp_strength = _calculate_opponent_strength(opponent_rank, max_rank)
         if opp_strength is None:
             skipped_games.append(_skipped_game(index, team_label, "invalid_opponent_rank", game))
             if debug_mode:
-                logger.info(
-                    "M7 [%s][%s] skipped: reason=invalid_opponent_rank opponent_name=%s opponent_rank=%s max_rank=%s",
-                    team_label,
-                    index,
-                    _extract_opponent_name(game),
-                    opponent_rank,
-                    max_rank,
-            )
+                _debug_line("    -> Omitido: ranking del rival inválido o fuera de rango (invalid_opponent_rank, rank=%s, max_rank=%s)", _fmt(opponent_rank), _fmt(max_rank))
             continue
 
         own_rank, own_rank_source = _extract_own_rank(game)
@@ -481,11 +558,64 @@ def _build_team_context_series(
         expected_gd = _calculate_expected_gd(expected_result)
         gdoe = _calculate_gdoe(game_gd, expected_gd)
         game_context_score = _calculate_context_score(roe, gdoe)
+        classification = _classify_game_context_score(game_context_score)
+
+        if debug_mode:
+            _debug_line("    Marcador: goles_favor=%s, goles_contra=%s -> game_gd=%s", _fmt(goals_for), _fmt(goals_against), _fmt(game_gd))
+            _debug_formula(
+                f"OPP_STRENGTH_{team_label}_{index+1}",
+                "(max_rank - opponent_rank) / (max_rank - 1)",
+                f"({max_rank} - {opponent_rank}) / ({max_rank} - 1)",
+                _fmt(opp_strength),
+                "Fuerza normalizada del oponente"
+            )
+            _debug_formula(
+                f"EXPECTED_RESULT_{team_label}_{index+1}",
+                "1.0 - (2.0 * opp_strength)",
+                f"1.0 - (2.0 * {_fmt(opp_strength)})",
+                _fmt(expected_result),
+                "Resultado esperado"
+            )
+            _debug_formula(
+                f"REAL_RESULT_{team_label}_{index+1}",
+                "sign(game_gd)",
+                f"sign({_fmt(game_gd)})",
+                _fmt(real_result),
+                "Resultado real obtenido (ganó=1, empató=0, perdió=-1)"
+            )
+            _debug_formula(
+                f"ROE_{team_label}_{index+1}",
+                "clamp((real_result - expected_result) / 2.0)",
+                f"clamp(({_fmt(real_result)} - {_fmt(expected_result)}) / 2.0)",
+                _fmt(roe),
+                "Result Over Expectation (Rendimiento sobre expectativa de resultado)"
+            )
+            _debug_formula(
+                f"EXPECTED_GD_{team_label}_{index+1}",
+                "expected_result * 1.5",
+                f"{_fmt(expected_result)} * 1.5",
+                _fmt(expected_gd),
+                "Diferencia de goles esperada"
+            )
+            _debug_formula(
+                f"GDOE_{team_label}_{index+1}",
+                "clamp((game_gd - expected_gd) / 5.0)",
+                f"clamp(({_fmt(game_gd)} - {_fmt(expected_gd)}) / 5.0)",
+                _fmt(gdoe),
+                "Goal Difference Over Expectation (Diferencia de goles sobre expectativa)"
+            )
+            _debug_formula(
+                f"GAME_CONTEXT_SCORE_{team_label}_{index+1}",
+                "(0.60 * roe) + (0.40 * gdoe)",
+                f"(0.60 * {_fmt(roe)}) + (0.40 * {_fmt(gdoe)})",
+                _fmt(game_context_score),
+                f"Puntuación de contexto del partido: {classification}"
+            )
 
         valid_game = {
             "index": index,
             "team_label": team_label,
-            "opponent_name": _extract_opponent_name(game),
+            "opponent_name": opp_name,
             "opponent_rank": opponent_rank,
             "opponent_rank_source": opponent_rank_source,
             "own_rank": own_rank,
@@ -501,53 +631,13 @@ def _build_team_context_series(
             "expected_gd": expected_gd,
             "gdoe": gdoe,
             "game_context_score": game_context_score,
-            "context_classification": _classify_game_context_score(game_context_score),
+            "context_classification": classification,
         }
-        if debug_mode:
-            valid_game["raw_game"] = game
-            team_name = game.get("team_name") if isinstance(game, dict) else None
-            logger.info(
-                "[M7_GAME_INPUT] team_label=%s index=%s event_id=%s startTimestamp=%s team_name=%s opponent_name=%s team_role=%s opponent_role=%s team_score=%s opponent_score=%s game_gd=%s own_rank=%s own_rank_source=%s opponent_rank=%s opponent_rank_source=%s",
-                team_label,
-                index,
-                game.get("event_id"),
-                game.get("startTimestamp"),
-                team_name,
-                valid_game["opponent_name"],
-                game.get("team_role"),
-                game.get("opponent_role"),
-                goals_for,
-                goals_against,
-                game_gd,
-                own_rank,
-                own_rank_source,
-                opponent_rank,
-                opponent_rank_source,
-            )
-            logger.info(
-                (
-                    "[M7_FORMULA_TRACE] OPP_STRENGTH = (max_rank - opponent_rank) / (max_rank - 1) = %.12f; "
-                    "EXPECTED_RESULT = 1 - (2 * opp_strength) = %.12f; REAL_RESULT = sign(game_gd) = %s; "
-                    f"ROE = (real_result - expected_result) / 2 = %.12f; EXPECTED_GD = expected_result * {_EXPECTED_GD_FACTOR:.1f} = %.12f; "
-                    f"GDOE = (game_gd - expected_gd) / {_GDOE_DIVISOR:.1f} = %.12f; GAME_CONTEXT_SCORE = ({_ROE_WEIGHT:.2f} * roe) + ({_GDOE_WEIGHT:.2f} * gdoe) = %.12f"
-                ),
-                opp_strength,
-                expected_result,
-                real_result,
-                roe,
-                expected_gd,
-                gdoe,
-                game_context_score,
-            )
         valid_games.append(valid_game)
 
     if debug_mode:
-        logger.info(
-            "M7 [%s] context series completed: valid_games=%s skipped_games=%s",
-            team_label,
-            len(valid_games),
-            len(skipped_games),
-        )
+        _debug_line("Serie contextual completada para [%s]: valid_games=%d, skipped_games=%d",
+                    team_label, len(valid_games), len(skipped_games))
 
     return valid_games, skipped_games
 
@@ -610,16 +700,47 @@ def calculate_m7_opponent_expectation_engine(
     current_standings = getattr(streak_analysis, "current_standings", None)
     initial_games_to_skip = _INITIAL_SEASON_GAMES_TO_SKIP
 
+    if debug_mode:
+        _debug_section("Propósito del módulo")
+        _debug_line("M7 mide el rendimiento del equipo contra la dificultad de los oponentes.")
+        _debug_line("Valores positivos favorecen a HOME; valores negativos favorecen a AWAY.")
+
+        _debug_section("Parámetros Globales y Constantes")
+        _debug_line("MAX_RANK_DEFAULT: %s", _fmt(_MAX_RANK_DEFAULT))
+        _debug_line("INITIAL_SEASON_GAMES_TO_SKIP: %s", _fmt(_INITIAL_SEASON_GAMES_TO_SKIP))
+        _debug_line("ROE_WEIGHT: %s", _fmt(_ROE_WEIGHT))
+        _debug_line("GDOE_WEIGHT: %s", _fmt(_GDOE_WEIGHT))
+        _debug_line("EXPECTED_GD_FACTOR: %s", _fmt(_EXPECTED_GD_FACTOR))
+        _debug_line("GDOE_DIVISOR: %s", _fmt(_GDOE_DIVISOR))
+        _debug_line("MIN_VALID_GAMES_ACTIVE: %s", _fmt(_MIN_VALID_GAMES_ACTIVE))
+        _debug_line("MIN_VALID_GAMES_DEGRADED: %s", _fmt(_MIN_VALID_GAMES_DEGRADED))
+
+        _debug_section("Datos del Evento")
+        _debug_line("Event ID: %s", _fmt(event_id))
+        _debug_line("Participantes: %s", _fmt(participants))
+        _debug_line("Equipo Local (Home): %s", _fmt(home_team))
+        _debug_line("Equipo Visitante (Away): %s", _fmt(away_team))
+
+        _debug_section("Resolución de max_rank (Tamaño de la Liga)")
+
+    max_rank, max_rank_source = _resolve_max_rank(streak_analysis, event_context, debug_mode)
+
+    if debug_mode:
+        _debug_line("max_rank final resuelto = %d (fuente: %s)", max_rank, max_rank_source)
+        _debug_section("Filtro de Temporada Inicial (Skip de partidos iniciales)")
+
     home_results_filtered, home_initial_filtered = _filter_initial_season_games(
         home_results,
         initial_games_to_skip,
+        str(home_team or "HOME"),
+        debug_mode,
     )
     away_results_filtered, away_initial_filtered = _filter_initial_season_games(
         away_results,
         initial_games_to_skip,
+        str(away_team or "AWAY"),
+        debug_mode,
     )
-
-    max_rank, max_rank_source = _resolve_max_rank(streak_analysis, event_context)
 
     home_series, home_skipped = _build_team_context_series(
         home_results_filtered,
@@ -640,63 +761,27 @@ def calculate_m7_opponent_expectation_engine(
     away_agg = _aggregate_team_context(away_series)
 
     if debug_mode:
-        logger.info(
-            "[M7_INITIAL_FILTER] team_label=%s input_games=%s initial_season_games_to_skip=%s filtered_out_count=%s remaining_games=%s filtered_out_event_ids=%s filtered_out_opponents=%s",
-            home_team or "HOME",
-            len(home_results),
-            initial_games_to_skip,
-            len(home_initial_filtered),
-            len(home_results_filtered),
-            [game.get("event_id") for game in home_initial_filtered],
-            [game.get("opponent_name") for game in home_initial_filtered],
-        )
-        logger.info(
-            "[M7_INITIAL_FILTER] team_label=%s input_games=%s initial_season_games_to_skip=%s filtered_out_count=%s remaining_games=%s filtered_out_event_ids=%s filtered_out_opponents=%s",
-            away_team or "AWAY",
-            len(away_results),
-            initial_games_to_skip,
-            len(away_initial_filtered),
-            len(away_results_filtered),
-            [game.get("event_id") for game in away_initial_filtered],
-            [game.get("opponent_name") for game in away_initial_filtered],
-        )
-        logger.info(
-            "M7 resolved max_rank=%s source=%s",
-            max_rank,
-            max_rank_source,
-        )
-        logger.info(
-            (
-                "M7 [HOME] aggregate: team_context_score=%.12f avg_roe=%.12f avg_gdoe=%.12f "
-                "ceiling=%.12f floor=%.12f positives=%s negatives=%s neutrals=%s volatility=%.12f games_valid=%s"
-            ),
-            home_agg["team_context_score"],
-            home_agg["avg_roe"],
-            home_agg["avg_gdoe"],
-            home_agg["ceiling"],
-            home_agg["floor"],
-            home_agg["positives"],
-            home_agg["negatives"],
-            home_agg["neutrals"],
-            home_agg["volatility"],
-            home_agg["games_valid"],
-        )
-        logger.info(
-            (
-                "M7 [AWAY] aggregate: team_context_score=%.12f avg_roe=%.12f avg_gdoe=%.12f "
-                "ceiling=%.12f floor=%.12f positives=%s negatives=%s neutrals=%s volatility=%.12f games_valid=%s"
-            ),
-            away_agg["team_context_score"],
-            away_agg["avg_roe"],
-            away_agg["avg_gdoe"],
-            away_agg["ceiling"],
-            away_agg["floor"],
-            away_agg["positives"],
-            away_agg["negatives"],
-            away_agg["neutrals"],
-            away_agg["volatility"],
-            away_agg["games_valid"],
-        )
+        _debug_section("Agregación de la Serie Contextual (HOME)")
+        _debug_line("Agregado para HOME (%s):", _fmt(home_team))
+        _debug_line("  - team_context_score (promedio): %s", _fmt(home_agg["team_context_score"]))
+        _debug_line("  - avg_roe: %s", _fmt(home_agg["avg_roe"]))
+        _debug_line("  - avg_gdoe: %s", _fmt(home_agg["avg_gdoe"]))
+        _debug_line("  - ceiling (mejor partido): %s", _fmt(home_agg["ceiling"]))
+        _debug_line("  - floor (peor partido): %s", _fmt(home_agg["floor"]))
+        _debug_line("  - positives: %s, negatives: %s, neutrals: %s", _fmt(home_agg["positives"]), _fmt(home_agg["negatives"]), _fmt(home_agg["neutrals"]))
+        _debug_line("  - volatility (desviación std): %s", _fmt(home_agg["volatility"]))
+        _debug_line("  - games_valid: %s", _fmt(home_agg["games_valid"]))
+
+        _debug_section("Agregación de la Serie Contextual (AWAY)")
+        _debug_line("Agregado para AWAY (%s):", _fmt(away_team))
+        _debug_line("  - team_context_score (promedio): %s", _fmt(away_agg["team_context_score"]))
+        _debug_line("  - avg_roe: %s", _fmt(away_agg["avg_roe"]))
+        _debug_line("  - avg_gdoe: %s", _fmt(away_agg["avg_gdoe"]))
+        _debug_line("  - ceiling (mejor partido): %s", _fmt(away_agg["ceiling"]))
+        _debug_line("  - floor (peor partido): %s", _fmt(away_agg["floor"]))
+        _debug_line("  - positives: %s, negatives: %s, neutrals: %s", _fmt(away_agg["positives"]), _fmt(away_agg["negatives"]), _fmt(away_agg["neutrals"]))
+        _debug_line("  - volatility (desviación std): %s", _fmt(away_agg["volatility"]))
+        _debug_line("  - games_valid: %s", _fmt(away_agg["games_valid"]))
 
     m7_status, m7_status_reason = _determine_status(
         int(home_agg["games_valid"]),
@@ -714,16 +799,25 @@ def calculate_m7_opponent_expectation_engine(
     m7_strength = _classify_m7_strength(m7_edge)
 
     if debug_mode:
-        logger.info(
-            (
-                "M7 edge calculation: home_team_context_score=%.12f away_team_context_score=%.12f "
-                "formula=home-away edge_raw=%.12f edge_clamped=%.12f"
-            ),
-            home_team_context_score,
-            away_team_context_score,
-            m7_edge_raw,
-            m7_edge,
+        _debug_section("Validación de Estado del Motor")
+        _debug_line("Estado M7 resuelto = %s (razón: %s)", _fmt(m7_status), _fmt(m7_status_reason))
+
+        _debug_section("Cálculo de la Ventaja (M7_EDGE)")
+        _debug_formula(
+            "M7_EDGE_RAW",
+            "home_team_context_score - away_team_context_score",
+            f"{_fmt(home_team_context_score)} - {_fmt(away_team_context_score)}",
+            _fmt(m7_edge_raw),
+            "Diferencia cruda de los scores contextuales"
         )
+        _debug_line("M7_EDGE (Clamped): %s", _fmt(m7_edge))
+
+        _debug_section("Resumen de Output")
+        _debug_line("M7_EDGE: %s", _fmt(m7_edge))
+        _debug_line("M7_BIAS: %s", _fmt(m7_bias))
+        _debug_line("M7_STRENGTH: %s", _fmt(m7_strength))
+        _debug_line("M7_STATUS: %s (%s)", _fmt(m7_status), _fmt(m7_status_reason))
+        _debug_line("-" * 60)
 
     components: List[ModuleComponentResult] = []
     if m7_status != "INSUFFICIENT_DATA":
@@ -788,30 +882,6 @@ def calculate_m7_opponent_expectation_engine(
         "m7_status": m7_status,
         "m7_status_reason": m7_status_reason,
     }
-
-    if debug_mode:
-        logger.info(
-            "M7 Opponent Expectation Engine event_id=%s participants=%s home_team=%s away_team=%s",
-            event_id,
-            participants,
-            home_team,
-            away_team,
-        )
-        logger.info(
-            "M7 skipped_games home=%s away=%s",
-            home_skipped,
-            away_skipped,
-        )
-        logger.info("M7 component_count=%s", len(components))
-        logger.info(
-            "M7 final status=%s reason=%s bias=%s strength=%s edge=%.12f abs_edge=%.12f",
-            m7_status,
-            m7_status_reason,
-            m7_bias,
-            m7_strength,
-            m7_edge,
-            abs(m7_edge),
-        )
 
     return ModuleResult(
         pillar_id="pillar_1_team_structure",
