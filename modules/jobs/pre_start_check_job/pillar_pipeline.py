@@ -6,10 +6,15 @@ Parallel to, but independent of, the existing alert pipeline.
 
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import asdict
+import re
+from dataclasses import asdict, is_dataclass
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+from datetime import date, datetime
+from decimal import Decimal
+from pathlib import Path
+from typing import Any, Optional
 
 from modules.pillars.context import (
     build_event_context,
@@ -71,6 +76,115 @@ def _build_p4_error_result(event_context, odds_trajectory_context, exc: Exceptio
             "missing_target_minutes": getattr(odds_trajectory_context, "missing_target_minutes", []),
         },
     }
+
+
+def _to_json_safe(value: Any):
+    try:
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+
+        if isinstance(value, Decimal):
+            return str(value)
+
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+
+        if is_dataclass(value) and not isinstance(value, type):
+            return _to_json_safe(asdict(value))
+
+        to_dict = getattr(value, "to_dict", None)
+        if callable(to_dict):
+            try:
+                return _to_json_safe(to_dict())
+            except Exception:
+                pass
+
+        if isinstance(value, dict):
+            return {str(key): _to_json_safe(item) for key, item in value.items()}
+
+        if isinstance(value, (list, tuple)):
+            return [_to_json_safe(item) for item in value]
+
+        if isinstance(value, set):
+            try:
+                return [_to_json_safe(item) for item in sorted(value, key=lambda item: str(item))]
+            except Exception:
+                return [_to_json_safe(item) for item in list(value)]
+
+        if hasattr(value, "__dict__"):
+            return {
+                str(key): _to_json_safe(item)
+                for key, item in vars(value).items()
+                if not str(key).startswith("_")
+            }
+
+        return str(value)
+    except Exception:
+        return str(value)
+
+
+def _safe_debug_name(value: Any) -> str:
+    try:
+        safe_value = str(value)
+        safe_value = re.sub(r"[^A-Za-z0-9 _-]+", "_", safe_value)
+        safe_value = safe_value.replace(" ", "_")
+        safe_value = re.sub(r"_+", "_", safe_value)
+        safe_value = safe_value.strip("_")
+        return safe_value or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _write_debug_json(filepath: Path, payload: Any) -> None:
+    with filepath.open("w", encoding="utf-8") as handle:
+        json.dump(_to_json_safe(payload), handle, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def _save_pillar_debug_snapshots(
+    *,
+    streak_analysis: Any,
+    event_context: Any,
+    odds_trajectory_context: Any,
+) -> None:
+    try:
+        event_id = getattr(streak_analysis, "event_id", None)
+        if event_id is None and isinstance(streak_analysis, dict):
+            event_id = streak_analysis.get("event_id")
+        if event_id is None:
+            event_id = getattr(event_context, "event_id", None)
+        if event_id is None and isinstance(event_context, dict):
+            event_id = event_context.get("event_id")
+        if event_id is None:
+            event_id = "unknown_event"
+
+        participants = getattr(streak_analysis, "participants", None)
+        if participants is None and isinstance(streak_analysis, dict):
+            participants = streak_analysis.get("participants")
+        if participants is None:
+            participants = getattr(event_context, "participants_label", None)
+        if participants is None and isinstance(event_context, dict):
+            participants = event_context.get("participants_label")
+        if participants is None:
+            participants = "unknown_matchup"
+
+        safe_participants = _safe_debug_name(participants)
+        debug_dir = Path("debug") / "matchup_streak_analysis" / f"{event_id}_{safe_participants}"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+
+        _write_debug_json(debug_dir / f"{event_id}_streak_analysis.json", streak_analysis)
+        _write_debug_json(debug_dir / f"{event_id}_event_context.json", event_context)
+        _write_debug_json(debug_dir / f"{event_id}_odds_trajectory.json", odds_trajectory_context)
+
+        logger.info(
+            "Pillar debug snapshots saved for event %s at %s",
+            event_id,
+            debug_dir,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to save pillar debug snapshots for event %s",
+            event_id if "event_id" in locals() else "unknown_event",
+        )
 
 
 class EventPillarProcessor:
@@ -238,24 +352,12 @@ class EventPillarProcessor:
             debug_mode=self.debug_mode,
         )
 
-        if streak_analysis and self.debug_mode == True:
-            import os
-            import pprint
-            
-            debug_dir = "debug/matchup_streak_analysis"
-            os.makedirs(debug_dir, exist_ok=True)
-            
-            # Format participants for filename
-            safe_participants = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in streak_analysis.participants).replace(' ', '_')
-            filename = f"{streak_analysis.event_id}_{safe_participants}.txt"
-            filepath = os.path.join(debug_dir, filename)
-            
-            try:
-                with open(filepath, "w", encoding="utf-8") as f:
-                    for attr, value in streak_analysis.__dict__.items():
-                        f.write(f"{attr}:\n{pprint.pformat(value, width=120)}\n\n")
-            except Exception as e:
-                logger.error(f"Failed to save streak_analysis debug file: {e}")
+        if streak_analysis and self.debug_mode:
+            _save_pillar_debug_snapshots(
+                streak_analysis=streak_analysis,
+                event_context=event_context,
+                odds_trajectory_context=odds_trajectory_context,
+            )
 
         if streak_analysis is None:
             logger.info(
