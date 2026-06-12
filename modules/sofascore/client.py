@@ -24,7 +24,14 @@ from .discovery_feeds import (
 )
 from .event_details import get_event_details, get_event_results, update_event_information_from_response
 from .event_normalizer import clean_competition, get_event_information, get_gender
-from .exceptions import SofaScoreNotFoundException, SofaScoreRateLimitException
+from .challenge import (
+    build_challenge_evidence,
+    body_preview,
+    get_challenge_reason,
+    is_sofascore_challenge_response,
+    write_challenge_evidence,
+)
+from .exceptions import SofaScoreChallengeException, SofaScoreNotFoundException, SofaScoreRateLimitException
 from .h2h import get_h2h_events_for_event
 from .results_parser import extract_results_from_response
 from .schedule_feeds import (
@@ -42,13 +49,32 @@ logger = logging.getLogger(__name__)
 class SofaScoreAPI:
     def __init__(self):
         self.base_url = Config.SOFASCORE_BASE_URL
-        self.session = requests.Session(impersonate="chrome120")
+        self.session = None
         self.last_request_time = 0
         self._rate_limit_lock = threading.Lock()
         self.proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
         self.proxy_identity = None
         self._proxy_error_streak = 0
         self._setup_session(reason="initial_setup")
+
+    def _build_headers(self) -> Dict[str, str]:
+        return {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Origin": "https://www.sofascore.com",
+            "Referer": "https://www.sofascore.com/",
+            "Sec-Ch-Ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
 
     def _setup_session(self, rotate_proxy_identity: bool = False, reason: str = "runtime"):
         self.session = requests.Session(impersonate="chrome136")
@@ -115,21 +141,7 @@ class SofaScoreAPI:
         delete_event_on_404: bool = False,
     ) -> Optional[Dict]:
         url = f"{self.base_url}{endpoint}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Sec-Ch-Ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
-            "Cache-Control": "no-cache",
-            "Pragma": "no-cache",
-        }
+        headers = self._build_headers()
 
         for attempt in range(Config.MAX_RETRIES):
             try:
@@ -140,6 +152,46 @@ class SofaScoreAPI:
                 if response.status_code == 200:
                     self._proxy_error_streak = 0
                     return response.json()
+
+                if is_sofascore_challenge_response(response):
+                    evidence = build_challenge_evidence(
+                        response=response,
+                        endpoint=endpoint,
+                        base_url=self.base_url,
+                        attempt=attempt + 1,
+                        max_retries=Config.MAX_RETRIES,
+                        params=params,
+                        proxy_identity=self.proxy_identity,
+                        request_url=url,
+                    )
+                    write_challenge_evidence(evidence)
+
+                    reason = get_challenge_reason(response)
+
+                    logger.error(
+                        "SofaScore challenge detected for %s, reason=%s, attempt %s/%s",
+                        endpoint,
+                        reason,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                    )
+
+                    if (
+                        attempt == 0
+                        and self.proxy_manager.should_rotate_on_sofascore_error()
+                        and Config.MAX_RETRIES > 1
+                    ):
+                        self._rotate_proxy_identity(
+                            reason=f"http_403_challenge_attempt_{attempt + 1}_{endpoint}"
+                        )
+                        continue
+
+                    raise SofaScoreChallengeException(
+                        self._extract_endpoint_event_id(endpoint),
+                        endpoint=endpoint,
+                        reason=reason,
+                        evidence=evidence,
+                    )
 
                 if response.status_code == 407:
                     wait_time = min(30 * (2**attempt), 300)
@@ -183,11 +235,12 @@ class SofaScoreAPI:
                 if response.status_code == 403:
                     wait_time = min(30 * (2**attempt), 300)
                     logger.warning(
-                        "HTTP 403 for %s, waiting %ss, attempt %s/%s",
+                        "HTTP 403 for %s, waiting %ss, attempt %s/%s, body=%s",
                         endpoint,
                         wait_time,
                         attempt + 1,
                         Config.MAX_RETRIES,
+                        body_preview(getattr(response, "text", "") or ""),
                     )
                     if self.proxy_manager.should_rotate_on_sofascore_error():
                         self._rotate_proxy_identity(reason=f"http_403_attempt_{attempt + 1}_{endpoint}")
@@ -213,7 +266,11 @@ class SofaScoreAPI:
 
                 logger.error("HTTP %s for %s: %s", response.status_code, endpoint, response.text)
                 break
-            except (SofaScoreNotFoundException, SofaScoreRateLimitException):
+            except (
+                SofaScoreChallengeException,
+                SofaScoreNotFoundException,
+                SofaScoreRateLimitException,
+            ):
                 raise
             except Exception as exc:
                 logger.error("Unexpected error for %s: %s", endpoint, exc)
@@ -224,6 +281,9 @@ class SofaScoreAPI:
     def _request_json(self, endpoint: str, params: Optional[Dict] = None, no_retry_on_404: bool = False) -> Optional[Dict]:
         try:
             return self._make_request(endpoint, params=params, no_retry_on_404=no_retry_on_404)
+        except SofaScoreChallengeException as exc:
+            logger.error("%s", exc)
+            return None
         except (SofaScoreNotFoundException, SofaScoreRateLimitException) as exc:
             logger.warning("%s", exc)
             return None
