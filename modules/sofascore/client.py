@@ -51,7 +51,7 @@ class SofaScoreAPI:
         self._setup_session(reason="initial_setup")
 
     def _setup_session(self, rotate_proxy_identity: bool = False, reason: str = "runtime"):
-        self.session = requests.Session(impersonate="chrome120")
+        self.session = requests.Session(impersonate="chrome136")
 
         if not self.proxy_manager.proxy_enabled:
             logger.info("Proxy disabled - using direct connection")
@@ -70,12 +70,22 @@ class SofaScoreAPI:
             return
 
         self.session.proxies = proxies
-        logger.info("SofaScore proxy ready (%s)", self.proxy_manager.describe_identity(self.proxy_identity))
+        logger.info(
+            "SofaScore proxy ready (gen=%s, %s)",
+            self.proxy_identity.generation,
+            self.proxy_manager.describe_identity(self.proxy_identity),
+        )
 
     def _rotate_proxy_identity(self, reason: str):
         if not self.proxy_manager.proxy_enabled:
             return
+        old_gen = self.proxy_identity.generation if self.proxy_identity else 0
         self._setup_session(rotate_proxy_identity=True, reason=reason)
+        new_gen = self.proxy_identity.generation if self.proxy_identity else 0
+        logger.info(
+            "Proxy session rotated: reason=%s, gen %s -> %s (new curl_cffi session created)",
+            reason, old_gen, new_gen,
+        )
         self._proxy_error_streak = 0
 
     def _rate_limit(self):
@@ -106,12 +116,12 @@ class SofaScoreAPI:
     ) -> Optional[Dict]:
         url = f"{self.base_url}{endpoint}"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br",
             "Connection": "keep-alive",
-            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "Sec-Ch-Ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
             "Sec-Ch-Ua-Mobile": "?0",
             "Sec-Ch-Ua-Platform": '"Windows"',
             "Sec-Fetch-Dest": "empty",
@@ -156,10 +166,12 @@ class SofaScoreAPI:
                         attempt + 1,
                         Config.MAX_RETRIES,
                     )
+                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                        self._rotate_proxy_identity(reason=f"http_429_attempt_{attempt + 1}_{endpoint}")
                     if attempt < Config.MAX_RETRIES - 1:
                         time.sleep(wait_time)
                         continue
-                    break
+                    raise SofaScoreRateLimitException(self._extract_endpoint_event_id(endpoint), endpoint=endpoint)
 
                 if response.status_code == 404:
                     if no_retry_on_404:
@@ -177,6 +189,8 @@ class SofaScoreAPI:
                         attempt + 1,
                         Config.MAX_RETRIES,
                     )
+                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                        self._rotate_proxy_identity(reason=f"http_403_attempt_{attempt + 1}_{endpoint}")
                     if attempt < Config.MAX_RETRIES - 1:
                         time.sleep(wait_time)
                         continue
