@@ -164,6 +164,13 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
     logger.info("🚨 PRE-START CHECK EXECUTED at " + datetime.now().strftime("%H:%M:%S"))
 
     standings_endpoint_missing_competition_ids: set[int] = set()
+    previous_sofascore_evidence_mode = getattr(api_client, "challenge_evidence_enabled", None)
+    api_client.set_challenge_evidence_enabled(global_debug_mode)
+    logger.info(
+        "SofaScore challenge evidence capture %s for pre-start check (debug_mode=%s)",
+        "enabled" if global_debug_mode else "disabled",
+        global_debug_mode,
+    )
     try:
         tracked_season_ids = None
         if Config.TRACKED_SEASONS_ONLY:
@@ -496,5 +503,8 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
             logger.debug("No events captured at key moments for alert evaluation")
     except Exception as exc:
         logger.error(f"Error in Job C: {exc}")
+    finally:
+        if previous_sofascore_evidence_mode is not None:
+            api_client.set_challenge_evidence_enabled(previous_sofascore_evidence_mode)
 
 

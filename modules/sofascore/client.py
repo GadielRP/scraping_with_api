@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import threading
 import time
 from datetime import datetime
@@ -50,14 +51,24 @@ class SofaScoreAPI:
     def __init__(self):
         self.base_url = Config.SOFASCORE_BASE_URL
         self.session = None
+        self.x_requested_with_header_tokens = Config.X_REQUESTED_WITH_HEADER_TOKENS
         self.last_request_time = 0
         self._rate_limit_lock = threading.Lock()
         self.proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
         self.proxy_identity = None
         self._proxy_error_streak = 0
+        self.challenge_evidence_enabled = bool(getattr(Config, "global_debug_mode", False))
         self._setup_session(reason="initial_setup")
 
+    def set_challenge_evidence_enabled(self, enabled: bool) -> None:
+        self.challenge_evidence_enabled = bool(enabled)
+
+    def _should_capture_challenge_evidence(self) -> bool:
+        return bool(self.challenge_evidence_enabled)
+
     def _build_headers(self) -> Dict[str, str]:
+        randomly_choiced_x_requested_with = random.choice(self.x_requested_with_header_tokens) if self.x_requested_with_header_tokens else "4a6089"
+        logger.info(f"Using x-requested-with: {randomly_choiced_x_requested_with}")
         return {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
@@ -74,6 +85,7 @@ class SofaScoreAPI:
             "Sec-Fetch-Site": "same-site",
             "Cache-Control": "no-cache",
             "Pragma": "no-cache",
+            "x-requested-with": randomly_choiced_x_requested_with,
         }
 
     def _setup_session(self, rotate_proxy_identity: bool = False, reason: str = "runtime"):
@@ -154,19 +166,26 @@ class SofaScoreAPI:
                     return response.json()
 
                 if is_sofascore_challenge_response(response):
-                    evidence = build_challenge_evidence(
-                        response=response,
-                        endpoint=endpoint,
-                        base_url=self.base_url,
-                        attempt=attempt + 1,
-                        max_retries=Config.MAX_RETRIES,
-                        params=params,
-                        proxy_identity=self.proxy_identity,
-                        request_url=url,
-                    )
-                    write_challenge_evidence(evidence)
-
                     reason = get_challenge_reason(response)
+                    evidence = {}
+                    if self._should_capture_challenge_evidence():
+                        evidence = build_challenge_evidence(
+                            response=response,
+                            endpoint=endpoint,
+                            base_url=self.base_url,
+                            attempt=attempt + 1,
+                            max_retries=Config.MAX_RETRIES,
+                            params=params,
+                            proxy_identity=self.proxy_identity,
+                            request_url=url,
+                        )
+                        write_challenge_evidence(evidence)
+                    else:
+                        logger.debug(
+                            "SofaScore challenge evidence capture disabled for %s (debug_mode=%s)",
+                            endpoint,
+                            self.challenge_evidence_enabled,
+                        )
 
                     logger.error(
                         "SofaScore challenge detected for %s, reason=%s, attempt %s/%s",

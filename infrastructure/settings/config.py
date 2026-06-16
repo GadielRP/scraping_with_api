@@ -77,9 +77,10 @@ class Config:
     # Connection timeout in seconds for PostgreSQL (prevents long OS-level waits)
     DB_CONNECT_TIMEOUT = int(os.getenv('DB_CONNECT_TIMEOUT', '5'))
     
-    # API Configuration
+    # SOFASCORE API Configuration
     SOFASCORE_BASE_URL = 'https://api.sofascore.com/api/v1'
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    X_REQUESTED_WITH_HEADER_TOKENS = _parse_env_list('x_requested_with_header_tokens', ['4a6089', '17cb4a'])
     
     # Scheduler Configuration
     POLL_INTERVAL_MINUTES = int(os.getenv('POLL_INTERVAL_MINUTES', '5'))
