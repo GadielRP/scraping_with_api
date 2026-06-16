@@ -17,8 +17,13 @@ def parse_today_market_odds_response(odds_response: Dict) -> Dict[int, Dict]:
             return {}
 
         odds_data = odds_response["odds"]
+        if not odds_data:
+            logger.warning("No odds data found in response")
+            return {}
         if not isinstance(odds_data, dict):
             logger.warning("Odds data is not a dict; cannot parse market odds")
+            logger.warning(f"Odds data: {odds_data}")
+            logger.warning(f"Odds response: {odds_response}")
             return {}
 
         odds_map: Dict[int, Dict] = {}
