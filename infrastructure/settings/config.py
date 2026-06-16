@@ -99,6 +99,31 @@ def _parse_x_requested_with_tokens(
 
     return cleaned
 
+
+_SOFASCORE_X_REQUESTED_WITH_SAFE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{0,128}$")
+
+
+def _parse_x_requested_with_value(
+    env_name="SOFASCORE_X_REQUESTED_WITH",
+    default_value="XMLHttpRequest",
+):
+    value = os.getenv(env_name, default_value)
+
+    # None should not happen with a default, but keep the parser defensive.
+    if value is None:
+        return default_value
+
+    value = str(value).strip()
+
+    # Allow empty strings only when explicitly configured; reject risky header values.
+    if not _SOFASCORE_X_REQUESTED_WITH_SAFE_PATTERN.match(value):
+        logging.getLogger(__name__).warning(
+            "Invalid SOFASCORE_X_REQUESTED_WITH value; falling back to XMLHttpRequest"
+        )
+        return "XMLHttpRequest"
+
+    return value
+
 class Config:
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///sofascore_odds.db')
@@ -108,6 +133,11 @@ class Config:
     # SOFASCORE API Configuration
     SOFASCORE_BASE_URL = 'https://api.sofascore.com/api/v1'
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    SOFASCORE_X_REQUESTED_WITH = _parse_x_requested_with_value()
+
+    # Deprecated for production use.
+    # Kept only for diagnostic A/B testing and rollback experiments.
+    # Production client uses SOFASCORE_X_REQUESTED_WITH.
     X_REQUESTED_WITH_HEADER_TOKENS = _parse_x_requested_with_tokens(
         "x_requested_with_header_tokens",
         ["4a6089", "17cb4a"],

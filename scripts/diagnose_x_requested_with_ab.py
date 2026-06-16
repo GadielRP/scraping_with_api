@@ -34,9 +34,10 @@ def safe_token_suffix(token: str | None) -> str:
     return token[-2:] if len(token) >= 2 else "**"
 
 
-def safe_token_context(token: str | None, kind: str) -> dict:
+def safe_token_context(token: str | None, kind: str, header_sent: bool) -> dict:
     return {
-        "present": bool(token),
+        "header_sent": bool(header_sent),
+        "value_non_empty": bool(token),
         "kind": kind,
         "fingerprint": safe_token_fingerprint(token),
         "suffix": safe_token_suffix(token),
@@ -157,8 +158,8 @@ def build_metric_record(
     return record
 
 
-def print_summary(records: list[dict], endpoint: str) -> None:
-    print(f"Endpoint: {endpoint}")
+def print_summary(records: list[dict], endpoints: list[str]) -> None:
+    print(f"Endpoints: {', '.join(endpoints)}")
     if not records:
         print("No records collected.")
         return
@@ -176,7 +177,11 @@ def print_summary(records: list[dict], endpoint: str) -> None:
     rows = []
     for record in records:
         token_ctx = record.get("token_context", {})
-        token_label = f"{token_ctx.get('kind', 'unknown')}:{'yes' if token_ctx.get('present') else 'no'}"
+        token_label = (
+            f"{token_ctx.get('kind', 'unknown')}:"
+            f"{'yes' if token_ctx.get('header_sent') else 'no'}/"
+            f"{'yes' if token_ctx.get('value_non_empty') else 'no'}"
+        )
         rows.append(
             {
                 "case_name": record.get("case_name", ""),
@@ -214,35 +219,47 @@ def print_summary(records: list[dict], endpoint: str) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Diagnose SofaScore X-Requested-With behavior.")
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
+    parser.add_argument("--endpoints", default=None)
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--sleep", type=float, default=1.0)
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     return parser.parse_args()
 
 
-def prepare_test_cases() -> list[tuple[str, str | None, str]]:
+def prepare_test_cases() -> list[tuple[str, str | None, str, bool]]:
     valid_tokens = list(getattr(Config, "X_REQUESTED_WITH_HEADER_TOKENS", []) or [])
     first_configured_token_or_none = valid_tokens[0] if valid_tokens else None
 
-    cases: list[tuple[str, str | None, str]] = [
-        ("missing_header", None, "missing"),
-        ("empty_header", "", "empty"),
-        ("classic_ajax", "XMLHttpRequest", "classic_ajax"),
-        ("known_frontend_token", first_configured_token_or_none, "known_frontend_token"),
-        ("random_hex", secrets.token_hex(3), "random_hex"),
-        ("plain_text", "hello-world", "plain_text"),
+    cases: list[tuple[str, str | None, str, bool]] = [
+        ("missing_header", None, "missing", False),
+        ("empty_header", "", "empty", True),
+        ("classic_ajax", "XMLHttpRequest", "classic_ajax", True),
+        ("known_frontend_token", first_configured_token_or_none, "known_frontend_token", True),
+        ("random_hex", secrets.token_hex(3), "random_hex", True),
+        ("plain_text", "hello-world", "plain_text", True),
     ]
     return cases
+
+
+def parse_endpoint_list(args: argparse.Namespace) -> list[str]:
+    if args.endpoints:
+        return [
+            endpoint.strip() if endpoint.strip().startswith("/") else f"/{endpoint.strip()}"
+            for endpoint in args.endpoints.split(",")
+            if endpoint.strip()
+        ]
+
+    endpoint = args.endpoint if args.endpoint.startswith("/") else f"/{args.endpoint}"
+    return [endpoint]
 
 
 
 def main() -> int:
     args = parse_args()
-    endpoint = args.endpoint if args.endpoint.startswith("/") else f"/{args.endpoint}"
     base_url = Config.SOFASCORE_BASE_URL.rstrip("/")
-    url = f"{base_url}{endpoint}"
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    repeat_total = max(1, int(args.repeat))
 
     proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
     session = requests.Session(impersonate="chrome136")
@@ -256,76 +273,83 @@ def main() -> int:
     proxy_context = build_proxy_context(proxy_manager, identity)
     records: list[dict] = []
     cases = prepare_test_cases()
+    endpoints = parse_endpoint_list(args)
 
     try:
-        for repeat_index in range(max(1, int(args.repeat))):
-            for case_name, token, kind in cases:
-                if case_name == "known_frontend_token" and token is None:
-                    should_sleep = repeat_index < max(1, int(args.repeat)) - 1 or case_name != cases[-1][0]
+        for repeat_index in range(repeat_total):
+            for endpoint in endpoints:
+                url = f"{base_url}{endpoint}"
+                for case_name, token, kind, header_sent in cases:
+                    is_last_request = (
+                        repeat_index == repeat_total - 1
+                        and endpoint == endpoints[-1]
+                        and case_name == cases[-1][0]
+                    )
+                    if case_name == "known_frontend_token" and token is None:
+                        record = build_metric_record(
+                            case_name=case_name,
+                            endpoint=endpoint,
+                            status_code=None,
+                            logical_result="SKIPPED",
+                            response_ms=0.0,
+                            body_kind="empty",
+                            parsed_json=None,
+                            challenge_detected=False,
+                            token_context=safe_token_context(None, kind, False),
+                            response_headers={},
+                            proxy_context=proxy_context,
+                            skipped_reason="No valid configured X-Requested-With token",
+                        )
+                        records.append(record)
+                        with output_path.open("a", encoding="utf-8") as handle:
+                            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+                        if not is_last_request:
+                            time.sleep(max(0.0, float(args.sleep)))
+                        continue
+
+                    headers = build_test_headers(token if header_sent else None)
+                    start_time = time.perf_counter()
+                    error_message = None
+                    try:
+                        response = session.get(url, headers=headers, timeout=30)
+                        logical_result, challenge_detected, parsed_json, body_kind, response_headers = classify_response(response)
+                        status_code = int(getattr(response, "status_code", 0) or 0)
+                    except Exception as exc:
+                        response = None
+                        logical_result = "ERROR"
+                        challenge_detected = False
+                        parsed_json = None
+                        body_kind = "empty"
+                        response_headers = {}
+                        status_code = None
+                        error_message = f"{type(exc).__name__}: {exc}"
+                    response_ms = (time.perf_counter() - start_time) * 1000
+
                     record = build_metric_record(
                         case_name=case_name,
                         endpoint=endpoint,
-                        status_code=None,
-                        logical_result="SKIPPED",
-                        response_ms=0.0,
-                        body_kind="empty",
-                        parsed_json=None,
-                        challenge_detected=False,
-                        token_context=safe_token_context(None, kind),
-                        response_headers={},
+                        status_code=status_code,
+                        logical_result=logical_result,
+                        response_ms=response_ms,
+                        body_kind=body_kind,
+                        parsed_json=parsed_json,
+                        challenge_detected=challenge_detected,
+                        token_context=safe_token_context(token, kind, header_sent),
+                        response_headers=response_headers,
                         proxy_context=proxy_context,
-                        skipped_reason="No valid configured X-Requested-With token",
+                        error_message=error_message,
                     )
                     records.append(record)
+
                     with output_path.open("a", encoding="utf-8") as handle:
                         handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-                    if should_sleep:
+
+                    if not is_last_request:
                         time.sleep(max(0.0, float(args.sleep)))
-                    continue
-
-                headers = build_test_headers(token)
-                start_time = time.perf_counter()
-                error_message = None
-                try:
-                    response = session.get(url, headers=headers, timeout=30)
-                    logical_result, challenge_detected, parsed_json, body_kind, response_headers = classify_response(response)
-                    status_code = int(getattr(response, "status_code", 0) or 0)
-                except Exception as exc:
-                    response = None
-                    logical_result = "ERROR"
-                    challenge_detected = False
-                    parsed_json = None
-                    body_kind = "empty"
-                    response_headers = {}
-                    status_code = None
-                    error_message = f"{type(exc).__name__}: {exc}"
-                response_ms = (time.perf_counter() - start_time) * 1000
-
-                record = build_metric_record(
-                    case_name=case_name,
-                    endpoint=endpoint,
-                    status_code=status_code,
-                    logical_result=logical_result,
-                    response_ms=response_ms,
-                    body_kind=body_kind,
-                    parsed_json=parsed_json,
-                    challenge_detected=challenge_detected,
-                    token_context=safe_token_context(token, kind),
-                    response_headers=response_headers,
-                    proxy_context=proxy_context,
-                    error_message=error_message,
-                )
-                records.append(record)
-
-                with output_path.open("a", encoding="utf-8") as handle:
-                    handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-
-                if repeat_index < max(1, int(args.repeat)) - 1 or case_name != cases[-1][0]:
-                    time.sleep(max(0.0, float(args.sleep)))
     finally:
         session.close()
 
-    print_summary(records, endpoint)
+    print_summary(records, endpoints)
     print(f"Wrote {len(records)} records to {output_path}")
     return 0
 

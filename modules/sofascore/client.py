@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import random
 import threading
 import time
 from datetime import datetime
@@ -62,9 +61,10 @@ def _safe_token_suffix(token: str | None) -> str:
     return token[-2:] if len(token) >= 2 else "**"
 
 
-def _safe_token_context(token: str | None) -> dict:
+def _safe_token_context(token: str | None, header_sent: bool) -> dict:
     return {
-        "x_requested_with_present": bool(token),
+        "x_requested_with_header_sent": bool(header_sent),
+        "x_requested_with_value_non_empty": bool(token),
         "x_requested_with_fingerprint": _safe_token_fingerprint(token),
         "x_requested_with_suffix": _safe_token_suffix(token),
     }
@@ -74,7 +74,7 @@ class SofaScoreAPI:
     def __init__(self):
         self.base_url = Config.SOFASCORE_BASE_URL
         self.session = None
-        self.x_requested_with_header_tokens = list(Config.X_REQUESTED_WITH_HEADER_TOKENS)
+        self.x_requested_with = getattr(Config, "SOFASCORE_X_REQUESTED_WITH", "XMLHttpRequest")
         self.last_request_time = 0
         self._rate_limit_lock = threading.Lock()
         self.proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
@@ -89,19 +89,6 @@ class SofaScoreAPI:
 
     def _should_capture_challenge_evidence(self) -> bool:
         return bool(self.challenge_evidence_enabled)
-
-    def _select_x_requested_with_token(self) -> Optional[str]:
-        """Return one configured X-Requested-With token, or None when unavailable."""
-        if self.x_requested_with_header_tokens:
-            return random.choice(self.x_requested_with_header_tokens)
-
-        if not self._x_requested_with_missing_warned:
-            logger.warning(
-                "No valid X-Requested-With tokens configured; SofaScore requests may receive challenge responses"
-            )
-            self._x_requested_with_missing_warned = True
-
-        return None
 
     def _build_headers(self) -> Dict[str, str]:
         headers = {
@@ -122,9 +109,14 @@ class SofaScoreAPI:
             "Pragma": "no-cache",
         }
 
-        token = self._select_x_requested_with_token()
-        if token:
-            headers["X-Requested-With"] = token
+        if self.x_requested_with is not None:
+            headers["X-Requested-With"] = self.x_requested_with
+        else:
+            if not self._x_requested_with_missing_warned:
+                logger.warning(
+                    "SOFASCORE_X_REQUESTED_WITH is disabled; SofaScore requests may receive challenge responses"
+                )
+                self._x_requested_with_missing_warned = True
 
         return headers
 
@@ -208,7 +200,10 @@ class SofaScoreAPI:
 
                 if is_sofascore_challenge_response(response):
                     reason = get_challenge_reason(response)
-                    token_context = _safe_token_context(x_requested_with_token)
+                    token_context = _safe_token_context(
+                        x_requested_with_token,
+                        "X-Requested-With" in headers,
+                    )
                     evidence = {"request_token_context": token_context}
 
                     logger.info(
