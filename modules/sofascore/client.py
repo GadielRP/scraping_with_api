@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import random
 import threading
@@ -47,17 +48,40 @@ from .winning_odds import get_winning_odds_response
 logger = logging.getLogger(__name__)
 
 
+def _safe_token_fingerprint(token: str | None) -> str:
+    if not token:
+        return "none"
+    digest = hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+    return f"sha256:{digest[:10]}"
+
+
+def _safe_token_suffix(token: str | None) -> str:
+    if not token:
+        return "none"
+    token = str(token)
+    return token[-2:] if len(token) >= 2 else "**"
+
+
+def _safe_token_context(token: str | None) -> dict:
+    return {
+        "x_requested_with_present": bool(token),
+        "x_requested_with_fingerprint": _safe_token_fingerprint(token),
+        "x_requested_with_suffix": _safe_token_suffix(token),
+    }
+
+
 class SofaScoreAPI:
     def __init__(self):
         self.base_url = Config.SOFASCORE_BASE_URL
         self.session = None
-        self.x_requested_with_header_tokens = Config.X_REQUESTED_WITH_HEADER_TOKENS
+        self.x_requested_with_header_tokens = list(Config.X_REQUESTED_WITH_HEADER_TOKENS)
         self.last_request_time = 0
         self._rate_limit_lock = threading.Lock()
         self.proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
         self.proxy_identity = None
         self._proxy_error_streak = 0
         self.challenge_evidence_enabled = bool(getattr(Config, "global_debug_mode", False))
+        self._x_requested_with_missing_warned = False
         self._setup_session(reason="initial_setup")
 
     def set_challenge_evidence_enabled(self, enabled: bool) -> None:
@@ -66,10 +90,21 @@ class SofaScoreAPI:
     def _should_capture_challenge_evidence(self) -> bool:
         return bool(self.challenge_evidence_enabled)
 
+    def _select_x_requested_with_token(self) -> Optional[str]:
+        """Return one configured X-Requested-With token, or None when unavailable."""
+        if self.x_requested_with_header_tokens:
+            return random.choice(self.x_requested_with_header_tokens)
+
+        if not self._x_requested_with_missing_warned:
+            logger.warning(
+                "No valid X-Requested-With tokens configured; SofaScore requests may receive challenge responses"
+            )
+            self._x_requested_with_missing_warned = True
+
+        return None
+
     def _build_headers(self) -> Dict[str, str]:
-        randomly_choiced_x_requested_with = random.choice(self.x_requested_with_header_tokens) if self.x_requested_with_header_tokens else "4a6089"
-        logger.info(f"Using x-requested-with: {randomly_choiced_x_requested_with}")
-        return {
+        headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
@@ -85,8 +120,13 @@ class SofaScoreAPI:
             "Sec-Fetch-Site": "same-site",
             "Cache-Control": "no-cache",
             "Pragma": "no-cache",
-            "x-requested-with": randomly_choiced_x_requested_with,
         }
+
+        token = self._select_x_requested_with_token()
+        if token:
+            headers["X-Requested-With"] = token
+
+        return headers
 
     def _setup_session(self, rotate_proxy_identity: bool = False, reason: str = "runtime"):
         self.session = requests.Session(impersonate="chrome136")
@@ -154,6 +194,7 @@ class SofaScoreAPI:
     ) -> Optional[Dict]:
         url = f"{self.base_url}{endpoint}"
         headers = self._build_headers()
+        x_requested_with_token = headers.get("X-Requested-With")
 
         for attempt in range(Config.MAX_RETRIES):
             try:
@@ -167,9 +208,18 @@ class SofaScoreAPI:
 
                 if is_sofascore_challenge_response(response):
                     reason = get_challenge_reason(response)
-                    evidence = {}
+                    token_context = _safe_token_context(x_requested_with_token)
+                    evidence = {"request_token_context": token_context}
+
+                    logger.info(
+                        "SofaScore challenge token context: token_fingerprint=%s token_suffix=%s endpoint=%s",
+                        token_context["x_requested_with_fingerprint"],
+                        token_context["x_requested_with_suffix"],
+                        endpoint,
+                    )
+
                     if self._should_capture_challenge_evidence():
-                        evidence = build_challenge_evidence(
+                        challenge_evidence = build_challenge_evidence(
                             response=response,
                             endpoint=endpoint,
                             base_url=self.base_url,
@@ -179,6 +229,8 @@ class SofaScoreAPI:
                             proxy_identity=self.proxy_identity,
                             request_url=url,
                         )
+                        challenge_evidence["request_token_context"] = token_context
+                        evidence = challenge_evidence
                         write_challenge_evidence(evidence)
                     else:
                         logger.debug(

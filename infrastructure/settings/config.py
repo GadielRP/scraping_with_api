@@ -1,6 +1,7 @@
 import os
 import ast
 import logging
+import re
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -69,7 +70,34 @@ def _parse_env_bool(env_name, default_value=False):
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+_X_REQUESTED_WITH_SAFE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
+
+def _parse_x_requested_with_tokens(
+    env_name="x_requested_with_header_tokens",
+    default_value=None,
+) -> list[str]:
+    raw_tokens = _parse_env_list(env_name, default_value or [])
+    cleaned = []
+    seen = set()
+
+    for raw in raw_tokens:
+        token = str(raw or "").strip()
+        if not token:
+            continue
+
+        # Reject values that could break headers or be abused for header injection.
+        if not _X_REQUESTED_WITH_SAFE_PATTERN.match(token):
+            logging.getLogger(__name__).warning(
+                "Ignoring invalid X-Requested-With token from env: invalid format"
+            )
+            continue
+
+        if token not in seen:
+            seen.add(token)
+            cleaned.append(token)
+
+    return cleaned
 
 class Config:
     # Database
@@ -80,7 +108,10 @@ class Config:
     # SOFASCORE API Configuration
     SOFASCORE_BASE_URL = 'https://api.sofascore.com/api/v1'
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    X_REQUESTED_WITH_HEADER_TOKENS = _parse_env_list('x_requested_with_header_tokens', ['4a6089', '17cb4a'])
+    X_REQUESTED_WITH_HEADER_TOKENS = _parse_x_requested_with_tokens(
+        "x_requested_with_header_tokens",
+        ["4a6089", "17cb4a"],
+    )
     
     # Scheduler Configuration
     POLL_INTERVAL_MINUTES = int(os.getenv('POLL_INTERVAL_MINUTES', '5'))
