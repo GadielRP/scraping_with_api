@@ -271,11 +271,22 @@ class EventPillarProcessor:
             )
 
         try:
+            # calculate pillar 4 (p4)
             p4_result = calculate_pillar_4(
                 event_context=event_context,
                 odds_trajectory_context=odds_trajectory_context,
                 debug_mode=self.debug_mode,
             )
+
+            # calculate pilar 5 (p5) TODO
+            # pillar 5 needs odds trajectory only for 1X2 and/or home/away type market groups (markets) and Full-time market period. so we filter the odds_trajectory object into those
+            # ft_1x2_odds_trajectory = odds_trajectory_context.filter_by_market_groups(allowed_groups={"1X2", "Home/Away"})
+            # ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_market_period(allowed_periods={"Full-time"})
+            # p5_result = calculate_pillar_5(
+            #     event_context=event_context,
+            #     ft_1x2_odds_trajectory=ft_1x2_odds_trajectory,
+            #     debug_mode=self.debug_mode,
+            # )
         except Exception as exc:
             logger.exception(
                 "Error calculating P4 for event %s (%s): %s",
