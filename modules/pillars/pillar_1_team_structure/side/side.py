@@ -590,6 +590,51 @@ def calculate_p1_side(
         
         if aggregation_raw["anomalies"]:
             _debug_line("Anomalías detectadas: %s", aggregation_raw["anomalies"])
+
+        _debug_section("RAW OUTPUT AUDIT")
+        _debug_line("raw[\"layer_a\"]: %s", _fmt(aggregation_raw["layer_a"]))
+        _debug_line("raw[\"layer_b\"]: %s", _fmt(aggregation_raw["layer_b"]))
+        _debug_line("raw[\"final\"]: %s", _fmt(aggregation_raw["final"]))
+        _debug_line("raw[\"module_statuses\"]: %s", _fmt(aggregation_raw["module_statuses"]))
+
+        _debug_section("OUTPUT FINAL")
+        _debug_line("P1_FINAL_CONTEXT_BALANCE: %s", _fmt(aggregation_raw["p1_final_context_balance"]))
+        _debug_line("P1_FINAL_STATE: %s", aggregation_raw["p1_final_state"])
+        _debug_line("P1_FINAL_BIAS: %s", aggregation_raw["p1_final_bias"])
+        _debug_line("P1_CORE_SIDE: %s", _fmt(aggregation_raw["p1_core_side"]))
+        _debug_line("P1_CORE_SIDE_BIAS: %s", aggregation_raw["layer_a"]["p1_core_side_bias"])
+        _debug_line("P1_CORE_SIDE_STRENGTH: %s", aggregation_raw["layer_a"]["p1_core_side_strength"])
+        _debug_line("M4_CONTEXT_ADJ: %s", _fmt(aggregation_raw["m4_context_adj"]))
+        _debug_line("P1_EFFECTIVE_CORE: %s", _fmt(aggregation_raw["p1_effective_core"]))
+        _debug_line("CORE_BIAS: %s", aggregation_raw["core_bias"])
+        _debug_line("CORE_STRENGTH: %s", aggregation_raw["core_strength"])
+        _debug_line("M5_EDGE: %s", _fmt(aggregation_raw["m5_edge"]))
+        _debug_line("M5_STRENGTH: %s", aggregation_raw["m5_strength"])
+        _debug_line("M5_PRESSURE_SIDE: %s", aggregation_raw["m5_pressure_side"])
+        _debug_line("PRESSURE_RELATION: %s", aggregation_raw["pressure_relation"])
+        _debug_line("ANOMALIES: %s", _fmt(aggregation_raw["anomalies"]))
+        
+        _debug_line(
+            "Lectura: core %s (bias: %s), major context %s (bias: %s), relación: %s.",
+            aggregation_raw["core_strength"],
+            aggregation_raw["core_bias"],
+            aggregation_raw["m5_strength"],
+            aggregation_raw["m5_pressure_side"],
+            aggregation_raw["pressure_relation"],
+        )
+        
+        bias_reading = {
+            "HOME": "a favor del equipo local (HOME)",
+            "AWAY": "a favor del equipo visitante (AWAY)",
+            "NONE": "neutral (NONE)",
+        }.get(aggregation_raw["p1_final_bias"], "neutral")
+        
+        _debug_line(
+            "Resultado final: el matchup se clasifica como %s con dirección %s.",
+            aggregation_raw["p1_final_state"],
+            bias_reading,
+        )
+        
         _debug_section("FIN P1 SIDE MULTILAYER AGGREGATION")
 
     return {
