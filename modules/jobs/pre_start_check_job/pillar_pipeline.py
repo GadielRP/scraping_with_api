@@ -32,6 +32,7 @@ from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import 
     calculate_pillar_1_team_structure,
 )
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
+from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
 from modules.pillars.pillar_1_team_structure.totals import (
     P1TotalsOutput,
 )
@@ -74,6 +75,30 @@ def _build_p4_error_result(event_context, odds_trajectory_context, exc: Exceptio
             "target_minutes_expected": getattr(odds_trajectory_context, "target_minutes_expected", []),
             "target_minutes_present": getattr(odds_trajectory_context, "target_minutes_present", []),
             "missing_target_minutes": getattr(odds_trajectory_context, "missing_target_minutes", []),
+        },
+    }
+
+
+def _build_p5_error_result(event_context, ft_1x2_odds_trajectory, exc: Exception) -> dict:
+    return {
+        "pillar_id": "pillar_5",
+        "pillar_name": "Exact Price Memory",
+        "event_id": getattr(event_context, "event_id", None),
+        "participants": getattr(event_context, "participants_label", None),
+        "P5_STATUS": "ERROR",
+        "status": "ERROR",
+        "modules": [],
+        "P5_VALID": False,
+        "P5_DIRECTION": "NONE",
+        "P5": 0.0,
+        "P5_STRENGTH": "NONE",
+        "error": str(exc),
+        "raw": {
+            "reason": "pillar_5_exception",
+            "odds_trajectory_available": getattr(ft_1x2_odds_trajectory, "available", False),
+            "target_minutes_expected": getattr(ft_1x2_odds_trajectory, "target_minutes_expected", []),
+            "target_minutes_present": getattr(ft_1x2_odds_trajectory, "target_minutes_present", []),
+            "missing_target_minutes": getattr(ft_1x2_odds_trajectory, "missing_target_minutes", []),
         },
     }
 
@@ -277,16 +302,6 @@ class EventPillarProcessor:
                 odds_trajectory_context=odds_trajectory_context,
                 debug_mode=self.debug_mode,
             )
-
-            # calculate pilar 5 (p5) TODO
-            # pillar 5 needs odds trajectory only for 1X2 and/or home/away type market groups (markets) and Full-time market period. so we filter the odds_trajectory object into those
-            # ft_1x2_odds_trajectory = odds_trajectory_context.filter_by_market_groups(allowed_groups={"1X2", "Home/Away"})
-            # ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_market_period(allowed_periods={"Full-time"})
-            # p5_result = calculate_pillar_5(
-            #     event_context=event_context,
-            #     ft_1x2_odds_trajectory=ft_1x2_odds_trajectory,
-            #     debug_mode=self.debug_mode,
-            # )
         except Exception as exc:
             logger.exception(
                 "Error calculating P4 for event %s (%s): %s",
@@ -310,6 +325,43 @@ class EventPillarProcessor:
                 event_context.participants_label,
                 list((p4_result.get("market_period_results") or {}).keys())[:10],
             )
+
+        ft_1x2_odds_trajectory = odds_trajectory_context
+        try:
+            ft_1x2_odds_trajectory = odds_trajectory_context.filter_by_market_groups(
+                allowed_groups={"1X2", "Home/Away", "ML"}
+            )
+            ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_market_period(
+                allowed_periods={"Full-time"}
+            )
+            p5_result = calculate_pillar_5(
+                event_context=event_context,
+                ft_1x2_odds_trajectory=ft_1x2_odds_trajectory,
+                debug_mode=self.debug_mode,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Error calculating P5 for event %s (%s): %s",
+                event_obj.id,
+                event_context.participants_label,
+                exc,
+            )
+            p5_result = _build_p5_error_result(
+                event_context,
+                ft_1x2_odds_trajectory,
+                exc,
+            )
+
+        logger.info(
+            "P5 calculated for %s: status=%s valid=%s direction=%s score=%.3f strength=%s sample_size=%s",
+            event_context.participants_label,
+            p5_result.get("P5_STATUS"),
+            p5_result.get("P5_VALID"),
+            p5_result.get("P5_DIRECTION"),
+            p5_result.get("P5", 0),
+            p5_result.get("P5_STRENGTH"),
+            p5_result.get("sample_size"),
+        )
 
         logger.info(
             "Pillar pipeline metadata check for event %s: competition_id=%s source_unique_tournament_id=%s season_id=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
@@ -372,7 +424,7 @@ class EventPillarProcessor:
 
         if streak_analysis is None:
             logger.info(
-                "Pillar pipeline: no streak_analysis for event %s (%s), returning P4 only",
+                "Pillar pipeline: no streak_analysis for event %s (%s), returning P4 and P5 only",
                 event_obj.id,
                 participants,
             )
@@ -382,6 +434,7 @@ class EventPillarProcessor:
                 "pillar_1": None,
                 "pillar_1_totals": None,
                 "pillar_4": p4_result,
+                "pillar_5": p5_result,
             }
 
         number_of_teams_summary = summarize_number_of_teams_from_streak_analysis(streak_analysis)
@@ -426,6 +479,7 @@ class EventPillarProcessor:
                 "pillar_1": None,
                 "pillar_1_totals": None,
                 "pillar_4": p4_result,
+                "pillar_5": p5_result,
             }
 
         p1_result.setdefault("raw", {}).update({
@@ -650,6 +704,7 @@ class EventPillarProcessor:
                 else None
             ),
             "pillar_4": p4_result,
+            "pillar_5": p5_result,
         }
 
 
