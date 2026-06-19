@@ -12,6 +12,7 @@ from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.timing import minutes_since_start
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.time_correction_alert import send_time_correction_message
+from modules.sofascore.event_identity import resolve_sofascore_event_id
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,12 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                 stored_start_time = event_data["start_time_utc"]
                 minutes_ago = abs(minutes_since_start(stored_start_time))
 
+                try:
+                    sofascore_event_id = resolve_sofascore_event_id(event_id)
+                except ValueError as exc:
+                    logger.warning("Unable to resolve sofascore_event_id for event %s: %s", event_id, exc)
+                    return result
+
                 if sport in ["Tennis", "Tennis Doubles"]:
                     check_intervals = list(range(5, 65, 5))
                 else:
@@ -102,7 +109,7 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                 
                 logger.info(f"Checking recently started event {event_id} ({sport}) for timestamp correction (started {minutes_ago:.1f} minutes ago)")
                 correct_starting_time = api_client.get_event_results(
-                    event_id,
+                    sofascore_event_id,
                     update_time=True,
                     minutes_until_start=minutes_since_start(stored_start_time),
                 )

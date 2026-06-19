@@ -39,6 +39,7 @@ from modules.jobs.pre_start_check_job.timing import (
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
+from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.observations import sport_observation_service
 from modules.alerts.matchup_streak_analysis.standings_engine import (
     standings_calculator,
@@ -308,7 +309,8 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                 if not event_info["should_extract_odds"]:
                     continue
 
-                final_odds_response = api_client.get_event_final_odds(event_data["id"], event_data["slug"])
+                sofascore_event_id = resolve_sofascore_event_id(event_data["id"])
+                final_odds_response = api_client.get_event_final_odds(sofascore_event_id, event_data["slug"])
                 if not final_odds_response:
                     continue
 
@@ -332,7 +334,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                             if snapshot and snapshot.get("observations"):
                                 event_info["observations"] = snapshot["observations"]
                             else:
-                                observations = api_client.get_event_results(event_id=event_data["id"], update_court_type=True)
+                                observations = api_client.get_event_results(sofascore_event_id, update_court_type=True)
                                 if observations:
                                     event_info["observations"] = observations
                 else:
@@ -359,8 +361,9 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                         "Fetching metadata snapshot for event %s for pre-start context enrichment, useful for tennis events",
                         event_id,
                     )
+                    sofascore_event_id = resolve_sofascore_event_id(event_id)
                     _, metadata_snapshot = api_client.get_event_results(
-                        event_id=event_id,
+                        sofascore_event_id,
                         update_time=False,
                         return_snapshot=True,
                         current_start_time=event_info.get("original_start_time"),

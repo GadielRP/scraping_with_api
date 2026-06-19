@@ -13,31 +13,37 @@ logger = logging.getLogger(__name__)
 
 def persist_event_with_odds(api_client, event: Dict, odds_data: Dict) -> bool:
     try:
-        event_id = event.get("id")
-        if not event_id:
+        sofascore_event_id = event.get("id")
+        if not sofascore_event_id:
             logger.warning("Event has no ID, skipping")
             return False
 
         event_data = api_client.get_event_information(event, discovery_source="daily_discovery")
         event_payload = event_data.get("event", event_data) if event_data else {}
         if not event_payload or not event_payload.get("id"):
-            logger.warning("Could not extract event information for event %s", event_id)
+            logger.warning("Could not extract event information for event %s", sofascore_event_id)
             return False
 
         db_event = EventRepository.upsert_event(event_data)
         if not db_event:
-            logger.error("Failed to upsert event %s to database", event_id)
+            logger.error("Failed to upsert event %s to database", sofascore_event_id)
             return False
 
-        logger.info("Upserted event %s: %s vs %s", event_id, event_payload["homeTeam"], event_payload["awayTeam"])
+        logger.info(
+            "Upserted event %s -> canonical event_id=%s: %s vs %s",
+            sofascore_event_id,
+            db_event.id,
+            event_payload["homeTeam"],
+            event_payload["awayTeam"],
+        )
 
         ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
-            event_id,
+            db_event.id,
             odds_data,
             source="daily_discovery",
         )
         if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
-            logger.warning("Failed to save market odds for event %s: %s", event_id, ingestion_result.reason)
+            logger.warning("Failed to save market odds for event %s: %s", db_event.id, ingestion_result.reason)
             return False
 
         return True

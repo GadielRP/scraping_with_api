@@ -15,6 +15,7 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import EventRepository
 from modules.sofascore import api_client, get_event_information
+from modules.sofascore.event_identity import resolve_sofascore_event_id
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,8 @@ def backfill(limit: int | None = None, sleep_seconds: float = 0.5, only_missing:
 
     for event_id in event_ids:
         try:
-            response = api_client._request_json(f"/event/{event_id}", no_retry_on_404=True)
+            sofascore_event_id = resolve_sofascore_event_id(event_id)
+            response = api_client._request_json(f"/event/{sofascore_event_id}", no_retry_on_404=True)
             event_response = (response or {}).get("event")
             if not event_response:
                 skipped += 1

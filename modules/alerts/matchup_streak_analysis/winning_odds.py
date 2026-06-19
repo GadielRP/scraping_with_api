@@ -9,6 +9,7 @@ import logging
 from typing import Dict, Optional
 
 from modules.sofascore import api_client
+from modules.sofascore.event_identity import resolve_sofascore_event_id
 from shared.odds_utils import fractional_to_decimal
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,8 @@ def get_winning_odds_data(event_id: int) -> Optional[Dict]:
     """
     try:
         logger.debug(f"🎯 Fetching winning odds for event {event_id}")
-        response = api_client.get_winning_odds_response(event_id)
+        sofascore_event_id = resolve_sofascore_event_id(event_id)
+        response = api_client.get_winning_odds_response(sofascore_event_id)
 
         if not response:
             logger.debug(f"No winning odds data found for event {event_id}")

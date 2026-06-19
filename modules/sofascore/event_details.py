@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
-from infrastructure.persistence.repositories import EventRepository, SeasonRepository
+from infrastructure.persistence.repositories import EventRepository, SeasonRepository, EventSourceMappingRepository
 from modules.observations import sport_observation_service
 from modules.observations.sofascore_extractor import extract_observations_from_sofascore_response
 
@@ -22,11 +22,16 @@ def fetch_event_response(client, event_id: int, delete_event_on_404: bool = True
         return client._make_request(endpoint)
     except SofaScoreNotFoundException:
         if delete_event_on_404:
-            deleted = EventRepository.batch_delete_events([event_id])
+            canonical_event_id = EventSourceMappingRepository.get_event_id_by_source("sofascore", str(event_id))
+            if canonical_event_id is None:
+                logger.warning("Could not resolve canonical event_id for SofaScore event %s after 404", event_id)
+                return None
+
+            deleted = EventRepository.batch_delete_events([canonical_event_id])
             if deleted:
-                logger.info("Deleted event %s after 404 response", event_id)
+                logger.info("Deleted canonical event %s after 404 response for SofaScore event %s", canonical_event_id, event_id)
             else:
-                logger.warning("Failed to delete event %s after 404 response", event_id)
+                logger.warning("Failed to delete canonical event %s after 404 response", canonical_event_id)
         return None
     except SofaScoreRateLimitException:
         logger.warning("Rate limited while fetching event %s", event_id)
@@ -200,11 +205,16 @@ def get_event_results(
 
         result = extract_results_from_response(response)
         if isinstance(result, dict) and result.get("_canceled"):
-            deleted = EventRepository.batch_delete_events([event_id])
+            canonical_event_id = EventSourceMappingRepository.get_event_id_by_source("sofascore", str(event_id))
+            if canonical_event_id is None:
+                logger.warning("Could not resolve canonical event_id for canceled SofaScore event %s", event_id)
+                return None
+
+            deleted = EventRepository.batch_delete_events([canonical_event_id])
             if deleted:
-                logger.info("Deleted canceled event %s", event_id)
+                logger.info("Deleted canceled canonical event %s for SofaScore event %s", canonical_event_id, event_id)
             else:
-                logger.warning("Failed to delete canceled event %s", event_id)
+                logger.warning("Failed to delete canceled canonical event %s", canonical_event_id)
             return None
 
         return result

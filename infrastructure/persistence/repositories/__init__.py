@@ -2,6 +2,7 @@ from .event_repository import (
     EventRepository, 
     NBA_SEASONS
 )
+from .event_source_mapping_repository import EventSourceMappingRepository
 from .season_repository import SeasonRepository
 from .participant_repository import ParticipantRepository
 from .competition_repository import CompetitionRepository
@@ -16,6 +17,7 @@ from .daily_discovery_repository import DailyDiscoveryRepository
 __all__ = [
     'EventRepository',
     'NBA_SEASONS',
+    'EventSourceMappingRepository',
     'SeasonRepository',
     'ParticipantRepository',
     'CompetitionRepository',

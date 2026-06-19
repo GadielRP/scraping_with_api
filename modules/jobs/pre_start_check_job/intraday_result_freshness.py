@@ -11,6 +11,7 @@ from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.timing import minutes_since_start
 from modules.sofascore import api_client
 from modules.sofascore.event_details import update_event_information_from_response
+from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.results_parser import extract_results_from_response
 
 logger = logging.getLogger(__name__)
@@ -113,7 +114,8 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             minutes_ago = None
 
         try:
-            response = api_client._request_json(f"/event/{event_id}", no_retry_on_404=True)
+            sofascore_event_id = resolve_sofascore_event_id(event_id)
+            response = api_client._request_json(f"/event/{sofascore_event_id}", no_retry_on_404=True)
             if not response or "event" not in response:
                 logger.info(
                     "Intraday result freshness: event %s has no response payload yet",

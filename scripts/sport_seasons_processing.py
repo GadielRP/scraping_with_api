@@ -15,6 +15,7 @@ The script fetches all events for a given season and:
 """
 
 from modules.sofascore import api_client
+from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.competition.league_config import get_included_season_ids
 from infrastructure.persistence.repositories import EventRepository, ResultRepository, MarketRepository
 from infrastructure.persistence.models import Event, Result
@@ -227,7 +228,8 @@ def reconcile_existing_season_events(
             if event_id not in fetched_event_ids:
                 logger.info("Reconciling season event %s not returned by current season endpoint", event_id)
 
-            response = api_client._request_json(f"/event/{event_id}", no_retry_on_404=True)
+            sofascore_event_id = resolve_sofascore_event_id(event_id)
+            response = api_client._request_json(f"/event/{sofascore_event_id}", no_retry_on_404=True)
             if not response or "event" not in response:
                 failed_direct_fetch_count += 1
                 logger.warning("Could not fetch direct event response for reconciliation event %s", event_id)
@@ -429,8 +431,11 @@ def process_season(tournament_id: int, season_id: int):
             if event:
                 processed_count += 1
                 event_payload = event_data.get('event', event_data)
-                event_id = event_payload['id']
-                logger.debug(f"Event {event_id} upserted: {event_payload.get('homeTeam')} vs {event_payload.get('awayTeam')}")
+                sofascore_event_id = event_payload['id']
+                event_id = event.id
+                logger.debug(
+                    f"Event sofascore_event_id={sofascore_event_id} upserted as canonical_event_id={event_id}: {event_payload.get('homeTeam')} vs {event_payload.get('awayTeam')}"
+                )
 
                 # Check if event already has markets stored before fetching odds
                 existing_market_count = MarketRepository.get_market_count(event_id)
@@ -442,7 +447,7 @@ def process_season(tournament_id: int, season_id: int):
                 else:
                     # Fetch and save ALL markets using MarketRepository (new flow)
                     try:
-                        final_odds_response = api_client.get_event_final_odds(event_id, event_payload.get('slug'))
+                        final_odds_response = api_client.get_event_final_odds(sofascore_event_id, event_payload.get('slug'))
 
                         if final_odds_response:
                             # Save all markets using the new market-based flow

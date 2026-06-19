@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple
 
 from infrastructure.persistence.repositories import EventRepository
+from infrastructure.persistence.repositories import EventSourceMappingRepository
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
 
@@ -61,12 +62,12 @@ def parallel_odds_checking(
     """Check odds availability for multiple events in parallel."""
 
     def check_event_odds(event_data: Dict) -> Tuple[str, Optional[Dict]]:
-        event_id = str(_event_id(event_data))
-        odds_data = api_client.get_event_final_odds(event_id, no_retry_on_404=no_retry_on_404)
+        sofascore_event_id = str(_event_id(event_data))
+        odds_data = api_client.get_event_final_odds(sofascore_event_id, no_retry_on_404=no_retry_on_404)
         if not odds_data:
-            return event_id, None
+            return sofascore_event_id, None
 
-        return event_id, odds_data
+        return sofascore_event_id, odds_data
 
     events_with_odds = {}
     events_to_delete = []
@@ -107,25 +108,31 @@ def batch_process_odds(events_with_odds: Dict[str, Dict], events: List[Dict]) ->
     skipped_count = 0
 
     for event_data in events:
-        event_id = str(_event_id(event_data))
-        odds_response = events_with_odds.get(event_id) or events_with_odds.get(int(event_id))
+        sofascore_event_id = str(_event_id(event_data))
+        odds_response = events_with_odds.get(sofascore_event_id) or events_with_odds.get(int(sofascore_event_id))
         if not odds_response:
             continue
 
         try:
+            db_event = EventRepository.upsert_event(event_data)
+            if not db_event:
+                logger.debug("Failed to upsert event %s before saving odds", sofascore_event_id)
+                skipped_count += 1
+                continue
+
             ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
-                int(event_id),
+                db_event.id,
                 odds_response,
                 source="parallel_odds_checking",
             )
             if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
-                logger.debug("Failed to save market odds for event %s: %s", event_id, ingestion_result.reason)
+                logger.debug("Failed to save market odds for event %s: %s", sofascore_event_id, ingestion_result.reason)
                 skipped_count += 1
                 continue
 
             processed_count += 1
         except Exception as exc:
-            logger.debug("Error processing event %s: %s", event_id, exc)
+            logger.debug("Error processing event %s: %s", sofascore_event_id, exc)
             skipped_count += 1
 
     return processed_count, skipped_count
@@ -144,7 +151,18 @@ def process_with_batch_cleanup(
     events_with_odds, events_to_delete = parallel_odds_checking(events, max_workers=max_workers)
 
     if events_to_delete:
-        deleted_count = EventRepository.batch_delete_events(events_to_delete)
+        canonical_event_ids = []
+        for external_event_id in events_to_delete:
+            canonical_event_id = EventSourceMappingRepository.get_event_id_by_source(
+                "sofascore",
+                str(external_event_id),
+            )
+            if canonical_event_id is not None:
+                canonical_event_ids.append(canonical_event_id)
+            else:
+                logger.debug("Could not resolve canonical event_id for external SofaScore event %s", external_event_id)
+
+        deleted_count = EventRepository.batch_delete_events(canonical_event_ids)
         logger.info("Batch deleted %s %s events without odds", deleted_count, discovery_source)
 
     processed_count, skipped_count = batch_process_odds(events_with_odds, events)
@@ -208,25 +226,25 @@ def process_with_parallel_db_ops(
 
     def process_single_event(event_data: Dict) -> Tuple[bool, str]:
         try:
-            event_id = str(_event_id(event_data))
+            sofascore_event_id = str(_event_id(event_data))
 
             event = EventRepository.upsert_event(event_data)
             if not event:
-                return False, f"Failed to upsert event {event_id}"
+                return False, f"Failed to upsert event {sofascore_event_id}"
 
-            odds_map_entry = odds_map.get(event_id) or odds_map.get(str(event_id)) or odds_map.get(int(event_id))
+            odds_map_entry = odds_map.get(sofascore_event_id) or odds_map.get(str(sofascore_event_id)) or odds_map.get(int(sofascore_event_id))
             if not odds_map_entry:
-                return False, f"No odds data found for event {event_id}"
+                return False, f"No odds data found for event {sofascore_event_id}"
 
             ingestion_result = MarketOddsIngestionService.save_from_dropping_odds_map_entry(
-                int(event_id),
+                event.id,
                 odds_map_entry,
                 source=discovery_source or "dropping_odds",
             )
             if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
-                return False, f"Failed to save market odds for event {event_id}: {ingestion_result.reason}"
+                return False, f"Failed to save market odds for event {sofascore_event_id}: {ingestion_result.reason}"
 
-            return True, f"Successfully processed event {event_id}"
+            return True, f"Successfully processed event {sofascore_event_id}"
         except Exception as exc:
             return False, f"Error processing event {_event_payload(event_data).get('id')}: {exc}"
 

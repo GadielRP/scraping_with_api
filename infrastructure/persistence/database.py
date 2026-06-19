@@ -119,6 +119,7 @@ class DatabaseManager:
             # Ensure normalized event entity tables/links exist before generic column sync.
             self._migrate_events_to_participants_competitions()
             self._migrate_daily_discovery_log_run_slots()
+            self._migrate_events_to_canonical_identity()
             
             # Re-create inspector after manual migrations may have changed schema
             inspector = inspect(self.engine)
@@ -801,6 +802,554 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"DailyDiscoveryLog run-slot migration failed: {e}")
             logger.error(traceback.format_exc())
+
+    def _event_identity_migration_already_applied(self, session) -> bool:
+        """Return True when events already use canonical IDs and SofaScore mappings point to them."""
+        try:
+            marker_exists = session.execute(text("""
+                SELECT 1
+                FROM event_migration_status
+                WHERE migration_key = 'event_identity_canonicalization'
+            """)).scalar() is not None
+            if marker_exists:
+                return True
+
+            events_count = session.execute(text("SELECT COUNT(*) FROM events")).scalar() or 0
+            if events_count == 0:
+                return True
+            min_event_id, max_event_id = session.execute(text("""
+                SELECT COALESCE(MIN(id), 0), COALESCE(MAX(id), 0)
+                FROM events
+            """)).fetchone()
+            mapped_events_count = session.execute(text("""
+                SELECT COUNT(*)
+                FROM events e
+                JOIN event_source_mappings esm
+                    ON esm.event_id = e.id
+                   AND esm.source = 'sofascore'
+            """)).scalar() or 0
+
+            return (
+                mapped_events_count == events_count
+                and min_event_id == 1
+                and max_event_id == events_count
+            )
+        except Exception as exc:
+            logger.debug("Could not determine if event identity migration was already applied: %s", exc)
+            return False
+
+    def _ensure_event_migration_status_table(self, session) -> None:
+        """Create the migration status table used to record completed one-time migrations."""
+        try:
+            session.execute(text("""
+                CREATE TABLE IF NOT EXISTS event_migration_status (
+                    migration_key TEXT PRIMARY KEY,
+                    completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    details TEXT
+                )
+            """))
+        except Exception as exc:
+            logger.debug("Could not ensure event_migration_status table: %s", exc)
+
+    def _mark_event_identity_migration_completed(self, session) -> None:
+        """Persist a durable marker indicating the canonical event migration succeeded."""
+        session.execute(text("""
+            INSERT INTO event_migration_status (migration_key, completed_at, details)
+            VALUES (
+                'event_identity_canonicalization',
+                CURRENT_TIMESTAMP,
+                'events.id canonicalized and SofaScore mappings materialized'
+            )
+            ON CONFLICT (migration_key) DO UPDATE SET
+                completed_at = EXCLUDED.completed_at,
+                details = EXCLUDED.details
+        """))
+
+    def _ensure_event_source_mappings_table_ready(self, session, dialect_name: str) -> None:
+        """Ensure the source mapping table exists and has the expected indexes/constraint."""
+        try:
+            with session.begin_nested():
+                session.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS unique_event_source_mapping "
+                    "ON event_source_mappings (source, source_event_id)"
+                ))
+            with session.begin_nested():
+                session.execute(text(
+                    "CREATE INDEX IF NOT EXISTS idx_event_source_mappings_event_id "
+                    "ON event_source_mappings (event_id)"
+                ))
+            with session.begin_nested():
+                session.execute(text(
+                    "CREATE INDEX IF NOT EXISTS idx_event_source_mappings_source_event_id "
+                    "ON event_source_mappings (source, source_event_id)"
+                ))
+            with session.begin_nested():
+                session.execute(text(
+                    "CREATE INDEX IF NOT EXISTS idx_event_source_mappings_source "
+                    "ON event_source_mappings (source)"
+                ))
+
+            if dialect_name == "postgresql":
+                try:
+                    with session.begin_nested():
+                        session.execute(text(
+                            "ALTER TABLE event_source_mappings "
+                            "ADD CONSTRAINT unique_event_source_mapping UNIQUE (source, source_event_id)"
+                        ))
+                except Exception:
+                    # The table may already have the named constraint or an equivalent unique index.
+                    pass
+            logger.info("Ensured event_source_mappings table constraints/indexes")
+        except Exception as exc:
+            logger.debug("Could not ensure event_source_mappings constraints/indexes: %s", exc)
+
+    def _drop_event_identity_foreign_keys(self, session, inspector) -> None:
+        """Drop foreign keys that still point at events.id so the PK rewrite can happen safely."""
+        tables = [
+            "results",
+            "markets",
+            "event_observations",
+            "prediction_logs",
+            "event_source_mappings",
+        ]
+
+        for table_name in tables:
+            try:
+                foreign_keys = inspector.get_foreign_keys(table_name)
+            except Exception as exc:
+                logger.debug("Could not inspect foreign keys for %s: %s", table_name, exc)
+                continue
+
+            for fk in foreign_keys:
+                if fk.get("referred_table") != "events":
+                    continue
+                constrained_columns = fk.get("constrained_columns") or []
+                if constrained_columns != ["event_id"]:
+                    continue
+                constraint_name = fk.get("name")
+                if not constraint_name:
+                    continue
+                try:
+                    with session.begin_nested():
+                        session.execute(text(f'ALTER TABLE {table_name} DROP CONSTRAINT IF EXISTS "{constraint_name}"'))
+                    logger.info("Dropped FK constraint %s on %s", constraint_name, table_name)
+                except Exception as exc:
+                    logger.warning(
+                        "Could not drop FK constraint %s on %s before event identity migration: %s",
+                        constraint_name,
+                        table_name,
+                        exc,
+                    )
+
+    def _restore_event_identity_foreign_keys(self, session, inspector, dialect_name: str) -> None:
+        """Recreate the canonical event_id foreign keys after the rewrite."""
+        if dialect_name == "sqlite":
+            return
+
+        from sqlalchemy import inspect
+
+        fresh_inspector = inspect(self.engine)
+
+        fk_statements = [
+            (
+                "results",
+                "fk_results_event_id",
+                "ALTER TABLE results ADD CONSTRAINT fk_results_event_id "
+                "FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE",
+            ),
+            (
+                "markets",
+                "fk_markets_event_id",
+                "ALTER TABLE markets ADD CONSTRAINT fk_markets_event_id "
+                "FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE",
+            ),
+            (
+                "event_observations",
+                "fk_event_observations_event_id",
+                "ALTER TABLE event_observations ADD CONSTRAINT fk_event_observations_event_id "
+                "FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE",
+            ),
+            (
+                "prediction_logs",
+                "fk_prediction_logs_event_id",
+                "ALTER TABLE prediction_logs ADD CONSTRAINT fk_prediction_logs_event_id "
+                "FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE",
+            ),
+            (
+                "event_source_mappings",
+                "fk_event_source_mappings_event_id",
+                "ALTER TABLE event_source_mappings ADD CONSTRAINT fk_event_source_mappings_event_id "
+                "FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE",
+            ),
+        ]
+
+        for table_name, constraint_name, statement in fk_statements:
+            try:
+                existing_constraints = {
+                    fk.get("name")
+                    for fk in fresh_inspector.get_foreign_keys(table_name)
+                    if fk.get("referred_table") == "events" and (fk.get("constrained_columns") or []) == ["event_id"]
+                }
+                if constraint_name in existing_constraints:
+                    continue
+                with session.begin_nested():
+                    session.execute(text(statement))
+                logger.info("Added FK constraint %s on %s", constraint_name, table_name)
+            except Exception as exc:
+                logger.warning("Could not restore FK constraint %s on %s: %s", constraint_name, table_name, exc)
+
+    def _ensure_events_id_default(self, session) -> None:
+        """Ensure events.id has a sequence-backed default on PostgreSQL."""
+        try:
+            dialect_name = self.engine.dialect.name
+            if dialect_name != "postgresql":
+                return
+
+            with session.begin_nested():
+                session.execute(text("CREATE SEQUENCE IF NOT EXISTS events_id_seq"))
+            with session.begin_nested():
+                session.execute(text("ALTER SEQUENCE events_id_seq OWNED BY events.id"))
+            with session.begin_nested():
+                session.execute(text("""
+                    SELECT setval(
+                        'events_id_seq',
+                        COALESCE((SELECT MAX(id) FROM events), 0),
+                        true
+                    )
+                """))
+            with session.begin_nested():
+                session.execute(text("ALTER TABLE events ALTER COLUMN id SET DEFAULT nextval('events_id_seq')"))
+            logger.info("Ensured events.id uses the events_id_seq sequence")
+        except Exception as exc:
+            logger.warning("Could not ensure sequence-backed default for events.id: %s", exc)
+
+    def _validate_event_identity_migration(self, session) -> None:
+        """Validate the event identity migration state and raise if critical checks fail."""
+        dialect_name = self.engine.dialect.name
+
+        checks = {
+            "events_total": session.execute(text("SELECT COUNT(*) FROM events")).scalar() or 0,
+            "sofascore_mappings_total": session.execute(text("""
+                SELECT COUNT(*)
+                FROM event_source_mappings
+                WHERE source = 'sofascore'
+            """)).scalar() or 0,
+            "events_without_sofascore_mapping": session.execute(text("""
+                SELECT COUNT(*)
+                FROM events e
+                LEFT JOIN event_source_mappings esm
+                    ON esm.event_id = e.id
+                   AND esm.source = 'sofascore'
+                WHERE esm.mapping_id IS NULL
+            """)).scalar() or 0,
+            "orphan_results": session.execute(text("""
+                SELECT COUNT(*)
+                FROM results r
+                LEFT JOIN events e ON r.event_id = e.id
+                WHERE e.id IS NULL
+            """)).scalar() or 0,
+            "orphan_markets": session.execute(text("""
+                SELECT COUNT(*)
+                FROM markets m
+                LEFT JOIN events e ON m.event_id = e.id
+                WHERE e.id IS NULL
+            """)).scalar() or 0,
+            "orphan_event_observations": session.execute(text("""
+                SELECT COUNT(*)
+                FROM event_observations eo
+                LEFT JOIN events e ON eo.event_id = e.id
+                WHERE e.id IS NULL
+            """)).scalar() or 0,
+            "orphan_prediction_logs": session.execute(text("""
+                SELECT COUNT(*)
+                FROM prediction_logs pl
+                LEFT JOIN events e ON pl.event_id = e.id
+                WHERE e.id IS NULL
+            """)).scalar() or 0,
+            "orphan_event_source_mappings": session.execute(text("""
+                SELECT COUNT(*)
+                FROM event_source_mappings esm
+                LEFT JOIN events e ON esm.event_id = e.id
+                WHERE e.id IS NULL
+            """)).scalar() or 0,
+            "duplicate_mappings": session.execute(text("""
+                SELECT COUNT(*)
+                FROM (
+                    SELECT source, source_event_id
+                    FROM event_source_mappings
+                    GROUP BY source, source_event_id
+                    HAVING COUNT(*) > 1
+                ) duplicates
+            """)).scalar() or 0,
+        }
+
+        if dialect_name == "postgresql":
+            events_id_default = session.execute(text("""
+                SELECT column_default
+                FROM information_schema.columns
+                WHERE table_name = 'events'
+                  AND column_name = 'id'
+            """)).scalar()
+            checks["events_id_default_is_sequence"] = bool(events_id_default and "nextval" in str(events_id_default))
+        else:
+            checks["events_id_default_is_sequence"] = True
+
+        logger.info(
+            "Event identity migration validation: events=%s sofascore_mappings=%s missing_sofascore=%s orphan_results=%s orphan_markets=%s orphan_observations=%s orphan_prediction_logs=%s orphan_source_mappings=%s duplicate_mappings=%s default_ok=%s",
+            checks["events_total"],
+            checks["sofascore_mappings_total"],
+            checks["events_without_sofascore_mapping"],
+            checks["orphan_results"],
+            checks["orphan_markets"],
+            checks["orphan_event_observations"],
+            checks["orphan_prediction_logs"],
+            checks["orphan_event_source_mappings"],
+            checks["duplicate_mappings"],
+            checks["events_id_default_is_sequence"],
+        )
+
+        if checks["events_without_sofascore_mapping"] != 0:
+            raise RuntimeError(f"Event identity migration validation failed: {checks['events_without_sofascore_mapping']} events without SofaScore mapping")
+        if checks["orphan_results"] != 0:
+            raise RuntimeError(f"Event identity migration validation failed: {checks['orphan_results']} orphan results")
+        if checks["orphan_markets"] != 0:
+            raise RuntimeError(f"Event identity migration validation failed: {checks['orphan_markets']} orphan markets")
+        if checks["orphan_event_observations"] != 0:
+            raise RuntimeError(f"Event identity migration validation failed: {checks['orphan_event_observations']} orphan event observations")
+        if checks["orphan_prediction_logs"] != 0:
+            raise RuntimeError(f"Event identity migration validation failed: {checks['orphan_prediction_logs']} orphan prediction logs")
+        if checks["orphan_event_source_mappings"] != 0:
+            raise RuntimeError(f"Event identity migration validation failed: {checks['orphan_event_source_mappings']} orphan event source mappings")
+        if checks["duplicate_mappings"] != 0:
+            raise RuntimeError(f"Event identity migration validation failed: {checks['duplicate_mappings']} duplicate event source mappings")
+        if dialect_name == "postgresql" and not checks["events_id_default_is_sequence"]:
+            raise RuntimeError("Event identity migration validation failed: events.id is missing the sequence-backed default")
+
+    def _migrate_events_to_canonical_identity(self):
+        """
+        Convert events.id from SofaScore external IDs to canonical autoincrement IDs.
+
+        This migration is designed to be idempotent and safe to rerun. It creates the
+        event_source_mappings table if needed, seeds SofaScore mappings from the current
+        events table, rewrites dependent FKs, and restores the canonical sequence/default.
+        """
+        try:
+            from sqlalchemy import inspect
+            from infrastructure.persistence.models import EventSourceMapping
+
+            inspector = inspect(self.engine)
+            table_names = set(inspector.get_table_names())
+            if "events" not in table_names:
+                return
+
+            with self.get_session() as session:
+                connection = session.connection()
+                dialect_name = self.engine.dialect.name
+                batch_size = 1000
+                total_processed = 0
+
+                self._ensure_event_migration_status_table(session)
+
+                if "event_source_mappings" not in table_names:
+                    EventSourceMapping.__table__.create(connection, checkfirst=True)
+                    logger.info("Created event_source_mappings table")
+
+                self._ensure_event_source_mappings_table_ready(session, dialect_name)
+
+                if self._event_identity_migration_already_applied(session):
+                    logger.info("Event identity migration already applied; refreshing defaults and validations")
+                    self._ensure_events_id_default(session)
+                    self._validate_event_identity_migration(session)
+                    self._mark_event_identity_migration_completed(session)
+                    return
+
+                total_events = session.execute(text("SELECT COUNT(*) FROM events")).scalar() or 0
+                if not total_events:
+                    logger.info("No events found; skipping event identity migration")
+                    self._ensure_events_id_default(session)
+                    return
+
+                logger.info("Migrating %s event(s) to canonical IDs in batches of %s", total_events, batch_size)
+
+                event_ids = [
+                    row[0]
+                    for row in session.execute(text("SELECT id FROM events ORDER BY id")).fetchall()
+                ]
+                translation_rows = [
+                    {"old_id": old_id, "new_id": index + 1}
+                    for index, old_id in enumerate(event_ids)
+                ]
+
+                foreign_keys_were_disabled = False
+                foreign_keys_were_dropped = False
+                if dialect_name == "postgresql":
+                    self._drop_event_identity_foreign_keys(session, inspector)
+                    foreign_keys_were_dropped = True
+                else:
+                    session.execute(text("PRAGMA foreign_keys = OFF"))
+                    foreign_keys_were_disabled = True
+
+                try:
+                    batch_number = 0
+                    for batch_start in range(0, len(translation_rows), batch_size):
+                        batch_number += 1
+                        batch_translation_rows = translation_rows[batch_start:batch_start + batch_size]
+                        batch_old_ids = [row["old_id"] for row in batch_translation_rows]
+                        batch_new_ids = [row["new_id"] for row in batch_translation_rows]
+
+                        logger.info(
+                            "Processing event identity batch %s: %s event(s), old_id_range=%s..%s, next_new_id_start=%s",
+                            batch_number,
+                            len(batch_old_ids),
+                            batch_old_ids[0],
+                            batch_old_ids[-1],
+                            batch_new_ids[0],
+                        )
+
+                        session.execute(text("""
+                            CREATE TEMPORARY TABLE event_id_translation (
+                                old_id INTEGER PRIMARY KEY,
+                                new_id INTEGER NOT NULL
+                            )
+                        """))
+                        session.execute(
+                            text("INSERT INTO event_id_translation (old_id, new_id) VALUES (:old_id, :new_id)"),
+                            batch_translation_rows,
+                        )
+
+                        session.execute(text("""
+                            INSERT INTO event_source_mappings (
+                                event_id,
+                                source,
+                                source_event_id,
+                                match_method,
+                                confidence,
+                                created_at,
+                                updated_at
+                            )
+                            SELECT
+                                t.new_id,
+                                'sofascore',
+                                CAST(t.old_id AS TEXT),
+                                'legacy_primary_key_migration',
+                                1.000,
+                                CURRENT_TIMESTAMP,
+                                CURRENT_TIMESTAMP
+                            FROM event_id_translation t
+                            LEFT JOIN event_source_mappings esm
+                                ON esm.source = 'sofascore'
+                               AND esm.source_event_id = CAST(t.old_id AS TEXT)
+                            WHERE esm.mapping_id IS NULL
+                            ON CONFLICT (source, source_event_id) DO NOTHING
+                        """))
+
+                        session.execute(text("""
+                            UPDATE event_source_mappings esm
+                            SET event_id = t.new_id,
+                                match_method = 'legacy_primary_key_migration',
+                                confidence = 1.000,
+                                updated_at = CURRENT_TIMESTAMP
+                            FROM event_id_translation t
+                            WHERE esm.source = 'sofascore'
+                              AND esm.source_event_id = CAST(t.old_id AS TEXT)
+                        """))
+
+                        if dialect_name == "postgresql":
+                            session.execute(text("""
+                                UPDATE results r
+                                SET event_id = t.new_id
+                                FROM event_id_translation t
+                                WHERE r.event_id = t.old_id
+                            """))
+                            session.execute(text("""
+                                UPDATE markets m
+                                SET event_id = t.new_id
+                                FROM event_id_translation t
+                                WHERE m.event_id = t.old_id
+                            """))
+                            session.execute(text("""
+                                UPDATE event_observations eo
+                                SET event_id = t.new_id
+                                FROM event_id_translation t
+                                WHERE eo.event_id = t.old_id
+                            """))
+                            session.execute(text("""
+                                UPDATE prediction_logs pl
+                                SET event_id = t.new_id
+                                FROM event_id_translation t
+                                WHERE pl.event_id = t.old_id
+                            """))
+                            session.execute(text("""
+                                UPDATE event_source_mappings esm
+                                SET event_id = t.new_id
+                                FROM event_id_translation t
+                                WHERE esm.event_id = t.old_id
+                            """))
+                            session.execute(text("""
+                                UPDATE events e
+                                SET id = t.new_id
+                                FROM event_id_translation t
+                                WHERE e.id = t.old_id
+                            """))
+                        else:
+                            update_statements = [
+                                "UPDATE results SET event_id = (SELECT new_id FROM event_id_translation WHERE old_id = results.event_id) WHERE event_id IN (SELECT old_id FROM event_id_translation)",
+                                "UPDATE markets SET event_id = (SELECT new_id FROM event_id_translation WHERE old_id = markets.event_id) WHERE event_id IN (SELECT old_id FROM event_id_translation)",
+                                "UPDATE event_observations SET event_id = (SELECT new_id FROM event_id_translation WHERE old_id = event_observations.event_id) WHERE event_id IN (SELECT old_id FROM event_id_translation)",
+                                "UPDATE prediction_logs SET event_id = (SELECT new_id FROM event_id_translation WHERE old_id = prediction_logs.event_id) WHERE event_id IN (SELECT old_id FROM event_id_translation)",
+                                "UPDATE event_source_mappings SET event_id = (SELECT new_id FROM event_id_translation WHERE old_id = event_source_mappings.event_id) WHERE event_id IN (SELECT old_id FROM event_id_translation)",
+                                "UPDATE events SET id = (SELECT new_id FROM event_id_translation WHERE old_id = events.id) WHERE id IN (SELECT old_id FROM event_id_translation)",
+                            ]
+                            for statement in update_statements:
+                                session.execute(text(statement))
+
+                        total_processed += len(batch_old_ids)
+                        logger.info(
+                            "Completed event identity batch %s: processed=%s total_processed=%s remaining=%s",
+                            batch_number,
+                            len(batch_old_ids),
+                            total_processed,
+                            total_events - total_processed,
+                        )
+
+                        session.execute(text("DROP TABLE event_id_translation"))
+
+                    if foreign_keys_were_disabled:
+                        session.execute(text("PRAGMA foreign_keys = ON"))
+                        foreign_keys_were_disabled = False
+
+                    self._ensure_events_id_default(session)
+                    self._restore_event_identity_foreign_keys(session, inspector, dialect_name)
+                    foreign_keys_were_dropped = False
+                    self._validate_event_identity_migration(session)
+                    self._mark_event_identity_migration_completed(session)
+
+                    session.commit()
+                    logger.info("Event identity migration completed successfully")
+                finally:
+                    if foreign_keys_were_dropped:
+                        try:
+                            self._restore_event_identity_foreign_keys(session, inspector, dialect_name)
+                            session.commit()
+                        except Exception as restore_exc:
+                            logger.warning(
+                                "Could not restore event identity foreign keys after migration attempt: %s",
+                                restore_exc,
+                            )
+                            session.rollback()
+                    if dialect_name == "postgresql":
+                        foreign_keys_were_dropped = False
+                    if foreign_keys_were_disabled:
+                        try:
+                            session.execute(text("PRAGMA foreign_keys = ON"))
+                            session.commit()
+                        except Exception:
+                            session.rollback()
+
+        except Exception as e:
+            logger.error(f"Event identity migration failed: {e}")
+            logger.error(traceback.format_exc())
+            raise
 
     def _drop_legacy_odds_tables(self):
         """Drop legacy flat odds tables after the normalized market schema is in place."""

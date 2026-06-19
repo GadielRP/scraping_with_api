@@ -10,6 +10,7 @@ from shared.timezone_utils import get_local_now
 from .season_repository import SeasonRepository
 from .participant_repository import ParticipantRepository
 from .competition_repository import CompetitionRepository
+from .event_source_mapping_repository import EventSourceMappingRepository
 
 logger = logging.getLogger(__name__)
 
@@ -126,21 +127,36 @@ class EventRepository:
     
     @staticmethod
     def upsert_event(event_data: Dict) -> Optional[Event]:
-        """Insert or update an event"""
+        """Insert or update an event.
+
+        The incoming payload still carries the SofaScore external ID in
+        ``event_payload["id"]``. The returned ``Event.id`` is the canonical
+        internal database ID.
+        """
         try:
             event_payload = event_data.get('event', event_data) if event_data else {}
             home_participant_data = event_data.get('home_participant') if event_data and 'event' in event_data else None
             away_participant_data = event_data.get('away_participant') if event_data and 'event' in event_data else None
             competition_data = event_data.get('competition_ref') if event_data and 'event' in event_data else None
 
-            event_id = event_payload.get('id')
-            if not event_id:
-                logger.warning("Skipping event upsert because event id is missing")
+            sofascore_event_id = event_payload.get('id')
+            if not sofascore_event_id:
+                logger.warning("Skipping event upsert because sofascore_event_id is missing")
                 return None
 
             if event_payload.get('startTimestamp') is None:
-                logger.warning("Skipping event %s upsert because startTimestamp is missing", event_id)
+                logger.warning("Skipping event %s upsert because startTimestamp is missing", sofascore_event_id)
                 return None
+
+            sofascore_event_id = str(sofascore_event_id).strip()
+            if not sofascore_event_id:
+                logger.warning("Skipping event upsert because sofascore_event_id is empty after normalization")
+                return None
+
+            canonical_event_id = EventSourceMappingRepository.get_event_id_by_source(
+                source="sofascore",
+                source_event_id=sofascore_event_id,
+            )
 
             with db_manager.get_session() as session:
                 round_info = event_payload.get('round')
@@ -173,20 +189,20 @@ class EventRepository:
                         if parsed_year:
                             SeasonRepository.get_or_create_season_in_session(session, season_id, season_name, parsed_year, sport)
 
-                if home_participant_data and home_participant_data.get('source_participant_id') is not None:
-                    home_participant = ParticipantRepository.upsert_participant(session, home_participant_data)
-                elif home_participant_data:
-                    logger.warning(
-                        "Event %s has no home participant id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for home_team persistence",
-                        event_id,
-                    )
+                    if home_participant_data and home_participant_data.get('source_participant_id') is not None:
+                        home_participant = ParticipantRepository.upsert_participant(session, home_participant_data)
+                    elif home_participant_data:
+                        logger.warning(
+                            "Event %s has no home participant id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for home_team persistence",
+                            sofascore_event_id,
+                        )
 
                 if away_participant_data and away_participant_data.get('source_participant_id') is not None:
                     away_participant = ParticipantRepository.upsert_participant(session, away_participant_data)
                 elif away_participant_data:
                     logger.warning(
                         "Event %s has no away participant id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for away_team persistence",
-                        event_id,
+                        sofascore_event_id,
                     )
 
                 if competition_data and competition_data.get('source_tournament_id') is not None:
@@ -194,10 +210,21 @@ class EventRepository:
                 elif competition_data:
                     logger.warning(
                         "Event %s has no tournament id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for competition persistence",
-                        event_id,
+                        sofascore_event_id,
                     )
-                
-                event_obj = session.query(Event).filter(Event.id == event_id).first()
+
+                if canonical_event_id is not None:
+                    event_obj = session.query(Event).filter(Event.id == canonical_event_id).first()
+                    if not event_obj:
+                        logger.error(
+                            "Inconsistent event source mapping: source=%s source_event_id=%s resolved canonical_event_id=%s but no Event row exists",
+                            "sofascore",
+                            sofascore_event_id,
+                            canonical_event_id,
+                        )
+                        return None
+                else:
+                    event_obj = None
                 
                 if event_obj:
                     event_obj.custom_id = event_payload.get('customId')
@@ -237,15 +264,22 @@ class EventRepository:
                             event_obj.round = round_info
 
                     event_obj.updated_at = get_local_now()
-                    logger.info(f"Updated event {event_id}")
+                    EventSourceMappingRepository.upsert_mapping(
+                        event_id=event_obj.id,
+                        source="sofascore",
+                        source_event_id=sofascore_event_id,
+                        match_method="direct",
+                        confidence=1.000,
+                        session=session,
+                    )
+                    logger.info(f"Updated event {event_obj.id} from sofascore_event_id={sofascore_event_id}")
                 else:
                     gender = event_payload.get('gender') or 'unknown'
                     gender = gender[:10] if len(gender) > 10 else gender
                     
                     event_obj = Event(
-                        id=event_id,
                         custom_id=event_payload.get('customId'),
-                        slug=event_payload.get('slug') or str(event_id),
+                        slug=event_payload.get('slug') or sofascore_event_id,
                         start_time_utc=datetime.fromtimestamp(event_payload['startTimestamp']),
                         sport=event_payload.get('sport') or 'Unknown',
                         # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
@@ -264,7 +298,20 @@ class EventRepository:
                         competition_id=competition.competition_id if competition else None
                     )
                     session.add(event_obj)
-                    logger.debug(f"Created new event {event_id}")
+                    session.flush()
+                    EventSourceMappingRepository.upsert_mapping(
+                        event_id=event_obj.id,
+                        source="sofascore",
+                        source_event_id=sofascore_event_id,
+                        match_method="direct",
+                        confidence=1.000,
+                        session=session,
+                    )
+                    logger.debug(
+                        "Created new event %s from sofascore_event_id=%s",
+                        event_obj.id,
+                        sofascore_event_id,
+                    )
                 
                 return event_obj
                 

@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from shared.timezone_utils import get_local_now
 from modules.sofascore import api_client
+from modules.sofascore.event_identity import resolve_sofascore_event_id
 from infrastructure.settings import Config
 # Import database dependencies
 from infrastructure.persistence.database import db_manager
@@ -161,9 +162,10 @@ class GenderReorganization:
         """
         try:
             logger.debug(f"✈️Fetching API data for event {event_id}")
+            sofascore_event_id = resolve_sofascore_event_id(event_id)
             
             # Use curl_cffi directly to get the status code for 404 detection
-            url = f"{api_client.base_url}/event/{event_id}"
+            url = f"{api_client.base_url}/event/{sofascore_event_id}"
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 "Accept": "application/json, text/plain, */*",
@@ -175,7 +177,9 @@ class GenderReorganization:
             
             # Handle 404 specifically - event deleted or doesn't exist
             if response_obj.status_code == 404:
-                logger.warning(f"⚠️ Event {event_id} not found (404) - event may have been deleted. Skipping.")
+                logger.warning(
+                    f"⚠️ Event {event_id} (SofaScore {sofascore_event_id}) not found (404) - event may have been deleted. Skipping."
+                )
                 self.reorganization_stats['skipped_404'] += 1
                 return 'SKIP_404'  # Special marker for 404s
             
@@ -184,7 +188,7 @@ class GenderReorganization:
                 return response_obj.json()
             
             # Other errors (500, 503, etc.) - these are API errors, not skips
-            logger.warning(f"API error {response_obj.status_code} for event {event_id}")
+            logger.warning(f"API error {response_obj.status_code} for event {event_id} (SofaScore {sofascore_event_id})")
             self.reorganization_stats['api_errors'] += 1
             return None
             

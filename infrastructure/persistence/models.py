@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Boolean, Index
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Boolean, Index, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker, relationship
@@ -58,7 +58,7 @@ class Competition(Base):
 class Event(Base):
     __tablename__ = 'events'
     
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     custom_id = Column(Text)
     slug = Column(Text, nullable=False)
     start_time_utc = Column(DateTime, nullable=False)
@@ -100,6 +100,37 @@ class Event(Base):
     home_participant = relationship("Participant", foreign_keys=[home_participant_id])
     away_participant = relationship("Participant", foreign_keys=[away_participant_id])
     competition_ref = relationship("Competition", foreign_keys=[competition_id])
+    source_mappings = relationship("EventSourceMapping", back_populates="event", cascade="all, delete-orphan")
+
+
+class EventSourceMapping(Base):
+    __tablename__ = 'event_source_mappings'
+
+    mapping_id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(
+        Integer,
+        ForeignKey('events.id', ondelete='CASCADE', name='fk_event_source_mappings_event_id'),
+        nullable=False,
+    )
+    source = Column(Text, nullable=False)
+    source_event_id = Column(Text, nullable=False)
+    source_sport_id = Column(Text)
+    source_tournament_id = Column(Text)
+    source_season_id = Column(Text)
+    match_method = Column(Text, nullable=False, default='direct')
+    confidence = Column(Numeric(5, 3))
+    raw_external_providers = Column(JSONB().with_variant(JSON(), 'sqlite'))
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+
+    event = relationship("Event", back_populates="source_mappings")
+
+    __table_args__ = (
+        UniqueConstraint('source', 'source_event_id', name='unique_event_source_mapping'),
+        Index('idx_event_source_mappings_event_id', 'event_id'),
+        Index('idx_event_source_mappings_source_event_id', 'source', 'source_event_id'),
+        Index('idx_event_source_mappings_source', 'source'),
+    )
 
 class Season(Base):
     __tablename__ = 'seasons'

@@ -10,6 +10,7 @@ from infrastructure.persistence.repositories import EventRepository, ResultRepos
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.observations import sport_observation_service
 from modules.sofascore import api_client
+from modules.sofascore.event_identity import resolve_sofascore_event_id
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,8 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
                 stats["skipped"] += 1
                 continue
 
-            result_data = api_client.get_event_results(event.id)
+            sofascore_event_id = resolve_sofascore_event_id(event.id)
+            result_data = api_client.get_event_results(sofascore_event_id)
             if not result_data:
                 stats["failed"] += 1
                 continue
@@ -89,7 +91,8 @@ def run_results_collection_for_date(target_date) -> None:
         odds_updated_count = 0
         for event_data in events:
             try:
-                final_odds_response = api_client.get_event_final_odds(event_data.id, event_data.slug)
+                sofascore_event_id = resolve_sofascore_event_id(event_data.id)
+                final_odds_response = api_client.get_event_final_odds(sofascore_event_id, event_data.slug)
                 if not final_odds_response:
                     logger.debug("No final odds response for event %s", event_data.id)
                     continue
