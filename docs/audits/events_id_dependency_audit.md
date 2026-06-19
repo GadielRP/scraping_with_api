@@ -2,16 +2,26 @@
 
 > **Commit base**: `c14d561`  
 > **Date**: 2026-06-19  
-> **Author**: Architecture audit (no code changes)  
-> **Status**: READY FOR REVIEW
+> **Author**: Architecture audit updated to reflect implemented changes  
+> **Status**: IMPLEMENTED IN CODEBASE
 
 ---
 
 ## 1. Resumen Ejecutivo
 
-### El Problema
+### Estado Actual
 
-Actualmente, `events.id` almacena el **ID externo de SofaScore** como primary key. Esto crea un acoplamiento directo entre la identidad interna del evento y un proveedor externo, lo cual:
+La separación de identidad ya quedó implementada en el código base:
+
+1. `events.id` ahora funciona como ID canónico interno autoincremental.
+2. Los IDs externos de SofaScore se almacenan en `event_source_mappings`.
+3. La migración de identidad corre en batches de 1000, es idempotente y deja un marcador de completitud.
+4. Los jobs y scripts que llaman a SofaScore resuelven primero el `sofascore_event_id` desde el mapping.
+5. El validador de migración comprueba mappings, huérfanos, duplicados y el default de secuencia.
+
+### Contexto Original
+
+Antes de la migración, `events.id` almacenaba el **ID externo de SofaScore** como primary key. Eso creaba un acoplamiento directo entre la identidad interna del evento y un proveedor externo, lo cual:
 
 1. **Impide integrar otros proveedores** (OddsPapi, Pinnacle, Betradar, Flashscore, OpticOdds, LSports, MollyBet, TxOdds, BetGenius, Oddin) ya que cada proveedor tiene su propio sistema de IDs.
 2. **Mezcla semánticas**: el mismo campo `event_id` se usa tanto para llamar APIs externas como para foreign keys internas. No hay distinción explícita.
@@ -728,6 +738,8 @@ return event_obj
 
 ## 12. Plan Conceptual de Migración
 
+> Este bloque se conserva como referencia de diseño. La implementación actual ya sigue este flujo en `database.py`, con batching, validación y persistencia de estado.
+
 > [!CAUTION]
 > Este plan NO debe ejecutarse todavía. Es un diseño para validación y aprobación.
 
@@ -940,6 +952,8 @@ SELECT 'season_events_with_results_count' AS check_name,
 ---
 
 ## 13. Preguntas Abiertas
+
+> Varias de estas preguntas ya quedaron resueltas por la implementación actual; se conservan aquí como contexto histórico.
 
 1. **¿Se debe soportar que un mismo proveedor pueda tener múltiples IDs para el mismo evento canónico?** (e.g., SofaScore puede retornar un evento con diferentes IDs si hay re-scheduling). La constraint `UNIQUE(source, source_event_id)` asegura 1:1 dentro de cada proveedor.
 
