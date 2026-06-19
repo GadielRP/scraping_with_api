@@ -189,13 +189,13 @@ class EventRepository:
                         if parsed_year:
                             SeasonRepository.get_or_create_season_in_session(session, season_id, season_name, parsed_year, sport)
 
-                    if home_participant_data and home_participant_data.get('source_participant_id') is not None:
-                        home_participant = ParticipantRepository.upsert_participant(session, home_participant_data)
-                    elif home_participant_data:
-                        logger.warning(
-                            "Event %s has no home participant id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for home_team persistence",
-                            sofascore_event_id,
-                        )
+                if home_participant_data and home_participant_data.get('source_participant_id') is not None:
+                    home_participant = ParticipantRepository.upsert_participant(session, home_participant_data)
+                elif home_participant_data:
+                    logger.warning(
+                        "Event %s has no home participant id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for home_team persistence",
+                        sofascore_event_id,
+                    )
 
                 if away_participant_data and away_participant_data.get('source_participant_id') is not None:
                     away_participant = ParticipantRepository.upsert_participant(session, away_participant_data)
@@ -251,7 +251,7 @@ class EventRepository:
                         old_source = event_obj.discovery_source
                         if old_source != 'dropping_odds':
                             event_obj.discovery_source = 'dropping_odds'
-                            logger.debug(f"Overwrote discovery_source to 'dropping_odds' for event {event_id} (was: {old_source})")
+                            logger.debug(f"Overwrote discovery_source to 'dropping_odds' for event {event_obj.id} (sofascore_event_id={sofascore_event_id}) (was: {old_source})")
                     
                     if event_payload.get('season_id'):
                         event_obj.season_id = event_payload['season_id']

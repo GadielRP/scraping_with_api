@@ -344,7 +344,7 @@ class OddsPortalLeagueCache(Base):
     
     season_id = Column(Integer, primary_key=True)                  # e.g. 80229 (NBA)
     cached_date = Column(DateTime, nullable=False)                  # Date the cache was populated
-    match_urls = Column(JSONB, nullable=False)                      # { "/basketball/usa/nba/team-a-team-b-xYZ/": "Team A - Team B" }
+    match_urls = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=False)                      # { "/basketball/usa/nba/team-a-team-b-xYZ/": "Team A - Team B" }
     created_at = Column(DateTime, default=get_local_now)
 
 
