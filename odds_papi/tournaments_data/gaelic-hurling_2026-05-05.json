@@ -1,0 +1,32 @@
+[
+    {
+        "tournamentId": 28693,
+        "tournamentSlug": "gaa-all-ireland-senior-championship",
+        "tournamentName": "GAA - All-Ireland Senior Championship",
+        "categorySlug": "ireland",
+        "categoryName": "Ireland",
+        "futureFixtures": 23,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50660,
+        "tournamentSlug": "national-hurling-league-division-1a",
+        "tournamentName": "National Hurling League Division 1A",
+        "categorySlug": "ireland",
+        "categoryName": "Ireland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50662,
+        "tournamentSlug": "national-hurling-league-division-1b",
+        "tournamentName": "National Hurling League Division 1B",
+        "categorySlug": "ireland",
+        "categoryName": "Ireland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

@@ -1,0 +1,102 @@
+[
+    {
+        "tournamentId": 760,
+        "tournamentSlug": "beach-soccer-world-cup",
+        "tournamentName": "Beach Soccer World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1068,
+        "tournamentSlug": "euro-beach-soccer-league",
+        "tournamentName": "Euro Beach Soccer League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1742,
+        "tournamentSlug": "euro-winners-cup",
+        "tournamentName": "Euro Winners Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1888,
+        "tournamentSlug": "fifa-beach-soccer-world-cup-qualification-uefa",
+        "tournamentName": "FIFA Beach Soccer World Cup Qualification, UEFA",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29916,
+        "tournamentSlug": "bsww-tour-mundiato-nazare",
+        "tournamentName": "BSWW Tour, Mundiato Nazare",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35276,
+        "tournamentSlug": "euro-beach-soccer-league-women",
+        "tournamentName": "Euro Beach Soccer League, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36519,
+        "tournamentSlug": "el-salvador-beach-soccer-cup",
+        "tournamentName": "El Salvador Beach Soccer Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37427,
+        "tournamentSlug": "bsww-tour-mundialito-gran-canaria",
+        "tournamentName": "BSWW Tour, Mundialito Gran Canaria",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37429,
+        "tournamentSlug": "bsww-tour-mundialito-gran-canaria-women",
+        "tournamentName": "BSWW Tour Mundialito Gran Canaria, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39019,
+        "tournamentSlug": "copa-libertadores",
+        "tournamentName": "Copa Libertadores",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

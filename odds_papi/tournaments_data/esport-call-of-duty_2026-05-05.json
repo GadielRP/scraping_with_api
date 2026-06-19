@@ -1,0 +1,22 @@
+[
+    {
+        "tournamentId": 42007,
+        "tournamentSlug": "call-of-duty-league",
+        "tournamentName": "Call of Duty League",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 10,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43297,
+        "tournamentSlug": "call-of-duty-challengers",
+        "tournamentName": "Call of Duty Challengers",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

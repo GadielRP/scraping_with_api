@@ -43,7 +43,10 @@ def get_odds_by_tournaments(tournament_ids, folder, bookmakers=None, odds_format
 
 def main():
     # 1. Create the CLI Parser
-    parser = argparse.ArgumentParser(description="OddspAPI Odds By Tournaments Tool")
+    parser = argparse.ArgumentParser(
+        description="OddspAPI Odds By Tournaments Tool. Fetches live and pre-match odds for all upcoming events within the specified tournaments.",
+        epilog="Example: python get_odds_by_tournament.py fetch --tournament_ids 17,18 --bookmakers pinnacle"
+    )
     subparsers = parser.add_subparsers(dest="command", help="The command to run")
     
     # 2. Setup the 'fetch' command with all flags

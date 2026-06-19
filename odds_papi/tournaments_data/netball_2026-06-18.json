@@ -1,0 +1,32 @@
+[
+    {
+        "tournamentId": 40475,
+        "tournamentSlug": "world-cup-women",
+        "tournamentName": "World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46295,
+        "tournamentSlug": "super-netball-women",
+        "tournamentName": "Super Netball, Women",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46297,
+        "tournamentSlug": "super-league-women",
+        "tournamentName": "Super League, Women",
+        "categorySlug": "england",
+        "categoryName": "England",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

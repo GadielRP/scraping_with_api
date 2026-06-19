@@ -1,0 +1,4172 @@
+[
+    {
+        "tournamentId": 27434,
+        "tournamentSlug": "ruka-women-sprint-c",
+        "tournamentName": "Ruka Women Sprint C",
+        "categorySlug": "sprint-women",
+        "categoryName": "Sprint Women",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33574,
+        "tournamentSlug": "toblach-women-10km-c-pursuit",
+        "tournamentName": "Toblach Women 10km C Pursuit",
+        "categorySlug": "distance-women",
+        "categoryName": "Distance Women",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900106,
+        "tournamentSlug": "men",
+        "tournamentName": "Men",
+        "categorySlug": "olympic-50km-mass-start-free",
+        "categoryName": "Olympic 50km Mass Start Free",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900107,
+        "tournamentSlug": "men",
+        "tournamentName": "Men",
+        "categorySlug": "olympic-4x10km-relay",
+        "categoryName": "Olympic 4x10km Relay",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900108,
+        "tournamentSlug": "women",
+        "tournamentName": "Women",
+        "categorySlug": "olympic-30km-mass-start-free",
+        "categoryName": "Olympic 30km Mass Start Free",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900109,
+        "tournamentSlug": "women",
+        "tournamentName": "Women",
+        "categorySlug": "olympic-4x5km-relay",
+        "categoryName": "Olympic 4x5km Relay",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900549,
+        "tournamentSlug": "women",
+        "tournamentName": "Women",
+        "categorySlug": "tour-de-ski",
+        "categoryName": "Tour de Ski",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900550,
+        "tournamentSlug": "men",
+        "tournamentName": "Men",
+        "categorySlug": "tour-de-ski",
+        "categoryName": "Tour de Ski",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900580,
+        "tournamentSlug": "2214-men",
+        "tournamentName": "2214 - Men",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900581,
+        "tournamentSlug": "2213-women",
+        "tournamentName": "2213 - Women",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900582,
+        "tournamentSlug": "2215-women",
+        "tournamentName": "2215 - Women",
+        "categorySlug": "10km-interval-classic-ruka",
+        "categoryName": "10km Interval Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900610,
+        "tournamentSlug": "2204-men",
+        "tournamentName": "2204 - Men",
+        "categorySlug": "15km-interval-classic-lenzerheide",
+        "categoryName": "15km Interval Classic Lenzerheide",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900693,
+        "tournamentSlug": "2431-women",
+        "tournamentName": "2431 - Women",
+        "categorySlug": "sprint-classic-trondheim",
+        "categoryName": "Sprint Classic Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900694,
+        "tournamentSlug": "2434-men",
+        "tournamentName": "2434 - Men",
+        "categorySlug": "sprint-classic-trondheim",
+        "categoryName": "Sprint Classic Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900740,
+        "tournamentSlug": "2369-women",
+        "tournamentName": "2369 - Women",
+        "categorySlug": "sprint-free-val-mustair",
+        "categoryName": "Sprint Free Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900741,
+        "tournamentSlug": "2370-men",
+        "tournamentName": "2370 - Men",
+        "categorySlug": "sprint-free-val-mustair",
+        "categoryName": "Sprint Free Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900742,
+        "tournamentSlug": "2374-men",
+        "tournamentName": "2374 - Men",
+        "categorySlug": "15km-pursuit-val-mustair",
+        "categoryName": "15km Pursuit Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900743,
+        "tournamentSlug": "2373-women",
+        "tournamentName": "2373 - Women",
+        "categorySlug": "10km-pursuit-val-mustair",
+        "categoryName": "10km Pursuit Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900744,
+        "tournamentSlug": "2371-women",
+        "tournamentName": "2371 - Women",
+        "categorySlug": "10km-mass-start-classic-val-mustair",
+        "categoryName": "10km Mass Start Classic Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900745,
+        "tournamentSlug": "2372-men",
+        "tournamentName": "2372 - Men",
+        "categorySlug": "15km-mass-start-classic-val-mustair",
+        "categoryName": "15km Mass Start Classic Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900746,
+        "tournamentSlug": "2036-men",
+        "tournamentName": "2036- Men",
+        "categorySlug": "15km-interval-skate-toblach",
+        "categoryName": "15km Interval Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900747,
+        "tournamentSlug": "2035-women",
+        "tournamentName": "2035 - Women",
+        "categorySlug": "10km-freestyle-toblach",
+        "categoryName": "10km Freestyle Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900748,
+        "tournamentSlug": "2037-women",
+        "tournamentName": "2037 - Women",
+        "categorySlug": "10km-pursuit-classic-toblach",
+        "categoryName": "10km Pursuit Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900749,
+        "tournamentSlug": "2038-men",
+        "tournamentName": "2038 - Men",
+        "categorySlug": "15km-pursuit-classic-toblach",
+        "categoryName": "15km Pursuit Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900750,
+        "tournamentSlug": "val-di-fiemme-2039-wom",
+        "tournamentName": "Val di Fiemme- 2039 - Wom",
+        "categorySlug": "10k-mass-start-classic",
+        "categoryName": "10k Mass Start Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900751,
+        "tournamentSlug": "val-di-fiemme-2040-men",
+        "tournamentName": "Val di Fiemme- 2040 - Men",
+        "categorySlug": "15k-mass-start-classic",
+        "categoryName": "15k Mass Start Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900752,
+        "tournamentSlug": "2043-women",
+        "tournamentName": "2043 - Women",
+        "categorySlug": "sprint-classic-val-di-fiemme",
+        "categoryName": "Sprint Classic Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900753,
+        "tournamentSlug": "2044-men",
+        "tournamentName": "2044 - Men",
+        "categorySlug": "sprint-classic-val-di-fiemme",
+        "categoryName": "Sprint Classic Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900754,
+        "tournamentSlug": "2045-women",
+        "tournamentName": "2045 - Women",
+        "categorySlug": "10km-mass-start-skate-val-di-fiemme",
+        "categoryName": "10km Mass Start Skate Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900755,
+        "tournamentSlug": "2046-men",
+        "tournamentName": "2046 - Men",
+        "categorySlug": "10km-mass-start-val-di-fiemme",
+        "categoryName": "10km Mass Start Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900756,
+        "tournamentSlug": "2266-women",
+        "tournamentName": "2266 - Women",
+        "categorySlug": "sprint-classic-falun",
+        "categoryName": "Sprint Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900757,
+        "tournamentSlug": "2265-men",
+        "tournamentName": "2265 - Men",
+        "categorySlug": "sprint-classic-falun",
+        "categoryName": "Sprint Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900758,
+        "tournamentSlug": "2010-men",
+        "tournamentName": "2010 - Men",
+        "categorySlug": "skiathlon-classic-lahti",
+        "categoryName": "Skiathlon Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900759,
+        "tournamentSlug": "2010-men",
+        "tournamentName": "2010 - Men",
+        "categorySlug": "skiathlon-lahti",
+        "categoryName": "Skiathlon Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900760,
+        "tournamentSlug": "2009-women",
+        "tournamentName": "2009 - Women",
+        "categorySlug": "skiathlon-lahti",
+        "categoryName": "Skiathlon Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900761,
+        "tournamentSlug": "mix-relay-4x5km-women",
+        "tournamentName": "Mix Relay 4x5km - Women",
+        "categorySlug": "lahti",
+        "categoryName": "Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900762,
+        "tournamentSlug": "4x7-5km-mix-relay-2012-men",
+        "tournamentName": "4x7.5km - Mix Relay - 2012 - Men",
+        "categorySlug": "lahti",
+        "categoryName": "Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900764,
+        "tournamentSlug": "oberstdorf-2071-women",
+        "tournamentName": "Oberstdorf - 2071 - Women",
+        "categorySlug": "4x5km-mix-relay",
+        "categoryName": "4x5km Mix Relay",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900765,
+        "tournamentSlug": "falun-4137-women",
+        "tournamentName": "Falun - 4137 - Women",
+        "categorySlug": "10km-interval-skate",
+        "categoryName": "10km Interval Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900766,
+        "tournamentSlug": "2072-men",
+        "tournamentName": "2072 - Men",
+        "categorySlug": "4x10km-mix-relay-oberstdorf",
+        "categoryName": "4x10km Mix Relay Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900767,
+        "tournamentSlug": "4138-men",
+        "tournamentName": "4138 - Men",
+        "categorySlug": "15km-interval-skate-falun",
+        "categoryName": "15km Interval Skate Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900768,
+        "tournamentSlug": "2070-men",
+        "tournamentName": "2070 - Men",
+        "categorySlug": "15km-interval-skate-oberstdorf",
+        "categoryName": "15Km Interval Skate Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900769,
+        "tournamentSlug": "15km-mass-start-falun-2262-men",
+        "tournamentName": "15km Mass Start -Falun-2262- Men",
+        "categorySlug": "15km-mass-start-falun-2262-men",
+        "categoryName": "15km Mass Start -Falun-2262- Men",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900770,
+        "tournamentSlug": "10km-mass-start-falun-2261-women",
+        "tournamentName": "10km Mass Start-Falun-2261-Women",
+        "categorySlug": "10km-mass-start-falun-2261-women",
+        "categoryName": "10km Mass Start-Falun-2261-Women",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900773,
+        "tournamentSlug": "oberstdorf-2061-women",
+        "tournamentName": "Oberstdorf - 2061 - Women",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900774,
+        "tournamentSlug": "oberstdorf-2062-men",
+        "tournamentName": "Oberstdorf - 2062 - Men",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900775,
+        "tournamentSlug": "2069-women",
+        "tournamentName": "2069 -  Women",
+        "categorySlug": "10km-interval-skate-oberstdorf",
+        "categoryName": "10Km Interval Skate Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900779,
+        "tournamentSlug": "2050-men",
+        "tournamentName": "2050 - Men",
+        "categorySlug": "sprint-skate-ulricehamn",
+        "categoryName": "Sprint Skate Ulricehamn",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900780,
+        "tournamentSlug": "2049-women",
+        "tournamentName": "2049 - Women",
+        "categorySlug": "sprint-skate-ulricehamn",
+        "categoryName": "Sprint Skate Ulricehamn",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900783,
+        "tournamentSlug": "sprint-relay-skate-2053-women",
+        "tournamentName": "Sprint Relay - Skate - 2053 - Women",
+        "categorySlug": "ulricehamn",
+        "categoryName": "Ulricehamn",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900785,
+        "tournamentSlug": "2054-men",
+        "tournamentName": "2054 - Men",
+        "categorySlug": "sprint-relay-skate-ulricehamn",
+        "categoryName": "Sprint Relay Skate Ulricehamn",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900786,
+        "tournamentSlug": "skate-oberstdorf-2068-men",
+        "tournamentName": "Skate - Oberstdorf - 2068 - Men",
+        "categorySlug": "sprint-relay",
+        "categoryName": "Sprint Relay",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900787,
+        "tournamentSlug": "skate-oberstdorf-2067-women",
+        "tournamentName": "Skate - Oberstdorf - 2067 - Women",
+        "categorySlug": "sprint-relay",
+        "categoryName": "Sprint Relay",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900791,
+        "tournamentSlug": "2064-men",
+        "tournamentName": "2064 - Men",
+        "categorySlug": "skiathlon-mix-oberstdorf",
+        "categoryName": "Skiathlon Mix Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900803,
+        "tournamentSlug": "2065-women",
+        "tournamentName": "2065 - Women",
+        "categorySlug": "skiathlon-mix-oberstdorf",
+        "categoryName": "Skiathlon Mix Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900805,
+        "tournamentSlug": "2073-women",
+        "tournamentName": "2073 - Women",
+        "categorySlug": "30km-mass-start-classic-oberstdorf",
+        "categoryName": "30km Mass Start Classic Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900806,
+        "tournamentSlug": "2074-men",
+        "tournamentName": "2074 - Men",
+        "categorySlug": "50km-mass-start-classic-oberstdorf",
+        "categoryName": "50km Mass Start Classic Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900807,
+        "tournamentSlug": "engadin-4256-men",
+        "tournamentName": "Engadin - 4256 Men",
+        "categorySlug": "15km-mass-start",
+        "categoryName": "15km Mass Start",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900808,
+        "tournamentSlug": "engadin-4255-women",
+        "tournamentName": "Engadin - 4255 - Women",
+        "categorySlug": "10k-mass-start",
+        "categoryName": "10k Mass Start",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900809,
+        "tournamentSlug": "4257-women",
+        "tournamentName": "4257 - Women",
+        "categorySlug": "30km-pursuit-engadin",
+        "categoryName": "30km Pursuit Engadin",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900810,
+        "tournamentSlug": "4258-men",
+        "tournamentName": "4258 - Men",
+        "categorySlug": "50km-pursuit-engadin",
+        "categoryName": "50km Pursuit Engadin",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900912,
+        "tournamentSlug": "2467-women",
+        "tournamentName": "2467 - Women",
+        "categorySlug": "10km-interval-classic-ruka",
+        "categoryName": "10km Interval Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900914,
+        "tournamentSlug": "2465-men",
+        "tournamentName": "2465 - Men",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900915,
+        "tournamentSlug": "2466-women",
+        "tournamentName": "2466 - Women",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900916,
+        "tournamentSlug": "2468-men",
+        "tournamentName": "2468 - Men",
+        "categorySlug": "15km-classic-ruka",
+        "categoryName": "15km Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900917,
+        "tournamentSlug": "2470-women",
+        "tournamentName": "2470 - Women",
+        "categorySlug": "10km-freestyle-pursuit",
+        "categoryName": "10km Freestyle Pursuit",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900918,
+        "tournamentSlug": "2469-men",
+        "tournamentName": "2469 - Men",
+        "categorySlug": "15km-freestyle-pursuit",
+        "categoryName": "15km Freestyle Pursuit",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900925,
+        "tournamentSlug": "2514-women",
+        "tournamentName": "2514 - Women",
+        "categorySlug": "10km-free-lillehammer",
+        "categoryName": "10km Free Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900926,
+        "tournamentSlug": "2511-men",
+        "tournamentName": "2511 - Men",
+        "categorySlug": "sprint-free-lillehammer",
+        "categoryName": "Sprint Free Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900927,
+        "tournamentSlug": "2512-women",
+        "tournamentName": "2512 - Women",
+        "categorySlug": "sprint-free-lillehammer",
+        "categoryName": "Sprint Free Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900928,
+        "tournamentSlug": "2513-men",
+        "tournamentName": "2513 - Men",
+        "categorySlug": "15km-interval-skate-lillehammer",
+        "categoryName": "15km Interval Skate Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900929,
+        "tournamentSlug": "2511-men",
+        "tournamentName": "2511 - Men",
+        "categorySlug": "sprint-skate-lillehammer",
+        "categoryName": "Sprint Skate Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900930,
+        "tournamentSlug": "2512-women",
+        "tournamentName": "2512 - Women",
+        "categorySlug": "sprint-skate-lillehammer",
+        "categoryName": "Sprint Skate Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900931,
+        "tournamentSlug": "2514-women",
+        "tournamentName": "2514 - Women",
+        "categorySlug": "10km-interval-skate-lillehammer",
+        "categoryName": "10Km Interval Skate Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900932,
+        "tournamentSlug": "2544-women",
+        "tournamentName": "2544 - Women",
+        "categorySlug": "sprint-skate-davos",
+        "categoryName": "Sprint Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900933,
+        "tournamentSlug": "2543-men",
+        "tournamentName": "2543 - Men",
+        "categorySlug": "sprint-skate-davos",
+        "categoryName": "Sprint Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900934,
+        "tournamentSlug": "2546-men",
+        "tournamentName": "2546 - Men",
+        "categorySlug": "15km-interval-skate-davos",
+        "categoryName": "15km Interval Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900935,
+        "tournamentSlug": "2515-men",
+        "tournamentName": "2515 - Men",
+        "categorySlug": "4x7-5km-mix-relay-lillehammer",
+        "categoryName": "4x7.5km Mix Relay Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900936,
+        "tournamentSlug": "2545-women",
+        "tournamentName": "2545 - Women",
+        "categorySlug": "10km-interval-skate-davos",
+        "categoryName": "10km Interval Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900937,
+        "tournamentSlug": "2549-men",
+        "tournamentName": "2549 - Men",
+        "categorySlug": "sprint-skate-lenzerheide",
+        "categoryName": "Sprint Skate Lenzerheide",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900938,
+        "tournamentSlug": "2550-women",
+        "tournamentName": "2550 - Women",
+        "categorySlug": "sprint-skate-lenzerheide",
+        "categoryName": "Sprint Skate Lenzerheide",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900939,
+        "tournamentSlug": "2489-men",
+        "tournamentName": "2489 - Men",
+        "categorySlug": "sprint-skate-dresden",
+        "categoryName": "Sprint Skate Dresden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900940,
+        "tournamentSlug": "2490-women",
+        "tournamentName": "2490 - Women",
+        "categorySlug": "sprint-skate-dresden",
+        "categoryName": "Sprint Skate Dresden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900943,
+        "tournamentSlug": "2495-men",
+        "tournamentName": "2495 - Men",
+        "categorySlug": "sprint-relay-dresden",
+        "categoryName": "Sprint Relay Dresden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900944,
+        "tournamentSlug": "2497-women",
+        "tournamentName": "2497 - Women",
+        "categorySlug": "sprint-relay-dresden",
+        "categoryName": "Sprint Relay Dresden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900945,
+        "tournamentSlug": "skate-lenzerheide-2551-women",
+        "tournamentName": "Skate - Lenzerheide - 2551 - Women",
+        "categorySlug": "10km-interval",
+        "categoryName": "10km Interval",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900946,
+        "tournamentSlug": "2057-men",
+        "tournamentName": "2057 - Men",
+        "categorySlug": "15km-mass-start-skate-val-di-fiemme",
+        "categoryName": "15km Mass Start Skate Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900947,
+        "tournamentSlug": "2551-women",
+        "tournamentName": "2551 - Women",
+        "categorySlug": "10km-classic-lenzerheide",
+        "categoryName": "10km Classic Lenzerheide",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900948,
+        "tournamentSlug": "2499-women",
+        "tournamentName": "2499 - Women",
+        "categorySlug": "10km-mass-start-oberstdorf",
+        "categoryName": "10km Mass Start Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900949,
+        "tournamentSlug": "2500-men",
+        "tournamentName": "2500 - Men",
+        "categorySlug": "15km-mass-start-oberstdorf",
+        "categoryName": "15km Mass Start Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900950,
+        "tournamentSlug": "2501-men",
+        "tournamentName": "2501 - Men",
+        "categorySlug": "sprint-classic-oberstdorf",
+        "categoryName": "Sprint Classic Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900951,
+        "tournamentSlug": "2504-women",
+        "tournamentName": "2504 - Women",
+        "categorySlug": "sprint-classic-oberstdorf",
+        "categoryName": "Sprint Classic Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900952,
+        "tournamentSlug": "2503-men",
+        "tournamentName": "2503 - Men",
+        "categorySlug": "sprint-classic-oberstdorf",
+        "categoryName": "Sprint Classic Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900953,
+        "tournamentSlug": "2505-women",
+        "tournamentName": "2505 - Women",
+        "categorySlug": "10k-mass-start-classic-val-di-fiemme",
+        "categoryName": "10K Mass Start Classic Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900954,
+        "tournamentSlug": "2508-women",
+        "tournamentName": "2508 - Women",
+        "categorySlug": "10k-mass-start-skate-val-di-fiemme",
+        "categoryName": "10K Mass Start Skate Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900955,
+        "tournamentSlug": "2506-men",
+        "tournamentName": "2506 - Men",
+        "categorySlug": "15k-mass-start-classic-val-di-fiemme",
+        "categoryName": "15k Mass Start Classic Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900956,
+        "tournamentSlug": "2507-men",
+        "tournamentName": "2507 - Men",
+        "categorySlug": "10k-mass-start-skate-val-di-fiemme",
+        "categoryName": "10k Mass Start Skate Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900957,
+        "tournamentSlug": "men",
+        "tournamentName": "Men",
+        "categorySlug": "olympic-sprint-relay-classic",
+        "categoryName": "Olympic Sprint Relay Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900958,
+        "tournamentSlug": "men",
+        "tournamentName": "Men",
+        "categorySlug": "olympic-15km-interval-classic",
+        "categoryName": "Olympic 15km Interval Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900959,
+        "tournamentSlug": "men",
+        "tournamentName": "Men",
+        "categorySlug": "olympic-sprint-skate",
+        "categoryName": "Olympic Sprint Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900960,
+        "tournamentSlug": "men",
+        "tournamentName": "Men",
+        "categorySlug": "olympic-skiathlon-mix",
+        "categoryName": "Olympic Skiathlon Mix",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900961,
+        "tournamentSlug": "women",
+        "tournamentName": "Women",
+        "categorySlug": "olympic-sprint-relay-classic",
+        "categoryName": "Olympic Sprint Relay Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900962,
+        "tournamentSlug": "women",
+        "tournamentName": "Women",
+        "categorySlug": "olympic-skiathlon-mix",
+        "categoryName": "Olympic Skiathlon Mix",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900963,
+        "tournamentSlug": "women",
+        "tournamentName": "Women",
+        "categorySlug": "olympic-sprint-skate",
+        "categoryName": "Olympic Sprint Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900964,
+        "tournamentSlug": "women",
+        "tournamentName": "Women",
+        "categorySlug": "olympic-10km-interval-classic",
+        "categoryName": "Olympic 10km Interval Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900981,
+        "tournamentSlug": "2475-women",
+        "tournamentName": "2475 - Women",
+        "categorySlug": "10km-classic-lahti",
+        "categoryName": "10km Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900982,
+        "tournamentSlug": "2476-men",
+        "tournamentName": "2476 - Men",
+        "categorySlug": "15km-classic-lahti",
+        "categoryName": "15km Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900983,
+        "tournamentSlug": "2473-men",
+        "tournamentName": "2473 - Men",
+        "categorySlug": "sprint-skate-lahti",
+        "categoryName": "Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900984,
+        "tournamentSlug": "2474-women",
+        "tournamentName": "2474 - Women",
+        "categorySlug": "sprint-skate-lahti",
+        "categoryName": "Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900985,
+        "tournamentSlug": "2524-men",
+        "tournamentName": "2524 - Men",
+        "categorySlug": "50km-mass-start-classic-oslo",
+        "categoryName": "50km Mass Start Classic Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900986,
+        "tournamentSlug": "2523-women",
+        "tournamentName": "2523 - Women",
+        "categorySlug": "30km-mass-start-classic-oslo",
+        "categoryName": "30km Mass Start Classic Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900987,
+        "tournamentSlug": "2521-men",
+        "tournamentName": "2521 - Men",
+        "categorySlug": "sprint-classic-drammen",
+        "categoryName": "Sprint Classic Drammen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900988,
+        "tournamentSlug": "2522-women",
+        "tournamentName": "2522 - Women",
+        "categorySlug": "sprint-classic-drammen",
+        "categoryName": "Sprint Classic Drammen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900989,
+        "tournamentSlug": "2449-men",
+        "tournamentName": "2449 - Men",
+        "categorySlug": "sprint-classic-falun",
+        "categoryName": "Sprint Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900990,
+        "tournamentSlug": "2450-women",
+        "tournamentName": "2450 - Women",
+        "categorySlug": "sprint-classic-falun",
+        "categoryName": "Sprint Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900991,
+        "tournamentSlug": "2452-men",
+        "tournamentName": "2452 - Men",
+        "categorySlug": "15km-free-falun",
+        "categoryName": "15km Free Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900992,
+        "tournamentSlug": "2451-women",
+        "tournamentName": "2451 - Women",
+        "categorySlug": "10km-free-falun",
+        "categoryName": "10km Free Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900993,
+        "tournamentSlug": "2458-mixed",
+        "tournamentName": "2458 - Mixed",
+        "categorySlug": "mixed-relay-falun",
+        "categoryName": "Mixed Relay Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 900994,
+        "tournamentSlug": "2459-mixed",
+        "tournamentName": "2459 - Mixed",
+        "categorySlug": "mixed-team-sprint-falun",
+        "categoryName": "Mixed Team Sprint Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901099,
+        "tournamentSlug": "2216-men",
+        "tournamentName": "2216 - Men",
+        "categorySlug": "10km-interval-classic-ruka",
+        "categoryName": "10km interval Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901100,
+        "tournamentSlug": "2217-women",
+        "tournamentName": "2217 - Women",
+        "categorySlug": "20km-pursuit-ruka",
+        "categoryName": "20km Pursuit Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901101,
+        "tournamentSlug": "2218",
+        "tournamentName": "2218",
+        "categorySlug": "20km-pursuit-ruka",
+        "categoryName": "20km Pursuit Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901102,
+        "tournamentSlug": "2219-women",
+        "tournamentName": "2219 - Women",
+        "categorySlug": "10km-interval-skate-lillehammer",
+        "categoryName": "10Km Interval Skate Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901103,
+        "tournamentSlug": "2220",
+        "tournamentName": "2220",
+        "categorySlug": "10km-interval-skate-lillehammer",
+        "categoryName": "10Km Interval Skate Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901104,
+        "tournamentSlug": "2224",
+        "tournamentName": "2224",
+        "categorySlug": "sprint-skate-lillehammer",
+        "categoryName": "Sprint Skate Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901105,
+        "tournamentSlug": "2223-women",
+        "tournamentName": "2223 - Women",
+        "categorySlug": "sprint-skate-lillehammer",
+        "categoryName": "Sprint Skate Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901106,
+        "tournamentSlug": "2225-women",
+        "tournamentName": "2225 - Women",
+        "categorySlug": "20km-mass-start-classic-lillehammer",
+        "categoryName": "20km Mass Start Classic Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901107,
+        "tournamentSlug": "2226-men",
+        "tournamentName": "2226 - Men",
+        "categorySlug": "20km-mass-start-classic-lillehammer",
+        "categoryName": "20km Mass Start Classic Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901108,
+        "tournamentSlug": "2227-women",
+        "tournamentName": "2227 - Women",
+        "categorySlug": "sprint-classic-beitostolen",
+        "categoryName": "Sprint Classic Beitostolen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901109,
+        "tournamentSlug": "2231-women",
+        "tournamentName": "2231 - Women",
+        "categorySlug": "10km-interval-classic-beitostoelen",
+        "categoryName": "10Km Interval Classic Beitostoelen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901110,
+        "tournamentSlug": "2230-men",
+        "tournamentName": "2230 - Men",
+        "categorySlug": "sprint-classic-beitostolen",
+        "categoryName": "Sprint Classic Beitostolen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901111,
+        "tournamentSlug": "2232-men",
+        "tournamentName": "2232 - Men",
+        "categorySlug": "10km-interval-classic-beitostolen",
+        "categoryName": "10Km Interval Classic Beitostolen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901112,
+        "tournamentSlug": "2223",
+        "tournamentName": "2223",
+        "categorySlug": "4x5km-mix-relay-beitostolen",
+        "categoryName": "4x5km Mix Relay Beitostolen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901113,
+        "tournamentSlug": "2237-men",
+        "tournamentName": "2237 - Men",
+        "categorySlug": "sprint-skate-davos",
+        "categoryName": "Sprint Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901114,
+        "tournamentSlug": "2236-women",
+        "tournamentName": "2236 - Women",
+        "categorySlug": "sprint-skate-davos",
+        "categoryName": "Sprint Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901115,
+        "tournamentSlug": "2238-women",
+        "tournamentName": "2238 - Women",
+        "categorySlug": "20km-interval-skate-davos",
+        "categoryName": "20Km Interval Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901116,
+        "tournamentSlug": "2239-men",
+        "tournamentName": "2239 - Men",
+        "categorySlug": "20km-interval-skate-davos",
+        "categoryName": "20Km Interval Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901117,
+        "tournamentSlug": "2243-men",
+        "tournamentName": "2243 - Men",
+        "categorySlug": "sprint-skate-val-mustair",
+        "categoryName": "Sprint Skate Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901118,
+        "tournamentSlug": "2242-women",
+        "tournamentName": "2242 - Women",
+        "categorySlug": "sprint-skate-val-mustair",
+        "categoryName": "Sprint Skate Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901119,
+        "tournamentSlug": "2246-women",
+        "tournamentName": "2246 - Women",
+        "categorySlug": "10km-interval-skate-oberstdorf",
+        "categoryName": "10Km Interval Skate Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901120,
+        "tournamentSlug": "2247-men",
+        "tournamentName": "2247 - Men",
+        "categorySlug": "10km-interval-skate-oberstdorf",
+        "categoryName": "10Km Interval Skate Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901121,
+        "tournamentSlug": "2246-women",
+        "tournamentName": "2246 - Women",
+        "categorySlug": "10km-classic-oberstdorf",
+        "categoryName": "10km Classic Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901122,
+        "tournamentSlug": "2247-men",
+        "tournamentName": "2247 - Men",
+        "categorySlug": "10km-classic-oberstdorf",
+        "categoryName": "10km Classic Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901123,
+        "tournamentSlug": "skate-val-di-fiemme-2256-women",
+        "tournamentName": "Skate - Val Di Fiemme - 2256 - Women",
+        "categorySlug": "10km-mass-start",
+        "categoryName": "10km Mass Start",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901124,
+        "tournamentSlug": "skate-val-di-fiemme-2257",
+        "tournamentName": "Skate - Val Di Fiemme - 2257",
+        "categorySlug": "10km-mass-start",
+        "categoryName": "10km Mass Start",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901125,
+        "tournamentSlug": "classic-val-di-fiemme-2255",
+        "tournamentName": "Classic - Val Di Fiemme - 2255",
+        "categorySlug": "15km-mass-start",
+        "categoryName": "15km Mass Start",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901126,
+        "tournamentSlug": "2245-men",
+        "tournamentName": "2245 - Men",
+        "categorySlug": "10km-mass-start-classic-val-mustair",
+        "categoryName": "10km Mass Start Classic Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901127,
+        "tournamentSlug": "2244-women",
+        "tournamentName": "2244 - Women",
+        "categorySlug": "10km-mass-start-classic-val-mustair",
+        "categoryName": "10km Mass Start Classic Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901128,
+        "tournamentSlug": "2244-women",
+        "tournamentName": "2244 - Women",
+        "categorySlug": "10km-pursuit-classic-val-mustair",
+        "categoryName": "10km Pursuit Classic Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901129,
+        "tournamentSlug": "2245-men",
+        "tournamentName": "2245 - Men",
+        "categorySlug": "10km-pursuit-classic-val-mustair",
+        "categoryName": "10km Pursuit Classic Val Mustair",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901130,
+        "tournamentSlug": "2249-men",
+        "tournamentName": "2249 - Men",
+        "categorySlug": "20km-pursuit-skate-oberstdorf",
+        "categoryName": "20km Pursuit-Skate Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901131,
+        "tournamentSlug": "2248-women",
+        "tournamentName": "2248 - Women",
+        "categorySlug": "20km-pursuit-skate-oberstdorf",
+        "categoryName": "20km Pursuit-Skate Oberstdorf",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901132,
+        "tournamentSlug": "val-di-fiemme-2253",
+        "tournamentName": "Val Di Fiemme - 2253",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901133,
+        "tournamentSlug": "val-di-fiemme-2252-women",
+        "tournamentName": "Val Di Fiemme - 2252 - Women",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901134,
+        "tournamentSlug": "classic-val-di-fiemme-2254-women",
+        "tournamentName": "Classic - Val Di Fiemme - 2254 - Women",
+        "categorySlug": "15km-mass-start",
+        "categoryName": "15km Mass Start",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901135,
+        "tournamentSlug": "4222-men",
+        "tournamentName": "4222 - Men",
+        "categorySlug": "sprint-skate-livigno",
+        "categoryName": "Sprint Skate Livigno",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901141,
+        "tournamentSlug": "livigno-4221-women",
+        "tournamentName": "Livigno - 4221 -Women",
+        "categorySlug": "sprint-final",
+        "categoryName": "Sprint Final",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901142,
+        "tournamentSlug": "4225-women",
+        "tournamentName": "4225 - Women",
+        "categorySlug": "sprint-relay-livigno",
+        "categoryName": "Sprint Relay Livigno",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901143,
+        "tournamentSlug": "4228-men",
+        "tournamentName": "4228 - Men",
+        "categorySlug": "sprint-relay-livigno",
+        "categoryName": "Sprint Relay Livigno",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901152,
+        "tournamentSlug": "les-rousses-2274-women",
+        "tournamentName": "Les Rousses - 2274 - Women",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901153,
+        "tournamentSlug": "skate-les-rousses-2270-women",
+        "tournamentName": "Skate - Les Rousses - 2270 - Women",
+        "categorySlug": "10km-intrerval",
+        "categoryName": "10km Intrerval",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901154,
+        "tournamentSlug": "skate-les-rousses-2271",
+        "tournamentName": "Skate - Les Rousses - 2271",
+        "categorySlug": "10km-intrerval",
+        "categoryName": "10km Intrerval",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901155,
+        "tournamentSlug": "les-rousses-2275",
+        "tournamentName": "Les Rousses - 2275",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901156,
+        "tournamentSlug": "toblach-2282-women",
+        "tournamentName": "Toblach - 2282 - Women",
+        "categorySlug": "10km-individual-start",
+        "categoryName": "10km Individual Start",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901157,
+        "tournamentSlug": "les-rousses-2277",
+        "tournamentName": "Les Rousses - 2277",
+        "categorySlug": "20km-mass-start-classic",
+        "categoryName": "20km Mass Start Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901158,
+        "tournamentSlug": "les-rousses-2276-women",
+        "tournamentName": "Les Rousses - 2276 - Women",
+        "categorySlug": "20km-mass-start-classic",
+        "categoryName": "20km Mass Start Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901159,
+        "tournamentSlug": "toblach-2281-men",
+        "tournamentName": "Toblach - 2281 - Men",
+        "categorySlug": "sprint-skate",
+        "categoryName": "Sprint Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901160,
+        "tournamentSlug": "toblach-2283-men",
+        "tournamentName": "Toblach - 2283 - Men",
+        "categorySlug": "10km-interval-skate",
+        "categoryName": "10Km Interval Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901161,
+        "tournamentSlug": "toblach-2280-women",
+        "tournamentName": "Toblach - 2280 - Women",
+        "categorySlug": "sprint-skate",
+        "categoryName": "Sprint Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901162,
+        "tournamentSlug": "2284-women",
+        "tournamentName": "2284 - Women",
+        "categorySlug": "4x7-5km-mix-relay-toblach",
+        "categoryName": "4x7.5km Mix Relay Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901163,
+        "tournamentSlug": "2285-men",
+        "tournamentName": "2285 - Men",
+        "categorySlug": "4x7-5km-mix-relay-toblach",
+        "categoryName": "4x7.5km Mix Relay Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901169,
+        "tournamentSlug": "sprint-classic-2317",
+        "tournamentName": "Sprint Classic - 2317",
+        "categorySlug": "planica",
+        "categoryName": "Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901170,
+        "tournamentSlug": "sprint-classic-2316-women",
+        "tournamentName": "Sprint Classic - 2316 - Women",
+        "categorySlug": "planica",
+        "categoryName": "Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901171,
+        "tournamentSlug": "10km-individual-start-2326-women",
+        "tournamentName": "10km Individual Start - 2326 - Women",
+        "categorySlug": "planica",
+        "categoryName": "Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901172,
+        "tournamentSlug": "15km-skiathlon-classic-2319-women",
+        "tournamentName": "15km Skiathlon Classic - 2319 - Women",
+        "categorySlug": "planica",
+        "categoryName": "Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901173,
+        "tournamentSlug": "30km-skiathlon-classic-2318",
+        "tournamentName": "30km Skiathlon Classic - 2318",
+        "categorySlug": "planica",
+        "categoryName": "Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901183,
+        "tournamentSlug": "sprint-relay-skate-2325",
+        "tournamentName": "Sprint Relay - Skate - 2325",
+        "categorySlug": "planica",
+        "categoryName": "Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901184,
+        "tournamentSlug": "sprint-relay-skate-2324-women",
+        "tournamentName": "Sprint Relay - Skate - 2324 - Women",
+        "categorySlug": "planica",
+        "categoryName": "Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901188,
+        "tournamentSlug": "15km-individual-start-2327",
+        "tournamentName": "15km Individual Start - 2327",
+        "categorySlug": "planica",
+        "categoryName": "Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901189,
+        "tournamentSlug": "2330-women",
+        "tournamentName": "2330 - Women",
+        "categorySlug": "30km-mass-start-classic-planica",
+        "categoryName": "30km Mass Start Classic Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901190,
+        "tournamentSlug": "2331",
+        "tournamentName": "2331",
+        "categorySlug": "50km-mass-start-classic-planica",
+        "categoryName": "50km Mass Start Classic Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901191,
+        "tournamentSlug": "2329",
+        "tournamentName": "2329",
+        "categorySlug": "4x10km-mix-relay-planica",
+        "categoryName": "4x10km Mix Relay Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901192,
+        "tournamentSlug": "2328-women",
+        "tournamentName": "2328 - Women",
+        "categorySlug": "4x5km-mix-relay-planica",
+        "categoryName": "4x5km Mix Relay Planica",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901194,
+        "tournamentSlug": "2286",
+        "tournamentName": "2286",
+        "categorySlug": "50km-mass-start-classic-oslo",
+        "categoryName": "50km Mass Start Classic Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901195,
+        "tournamentSlug": "2287-women",
+        "tournamentName": "2287 - Women",
+        "categorySlug": "50km-mass-start-classic-oslo",
+        "categoryName": "50km Mass Start Classic Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901196,
+        "tournamentSlug": "sprint-classic-2291",
+        "tournamentName": "Sprint Classic - 2291",
+        "categorySlug": "drammen",
+        "categoryName": "Drammen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901197,
+        "tournamentSlug": "sprint-classic-2290-women",
+        "tournamentName": "Sprint Classic - 2290 - Women",
+        "categorySlug": "drammen",
+        "categoryName": "Drammen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901199,
+        "tournamentSlug": "2293",
+        "tournamentName": "2293",
+        "categorySlug": "10km-interval-classic-falun",
+        "categoryName": "10km Interval Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901201,
+        "tournamentSlug": "falun-2296-women",
+        "tournamentName": "Falun - 2296 - Women",
+        "categorySlug": "sprint-skate",
+        "categoryName": "Sprint Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901208,
+        "tournamentSlug": "falun-2297",
+        "tournamentName": "Falun - 2297",
+        "categorySlug": "sprint-skate",
+        "categoryName": "Sprint Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901209,
+        "tournamentSlug": "2292-women",
+        "tournamentName": "2292 - Women",
+        "categorySlug": "10km-interval-classic-falun",
+        "categoryName": "10km Interval Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901215,
+        "tournamentSlug": "2301-women",
+        "tournamentName": "2301 - Women",
+        "categorySlug": "sprint-skate-tallinn",
+        "categoryName": "Sprint Skate Tallinn",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901216,
+        "tournamentSlug": "2298-mixed",
+        "tournamentName": "2298 - Mixed",
+        "categorySlug": "mixed-relay-falun",
+        "categoryName": "Mixed Relay Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901217,
+        "tournamentSlug": "2302",
+        "tournamentName": "2302",
+        "categorySlug": "sprint-skate-tallinn",
+        "categoryName": "Sprint Skate Tallinn",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901218,
+        "tournamentSlug": "2308-women",
+        "tournamentName": "2308 - Women",
+        "categorySlug": "20km-mass-start-lahti",
+        "categoryName": "20km Mass Start Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901219,
+        "tournamentSlug": "2309",
+        "tournamentName": "2309",
+        "categorySlug": "20km-mass-start-lahti",
+        "categoryName": "20km Mass Start Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901220,
+        "tournamentSlug": "2306-women",
+        "tournamentName": "2306 - Women",
+        "categorySlug": "sprint-classic-lahti",
+        "categoryName": "Sprint Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901221,
+        "tournamentSlug": "2303-women",
+        "tournamentName": "2303 - Women",
+        "categorySlug": "team-sprint-free-lahti",
+        "categoryName": "Team Sprint Free Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901223,
+        "tournamentSlug": "2307",
+        "tournamentName": "2307",
+        "categorySlug": "sprint-classic-lahti",
+        "categoryName": "Sprint Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901227,
+        "tournamentSlug": "4253",
+        "tournamentName": "4253",
+        "categorySlug": "team-sprint-free-lahti",
+        "categoryName": "Team Sprint Free Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901380,
+        "tournamentSlug": "2235-women",
+        "tournamentName": "2235 - Women",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901381,
+        "tournamentSlug": "2237-women",
+        "tournamentName": "2237 - Women",
+        "categorySlug": "10km-interval-classic-ruka",
+        "categoryName": "10km Interval Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901382,
+        "tournamentSlug": "2239-women",
+        "tournamentName": "2239 - Women",
+        "categorySlug": "20km-mass-start-skate-ruka",
+        "categoryName": "20km Mass Start Skate Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901383,
+        "tournamentSlug": "2236",
+        "tournamentName": "2236",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901384,
+        "tournamentSlug": "2238",
+        "tournamentName": "2238",
+        "categorySlug": "10km-interval-classic-ruka",
+        "categoryName": "10km Interval Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901385,
+        "tournamentSlug": "2240",
+        "tournamentName": "2240",
+        "categorySlug": "20km-mass-start-skate-ruka",
+        "categoryName": "20km Mass Start Skate Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901386,
+        "tournamentSlug": "2241-women",
+        "tournamentName": "2241 -  Women",
+        "categorySlug": "10km-interval-skate-gallivare",
+        "categoryName": "10Km Interval Skate Gallivare",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901387,
+        "tournamentSlug": "2242",
+        "tournamentName": "2242",
+        "categorySlug": "10km-interval-skate-gallivare",
+        "categoryName": "10km Interval Skate Gallivare",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901388,
+        "tournamentSlug": "2243-women",
+        "tournamentName": "2243 - Women",
+        "categorySlug": "4x7-5km-relay-classic-gallivare",
+        "categoryName": "4x7.5km Relay Classic Gallivare",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901389,
+        "tournamentSlug": "2244",
+        "tournamentName": "2244",
+        "categorySlug": "4x7-5km-mix-relay-gallivare",
+        "categoryName": "4x7.5km Mix Relay Gallivare",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901392,
+        "tournamentSlug": "ostersund-2247-women",
+        "tournamentName": "Ostersund - 2247 - Women",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901393,
+        "tournamentSlug": "ostersund-2248",
+        "tournamentName": "Ostersund - 2248",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901394,
+        "tournamentSlug": "2249-women",
+        "tournamentName": "2249 - Women",
+        "categorySlug": "10km-interval-skate-ostersund",
+        "categoryName": "10km Interval Skate Ostersund",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901395,
+        "tournamentSlug": "2250",
+        "tournamentName": "2250",
+        "categorySlug": "10km-interval-skate-ostersund",
+        "categoryName": "10km Interval Skate Ostersund",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901398,
+        "tournamentSlug": "2253-women",
+        "tournamentName": "2253 - Women",
+        "categorySlug": "sprint-classic-trondheim",
+        "categoryName": "Sprint Classic Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901399,
+        "tournamentSlug": "2254",
+        "tournamentName": "2254",
+        "categorySlug": "sprint-classic-trondheim",
+        "categoryName": "Sprint Classic Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901400,
+        "tournamentSlug": "2254",
+        "tournamentName": "2254",
+        "categorySlug": "sprint-skate-trondheim",
+        "categoryName": "Sprint Skate Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901401,
+        "tournamentSlug": "2253-women",
+        "tournamentName": "2253 - Women",
+        "categorySlug": "sprint-skate-trondheim",
+        "categoryName": "Sprint Skate Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901402,
+        "tournamentSlug": "2255-women",
+        "tournamentName": "2255 - Women",
+        "categorySlug": "skiathlon-mix-trondheim",
+        "categoryName": "Skiathlon Mix Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901403,
+        "tournamentSlug": "2256",
+        "tournamentName": "2256",
+        "categorySlug": "skiathlon-mix-trondheim",
+        "categoryName": "Skiathlon Mix Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901404,
+        "tournamentSlug": "trondheim-2258",
+        "tournamentName": "Trondheim 2258",
+        "categorySlug": "10km-interval-classic",
+        "categoryName": "10km interval Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901405,
+        "tournamentSlug": "trondheim-2257-women",
+        "tournamentName": "Trondheim 2257 - Women",
+        "categorySlug": "10km-interval-classic",
+        "categoryName": "10km interval Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901406,
+        "tournamentSlug": "2262",
+        "tournamentName": "2262",
+        "categorySlug": "sprint-skate-toblach",
+        "categoryName": "Sprint Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901407,
+        "tournamentSlug": "2261-women",
+        "tournamentName": "2261 - Women",
+        "categorySlug": "sprint-skate-toblach",
+        "categoryName": "Sprint Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901408,
+        "tournamentSlug": "2264",
+        "tournamentName": "2264",
+        "categorySlug": "10km-interval-start-classic-toblach",
+        "categoryName": "10km Interval Start Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901409,
+        "tournamentSlug": "2263-women",
+        "tournamentName": "2263 - Women",
+        "categorySlug": "10km-interval-start-classic-toblach",
+        "categoryName": "10km Interval Start Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901410,
+        "tournamentSlug": "2266-men",
+        "tournamentName": "2266 - Men",
+        "categorySlug": "20km-pursuit-skate-toblach",
+        "categoryName": "20km Pursuit Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901411,
+        "tournamentSlug": "2265-women",
+        "tournamentName": "2265 - Women",
+        "categorySlug": "20km-pursuit-skate-toblach",
+        "categoryName": "20km Pursuit Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901412,
+        "tournamentSlug": "2271-women",
+        "tournamentName": "2271 - Women",
+        "categorySlug": "sprint-free-davos",
+        "categoryName": "Sprint Free Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901413,
+        "tournamentSlug": "2272",
+        "tournamentName": "2272",
+        "categorySlug": "sprint-free-davos",
+        "categoryName": "Sprint Free Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901414,
+        "tournamentSlug": "2273-women",
+        "tournamentName": "2273 - Women",
+        "categorySlug": "pursuit-classic-davos",
+        "categoryName": "Pursuit Classic Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901415,
+        "tournamentSlug": "2274",
+        "tournamentName": "2274",
+        "categorySlug": "pursuit-classic-davos",
+        "categoryName": "Pursuit Classic Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901416,
+        "tournamentSlug": "2275-women",
+        "tournamentName": "2275 - Women",
+        "categorySlug": "15km-mass-start-classic-val-di-fiemme",
+        "categoryName": "15km Mass Start Classic Val Di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901417,
+        "tournamentSlug": "2276",
+        "tournamentName": "2276",
+        "categorySlug": "15km-mass-start-classic-val-di-fiemme",
+        "categoryName": "15km Mass Start Classic Val Di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901418,
+        "tournamentSlug": "2278",
+        "tournamentName": "2278",
+        "categorySlug": "10km-mass-start-val-di-fiemme",
+        "categoryName": "10km Mass Start Val Di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901419,
+        "tournamentSlug": "2277-women",
+        "tournamentName": "2277 - Women",
+        "categorySlug": "10km-mass-start-val-di-fiemme",
+        "categoryName": "10km Mass Start Val Di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901425,
+        "tournamentSlug": "2282",
+        "tournamentName": "2282",
+        "categorySlug": "sprint-classic-oberhof",
+        "categoryName": "Sprint Classic Oberhof",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901426,
+        "tournamentSlug": "2281-women",
+        "tournamentName": "2281 - Women",
+        "categorySlug": "sprint-classic-oberhof",
+        "categoryName": "Sprint Classic Oberhof",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901427,
+        "tournamentSlug": "2284",
+        "tournamentName": "2284",
+        "categorySlug": "20km-mass-start-classic-oberhof",
+        "categoryName": "20km Mass Start Classic Oberhof",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901428,
+        "tournamentSlug": "2283-women",
+        "tournamentName": "2283 - Women",
+        "categorySlug": "20km-mass-start-classic-oberhof",
+        "categoryName": "20km Mass Start Classic Oberhof",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901429,
+        "tournamentSlug": "2285-women",
+        "tournamentName": "2285 - Women",
+        "categorySlug": "4x7-5km-mix-relay-oberhof",
+        "categoryName": "4x7.5km Mix Relay Oberhof",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901430,
+        "tournamentSlug": "2286",
+        "tournamentName": "2286",
+        "categorySlug": "4x7-5km-mix-relay-oberhof",
+        "categoryName": "4x7.5km Mix Relay Oberhof",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901431,
+        "tournamentSlug": "2287",
+        "tournamentName": "2287",
+        "categorySlug": "mixed-relay-goms",
+        "categoryName": "Mixed Relay Goms",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901432,
+        "tournamentSlug": "2291",
+        "tournamentName": "2291",
+        "categorySlug": "sprint-skate-goms",
+        "categoryName": "Sprint Skate Goms",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901433,
+        "tournamentSlug": "2290-women",
+        "tournamentName": "2290 - Women",
+        "categorySlug": "sprint-skate-goms",
+        "categoryName": "Sprint Skate Goms",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901434,
+        "tournamentSlug": "2292-women",
+        "tournamentName": "2292 - Women",
+        "categorySlug": "mass-start-goms",
+        "categoryName": "Mass Start Goms",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901435,
+        "tournamentSlug": "2293",
+        "tournamentName": "2293",
+        "categorySlug": "mass-start-goms",
+        "categoryName": "Mass Start Goms",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901445,
+        "tournamentSlug": "2294-women",
+        "tournamentName": "2294 - Women",
+        "categorySlug": "15km-mass-start-canmore",
+        "categoryName": "15km Mass Start Canmore",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901446,
+        "tournamentSlug": "2295",
+        "tournamentName": "2295",
+        "categorySlug": "15km-mass-start-canmore",
+        "categoryName": "15km Mass Start Canmore",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901447,
+        "tournamentSlug": "2301",
+        "tournamentName": "2301",
+        "categorySlug": "20km-mass-start-classic-canmore",
+        "categoryName": "20km Mass Start Classic Canmore",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901448,
+        "tournamentSlug": "2305",
+        "tournamentName": "2305",
+        "categorySlug": "sprint-final-classic-canmore",
+        "categoryName": "Sprint Final Classic Canmore",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901449,
+        "tournamentSlug": "2299",
+        "tournamentName": "2299",
+        "categorySlug": "sprint-final-canmore",
+        "categoryName": "Sprint Final Canmore",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901450,
+        "tournamentSlug": "2300-women",
+        "tournamentName": "2300 - Women",
+        "categorySlug": "20km-mass-start-classic-canmore",
+        "categoryName": "20km Mass Start Classic Canmore",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901451,
+        "tournamentSlug": "2298-women",
+        "tournamentName": "2298 - Women",
+        "categorySlug": "sprint-final-canmore",
+        "categoryName": "Sprint Final Canmore",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901453,
+        "tournamentSlug": "2304",
+        "tournamentName": "2304",
+        "categorySlug": "sprint-final-classic-canmore-women",
+        "categoryName": "Sprint Final Classic Canmore Women",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901455,
+        "tournamentSlug": "2309",
+        "tournamentName": "2309",
+        "categorySlug": "sprint-skate-minneapolis",
+        "categoryName": "Sprint Skate Minneapolis",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901456,
+        "tournamentSlug": "2308-women",
+        "tournamentName": "2308 - Women",
+        "categorySlug": "sprint-skate-minneapolis",
+        "categoryName": "Sprint Skate Minneapolis",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901457,
+        "tournamentSlug": "minneapolis-2310-women",
+        "tournamentName": "Minneapolis - 2310 - Women",
+        "categorySlug": "10km-interval-skate",
+        "categoryName": "10km Interval Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901458,
+        "tournamentSlug": "minneapolis-2311",
+        "tournamentName": "Minneapolis - 2311",
+        "categorySlug": "10km-interval-skate",
+        "categoryName": "10km Interval Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901464,
+        "tournamentSlug": "2315",
+        "tournamentName": "2315",
+        "categorySlug": "team-sprint-classic-lahti",
+        "categoryName": "Team Sprint Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901465,
+        "tournamentSlug": "2314-women",
+        "tournamentName": "2314 - Women",
+        "categorySlug": "team-sprint-classic-lahti",
+        "categoryName": "Team Sprint Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901466,
+        "tournamentSlug": "2317",
+        "tournamentName": "2317",
+        "categorySlug": "20km-interval-start-classic-lahti",
+        "categoryName": "20km Interval Start Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901467,
+        "tournamentSlug": "2316-women",
+        "tournamentName": "2316 - Women",
+        "categorySlug": "20km-interval-start-classic-lahti",
+        "categoryName": "20km Interval Start Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901468,
+        "tournamentSlug": "2320-women",
+        "tournamentName": "2320 - Women",
+        "categorySlug": "sprint-skate-lahti",
+        "categoryName": "Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901469,
+        "tournamentSlug": "2321",
+        "tournamentName": "2321",
+        "categorySlug": "sprint-skate-lahti",
+        "categoryName": "Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901474,
+        "tournamentSlug": "2323-women",
+        "tournamentName": "2323 - Women",
+        "categorySlug": "mass-start-classic-oslo",
+        "categoryName": "Mass Start Classic Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901475,
+        "tournamentSlug": "2324",
+        "tournamentName": "2324",
+        "categorySlug": "mass-start-classic-oslo",
+        "categoryName": "Mass Start Classic Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901476,
+        "tournamentSlug": "2328",
+        "tournamentName": "2328",
+        "categorySlug": "sprint-classic-drammen",
+        "categoryName": "Sprint Classic Drammen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901477,
+        "tournamentSlug": "2327-women",
+        "tournamentName": "2327 - Women",
+        "categorySlug": "sprint-classic-drammen",
+        "categoryName": "Sprint Classic Drammen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901478,
+        "tournamentSlug": "2331-women",
+        "tournamentName": "2331 - Women",
+        "categorySlug": "sprint-classic-falun",
+        "categoryName": "Sprint Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901479,
+        "tournamentSlug": "2332",
+        "tournamentName": "2332",
+        "categorySlug": "sprint-classic-falun",
+        "categoryName": "Sprint Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901480,
+        "tournamentSlug": "2333-women",
+        "tournamentName": "2333 - Women",
+        "categorySlug": "10km-interval-classic-falun",
+        "categoryName": "10km Interval Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901481,
+        "tournamentSlug": "2334",
+        "tournamentName": "2334",
+        "categorySlug": "10km-interval-classic-falun",
+        "categoryName": "10km Interval Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901482,
+        "tournamentSlug": "2335-women",
+        "tournamentName": "2335 - Women",
+        "categorySlug": "mass-start-skate-falun",
+        "categoryName": "Mass Start Skate Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901483,
+        "tournamentSlug": "2336",
+        "tournamentName": "2336",
+        "categorySlug": "mass-start-skate-falun",
+        "categoryName": "Mass Start Skate Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901484,
+        "tournamentSlug": "2975-women",
+        "tournamentName": "2975 - Women",
+        "categorySlug": "10km-interval-classic-boden",
+        "categoryName": "10km Interval Classic Boden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901485,
+        "tournamentSlug": "2470",
+        "tournamentName": "2470",
+        "categorySlug": "10km-interval-classic-lillehammer",
+        "categoryName": "10km Interval Classic Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901536,
+        "tournamentSlug": "2204",
+        "tournamentName": "2204",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901537,
+        "tournamentSlug": "2200",
+        "tournamentName": "2200",
+        "categorySlug": "10km-interval-classic-ruka",
+        "categoryName": "10km Interval Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901538,
+        "tournamentSlug": "2199-women",
+        "tournamentName": "2199 - Women",
+        "categorySlug": "10km-interval-classic-ruka",
+        "categoryName": "10km Interval Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901539,
+        "tournamentSlug": "2203-women",
+        "tournamentName": "2203 - Women",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901540,
+        "tournamentSlug": "2206",
+        "tournamentName": "2206",
+        "categorySlug": "20km-mass-start-skate-ruka",
+        "categoryName": "20km Mass Start Skate Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901541,
+        "tournamentSlug": "2205-women",
+        "tournamentName": "2205 - Women",
+        "categorySlug": "20km-mass-start-skate-ruka",
+        "categoryName": "20km Mass Start Skate Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901543,
+        "tournamentSlug": "2213-women",
+        "tournamentName": "2213 - Women",
+        "categorySlug": "skiathlon-mix-lillehammer",
+        "categoryName": "Skiathlon Mix Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901544,
+        "tournamentSlug": "2214",
+        "tournamentName": "2214",
+        "categorySlug": "skiathlon-mix-lillehammer",
+        "categoryName": "Skiathlon Mix Lillehammer",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901545,
+        "tournamentSlug": "2228",
+        "tournamentName": "2228",
+        "categorySlug": "sprint-skate-davos",
+        "categoryName": "Sprint Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901546,
+        "tournamentSlug": "2227-women",
+        "tournamentName": "2227 - Women",
+        "categorySlug": "sprint-skate-davos",
+        "categoryName": "Sprint Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901547,
+        "tournamentSlug": "2224",
+        "tournamentName": "2224",
+        "categorySlug": "team-sprint-free-davos",
+        "categoryName": "Team Sprint Free Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901548,
+        "tournamentSlug": "2223-woman",
+        "tournamentName": "2223 - Woman",
+        "categorySlug": "team-sprint-free-davos",
+        "categoryName": "Team Sprint Free Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901549,
+        "tournamentSlug": "2230",
+        "tournamentName": "2230",
+        "categorySlug": "20km-interval-classic-davos",
+        "categoryName": "20km Interval Classic Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901550,
+        "tournamentSlug": "2229-women",
+        "tournamentName": "2229 - Women",
+        "categorySlug": "20km-interval-classic-davos",
+        "categoryName": "20km Interval Classic Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901552,
+        "tournamentSlug": "2236",
+        "tournamentName": "2236",
+        "categorySlug": "sprint-skate-toblach",
+        "categoryName": "Sprint Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901553,
+        "tournamentSlug": "2235-women",
+        "tournamentName": "2235 - Women",
+        "categorySlug": "sprint-skate-toblach",
+        "categoryName": "Sprint Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901554,
+        "tournamentSlug": "2237-women",
+        "tournamentName": "2237 - Women",
+        "categorySlug": "15km-mass-start-classic-toblach",
+        "categoryName": "15km Mass Start Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901555,
+        "tournamentSlug": "2238",
+        "tournamentName": "2238",
+        "categorySlug": "15km-mass-start-classic-toblach",
+        "categoryName": "15km Mass Start Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901556,
+        "tournamentSlug": "2240",
+        "tournamentName": "2240",
+        "categorySlug": "20km-interval-skate-toblach",
+        "categoryName": "20km Interval Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901557,
+        "tournamentSlug": "2239-women",
+        "tournamentName": "2239 - Women",
+        "categorySlug": "20km-interval-skate-toblach",
+        "categoryName": "20km Interval Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901558,
+        "tournamentSlug": "2242",
+        "tournamentName": "2242",
+        "categorySlug": "15km-pursuit-classic-toblach",
+        "categoryName": "15Km Pursuit Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901559,
+        "tournamentSlug": "2241-women",
+        "tournamentName": "2241 - Women",
+        "categorySlug": "15km-pursuit-classic-toblach",
+        "categoryName": "15Km Pursuit Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901560,
+        "tournamentSlug": "2246",
+        "tournamentName": "2246",
+        "categorySlug": "sprint-classic-val-di-fiemme",
+        "categoryName": "Sprint Classic Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901561,
+        "tournamentSlug": "2245-women",
+        "tournamentName": "2245 - Women",
+        "categorySlug": "sprint-classic-val-di-fiemme",
+        "categoryName": "Sprint Classic Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901562,
+        "tournamentSlug": "2248",
+        "tournamentName": "2248",
+        "categorySlug": "skiathlon-mix-val-di-fiemme",
+        "categoryName": "Skiathlon Mix Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901563,
+        "tournamentSlug": "2247-women",
+        "tournamentName": "2247 - Women",
+        "categorySlug": "skiathlon-mix-val-di-fiemme",
+        "categoryName": "Skiathlon Mix Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901564,
+        "tournamentSlug": "2250",
+        "tournamentName": "2250",
+        "categorySlug": "10km-mass-start-val-di-fiemme",
+        "categoryName": "10km Mass Start Val di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901565,
+        "tournamentSlug": "women",
+        "tournamentName": "Women",
+        "categorySlug": "10km-mass-start-val-di-femme-2249",
+        "categoryName": "10km Mass Start Val di Femme- 2249",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901570,
+        "tournamentSlug": "2469",
+        "tournamentName": "2469",
+        "categorySlug": "10km-interval-classic-gaasbu",
+        "categoryName": "10km Interval Classic Gaasbu",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901571,
+        "tournamentSlug": "2468-women",
+        "tournamentName": "2468 - Women",
+        "categorySlug": "10km-interval-classic-gaasbu",
+        "categoryName": "10km Interval Classic Gaasbu",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901572,
+        "tournamentSlug": "2260",
+        "tournamentName": "2260",
+        "categorySlug": "10km-interval-skate-les-rousses",
+        "categoryName": "10km Interval Skate Les Rousses",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901573,
+        "tournamentSlug": "2259-women",
+        "tournamentName": "2259 - Women",
+        "categorySlug": "10km-interval-skate-les-rousses",
+        "categoryName": "10km Interval Skate Les Rousses",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901574,
+        "tournamentSlug": "les-rousses-2263-women",
+        "tournamentName": "Les Rousses - 2263 - Women",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901575,
+        "tournamentSlug": "les-rousses-2264",
+        "tournamentName": "Les Rousses - 2264",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901576,
+        "tournamentSlug": "les-rousses-2265-women",
+        "tournamentName": "Les Rousses - 2265 - Women",
+        "categorySlug": "20km-mass-start-classic",
+        "categoryName": "20km Mass Start Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901577,
+        "tournamentSlug": "les-rousses-2266",
+        "tournamentName": "Les Rousses - 2266",
+        "categorySlug": "20km-mass-start-classic",
+        "categoryName": "20km Mass Start Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901578,
+        "tournamentSlug": "2267",
+        "tournamentName": "2267",
+        "categorySlug": "4x5km-mix-relay-engadin",
+        "categoryName": "4x5km Mix Relay Engadin",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901579,
+        "tournamentSlug": "2270",
+        "tournamentName": "2270",
+        "categorySlug": "sprint-skate-engadin",
+        "categoryName": "Sprint Skate Engadin",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901580,
+        "tournamentSlug": "2271-women",
+        "tournamentName": "2271 - Women",
+        "categorySlug": "sprint-skate-engadin",
+        "categoryName": "Sprint Skate Engadin",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901581,
+        "tournamentSlug": "2273",
+        "tournamentName": "2273",
+        "categorySlug": "20km-mass-start-skate-engadin",
+        "categoryName": "20km Mass Start Skate Engadin",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901582,
+        "tournamentSlug": "2272-women",
+        "tournamentName": "2272 - Women",
+        "categorySlug": "20km-mass-start-skate-engadin",
+        "categoryName": "20km Mass Start Skate Engadin",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901586,
+        "tournamentSlug": "4019",
+        "tournamentName": "4019",
+        "categorySlug": "sprint-relay-classic-cogne",
+        "categoryName": "Sprint Relay Classic Cogne",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901587,
+        "tournamentSlug": "4017-women",
+        "tournamentName": "4017 - Women",
+        "categorySlug": "sprint-relay-classic-cogne",
+        "categoryName": "Sprint Relay Classic Cogne",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901588,
+        "tournamentSlug": "skate-cogne-4025",
+        "tournamentName": "Skate - Cogne - 4025",
+        "categorySlug": "10km-interval",
+        "categoryName": "10km Interval",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901589,
+        "tournamentSlug": "4023",
+        "tournamentName": "4023",
+        "categorySlug": "sprint-classic-cogne",
+        "categoryName": "Sprint Classic Cogne",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901590,
+        "tournamentSlug": "4021-women",
+        "tournamentName": "4021 - Women",
+        "categorySlug": "sprint-classic-cogne",
+        "categoryName": "Sprint Classic Cogne",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901591,
+        "tournamentSlug": "skate-cogne-4024-women",
+        "tournamentName": "Skate - Cogne - 4024 - Women",
+        "categorySlug": "10km-interval",
+        "categoryName": "10km Interval",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901596,
+        "tournamentSlug": "2288-women",
+        "tournamentName": "2288 - Women",
+        "categorySlug": "10km-interval-classic-falun",
+        "categoryName": "10km Interval Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901597,
+        "tournamentSlug": "2289",
+        "tournamentName": "2289",
+        "categorySlug": "10km-interval-classic-falun",
+        "categoryName": "10km Interval Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901598,
+        "tournamentSlug": "2287",
+        "tournamentName": "2287",
+        "categorySlug": "sprint-classic-falun",
+        "categoryName": "Sprint Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901599,
+        "tournamentSlug": "2286-women",
+        "tournamentName": "2286 - Women",
+        "categorySlug": "sprint-classic-falun",
+        "categoryName": "Sprint Classic Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901600,
+        "tournamentSlug": "2290-women",
+        "tournamentName": "2290 - Women",
+        "categorySlug": "20km-mass-start-skate-falun",
+        "categoryName": "20km Mass Start Skate Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901601,
+        "tournamentSlug": "2291",
+        "tournamentName": "2291",
+        "categorySlug": "20km-mass-start-skate-falun",
+        "categoryName": "20km Mass Start Skate Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901602,
+        "tournamentSlug": "2397",
+        "tournamentName": "2397",
+        "categorySlug": "sprint-skate-trondheim",
+        "categoryName": "Sprint Skate Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901603,
+        "tournamentSlug": "2396-women",
+        "tournamentName": "2396 - Women",
+        "categorySlug": "sprint-skate-trondheim",
+        "categoryName": "Sprint Skate Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901604,
+        "tournamentSlug": "2398",
+        "tournamentName": "2398",
+        "categorySlug": "skiathlon-mix-trondheim",
+        "categoryName": "Skiathlon Mix Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901605,
+        "tournamentSlug": "2399-women",
+        "tournamentName": "2399 - Women",
+        "categorySlug": "skiathlon-mix-trondheim",
+        "categoryName": "Skiathlon Mix Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901606,
+        "tournamentSlug": "2406",
+        "tournamentName": "2406",
+        "categorySlug": "4x7-5km-mix-relay-trondheim",
+        "categoryName": "4x7.5km Mix Relay Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901607,
+        "tournamentSlug": "2409-women",
+        "tournamentName": "2409 - Women",
+        "categorySlug": "50km-mass-start-trondheim",
+        "categoryName": "50km Mass Start Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901608,
+        "tournamentSlug": "2407-women",
+        "tournamentName": "2407 - Women",
+        "categorySlug": "4x7-5km-mix-relay-trondheim",
+        "categoryName": "4x7.5km Mix Relay Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901609,
+        "tournamentSlug": "2408",
+        "tournamentName": "2408",
+        "categorySlug": "50km-mass-start-trondheim",
+        "categoryName": "50km Mass Start Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901611,
+        "tournamentSlug": "2298-women",
+        "tournamentName": "2298 - Women",
+        "categorySlug": "sprint-skate-tallinn",
+        "categoryName": "Sprint Skate Tallinn",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901612,
+        "tournamentSlug": "2292-women",
+        "tournamentName": "2292 - Women",
+        "categorySlug": "10km-interval-skate-oslo",
+        "categoryName": "10km Interval Skate Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901613,
+        "tournamentSlug": "2293",
+        "tournamentName": "2293",
+        "categorySlug": "10km-interval-skate-oslo",
+        "categoryName": "10km Interval Skate Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901614,
+        "tournamentSlug": "2299",
+        "tournamentName": "2299",
+        "categorySlug": "sprint-skate-tallinn",
+        "categoryName": "Sprint Skate Tallinn",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901615,
+        "tournamentSlug": "2309",
+        "tournamentName": "2309",
+        "categorySlug": "50km-mass-start-lahti",
+        "categoryName": "50km Mass Start Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901616,
+        "tournamentSlug": "2307",
+        "tournamentName": "2307",
+        "categorySlug": "sprint-skate-lahti",
+        "categoryName": "Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901617,
+        "tournamentSlug": "2306-women",
+        "tournamentName": "2306 - Women",
+        "categorySlug": "sprint-skate-lahti",
+        "categoryName": "Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901619,
+        "tournamentSlug": "2302-women",
+        "tournamentName": "2302 - Women",
+        "categorySlug": "team-sprint-skate-lahti",
+        "categoryName": "Team Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901620,
+        "tournamentSlug": "2303",
+        "tournamentName": "2303",
+        "categorySlug": "team-sprint-skate-lahti",
+        "categoryName": "Team Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901621,
+        "tournamentSlug": "2308-women",
+        "tournamentName": "2308 Women",
+        "categorySlug": "50km-mass-start-lahti",
+        "categoryName": "50km Mass Start Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901623,
+        "tournamentSlug": "norwegian-championships-2543",
+        "tournamentName": "Norwegian Championships - 2543",
+        "categorySlug": "10km-interval-skate",
+        "categoryName": "10km Interval Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904538,
+        "tournamentSlug": "2204",
+        "tournamentName": "2204",
+        "categorySlug": "10km-interval-start-classic-ruka",
+        "categoryName": "10km Interval Start Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904539,
+        "tournamentSlug": "2203-women",
+        "tournamentName": "2203 - Women",
+        "categorySlug": "10km-interval-start-classic-ruka",
+        "categoryName": "10km Interval Start Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904540,
+        "tournamentSlug": "2208",
+        "tournamentName": "2208",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904541,
+        "tournamentSlug": "2207-women",
+        "tournamentName": "2207 - Women",
+        "categorySlug": "sprint-classic-ruka",
+        "categoryName": "Sprint Classic Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904542,
+        "tournamentSlug": "2209-women",
+        "tournamentName": "2209 - Women",
+        "categorySlug": "20km-mass-start-ruka",
+        "categoryName": "20km Mass Start Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904543,
+        "tournamentSlug": "2210",
+        "tournamentName": "2210",
+        "categorySlug": "20km-mass-start-ruka",
+        "categoryName": "20km Mass Start Ruka",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904550,
+        "tournamentSlug": "2215-women",
+        "tournamentName": "2215 - Women",
+        "categorySlug": "sprint-classic-trondheim",
+        "categoryName": "Sprint Classic Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904554,
+        "tournamentSlug": "trondheim-2216",
+        "tournamentName": "Trondheim - 2216",
+        "categorySlug": "sprint-classic",
+        "categoryName": "Sprint Classic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904555,
+        "tournamentSlug": "2212",
+        "tournamentName": "2212",
+        "categorySlug": "10km-interval-skate-trondheim",
+        "categoryName": "10km Interval Skate Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904556,
+        "tournamentSlug": "2218",
+        "tournamentName": "2218",
+        "categorySlug": "skiathlon-mix-trondheim",
+        "categoryName": "Skiathlon Mix Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904561,
+        "tournamentSlug": "2217-women",
+        "tournamentName": "2217 - Women",
+        "categorySlug": "skiathlon-mix-trondheim",
+        "categoryName": "Skiathlon Mix Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904564,
+        "tournamentSlug": "2211-women",
+        "tournamentName": "2211 - Women",
+        "categorySlug": "10km-interval-skate-trondheim",
+        "categoryName": "10km Interval Skate Trondheim",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904568,
+        "tournamentSlug": "2228",
+        "tournamentName": "2228",
+        "categorySlug": "10km-interval-davos",
+        "categoryName": "10km Interval Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904569,
+        "tournamentSlug": "2227-women",
+        "tournamentName": "2227 - Women",
+        "categorySlug": "10km-interval-davos",
+        "categoryName": "10km Interval Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904572,
+        "tournamentSlug": "2226",
+        "tournamentName": "2226",
+        "categorySlug": "sprint-skate-davos",
+        "categoryName": "Sprint Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904575,
+        "tournamentSlug": "2221-women",
+        "tournamentName": "2221 - Women",
+        "categorySlug": "sprint-free-davos",
+        "categoryName": "Sprint Free Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904576,
+        "tournamentSlug": "2222",
+        "tournamentName": "2222",
+        "categorySlug": "team-sprint-free-davos",
+        "categoryName": "Team Sprint Free Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904578,
+        "tournamentSlug": "2225-women",
+        "tournamentName": "2225 - Women",
+        "categorySlug": "sprint-skate-davos",
+        "categoryName": "Sprint Skate Davos",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904582,
+        "tournamentSlug": "2273-women",
+        "tournamentName": "2273 - Women",
+        "categorySlug": "sprint-skate-toblach",
+        "categoryName": "Sprint Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904583,
+        "tournamentSlug": "2276",
+        "tournamentName": "2276",
+        "categorySlug": "10km-interval-start-classic-toblach",
+        "categoryName": "10km Interval Start Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904584,
+        "tournamentSlug": "2275-women",
+        "tournamentName": "2275 - Women",
+        "categorySlug": "10km-interval-start-classic-toblach",
+        "categoryName": "10km Interval Start Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904585,
+        "tournamentSlug": "2274",
+        "tournamentName": "2274",
+        "categorySlug": "sprint-skate-toblach",
+        "categoryName": "Sprint Skate Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904586,
+        "tournamentSlug": "2277-women",
+        "tournamentName": "2277 - Women",
+        "categorySlug": "5km-mass-start-free-toblach",
+        "categoryName": "5km Mass Start Free Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904587,
+        "tournamentSlug": "2278",
+        "tournamentName": "2278",
+        "categorySlug": "5km-mass-start-free-toblach",
+        "categoryName": "5km Mass Start Free Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904588,
+        "tournamentSlug": "2284",
+        "tournamentName": "2284",
+        "categorySlug": "sprint-classic-val-di-fiemme",
+        "categoryName": "Sprint Classic Val Di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904589,
+        "tournamentSlug": "2283-women",
+        "tournamentName": "2283 - Women",
+        "categorySlug": "sprint-classic-val-di-fiemme",
+        "categoryName": "Sprint Classic Val Di Fiemme",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904590,
+        "tournamentSlug": "2280",
+        "tournamentName": "2280",
+        "categorySlug": "20km-pursuit-classic-toblach",
+        "categoryName": "20km Pursuit Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904591,
+        "tournamentSlug": "2279-women",
+        "tournamentName": "2279 - Women",
+        "categorySlug": "20km-pursuit-classic-toblach",
+        "categoryName": "20km Pursuit Classic Toblach",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904592,
+        "tournamentSlug": "sprint-skate-oberhof-2232",
+        "tournamentName": "Sprint Skate Oberhof \u2013 2232",
+        "categorySlug": "sprint-skate-oberhof-2232",
+        "categoryName": "Sprint Skate Oberhof \u2013 2232",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904593,
+        "tournamentSlug": "sprint-skate-oberhof-2231-women",
+        "tournamentName": "Sprint Skate Oberhof \u2013 2231 \u2013 Women",
+        "categorySlug": "sprint-skate-oberhof-2231-women",
+        "categoryName": "Sprint Skate Oberhof \u2013 2231 \u2013 Women",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904594,
+        "tournamentSlug": "val-di-fiemme-2286",
+        "tournamentName": "Val di Fiemme - 2286",
+        "categorySlug": "10km-mass-start-skate",
+        "categoryName": "10km Mass Start Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904595,
+        "tournamentSlug": "val-di-fiemme-2285-women",
+        "tournamentName": "Val di Fiemme - 2285 - Women",
+        "categorySlug": "10km-mass-start-skate",
+        "categoryName": "10km Mass Start Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904615,
+        "tournamentSlug": "10km-interval-oberhof-2233-women",
+        "tournamentName": "10km Interval Oberhof \u2013 2233 \u2013 Women",
+        "categorySlug": "10km-interval-oberhof-2233-women",
+        "categoryName": "10km Interval Oberhof \u2013 2233 \u2013 Women",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904616,
+        "tournamentSlug": "10km-interval-oberhof-2234",
+        "tournamentName": "10km Interval Oberhof \u2013 2234",
+        "categorySlug": "10km-interval-oberhof-2234",
+        "categoryName": "10km Interval Oberhof \u2013 2234",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904627,
+        "tournamentSlug": "2244",
+        "tournamentName": "2244",
+        "categorySlug": "20km-mass-start-classic-goms",
+        "categoryName": "20km Mass Start Classic Goms",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904628,
+        "tournamentSlug": "2242",
+        "tournamentName": "2242",
+        "categorySlug": "sprint-classic-goms",
+        "categoryName": "Sprint Classic Goms",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904633,
+        "tournamentSlug": "2241-women",
+        "tournamentName": "2241 - Women",
+        "categorySlug": "sprint-classic-goms",
+        "categoryName": "Sprint Classic Goms",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904637,
+        "tournamentSlug": "2243-women",
+        "tournamentName": "2243 - Women",
+        "categorySlug": "20km-mass-start-classic-goms",
+        "categoryName": "20km Mass Start Classic Goms",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904649,
+        "tournamentSlug": "sprint-men",
+        "tournamentName": "Sprint Men",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904650,
+        "tournamentSlug": "10km-freestyle-men",
+        "tournamentName": "10km Freestyle Men",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904651,
+        "tournamentSlug": "10-10-km-skiathlon-men",
+        "tournamentName": "10 + 10 km Skiathlon Men",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904652,
+        "tournamentSlug": "4-x-7-5-km-relay-men",
+        "tournamentName": "4 x 7.5 km Relay Men",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904653,
+        "tournamentSlug": "50km-classical-technique-men",
+        "tournamentName": "50km Classical Technique Men",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904665,
+        "tournamentSlug": "10-10-km-skiathlon-women",
+        "tournamentName": "10 + 10 km Skiathlon Women",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904679,
+        "tournamentSlug": "sprint-women",
+        "tournamentName": "Sprint Women",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904680,
+        "tournamentSlug": "10km-freestyle-women",
+        "tournamentName": "10km Freestyle Women",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904703,
+        "tournamentSlug": "4-x-7-5-km-relay-women",
+        "tournamentName": "4 x 7.5 km Relay Women",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904712,
+        "tournamentSlug": "freestyle-team-sprint-women",
+        "tournamentName": "Freestyle Team Sprint Women",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904714,
+        "tournamentSlug": "50km-classical-technique-women",
+        "tournamentName": "50km Classical Technique Women",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904721,
+        "tournamentSlug": "freestyle-team-sprint-men",
+        "tournamentName": "Freestyle Team Sprint Men",
+        "categorySlug": "olympics",
+        "categoryName": "Olympics",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904742,
+        "tournamentSlug": "2248",
+        "tournamentName": "2248",
+        "categorySlug": "sprint-skate-falun",
+        "categoryName": "Sprint Skate Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904743,
+        "tournamentSlug": "2247-women",
+        "tournamentName": "2247 - Women",
+        "categorySlug": "sprint-skate-falun",
+        "categoryName": "Sprint Skate Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904759,
+        "tournamentSlug": "2249-women",
+        "tournamentName": "2249 - Women",
+        "categorySlug": "skiathlon-mix-falun",
+        "categoryName": "Skiathlon Mix Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904760,
+        "tournamentSlug": "2250",
+        "tournamentName": "2250",
+        "categorySlug": "skiathlon-mix-falun",
+        "categoryName": "Skiathlon Mix Falun",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904771,
+        "tournamentSlug": "2254",
+        "tournamentName": "2254",
+        "categorySlug": "sprint-skate-lahti",
+        "categoryName": "Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904772,
+        "tournamentSlug": "2253-women",
+        "tournamentName": "2253 - Women",
+        "categorySlug": "sprint-skate-lahti",
+        "categoryName": "Sprint Skate Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904778,
+        "tournamentSlug": "2255-women",
+        "tournamentName": "2255 - Women",
+        "categorySlug": "10km-interval-classic-lahti",
+        "categoryName": "10km Interval Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904786,
+        "tournamentSlug": "2256",
+        "tournamentName": "2256",
+        "categorySlug": "10km-interval-start-classic-lahti",
+        "categoryName": "10km Interval Start Classic Lahti",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904799,
+        "tournamentSlug": "lake-placid-2267-women",
+        "tournamentName": "Lake Placid - 2267 - Women",
+        "categorySlug": "sprint-skate",
+        "categoryName": "Sprint Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904800,
+        "tournamentSlug": "2263-women",
+        "tournamentName": "2263 - Women",
+        "categorySlug": "10km-interval-classic-lake-placid",
+        "categoryName": "10km Interval Classic Lake Placid",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904807,
+        "tournamentSlug": "2259-women",
+        "tournamentName": "2259 - Women",
+        "categorySlug": "sprint-classic-drammen",
+        "categoryName": "Sprint Classic Drammen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904812,
+        "tournamentSlug": "2260",
+        "tournamentName": "2260",
+        "categorySlug": "sprint-classic-drammen",
+        "categoryName": "Sprint Classic Drammen",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904820,
+        "tournamentSlug": "2262-women",
+        "tournamentName": "2262 - Women",
+        "categorySlug": "mass-start-skate-oslo",
+        "categoryName": "Mass Start Skate Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904821,
+        "tournamentSlug": "2261",
+        "tournamentName": "2261",
+        "categorySlug": "mass-start-skate-oslo",
+        "categoryName": "Mass Start Skate Oslo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904837,
+        "tournamentSlug": "2264",
+        "tournamentName": "2264",
+        "categorySlug": "10km-interval-classic-lake-placid",
+        "categoryName": "10km Interval Classic Lake Placid",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904838,
+        "tournamentSlug": "lake-placid-2268",
+        "tournamentName": "Lake Placid - 2268",
+        "categorySlug": "sprint-skate",
+        "categoryName": "Sprint Skate",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904845,
+        "tournamentSlug": "lake-placid-2269-women",
+        "tournamentName": "Lake Placid - 2269 - Women",
+        "categorySlug": "20km-mass-start",
+        "categoryName": "20km Mass Start",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904860,
+        "tournamentSlug": "lake-placid-2270",
+        "tournamentName": "Lake Placid - 2270",
+        "categorySlug": "20km-mass-start",
+        "categoryName": "20km Mass Start",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

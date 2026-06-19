@@ -1,0 +1,5232 @@
+[
+    {
+        "tournamentId": 41762,
+        "tournamentSlug": "vct-game-changers-championship",
+        "tournamentName": "VCT, Game Changers Championship",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42005,
+        "tournamentSlug": "vct-pacific-championship",
+        "tournamentName": "VCT, Pacific Championship",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42013,
+        "tournamentSlug": "vct-emea-championship",
+        "tournamentName": "VCT, EMEA Championship",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42023,
+        "tournamentSlug": "vct-americas-championship",
+        "tournamentName": "VCT, Americas Championship",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42025,
+        "tournamentSlug": "vct-china-championship",
+        "tournamentName": "VCT, China Championship",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42399,
+        "tournamentSlug": "valorant-champions-tour",
+        "tournamentName": "VALORANT Champions Tour",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42847,
+        "tournamentSlug": "vct-masters-shanghai",
+        "tournamentName": "VCT, Masters Shanghai",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43433,
+        "tournamentSlug": "vct-valorant-champions",
+        "tournamentName": "VCT, Valorant Champions",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43883,
+        "tournamentSlug": "vct-ascension-emea",
+        "tournamentName": "VCT, Ascension EMEA",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44025,
+        "tournamentSlug": "vct-ascension-america",
+        "tournamentName": "VCT Ascension America",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44149,
+        "tournamentSlug": "vct-ascension-pacific",
+        "tournamentName": "VCT Ascension Pacific",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45077,
+        "tournamentSlug": "red-bull-home-ground",
+        "tournamentName": "Red Bull Home Ground",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45163,
+        "tournamentSlug": "radiant-international-invitational",
+        "tournamentName": "Radiant International Invitational",
+        "categorySlug": "tj-sports",
+        "categoryName": "TJ Sports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45415,
+        "tournamentSlug": "vct-americas-kick-off",
+        "tournamentName": "VCT, Americas, Kick-off",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45417,
+        "tournamentSlug": "vct-china-kick-off",
+        "tournamentName": "VCT, China, Kick-off",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45419,
+        "tournamentSlug": "vct-emea-kick-off",
+        "tournamentName": "VCT, EMEA, Kick-off",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45421,
+        "tournamentSlug": "vct-pacific-kick-off",
+        "tournamentName": "VCT, Pacific, Kick-off",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45613,
+        "tournamentSlug": "valorant-challengers-france",
+        "tournamentName": "VALORANT Challengers France",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45615,
+        "tournamentSlug": "valorant-challengers-spain",
+        "tournamentName": "VALORANT Challengers Spain",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45723,
+        "tournamentSlug": "valorant-challengers-dach",
+        "tournamentName": "VALORANT Challengers DACH",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45725,
+        "tournamentSlug": "valorant-challengers-north-east",
+        "tournamentName": "VALORANT Challengers North East",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45727,
+        "tournamentSlug": "valorant-challengers-southeast-asia",
+        "tournamentName": "VALORANT Challengers Southeast Asia",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45729,
+        "tournamentSlug": "valorant-challengers-turkiye",
+        "tournamentName": "VALORANT Challengers Turkiye",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45853,
+        "tournamentSlug": "valorant-challengers-japan",
+        "tournamentName": "VALORANT Challengers Japan",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45865,
+        "tournamentSlug": "valorant-challengers-north-america",
+        "tournamentName": "VALORANT Challengers North America",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45867,
+        "tournamentSlug": "valorant-challengers-latin-america-north",
+        "tournamentName": "VALORANT Challengers Latin America North",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45869,
+        "tournamentSlug": "valorant-challengers-latin-america-south",
+        "tournamentName": "VALORANT Challengers Latin America South",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45871,
+        "tournamentSlug": "valorant-challengers-brazil",
+        "tournamentName": "VALORANT Challengers Brazil",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45877,
+        "tournamentSlug": "valorant-challengers-korea",
+        "tournamentName": "VALORANT Challengers Korea",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46183,
+        "tournamentSlug": "valorant-challengers-emea",
+        "tournamentName": "VALORANT Challengers EMEA",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46187,
+        "tournamentSlug": "vct-game-changers-emea",
+        "tournamentName": "VCT Game Changers EMEA",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46191,
+        "tournamentSlug": "valorant-challengers-south-asia",
+        "tournamentName": "VALORANT Challengers South Asia",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46193,
+        "tournamentSlug": "valorant-challengers-oceania",
+        "tournamentName": "VALORANT Challengers Oceania",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46221,
+        "tournamentSlug": "vct-game-changers-latin-america-north",
+        "tournamentName": "VCT Game Changers Latin America North",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46223,
+        "tournamentSlug": "vct-game-changers-latin-america-south",
+        "tournamentName": "VCT Game Changers Latin America South",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46333,
+        "tournamentSlug": "valorant-challengers-mena",
+        "tournamentName": "VALORANT Challengers MENA",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46335,
+        "tournamentSlug": "vct-game-changers-sea",
+        "tournamentName": "VCT Game Changers SEA",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46337,
+        "tournamentSlug": "vct-game-changers-brazil",
+        "tournamentName": "VCT Game Changers Brazil",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46339,
+        "tournamentSlug": "vct-game-changes-oceania",
+        "tournamentName": "VCT Game Changes Oceania",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46746,
+        "tournamentSlug": "vct-game-changers-north-america",
+        "tournamentName": "VCT Game Changers North America",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46748,
+        "tournamentSlug": "vct-game-changers-korea",
+        "tournamentName": "VCT Game Changers Korea",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46750,
+        "tournamentSlug": "vct-game-changers-japan",
+        "tournamentName": "VCT Game Changers Japan",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46965,
+        "tournamentSlug": "vct-game-changers-south-asia",
+        "tournamentName": "VCT Game Changers South Asia",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46967,
+        "tournamentSlug": "vct-game-changers-china",
+        "tournamentName": "VCT Game Changers China",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47103,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "ewc",
+        "categoryName": "EWC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 1
+    },
+    {
+        "tournamentId": 47105,
+        "tournamentSlug": "asian-champions-league",
+        "tournamentName": "Asian Champions League",
+        "categorySlug": "hero-esports",
+        "categoryName": "Hero Esports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48623,
+        "tournamentSlug": "valorant-challengers-latin-america",
+        "tournamentName": "VALORANT Challengers Latin America",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49520,
+        "tournamentSlug": "valorant-china-evolution-series",
+        "tournamentName": "VALORANT China Evolution Series",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49800,
+        "tournamentSlug": "soop-valorant-league",
+        "tournamentName": "SOOP Valorant League",
+        "categorySlug": "soop",
+        "categoryName": "SOOP",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50032,
+        "tournamentSlug": "valorant-radiant-international-invitational",
+        "tournamentName": "VALORANT Radiant International Invitational",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50790,
+        "tournamentSlug": "valorant-emea-clash",
+        "tournamentName": "VALORANT EMEA Clash",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50792,
+        "tournamentSlug": "vct-ascension-china",
+        "tournamentName": "VCT Ascension China",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51130,
+        "tournamentSlug": "china-national-tournament-pro-division",
+        "tournamentName": "China National Tournament Pro Division",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51836,
+        "tournamentSlug": "valorant-masters-london",
+        "tournamentName": "VALORANT Masters London",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51998,
+        "tournamentSlug": "vct-game-changers-latam-regional-final",
+        "tournamentName": "VCT Game Changers LATAM Regional Final",
+        "categorySlug": "riot-games",
+        "categoryName": "Riot Games",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901774,
+        "tournamentSlug": "arena-of-masters",
+        "tournamentName": "Arena Of Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901775,
+        "tournamentSlug": "nerd-street-gamers",
+        "tournamentName": "Nerd Street Gamers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901776,
+        "tournamentSlug": "tec-challenger-series",
+        "tournamentName": "TEC Challenger Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901782,
+        "tournamentSlug": "valorant-versus",
+        "tournamentName": "Valorant Versus",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901787,
+        "tournamentSlug": "lpl-spring-cup",
+        "tournamentName": "LPL Spring Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901791,
+        "tournamentSlug": "spike-nations",
+        "tournamentName": "Spike Nations",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901794,
+        "tournamentSlug": "game-gune",
+        "tournamentName": "Game Gune",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901795,
+        "tournamentSlug": "fel-cup",
+        "tournamentName": "FEL Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901796,
+        "tournamentSlug": "sea-fire-championship",
+        "tournamentName": "SEA Fire Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901799,
+        "tournamentSlug": "ae-league-conqueror",
+        "tournamentName": "AE League: Conqueror",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901803,
+        "tournamentSlug": "team-serenity-invitational",
+        "tournamentName": "Team Serenity Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901804,
+        "tournamentSlug": "champions-tour-na-challengers-1",
+        "tournamentName": "Champions Tour: NA Challengers 1",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901805,
+        "tournamentSlug": "champions-tour-emea-challengers-1",
+        "tournamentName": "Champions Tour: EMEA Challengers 1",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901806,
+        "tournamentSlug": "champions-tour-br-challengers-1",
+        "tournamentName": "Champions Tour: BR Challengers 1",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901807,
+        "tournamentSlug": "champions-tour-kr-challengers-1",
+        "tournamentName": "Champions Tour: KR Challengers 1",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901808,
+        "tournamentSlug": "champions-tour-jp-challengers-1",
+        "tournamentName": "Champions Tour: JP Challengers 1",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901809,
+        "tournamentSlug": "champions-tour-latam-north-challengers",
+        "tournamentName": "Champions Tour: LATAM North Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901810,
+        "tournamentSlug": "champions-tour-latam-south-challengers",
+        "tournamentName": "Champions Tour: LATAM South Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901812,
+        "tournamentSlug": "nsg-x-complexity-invitational",
+        "tournamentName": "NSG x Complexity Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901813,
+        "tournamentSlug": "the-esports-club-invitational",
+        "tournamentName": "The Esports Club Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901814,
+        "tournamentSlug": "open-fire",
+        "tournamentName": "Open Fire",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901817,
+        "tournamentSlug": "cyber-games-arena-pacific-open",
+        "tournamentName": "Cyber Games Arena Pacific Open",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901820,
+        "tournamentSlug": "lvp-rising-series",
+        "tournamentName": "LVP Rising Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901821,
+        "tournamentSlug": "red-bull-home-ground",
+        "tournamentName": "Red Bull Home Ground",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901824,
+        "tournamentSlug": "technoblood-climber-summit",
+        "tournamentName": "TechnoBlood Climber Summit",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901826,
+        "tournamentSlug": "champions-tour-na-challengers-2",
+        "tournamentName": "Champions Tour: NA Challengers 2",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901827,
+        "tournamentSlug": "champions-tour-eu-challengers-2",
+        "tournamentName": "Champions Tour: EU Challengers 2",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901828,
+        "tournamentSlug": "champions-tour-cis-challengers-2",
+        "tournamentName": "Champions Tour: CIS Challengers 2",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901829,
+        "tournamentSlug": "champions-tour-kr-challengers-2",
+        "tournamentName": "Champions Tour: KR Challengers 2",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901830,
+        "tournamentSlug": "champions-tour-br-challengers-2",
+        "tournamentName": "Champions Tour: BR Challengers 2",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901831,
+        "tournamentSlug": "aorus-league-brazil",
+        "tournamentName": "AORUS League - Brazil",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901832,
+        "tournamentSlug": "champions-tour-turkey-challengers-1",
+        "tournamentName": "Champions Tour: Turkey Challengers 1",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901833,
+        "tournamentSlug": "champions-tour-cis-challengers-1",
+        "tournamentName": "Champions Tour: CIS Challengers 1",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901834,
+        "tournamentSlug": "efire-master-league",
+        "tournamentName": "eFire Master League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901835,
+        "tournamentSlug": "champions-tour-kr-challengers-3",
+        "tournamentName": "Champions Tour: KR Challengers 3",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901836,
+        "tournamentSlug": "champions-tour-na-challengers-3",
+        "tournamentName": "Champions Tour: NA Challengers 3",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901837,
+        "tournamentSlug": "champions-tour-eu-challengers-3",
+        "tournamentName": "Champions Tour: EU Challengers 3",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901838,
+        "tournamentSlug": "champions-tour-cis-challengers-3",
+        "tournamentName": "Champions Tour: CIS Challengers 3",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901839,
+        "tournamentSlug": "champions-tour-tr-challengers-3",
+        "tournamentName": "Champions Tour: TR Challengers 3",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901840,
+        "tournamentSlug": "champions-tour-jp-challengers-3",
+        "tournamentName": "Champions Tour: JP Challengers 3",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901841,
+        "tournamentSlug": "champions-tour-sea-challengers-3",
+        "tournamentName": "Champions Tour: SEA Challengers 3",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901842,
+        "tournamentSlug": "champions-tour-br-challengers-3",
+        "tournamentName": "Champions Tour: BR Challengers 3",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901843,
+        "tournamentSlug": "champions-tour-na-masters",
+        "tournamentName": "Champions Tour: NA Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901844,
+        "tournamentSlug": "champions-tour-eu-masters",
+        "tournamentName": "Champions Tour: EU Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901845,
+        "tournamentSlug": "champions-tour-cis-masters",
+        "tournamentName": "Champions Tour: CIS Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901846,
+        "tournamentSlug": "champions-tour-kr-masters",
+        "tournamentName": "Champions Tour: KR Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901847,
+        "tournamentSlug": "champions-tour-jp-masters",
+        "tournamentName": "Champions Tour: JP Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901848,
+        "tournamentSlug": "champions-tour-sea-masters",
+        "tournamentName": "Champions Tour: SEA Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901849,
+        "tournamentSlug": "champions-tour-br-masters",
+        "tournamentName": "Champions Tour: BR Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901850,
+        "tournamentSlug": "champions-tour-latam-masters",
+        "tournamentName": "Champions Tour: LATAM Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901851,
+        "tournamentSlug": "champions-tour-tr-challengers-2",
+        "tournamentName": "Champions Tour: TR Challengers 2",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901853,
+        "tournamentSlug": "champions",
+        "tournamentName": "Champions",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901854,
+        "tournamentSlug": "champions-tour-latam-north-masters",
+        "tournamentName": "Champions Tour: LATAM North Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901855,
+        "tournamentSlug": "champions-tour-japan-masters",
+        "tournamentName": "Champions Tour: Japan Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901856,
+        "tournamentSlug": "champions-tour-turkey-masters",
+        "tournamentName": "Champions Tour: Turkey Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901859,
+        "tournamentSlug": "champions-tour-latam-south-masters",
+        "tournamentName": "Champions Tour: LATAM South Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901861,
+        "tournamentSlug": "champions-tour-game-changers-na",
+        "tournamentName": "Champions Tour: Game Changers NA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901862,
+        "tournamentSlug": "aorus-league-lan",
+        "tournamentName": "AORUS League LAN",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901863,
+        "tournamentSlug": "aorus-league-las",
+        "tournamentName": "AORUS League LAS",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901868,
+        "tournamentSlug": "champions-tour-hk-tw-challengers",
+        "tournamentName": "Champions Tour: HK & TW Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901869,
+        "tournamentSlug": "strike-arabia-levant-and-egypt",
+        "tournamentName": "Strike Arabia: Levant and Egypt",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901870,
+        "tournamentSlug": "strike-arabia-north-africa",
+        "tournamentName": "Strike Arabia: North Africa",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901871,
+        "tournamentSlug": "strike-arabia-gcc-and-iraq",
+        "tournamentName": "Strike Arabia: GCC and Iraq",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901872,
+        "tournamentSlug": "order-nova-invitational",
+        "tournamentName": "ORDER Nova Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901873,
+        "tournamentSlug": "champions-tour-id-challengers",
+        "tournamentName": "Champions Tour: ID Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901874,
+        "tournamentSlug": "champions-tour-my-sg-challengers",
+        "tournamentName": "Champions Tour: MY&SG Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901875,
+        "tournamentSlug": "champions-tour-ph-challengers",
+        "tournamentName": "Champions Tour: PH Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901876,
+        "tournamentSlug": "champions-tour-emea-challengers",
+        "tournamentName": "Champions Tour: EMEA Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901878,
+        "tournamentSlug": "lpl-summer-cup-legends",
+        "tournamentName": "LPL Summer Cup - Legends",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901879,
+        "tournamentSlug": "nerd-street-gamers-summer-championship",
+        "tournamentName": "Nerd Street Gamers: Summer Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901880,
+        "tournamentSlug": "a1-esports-valorant-cup",
+        "tournamentName": "A1 eSports Valorant Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901881,
+        "tournamentSlug": "pittsburgh-knights-gauntlet",
+        "tournamentName": "Pittsburgh Knights Gauntlet",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901883,
+        "tournamentSlug": "oceania-tour",
+        "tournamentName": "Oceania Tour",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901884,
+        "tournamentSlug": "champions-tour-th-challengers",
+        "tournamentName": "Champions Tour: TH Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901885,
+        "tournamentSlug": "nations-circuit",
+        "tournamentName": "Nations Circuit",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901886,
+        "tournamentSlug": "champions-tour-vn-challengers",
+        "tournamentName": "Champions Tour: VN Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901888,
+        "tournamentSlug": "all-star-cup",
+        "tournamentName": "All Star Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901889,
+        "tournamentSlug": "huya-panghu-cup",
+        "tournamentName": "Huya PangHu Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901890,
+        "tournamentSlug": "kingdom-calling",
+        "tournamentName": "Kingdom Calling",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901891,
+        "tournamentSlug": "eurat-vanquisher-series",
+        "tournamentName": "EURAT Vanquisher series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901892,
+        "tournamentSlug": "community-gaming-premier-series",
+        "tournamentName": "Community Gaming Premier Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901893,
+        "tournamentSlug": "rog-x-thinkpro-championship",
+        "tournamentName": "ROG x ThinkPro Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901894,
+        "tournamentSlug": "open-tour-france-qualifier",
+        "tournamentName": "Open Tour France Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901896,
+        "tournamentSlug": "villager-esports-championship",
+        "tournamentName": "Villager Esports Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901897,
+        "tournamentSlug": "circuito-tormenta",
+        "tournamentName": "Circuito Tormenta",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901898,
+        "tournamentSlug": "beloud-cup",
+        "tournamentName": "Beloud Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901899,
+        "tournamentSlug": "champions-tour-masters-reykjavik",
+        "tournamentName": "Champions Tour: Masters Reykjavik",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901900,
+        "tournamentSlug": "strike-arabia-levant-and-north-africa",
+        "tournamentName": "Strike Arabia: Levant and North Africa",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901902,
+        "tournamentSlug": "lpl-autumn-cup-legends",
+        "tournamentName": "LPL Autumn Cup - Legends",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901903,
+        "tournamentSlug": "star-project",
+        "tournamentName": "Star Project",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901905,
+        "tournamentSlug": "aoc-rising-heroes",
+        "tournamentName": "AOC Rising Heroes",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901906,
+        "tournamentSlug": "lethal-esports-invitational",
+        "tournamentName": "Lethal Esports Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901907,
+        "tournamentSlug": "uk-i-skirmish",
+        "tournamentName": "UK & I Skirmish",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901909,
+        "tournamentSlug": "rooter-rise-of-legends",
+        "tournamentName": "Rooter Rise of Legends",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901910,
+        "tournamentSlug": "protocolo-geneses",
+        "tournamentName": "Protocolo: Geneses",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901911,
+        "tournamentSlug": "circuito-de-elite",
+        "tournamentName": "Circuito de Elite",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901912,
+        "tournamentSlug": "penta-esports-invitational",
+        "tournamentName": "Penta Esports - Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901913,
+        "tournamentSlug": "steelseries-prime-tournament",
+        "tournamentName": "SteelSeries Prime Tournament",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901914,
+        "tournamentSlug": "copa-rakin",
+        "tournamentName": "Copa Rakin",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901915,
+        "tournamentSlug": "beat-up-tournament",
+        "tournamentName": "Beat up Tournament",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901916,
+        "tournamentSlug": "the-esports-club-gauntlet",
+        "tournamentName": "The Esports Club Gauntlet",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901917,
+        "tournamentSlug": "aorus-x-amd-pro-series",
+        "tournamentName": "AORUS x AMD Pro Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901918,
+        "tournamentSlug": "tec-gauntlet",
+        "tournamentName": "TEC Gauntlet",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901919,
+        "tournamentSlug": "kjc-esports-valorant-tournament",
+        "tournamentName": "KJC eSports VALORANT Tournament",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901920,
+        "tournamentSlug": "champions-tour-game-changers-na-qualifier",
+        "tournamentName": "Champions Tour: Game Changers NA Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901921,
+        "tournamentSlug": "fearless-invitational-qualifier",
+        "tournamentName": "Fearless Invitational Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901922,
+        "tournamentSlug": "fearless-invitational",
+        "tournamentName": "Fearless Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901923,
+        "tournamentSlug": "moscow-cybersport-series",
+        "tournamentName": "Moscow Cybersport Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901924,
+        "tournamentSlug": "valo2asia-invitational",
+        "tournamentName": "VALO2ASIA Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901925,
+        "tournamentSlug": "champions-tour-eu-challengers-qualifier",
+        "tournamentName": "Champions Tour: EU Challengers Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901926,
+        "tournamentSlug": "champions-tour-cis-challengers-qualifier",
+        "tournamentName": "Champions Tour: CIS Challengers Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901927,
+        "tournamentSlug": "champions-tour-id-challengers-qualifiers",
+        "tournamentName": "Champions Tour: ID Challengers Qualifiers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901928,
+        "tournamentSlug": "champions-tour-na-challengers-qualifier",
+        "tournamentName": "Champions Tour: NA Challengers Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901929,
+        "tournamentSlug": "champions-tour-game-changers-sea-fsl-open",
+        "tournamentName": "Champions Tour: Game Changers SEA FSL Open",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901930,
+        "tournamentSlug": "champions-tour-turkey-challengers-qualifier",
+        "tournamentName": "Champions Tour: Turkey Challengers Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901931,
+        "tournamentSlug": "champions-tour-kr-challengers-qualifier",
+        "tournamentName": "Champions Tour: KR Challengers Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901932,
+        "tournamentSlug": "liga-movistar-fibra-pro-shot",
+        "tournamentName": "Liga Movistar: Fibra Pro Shot",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901934,
+        "tournamentSlug": "oceania-tour-qualifier",
+        "tournamentName": "Oceania Tour Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901935,
+        "tournamentSlug": "pax-arena-almost-pro-open",
+        "tournamentName": "PAX Arena - Almost Pro Open",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901936,
+        "tournamentSlug": "conquerors-championship",
+        "tournamentName": "Conquerors Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901939,
+        "tournamentSlug": "champions-tour-jp-challengers-qualifier",
+        "tournamentName": "Champions Tour: JP Challengers Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901940,
+        "tournamentSlug": "super-league-arena",
+        "tournamentName": "Super League Arena",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901942,
+        "tournamentSlug": "amazon-prime-day-championship",
+        "tournamentName": "Amazon Prime Day Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901943,
+        "tournamentSlug": "energy-vision",
+        "tournamentName": "ENERGY VISION",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901944,
+        "tournamentSlug": "dreamhack-beyond-europe",
+        "tournamentName": "DreamHack Beyond: Europe",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901945,
+        "tournamentSlug": "lpl-winter-cup-legends",
+        "tournamentName": "LPL Winter Cup Legends",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901946,
+        "tournamentSlug": "conquerors-championship-india-qualifier",
+        "tournamentName": "Conquerors Championship: India Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901947,
+        "tournamentSlug": "k-h-magyar-nemzeti-e-sport-bajnoksag",
+        "tournamentName": "K&H Magyar Nemzeti E-sport Bajnoksag",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901949,
+        "tournamentSlug": "conquerors-championship-wildcard-qualifier",
+        "tournamentName": "Conquerors Championship: Wildcard Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901950,
+        "tournamentSlug": "nerd-town-masters",
+        "tournamentName": "Nerd Town Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901951,
+        "tournamentSlug": "champions-tour-latam-challengers-playoffs",
+        "tournamentName": "Champions Tour: LATAM Challengers Playoffs",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901952,
+        "tournamentSlug": "razer-invitational-middle-east-gcc",
+        "tournamentName": "Razer Invitational Middle East - GCC",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901953,
+        "tournamentSlug": "razer-invitational-middle-east-egypt",
+        "tournamentName": "Razer Invitational Middle East - Egypt",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901954,
+        "tournamentSlug": "fgc-invitational",
+        "tournamentName": "FGC Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901955,
+        "tournamentSlug": "gla-baku-summer-cup",
+        "tournamentName": "GLA Baku Summer Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901956,
+        "tournamentSlug": "open-fire-all-stars",
+        "tournamentName": "Open Fire All Stars",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901957,
+        "tournamentSlug": "geekay-scouting-tournament",
+        "tournamentName": "Geekay Scouting Tournament",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901959,
+        "tournamentSlug": "yuvin-invitational-cup",
+        "tournamentName": "Yuvin Invitational Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901960,
+        "tournamentSlug": "champions-tour-masters-berlin",
+        "tournamentName": "Champions Tour Masters Berlin",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901965,
+        "tournamentSlug": "lvleague-pixelbattle",
+        "tournamentName": "LVLEAGUE PIXELBATTLE",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901966,
+        "tournamentSlug": "circuito-tormenta-liga-radiante",
+        "tournamentName": "Circuito Tormenta: Liga Radiante",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901969,
+        "tournamentSlug": "strike-arabia-grand-finals",
+        "tournamentName": "Strike Arabia Grand Finals",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901970,
+        "tournamentSlug": "sbt-games-all-stars",
+        "tournamentName": "SBT Games All Stars",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901971,
+        "tournamentSlug": "champions-tour-emea-last-chance-qualifier",
+        "tournamentName": "Champions Tour: EMEA Last Chance Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901972,
+        "tournamentSlug": "champions-tour-sa-last-chance-qualifier",
+        "tournamentName": "Champions Tour: SA Last Chance Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901973,
+        "tournamentSlug": "skyesports-championship",
+        "tournamentName": "Skyesports Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901974,
+        "tournamentSlug": "champions-tour-game-changers-emea",
+        "tournamentName": "Champions Tour: Game Changers EMEA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 1
+    },
+    {
+        "tournamentId": 901975,
+        "tournamentSlug": "champions-tour-na-last-chance",
+        "tournamentName": "Champions Tour: NA Last Chance",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901976,
+        "tournamentSlug": "champions-tour-apac-last-chance-qualifier",
+        "tournamentName": "Champions Tour: APAC Last Chance Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901977,
+        "tournamentSlug": "blast-spike-nations-2",
+        "tournamentName": "BLAST Spike Nations 2",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901979,
+        "tournamentSlug": "meta-open",
+        "tournamentName": "Meta Open",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901980,
+        "tournamentSlug": "champions-tour-game-changers-sea-elite",
+        "tournamentName": "Champions Tour Game Changers SEA Elite",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901983,
+        "tournamentSlug": "fpsthailand",
+        "tournamentName": "FPSThailand",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901984,
+        "tournamentSlug": "champions-tour-game-changers-latam",
+        "tournamentName": "Champions Tour: Game Changers LATAM",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901985,
+        "tournamentSlug": "penta-challenge",
+        "tournamentName": "Penta Challenge",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901987,
+        "tournamentSlug": "amazon-great-indian-festival",
+        "tournamentName": "Amazon Great Indian Festival",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901989,
+        "tournamentSlug": "icebox-northern-classic",
+        "tournamentName": "ICEBOX Northern Classic",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901990,
+        "tournamentSlug": "aen-spring-series",
+        "tournamentName": "AEN Spring Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901991,
+        "tournamentSlug": "agent-series",
+        "tournamentName": "Agent Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901992,
+        "tournamentSlug": "protocol-evolution",
+        "tournamentName": "Protocol: Evolution",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901993,
+        "tournamentSlug": "esa-open-fire-rebels",
+        "tournamentName": "ESA Open Fire Rebels",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901994,
+        "tournamentSlug": "national-shotval-pride",
+        "tournamentName": "National ShotVAL Pride",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901995,
+        "tournamentSlug": "razer-invitational-europe",
+        "tournamentName": "Razer Invitational Europe",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901996,
+        "tournamentSlug": "royal-sea-challenge",
+        "tournamentName": "Royal SEA Challenge",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901997,
+        "tournamentSlug": "finest-invitational",
+        "tournamentName": "Finest Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901998,
+        "tournamentSlug": "elite-showdown",
+        "tournamentName": "Elite Showdown",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901999,
+        "tournamentSlug": "mineski-vxv-invitational",
+        "tournamentName": "Mineski VxV Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902001,
+        "tournamentSlug": "synnex-fpt",
+        "tournamentName": "Synnex FPT",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902002,
+        "tournamentSlug": "open-tour-france-main-event",
+        "tournamentName": "Open Tour France: Main Event",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902003,
+        "tournamentSlug": "wd-black-cup",
+        "tournamentName": "WD Black Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902004,
+        "tournamentSlug": "estaz-elite-league",
+        "tournamentName": "ESTAZ Elite League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902008,
+        "tournamentSlug": "ego-challenger-series",
+        "tournamentName": "EGO CHALLENGER SERIES",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902009,
+        "tournamentSlug": "logitechg-x-loco",
+        "tournamentName": "LogitechG x Loco",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902013,
+        "tournamentSlug": "open-fire-legacy",
+        "tournamentName": "Open Fire Legacy",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902014,
+        "tournamentSlug": "rog-league",
+        "tournamentName": "ROG League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902015,
+        "tournamentSlug": "nsg-winter-championship",
+        "tournamentName": "NSG: Winter Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902016,
+        "tournamentSlug": "road-to-vct-2022",
+        "tournamentName": "Road to VCT 2022",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902021,
+        "tournamentSlug": "sea-esports-championship",
+        "tournamentName": "SEA Esports Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902023,
+        "tournamentSlug": "gamers-galaxy",
+        "tournamentName": "Gamers Galaxy",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902025,
+        "tournamentSlug": "intel-rival-series",
+        "tournamentName": "Intel Rival Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902026,
+        "tournamentSlug": "zotac-cup",
+        "tournamentName": "Zotac Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902027,
+        "tournamentSlug": "axe-genesis-tournament",
+        "tournamentName": "AXE Genesis Tournament",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902028,
+        "tournamentSlug": "ma-series",
+        "tournamentName": "MA-SERIES",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902029,
+        "tournamentSlug": "marcos-invitational",
+        "tournamentName": "Marcos Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902031,
+        "tournamentSlug": "knights-arena-valorampage",
+        "tournamentName": "Knights Arena Valorampage",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902033,
+        "tournamentSlug": "vcc-india-qualifier",
+        "tournamentName": "VCC India Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902035,
+        "tournamentSlug": "vrl-turkey-birlik",
+        "tournamentName": "VRL Turkey: Birlik",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902036,
+        "tournamentSlug": "regional-france-qualifier",
+        "tournamentName": "Regional France Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902037,
+        "tournamentSlug": "dach-regional-qualifier",
+        "tournamentName": "DACH Regional Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902038,
+        "tournamentSlug": "champions-tour-north-america",
+        "tournamentName": "CHAMPIONS TOUR NORTH AMERICA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902039,
+        "tournamentSlug": "vrl-spain-rising",
+        "tournamentName": "VRL Spain: Rising",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902043,
+        "tournamentSlug": "vrl-cis-milestone",
+        "tournamentName": "VRL CIS: Milestone",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902044,
+        "tournamentSlug": "vrl-dach-evolution",
+        "tournamentName": "VRL DACH: Evolution",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902045,
+        "tournamentSlug": "vrl-northern-eu-polaris",
+        "tournamentName": "VRL Northern EU: Polaris",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902046,
+        "tournamentSlug": "vrl-east-surge",
+        "tournamentName": "VRL East: Surge",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902047,
+        "tournamentSlug": "vrl-france-revolution",
+        "tournamentName": "VRL France: Revolution",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902048,
+        "tournamentSlug": "yfp-winter-classic",
+        "tournamentName": "YFP Winter Classic",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902049,
+        "tournamentSlug": "mena-resilience-gcc-and-iraq",
+        "tournamentName": "MENA Resilience - GCC and Iraq",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902051,
+        "tournamentSlug": "vrl-mena-resilience-gcc-and-iraq",
+        "tournamentName": "VRL MENA: Resilience GCC and Iraq",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902052,
+        "tournamentSlug": "champions-tour-apac-challengers",
+        "tournamentName": "Champions Tour: APAC Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902053,
+        "tournamentSlug": "champions-tour-japan-challengers",
+        "tournamentName": "Champions Tour: Japan Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902054,
+        "tournamentSlug": "vrl-mena-resilience",
+        "tournamentName": "VRL MENA: Resilience",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902055,
+        "tournamentSlug": "champions-tour-las-challengers",
+        "tournamentName": "Champions Tour: LAS Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902056,
+        "tournamentSlug": "skyesports-grand-slam",
+        "tournamentName": "Skyesports Grand Slam",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902058,
+        "tournamentSlug": "project-v",
+        "tournamentName": "Project V",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902059,
+        "tournamentSlug": "predator-shot",
+        "tournamentName": "Predator Shot",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902060,
+        "tournamentSlug": "east-united",
+        "tournamentName": "East: United",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902061,
+        "tournamentSlug": "spring-gauntlet-invitational",
+        "tournamentName": "Spring Gauntlet Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902062,
+        "tournamentSlug": "champions-tour-sa-challengers",
+        "tournamentName": "Champions Tour: SA Challengers",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902063,
+        "tournamentSlug": "champions-tour-emea-promotion",
+        "tournamentName": "Champions Tour: EMEA Promotion",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902064,
+        "tournamentSlug": "predator-kings-of-ph",
+        "tournamentName": "Predator Kings of PH",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902065,
+        "tournamentSlug": "champions-tour-br-relegation",
+        "tournamentName": "Champions Tour: BR Relegation",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902066,
+        "tournamentSlug": "cel-invitation",
+        "tournamentName": "CEL Invitation",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902067,
+        "tournamentSlug": "champions-tour-game-changers-apac",
+        "tournamentName": "Champions Tour: Game Changers APAC",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902068,
+        "tournamentSlug": "knights-guantlet-weekly",
+        "tournamentName": "Knights Guantlet Weekly",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902071,
+        "tournamentSlug": "nerd-street-championship",
+        "tournamentName": "Nerd Street Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902072,
+        "tournamentSlug": "knights-gauntlet-circuit-monthly",
+        "tournamentName": "Knights Gauntlet Circuit: Monthly",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902073,
+        "tournamentSlug": "rebels-1",
+        "tournamentName": "Rebels 1",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902075,
+        "tournamentSlug": "liga-gamers-club",
+        "tournamentName": "Liga Gamers Club",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902076,
+        "tournamentSlug": "criticalx-valorant-milestone",
+        "tournamentName": "CriticalX Valorant Milestone",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902078,
+        "tournamentSlug": "champions-tour-ph-challenger-qualifier",
+        "tournamentName": "Champions Tour: PH Challenger Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902079,
+        "tournamentSlug": "regional-leagues-east-surge",
+        "tournamentName": "Regional Leagues East: Surge",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902080,
+        "tournamentSlug": "mena-resilience-levant-and-north-africa",
+        "tournamentName": "MENA Resilience - Levant and North Africa",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902087,
+        "tournamentSlug": "campeonato-de-elite",
+        "tournamentName": "Campeonato de Elite",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902091,
+        "tournamentSlug": "mel-premiership",
+        "tournamentName": "MEL Premiership",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902094,
+        "tournamentSlug": "champions-cup",
+        "tournamentName": "Champions Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902095,
+        "tournamentSlug": "the-esports-club-community-cup",
+        "tournamentName": "The Esports Club Community Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902096,
+        "tournamentSlug": "leagues-gg",
+        "tournamentName": "Leagues.gg",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902097,
+        "tournamentSlug": "norquest-esports-series",
+        "tournamentName": "NorQuest Esports Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902098,
+        "tournamentSlug": "knights-gauntlet-championship",
+        "tournamentName": "Knights Gauntlet: Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902100,
+        "tournamentSlug": "champions-tour-masters-copenhagen",
+        "tournamentName": "Champions Tour: Masters Copenhagen",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902101,
+        "tournamentSlug": "bleed-open",
+        "tournamentName": "BLEED Open",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902102,
+        "tournamentSlug": "champions-tour-game-changers-br",
+        "tournamentName": "Champions Tour: Game Changers BR",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902104,
+        "tournamentSlug": "vrl-finals",
+        "tournamentName": "VRL: Finals",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902105,
+        "tournamentSlug": "skyesports-pro-invitational",
+        "tournamentName": "Skyesports Pro Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902109,
+        "tournamentSlug": "ignis-invitational",
+        "tournamentName": "Ignis Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902111,
+        "tournamentSlug": "gamers-club-elite-cup",
+        "tournamentName": "Gamers Club Elite Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902112,
+        "tournamentSlug": "nvidia-geforce-festival",
+        "tournamentName": "NVIDIA GEFORCE Festival",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902114,
+        "tournamentSlug": "balkan-league",
+        "tournamentName": "Balkan League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902115,
+        "tournamentSlug": "champions-tour-game-changers-japan",
+        "tournamentName": "Champions Tour: Game Changers Japan",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902116,
+        "tournamentSlug": "champions-tour-east-asia-last-chance-qualifier",
+        "tournamentName": "Champions Tour: East Asia Last Chance Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902117,
+        "tournamentSlug": "mct-contenders-division",
+        "tournamentName": "MCT Contenders Division",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902118,
+        "tournamentSlug": "masters-pro-league",
+        "tournamentName": "Masters Pro League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902119,
+        "tournamentSlug": "mel-premiership-last-chance-qualifier",
+        "tournamentName": "MEL Premiership Last Chance Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902123,
+        "tournamentSlug": "predator-league-philippine",
+        "tournamentName": "Predator League: Philippine",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902124,
+        "tournamentSlug": "gaming-culture-girl-power",
+        "tournamentName": "Gaming Culture Girl Power",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902125,
+        "tournamentSlug": "contenders-legion-athena-series",
+        "tournamentName": "Contenders Legion: Athena Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902127,
+        "tournamentSlug": "vnl-relegation",
+        "tournamentName": "VNL: Relegation",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902130,
+        "tournamentSlug": "liquid-open-north-america",
+        "tournamentName": "Liquid Open - North America",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902131,
+        "tournamentSlug": "champions-tour-game-changers-kr",
+        "tournamentName": "Champions Tour: Game Changers KR",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902132,
+        "tournamentSlug": "vrc-trinity-trials",
+        "tournamentName": "VRC Trinity Trials",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902133,
+        "tournamentSlug": "nrg-neon-dream-invitational",
+        "tournamentName": "NRG Neon Dream Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902134,
+        "tournamentSlug": "champions-tour-game-changers-apac-elite",
+        "tournamentName": "Champions Tour Game Changers APAC Elite",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902135,
+        "tournamentSlug": "xyper-arena-weekly-showdown",
+        "tournamentName": "Xyper Arena Weekly Showdown",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902136,
+        "tournamentSlug": "game-changers-brazil",
+        "tournamentName": "Game Changers Brazil",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902137,
+        "tournamentSlug": "crossfire-cup",
+        "tournamentName": "Crossfire Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902138,
+        "tournamentSlug": "ten-5-korea-vs-japan",
+        "tournamentName": "TEN 5 Korea vs. Japan",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902140,
+        "tournamentSlug": "intel-arabian-cup-gcc-and-iraq",
+        "tournamentName": "Intel Arabian Cup GCC and Iraq",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902141,
+        "tournamentSlug": "project-v-a1-esports-cup",
+        "tournamentName": "Project V: A1 eSports Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902142,
+        "tournamentSlug": "ags-cup",
+        "tournamentName": "AGS cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902143,
+        "tournamentSlug": "india-invitational-qualifier",
+        "tournamentName": "India Invitational - Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902144,
+        "tournamentSlug": "superdome",
+        "tournamentName": "Superdome",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902145,
+        "tournamentSlug": "project-queens-league",
+        "tournamentName": "Project Queens League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902146,
+        "tournamentSlug": "vnl",
+        "tournamentName": "VNL",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902147,
+        "tournamentSlug": "valorant-india-invitational-qualifier",
+        "tournamentName": "Valorant India Invitational: Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902148,
+        "tournamentSlug": "valorant-national-league",
+        "tournamentName": "Valorant National League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902151,
+        "tournamentSlug": "champions-tour-game-changers-championship",
+        "tournamentName": "Champions Tour: Game Changers Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902153,
+        "tournamentSlug": "coupe-de-france",
+        "tournamentName": "Coupe De France",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902154,
+        "tournamentSlug": "g-l-clash-showdown",
+        "tournamentName": "G-L Clash Showdown",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902155,
+        "tournamentSlug": "esportsmaker-spike-ladies",
+        "tournamentName": "Esportsmaker Spike Ladies",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902156,
+        "tournamentSlug": "nsg-yuddha-championship",
+        "tournamentName": "NSG Yuddha Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902158,
+        "tournamentSlug": "east-united-last-chance-qualifier",
+        "tournamentName": "East: United - Last Chance Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902159,
+        "tournamentSlug": "esl-clash-of-nations-sea",
+        "tournamentName": "ESL Clash of Nations: SEA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902160,
+        "tournamentSlug": "g-l-clash",
+        "tournamentName": "G-L Clash",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902161,
+        "tournamentSlug": "mystic-singularity",
+        "tournamentName": "Mystic Singularity",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902162,
+        "tournamentSlug": "skyesports-sea-championship-qualifier",
+        "tournamentName": "Skyesports SEA Championship Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902163,
+        "tournamentSlug": "skyesports-sea-championship",
+        "tournamentName": "Skyesports SEA Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902164,
+        "tournamentSlug": "esportsmaker-spike-series-invitational",
+        "tournamentName": "Esportsmaker Spike Series Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902167,
+        "tournamentSlug": "east-united-season-finals",
+        "tournamentName": "East: United - Season Finals",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902168,
+        "tournamentSlug": "lvp-crossfire-cup",
+        "tournamentName": "LVP Crossfire Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902169,
+        "tournamentSlug": "boomtv-select",
+        "tournamentName": "BoomTV Select",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902172,
+        "tournamentSlug": "unified-premier-league",
+        "tournamentName": "Unified Premier League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902179,
+        "tournamentSlug": "saudi-eleagues",
+        "tournamentName": "Saudi eLeagues",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902180,
+        "tournamentSlug": "esa-open-fire-all-stars",
+        "tournamentName": "ESA Open Fire All Stars",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902181,
+        "tournamentSlug": "g-loot-valorant-clash",
+        "tournamentName": "G-Loot VALORANT Clash",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902182,
+        "tournamentSlug": "gwangju-esports-series",
+        "tournamentName": "Gwangju Esports Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902183,
+        "tournamentSlug": "afreecatv-sea-invitational",
+        "tournamentName": "AfreecaTV SEA Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902184,
+        "tournamentSlug": "latam-gods",
+        "tournamentName": "Latam Gods",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902185,
+        "tournamentSlug": "mineski-vxv",
+        "tournamentName": "Mineski VxV",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902186,
+        "tournamentSlug": "astral-clash",
+        "tournamentName": "Astral Clash",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902187,
+        "tournamentSlug": "esl-clash-of-nations-oce",
+        "tournamentName": "ESL Clash of Nations: OCE",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902189,
+        "tournamentSlug": "riot-games-one-pro-invitational",
+        "tournamentName": "Riot Games ONE PRO INVITATIONAL",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902190,
+        "tournamentSlug": "penta-pro-series",
+        "tournamentName": "Penta Pro Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902191,
+        "tournamentSlug": "lpl-overtime-cup",
+        "tournamentName": "LPL Overtime Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902192,
+        "tournamentSlug": "challengers-league-brazil",
+        "tournamentName": "Challengers League Brazil",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902193,
+        "tournamentSlug": "red-bull-campus-clutch",
+        "tournamentName": "Red Bull Campus Clutch",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902194,
+        "tournamentSlug": "vietnam-gaming-league",
+        "tournamentName": "Vietnam Gaming League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902195,
+        "tournamentSlug": "knights-arena-freezeout",
+        "tournamentName": "Knights Arena Freezeout",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902196,
+        "tournamentSlug": "challengers-league-turkey",
+        "tournamentName": "Challengers League Turkey",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902200,
+        "tournamentSlug": "t-e-n-fps-special",
+        "tournamentName": "T.E.N FPS SPECIAL",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902201,
+        "tournamentSlug": "beacon-open",
+        "tournamentName": "BEACON Open",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902203,
+        "tournamentSlug": "challengers-spain-revolution",
+        "tournamentName": "Challengers Spain: Revolution",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902204,
+        "tournamentSlug": "challengers-france-revolution",
+        "tournamentName": "Challengers France: Revolution",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902205,
+        "tournamentSlug": "challengers-turkey-birlik",
+        "tournamentName": "Challengers Turkey: Birlik",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902206,
+        "tournamentSlug": "challengers-spain-rising",
+        "tournamentName": "Challengers Spain: Rising",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902207,
+        "tournamentSlug": "challengers-portugal-tempest",
+        "tournamentName": "Challengers Portugal: Tempest",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902208,
+        "tournamentSlug": "challengers-east-surge",
+        "tournamentName": "Challengers East: Surge",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902209,
+        "tournamentSlug": "challengers-dach-evolution",
+        "tournamentName": "Challengers DACH: Evolution",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902210,
+        "tournamentSlug": "challengers-italy-rinascimento",
+        "tournamentName": "Challengers Italy: Rinascimento",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902211,
+        "tournamentSlug": "challengers-league-north-america",
+        "tournamentName": "Challengers League: North America",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902212,
+        "tournamentSlug": "challengers-northern-europe-polaris",
+        "tournamentName": "Challengers Northern Europe: Polaris",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902213,
+        "tournamentSlug": "ludwig-x-tarik-invitational",
+        "tournamentName": "Ludwig x Tarik Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902214,
+        "tournamentSlug": "challengers-league-taiwan-hong-kong",
+        "tournamentName": "Challengers League Taiwan/Hong Kong",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902215,
+        "tournamentSlug": "challengers-league-portugal",
+        "tournamentName": "Challengers League: Portugal",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902217,
+        "tournamentSlug": "champions-tour-lock-in-sao-paulo",
+        "tournamentName": "Champions Tour: LOCK//IN Sao Paulo",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902218,
+        "tournamentSlug": "challengers-league-indonesia",
+        "tournamentName": "Challengers League: Indonesia",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902219,
+        "tournamentSlug": "challengers-philippines",
+        "tournamentName": "Challengers Philippines",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902220,
+        "tournamentSlug": "challengers-league-oceania",
+        "tournamentName": "Challengers League: Oceania",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902221,
+        "tournamentSlug": "challengers-league-thailand",
+        "tournamentName": "Challengers League: Thailand",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902223,
+        "tournamentSlug": "challengers-league-korea",
+        "tournamentName": "Challengers League: Korea",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902224,
+        "tournamentSlug": "challengers-league-japan",
+        "tournamentName": "Challengers League: Japan",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902225,
+        "tournamentSlug": "challengers-mena-gcc-and-iraq",
+        "tournamentName": "Challengers MENA: GCC and Iraq",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902226,
+        "tournamentSlug": "challengers-mena-levant-and-north-africa",
+        "tournamentName": "Challengers MENA: Levant and North Africa",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902227,
+        "tournamentSlug": "challengers-league-malaysia-and-singapore",
+        "tournamentName": "Challengers League: Malaysia and Singapore",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902232,
+        "tournamentSlug": "challengers-latin-america-north",
+        "tournamentName": "Challengers Latin America North",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 1,
+        "liveFixtures": 2
+    },
+    {
+        "tournamentId": 902233,
+        "tournamentSlug": "challengers-latin-america-south",
+        "tournamentName": "Challengers Latin America South",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 2,
+        "liveFixtures": 8
+    },
+    {
+        "tournamentId": 902234,
+        "tournamentSlug": "challengers-northern-europe",
+        "tournamentName": "Challengers Northern Europe",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902235,
+        "tournamentSlug": "challengers-spain",
+        "tournamentName": "Challengers Spain",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902236,
+        "tournamentSlug": "challengers-france",
+        "tournamentName": "Challengers France",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902237,
+        "tournamentSlug": "challengers-dach",
+        "tournamentName": "Challengers DACH",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902238,
+        "tournamentSlug": "challengers-turkey",
+        "tournamentName": "Challengers Turkey",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902239,
+        "tournamentSlug": "challengers-east",
+        "tournamentName": "Challengers East",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902240,
+        "tournamentSlug": "challengers-italy",
+        "tournamentName": "Challengers Italy",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902241,
+        "tournamentSlug": "challengers-portugal",
+        "tournamentName": "Challengers Portugal",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902242,
+        "tournamentSlug": "challengers-thailand",
+        "tournamentName": "Challengers Thailand",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902243,
+        "tournamentSlug": "challengers-vietnam",
+        "tournamentName": "Challengers Vietnam",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902244,
+        "tournamentSlug": "challengers-malaysia-and-singapore",
+        "tournamentName": "Challengers Malaysia and Singapore",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902245,
+        "tournamentSlug": "challengers-korea",
+        "tournamentName": "Challengers Korea",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 4,
+        "upcomingFixtures": 1,
+        "liveFixtures": 2
+    },
+    {
+        "tournamentId": 902246,
+        "tournamentSlug": "challengers-japan",
+        "tournamentName": "Challengers Japan",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 2
+    },
+    {
+        "tournamentId": 902247,
+        "tournamentSlug": "challengers-hong-kong-and-taiwan",
+        "tournamentName": "Challengers Hong Kong and Taiwan",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902248,
+        "tournamentSlug": "challengers-indonesia",
+        "tournamentName": "Challengers Indonesia",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902249,
+        "tournamentSlug": "challengers-oceania",
+        "tournamentName": "Challengers Oceania",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902257,
+        "tournamentSlug": "champions-tour-emea",
+        "tournamentName": "Champions Tour: EMEA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902258,
+        "tournamentSlug": "champions-tour-pacific",
+        "tournamentName": "Champions Tour: Pacific",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902259,
+        "tournamentSlug": "champions-tour-americas",
+        "tournamentName": "Champions Tour: Americas",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 4
+    },
+    {
+        "tournamentId": 902261,
+        "tournamentSlug": "challengers-south-asia",
+        "tournamentName": "Challengers South Asia",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902262,
+        "tournamentSlug": "game-changers-latin-america",
+        "tournamentName": "Game Changers Latin America",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902277,
+        "tournamentSlug": "champions-tour-masters-tokyo",
+        "tournamentName": "Champions Tour: Masters Tokyo",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902278,
+        "tournamentSlug": "challengers-mena",
+        "tournamentName": "Challengers MENA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902279,
+        "tournamentSlug": "champions-tour-china-qualifier",
+        "tournamentName": "Champions Tour: China Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902291,
+        "tournamentSlug": "challengers-latin-america",
+        "tournamentName": "Challengers Latin America",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902292,
+        "tournamentSlug": "challengers-ascension-americas",
+        "tournamentName": "Challengers Ascension: Americas",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902293,
+        "tournamentSlug": "challengers-ascension-emea",
+        "tournamentName": "Challengers Ascension: EMEA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902294,
+        "tournamentSlug": "challengers-ascension-pacific",
+        "tournamentName": "Challengers Ascension: Pacific",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902295,
+        "tournamentSlug": "champions-tour-game-changers-lan",
+        "tournamentName": "Champions Tour: Game Changers LAN",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902296,
+        "tournamentSlug": "champions-tour-game-changers-las",
+        "tournamentName": "Champions Tour: Game Changers LAS",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902297,
+        "tournamentSlug": "champions-tour-americas-lcq",
+        "tournamentName": "Champions Tour: Americas LCQ",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902299,
+        "tournamentSlug": "champions-tour-china-lcq",
+        "tournamentName": "Champions Tour: China LCQ",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902300,
+        "tournamentSlug": "champions-tour-pacific-lcq",
+        "tournamentName": "Champions Tour: Pacific LCQ",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902302,
+        "tournamentSlug": "challengers-brazil-promotion",
+        "tournamentName": "Challengers: Brazil Promotion",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902303,
+        "tournamentSlug": "champions-tour-emea-lcq",
+        "tournamentName": "Champions Tour: EMEA LCQ",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902308,
+        "tournamentSlug": "champions-tour-game-changers-emea-contenders",
+        "tournamentName": "Champions Tour: Game Changers EMEA Contenders",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902309,
+        "tournamentSlug": "asia-esports-championship",
+        "tournamentName": "Asia Esports Championship",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902313,
+        "tournamentSlug": "emg-pro-series-levant-and-north-africa",
+        "tournamentName": "EMG Pro Series: Levant and North Africa",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902314,
+        "tournamentSlug": "emg-pro-series-south-asia",
+        "tournamentName": "EMG Pro Series: South Asia",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902315,
+        "tournamentSlug": "emg-pro-series-gcc-and-iraq",
+        "tournamentName": "EMG Pro Series: GCC and Iraq",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902320,
+        "tournamentSlug": "afreecatv-thailand-qualifier",
+        "tournamentName": "AfreecaTV Thailand Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902321,
+        "tournamentSlug": "east-united-open-qualifier",
+        "tournamentName": "East: United - Open Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902322,
+        "tournamentSlug": "gameon",
+        "tournamentName": "GAMEON",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902323,
+        "tournamentSlug": "cn-evolution-series",
+        "tournamentName": "CN Evolution Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902324,
+        "tournamentSlug": "challengers-dach-arcade",
+        "tournamentName": "Challengers DACH: Arcade",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902325,
+        "tournamentSlug": "cn-evolution-series-play-in",
+        "tournamentName": "CN Evolution Series Play-in",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902327,
+        "tournamentSlug": "red-bull-home-ground-japan-qualifier",
+        "tournamentName": "Red Bull Home Ground: Japan Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902328,
+        "tournamentSlug": "predator-league-thailand",
+        "tournamentName": "Predator League: Thailand",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902330,
+        "tournamentSlug": "predator-league-india",
+        "tournamentName": "Predator League: India",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902331,
+        "tournamentSlug": "red-bull-double-agent",
+        "tournamentName": "Red Bull Double Agent",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902333,
+        "tournamentSlug": "ten-valorant-global-invitational",
+        "tournamentName": "TEN Valorant Global Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902335,
+        "tournamentSlug": "liquid-open-europe",
+        "tournamentName": "Liquid Open - Europe",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902338,
+        "tournamentSlug": "red-bull-home-ground-emea-qualifier",
+        "tournamentName": "Red Bull Home Ground: EMEA Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902339,
+        "tournamentSlug": "meg",
+        "tournamentName": "MEG",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902341,
+        "tournamentSlug": "project-v-the-pokal",
+        "tournamentName": "Project V: THE POKAL",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902342,
+        "tournamentSlug": "sentinels-off-season-showmatch",
+        "tournamentName": "Sentinels Off-Season Showmatch",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902343,
+        "tournamentSlug": "challengers-italy-on-the-battlefield",
+        "tournamentName": "Challengers Italy: On The Battlefield",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902345,
+        "tournamentSlug": "superdome-egypt-gcc-iraq-qualifier",
+        "tournamentName": "Superdome Egypt: GCC & Iraq Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902346,
+        "tournamentSlug": "superdome-egypt-levant-north-africa-qualifier",
+        "tournamentName": "Superdome Egypt: Levant & North Africa Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902347,
+        "tournamentSlug": "champions-tour-game-changers-east-asia",
+        "tournamentName": "Champions Tour: Game Changers East Asia",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902348,
+        "tournamentSlug": "ace-double-down",
+        "tournamentName": "ACE Double Down",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902349,
+        "tournamentSlug": "east-united-last-chance-cup",
+        "tournamentName": "East: United: Last Chance Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902351,
+        "tournamentSlug": "for-those-who-dare",
+        "tournamentName": "For Those Who Dare",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902353,
+        "tournamentSlug": "superdome-colombia",
+        "tournamentName": "Superdome: Colombia",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902354,
+        "tournamentSlug": "sentinels-invitational",
+        "tournamentName": "Sentinels Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902356,
+        "tournamentSlug": "esl-clash-of-nations-th",
+        "tournamentName": "ESL Clash of Nations: TH",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902357,
+        "tournamentSlug": "afreecatv-league",
+        "tournamentName": "AfreecaTV League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902360,
+        "tournamentSlug": "esl-clash-of-nations",
+        "tournamentName": "ESL Clash of Nations",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902361,
+        "tournamentSlug": "challengers-portugal-drift",
+        "tournamentName": "Challengers Portugal: Drift",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902362,
+        "tournamentSlug": "connecta-the-ultimate-battle",
+        "tournamentName": "Connecta The Ultimate Battle",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902364,
+        "tournamentSlug": "afreecatv-league-showmatch",
+        "tournamentName": "AfreecaTV League - Showmatch",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902367,
+        "tournamentSlug": "predator-league-indonesia",
+        "tournamentName": "Predator League: Indonesia",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902372,
+        "tournamentSlug": "convergence",
+        "tournamentName": "Convergence",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902373,
+        "tournamentSlug": "mandatory-cup",
+        "tournamentName": "Mandatory Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902375,
+        "tournamentSlug": "the-cozy-clash",
+        "tournamentName": "The Cozy Clash",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902376,
+        "tournamentSlug": "challengers-ascension-china",
+        "tournamentName": "Challengers Ascension: China",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902378,
+        "tournamentSlug": "champions-tour-pacific-kickoff",
+        "tournamentName": "champions tour - Pacific Kickoff",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902379,
+        "tournamentSlug": "champions-tour-kickoff-china",
+        "tournamentName": "Champions Tour: Kickoff China",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902380,
+        "tournamentSlug": "champions-tour-kickoff-americas",
+        "tournamentName": "Champions Tour: Kickoff Americas",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902381,
+        "tournamentSlug": "champions-tour-kickoff-emea",
+        "tournamentName": "Champions Tour: Kickoff EMEA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902382,
+        "tournamentSlug": "tesfed-turkish-cup",
+        "tournamentName": "TESFED Turkish Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902384,
+        "tournamentSlug": "predator-league",
+        "tournamentName": "Predator League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902390,
+        "tournamentSlug": "champions-tour-masters-madrid",
+        "tournamentName": "Champions Tour: Masters Madrid",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902393,
+        "tournamentSlug": "game-changers-latin-america-south",
+        "tournamentName": "Game Changers Latin America South",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902397,
+        "tournamentSlug": "red-bull-instalock",
+        "tournamentName": "Red Bull Instalock",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902401,
+        "tournamentSlug": "champions-tour-masters-shanghai",
+        "tournamentName": "Champions Tour: Masters Shanghai",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902420,
+        "tournamentSlug": "spotlight-series-emea",
+        "tournamentName": "Spotlight Series EMEA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902421,
+        "tournamentSlug": "challengers-spain-rising-consolidation",
+        "tournamentName": "Challengers Spain Rising: Consolidation",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902424,
+        "tournamentSlug": "red-bull-home-ground-apac-qualifier",
+        "tournamentName": "Red Bull Home Ground: APAC Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902425,
+        "tournamentSlug": "wall-e-cup",
+        "tournamentName": "WALL-E Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902426,
+        "tournamentSlug": "red-bull-home-ground-turkey-qualifier",
+        "tournamentName": "Red Bull Home Ground: Turkey Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902428,
+        "tournamentSlug": "challengers-southeast-asia",
+        "tournamentName": "Challengers Southeast Asia",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902429,
+        "tournamentSlug": "ten-valorant-asia-invitational",
+        "tournamentName": "TEN Valorant Asia Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902431,
+        "tournamentSlug": "sen-city-classic",
+        "tournamentName": "SEN City Classic",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902432,
+        "tournamentSlug": "liga-radiante",
+        "tournamentName": "Liga Radiante",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902433,
+        "tournamentSlug": "radiant-asia-invitational",
+        "tournamentName": "Radiant Asia Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902435,
+        "tournamentSlug": "shanghai-esports-masters",
+        "tournamentName": "Shanghai Esports Masters",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902436,
+        "tournamentSlug": "soop-valorant-league",
+        "tournamentName": "SOOP VALORANT LEAGUE",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902438,
+        "tournamentSlug": "monsters-reloaded",
+        "tournamentName": "Monsters Reloaded",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902439,
+        "tournamentSlug": "superb-cup",
+        "tournamentName": "Superb Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902440,
+        "tournamentSlug": "spotlight-series-americas",
+        "tournamentName": "Spotlight Series Americas",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902441,
+        "tournamentSlug": "tixinha-invitational",
+        "tournamentName": "Tixinha Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902442,
+        "tournamentSlug": "spotlight-series-pacific",
+        "tournamentName": "Spotlight Series Pacific",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902444,
+        "tournamentSlug": "apac-predator-league",
+        "tournamentName": "APAC Predator League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902446,
+        "tournamentSlug": "challengers-southeast-asia-relegation",
+        "tournamentName": "Challengers Southeast Asia Relegation",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902447,
+        "tournamentSlug": "challengers-north-east",
+        "tournamentName": "Challengers NORTH//EAST",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902451,
+        "tournamentSlug": "champions-tour-masters-bangkok",
+        "tournamentName": "Champions Tour: Masters Bangkok",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902452,
+        "tournamentSlug": "challengers-emea",
+        "tournamentName": "Challengers EMEA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 15
+    },
+    {
+        "tournamentId": 902454,
+        "tournamentSlug": "challengers-mena-resilience-north-africa-and-levant",
+        "tournamentName": "Challengers MENA Resilience: North Africa and Levant",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902458,
+        "tournamentSlug": "hero-asian-champions-league",
+        "tournamentName": "HERO ASIAN CHAMPIONS LEAGUE",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902459,
+        "tournamentSlug": "esports-world-cup-emea-qualifier",
+        "tournamentName": "Esports World Cup - EMEA Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 4
+    },
+    {
+        "tournamentId": 902460,
+        "tournamentSlug": "esports-world-cup-americas-qualifier",
+        "tournamentName": "Esports World Cup - Americas Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 5
+    },
+    {
+        "tournamentId": 902461,
+        "tournamentSlug": "esports-world-cup-pacific-qualifier",
+        "tournamentName": "Esports World Cup - Pacific Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 4
+    },
+    {
+        "tournamentId": 902463,
+        "tournamentSlug": "champions-tour-masters-toronto",
+        "tournamentName": "Champions Tour: Masters Toronto",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902465,
+        "tournamentSlug": "btcturk-gamefest",
+        "tournamentName": "BtcTurk GameFest",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902467,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902468,
+        "tournamentSlug": "tixinha-sacy-invitational",
+        "tournamentName": "Tixinha & Sacy Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904338,
+        "tournamentSlug": "challengers-brazil",
+        "tournamentName": "Challengers Brazil",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904443,
+        "tournamentSlug": "champions-tour-game-changers-pacific",
+        "tournamentName": "Champions Tour: Game Changers Pacific",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904485,
+        "tournamentSlug": "game-changers-americas-qualifier",
+        "tournamentName": "Game Changers: Americas Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904497,
+        "tournamentSlug": "ten-global-invitational",
+        "tournamentName": "TEN Global Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904513,
+        "tournamentSlug": "china-evolution-series",
+        "tournamentName": "China Evolution Series",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 12
+    },
+    {
+        "tournamentId": 904517,
+        "tournamentSlug": "red-bull-home-ground-play-in",
+        "tournamentName": "Red Bull Home Ground Play In",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904521,
+        "tournamentSlug": "soop-league-qualifier",
+        "tournamentName": "SOOP League Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904536,
+        "tournamentSlug": "soop-league",
+        "tournamentName": "SOOP League",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904537,
+        "tournamentSlug": "saudi-eleague",
+        "tournamentName": "Saudi eLeague",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904553,
+        "tournamentSlug": "project-blender",
+        "tournamentName": "Project Blender",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904565,
+        "tournamentSlug": "the-pokal",
+        "tournamentName": "THE POKAL",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904574,
+        "tournamentSlug": "challengers-showdown-korea-japan",
+        "tournamentName": "Challengers Showdown - Korea Japan",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904580,
+        "tournamentSlug": "predator-league-korea",
+        "tournamentName": "Predator League: Korea",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904581,
+        "tournamentSlug": "radiant-international-invitational",
+        "tournamentName": "Radiant International Invitational",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904596,
+        "tournamentSlug": "challengers-mena-gcc-pakistan-and-iraq",
+        "tournamentName": "Challengers MENA: GCC, Pakistan and Iraq",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904598,
+        "tournamentSlug": "challengers-turkiye",
+        "tournamentName": "Challengers Turkiye",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904619,
+        "tournamentSlug": "champions-tour-kickoff-pacific",
+        "tournamentName": "Champions Tour: Kickoff Pacific",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904727,
+        "tournamentSlug": "emea-clash",
+        "tournamentName": "EMEA Clash",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904748,
+        "tournamentSlug": "champions-tour-masters-santiago",
+        "tournamentName": "Champions Tour: Masters Santiago",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904756,
+        "tournamentSlug": "challengers-mena-middle-east",
+        "tournamentName": "Challengers MENA: Middle East",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904878,
+        "tournamentSlug": "champions-tour-game-changers-china",
+        "tournamentName": "Champions Tour: Game Changers China",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904888,
+        "tournamentSlug": "champions-tour-china",
+        "tournamentName": "Champions Tour: China",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904932,
+        "tournamentSlug": "champions-tour-game-changers-sea",
+        "tournamentName": "Champions Tour: Game Changers SEA",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 905033,
+        "tournamentSlug": "esports-world-cup-china-qualifier",
+        "tournamentName": "Esports World Cup - China Qualifier",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 905083,
+        "tournamentSlug": "champions-tour-masters-london",
+        "tournamentName": "Champions Tour: Masters London",
+        "categorySlug": "valorant",
+        "categoryName": "Valorant",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 17
+    }
+]

@@ -1,0 +1,92 @@
+[
+    {
+        "tournamentId": 656,
+        "tournamentSlug": "afl",
+        "tournamentName": "AFL",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 85,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1624,
+        "tournamentSlug": "nab-challenge",
+        "tournamentName": "NAB Challenge",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14866,
+        "tournamentSlug": "afl-women",
+        "tournamentName": "AFL, Women",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26392,
+        "tournamentSlug": "tasmanian-state-league",
+        "tournamentName": "Tasmanian State League",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26506,
+        "tournamentSlug": "victorian-football-league",
+        "tournamentName": "Victorian Football League",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 73,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26510,
+        "tournamentSlug": "sanfl",
+        "tournamentName": "SANFL",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 43,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26522,
+        "tournamentSlug": "wafl",
+        "tournamentName": "WAFL",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 43,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31993,
+        "tournamentSlug": "afl-preseason",
+        "tournamentName": "AFL Preseason",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46003,
+        "tournamentSlug": "afl-all-stars",
+        "tournamentName": "AFL All Stars",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

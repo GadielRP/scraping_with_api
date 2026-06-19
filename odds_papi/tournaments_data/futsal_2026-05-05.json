@@ -1,0 +1,522 @@
+[
+    {
+        "tournamentId": 593,
+        "tournamentSlug": "primera-division",
+        "tournamentName": "Primera Division",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 16,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 595,
+        "tournamentSlug": "serie-a",
+        "tournamentName": "Serie A",
+        "categorySlug": "italy",
+        "categoryName": "Italy",
+        "futureFixtures": 10,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 596,
+        "tournamentSlug": "1a-divisao",
+        "tournamentName": "1a Divisao",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 644,
+        "tournamentSlug": "uefa-futsal-euro-qualification",
+        "tournamentName": "UEFA Futsal EURO, Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 650,
+        "tournamentSlug": "liga-nacional",
+        "tournamentName": "Liga Nacional",
+        "categorySlug": "brazil",
+        "categoryName": "Brazil",
+        "futureFixtures": 87,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 733,
+        "tournamentSlug": "superliga",
+        "tournamentName": "Superliga",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 6,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 734,
+        "tournamentSlug": "1st-liga",
+        "tournamentName": "1st Liga",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 750,
+        "tournamentSlug": "uefa-futsal-euro",
+        "tournamentName": "UEFA Futsal EURO",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 770,
+        "tournamentSlug": "uefa-futsal-champ-league",
+        "tournamentName": "UEFA Futsal Champ. League",
+        "categorySlug": "international-clubs",
+        "categoryName": "International Clubs",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1203,
+        "tournamentSlug": "fifa-futsal-world-cup",
+        "tournamentName": "FIFA Futsal World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1252,
+        "tournamentSlug": "copa-de-espana",
+        "tournamentName": "Copa de Espana",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1351,
+        "tournamentSlug": "f-league",
+        "tournamentName": "F. League",
+        "categorySlug": "japan",
+        "categoryName": "Japan",
+        "futureFixtures": 131,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1466,
+        "tournamentSlug": "premier-division",
+        "tournamentName": "Premier Division",
+        "categorySlug": "iran",
+        "categoryName": "Iran",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1476,
+        "tournamentSlug": "segunda-division",
+        "tournamentName": "Segunda Division",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 18,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1658,
+        "tournamentSlug": "coppa-italia",
+        "tournamentName": "Coppa Italia",
+        "categorySlug": "italy",
+        "categoryName": "Italy",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1836,
+        "tournamentSlug": "club-friendly-games",
+        "tournamentName": "Club Friendly Games",
+        "categorySlug": "international-clubs",
+        "categoryName": "International Clubs",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2019,
+        "tournamentSlug": "superliga-reserves",
+        "tournamentName": "Superliga Reserves",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2426,
+        "tournamentSlug": "fifa-futsal-world-cup-qualification-uefa",
+        "tournamentName": "FIFA Futsal World Cup Qualification, UEFA",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2434,
+        "tournamentSlug": "afc-futsal-asian-cup",
+        "tournamentName": "AFC Futsal Asian Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2446,
+        "tournamentSlug": "1st-division",
+        "tournamentName": "1st Division",
+        "categorySlug": "gibraltar",
+        "categoryName": "Gibraltar",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14443,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20650,
+        "tournamentSlug": "extra-liga",
+        "tournamentName": "Extra-Liga",
+        "categorySlug": "ukraine",
+        "categoryName": "Ukraine",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 21858,
+        "tournamentSlug": "vyshchaya-liga",
+        "tournamentName": "Vyshchaya Liga",
+        "categorySlug": "belarus",
+        "categoryName": "Belarus",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 21860,
+        "tournamentSlug": "cup",
+        "tournamentName": "Cup",
+        "categorySlug": "belarus",
+        "categoryName": "Belarus",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26438,
+        "tournamentSlug": "liga-1",
+        "tournamentName": "Liga 1",
+        "categorySlug": "romania",
+        "categoryName": "Romania",
+        "futureFixtures": 9,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26444,
+        "tournamentSlug": "ekstraklasa",
+        "tournamentName": "Ekstraklasa",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 6,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26448,
+        "tournamentSlug": "supercopa-de-espana",
+        "tournamentName": "Supercopa de Espana",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26678,
+        "tournamentSlug": "supercoppa",
+        "tournamentName": "Supercoppa",
+        "categorySlug": "italy",
+        "categoryName": "Italy",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27585,
+        "tournamentSlug": "copa-del-rey",
+        "tournamentName": "Copa del Rey",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30068,
+        "tournamentSlug": "intercontinental-futsal-cup",
+        "tournamentName": "Intercontinental Futsal Cup",
+        "categorySlug": "international-clubs",
+        "categoryName": "International Clubs",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30995,
+        "tournamentSlug": "cup",
+        "tournamentName": "Cup",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31595,
+        "tournamentSlug": "taca-da-liga",
+        "tournamentName": "Taca da Liga",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34296,
+        "tournamentSlug": "copa-libertadores",
+        "tournamentName": "Copa Libertadores",
+        "categorySlug": "international-clubs",
+        "categoryName": "International Clubs",
+        "futureFixtures": 18,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34774,
+        "tournamentSlug": "f-league",
+        "tournamentName": "F-League",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35074,
+        "tournamentSlug": "international-friendly-games",
+        "tournamentName": "International Friendly Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35831,
+        "tournamentSlug": "eliteserien",
+        "tournamentName": "Eliteserien",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36161,
+        "tournamentSlug": "futsalligan",
+        "tournamentName": "Futsalligan",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37207,
+        "tournamentSlug": "1-hmnl",
+        "tournamentName": "1. HMNL",
+        "categorySlug": "croatia",
+        "categoryName": "Croatia",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39017,
+        "tournamentSlug": "copa-libertadores-women",
+        "tournamentName": "Copa Libertadores, Women",
+        "categorySlug": "international-clubs",
+        "categoryName": "International Clubs",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39121,
+        "tournamentSlug": "nb-i",
+        "tournamentName": "NB I",
+        "categorySlug": "hungary",
+        "categoryName": "Hungary",
+        "futureFixtures": 18,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39185,
+        "tournamentSlug": "cup",
+        "tournamentName": "Cup",
+        "categorySlug": "croatia",
+        "categoryName": "Croatia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39201,
+        "tournamentSlug": "uefa-futsal-euro-women",
+        "tournamentName": "UEFA Futsal Euro, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40247,
+        "tournamentSlug": "gaucho-serie-a",
+        "tournamentName": "Gaucho, Serie A",
+        "categorySlug": "brazil",
+        "categoryName": "Brazil",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42383,
+        "tournamentSlug": "prva-hmnl",
+        "tournamentName": "Prva HMNL",
+        "categorySlug": "croatia",
+        "categoryName": "Croatia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44555,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "croatia",
+        "categoryName": "Croatia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44847,
+        "tournamentSlug": "extraliga",
+        "tournamentName": "Extraliga",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44951,
+        "tournamentSlug": "prva-liga",
+        "tournamentName": "Prva Liga",
+        "categorySlug": "serbia",
+        "categoryName": "Serbia",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46515,
+        "tournamentSlug": "primera-division",
+        "tournamentName": "Primera Division",
+        "categorySlug": "argentina",
+        "categoryName": "Argentina",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46635,
+        "tournamentSlug": "1-sfl",
+        "tournamentName": "1. SFL",
+        "categorySlug": "slovenia",
+        "categoryName": "Slovenia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48893,
+        "tournamentSlug": "fifa-futsal-world-cup-women",
+        "tournamentName": "FIFA Futsal World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50282,
+        "tournamentSlug": "copa-america",
+        "tournamentName": "Copa America",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50478,
+        "tournamentSlug": "supercopa",
+        "tournamentName": "Supercopa",
+        "categorySlug": "brazil",
+        "categoryName": "Brazil",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

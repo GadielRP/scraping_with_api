@@ -1,0 +1,392 @@
+[
+    {
+        "tournamentId": 24327,
+        "tournamentSlug": "international-matchups",
+        "tournamentName": "International Matchups",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 47,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34696,
+        "tournamentSlug": "olympic-tournament",
+        "tournamentName": "Olympic Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34698,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48929,
+        "tournamentSlug": "bkb-46",
+        "tournamentName": "BKB 46",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48931,
+        "tournamentSlug": "bkfc-81",
+        "tournamentName": "BKFC 81",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48991,
+        "tournamentSlug": "exhibition-fights",
+        "tournamentName": "Exhibition Fights",
+        "categorySlug": "exhibition",
+        "categoryName": "Exhibition",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49003,
+        "tournamentSlug": "bkfc-82",
+        "tournamentName": "BKFC 82",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49005,
+        "tournamentSlug": "power-slap-15",
+        "tournamentName": "Power Slap 15",
+        "categorySlug": "power-slap",
+        "categoryName": "Power Slap",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49121,
+        "tournamentSlug": "bkfc-fight-night-hammond",
+        "tournamentName": "BKFC Fight Night Hammond",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49125,
+        "tournamentSlug": "bkb-47",
+        "tournamentName": "BKB 47",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49232,
+        "tournamentSlug": "bkfc-83",
+        "tournamentName": "BKFC 83",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49234,
+        "tournamentSlug": "power-slap-16",
+        "tournamentName": "Power Slap 16",
+        "categorySlug": "power-slap",
+        "categoryName": "Power Slap",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49384,
+        "tournamentSlug": "bkfc-fight-night-mt-pleasant",
+        "tournamentName": "BKFC Fight Night Mt. Pleasant",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49494,
+        "tournamentSlug": "bkfc-84",
+        "tournamentName": "BKFC 84",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49602,
+        "tournamentSlug": "bkb-48-2025",
+        "tournamentName": "BKB 48 2025",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49814,
+        "tournamentSlug": "bkb-49",
+        "tournamentName": "BKB 49",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49820,
+        "tournamentSlug": "bkfc-85",
+        "tournamentName": "BKFC 85",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49960,
+        "tournamentSlug": "bkfc-fight-night-derby",
+        "tournamentName": "BKFC Fight Night Derby",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50030,
+        "tournamentSlug": "bkfc-fight-night-uncasville",
+        "tournamentName": "BKFC Fight Night Uncasville",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50202,
+        "tournamentSlug": "ballys-fight-night-biloxi",
+        "tournamentName": "Ballys Fight Night Biloxi",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50248,
+        "tournamentSlug": "bkfc-86",
+        "tournamentName": "BKFC 86",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50488,
+        "tournamentSlug": "betandeal-fight-night",
+        "tournamentName": "Betandeal Fight Night",
+        "categorySlug": "exhibition",
+        "categoryName": "Exhibition",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50496,
+        "tournamentSlug": "bkfc:-knucklemania-6",
+        "tournamentName": "BKFC: Knucklemania 6",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50632,
+        "tournamentSlug": "bkb-51",
+        "tournamentName": "BKB 51",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50714,
+        "tournamentSlug": "ring-royal-fights",
+        "tournamentName": "Ring Royal Fights",
+        "categorySlug": "exhibition",
+        "categoryName": "Exhibition",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50800,
+        "tournamentSlug": "power-slap-18",
+        "tournamentName": "Power Slap 18",
+        "categorySlug": "power-slap",
+        "categoryName": "Power Slap",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50830,
+        "tournamentSlug": "bkfc-fight-night-newcastle",
+        "tournamentName": "BKFC Fight Night Newcastle",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50902,
+        "tournamentSlug": "bkfc-87",
+        "tournamentName": "BKFC 87",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50944,
+        "tournamentSlug": "bkfc-fight-night-mohegan-sun",
+        "tournamentName": "BKFC Fight Night Mohegan Sun",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50948,
+        "tournamentSlug": "bkb-52",
+        "tournamentName": "BKB 52",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51134,
+        "tournamentSlug": "power-slap-19",
+        "tournamentName": "Power Slap 19",
+        "categorySlug": "power-slap",
+        "categoryName": "Power Slap",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51136,
+        "tournamentSlug": "bkfc-fight-night-honolulu",
+        "tournamentName": "BKFC Fight Night Honolulu",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51238,
+        "tournamentSlug": "bkb-53",
+        "tournamentName": "BKB 53",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51240,
+        "tournamentSlug": "bkfc-fight-night:-townsville",
+        "tournamentName": "BKFC Fight Night: Townsville",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51242,
+        "tournamentSlug": "bkb-88",
+        "tournamentName": "BKB 88",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51244,
+        "tournamentSlug": "supernova-genesis",
+        "tournamentName": "Supernova Genesis",
+        "categorySlug": "exhibition",
+        "categoryName": "Exhibition",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51270,
+        "tournamentSlug": "bkfc-fight-night-clearwater",
+        "tournamentName": "BKFC Fight Night Clearwater",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51382,
+        "tournamentSlug": "bkfc-blood-4-blood",
+        "tournamentName": "BKFC Blood 4 Blood",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51420,
+        "tournamentSlug": "bkb-54",
+        "tournamentName": "BKB 54",
+        "categorySlug": "bare-knuckle",
+        "categoryName": "Bare Knuckle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

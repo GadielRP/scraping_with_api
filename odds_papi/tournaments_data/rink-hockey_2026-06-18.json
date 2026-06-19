@@ -1,0 +1,42 @@
+[
+    {
+        "tournamentId": 24999,
+        "tournamentSlug": "taca-de-portugal",
+        "tournamentName": "Taca de Portugal",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26858,
+        "tournamentSlug": "supertaca",
+        "tournamentName": "Supertaca",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26880,
+        "tournamentSlug": "1-divisao",
+        "tournamentName": "1 Divisao",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29372,
+        "tournamentSlug": "world-championship",
+        "tournamentName": "World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

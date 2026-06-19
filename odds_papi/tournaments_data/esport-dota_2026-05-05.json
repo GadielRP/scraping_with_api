@@ -1,0 +1,512 @@
+[
+    {
+        "tournamentId": 13713,
+        "tournamentSlug": "dreamleague",
+        "tournamentName": "DreamLeague",
+        "categorySlug": "dreamhack-dota2",
+        "categoryName": "Dreamhack Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 13911,
+        "tournamentSlug": "the-international",
+        "tournamentName": "The International",
+        "categorySlug": "valve-dota2",
+        "categoryName": "Valve Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24405,
+        "tournamentSlug": "esl-one-birmingham",
+        "tournamentName": "ESL One Birmingham",
+        "categorySlug": "esl-dota2",
+        "categoryName": "ESL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27422,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "marstv-dota2",
+        "categoryName": "MarsTV Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28159,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "marstv-dota2",
+        "categoryName": "MarsTV Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29506,
+        "tournamentSlug": "world-cyber-games",
+        "tournamentName": "World Cyber Games",
+        "categorySlug": "wcg-dota2",
+        "categoryName": "WCG Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36939,
+        "tournamentSlug": "dpc-west-europe",
+        "tournamentName": "DPC West Europe",
+        "categorySlug": "bts-dota2",
+        "categoryName": "BTS Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38029,
+        "tournamentSlug": "european-pro-league",
+        "tournamentName": "European Pro League",
+        "categorySlug": "epl",
+        "categoryName": "EPL",
+        "futureFixtures": 7,
+        "upcomingFixtures": 1,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40725,
+        "tournamentSlug": "the-international",
+        "tournamentName": "The International",
+        "categorySlug": "pgl-dota2",
+        "categoryName": "PGL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41013,
+        "tournamentSlug": "betboom-dacha",
+        "tournamentName": "BetBoom Dacha",
+        "categorySlug": "fissure",
+        "categoryName": "Fissure",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41724,
+        "tournamentSlug": "esl-one-kuala-lumpur",
+        "tournamentName": "ESL One Kuala Lumpur",
+        "categorySlug": "esl-dota2",
+        "categoryName": "ESL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42329,
+        "tournamentSlug": "dreamleague",
+        "tournamentName": "DreamLeague",
+        "categorySlug": "esl-dota2",
+        "categoryName": "ESL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42409,
+        "tournamentSlug": "elite-league",
+        "tournamentName": "Elite League",
+        "categorySlug": "fissure",
+        "categoryName": "Fissure",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42725,
+        "tournamentSlug": "pgl-wallachia",
+        "tournamentName": "PGL Wallachia",
+        "categorySlug": "pgl-dota2",
+        "categoryName": "PGL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42787,
+        "tournamentSlug": "wallachia",
+        "tournamentName": "Wallachia",
+        "categorySlug": "pgl-dota2",
+        "categoryName": "PGL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42967,
+        "tournamentSlug": "fissure-universe",
+        "tournamentName": "Fissure Universe",
+        "categorySlug": "fissure",
+        "categoryName": "Fissure",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43049,
+        "tournamentSlug": "leon-masters",
+        "tournamentName": "Leon Masters",
+        "categorySlug": "gam3rs_x",
+        "categoryName": "GAM3RS_X",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43259,
+        "tournamentSlug": "riyadh-masters",
+        "tournamentName": "Riyadh Masters",
+        "categorySlug": "esl-dota2",
+        "categoryName": "ESL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43515,
+        "tournamentSlug": "res-regional-series-sea",
+        "tournamentName": "RES Regional Series SEA",
+        "categorySlug": "relog-media",
+        "categoryName": "Relog Media",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43597,
+        "tournamentSlug": "cct-series",
+        "tournamentName": "CCT Series",
+        "categorySlug": "gam3rs_x",
+        "categoryName": "GAM3RS_X",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43699,
+        "tournamentSlug": "epl-world-series-america",
+        "tournamentName": "EPL World Series America",
+        "categorySlug": "epl",
+        "categoryName": "EPL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43751,
+        "tournamentSlug": "res-regional-series-latam",
+        "tournamentName": "RES Regional Series LATAM",
+        "categorySlug": "relog-media",
+        "categoryName": "Relog Media",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43753,
+        "tournamentSlug": "res-regional-series-eu",
+        "tournamentName": "RES Regional Series EU",
+        "categorySlug": "relog-media",
+        "categoryName": "Relog Media",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44663,
+        "tournamentSlug": "msi-gaming-arena",
+        "tournamentName": "MSI Gaming Arena",
+        "categorySlug": "msi",
+        "categoryName": "MSI",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44743,
+        "tournamentSlug": "res-regional-champions",
+        "tournamentName": "RES Regional Champions",
+        "categorySlug": "relog-media",
+        "categoryName": "Relog Media",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44745,
+        "tournamentSlug": "phoenix-league",
+        "tournamentName": "Phoenix League",
+        "categorySlug": "cringe-station",
+        "categoryName": "Cringe Station",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45143,
+        "tournamentSlug": "esl-one-bangkok",
+        "tournamentName": "ESL One - Bangkok",
+        "categorySlug": "esl-dota2",
+        "categoryName": "ESL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45147,
+        "tournamentSlug": "blast-slam",
+        "tournamentName": "BLAST Slam",
+        "categorySlug": "blast",
+        "categoryName": "BLAST",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45169,
+        "tournamentSlug": "summoners-cup",
+        "tournamentName": "Summoners Cup",
+        "categorySlug": "cringe-station",
+        "categoryName": "Cringe Station",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45171,
+        "tournamentSlug": "1win-series",
+        "tournamentName": "1win Series",
+        "categorySlug": "1win-esports",
+        "categoryName": "1win Esports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45173,
+        "tournamentSlug": "asian-dragon-series",
+        "tournamentName": "Asian Dragon Series",
+        "categorySlug": "epic-echo",
+        "categoryName": "Epic Echo",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45371,
+        "tournamentSlug": "fissure-playground",
+        "tournamentName": "FISSURE Playground",
+        "categorySlug": "fissure",
+        "categoryName": "Fissure",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45373,
+        "tournamentSlug": "mesa-invitational",
+        "tournamentName": "MESA Invitational",
+        "categorySlug": "mesa",
+        "categoryName": "MESA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45739,
+        "tournamentSlug": "esl-one-raleigh",
+        "tournamentName": "ESL One Raleigh",
+        "categorySlug": "esl-dota2",
+        "categoryName": "ESL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45777,
+        "tournamentSlug": "epl-world-series-southeast-asia",
+        "tournamentName": "EPL World Series Southeast Asia",
+        "categorySlug": "epl",
+        "categoryName": "EPL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46887,
+        "tournamentSlug": "acl-x-esl-challenger",
+        "tournamentName": "ACL X ESL Challenger",
+        "categorySlug": "esl-dota2",
+        "categoryName": "ESL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46919,
+        "tournamentSlug": "lunar-snake-trophy",
+        "tournamentName": "Lunar Snake Trophy",
+        "categorySlug": "cringe-station",
+        "categoryName": "Cringe Station",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47227,
+        "tournamentSlug": "universal-league",
+        "tournamentName": "Universal League",
+        "categorySlug": "nitro-studios",
+        "categoryName": "Nitro Studios",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47271,
+        "tournamentSlug": "betboom-streamers-battle",
+        "tournamentName": "BetBoom Streamers Battle",
+        "categorySlug": "gabe-media",
+        "categoryName": "Gabe Media",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47329,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "ewc",
+        "categoryName": "EWC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47572,
+        "tournamentSlug": "clavision-masters",
+        "tournamentName": "Clavision Masters",
+        "categorySlug": "clavision",
+        "categoryName": "Clavision",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48621,
+        "tournamentSlug": "cis-battle",
+        "tournamentName": "CIS Battle",
+        "categorySlug": "narodcast",
+        "categoryName": "NarodCast",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49099,
+        "tournamentSlug": "dreamleague-division-2",
+        "tournamentName": "DreamLeague Division 2",
+        "categorySlug": "dreamhack-dota2",
+        "categoryName": "Dreamhack Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50794,
+        "tournamentSlug": "epl-championship",
+        "tournamentName": "EPL Championship",
+        "categorySlug": "epl",
+        "categoryName": "EPL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51032,
+        "tournamentSlug": "premier-series",
+        "tournamentName": "Premier Series",
+        "categorySlug": "narodcast",
+        "categoryName": "NarodCast",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51214,
+        "tournamentSlug": "esl-challenger-china",
+        "tournamentName": "ESL Challenger China",
+        "categorySlug": "esl-dota2",
+        "categoryName": "ESL Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51222,
+        "tournamentSlug": "moscow-championship",
+        "tournamentName": "Moscow Championship",
+        "categorySlug": "resf-dota2",
+        "categoryName": "RESF Dota2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51224,
+        "tournamentSlug": "ukrainian-championship",
+        "tournamentName": "Ukrainian Championship",
+        "categorySlug": "uesf",
+        "categoryName": "UESF",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51368,
+        "tournamentSlug": "el-gran-coliseo-de-benjaz",
+        "tournamentName": "El Gran Coliseo de Benjaz",
+        "categorySlug": "benjaz",
+        "categoryName": "Benjaz",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51370,
+        "tournamentSlug": "1win-streamers-league",
+        "tournamentName": "1win Streamers League",
+        "categorySlug": "based-esports",
+        "categoryName": "BASED Esports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51406,
+        "tournamentSlug": "1win-essence",
+        "tournamentName": "1win Essence",
+        "categorySlug": "based-esports",
+        "categoryName": "BASED Esports",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

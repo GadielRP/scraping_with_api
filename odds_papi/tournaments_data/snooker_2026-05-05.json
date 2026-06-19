@@ -1,0 +1,322 @@
+[
+    {
+        "tournamentId": 430,
+        "tournamentSlug": "world-championship",
+        "tournamentName": "World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902,
+        "tournamentSlug": "welsh-open",
+        "tournamentName": "Welsh Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904,
+        "tournamentSlug": "northern-ireland-trophy",
+        "tournamentName": "Northern Ireland Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 905,
+        "tournamentSlug": "the-masters",
+        "tournamentName": "The Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 906,
+        "tournamentSlug": "german-masters",
+        "tournamentName": "German Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 907,
+        "tournamentSlug": "uk-championship",
+        "tournamentName": "UK Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 908,
+        "tournamentSlug": "shanghai-masters",
+        "tournamentName": "Shanghai Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 909,
+        "tournamentSlug": "world-open",
+        "tournamentName": "World Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1014,
+        "tournamentSlug": "players-tour-championship",
+        "tournamentName": "Players Tour Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1209,
+        "tournamentSlug": "int-chship",
+        "tournamentName": "Int. Ch.ship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1574,
+        "tournamentSlug": "champion-of-champions",
+        "tournamentName": "Champion of Champions",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1604,
+        "tournamentSlug": "shoot-out",
+        "tournamentName": "Shoot-Out",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2035,
+        "tournamentSlug": "world-seniors-champs",
+        "tournamentName": "World Seniors Champs",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2055,
+        "tournamentSlug": "championship-league",
+        "tournamentName": "Championship League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2136,
+        "tournamentSlug": "world-grand-prix",
+        "tournamentName": "World Grand Prix",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2416,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20508,
+        "tournamentSlug": "english-open",
+        "tournamentName": "English Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 21248,
+        "tournamentSlug": "northern-ireland-open",
+        "tournamentName": "Northern Ireland Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 22240,
+        "tournamentSlug": "scottish-open",
+        "tournamentName": "Scottish Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28189,
+        "tournamentSlug": "tour-championship",
+        "tournamentName": "Tour Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34490,
+        "tournamentSlug": "british-open",
+        "tournamentName": "British Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40909,
+        "tournamentSlug": "wuhan-open",
+        "tournamentName": "Wuhan Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42297,
+        "tournamentSlug": "world-masters-of-snooker",
+        "tournamentName": "World Masters of Snooker",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42559,
+        "tournamentSlug": "world-mixed-doubles",
+        "tournamentName": "World Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42941,
+        "tournamentSlug": "helsinki-international-snooker-cup",
+        "tournamentName": "Helsinki International Snooker Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43363,
+        "tournamentSlug": "xian-grand-prix",
+        "tournamentName": "Xi'an Grand Prix",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43457,
+        "tournamentSlug": "saudi-arabia-snooker-masters",
+        "tournamentName": "Saudi Arabia Snooker Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47574,
+        "tournamentSlug": "world-snooker-tour",
+        "tournamentName": "World Snooker Tour",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49634,
+        "tournamentSlug": "crucible-cup",
+        "tournamentName": "Crucible Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49698,
+        "tournamentSlug": "test-snooker",
+        "tournamentName": "Test Snooker",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50118,
+        "tournamentSlug": "british-seniors-open",
+        "tournamentName": "British Seniors Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50268,
+        "tournamentSlug": "snooker-900",
+        "tournamentName": "Snooker 900",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

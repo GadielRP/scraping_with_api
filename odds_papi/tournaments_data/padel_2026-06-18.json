@@ -1,0 +1,892 @@
+[
+    {
+        "tournamentId": 39521,
+        "tournamentSlug": "reus-open-women",
+        "tournamentName": "Reus Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40173,
+        "tournamentSlug": "european-games",
+        "tournamentName": "European Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40175,
+        "tournamentSlug": "european-games-women",
+        "tournamentName": "European Games, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40177,
+        "tournamentSlug": "european-games-mixed",
+        "tournamentName": "European Games, Mixed",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41099,
+        "tournamentSlug": "madrid-master",
+        "tournamentName": "Madrid Master",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41101,
+        "tournamentSlug": "madrid-master-women",
+        "tournamentName": "Madrid Master, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41164,
+        "tournamentSlug": "germany-open-2023",
+        "tournamentName": "Germany Open 2023",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41166,
+        "tournamentSlug": "germany-open-women",
+        "tournamentName": "Germany Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41266,
+        "tournamentSlug": "amsterdam-open",
+        "tournamentName": "Amsterdam Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41268,
+        "tournamentSlug": "amsterdam-open-women",
+        "tournamentName": "Amsterdam Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41406,
+        "tournamentSlug": "menorca-open",
+        "tournamentName": "Menorca Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41408,
+        "tournamentSlug": "menorca-open-women",
+        "tournamentName": "Menorca Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41550,
+        "tournamentSlug": "malmo-open",
+        "tournamentName": "Malmo Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41552,
+        "tournamentSlug": "malmo-open-women",
+        "tournamentName": "Malmo Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41750,
+        "tournamentSlug": "mexico-open",
+        "tournamentName": "Mexico Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41752,
+        "tournamentSlug": "mexico-open-women",
+        "tournamentName": "Mexico Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41927,
+        "tournamentSlug": "barcelona-master-final",
+        "tournamentName": "Barcelona Master Final",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41929,
+        "tournamentSlug": "barcelona-master-final-women",
+        "tournamentName": "Barcelona Master Final, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42325,
+        "tournamentSlug": "riyadh-season-p1",
+        "tournamentName": "Riyadh Season P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42327,
+        "tournamentSlug": "riyadh-season-p1-women",
+        "tournamentName": "Riyadh Season P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42357,
+        "tournamentSlug": "qatar-major",
+        "tournamentName": "Qatar Major",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42359,
+        "tournamentSlug": "qatar-major-women",
+        "tournamentName": "Qatar Major, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42459,
+        "tournamentSlug": "gnp-mexico-p1",
+        "tournamentName": "GNP Mexico P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42461,
+        "tournamentSlug": "gnp-mexico-p1-women",
+        "tournamentName": "GNP Mexico P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42507,
+        "tournamentSlug": "puerto-cabello-p2",
+        "tournamentName": "Puerto Cabello P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42509,
+        "tournamentSlug": "puerto-cabello-p2-women",
+        "tournamentName": "Puerto Cabello P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42673,
+        "tournamentSlug": "brussels-p2",
+        "tournamentName": "Brussels P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42675,
+        "tournamentSlug": "brussels-p2-women",
+        "tournamentName": "Brussels P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42715,
+        "tournamentSlug": "sevilla-p2",
+        "tournamentName": "Sevilla P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42717,
+        "tournamentSlug": "sevilla-p2-women",
+        "tournamentName": "Sevilla P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42809,
+        "tournamentSlug": "asuncion-p2",
+        "tournamentName": "Asuncion P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42811,
+        "tournamentSlug": "asuncion-p2-women",
+        "tournamentName": "Asuncion P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42883,
+        "tournamentSlug": "mar-del-plata-p1",
+        "tournamentName": "Mar del Plata P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42885,
+        "tournamentSlug": "mar-del-plata-p1-women",
+        "tournamentName": "Mar del Plata P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42957,
+        "tournamentSlug": "santiago-p1",
+        "tournamentName": "Santiago P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42959,
+        "tournamentSlug": "santiago-p1-women",
+        "tournamentName": "Santiago P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43041,
+        "tournamentSlug": "bordeaux-p2",
+        "tournamentName": "Bordeaux P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43043,
+        "tournamentSlug": "bordeaux-p2-women",
+        "tournamentName": "Bordeaux P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43099,
+        "tournamentSlug": "italy-major",
+        "tournamentName": "Italy Major",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43101,
+        "tournamentSlug": "italy-major-women",
+        "tournamentName": "Italy Major, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43157,
+        "tournamentSlug": "genova-p2",
+        "tournamentName": "Genova P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43159,
+        "tournamentSlug": "genova-p2-women",
+        "tournamentName": "Genova P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43293,
+        "tournamentSlug": "malaga-p1",
+        "tournamentName": "Malaga P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43295,
+        "tournamentSlug": "malaga-p1-women",
+        "tournamentName": "Malaga P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43419,
+        "tournamentSlug": "finland-p2",
+        "tournamentName": "Finland P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43421,
+        "tournamentSlug": "finland-p2-women",
+        "tournamentName": "Finland P2 Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44021,
+        "tournamentSlug": "madrid-p1",
+        "tournamentName": "Madrid P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44023,
+        "tournamentSlug": "madrid-p1-women",
+        "tournamentName": "Madrid P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44103,
+        "tournamentSlug": "rotterdam-p1",
+        "tournamentName": "Rotterdam P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44105,
+        "tournamentSlug": "rotterdam-p1-women",
+        "tournamentName": "Rotterdam P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44175,
+        "tournamentSlug": "valladolid-p2",
+        "tournamentName": "Valladolid P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44177,
+        "tournamentSlug": "valladolid-p2-women",
+        "tournamentName": "Valladolid P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44403,
+        "tournamentSlug": "paris-major",
+        "tournamentName": "Paris Major",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44405,
+        "tournamentSlug": "paris-major-women",
+        "tournamentName": "Paris Major, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44719,
+        "tournamentSlug": "newgiza-p2",
+        "tournamentName": "Newgiza P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44723,
+        "tournamentSlug": "newgiza-p2-women",
+        "tournamentName": "Newgiza P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44825,
+        "tournamentSlug": "world-padel-championships",
+        "tournamentName": "World Padel Championships",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44827,
+        "tournamentSlug": "world-padel-championships-women",
+        "tournamentName": "World Padel Championships, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44907,
+        "tournamentSlug": "dubai-p1",
+        "tournamentName": "Dubai P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44909,
+        "tournamentSlug": "dubai-p1-women",
+        "tournamentName": "Dubai P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45067,
+        "tournamentSlug": "kuwait-city-p1",
+        "tournamentName": "Kuwait City P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45069,
+        "tournamentSlug": "kuwait-city-p1-women",
+        "tournamentName": "Kuwait City P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45231,
+        "tournamentSlug": "mexico-major",
+        "tournamentName": "Mexico Major",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45233,
+        "tournamentSlug": "mexico-major-women",
+        "tournamentName": "Mexico Major, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45321,
+        "tournamentSlug": "milano-p1",
+        "tournamentName": "Milano P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45323,
+        "tournamentSlug": "milano-p1-women",
+        "tournamentName": "Milano P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45979,
+        "tournamentSlug": "riyadh-p1",
+        "tournamentName": "Riyadh P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45981,
+        "tournamentSlug": "riyadh-p1-women",
+        "tournamentName": "Riyadh P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46161,
+        "tournamentSlug": "gijon-p2",
+        "tournamentName": "Gijon P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46163,
+        "tournamentSlug": "gijon-p2-women",
+        "tournamentName": "Gijon P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46261,
+        "tournamentSlug": "cancun-p2",
+        "tournamentName": "Cancun P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46263,
+        "tournamentSlug": "cancun-p2-women",
+        "tournamentName": "Cancun P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46341,
+        "tournamentSlug": "miami-p1",
+        "tournamentName": "Miami P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46343,
+        "tournamentSlug": "miami-p1-women",
+        "tournamentName": "Miami P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47107,
+        "tournamentSlug": "premier-padel-tour",
+        "tournamentName": "Premier Padel Tour",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47159,
+        "tournamentSlug": "buenos-aires-p1",
+        "tournamentName": "Buenos Aires P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47161,
+        "tournamentSlug": "buenos-aires-p1-women",
+        "tournamentName": "Buenos Aires P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48044,
+        "tournamentSlug": "tarragona-p1",
+        "tournamentName": "Tarragona P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48046,
+        "tournamentSlug": "tarragona-p1-women",
+        "tournamentName": "Tarragona P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48855,
+        "tournamentSlug": "germany-p2",
+        "tournamentName": "Germany P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48857,
+        "tournamentSlug": "germany-p2-women",
+        "tournamentName": "Germany P2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49306,
+        "tournamentSlug": "newgiza-p2",
+        "tournamentName": "Newgiza P2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49528,
+        "tournamentSlug": "fip-platinum-skechers",
+        "tournamentName": "FIP Platinum Skechers",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49530,
+        "tournamentSlug": "fip-platinum-skechers-women",
+        "tournamentName": "FIP Platinum Skechers, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49604,
+        "tournamentSlug": "gnp-acapulco-major",
+        "tournamentName": "GNP Acapulco Major",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49606,
+        "tournamentSlug": "gnp-acapulco-major-women",
+        "tournamentName": "GNP Acapulco Major, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50506,
+        "tournamentSlug": "padel-test",
+        "tournamentName": "Padel Test",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51850,
+        "tournamentSlug": "valencia-p1",
+        "tournamentName": "Valencia P1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51854,
+        "tournamentSlug": "valencia-p1-women",
+        "tournamentName": "Valencia P1, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

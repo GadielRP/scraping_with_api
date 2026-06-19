@@ -1,0 +1,32 @@
+[
+    {
+        "tournamentId": 39797,
+        "tournamentSlug": "kings-league",
+        "tournamentName": "Kings League",
+        "categorySlug": "7vs7",
+        "categoryName": "7vs7",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40993,
+        "tournamentSlug": "kings-cup",
+        "tournamentName": "Kings Cup",
+        "categorySlug": "7vs7",
+        "categoryName": "7vs7",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46738,
+        "tournamentSlug": "kings-league-brazil",
+        "tournamentName": "Kings League Brazil",
+        "categorySlug": "7vs7",
+        "categoryName": "7vs7",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

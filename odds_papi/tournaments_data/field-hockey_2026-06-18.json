@@ -1,0 +1,272 @@
+[
+    {
+        "tournamentId": 548,
+        "tournamentSlug": "olympic-tournament",
+        "tournamentName": "Olympic Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 549,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1724,
+        "tournamentSlug": "world-cup",
+        "tournamentName": "World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1726,
+        "tournamentSlug": "world-cup-women",
+        "tournamentName": "World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2232,
+        "tournamentSlug": "eurohockey-championship",
+        "tournamentName": "EuroHockey Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2234,
+        "tournamentSlug": "eurohockey-championship-women",
+        "tournamentName": "EuroHockey Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26014,
+        "tournamentSlug": "asian-games",
+        "tournamentName": "Asian Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26016,
+        "tournamentSlug": "asian-games-women",
+        "tournamentName": "Asian Games, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27679,
+        "tournamentSlug": "pro-league",
+        "tournamentName": "Pro League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 24,
+        "upcomingFixtures": 0,
+        "liveFixtures": 1
+    },
+    {
+        "tournamentId": 27681,
+        "tournamentSlug": "pro-league-women",
+        "tournamentName": "Pro League, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 24,
+        "upcomingFixtures": 1,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28665,
+        "tournamentSlug": "fih-series-finals",
+        "tournamentName": "FIH Series Finals",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29111,
+        "tournamentSlug": "fih-series-finals-women",
+        "tournamentName": "FIH Series Finals, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29668,
+        "tournamentSlug": "pan-american-games",
+        "tournamentName": "Pan American Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29670,
+        "tournamentSlug": "pan-american-games-women",
+        "tournamentName": "Pan American Games, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30252,
+        "tournamentSlug": "1bundesliga",
+        "tournamentName": "1.Bundesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30322,
+        "tournamentSlug": "hoofdklasse",
+        "tournamentName": "Hoofdklasse",
+        "categorySlug": "netherlands",
+        "categoryName": "Netherlands",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30582,
+        "tournamentSlug": "olympic-tournament-qualification",
+        "tournamentName": "Olympic Tournament, Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30584,
+        "tournamentSlug": "olympic-tournament-women-qualification",
+        "tournamentName": "Olympic Tournament Women, Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35833,
+        "tournamentSlug": "junior-world-cup",
+        "tournamentName": "Junior World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36499,
+        "tournamentSlug": "junior-world-cup-women",
+        "tournamentName": "Junior World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37587,
+        "tournamentSlug": "eurohockey-championship-qualifiers",
+        "tournamentName": "EuroHockey Championship, Qualifiers",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38699,
+        "tournamentSlug": "nations-cup",
+        "tournamentName": "Nations Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38787,
+        "tournamentSlug": "nations-cup-women",
+        "tournamentName": "Nations Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39107,
+        "tournamentSlug": "indoor-hockey-world-cup",
+        "tournamentName": "Indoor Hockey World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39109,
+        "tournamentSlug": "indoor-hockey-world-cup-women",
+        "tournamentName": "Indoor Hockey World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45485,
+        "tournamentSlug": "hockey-india-league",
+        "tournamentName": "Hockey India League",
+        "categorySlug": "india",
+        "categoryName": "India",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46075,
+        "tournamentSlug": "nations-cup-2",
+        "tournamentName": "Nations Cup 2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

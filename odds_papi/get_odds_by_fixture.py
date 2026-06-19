@@ -37,7 +37,10 @@ def get_odds(fixture_id, folder, bookmakers=None, odds_format=None, language=Non
 
 def main():
     # 1. Create the CLI Parser
-    parser = argparse.ArgumentParser(description="OddspAPI Odds Discovery Tool")
+    parser = argparse.ArgumentParser(
+        description="OddspAPI Odds Discovery Tool. Fetches live and pre-match odds for a single fixture, with options to filter by bookmaker, format, and market.",
+        epilog="Example: python get_odds_by_fixture.py fetch --fixture_id 12345 --odds_format decimal"
+    )
     subparsers = parser.add_subparsers(dest="command", help="The command to run")
     
     # 2. Setup the 'fetch' command with all flags

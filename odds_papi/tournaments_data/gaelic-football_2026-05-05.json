@@ -1,0 +1,62 @@
+[
+    {
+        "tournamentId": 28553,
+        "tournamentSlug": "gaa-all-ireland-football-championship",
+        "tournamentName": "GAA - All Ireland Football Championship",
+        "categorySlug": "ireland",
+        "categoryName": "Ireland",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28557,
+        "tournamentSlug": "niu",
+        "tournamentName": "n.i.u",
+        "categorySlug": "ireland",
+        "categoryName": "Ireland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28559,
+        "tournamentSlug": "niu",
+        "tournamentName": "n.i.u",
+        "categorySlug": "ireland",
+        "categoryName": "Ireland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28561,
+        "tournamentSlug": "niu",
+        "tournamentName": "n.i.u",
+        "categorySlug": "ireland",
+        "categoryName": "Ireland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28563,
+        "tournamentSlug": "niu",
+        "tournamentName": "n.i.u",
+        "categorySlug": "ireland",
+        "categoryName": "Ireland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50658,
+        "tournamentSlug": "national-football-league-division-1",
+        "tournamentName": "National Football League Division 1",
+        "categorySlug": "ireland",
+        "categoryName": "Ireland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

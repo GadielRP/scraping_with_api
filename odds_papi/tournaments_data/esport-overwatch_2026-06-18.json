@@ -1,0 +1,142 @@
+[
+    {
+        "tournamentId": 16626,
+        "tournamentSlug": "world-cup",
+        "tournamentName": "World Cup",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23427,
+        "tournamentSlug": "overwatch-league",
+        "tournamentName": "Overwatch League",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42869,
+        "tournamentSlug": "overwatch-champions-series-major",
+        "tournamentName": "Overwatch Champions Series Major",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43273,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "esl-ow",
+        "categoryName": "ESL OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44561,
+        "tournamentSlug": "faceit-league",
+        "tournamentName": "FACEIT League",
+        "categorySlug": "faceit-ow",
+        "categoryName": "FACEIT OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45919,
+        "tournamentSlug": "overwatch-champions-series-japan",
+        "tournamentName": "Overwatch Champions Series Japan",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45921,
+        "tournamentSlug": "overwatch-champions-series-korea",
+        "tournamentName": "Overwatch Champions Series Korea",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 9,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45923,
+        "tournamentSlug": "overwatch-champions-series-pacific",
+        "tournamentName": "Overwatch Champions Series Pacific",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 3,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45925,
+        "tournamentSlug": "overwatch-champions-series-china",
+        "tournamentName": "Overwatch Champions Series China",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45927,
+        "tournamentSlug": "overwatch-champions-series-emea",
+        "tournamentName": "Overwatch Champions Series EMEA",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 3,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45929,
+        "tournamentSlug": "overwatch-champions-series-north-america",
+        "tournamentName": "Overwatch Champions Series North America",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46541,
+        "tournamentSlug": "overwatch-champions-series-asia",
+        "tournamentName": "Overwatch Champions Series Asia",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46543,
+        "tournamentSlug": "overwatch-champions-series-china",
+        "tournamentName": "Overwatch Champions Series China",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46547,
+        "tournamentSlug": "overwatch-champions-series-champions-clash",
+        "tournamentName": "Overwatch Champions Series Champions Clash",
+        "categorySlug": "blizzard-ow",
+        "categoryName": "Blizzard OW",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

@@ -1,0 +1,92 @@
+[
+    {
+        "tournamentId": 27084,
+        "tournamentSlug": "world-cup-of-softball-women",
+        "tournamentName": "World Cup of Softball, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34532,
+        "tournamentSlug": "u16-european-championship",
+        "tournamentName": "U16 European Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34534,
+        "tournamentSlug": "u18-european-championship",
+        "tournamentName": "U18 European Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34536,
+        "tournamentSlug": "u18-european-championship-women",
+        "tournamentName": "U18 European Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34538,
+        "tournamentSlug": "bundesliga",
+        "tournamentName": "Bundesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34592,
+        "tournamentSlug": "bundesliga",
+        "tournamentName": "Bundesliga",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42259,
+        "tournamentSlug": "ncaa-regular-season-women",
+        "tournamentName": "NCAA Regular Season, Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42789,
+        "tournamentSlug": "ncaa",
+        "tournamentName": "NCAA",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42791,
+        "tournamentSlug": "ncaa-division-i-national-championship-women",
+        "tournamentName": "NCAA Division I National Championship, Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

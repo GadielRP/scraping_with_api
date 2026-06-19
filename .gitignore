@@ -87,6 +87,8 @@ copies/
 *.md
 test_*.py
 *.json
+!odds_papi/**/*.json
+!odds_papi/*.json
 *debug/
 *.log
 debug*/

@@ -1,0 +1,172 @@
+[
+    {
+        "tournamentId": 28585,
+        "tournamentSlug": "us-nationals",
+        "tournamentName": "US Nationals",
+        "categorySlug": "esl",
+        "categoryName": "ESL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29113,
+        "tournamentSlug": "allied-esports-las-vegas",
+        "tournamentName": "Allied Esports Las Vegas",
+        "categorySlug": "allied",
+        "categoryName": "Allied",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29762,
+        "tournamentSlug": "six-major",
+        "tournamentName": "Six Major",
+        "categorySlug": "esl",
+        "categoryName": "ESL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31497,
+        "tournamentSlug": "oga-pit",
+        "tournamentName": "OGA Pit",
+        "categorySlug": "oga",
+        "categoryName": "OGA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42031,
+        "tournamentSlug": "six-invitational",
+        "tournamentName": "Six Invitational",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42423,
+        "tournamentSlug": "europe-league",
+        "tournamentName": "Europe League",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 5,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42739,
+        "tournamentSlug": "blast-r6-major",
+        "tournamentName": "BLAST R6 Major",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43935,
+        "tournamentSlug": "north-america-league",
+        "tournamentName": "North America League",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 5,
+        "upcomingFixtures": 5,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44031,
+        "tournamentSlug": "asia-league",
+        "tournamentName": "Asia League",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 12,
+        "upcomingFixtures": 4,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44091,
+        "tournamentSlug": "south-korea-league",
+        "tournamentName": "South Korea League",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44093,
+        "tournamentSlug": "japan-league",
+        "tournamentName": "Japan League",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44095,
+        "tournamentSlug": "brazil-league",
+        "tournamentName": "Brazil League",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44117,
+        "tournamentSlug": "oceania-league",
+        "tournamentName": "Oceania League",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44119,
+        "tournamentSlug": "latam-league",
+        "tournamentName": "LATAM League",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45177,
+        "tournamentSlug": "apac-cup",
+        "tournamentName": "APAC Cup",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46145,
+        "tournamentSlug": "south-america-league",
+        "tournamentName": "South America League",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 5,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46147,
+        "tournamentSlug": "reload",
+        "tournamentName": "Reload",
+        "categorySlug": "ubisoft",
+        "categoryName": "Ubisoft",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

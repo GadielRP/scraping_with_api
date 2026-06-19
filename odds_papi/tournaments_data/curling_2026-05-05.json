@@ -1,0 +1,72 @@
+[
+    {
+        "tournamentId": 274,
+        "tournamentSlug": "olympics",
+        "tournamentName": "Olympics",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 275,
+        "tournamentSlug": "olympics-women",
+        "tournamentName": "Olympics Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 613,
+        "tournamentSlug": "european-championship",
+        "tournamentName": "European Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 614,
+        "tournamentSlug": "european-championship-women",
+        "tournamentName": "European Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 635,
+        "tournamentSlug": "world-championship",
+        "tournamentName": "World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 636,
+        "tournamentSlug": "world-championship-women",
+        "tournamentName": "World Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23435,
+        "tournamentSlug": "olympic-mixed",
+        "tournamentName": "Olympic Mixed",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

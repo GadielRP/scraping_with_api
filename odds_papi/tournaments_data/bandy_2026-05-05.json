@@ -1,0 +1,112 @@
+[
+    {
+        "tournamentId": 271,
+        "tournamentSlug": "bandyliiga",
+        "tournamentName": "Bandyliiga",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 317,
+        "tournamentSlug": "eliteserien",
+        "tournamentName": "Eliteserien",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 403,
+        "tournamentSlug": "world-championship-division-a",
+        "tournamentName": "World Championship, Division A",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 444,
+        "tournamentSlug": "elitserien",
+        "tournamentName": "Elitserien",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 516,
+        "tournamentSlug": "world-championship-division-b",
+        "tournamentName": "World Championship, Division B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 645,
+        "tournamentSlug": "allsvenskan-south",
+        "tournamentName": "Allsvenskan South",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 646,
+        "tournamentSlug": "allsvenskan-north",
+        "tournamentName": "Allsvenskan North",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 647,
+        "tournamentSlug": "allsvenskan",
+        "tournamentName": "Allsvenskan",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1526,
+        "tournamentSlug": "superliga",
+        "tournamentName": "Superliga",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20906,
+        "tournamentSlug": "allsvenskan",
+        "tournamentName": "Allsvenskan",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48293,
+        "tournamentSlug": "svenska-cupen",
+        "tournamentName": "Svenska Cupen",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

@@ -42,7 +42,10 @@ def get_fixtures(folder, **kwargs):
 
 def main():
     # 1. Create the "Argument Parser" (The CLI Engine)
-    parser = argparse.ArgumentParser(description="OddspAPI Fixtures Discovery Tool")
+    parser = argparse.ArgumentParser(
+        description="OddspAPI Fixtures Discovery Tool. Fetches upcoming and past fixtures based on tournament, sport, participant, or date filters.",
+        epilog="Note: At least one core parameter (tournament_id, participant_id, sport_id, from_date, to_date) must be provided."
+    )
     
     # 2. Create "Sub-commands"
     subparsers = parser.add_subparsers(dest="command", help="The command to run")

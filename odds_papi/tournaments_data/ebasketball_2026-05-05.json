@@ -1,0 +1,42 @@
+[
+    {
+        "tournamentId": 33490,
+        "tournamentSlug": "all-stars-league",
+        "tournamentName": "All Stars League",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33492,
+        "tournamentSlug": "eastern-conference",
+        "tournamentName": "Eastern Conference",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36359,
+        "tournamentSlug": "e-world-league",
+        "tournamentName": "E World League",
+        "categorySlug": "e-world-league",
+        "categoryName": "E World League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40259,
+        "tournamentSlug": "eadriatic-league",
+        "tournamentName": "eAdriatic League",
+        "categorySlug": "eadriatic-league",
+        "categoryName": "eAdriatic League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 1,
+        "liveFixtures": 2
+    }
+]

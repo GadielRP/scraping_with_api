@@ -1,0 +1,952 @@
+[
+    {
+        "tournamentId": 294,
+        "tournamentSlug": "nrl-premiership",
+        "tournamentName": "NRL Premiership",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 132,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 302,
+        "tournamentSlug": "super-league",
+        "tournamentName": "Super League",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 119,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 401,
+        "tournamentSlug": "european-rugby-champions-cup",
+        "tournamentName": "European Rugby Champions Cup",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 419,
+        "tournamentSlug": "united-rugby-championship",
+        "tournamentName": "United Rugby Championship",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 16,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 420,
+        "tournamentSlug": "top-14",
+        "tournamentName": "Top 14",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 28,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 421,
+        "tournamentSlug": "world-cup",
+        "tournamentName": "World Cup",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 422,
+        "tournamentSlug": "super-rugby",
+        "tournamentName": "Super Rugby",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 19,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 423,
+        "tournamentSlug": "six-nations",
+        "tournamentName": "Six Nations",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 424,
+        "tournamentSlug": "english-premiership",
+        "tournamentName": "English Premiership",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 20,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 431,
+        "tournamentSlug": "world-cup",
+        "tournamentName": "World Cup",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 566,
+        "tournamentSlug": "serie-a-elite",
+        "tournamentName": "Serie A Elite",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 752,
+        "tournamentSlug": "european-challenge-cup",
+        "tournamentName": "European Challenge Cup",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 789,
+        "tournamentSlug": "the-rugby-championship",
+        "tournamentName": "The Rugby Championship",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 791,
+        "tournamentSlug": "state-of-origin",
+        "tournamentName": "State of Origin",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 3,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 796,
+        "tournamentSlug": "currie-cup",
+        "tournamentName": "Currie Cup",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 797,
+        "tournamentSlug": "national-provincial-championship",
+        "tournamentName": "National Provincial Championship",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 876,
+        "tournamentSlug": "int-friendly-games",
+        "tournamentName": "Int. Friendly Games",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 977,
+        "tournamentSlug": "international-friendly-games",
+        "tournamentName": "International Friendly Games",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1056,
+        "tournamentSlug": "u20-world-championship",
+        "tournamentName": "U20 World Championship",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1147,
+        "tournamentSlug": "pro-d2",
+        "tournamentName": "Pro D2",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 16,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1315,
+        "tournamentSlug": "scottish-prem-division",
+        "tournamentName": "Scottish Prem Division",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 1
+    },
+    {
+        "tournamentId": 1323,
+        "tournamentSlug": "rfu-championship",
+        "tournamentName": "RFU Championship",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 7,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1357,
+        "tournamentSlug": "georgian-big-10",
+        "tournamentName": "Georgian Big 10",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1361,
+        "tournamentSlug": "super-rygbi-cymru",
+        "tournamentName": "Super Rygbi Cymru",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1582,
+        "tournamentSlug": "rfl-championship",
+        "tournamentName": "RFL Championship",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 124,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1586,
+        "tournamentSlug": "rfl-league-1",
+        "tournamentName": "RFL League 1",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1590,
+        "tournamentSlug": "world-club-series",
+        "tournamentName": "World Club Series",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1628,
+        "tournamentSlug": "u20-six-nations",
+        "tournamentName": "U20 Six Nations",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1718,
+        "tournamentSlug": "rfl-challenge-cup",
+        "tournamentName": "RFL Challenge Cup",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1738,
+        "tournamentSlug": "world-rugby-pacific-nations-cup",
+        "tournamentName": "World Rugby Pacific Nations Cup",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1826,
+        "tournamentSlug": "world-cup-women",
+        "tournamentName": "World Cup, Women",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1872,
+        "tournamentSlug": "currie-cup-first-division",
+        "tournamentName": "Currie Cup First Division",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1912,
+        "tournamentSlug": "all-ireland-league-division-1a",
+        "tournamentName": "All Ireland League Division 1A",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1914,
+        "tournamentSlug": "all-ireland-league-d-1b",
+        "tournamentName": "All Ireland League D. 1B",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2065,
+        "tournamentSlug": "nsw-shute-shield",
+        "tournamentName": "NSW Shute Shield",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 84,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2069,
+        "tournamentSlug": "queensland-premier-rugby",
+        "tournamentName": "Queensland Premier Rugby",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 52,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2071,
+        "tournamentSlug": "varsity-cup",
+        "tournamentName": "Varsity Cup",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2073,
+        "tournamentSlug": "rugby-europe-championship",
+        "tournamentName": "Rugby Europe Championship",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2092,
+        "tournamentSlug": "womens-six-nations",
+        "tournamentName": "Womens Six Nations",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 6,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2116,
+        "tournamentSlug": "romania-superliga",
+        "tournamentName": "Romania SuperLiga",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 29,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2132,
+        "tournamentSlug": "queensland-cup",
+        "tournamentName": "Queensland Cup",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 96,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2134,
+        "tournamentSlug": "new-south-wales-cup",
+        "tournamentName": "New South Wales Cup",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 99,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2154,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2179,
+        "tournamentSlug": "heartland-championship",
+        "tournamentName": "Heartland Championship",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2187,
+        "tournamentSlug": "league-one-division-1",
+        "tournamentName": "League One, Division 1",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 6,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2189,
+        "tournamentSlug": "urba-top-12",
+        "tournamentName": "URBA Top 12",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 140,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2320,
+        "tournamentSlug": "elite-1",
+        "tournamentName": "Elite 1",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2346,
+        "tournamentSlug": "rfl-academy-u19-playoffs-2015",
+        "tournamentName": "RFL Academy U19 Playoffs 2015",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 13963,
+        "tournamentSlug": "olympic-tournament",
+        "tournamentName": "Olympic Tournament",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 13965,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament, Women",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14638,
+        "tournamentSlug": "svns",
+        "tournamentName": "SVNS",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15564,
+        "tournamentSlug": "rugby-africa-gold-cup",
+        "tournamentName": "Rugby Africa Gold Cup",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 21678,
+        "tournamentSlug": "world-cup-women",
+        "tournamentName": "World Cup, Women",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26102,
+        "tournamentSlug": "asian-games-women",
+        "tournamentName": "Asian Games, Women",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26104,
+        "tournamentSlug": "asian-games",
+        "tournamentName": "Asian Games",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27086,
+        "tournamentSlug": "premiership-rugby-cup",
+        "tournamentName": "Premiership Rugby Cup",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27492,
+        "tournamentSlug": "svns-women",
+        "tournamentName": "SVNS, Women",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28073,
+        "tournamentSlug": "nrl-all-star-game",
+        "tournamentName": "NRL All Star Game",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28657,
+        "tournamentSlug": "rfl-1895-cup",
+        "tournamentName": "RFL 1895 Cup",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29117,
+        "tournamentSlug": "pacific-championship",
+        "tournamentName": "Pacific Championship",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29672,
+        "tournamentSlug": "pan-american-games",
+        "tournamentName": "Pan American Games",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29674,
+        "tournamentSlug": "pan-american-games-women",
+        "tournamentName": "Pan American Games, Women",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31485,
+        "tournamentSlug": "sea-games",
+        "tournamentName": "SEA Games",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31487,
+        "tournamentSlug": "sea-games-women",
+        "tournamentName": "SEA Games, Women",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31731,
+        "tournamentSlug": "supersevens",
+        "tournamentName": "Supersevens",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31855,
+        "tournamentSlug": "major-league-rugby",
+        "tournamentName": "Major League Rugby",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 15,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32137,
+        "tournamentSlug": "lions-tour",
+        "tournamentName": "Lions Tour",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34510,
+        "tournamentSlug": "olympic-tournament-qualification",
+        "tournamentName": "Olympic Tournament, Qualification",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34512,
+        "tournamentSlug": "olympic-tournament-women-qualification",
+        "tournamentName": "Olympic Tournament, Women, Qualification",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37677,
+        "tournamentSlug": "nrl-women",
+        "tournamentName": "NRL, Women",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38215,
+        "tournamentSlug": "division-de-honor",
+        "tournamentName": "Division de Honor",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38449,
+        "tournamentSlug": "world-cup-qualification",
+        "tournamentName": "World Cup, Qualification",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39051,
+        "tournamentSlug": "varsity-shield",
+        "tournamentName": "Varsity Shield",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39163,
+        "tournamentSlug": "nrl-preseason",
+        "tournamentName": "NRL Preseason",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39827,
+        "tournamentSlug": "super-rugby-americas",
+        "tournamentName": "Super Rugby Americas",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 16,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39831,
+        "tournamentSlug": "state-of-origin-women",
+        "tournamentName": "State of Origin, Women",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41292,
+        "tournamentSlug": "pacific-championship-women",
+        "tournamentName": "Pacific Championship, Women",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41294,
+        "tournamentSlug": "wxv-women",
+        "tournamentName": "WXV, Women",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42311,
+        "tournamentSlug": "super-league-women",
+        "tournamentName": "Super League, Women",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 28,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44915,
+        "tournamentSlug": "international-club-friendlies",
+        "tournamentName": "International Club Friendlies",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46643,
+        "tournamentSlug": "sa-cup",
+        "tournamentName": "SA Cup",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 5,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46863,
+        "tournamentSlug": "pacific-four-series-women",
+        "tournamentName": "Pacific Four Series, Women",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46947,
+        "tournamentSlug": "u20-the-rugby-championship",
+        "tournamentName": "U20 The Rugby Championship",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47281,
+        "tournamentSlug": "indian-rugby-premier-league-7s",
+        "tournamentName": "Indian Rugby Premier League 7s",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48385,
+        "tournamentSlug": "ashes-test-series",
+        "tournamentName": "Ashes Test Series",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48517,
+        "tournamentSlug": "english-premiership-women",
+        "tournamentName": "English Premiership, Women",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48519,
+        "tournamentSlug": "english-premiership-cup-women",
+        "tournamentName": "English Premiership Cup, Women",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48633,
+        "tournamentSlug": "super-rugby-aus",
+        "tournamentName": "Super Rugby AUS",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48983,
+        "tournamentSlug": "nrl-state-championship",
+        "tournamentName": "NRL State Championship",
+        "categorySlug": "rugby-league",
+        "categoryName": "Rugby League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50252,
+        "tournamentSlug": "svns-3",
+        "tournamentName": "SVNS, 3",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50254,
+        "tournamentSlug": "svns-women-3",
+        "tournamentName": "SVNS, Women 3",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50604,
+        "tournamentSlug": "svns-2",
+        "tournamentName": "SVNS 2",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50606,
+        "tournamentSlug": "svns-2-women",
+        "tournamentName": "SVNS 2, Women",
+        "categorySlug": "rugby-union-sevens",
+        "categoryName": "Rugby Union Sevens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50630,
+        "tournamentSlug": "international-friendly-games-women",
+        "tournamentName": "International Friendly Games, Women",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51392,
+        "tournamentSlug": "nations-championship",
+        "tournamentName": "Nations Championship",
+        "categorySlug": "rugby-union",
+        "categoryName": "Rugby Union",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

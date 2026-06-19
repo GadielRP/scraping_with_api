@@ -1,0 +1,72 @@
+[
+    {
+        "tournamentId": 43557,
+        "tournamentSlug": "honor-of-kings-invitational",
+        "tournamentName": "Honor of Kings Invitational",
+        "categorySlug": "tencent",
+        "categoryName": "Tencent",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43679,
+        "tournamentSlug": "king-growth-league",
+        "tournamentName": "King Growth League",
+        "categorySlug": "tencent",
+        "categoryName": "Tencent",
+        "futureFixtures": 6,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43681,
+        "tournamentSlug": "king-pro-league",
+        "tournamentName": "King Pro League",
+        "categorySlug": "tencent",
+        "categoryName": "Tencent",
+        "futureFixtures": 8,
+        "upcomingFixtures": 3,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44207,
+        "tournamentSlug": "king-overlord",
+        "tournamentName": "King Overlord",
+        "categorySlug": "huya",
+        "categoryName": "Huya",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44209,
+        "tournamentSlug": "kings-expedition-cup",
+        "tournamentName": "Kings Expedition Cup",
+        "categorySlug": "huya",
+        "categoryName": "Huya",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44629,
+        "tournamentSlug": "honor-of-kings-championship",
+        "tournamentName": "Honor of Kings Championship",
+        "categorySlug": "level-infinite",
+        "categoryName": "Level Infinite",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45353,
+        "tournamentSlug": "honor-of-kings-challenger-cup",
+        "tournamentName": "Honor of Kings Challenger Cup",
+        "categorySlug": "tencent",
+        "categoryName": "Tencent",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

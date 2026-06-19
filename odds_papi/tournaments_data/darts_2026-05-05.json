@@ -1,0 +1,682 @@
+[
+    {
+        "tournamentId": 592,
+        "tournamentSlug": "european-championship",
+        "tournamentName": "European Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 597,
+        "tournamentSlug": "grand-slam-of-darts",
+        "tournamentName": "Grand Slam of Darts",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 616,
+        "tournamentSlug": "pdc-world-championship",
+        "tournamentName": "PDC World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 631,
+        "tournamentSlug": "pdc-players-championship",
+        "tournamentName": "PDC Players Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 670,
+        "tournamentSlug": "uk-open",
+        "tournamentName": "UK Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 689,
+        "tournamentSlug": "world-matchplay",
+        "tournamentName": "World Matchplay",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 751,
+        "tournamentSlug": "world-grand-prix",
+        "tournamentName": "World Grand Prix",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1548,
+        "tournamentSlug": "the-masters",
+        "tournamentName": "The Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1556,
+        "tournamentSlug": "pdc-players-championship",
+        "tournamentName": "PDC Players Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1744,
+        "tournamentSlug": "world-cup-of-darts",
+        "tournamentName": "World Cup of Darts",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2167,
+        "tournamentSlug": "niu",
+        "tournamentName": "N.I.U",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2169,
+        "tournamentSlug": "niu",
+        "tournamentName": "N.I.U",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 16344,
+        "tournamentSlug": "north-american-darts-championship",
+        "tournamentName": "North American Darts Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24407,
+        "tournamentSlug": "pdc-european-tour-german-darts-open",
+        "tournamentName": "PDC European Tour - German Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24409,
+        "tournamentSlug": "pdc-european-tour-german-darts-grand-prix",
+        "tournamentName": "PDC European Tour - German Darts Grand Prix",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24411,
+        "tournamentSlug": "pdc-european-tour-european-darts-open",
+        "tournamentName": "PDC European Tour - European Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24413,
+        "tournamentSlug": "pdc-european-tour-austrian-darts-open",
+        "tournamentName": "PDC European Tour - Austrian Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24415,
+        "tournamentSlug": "pdc-european-tour-european-darts-grand-prix",
+        "tournamentName": "PDC European Tour - European Darts Grand Prix",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24425,
+        "tournamentSlug": "pdc-european-tour-german-darts-championship",
+        "tournamentName": "PDC European Tour - German Darts Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24427,
+        "tournamentSlug": "pdc-european-tour-dutch-darts-championship",
+        "tournamentName": "PDC European Tour - Dutch Darts Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24429,
+        "tournamentSlug": "pdc-european-tour-international-darts-open",
+        "tournamentName": "PDC European Tour - International Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24431,
+        "tournamentSlug": "pdc-european-tour-european-darts-trophy",
+        "tournamentName": "PDC European Tour - European Darts Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24900,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24902,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24904,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24906,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24908,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24910,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24912,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24914,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24918,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24920,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24922,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25469,
+        "tournamentSlug": "pdc-world-series-of-darts-us-darts-masters",
+        "tournamentName": "PDC World Series of Darts - US Darts Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26750,
+        "tournamentSlug": "pdc-world-series-of-darts-finals",
+        "tournamentName": "PDC World Series of Darts - Finals",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27230,
+        "tournamentSlug": "premier-league",
+        "tournamentName": "Premier League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 24,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27729,
+        "tournamentSlug": "pdc-european-tour-czech-darts-open",
+        "tournamentName": "PDC European Tour - Czech Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29334,
+        "tournamentSlug": "new-zealand-darts-masters",
+        "tournamentName": "New Zealand Darts Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31615,
+        "tournamentSlug": "pdc-european-tour-hungarian-darts-trophy",
+        "tournamentName": "PDC European Tour - Hungarian Darts Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31619,
+        "tournamentSlug": "pdc-european-tour-belgian-darts-open",
+        "tournamentName": "PDC European Tour - Belgian Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31697,
+        "tournamentSlug": "pdc-world-series-of-darts-nordic-darts-masters",
+        "tournamentName": "PDC World Series of Darts - Nordic Darts Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33994,
+        "tournamentSlug": "modus-super-series",
+        "tournamentName": "Modus Super Series",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 15,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35933,
+        "tournamentSlug": "wdf-world-championship",
+        "tournamentName": "WDF World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35935,
+        "tournamentSlug": "wdf-world-championship-women",
+        "tournamentName": "WDF World Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36045,
+        "tournamentSlug": "world-seniors-darts-championship",
+        "tournamentName": "World Seniors Darts Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36383,
+        "tournamentSlug": "pdc-european-tour-\u0096-belgian-darts-open",
+        "tournamentName": "PDC European Tour \u0096 Belgian Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36901,
+        "tournamentSlug": "world-seniors-darts-masters",
+        "tournamentName": "World Seniors Darts Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37129,
+        "tournamentSlug": "pdc-world-series-of-darts-dutch-darts-masters",
+        "tournamentName": "PDC World Series of Darts - Dutch Darts Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37191,
+        "tournamentSlug": "world-matchplay-women",
+        "tournamentName": "World Matchplay Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37215,
+        "tournamentSlug": "world-seniors-matchplay",
+        "tournamentName": "World Seniors Matchplay",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38051,
+        "tournamentSlug": "pdc-world-series-of-darts-bahrain-darts-masters",
+        "tournamentName": "PDC World Series of Darts - Bahrain Darts Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38119,
+        "tournamentSlug": "world-youth-championship-final",
+        "tournamentName": "World Youth Championship Final",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38121,
+        "tournamentSlug": "pdc-european-tour-baltic-sea-darts-open",
+        "tournamentName": "PDC European Tour - Baltic Sea Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38457,
+        "tournamentSlug": "super-league-darts-germany",
+        "tournamentName": "Super League Darts Germany",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39203,
+        "tournamentSlug": "world-seniors-champion-of-champions",
+        "tournamentName": "World Seniors Champion of Champions",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39527,
+        "tournamentSlug": "pdc-world-series-of-darts-poland-darts-masters",
+        "tournamentName": "PDC World Series of Darts - Poland Darts Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39559,
+        "tournamentSlug": "european-tour-4-german-darts-grand-prix",
+        "tournamentName": "European Tour 4 - German Darts Grand Prix",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39647,
+        "tournamentSlug": "european-tour-5-austrian-darts-open",
+        "tournamentName": "European Tour 5 - Austrian Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39685,
+        "tournamentSlug": "european-team-championship",
+        "tournamentName": "European Team Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41170,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41280,
+        "tournamentSlug": "european-tour-flanders-darts-trophy",
+        "tournamentName": "European Tour - Flanders Darts Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41282,
+        "tournamentSlug": "pdc-european-tour-swiss-darts-trophy",
+        "tournamentName": "PDC European Tour - Swiss Darts Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41889,
+        "tournamentSlug": "pdc-world-series-of-darts-australian-darts-masters",
+        "tournamentName": "PDC World Series of Darts - Australian Darts Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44967,
+        "tournamentSlug": "winmau-championship-tour",
+        "tournamentName": "Winmau Championship Tour",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44969,
+        "tournamentSlug": "winmau-championship-tour-women",
+        "tournamentName": "Winmau Championship Tour, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45351,
+        "tournamentSlug": "adc-global-championship",
+        "tournamentName": "ADC Global Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49079,
+        "tournamentSlug": "pdc-european-tour-poland-darts-open",
+        "tournamentName": "PDC European Tour - Poland Darts Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49083,
+        "tournamentSlug": "saudi-arabia-darts-masters",
+        "tournamentName": "Saudi Arabia Darts Masters",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

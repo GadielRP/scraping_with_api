@@ -45,7 +45,10 @@ def get_historical_odds(fixture_id, bookmakers, folder, odd_id=None, player_id=N
 
 def main():
     # 1. Create the CLI Parser
-    parser = argparse.ArgumentParser(description="OddspAPI Historical Odds Tool")
+    parser = argparse.ArgumentParser(
+        description="OddspAPI Historical Odds Tool. Retrieves historical betting odds for a specific fixture across multiple bookmakers.",
+        epilog="Example: python get_historical_odds_by_fixture.py fetch --fixture_id 12345 --bookmakers pinnacle,bet365"
+    )
     subparsers = parser.add_subparsers(dest="command", help="The command to run")
     
     # 2. Setup the 'fetch' command

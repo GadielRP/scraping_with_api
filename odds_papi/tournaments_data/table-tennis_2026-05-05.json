@@ -1,0 +1,5132 @@
+[
+    {
+        "tournamentId": 564,
+        "tournamentSlug": "olympic-tournament",
+        "tournamentName": "Olympic Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 565,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1121,
+        "tournamentSlug": "olympic-tournament-team",
+        "tournamentName": "Olympic Tournament, Team",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1123,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1576,
+        "tournamentSlug": "german-open",
+        "tournamentName": "German Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1674,
+        "tournamentSlug": "spanish-open-(ms)",
+        "tournamentName": "Spanish Open (MS)",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1858,
+        "tournamentSlug": "bundesliga",
+        "tournamentName": "Bundesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1870,
+        "tournamentSlug": "czech-open-(ms)",
+        "tournamentName": "Czech Open (MS)",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1964,
+        "tournamentSlug": "ittf-world-cup-women",
+        "tournamentName": "ITTF World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1966,
+        "tournamentSlug": "ittf-world-cup",
+        "tournamentName": "ITTF World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1982,
+        "tournamentSlug": "russian-open-(ms)",
+        "tournamentName": "Russian Open (MS)",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2106,
+        "tournamentSlug": "kuwait-open-(ss)",
+        "tournamentName": "Kuwait Open (SS)",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2302,
+        "tournamentSlug": "champions-league",
+        "tournamentName": "Champions League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2466,
+        "tournamentSlug": "hungarian-open-(wt)",
+        "tournamentName": "Hungarian Open (WT)",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2490,
+        "tournamentSlug": "ettu-europe-top-16-cup",
+        "tournamentName": "ETTU Europe Top 16 Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2492,
+        "tournamentSlug": "ittf-europe-top-16-women",
+        "tournamentName": "ITTF Europe Top 16, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2545,
+        "tournamentSlug": "polish-open",
+        "tournamentName": "Polish Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14107,
+        "tournamentSlug": "challenger-series",
+        "tournamentName": "Challenger Series",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 28,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14447,
+        "tournamentSlug": "champions-league-women",
+        "tournamentName": "Champions League, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14532,
+        "tournamentSlug": "europe-cup-women",
+        "tournamentName": "Europe Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14580,
+        "tournamentSlug": "europe-cup",
+        "tournamentName": "Europe Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 18754,
+        "tournamentSlug": "cup",
+        "tournamentName": "Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20922,
+        "tournamentSlug": "belgium-open-boys",
+        "tournamentName": "Belgium Open, Boys",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20924,
+        "tournamentSlug": "belgium-open-girls",
+        "tournamentName": "Belgium Open, Girls",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20926,
+        "tournamentSlug": "belgium-open-ms",
+        "tournamentName": "Belgium Open, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20928,
+        "tournamentSlug": "belgium-open-doubles",
+        "tournamentName": "Belgium Open, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20930,
+        "tournamentSlug": "belgium-open-women-doubles",
+        "tournamentName": "Belgium Open, Women Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20932,
+        "tournamentSlug": "belgium-open-ws",
+        "tournamentName": "Belgium Open, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 21876,
+        "tournamentSlug": "world-junior-tt-championships-boys-team-singles",
+        "tournamentName": "World Junior TT Championships, Boys Team Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23053,
+        "tournamentSlug": "world-tour-finals-ms",
+        "tournamentName": "World Tour Finals, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23055,
+        "tournamentSlug": "world-tour-finals-ws",
+        "tournamentName": "World Tour Finals, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23057,
+        "tournamentSlug": "world-tour-finals-wd",
+        "tournamentName": "World Tour Finals, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23059,
+        "tournamentSlug": "world-tour-finals-md",
+        "tournamentName": "World Tour Finals, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23985,
+        "tournamentSlug": "european-team-championships",
+        "tournamentName": "European Team Championships",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24093,
+        "tournamentSlug": "u21-european-championship-ms",
+        "tournamentName": "U21 European Championship, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24095,
+        "tournamentSlug": "u21-european-championship-md",
+        "tournamentName": "U21 European Championship, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24097,
+        "tournamentSlug": "u21-european-championship-ws",
+        "tournamentName": "U21 European Championship, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24099,
+        "tournamentSlug": "u21-european-championship-wd",
+        "tournamentName": "U21 European Championship, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24970,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24974,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24982,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25821,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25823,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25825,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25827,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25831,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25833,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26064,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26570,
+        "tournamentSlug": "ettu-european-championships-ms",
+        "tournamentName": "ETTU European Championships, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26572,
+        "tournamentSlug": "ettu-european-championships-ws",
+        "tournamentName": "ETTU European Championships, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26574,
+        "tournamentSlug": "ettu-european-championships-md",
+        "tournamentName": "ETTU European Championships, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26576,
+        "tournamentSlug": "ettu-european-championships-wd",
+        "tournamentName": "ETTU European Championships, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26578,
+        "tournamentSlug": "ettu-european-championships-xd",
+        "tournamentName": "ETTU European Championships, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27124,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27280,
+        "tournamentSlug": "hong-kong-open-(wt)",
+        "tournamentName": "Hong Kong Open (WT)",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27322,
+        "tournamentSlug": "world-championships-ms",
+        "tournamentName": "World Championships, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27324,
+        "tournamentSlug": "world-championships-md",
+        "tournamentName": "World Championships, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27326,
+        "tournamentSlug": "world-championships-wd",
+        "tournamentName": "World Championships, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27328,
+        "tournamentSlug": "world-championships-ws",
+        "tournamentName": "World Championships, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27330,
+        "tournamentSlug": "world-championships-xd",
+        "tournamentName": "World Championships, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27348,
+        "tournamentSlug": "world-tour-finals",
+        "tournamentName": "World Tour Finals",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28482,
+        "tournamentSlug": "ittf-challenge-serbia-open-xd",
+        "tournamentName": "ITTF Challenge, Serbia Open, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29524,
+        "tournamentSlug": "pan-am-games-singles",
+        "tournamentName": "Pan Am Games, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29526,
+        "tournamentSlug": "pan-am-games-women-singles",
+        "tournamentName": "Pan Am Games, Women, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29528,
+        "tournamentSlug": "pan-am-games-doubles",
+        "tournamentName": "Pan Am Games, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29530,
+        "tournamentSlug": "pan-am-games-women-doubles",
+        "tournamentName": "Pan Am Games, Women, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29532,
+        "tournamentSlug": "pan-am-games-mixed-doubles",
+        "tournamentName": "Pan Am Games, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29534,
+        "tournamentSlug": "pan-am-games-teams",
+        "tournamentName": "Pan Am Games, Teams",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29536,
+        "tournamentSlug": "pan-am-games-women-teams",
+        "tournamentName": "Pan Am Games, Women, Teams",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30630,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31023,
+        "tournamentSlug": "ittf-indonesia-challenge",
+        "tournamentName": "ITTF Indonesia Challenge",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31395,
+        "tournamentSlug": "itttf-challenge-plus-canada-open",
+        "tournamentName": "ITTTF Challenge Plus Canada Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31935,
+        "tournamentSlug": "africa-top-16-cup",
+        "tournamentName": "Africa Top 16 Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32063,
+        "tournamentSlug": "u21-european-championship-xd",
+        "tournamentName": "U21 European Championship, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32091,
+        "tournamentSlug": "european-olympic-qualification-tournament",
+        "tournamentName": "European Olympic Qualification Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32093,
+        "tournamentSlug": "european-olympic-qualification-tournament-women",
+        "tournamentName": "European Olympic Qualification Tournament, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32129,
+        "tournamentSlug": "tt-cup",
+        "tournamentName": "TT Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 72,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32131,
+        "tournamentSlug": "tt-cup-women",
+        "tournamentName": "TT Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32237,
+        "tournamentSlug": "ukraine-win-cup",
+        "tournamentName": "Ukraine Win Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32331,
+        "tournamentSlug": "itt-cup-league",
+        "tournamentName": "ITT Cup League",
+        "categorySlug": "armenia",
+        "categoryName": "Armenia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32335,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "armenia",
+        "categoryName": "Armenia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32581,
+        "tournamentSlug": "dusseldorf-masters",
+        "tournamentName": "Dusseldorf Masters",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32749,
+        "tournamentSlug": "ittf-european-championships-team-qualification",
+        "tournamentName": "ITTF European Championships Team Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32949,
+        "tournamentSlug": "challenge-sao-paulo",
+        "tournamentName": "Challenge Sao Paulo",
+        "categorySlug": "brazil",
+        "categoryName": "Brazil",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33916,
+        "tournamentSlug": "wtt-contender-doha-ms",
+        "tournamentName": "WTT Contender Doha, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33918,
+        "tournamentSlug": "wtt-contender-doha-ws",
+        "tournamentName": "WTT Contender Doha, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33920,
+        "tournamentSlug": "wtt-contender-doha-md",
+        "tournamentName": "WTT Contender Doha, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33922,
+        "tournamentSlug": "wtt-contender-doha-wd",
+        "tournamentName": "WTT Contender Doha, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33924,
+        "tournamentSlug": "wtt-contender-doha-xd",
+        "tournamentName": "WTT Contender Doha, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33966,
+        "tournamentSlug": "wtt-star-contender-doha-singles",
+        "tournamentName": "WTT Star Contender Doha, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33968,
+        "tournamentSlug": "wtt-star-contender-dohawomen-singles",
+        "tournamentName": "WTT Star Contender Doha,Women, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33970,
+        "tournamentSlug": "wtt-star-contender-doha-mixed-doubles",
+        "tournamentName": "WTT Star Contender Doha, Mixed, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34000,
+        "tournamentSlug": "asian-olympic-qualification-tournament",
+        "tournamentName": "Asian Olympic Qualification Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34002,
+        "tournamentSlug": "asian-olympic-qualification-tournament-women",
+        "tournamentName": "Asian Olympic Qualification Tournament, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34004,
+        "tournamentSlug": "asian-olympic-qualification-tournament-mixed-doubles",
+        "tournamentName": "Asian Olympic Qualification Tournament, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34744,
+        "tournamentSlug": "olympic-tournament-mixed-doubles",
+        "tournamentName": "Olympic Tournament, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34844,
+        "tournamentSlug": "niuolympic-tournament-mixed-doubles",
+        "tournamentName": "NIU.Olympic Tournament, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35100,
+        "tournamentSlug": "european-team-championships-2021-qualification",
+        "tournamentName": "European Team Championships 2021, Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35102,
+        "tournamentSlug": "european-team-championships-qualification-women",
+        "tournamentName": "European Team Championships Qualification, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35304,
+        "tournamentSlug": "kazakhstan-international-open",
+        "tournamentName": "Kazakhstan International Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35613,
+        "tournamentSlug": "wtt-contender-tunis",
+        "tournamentName": "WTT Contender Tunis",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35615,
+        "tournamentSlug": "wtt-contender-tunis-women",
+        "tournamentName": "WTT Contender Tunis, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35617,
+        "tournamentSlug": "wtt-contender-tunis-doubles",
+        "tournamentName": "WTT Contender Tunis, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35619,
+        "tournamentSlug": "wtt-contender-tunis-women-doubles",
+        "tournamentName": "WTT Contender Tunis, Women Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35621,
+        "tournamentSlug": "wtt-contender-tunis-mixed-doubles",
+        "tournamentName": "WTT Contender Tunis, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35715,
+        "tournamentSlug": "pan-american-championships-singles",
+        "tournamentName": "Pan American Championships, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35717,
+        "tournamentSlug": "pan-american-championships-women-singles",
+        "tournamentName": "Pan American Championships, Women, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35719,
+        "tournamentSlug": "pan-american-championships-doubles",
+        "tournamentName": "Pan American Championships, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35721,
+        "tournamentSlug": "pan-american-championships-women-doubles",
+        "tournamentName": "Pan American Championships, Women, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35723,
+        "tournamentSlug": "pan-american-championships-mixed-doubles",
+        "tournamentName": "Pan American Championships, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35907,
+        "tournamentSlug": "wtt-feeder-dusseldorf-ms",
+        "tournamentName": "WTT Feeder Dusseldorf, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35909,
+        "tournamentSlug": "wtt-feeder-dusseldorf-md",
+        "tournamentName": "WTT Feeder Dusseldorf, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35911,
+        "tournamentSlug": "wtt-feeder-dusseldorf-xd",
+        "tournamentName": "WTT Feeder Dusseldorf, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35913,
+        "tournamentSlug": "wtt-feeder-dusseldorf-ws",
+        "tournamentName": "WTT Feeder Dusseldorf, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35915,
+        "tournamentSlug": "wtt-feeder-dusseldorf-wd",
+        "tournamentName": "WTT Feeder Dusseldorf, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36273,
+        "tournamentSlug": "ettu-top-16-cup",
+        "tournamentName": "ETTU Top 16 Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36275,
+        "tournamentSlug": "ettu-top-16-cup",
+        "tournamentName": "ETTU Top 16 Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36277,
+        "tournamentSlug": "ettu-top-16-cup-women",
+        "tournamentName": "ETTU Top 16 Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36303,
+        "tournamentSlug": "wtt-contender-muscat",
+        "tournamentName": "WTT Contender Muscat",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36305,
+        "tournamentSlug": "wtt-contender-muscat-doubles",
+        "tournamentName": "WTT Contender Muscat, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36307,
+        "tournamentSlug": "wtt-contender-muscat--women",
+        "tournamentName": "WTT Contender Muscat , Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36309,
+        "tournamentSlug": "wtt-contender-muscat-women-doubles",
+        "tournamentName": "WTT Contender Muscat, Women Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36311,
+        "tournamentSlug": "wtt-contender-muscat-mixed-doubles",
+        "tournamentName": "WTT Contender Muscat, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36339,
+        "tournamentSlug": "wtt-singapore-smash",
+        "tournamentName": "WTT Singapore Smash",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36341,
+        "tournamentSlug": "wtt-singapore-smash-doubles",
+        "tournamentName": "WTT Singapore Smash, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36343,
+        "tournamentSlug": "wtt-singapore-smash-women",
+        "tournamentName": "WTT Singapore Smash, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36345,
+        "tournamentSlug": "wtt-singapore-smash-women-doubles",
+        "tournamentName": "WTT Singapore Smash, Women Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36347,
+        "tournamentSlug": "wtt-singapore-smash-mixed-doubles",
+        "tournamentName": "WTT Singapore Smash, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36349,
+        "tournamentSlug": "czech-liga-pro",
+        "tournamentName": "Czech Liga Pro",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 150,
+        "upcomingFixtures": 9,
+        "liveFixtures": 1
+    },
+    {
+        "tournamentId": 36377,
+        "tournamentSlug": "tt-elite-series",
+        "tournamentName": "TT Elite Series",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 293,
+        "upcomingFixtures": 29,
+        "liveFixtures": 4
+    },
+    {
+        "tournamentId": 36465,
+        "tournamentSlug": "wtt-star-contender-doha-doubles",
+        "tournamentName": "WTT Star Contender Doha, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36467,
+        "tournamentSlug": "wtt-star-contender-doha-women-doubles",
+        "tournamentName": "WTT Star Contender Doha, Women, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36721,
+        "tournamentSlug": "ettu-europe-grand-trophy-final",
+        "tournamentName": "ETTU Europe Grand Trophy Final",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36951,
+        "tournamentSlug": "ettu-europe-trophy-women",
+        "tournamentName": "ETTU Europe Trophy, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37019,
+        "tournamentSlug": "wtt-contender-zagreb",
+        "tournamentName": "WTT Contender Zagreb",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37021,
+        "tournamentSlug": "wtt-contender-zagreb-double",
+        "tournamentName": "WTT Contender Zagreb, Double",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37023,
+        "tournamentSlug": "wtt-contender-zagreb-women",
+        "tournamentName": "WTT Contender Zagreb, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37025,
+        "tournamentSlug": "wtt-contender-zagreb-women-double",
+        "tournamentName": "WTT Contender Zagreb, Women Double",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37027,
+        "tournamentSlug": "wtt-contender-zagreb-mixed-double",
+        "tournamentName": "WTT Contender Zagreb, Mixed Double",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37029,
+        "tournamentSlug": "wtt-contender-lima-ms",
+        "tournamentName": "WTT Contender Lima, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37031,
+        "tournamentSlug": "wtt-contender-lima-ws",
+        "tournamentName": "WTT Contender Lima, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37033,
+        "tournamentSlug": "wtt-contender-lima-md",
+        "tournamentName": "WTT Contender Lima, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37035,
+        "tournamentSlug": "wtt-contender-lima-wd-",
+        "tournamentName": "WTT Contender Lima, WD ",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37037,
+        "tournamentSlug": "wtt-contender-lima-xd",
+        "tournamentName": "WTT Contender Lima, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37157,
+        "tournamentSlug": "wtt-feeder-otocec-ms",
+        "tournamentName": "WTT Feeder Otocec, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37159,
+        "tournamentSlug": "wtt-feeder-otocec-md",
+        "tournamentName": "WTT Feeder Otocec, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37161,
+        "tournamentSlug": "wtt-feeder-otocec-xd",
+        "tournamentName": "WTT Feeder Otocec, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37163,
+        "tournamentSlug": "wtt-feeder-otocec-ws",
+        "tournamentName": "WTT Feeder Otocec, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37165,
+        "tournamentSlug": "wtt-feeder-otocec-wd",
+        "tournamentName": "WTT Feeder Otocec, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37407,
+        "tournamentSlug": "south-american-championships-singles",
+        "tournamentName": "South American Championships, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37409,
+        "tournamentSlug": "south-american-championships-women-singles",
+        "tournamentName": "South American Championships, Women Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37411,
+        "tournamentSlug": "south-american-championships-doubles",
+        "tournamentName": "South American Championships, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37413,
+        "tournamentSlug": "south-american-championships-women-doubles",
+        "tournamentName": "South American Championships, Women Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37415,
+        "tournamentSlug": "south-american-championships-mixed-doubles",
+        "tournamentName": "South American Championships, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37495,
+        "tournamentSlug": "commonwealth-games-doubles",
+        "tournamentName": "Commonwealth Games, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37719,
+        "tournamentSlug": "wtt-feeder-olomouc-ms",
+        "tournamentName": "WTT Feeder Olomouc, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37721,
+        "tournamentSlug": "wtt-feeder-olomouc-md",
+        "tournamentName": "WTT Feeder Olomouc, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37723,
+        "tournamentSlug": "wtt-feeder-olomouc-ws",
+        "tournamentName": "WTT Feeder Olomouc, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37725,
+        "tournamentSlug": "wtt-feeder-olomouc-wd",
+        "tournamentName": "WTT Feeder Olomouc, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37727,
+        "tournamentSlug": "wtt-feeder-olomouc-xd",
+        "tournamentName": "WTT Feeder Olomouc, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37749,
+        "tournamentSlug": "wtt-feeder-panagyurishte-singles",
+        "tournamentName": "WTT Feeder Panagyurishte, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37751,
+        "tournamentSlug": "wtt-feeder-panagyurishte-doubles",
+        "tournamentName": "WTT Feeder Panagyurishte, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37753,
+        "tournamentSlug": "wtt-feeder-panagyurishte-mixed-doubles",
+        "tournamentName": "WTT Feeder Panagyurishte, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37755,
+        "tournamentSlug": "wtt-feeder-panagyurishte-women-singles",
+        "tournamentName": "WTT Feeder Panagyurishte, Women, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37757,
+        "tournamentSlug": "wtt-feeder-panagyurishte-women-doubles",
+        "tournamentName": "WTT Feeder Panagyurishte, Women, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37873,
+        "tournamentSlug": "wtt-contender-almaty-ms",
+        "tournamentName": "WTT Contender Almaty, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37875,
+        "tournamentSlug": "wtt-contender-almaty-md",
+        "tournamentName": "WTT Contender Almaty, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37877,
+        "tournamentSlug": "wtt-contender-almaty-xd",
+        "tournamentName": "WTT Contender Almaty, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37879,
+        "tournamentSlug": "wtt-contender-almaty-ws",
+        "tournamentName": "WTT Contender Almaty, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37881,
+        "tournamentSlug": "wtt-contender-almaty-wd",
+        "tournamentName": "WTT Contender Almaty, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38193,
+        "tournamentSlug": "wtt-champions-macao-singles",
+        "tournamentName": "WTT Champions Macao, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38195,
+        "tournamentSlug": "wtt-champions-macao-women-singles",
+        "tournamentName": "WTT Champions Macao, Women Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38207,
+        "tournamentSlug": "wtt-champions-macao",
+        "tournamentName": "WTT Champions Macao",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39057,
+        "tournamentSlug": "wtt-feeder-doha-ms",
+        "tournamentName": "WTT Feeder Doha, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39059,
+        "tournamentSlug": "wtt-feeder-doha-md",
+        "tournamentName": "WTT Feeder Doha, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39061,
+        "tournamentSlug": "wtt-feeder-doha-xd",
+        "tournamentName": "WTT Feeder Doha, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39063,
+        "tournamentSlug": "wtt-feeder-doha-ws",
+        "tournamentName": "WTT Feeder Doha, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39065,
+        "tournamentSlug": "wtt-feeder-doha-wd",
+        "tournamentName": "WTT Feeder Doha, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39223,
+        "tournamentSlug": "feeder-dusseldorf-ii-ms",
+        "tournamentName": "Feeder Dusseldorf II, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39225,
+        "tournamentSlug": "feeder-dusseldorf-ii-md",
+        "tournamentName": "Feeder Dusseldorf II, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39227,
+        "tournamentSlug": "feeder-dusseldorf-ii-xd",
+        "tournamentName": "Feeder Dusseldorf II, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39229,
+        "tournamentSlug": "feeder-dusseldorf-ii-ws",
+        "tournamentName": "Feeder Dusseldorf II, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39231,
+        "tournamentSlug": "feeder-dusseldorf-ii-wd",
+        "tournamentName": "Feeder Dusseldorf II, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39267,
+        "tournamentSlug": "wtt-star-contender-goa",
+        "tournamentName": "WTT Star Contender Goa",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39269,
+        "tournamentSlug": "wtt-star-contender-goa-ms",
+        "tournamentName": "WTT Star Contender Goa, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39271,
+        "tournamentSlug": "wtt-star-contender-goa-md",
+        "tournamentName": "WTT Star Contender Goa, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39273,
+        "tournamentSlug": "wtt-star-contender-goa-xd",
+        "tournamentName": "WTT Star Contender Goa, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39275,
+        "tournamentSlug": "wtt-star-contender-goa-ws",
+        "tournamentName": "WTT Star Contender Goa, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39277,
+        "tournamentSlug": "wtt-star-contender-goa-wd",
+        "tournamentName": "WTT Star Contender Goa, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39465,
+        "tournamentSlug": "ettu-national-championships",
+        "tournamentName": "ETTU National Championships",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39633,
+        "tournamentSlug": "wtt-star-contender-bangkok-ms",
+        "tournamentName": "WTT Star Contender Bangkok, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39635,
+        "tournamentSlug": "wtt-star-contender-bangkok-md",
+        "tournamentName": "WTT Star Contender Bangkok, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39637,
+        "tournamentSlug": "wtt-star-contender-bangkok-xd",
+        "tournamentName": "WTT Star Contender Bangkok, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39639,
+        "tournamentSlug": "wtt-star-contender-bangkok-ws",
+        "tournamentName": "WTT Star Contender Bangkok, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39641,
+        "tournamentSlug": "wtt-star-contender-bangkok-wd",
+        "tournamentName": "WTT Star Contender Bangkok, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40107,
+        "tournamentSlug": "wtt-contender-lagos-ms",
+        "tournamentName": "WTT Contender Lagos, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40109,
+        "tournamentSlug": "wtt-contender-lagos-ws",
+        "tournamentName": "WTT Contender Lagos, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40111,
+        "tournamentSlug": "wtt-contender-lagos-md",
+        "tournamentName": "WTT Contender Lagos, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40113,
+        "tournamentSlug": "wtt-contender-lagos-wd",
+        "tournamentName": "WTT Contender Lagos, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40115,
+        "tournamentSlug": "wtt-contender-lagos-xd",
+        "tournamentName": "WTT Contender Lagos, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40273,
+        "tournamentSlug": "wtt-star-contender-ljubljana-ms",
+        "tournamentName": "WTT Star Contender Ljubljana, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40275,
+        "tournamentSlug": "wtt-star-contender-ljubljana-ws",
+        "tournamentName": "WTT Star Contender Ljubljana, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40277,
+        "tournamentSlug": "wtt-star-contender-ljubljana-md",
+        "tournamentName": "WTT Star Contender Ljubljana, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40279,
+        "tournamentSlug": "wtt-star-contender-ljubljana-wd",
+        "tournamentName": "WTT Star Contender Ljubljana, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40281,
+        "tournamentSlug": "wtt-star-contender-ljubljana-xd",
+        "tournamentName": "WTT Star Contender Ljubljana, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40565,
+        "tournamentSlug": "feeder-havirov-ms",
+        "tournamentName": "Feeder Havirov, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40567,
+        "tournamentSlug": "feeder-havirov-md",
+        "tournamentName": "Feeder Havirov, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40569,
+        "tournamentSlug": "feeder-havirov-xd",
+        "tournamentName": "Feeder Havirov, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40571,
+        "tournamentSlug": "feeder-havirov-ws",
+        "tournamentName": "Feeder Havirov, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40573,
+        "tournamentSlug": "feeder-havirov-wd",
+        "tournamentName": "Feeder Havirov, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40637,
+        "tournamentSlug": "wtt-contender-rio-de-janeiro-singles",
+        "tournamentName": "WTT Contender Rio de Janeiro, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40639,
+        "tournamentSlug": "wtt-contender-rio-de-janeiro-doubles",
+        "tournamentName": "WTT Contender Rio de Janeiro, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40641,
+        "tournamentSlug": "wtt-contender-rio-de-janeiro-mixed-doubles",
+        "tournamentName": "WTT Contender Rio de Janeiro, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40643,
+        "tournamentSlug": "wtt-contender-rio-de-janeiro-women-singles",
+        "tournamentName": "WTT Contender Rio de Janeiro, Women Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40645,
+        "tournamentSlug": "wtt-contender-rio-de-janeiro-women-doubles",
+        "tournamentName": "WTT Contender Rio de Janeiro, Women Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40967,
+        "tournamentSlug": "wtt-feeder-bangkok-singles",
+        "tournamentName": "WTT Feeder Bangkok, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40969,
+        "tournamentSlug": "wtt-feeder-bangkok-doubles",
+        "tournamentName": "WTT Feeder Bangkok, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40971,
+        "tournamentSlug": "wtt-feeder-bangkok-mixed-doubles",
+        "tournamentName": "WTT Feeder Bangkok, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40973,
+        "tournamentSlug": "wtt-feeder-bangkok-women-singles",
+        "tournamentName": "WTT Feeder Bangkok, Women Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40975,
+        "tournamentSlug": "wtt-feeder-bangkok-women-doubles",
+        "tournamentName": "WTT Feeder Bangkok, Women Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41027,
+        "tournamentSlug": "ittf-africa-senior-championship-2023-ms",
+        "tournamentName": "ITTF Africa Senior Championship 2023, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41029,
+        "tournamentSlug": "ittf-africa-senior-championship-2023-md",
+        "tournamentName": "ITTF Africa Senior Championship 2023, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41031,
+        "tournamentSlug": "ittf-africa-senior-championship-2023-ws",
+        "tournamentName": "ITTF Africa Senior Championship 2023, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41033,
+        "tournamentSlug": "ittf-africa-senior-championship-2023-wd",
+        "tournamentName": "ITTF Africa Senior Championship 2023, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41035,
+        "tournamentSlug": "ittf-africa-senior-championship-2023-xd",
+        "tournamentName": "ITTF Africa Senior Championship 2023, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41184,
+        "tournamentSlug": "u13-challenge",
+        "tournamentName": "U13 Challenge",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41186,
+        "tournamentSlug": "u13-championships",
+        "tournamentName": "U13 Championships",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41204,
+        "tournamentSlug": "wtt-feeder-stockholm-ms",
+        "tournamentName": "WTT Feeder Stockholm, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41206,
+        "tournamentSlug": "wtt-feeder-stockholm-md",
+        "tournamentName": "WTT Feeder Stockholm, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41208,
+        "tournamentSlug": "wtt-feeder-stockholm-xd",
+        "tournamentName": "WTT Feeder Stockholm, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41210,
+        "tournamentSlug": "wtt-feeder-stockholm-ws",
+        "tournamentName": "WTT Feeder Stockholm, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41212,
+        "tournamentSlug": "wtt-feeder-stockholm-wd",
+        "tournamentName": "WTT Feeder Stockholm, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41228,
+        "tournamentSlug": "wtt-star-contender-lanzhou-ms",
+        "tournamentName": "WTT Star Contender Lanzhou, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41230,
+        "tournamentSlug": "wtt-star-contender-lanzhou-ws",
+        "tournamentName": "WTT Star Contender Lanzhou, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41232,
+        "tournamentSlug": "wtt-star-contender-lanzhou-md",
+        "tournamentName": "WTT Star Contender Lanzhou, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41234,
+        "tournamentSlug": "wtt-star-contender-lanzhou-wd",
+        "tournamentName": "WTT Star Contender Lanzhou, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41236,
+        "tournamentSlug": "wtt-star-contender-lanzhou-xd",
+        "tournamentName": "WTT Star Contender Lanzhou, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41324,
+        "tournamentSlug": "wtt-contender-antalya",
+        "tournamentName": "WTT Contender Antalya",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41326,
+        "tournamentSlug": "wtt-contender-antalya-ms",
+        "tournamentName": "WTT Contender Antalya, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41328,
+        "tournamentSlug": "wtt-contender-antalya-md",
+        "tournamentName": "WTT Contender Antalya, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41330,
+        "tournamentSlug": "wtt-contender-antalya-xd",
+        "tournamentName": "WTT Contender Antalya, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41332,
+        "tournamentSlug": "wtt-contender-antalya-women-ws",
+        "tournamentName": "WTT Contender Antalya, Women, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41334,
+        "tournamentSlug": "wtt-contender-antalya-wd",
+        "tournamentName": "WTT Contender Antalya, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41336,
+        "tournamentSlug": "wtt-feeder-doha-ii",
+        "tournamentName": "WTT Feeder Doha II",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41338,
+        "tournamentSlug": "wtt-feeder-doha-ii-ms",
+        "tournamentName": "WTT Feeder Doha II, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41340,
+        "tournamentSlug": "wtt-feeder-doha-ii-md",
+        "tournamentName": "WTT Feeder Doha II, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41342,
+        "tournamentSlug": "wtt-feeder-doha-ii-xd",
+        "tournamentName": "WTT Feeder Doha II, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41344,
+        "tournamentSlug": "wtt-feeder-doha-ii-ws",
+        "tournamentName": "WTT Feeder Doha II, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41346,
+        "tournamentSlug": "wtt-feeder-doha-ii-wd",
+        "tournamentName": "WTT Feeder Doha II, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41370,
+        "tournamentSlug": "europe-youth-series",
+        "tournamentName": "Europe Youth Series",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41396,
+        "tournamentSlug": "wtt-champions-frankfurt",
+        "tournamentName": "WTT Champions Frankfurt",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41398,
+        "tournamentSlug": "wtt-champions-frankfurt-singles",
+        "tournamentName": "WTT Champions Frankfurt, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41400,
+        "tournamentSlug": "wtt-champions-frankfurt-women-singles",
+        "tournamentName": "WTT Champions Frankfurt, Women, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41538,
+        "tournamentSlug": "wtt-contender-taiyuan",
+        "tournamentName": "WTT Contender Taiyuan",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41540,
+        "tournamentSlug": "wtt-contender-taiyuan-ms",
+        "tournamentName": "WTT Contender Taiyuan, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41542,
+        "tournamentSlug": "wtt-contender-taiyuan-md",
+        "tournamentName": "WTT Contender Taiyuan, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41544,
+        "tournamentSlug": "wtt-contender-taiyuan-xd",
+        "tournamentName": "WTT Contender Taiyuan, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41546,
+        "tournamentSlug": "wtt-contender-taiyuan-ws",
+        "tournamentName": "WTT Contender Taiyuan, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41548,
+        "tournamentSlug": "wtt-contender-taiyuan-wd",
+        "tournamentName": "WTT Contender Taiyuan, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41738,
+        "tournamentSlug": "feeder-vila-nova-de-gaia",
+        "tournamentName": "Feeder Vila Nova de Gaia",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41740,
+        "tournamentSlug": "feeder-vila-nova-de-gaia-ms",
+        "tournamentName": "Feeder Vila Nova de Gaia, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41742,
+        "tournamentSlug": "feeder-vila-nova-de-gaia-md",
+        "tournamentName": "Feeder Vila Nova de Gaia, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41744,
+        "tournamentSlug": "feeder-vila-nova-de-gaia-xd",
+        "tournamentName": "Feeder Vila Nova de Gaia, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41746,
+        "tournamentSlug": "feeder-vila-nova-de-gaia-ws",
+        "tournamentName": "Feeder Vila Nova de Gaia, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41748,
+        "tournamentSlug": "feeder-vila-nova-de-gaia-wd",
+        "tournamentName": "Feeder Vila Nova de Gaia, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41833,
+        "tournamentSlug": "mixed-team-world-cup",
+        "tournamentName": "Mixed Team World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41835,
+        "tournamentSlug": "mixed-team-world-cup-singles",
+        "tournamentName": "Mixed Team World Cup, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41839,
+        "tournamentSlug": "mixed-team-world-cup-mixed-doubles",
+        "tournamentName": "Mixed Team World Cup, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41841,
+        "tournamentSlug": "mixed-team-world-cup-women-singles",
+        "tournamentName": "Mixed Team World Cup, Women Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41915,
+        "tournamentSlug": "wtt-feeder-biella-ms",
+        "tournamentName": "WTT Feeder Biella, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41917,
+        "tournamentSlug": "wtt-feeder-biella-md",
+        "tournamentName": "WTT Feeder Biella, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41919,
+        "tournamentSlug": "wtt-feeder-biella-xd",
+        "tournamentName": "WTT Feeder Biella, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41921,
+        "tournamentSlug": "wtt-feeder-biella-ws",
+        "tournamentName": "WTT Feeder Biella, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41923,
+        "tournamentSlug": "wtt-feeder-biella-wd",
+        "tournamentName": "WTT Feeder Biella, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41925,
+        "tournamentSlug": "wtt-feeder-biella",
+        "tournamentName": "WTT Feeder Biella",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42097,
+        "tournamentSlug": "wtt-feeder-corpus-christi",
+        "tournamentName": "WTT Feeder Corpus Christi",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42099,
+        "tournamentSlug": "wtt-feeder-corpus-christi-ms",
+        "tournamentName": "WTT Feeder Corpus Christi, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42101,
+        "tournamentSlug": "wtt-feeder-corpus-christi-md",
+        "tournamentName": "WTT Feeder Corpus Christi, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42103,
+        "tournamentSlug": "wtt-feeder-corpus-christi-xd",
+        "tournamentName": "WTT Feeder Corpus Christi, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42105,
+        "tournamentSlug": "wtt-feeder-corpus-christi-ws",
+        "tournamentName": "WTT Feeder Corpus Christi, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42107,
+        "tournamentSlug": "wtt-feeder-corpus-christi-wd",
+        "tournamentName": "WTT Feeder Corpus Christi, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42143,
+        "tournamentSlug": "wtt-feeder-manchester-ms",
+        "tournamentName": "WTT Feeder Manchester, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42145,
+        "tournamentSlug": "wtt-feeder-manchester-md",
+        "tournamentName": "WTT Feeder Manchester, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42147,
+        "tournamentSlug": "wtt-feeder-manchester-xd",
+        "tournamentName": "WTT Feeder Manchester, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42149,
+        "tournamentSlug": "wtt-feeder-manchester-ws",
+        "tournamentName": "WTT Feeder Manchester, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42151,
+        "tournamentSlug": "wtt-feeder-manchester-wd",
+        "tournamentName": "WTT Feeder Manchester, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42261,
+        "tournamentSlug": "world-team-championships-finals",
+        "tournamentName": "World Team Championships Finals",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42263,
+        "tournamentSlug": "world-team-championships-finals-women",
+        "tournamentName": "World Team Championships Finals, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42265,
+        "tournamentSlug": "world-team-championships",
+        "tournamentName": "World Team Championships",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42267,
+        "tournamentSlug": "world-team-championships-finals-ms",
+        "tournamentName": "World Team Championships Finals, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42269,
+        "tournamentSlug": "world-team-championships-finals-doubles",
+        "tournamentName": "World Team Championships Finals, Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42271,
+        "tournamentSlug": "world-team-championships-finals-mixed-doubles",
+        "tournamentName": "World Team Championships Finals, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42273,
+        "tournamentSlug": "world-team-championships-finals-ws",
+        "tournamentName": "World Team Championships Finals, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42275,
+        "tournamentSlug": "world-team-championships-finals-women-doubles",
+        "tournamentName": "World Team Championships Finals, Women Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42429,
+        "tournamentSlug": "wtt-feeder-beirut-ms",
+        "tournamentName": "WTT Feeder Beirut, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42431,
+        "tournamentSlug": "wtt-feeder-beirut-md",
+        "tournamentName": "WTT Feeder Beirut, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42433,
+        "tournamentSlug": "wtt-feeder-beirut-xd",
+        "tournamentName": "WTT Feeder Beirut, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42435,
+        "tournamentSlug": "wtt-feeder-beirut-ws",
+        "tournamentName": "WTT Feeder Beirut, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42437,
+        "tournamentSlug": "wtt-feeder-beirut-wd",
+        "tournamentName": "WTT Feeder Beirut, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42439,
+        "tournamentSlug": "wtt-feeder-beirut-ii-ms",
+        "tournamentName": "WTT Feeder Beirut II, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42441,
+        "tournamentSlug": "wtt-feeder-beirut-ii-md",
+        "tournamentName": "WTT Feeder Beirut II, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42443,
+        "tournamentSlug": "wtt-feeder-beirut-ii-xd",
+        "tournamentName": "WTT Feeder Beirut II, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42445,
+        "tournamentSlug": "wtt-feeder-beirut-ii-ws",
+        "tournamentName": "WTT Feeder Beirut II, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42447,
+        "tournamentSlug": "wtt-feeder-beirut-ii-wd",
+        "tournamentName": "WTT Feeder Beirut II, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42495,
+        "tournamentSlug": "wtt-champions-incheon",
+        "tournamentName": "WTT Champions Incheon",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42497,
+        "tournamentSlug": "wtt-champions-incheon-ms",
+        "tournamentName": "WTT Champions Incheon, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42499,
+        "tournamentSlug": "wtt-champions-incheon-ws",
+        "tournamentName": "WTT Champions Incheon, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42547,
+        "tournamentSlug": "wtt-feeder-varazdin",
+        "tournamentName": "WTT Feeder Varazdin",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42549,
+        "tournamentSlug": "wtt-feeder-varazdin-ms",
+        "tournamentName": "WTT Feeder Varazdin, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42551,
+        "tournamentSlug": "wtt-feeder-varazdin-md",
+        "tournamentName": "WTT Feeder Varazdin, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42553,
+        "tournamentSlug": "wtt-feeder-varazdin-xd",
+        "tournamentName": "WTT Feeder Varazdin, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42555,
+        "tournamentSlug": "wtt-feeder-varazdin-ws",
+        "tournamentName": "WTT Feeder Varazdin, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42557,
+        "tournamentSlug": "wtt-feeder-varazdin-wd",
+        "tournamentName": "WTT Feeder Varazdin, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42697,
+        "tournamentSlug": "wtt-saudi-smash-ms",
+        "tournamentName": "WTT Saudi Smash, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42699,
+        "tournamentSlug": "wtt-saudi-smash-md",
+        "tournamentName": "WTT Saudi Smash, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42701,
+        "tournamentSlug": "wtt-saudi-smash-xd",
+        "tournamentName": "WTT Saudi Smash, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42703,
+        "tournamentSlug": "wtt-saudi-smash-ws",
+        "tournamentName": "WTT Saudi Smash, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42705,
+        "tournamentSlug": "wtt-saudi-smash-wd",
+        "tournamentName": "WTT Saudi Smash, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42745,
+        "tournamentSlug": "ittf-africa-cup-ms",
+        "tournamentName": "ITTF Africa Cup, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42747,
+        "tournamentSlug": "ittf-africa-cup-ws",
+        "tournamentName": "ITTF Africa Cup, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42817,
+        "tournamentSlug": "european-olympic-qualification-tournament-mixed-doubles",
+        "tournamentName": "European Olympic Qualification Tournament, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42819,
+        "tournamentSlug": "european-olympic-qualification-tournament-mixed-doubles",
+        "tournamentName": "European Olympic Qualification Tournament, Mixed Doubles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42821,
+        "tournamentSlug": "wtt-feeder-cappadocia-ms",
+        "tournamentName": "WTT Feeder Cappadocia, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42823,
+        "tournamentSlug": "wtt-feeder-cappadocia-md",
+        "tournamentName": "WTT Feeder Cappadocia, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42825,
+        "tournamentSlug": "wtt-feeder-cappadocia-xd",
+        "tournamentName": "WTT Feeder Cappadocia, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42827,
+        "tournamentSlug": "wtt-feeder-cappadocia-ws",
+        "tournamentName": "WTT Feeder Cappadocia, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42829,
+        "tournamentSlug": "wtt-feeder-cappadocia-wd",
+        "tournamentName": "WTT Feeder Cappadocia, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42943,
+        "tournamentSlug": "wtt-contender-mendoza-ms",
+        "tournamentName": "WTT Contender Mendoza, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42945,
+        "tournamentSlug": "wtt-contender-mendoza-md",
+        "tournamentName": "WTT Contender Mendoza, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42947,
+        "tournamentSlug": "wtt-contender-mendoza-xd",
+        "tournamentName": "WTT Contender Mendoza, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42949,
+        "tournamentSlug": "wtt-contender-mendoza-ws",
+        "tournamentName": "WTT Contender Mendoza, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42951,
+        "tournamentSlug": "wtt-contender-mendoza-wd",
+        "tournamentName": "WTT Contender Mendoza, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42953,
+        "tournamentSlug": "wtt-champions-chongqing-ms",
+        "tournamentName": "WTT Champions Chongqing, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42955,
+        "tournamentSlug": "wtt-champions-chongqing-ws",
+        "tournamentName": "WTT Champions Chongqing, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43923,
+        "tournamentSlug": "wtt-feeder-muscat-ms",
+        "tournamentName": "WTT Feeder Muscat, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43925,
+        "tournamentSlug": "wtt-feeder-muscat-md",
+        "tournamentName": "WTT Feeder Muscat, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43927,
+        "tournamentSlug": "wtt-feeder-muscat-xd",
+        "tournamentName": "WTT Feeder Muscat, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43929,
+        "tournamentSlug": "wtt-feeder-muscat-ws",
+        "tournamentName": "WTT Feeder Muscat, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43931,
+        "tournamentSlug": "wtt-feeder-muscat-wd",
+        "tournamentName": "WTT Feeder Muscat, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44165,
+        "tournamentSlug": "wtt-feeder-halmstad-ms",
+        "tournamentName": "WTT Feeder Halmstad, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44167,
+        "tournamentSlug": "wtt-feeder-halmstad-md",
+        "tournamentName": "WTT Feeder Halmstad, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44169,
+        "tournamentSlug": "wtt-feeder-halmstad-xd",
+        "tournamentName": "WTT Feeder Halmstad, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44171,
+        "tournamentSlug": "wtt-feeder-halmstad-ws",
+        "tournamentName": "WTT Feeder Halmstad, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44173,
+        "tournamentSlug": "wtt-feeder-halmstad-wd",
+        "tournamentName": "WTT Feeder Halmstad, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44305,
+        "tournamentSlug": "china-smash-ms",
+        "tournamentName": "China Smash, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44307,
+        "tournamentSlug": "china-smash-md",
+        "tournamentName": "China Smash, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44309,
+        "tournamentSlug": "china-smash-xd",
+        "tournamentName": "China Smash, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44311,
+        "tournamentSlug": "china-smash-ws",
+        "tournamentName": "China Smash, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44313,
+        "tournamentSlug": "china-smash-wd",
+        "tournamentName": "China Smash, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44705,
+        "tournamentSlug": "wtt-champions-montpellier",
+        "tournamentName": "WTT Champions Montpellier",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44707,
+        "tournamentSlug": "wtt-champions-montpellier-women",
+        "tournamentName": "WTT Champions Montpellier, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44709,
+        "tournamentSlug": "wtt-feeder-cagliari-ms",
+        "tournamentName": "WTT Feeder Cagliari, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44711,
+        "tournamentSlug": "wtt-feeder-cagliari-md",
+        "tournamentName": "WTT Feeder Cagliari, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44713,
+        "tournamentSlug": "wtt-feeder-cagliari-xd",
+        "tournamentName": "WTT Feeder Cagliari, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44715,
+        "tournamentSlug": "wtt-feeder-cagliari-ws",
+        "tournamentName": "WTT Feeder Cagliari, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44717,
+        "tournamentSlug": "wtt-feeder-cagliari-wd",
+        "tournamentName": "WTT Feeder Cagliari, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44805,
+        "tournamentSlug": "wtt-feeder-prishtina-ms",
+        "tournamentName": "WTT Feeder Prishtina, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44807,
+        "tournamentSlug": "wtt-feeder-prishtina-md",
+        "tournamentName": "WTT Feeder Prishtina, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44809,
+        "tournamentSlug": "wtt-feeder-prishtina-xd",
+        "tournamentName": "WTT Feeder Prishtina, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44811,
+        "tournamentSlug": "wtt-feeder-prishtina-ws",
+        "tournamentName": "WTT Feeder Prishtina, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44813,
+        "tournamentSlug": "wtt-feeder-prishtina-wd",
+        "tournamentName": "WTT Feeder Prishtina, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44815,
+        "tournamentSlug": "wtt-feeder-caracas-ms",
+        "tournamentName": "WTT Feeder Caracas, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44817,
+        "tournamentSlug": "wtt-feeder-caracas-md",
+        "tournamentName": "WTT Feeder Caracas, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44819,
+        "tournamentSlug": "wtt-feeder-caracas-xd",
+        "tournamentName": "WTT Feeder Caracas, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44821,
+        "tournamentSlug": "wtt-feeder-caracas-ws",
+        "tournamentName": "WTT Feeder Caracas, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44823,
+        "tournamentSlug": "wtt-feeder-caracas-wd",
+        "tournamentName": "WTT Feeder Caracas, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46447,
+        "tournamentSlug": "wtt-star-contender-chennai",
+        "tournamentName": "WTT Star Contender Chennai",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46449,
+        "tournamentSlug": "wtt-star-contender-chennai-ms",
+        "tournamentName": "WTT Star Contender Chennai, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46451,
+        "tournamentSlug": "wtt-star-contender-chennai-md",
+        "tournamentName": "WTT Star Contender Chennai, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46453,
+        "tournamentSlug": "wtt-star-contender-chennai-xd",
+        "tournamentName": "WTT Star Contender Chennai, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46455,
+        "tournamentSlug": "wtt-star-contender-chennai-ws",
+        "tournamentName": "WTT Star Contender Chennai, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46457,
+        "tournamentSlug": "wtt-star-contender-chennai-wd",
+        "tournamentName": "WTT Star Contender Chennai, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46459,
+        "tournamentSlug": "wtt-feeder-otocec-ii",
+        "tournamentName": "WTT Feeder Otocec II",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46461,
+        "tournamentSlug": "wtt-feeder-otocec-ii-ms",
+        "tournamentName": "WTT Feeder Otocec II, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46463,
+        "tournamentSlug": "wtt-feeder-otocec-ii-md",
+        "tournamentName": "WTT Feeder Otocec II, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46465,
+        "tournamentSlug": "wtt-feeder-otocec-ii-xd",
+        "tournamentName": "WTT Feeder Otocec II, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46467,
+        "tournamentSlug": "wtt-feeder-otocec-ii-ws",
+        "tournamentName": "WTT Feeder Otocec II, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46469,
+        "tournamentSlug": "wtt-feeder-otocec-ii-wd",
+        "tournamentName": "WTT Feeder Otocec II, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46621,
+        "tournamentSlug": "central-america-regional-championships-ms",
+        "tournamentName": "Central America Regional Championships, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46623,
+        "tournamentSlug": "central-america-regional-championships-md",
+        "tournamentName": "Central America Regional Championships, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46625,
+        "tournamentSlug": "central-america-regional-championships-xd",
+        "tournamentName": "Central America Regional Championships, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46627,
+        "tournamentSlug": "central-america-regional-championships-ws",
+        "tournamentName": "Central America Regional Championships, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46629,
+        "tournamentSlug": "central-america-regional-championships-wd",
+        "tournamentName": "Central America Regional Championships, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47011,
+        "tournamentSlug": "ittf-world-championships-finals-ms",
+        "tournamentName": "ITTF World Championships Finals, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47013,
+        "tournamentSlug": "ittf-world-championships-finals-md",
+        "tournamentName": "ITTF World Championships Finals, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47015,
+        "tournamentSlug": "ittf-world-championships-finals-xd",
+        "tournamentName": "ITTF World Championships Finals, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47017,
+        "tournamentSlug": "ittf-world-championships-finals-ws",
+        "tournamentName": "ITTF World Championships Finals, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47019,
+        "tournamentSlug": "ittf-world-championships-finals-wd",
+        "tournamentName": "ITTF World Championships Finals, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47309,
+        "tournamentSlug": "wtt-contender-skopje-ms",
+        "tournamentName": "WTT Contender Skopje, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47311,
+        "tournamentSlug": "wtt-contender-skopje-md",
+        "tournamentName": "WTT Contender Skopje, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47313,
+        "tournamentSlug": "wtt-contender-skopje-xd",
+        "tournamentName": "WTT Contender Skopje, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47315,
+        "tournamentSlug": "wtt-contender-skopje-ws",
+        "tournamentName": "WTT Contender Skopje, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47317,
+        "tournamentSlug": "wtt-contender-skopje-wd",
+        "tournamentName": "WTT Contender Skopje, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47464,
+        "tournamentSlug": "united-states-smash-ms",
+        "tournamentName": "United States Smash, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47466,
+        "tournamentSlug": "united-states-smash-md",
+        "tournamentName": "United States Smash, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47468,
+        "tournamentSlug": "united-states-smash-xd",
+        "tournamentName": "United States Smash, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47470,
+        "tournamentSlug": "united-states-smash-ws",
+        "tournamentName": "United States Smash, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47472,
+        "tournamentSlug": "united-states-smash-wd",
+        "tournamentName": "United States Smash, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47600,
+        "tournamentSlug": "wtt-series",
+        "tournamentName": "WTT Series",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47602,
+        "tournamentSlug": "wtt-series-women",
+        "tournamentName": "WTT Series Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47752,
+        "tournamentSlug": "fisu-world-university-games-ms",
+        "tournamentName": "FISU World University Games, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47754,
+        "tournamentSlug": "fisu-world-university-games-md",
+        "tournamentName": "FISU World University Games, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47756,
+        "tournamentSlug": "fisu-world-university-games-xd",
+        "tournamentName": "FISU World University Games, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47758,
+        "tournamentSlug": "fisu-world-university-games-ws",
+        "tournamentName": "FISU World University Games, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47760,
+        "tournamentSlug": "fisu-world-university-games-wd",
+        "tournamentName": "FISU World University Games, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47954,
+        "tournamentSlug": "wtt-contender-buenos-aires",
+        "tournamentName": "WTT Contender Buenos Aires",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47956,
+        "tournamentSlug": "wtt-contender-buenos-aires-ms",
+        "tournamentName": "WTT Contender Buenos Aires, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47958,
+        "tournamentSlug": "wtt-contender-buenos-aires-md",
+        "tournamentName": "WTT Contender Buenos Aires, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47960,
+        "tournamentSlug": "wtt-contender-buenos-aires-xd",
+        "tournamentName": "WTT Contender Buenos Aires, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47962,
+        "tournamentSlug": "wtt-contender-buenos-aires-ws",
+        "tournamentName": "WTT Contender Buenos Aires, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47964,
+        "tournamentSlug": "wtt-contender-buenos-aires-wd",
+        "tournamentName": "WTT Contender Buenos Aires, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48032,
+        "tournamentSlug": "wtt-star-contender-foz-do-iguacu",
+        "tournamentName": "WTT Star Contender Foz do Iguacu",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48034,
+        "tournamentSlug": "wtt-star-contender-foz-do-iguacu-ms",
+        "tournamentName": "WTT Star Contender Foz do Iguacu, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48036,
+        "tournamentSlug": "wtt-star-contender-foz-do-iguacu-md",
+        "tournamentName": "WTT Star Contender Foz do Iguacu, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48038,
+        "tournamentSlug": "wtt-star-contender-foz-do-iguacu-xd",
+        "tournamentName": "WTT Star Contender Foz do Iguacu, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48040,
+        "tournamentSlug": "wtt-star-contender-foz-do-iguacu-ws",
+        "tournamentName": "WTT Star Contender Foz do Iguacu, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48042,
+        "tournamentSlug": "wtt-star-contender-foz-do-iguacu-wd",
+        "tournamentName": "WTT Star Contender Foz do Iguacu, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48110,
+        "tournamentSlug": "wtt-champions-yokohama",
+        "tournamentName": "WTT Champions Yokohama",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48112,
+        "tournamentSlug": "wtt-champions-yokohama-ms",
+        "tournamentName": "WTT Champions Yokohama, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48114,
+        "tournamentSlug": "wtt-champions-yokohama-ws",
+        "tournamentName": "WTT Champions Yokohama, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48116,
+        "tournamentSlug": "wtt-feeder-spokane",
+        "tournamentName": "WTT Feeder Spokane",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48118,
+        "tournamentSlug": "wtt-feeder-spokane-ms",
+        "tournamentName": "WTT Feeder Spokane, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48120,
+        "tournamentSlug": "wtt-feeder-spokane-md",
+        "tournamentName": "WTT Feeder Spokane, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48122,
+        "tournamentSlug": "wtt-feeder-spokane-xd",
+        "tournamentName": "WTT Feeder Spokane, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48124,
+        "tournamentSlug": "wtt-feeder-spokane-ws",
+        "tournamentName": "WTT Feeder Spokane, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48126,
+        "tournamentSlug": "wtt-feeder-spokane-wd",
+        "tournamentName": "WTT Feeder Spokane, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48128,
+        "tournamentSlug": "wtt-feeder-spokane-ii",
+        "tournamentName": "WTT Feeder Spokane II",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48130,
+        "tournamentSlug": "wtt-feeder-spokane-ii-ms",
+        "tournamentName": "WTT Feeder Spokane II, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48132,
+        "tournamentSlug": "wtt-feeder-spokane-ii-md",
+        "tournamentName": "WTT Feeder Spokane II, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48134,
+        "tournamentSlug": "wtt-feeder-spokane-ii-xd",
+        "tournamentName": "WTT Feeder Spokane II, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48136,
+        "tournamentSlug": "wtt-feeder-spokane-ii-ws",
+        "tournamentName": "WTT Feeder Spokane II, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48138,
+        "tournamentSlug": "wtt-feeder-spokane-ii-wd",
+        "tournamentName": "WTT Feeder Spokane II, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48243,
+        "tournamentSlug": "europe-smash-sweden",
+        "tournamentName": "Europe Smash Sweden",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48245,
+        "tournamentSlug": "europe-smash-sweden-ms",
+        "tournamentName": "Europe Smash Sweden, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48247,
+        "tournamentSlug": "europe-smash-sweden-md",
+        "tournamentName": "Europe Smash Sweden, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48249,
+        "tournamentSlug": "europe-smash-sweden-xd",
+        "tournamentName": "Europe Smash Sweden, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48251,
+        "tournamentSlug": "europe-smash-sweden-ws",
+        "tournamentName": "Europe Smash Sweden, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48253,
+        "tournamentSlug": "europe-smash-sweden-wd",
+        "tournamentName": "Europe Smash Sweden, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48255,
+        "tournamentSlug": "wtt-feeder-vientiane",
+        "tournamentName": "WTT Feeder Vientiane",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48257,
+        "tournamentSlug": "wtt-feeder-vientiane-ms",
+        "tournamentName": "WTT Feeder Vientiane, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48259,
+        "tournamentSlug": "wtt-feeder-vientiane-md",
+        "tournamentName": "WTT Feeder Vientiane, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48261,
+        "tournamentSlug": "wtt-feeder-vientiane-xd",
+        "tournamentName": "WTT Feeder Vientiane, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48263,
+        "tournamentSlug": "wtt-feeder-vientiane-ws",
+        "tournamentName": "WTT Feeder Vientiane, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48265,
+        "tournamentSlug": "wtt-feeder-vientiane-wd",
+        "tournamentName": "WTT Feeder Vientiane, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48691,
+        "tournamentSlug": "wtt-feeder-istanbul",
+        "tournamentName": "WTT Feeder Istanbul",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48693,
+        "tournamentSlug": "wtt-feeder-istanbul-ms",
+        "tournamentName": "WTT Feeder Istanbul, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48695,
+        "tournamentSlug": "wtt-feeder-istanbul-md",
+        "tournamentName": "WTT Feeder Istanbul, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48697,
+        "tournamentSlug": "wtt-feeder-istanbul-xd",
+        "tournamentName": "WTT Feeder Istanbul, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48699,
+        "tournamentSlug": "wtt-feeder-istanbul-ws",
+        "tournamentName": "WTT Feeder Istanbul, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48701,
+        "tournamentSlug": "wtt-feeder-istanbul-wd",
+        "tournamentName": "WTT Feeder Istanbul, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48775,
+        "tournamentSlug": "wtt-feeder-cappadocia-ii",
+        "tournamentName": "WTT Feeder Cappadocia II",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48777,
+        "tournamentSlug": "wtt-feeder-cappadocia-ii-ms",
+        "tournamentName": "WTT Feeder Cappadocia II, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48779,
+        "tournamentSlug": "wtt-feeder-cappadocia-ii-md",
+        "tournamentName": "WTT Feeder Cappadocia II, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48781,
+        "tournamentSlug": "wtt-feeder-cappadocia-ii-xd",
+        "tournamentName": "WTT Feeder Cappadocia II, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48783,
+        "tournamentSlug": "wtt-feeder-cappadocia-ii-ws",
+        "tournamentName": "WTT Feeder Cappadocia II, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48785,
+        "tournamentSlug": "wtt-feeder-cappadocia-ii-wd",
+        "tournamentName": "WTT Feeder Cappadocia II, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49194,
+        "tournamentSlug": "wtt-star-contender-london",
+        "tournamentName": "WTT Star Contender London",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49196,
+        "tournamentSlug": "wtt-star-contender-london-ms",
+        "tournamentName": "WTT Star Contender London, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49198,
+        "tournamentSlug": "wtt-star-contender-london-md",
+        "tournamentName": "WTT Star Contender London, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49200,
+        "tournamentSlug": "wtt-star-contender-london-xd",
+        "tournamentName": "WTT Star Contender London, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49202,
+        "tournamentSlug": "wtt-star-contender-london-ws",
+        "tournamentName": "WTT Star Contender London, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49204,
+        "tournamentSlug": "wtt-star-contender-london-wd",
+        "tournamentName": "WTT Star Contender London, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49304,
+        "tournamentSlug": "wtt-champions-montpellier",
+        "tournamentName": "WTT Champions Montpellier",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49356,
+        "tournamentSlug": "wtt-star-contender-muscat-ms",
+        "tournamentName": "WTT Star Contender Muscat, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49358,
+        "tournamentSlug": "wtt-star-contender-muscat-ws",
+        "tournamentName": "WTT Star Contender Muscat, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49360,
+        "tournamentSlug": "wtt-star-contender-muscat-md",
+        "tournamentName": "WTT Star Contender Muscat, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49362,
+        "tournamentSlug": "wtt-star-contender-muscat-wd",
+        "tournamentName": "WTT Star Contender Muscat, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49364,
+        "tournamentSlug": "wtt-star-contender-muscat-xd",
+        "tournamentName": "WTT Star Contender Muscat, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49456,
+        "tournamentSlug": "wtt-feeder-gdansk",
+        "tournamentName": "WTT Feeder Gdansk",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49458,
+        "tournamentSlug": "wtt-feeder-gdansk-ms",
+        "tournamentName": "WTT Feeder Gdansk, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49460,
+        "tournamentSlug": "wtt-feeder-gdansk-md",
+        "tournamentName": "WTT Feeder Gdansk, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49462,
+        "tournamentSlug": "wtt-feeder-gdansk-xd",
+        "tournamentName": "WTT Feeder Gdansk, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49464,
+        "tournamentSlug": "wtt-feeder-gdansk-ws",
+        "tournamentName": "WTT Feeder Gdansk, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49466,
+        "tournamentSlug": "wtt-feeder-gdansk-wd",
+        "tournamentName": "WTT Feeder Gdansk, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49562,
+        "tournamentSlug": "wtt-star-contender-muscat",
+        "tournamentName": "WTT Star Contender Muscat",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49636,
+        "tournamentSlug": "feeder-dusseldorf-ii",
+        "tournamentName": "Feeder Dusseldorf II",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49638,
+        "tournamentSlug": "wtt-feeder-parma",
+        "tournamentName": "WTT Feeder Parma",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49640,
+        "tournamentSlug": "wtt-feeder-parma-ms",
+        "tournamentName": "WTT Feeder Parma, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49642,
+        "tournamentSlug": "wtt-feeder-parma-md",
+        "tournamentName": "WTT Feeder Parma, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49644,
+        "tournamentSlug": "wtt-feeder-parma-xd",
+        "tournamentName": "WTT Feeder Parma, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49646,
+        "tournamentSlug": "wtt-feeder-parma-ws",
+        "tournamentName": "WTT Feeder Parma, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49648,
+        "tournamentSlug": "wtt-feeder-parma-wd",
+        "tournamentName": "WTT Feeder Parma, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49792,
+        "tournamentSlug": "wtt-finals-hong-kong",
+        "tournamentName": "WTT Finals Hong Kong",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49794,
+        "tournamentSlug": "wtt-finals-hong-kong-ms",
+        "tournamentName": "WTT Finals Hong Kong, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49796,
+        "tournamentSlug": "wtt-finals-hong-kong-xd",
+        "tournamentName": "WTT Finals Hong Kong, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49798,
+        "tournamentSlug": "wtt-finals-hong-kong-ws",
+        "tournamentName": "WTT Finals Hong Kong, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50170,
+        "tournamentSlug": "wtt-champions-doha-ms",
+        "tournamentName": "WTT Champions Doha, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50172,
+        "tournamentSlug": "wtt-champions-doha-ws",
+        "tournamentName": "WTT Champions Doha, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50204,
+        "tournamentSlug": "wtt-feeder-vadodara-md",
+        "tournamentName": "WTT Feeder Vadodara, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50206,
+        "tournamentSlug": "wtt-feeder-vadodara-ms",
+        "tournamentName": "WTT Feeder Vadodara, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50208,
+        "tournamentSlug": "wtt-feeder-vadodara-ws",
+        "tournamentName": "WTT Feeder Vadodara, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50210,
+        "tournamentSlug": "wtt-feeder-vadodara-xd",
+        "tournamentName": "WTT Feeder Vadodara, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50212,
+        "tournamentSlug": "wtt-feeder-vadodara-wd",
+        "tournamentName": "WTT Feeder Vadodara, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50214,
+        "tournamentSlug": "wtt-feeder-vadodara",
+        "tournamentName": "WTT Feeder Vadodara",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50304,
+        "tournamentSlug": "wtt-feeder-lille-ms",
+        "tournamentName": "WTT Feeder Lille, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50306,
+        "tournamentSlug": "wtt-feeder-lille-md",
+        "tournamentName": "WTT Feeder Lille, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50308,
+        "tournamentSlug": "wtt-feeder-lille-xd",
+        "tournamentName": "WTT Feeder Lille, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50310,
+        "tournamentSlug": "wtt-feeder-lille-ws",
+        "tournamentName": "WTT Feeder Lille, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50312,
+        "tournamentSlug": "wtt-feeder-lille-wd",
+        "tournamentName": "WTT Feeder Lille, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50670,
+        "tournamentSlug": "singapore-smash",
+        "tournamentName": "Singapore Smash",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50724,
+        "tournamentSlug": "wtt-feeder-dusseldorf",
+        "tournamentName": "WTT Feeder Dusseldorf",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50726,
+        "tournamentSlug": "wtt-feeder-otocec",
+        "tournamentName": "WTT Feeder Otocec",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50734,
+        "tournamentSlug": "wtt-champions-chongqing",
+        "tournamentName": "WTT Champions Chongqing",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50826,
+        "tournamentSlug": "united-states-smash",
+        "tournamentName": "United States Smash",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50864,
+        "tournamentSlug": "wtt-contender-tunis",
+        "tournamentName": "WTT Contender Tunis",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51070,
+        "tournamentSlug": "wtt-feeder-havirov",
+        "tournamentName": "WTT Feeder Havirov",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51074,
+        "tournamentSlug": "wtt-feeder-senec",
+        "tournamentName": "WTT Feeder Senec",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51078,
+        "tournamentSlug": "wtt-feeder-senec-ms",
+        "tournamentName": "WTT Feeder Senec, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51080,
+        "tournamentSlug": "wtt-feeder-senec-md",
+        "tournamentName": "WTT Feeder Senec, MD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51082,
+        "tournamentSlug": "wtt-feeder-senec-xd",
+        "tournamentName": "WTT Feeder Senec, XD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51084,
+        "tournamentSlug": "wtt-feeder-senec-ws",
+        "tournamentName": "WTT Feeder Senec, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51086,
+        "tournamentSlug": "wtt-feeder-senec-wd",
+        "tournamentName": "WTT Feeder Senec, WD",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51428,
+        "tournamentSlug": "wtt-feeder-lagos",
+        "tournamentName": "WTT Feeder Lagos",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

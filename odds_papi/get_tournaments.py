@@ -65,7 +65,10 @@ def fetch_all_tournaments(folder, date):
     print("✨ GLOBAL FETCH COMPLETE!")
 
 def main():
-    parser = argparse.ArgumentParser(description="OddspAPI Tournament Discovery Tool")
+    parser = argparse.ArgumentParser(
+        description="OddspAPI Tournament Discovery Tool. Retrieves active tournaments for a single sport or across all supported sports.",
+        epilog="Examples: python get_tournaments.py single --sport soccer OR python get_tournaments.py all"
+    )
     subparsers = parser.add_subparsers(dest="command", help="The command to run")
 
     # Command: single

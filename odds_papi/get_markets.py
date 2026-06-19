@@ -34,7 +34,10 @@ def get_markets(folder, language=None):
 
 def main():
     # 1. Create the CLI Parser
-    parser = argparse.ArgumentParser(description="OddspAPI Markets Tool")
+    parser = argparse.ArgumentParser(
+        description="OddspAPI Markets Tool. Fetches a complete list of betting markets supported by the API, with optional localization.",
+        epilog="Example: python get_markets.py fetch --language es"
+    )
     subparsers = parser.add_subparsers(dest="command", help="The command to run")
     
     # 2. Setup the 'fetch' command

@@ -1,0 +1,22 @@
+[
+    {
+        "tournamentId": 34796,
+        "tournamentSlug": "olympic-tournament",
+        "tournamentName": "Olympic Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34798,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

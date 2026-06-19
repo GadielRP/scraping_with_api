@@ -1,0 +1,3562 @@
+[
+    {
+        "tournamentId": 3,
+        "tournamentSlug": "world-championship",
+        "tournamentName": "World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 128,
+        "tournamentSlug": "national-league",
+        "tournamentName": "National League",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 129,
+        "tournamentSlug": "swiss-league",
+        "tournamentName": "Swiss League",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 130,
+        "tournamentSlug": "nationalliga-a-relegation",
+        "tournamentName": "Nationalliga A Relegation",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 134,
+        "tournamentSlug": "liiga",
+        "tournamentName": "Liiga",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 225,
+        "tournamentSlug": "del",
+        "tournamentName": "DEL",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 234,
+        "tournamentSlug": "nhl",
+        "tournamentName": "NHL",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 236,
+        "tournamentSlug": "extraliga",
+        "tournamentName": "Extraliga",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 237,
+        "tournamentSlug": "extraliga",
+        "tournamentName": "Extraliga",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 243,
+        "tournamentSlug": "polska-hokej-liga",
+        "tournamentName": "Polska Hokej Liga",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 256,
+        "tournamentSlug": "ice-hockey-league",
+        "tournamentName": "ICE Hockey League",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 257,
+        "tournamentSlug": "superisligaen",
+        "tournamentName": "Superisligaen",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 259,
+        "tournamentSlug": "mestis",
+        "tournamentName": "Mestis",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 260,
+        "tournamentSlug": "eliteserien",
+        "tournamentName": "Eliteserien",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 261,
+        "tournamentSlug": "shl",
+        "tournamentName": "SHL",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 267,
+        "tournamentSlug": "del-2",
+        "tournamentName": "DEL 2",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 268,
+        "tournamentSlug": "khl",
+        "tournamentName": "KHL",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 272,
+        "tournamentSlug": "olympic-tournament",
+        "tournamentName": "Olympic Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 273,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 320,
+        "tournamentSlug": "world-championship-division-1-group-a",
+        "tournamentName": "World Championship Division 1, Group A",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 386,
+        "tournamentSlug": "continental-cup",
+        "tournamentName": "Continental Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 416,
+        "tournamentSlug": "allsvenskan",
+        "tournamentName": "Allsvenskan",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 428,
+        "tournamentSlug": "world-championship-women",
+        "tournamentName": "World Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 467,
+        "tournamentSlug": "euro-hockey-tour",
+        "tournamentName": "Euro Hockey Tour",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 481,
+        "tournamentSlug": "spengler-cup",
+        "tournamentName": "Spengler Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 494,
+        "tournamentSlug": "champions-hockey-league",
+        "tournamentName": "Champions Hockey League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 24,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 599,
+        "tournamentSlug": "ligue-magnus",
+        "tournamentName": "Ligue Magnus",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 664,
+        "tournamentSlug": "olympic-tournament-qualification",
+        "tournamentName": "Olympic Tournament, Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 714,
+        "tournamentSlug": "hockeyettan",
+        "tournamentName": "HockeyEttan",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 735,
+        "tournamentSlug": "1-liga",
+        "tournamentName": "1. Liga",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 769,
+        "tournamentSlug": "u20-world-championship",
+        "tournamentName": "U20 World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 828,
+        "tournamentSlug": "1st-division",
+        "tournamentName": "1st Division",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 844,
+        "tournamentSlug": "ahl",
+        "tournamentName": "AHL",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 1,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 862,
+        "tournamentSlug": "arosa-challenge",
+        "tournamentName": "Arosa Challenge",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 863,
+        "tournamentSlug": "germany-cup",
+        "tournamentName": "Germany Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 869,
+        "tournamentSlug": "khl-all-star-game",
+        "tournamentName": "KHL All Star Game",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 870,
+        "tournamentSlug": "nhl-all-star-game",
+        "tournamentName": "NHL All Star Game",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 873,
+        "tournamentSlug": "int-friendly-games",
+        "tournamentName": "Int. Friendly Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 919,
+        "tournamentSlug": "club-friendly-games",
+        "tournamentName": "Club Friendly Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 957,
+        "tournamentSlug": "nhl-preseason",
+        "tournamentName": "NHL Preseason",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 996,
+        "tournamentSlug": "austria-cup",
+        "tournamentName": "Austria Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1022,
+        "tournamentSlug": "world-championship-division-1-group-b",
+        "tournamentName": "World Championship Division 1, Group B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1038,
+        "tournamentSlug": "u18-world-championship-division-i-a",
+        "tournamentName": "U18 World Championship, Division I, A",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1040,
+        "tournamentSlug": "u18-world-championship-division-1-group-b",
+        "tournamentName": "U18 World Championship Division 1, Group B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1042,
+        "tournamentSlug": "u18-world-championship",
+        "tournamentName": "U18 World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1141,
+        "tournamentSlug": "vhl",
+        "tournamentName": "VHL",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1159,
+        "tournamentSlug": "mhl",
+        "tournamentName": "MHL",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1213,
+        "tournamentSlug": "u20-world-championship-division-i-group-a",
+        "tournamentName": "U20 World Championship, Division I, Group A",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1215,
+        "tournamentSlug": "u20-world-championship-division-i-group-b",
+        "tournamentName": "U20 World Championship, Division I, Group B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1359,
+        "tournamentSlug": "presidents-cup",
+        "tournamentName": "Presidents Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1370,
+        "tournamentSlug": "extraliga",
+        "tournamentName": "Extraliga",
+        "categorySlug": "belarus",
+        "categoryName": "Belarus",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1442,
+        "tournamentSlug": "elite-league",
+        "tournamentName": "Elite League",
+        "categorySlug": "england",
+        "categoryName": "England",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1454,
+        "tournamentSlug": "ohl",
+        "tournamentName": "OHL",
+        "categorySlug": "canada",
+        "categoryName": "Canada",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1490,
+        "tournamentSlug": "shl",
+        "tournamentName": "SHL",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1550,
+        "tournamentSlug": "coupe-de-france",
+        "tournamentName": "Coupe de France",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1788,
+        "tournamentSlug": "swiss-ice-hockey-cup",
+        "tournamentName": "Swiss Ice Hockey Cup",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1878,
+        "tournamentSlug": "suomi-sarja",
+        "tournamentName": "Suomi Sarja",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1880,
+        "tournamentSlug": "sdhl",
+        "tournamentName": "SDHL",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2077,
+        "tournamentSlug": "ahl-all-star-game",
+        "tournamentName": "AHL All Star Game",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2118,
+        "tournamentSlug": "young-stars-league",
+        "tournamentName": "Young Stars League",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14005,
+        "tournamentSlug": "alps-hockey-league",
+        "tournamentName": "Alps Hockey League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14335,
+        "tournamentSlug": "erste-liga",
+        "tournamentName": "Erste Liga",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14361,
+        "tournamentSlug": "whl",
+        "tournamentName": "WHL",
+        "categorySlug": "canada",
+        "categoryName": "Canada",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 19200,
+        "tournamentSlug": "asia-league",
+        "tournamentName": "Asia League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 19452,
+        "tournamentSlug": "latvian-hockey-league",
+        "tournamentName": "Latvian Hockey League",
+        "categorySlug": "latvia",
+        "categoryName": "Latvia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23983,
+        "tournamentSlug": "ncaa",
+        "tournamentName": "NCAA",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24131,
+        "tournamentSlug": "ncaa-women",
+        "tournamentName": "NCAA Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24337,
+        "tournamentSlug": "australian-ice-hockey-league",
+        "tournamentName": "Australian Ice Hockey League",
+        "categorySlug": "australia",
+        "categoryName": "Australia",
+        "futureFixtures": 80,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24866,
+        "tournamentSlug": "nzihl",
+        "tournamentName": "NZIHL",
+        "categorySlug": "new-zealand",
+        "categoryName": "New Zealand",
+        "futureFixtures": 20,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27801,
+        "tournamentSlug": "u20-world-championship-division-ii-group-a",
+        "tournamentName": "U20 World Championship, Division II, Group A",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27803,
+        "tournamentSlug": "u20-world-championship-division-ii-group-b",
+        "tournamentName": "U20 World Championship, Division II, Group B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27805,
+        "tournamentSlug": "u20-world-championship-division-iii-a",
+        "tournamentName": "U20 World Championship, Division III, A",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28398,
+        "tournamentSlug": "world-championship-women-div-i-group-b",
+        "tournamentName": "World Championship, Women, Div I, Group B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28400,
+        "tournamentSlug": "world-championship-women-div-i-group-a",
+        "tournamentName": "World Championship, Women, Div I, Group A",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28402,
+        "tournamentSlug": "world-championship-division-ii-a",
+        "tournamentName": "World Championship, Division II, A",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28420,
+        "tournamentSlug": "world-championship-division-ii-group-b",
+        "tournamentName": "World Championship, Division II, Group B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28661,
+        "tournamentSlug": "chl-memorial-cup",
+        "tournamentName": "CHL Memorial Cup",
+        "categorySlug": "canada",
+        "categoryName": "Canada",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29898,
+        "tournamentSlug": "echl",
+        "tournamentName": "ECHL",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30074,
+        "tournamentSlug": "sphl",
+        "tournamentName": "SPHL",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30156,
+        "tournamentSlug": "pro-hockey-league",
+        "tournamentName": "Pro Hockey League",
+        "categorySlug": "kazakhstan",
+        "categoryName": "Kazakhstan",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30398,
+        "tournamentSlug": "quebec-major-junior-hockey-league",
+        "tournamentName": "Quebec Major Junior Hockey League",
+        "categorySlug": "canada",
+        "categoryName": "Canada",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30570,
+        "tournamentSlug": "ncaa-regular-season",
+        "tournamentName": "NCAA, Regular Season",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30622,
+        "tournamentSlug": "regionalliga-southwest",
+        "tournamentName": "Regionalliga Southwest",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30750,
+        "tournamentSlug": "sea-games",
+        "tournamentName": "SEA Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31599,
+        "tournamentSlug": "uhl",
+        "tournamentName": "UHL",
+        "categorySlug": "ukraine",
+        "categoryName": "Ukraine",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32179,
+        "tournamentSlug": "liga-pro",
+        "tournamentName": "Liga Pro",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32339,
+        "tournamentSlug": "comet-division",
+        "tournamentName": "Comet Division",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32915,
+        "tournamentSlug": "club-friendly-games-u21",
+        "tournamentName": "Club Friendly Games U21",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32959,
+        "tournamentSlug": "salei-cup",
+        "tournamentName": "Salei Cup",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32961,
+        "tournamentSlug": "salei-cup",
+        "tournamentName": "Salei Cup",
+        "categorySlug": "belarus",
+        "categoryName": "Belarus",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33448,
+        "tournamentSlug": "baltic-hockey-league",
+        "tournamentName": "Baltic Hockey League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33992,
+        "tournamentSlug": "ncaa-division-i-national-championship",
+        "tournamentName": "NCAA Division I National Championship",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34026,
+        "tournamentSlug": "ncaa-division-i-national-championship-women",
+        "tournamentName": "NCAA Division I National Championship, Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34596,
+        "tournamentSlug": "naisten-liiga-women",
+        "tournamentName": "Naisten Liiga, Women",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35514,
+        "tournamentSlug": "olympic-tournament-women-qualifying",
+        "tournamentName": "Olympic Tournament, Women, Qualifying",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35675,
+        "tournamentSlug": "oberliga-sud",
+        "tournamentName": "Oberliga Sud",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35691,
+        "tournamentSlug": "international-friendly-games-women",
+        "tournamentName": "International Friendly Games, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35769,
+        "tournamentSlug": "whl-women",
+        "tournamentName": "WHL, Women",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35823,
+        "tournamentSlug": "oberliga-nord",
+        "tournamentName": "Oberliga Nord",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36293,
+        "tournamentSlug": "ishf-top-league",
+        "tournamentName": "ISHF Top League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37327,
+        "tournamentSlug": "nhl-draft",
+        "tournamentName": "NHL Draft",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38043,
+        "tournamentSlug": "ncaa-women",
+        "tournamentName": "NCAA Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38127,
+        "tournamentSlug": "myhockey-league",
+        "tournamentName": "MyHockey League",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38129,
+        "tournamentSlug": "swiss-womens-league",
+        "tournamentName": "Swiss Womens League",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38799,
+        "tournamentSlug": "national-cup",
+        "tournamentName": "National Cup",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38927,
+        "tournamentSlug": "world-championship-division-iii-group-a",
+        "tournamentName": "World Championship, Division III, Group A",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38929,
+        "tournamentSlug": "world-championship-division-iii-group-b",
+        "tournamentName": "World Championship, Division III, Group B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39055,
+        "tournamentSlug": "national-cup-women",
+        "tournamentName": "National Cup, Women",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39345,
+        "tournamentSlug": "oberliga",
+        "tournamentName": "Oberliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39535,
+        "tournamentSlug": "u15-elite",
+        "tournamentName": "U15 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39537,
+        "tournamentSlug": "u17-elite",
+        "tournamentName": "U17 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39539,
+        "tournamentSlug": "u21-elit",
+        "tournamentName": "U21 Elit",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40445,
+        "tournamentSlug": "bodensee-cup",
+        "tournamentName": "Bodensee Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40481,
+        "tournamentSlug": "evz-prospects-challenge",
+        "tournamentName": "EVZ Prospects Challenge",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40483,
+        "tournamentSlug": "junior-national-teams",
+        "tournamentName": "Junior National Teams",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40601,
+        "tournamentSlug": "lehner-cup",
+        "tournamentName": "Lehner Cup",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40951,
+        "tournamentSlug": "u13-elite",
+        "tournamentName": "U13 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40953,
+        "tournamentSlug": "1-liga",
+        "tournamentName": "1 Liga",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41290,
+        "tournamentSlug": "deutschland-cup-women",
+        "tournamentName": "Deutschland Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41412,
+        "tournamentSlug": "u20-5-nations-tournament",
+        "tournamentName": "U20 5-Nations Tournament",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41414,
+        "tournamentSlug": "u18-5-nations-tournament",
+        "tournamentName": "U18 5-Nations Tournament",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41416,
+        "tournamentSlug": "u17-4-nations-tournament",
+        "tournamentName": "U17 4-Nations Tournament",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41418,
+        "tournamentSlug": "u16-5-nations-tournament",
+        "tournamentName": "U16 5-Nations Tournament",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41560,
+        "tournamentSlug": "u15-regional-tournament",
+        "tournamentName": "U15 Regional Tournament",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41654,
+        "tournamentSlug": "u20-top",
+        "tournamentName": "U20 Top",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41656,
+        "tournamentSlug": "u17-top",
+        "tournamentName": "U17-Top",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41658,
+        "tournamentSlug": "u15-top",
+        "tournamentName": "U15-Top",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41660,
+        "tournamentSlug": "u13-top",
+        "tournamentName": "U13-Top",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41662,
+        "tournamentSlug": "2-liga",
+        "tournamentName": "2. Liga",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41664,
+        "tournamentSlug": "u20-a",
+        "tournamentName": "U20-A",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41666,
+        "tournamentSlug": "u17-a",
+        "tournamentName": "U17-A",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41668,
+        "tournamentSlug": "u15-a",
+        "tournamentName": "U15-A",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41670,
+        "tournamentSlug": "3-liga",
+        "tournamentName": "3. Liga",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41672,
+        "tournamentSlug": "swhl-b",
+        "tournamentName": "SWHL B",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41674,
+        "tournamentSlug": "swhl-c",
+        "tournamentName": "SWHL C",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41676,
+        "tournamentSlug": "swhl-d",
+        "tournamentName": "SWHL D",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41678,
+        "tournamentSlug": "u13-a",
+        "tournamentName": "U13-A",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41857,
+        "tournamentSlug": "pwhl-women",
+        "tournamentName": "PWHL, Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41883,
+        "tournamentSlug": "u17-5-nations-tournament",
+        "tournamentName": "U17 5-Nations Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41943,
+        "tournamentSlug": "feusi-cup-u13",
+        "tournamentName": "Feusi Cup U13",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41991,
+        "tournamentSlug": "u18-world-championship-women",
+        "tournamentName": "U18 World Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42123,
+        "tournamentSlug": "u19-5-nations-tournament",
+        "tournamentName": "U19 5-Nations Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42125,
+        "tournamentSlug": "u16-4-nations-tournament",
+        "tournamentName": "U16 4-Nations Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42141,
+        "tournamentSlug": "u16-3-nations-tournament",
+        "tournamentName": "U16 3-Nations Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42515,
+        "tournamentSlug": "u15-world-tournament",
+        "tournamentName": "U15 World Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42517,
+        "tournamentSlug": "u13-world-tournament",
+        "tournamentName": "U13 World Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42519,
+        "tournamentSlug": "u11-world-tournament",
+        "tournamentName": "U11 World Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42595,
+        "tournamentSlug": "u15-world-hockey-championship",
+        "tournamentName": "U15 World Hockey Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42597,
+        "tournamentSlug": "u14-world-hockey-championship",
+        "tournamentName": "U14 World Hockey Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42599,
+        "tournamentSlug": "u13-world-hockey-championship",
+        "tournamentName": "U13 World Hockey Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42601,
+        "tournamentSlug": "u12-world-hockey-championship",
+        "tournamentName": "U12 World Hockey Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42603,
+        "tournamentSlug": "u11-world-hockey-championship",
+        "tournamentName": "U11 World Hockey Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42875,
+        "tournamentSlug": "victoria-cup-women-u14",
+        "tournamentName": "Victoria Cup, Women U14",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42965,
+        "tournamentSlug": "1-liga",
+        "tournamentName": "1. Liga",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43307,
+        "tournamentSlug": "u17",
+        "tournamentName": "U17",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43309,
+        "tournamentSlug": "u20-dnl",
+        "tournamentName": "U20 DNL",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43311,
+        "tournamentSlug": "dfel",
+        "tournamentName": "DFEL",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43313,
+        "tournamentSlug": "dfel-2",
+        "tournamentName": "DFEL 2",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43317,
+        "tournamentSlug": "oel",
+        "tournamentName": "OEL",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43319,
+        "tournamentSlug": "debl",
+        "tournamentName": "DEBL",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43321,
+        "tournamentSlug": "debl-2",
+        "tournamentName": "DEBL 2",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43323,
+        "tournamentSlug": "u18i",
+        "tournamentName": "U18i",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43325,
+        "tournamentSlug": "u17",
+        "tournamentName": "U17",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43327,
+        "tournamentSlug": "u15",
+        "tournamentName": "U15",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43329,
+        "tournamentSlug": "u13",
+        "tournamentName": "U13",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43331,
+        "tournamentSlug": "para-eishockey",
+        "tournamentName": "Para Eishockey",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43423,
+        "tournamentSlug": "u13-ev-zug-tournament",
+        "tournamentName": "U13 EV Zug tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43425,
+        "tournamentSlug": "u15-ev-zug-tournament",
+        "tournamentName": "U15 EV Zug tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43427,
+        "tournamentSlug": "u17-kloten-tournament",
+        "tournamentName": "U17 Kloten tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43429,
+        "tournamentSlug": "u11",
+        "tournamentName": "U11",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43431,
+        "tournamentSlug": "salzmann-trophy",
+        "tournamentName": "Salzmann Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43909,
+        "tournamentSlug": "4-nations-face-off",
+        "tournamentName": "4 Nations Face-Off",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43915,
+        "tournamentSlug": "junior-tournaments",
+        "tournamentName": "Junior Tournaments",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43917,
+        "tournamentSlug": "senior-national-teams",
+        "tournamentName": "Senior National Teams",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43919,
+        "tournamentSlug": "junior-national-teams",
+        "tournamentName": "Junior National Teams",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43921,
+        "tournamentSlug": "junior-national-tournaments",
+        "tournamentName": "Junior National Tournaments",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43941,
+        "tournamentSlug": "u20-friendly-games",
+        "tournamentName": "U20 Friendly Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44071,
+        "tournamentSlug": "aka-u16-tournament",
+        "tournamentName": "AKA U16 Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44073,
+        "tournamentSlug": "aka-u17-tournament",
+        "tournamentName": "AKA U17 Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44075,
+        "tournamentSlug": "aka-u18-tournament",
+        "tournamentName": "AKA U18 Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44077,
+        "tournamentSlug": "aka-u20-tournament",
+        "tournamentName": "AKA U20 Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44079,
+        "tournamentSlug": "zurich-trophy",
+        "tournamentName": "Zurich Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44081,
+        "tournamentSlug": "ewhl-super-cup",
+        "tournamentName": "EWHL Super Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44127,
+        "tournamentSlug": "memorial-parini-u13",
+        "tournamentName": "Memorial Parini U13",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44421,
+        "tournamentSlug": "ahl-preseason",
+        "tournamentName": "AHL Preseason",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44733,
+        "tournamentSlug": "erwin-muller-cup",
+        "tournamentName": "Erwin Muller Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44925,
+        "tournamentSlug": "euro-hockey-tour-women",
+        "tournamentName": "Euro Hockey Tour, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44927,
+        "tournamentSlug": "liga-1-salzburg",
+        "tournamentName": "Liga 1, Salzburg",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44929,
+        "tournamentSlug": "liga-2-salzburg",
+        "tournamentName": "Liga 2, Salzburg",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44931,
+        "tournamentSlug": "ahc-division-1-karnten",
+        "tournamentName": "AHC Division 1, Karnten",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44933,
+        "tournamentSlug": "ahc-division-2-karnten",
+        "tournamentName": "AHC Division 2, Karnten",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44935,
+        "tournamentSlug": "tiroler-eishockey-liga",
+        "tournamentName": "Tiroler Eishockey Liga",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44937,
+        "tournamentSlug": "tiroler-landesliga-u18",
+        "tournamentName": "Tiroler Landesliga U18",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44939,
+        "tournamentSlug": "tiroler-landesliga-u15",
+        "tournamentName": "Tiroler Landesliga U15",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44941,
+        "tournamentSlug": "tiroler-landesliga-u13",
+        "tournamentName": "Tiroler Landesliga U13",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44943,
+        "tournamentSlug": "eishockeyliga-wien",
+        "tournamentName": "Eishockeyliga Wien",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44953,
+        "tournamentSlug": "fphl",
+        "tournamentName": "FPHL",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45237,
+        "tournamentSlug": "tiroler-damen-eishockeyliga",
+        "tournamentName": "Tiroler Damen Eishockeyliga",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45239,
+        "tournamentSlug": "bezirksliga",
+        "tournamentName": "Bezirksliga",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45241,
+        "tournamentSlug": "gebietsliga",
+        "tournamentName": "Gebietsliga",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45243,
+        "tournamentSlug": "eliteliga",
+        "tournamentName": "Eliteliga",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45245,
+        "tournamentSlug": "1-oo-liwest-ehl",
+        "tournamentName": "1. OO LIWEST EHL",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45247,
+        "tournamentSlug": "2-oo-liwest-ehl",
+        "tournamentName": "2. OO LIWEST EHL",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45249,
+        "tournamentSlug": "ve-w-division-a",
+        "tournamentName": "VE-W-Division A",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45251,
+        "tournamentSlug": "ve-w-division-b",
+        "tournamentName": "VE-W-Division B",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45253,
+        "tournamentSlug": "ve-w-division-c",
+        "tournamentName": "VE-W-Division C",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45333,
+        "tournamentSlug": "robert-muller-cup",
+        "tournamentName": "Robert Muller Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45399,
+        "tournamentSlug": "u13-seidenstadt-juniors-cup",
+        "tournamentName": "U13 Seidenstadt Juniors Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45491,
+        "tournamentSlug": "u20-nationell",
+        "tournamentName": "U20 Nationell",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45577,
+        "tournamentSlug": "spl2",
+        "tournamentName": "SPL2",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45579,
+        "tournamentSlug": "u19-elite",
+        "tournamentName": "U19 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45581,
+        "tournamentSlug": "u18-elite",
+        "tournamentName": "U18 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45583,
+        "tournamentSlug": "u16-elite",
+        "tournamentName": "U16 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45585,
+        "tournamentSlug": "u14-elite",
+        "tournamentName": "U14 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45749,
+        "tournamentSlug": "u15-hockey-cup",
+        "tournamentName": "U15 Hockey Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45751,
+        "tournamentSlug": "u13-faschingsturnier",
+        "tournamentName": "U13 Faschingsturnier",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45791,
+        "tournamentSlug": "u17-2-nations-tournament",
+        "tournamentName": "U17 2-Nations Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45879,
+        "tournamentSlug": "del-u13-cup",
+        "tournamentName": "DEL U13 Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45881,
+        "tournamentSlug": "4-liga",
+        "tournamentName": "4. Liga",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45909,
+        "tournamentSlug": "u15-landerpokal",
+        "tournamentName": "U15 Landerpokal",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45975,
+        "tournamentSlug": "serc-future-u13-cup",
+        "tournamentName": "SERC Future U13 Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46231,
+        "tournamentSlug": "del-u15-cup",
+        "tournamentName": "DEL U15 Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46287,
+        "tournamentSlug": "division-1",
+        "tournamentName": "Division 1",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46353,
+        "tournamentSlug": "2-nations-tournament",
+        "tournamentName": "2-Nations Tournament",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46359,
+        "tournamentSlug": "u15",
+        "tournamentName": "U15",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46545,
+        "tournamentSlug": "bayerischer-junglowe",
+        "tournamentName": "Bayerischer Junglowe",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46549,
+        "tournamentSlug": "bayerischer-lowe",
+        "tournamentName": "Bayerischer Lowe",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46551,
+        "tournamentSlug": "scbb-cup",
+        "tournamentName": "SCBB Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46631,
+        "tournamentSlug": "u17-3-nations-tournament",
+        "tournamentName": "U17 3-Nations Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46633,
+        "tournamentSlug": "rt-bad-nauheim-ostercup",
+        "tournamentName": "RT Bad Nauheim Ostercup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46653,
+        "tournamentSlug": "u14-whc-innsbruck",
+        "tournamentName": "U14 WHC Innsbruck",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46655,
+        "tournamentSlug": "u13-whc-innsbruck",
+        "tournamentName": "U13 WHC Innsbruck",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46657,
+        "tournamentSlug": "u12-whc-innsbruck",
+        "tournamentName": "U12 WHC Innsbruck",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46659,
+        "tournamentSlug": "u11-whc-innsbruck",
+        "tournamentName": "U11 WHC Innsbruck",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46661,
+        "tournamentSlug": "u15-wt-zell-am-see",
+        "tournamentName": "U15 WT Zell am See",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46663,
+        "tournamentSlug": "u13-wt-zell-am-see",
+        "tournamentName": "U13 WT Zell am See",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46665,
+        "tournamentSlug": "u11-wt-zell-am-see",
+        "tournamentName": "U11 WT Zell am See",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46695,
+        "tournamentSlug": "aka-u15-tournament",
+        "tournamentName": "AKA U15 Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47173,
+        "tournamentSlug": "sunshine-hockey-league",
+        "tournamentName": "Sunshine Hockey League",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47387,
+        "tournamentSlug": "deb-u20-friendly-games",
+        "tournamentName": "DEB, U20 Friendly Games",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47480,
+        "tournamentSlug": "friendly-games",
+        "tournamentName": "Friendly Games",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47482,
+        "tournamentSlug": "friendly-games",
+        "tournamentName": "Friendly Games",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47484,
+        "tournamentSlug": "friendly-games",
+        "tournamentName": "Friendly Games",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47732,
+        "tournamentSlug": "alps-hockey-cup-(youth)",
+        "tournamentName": "Alps Hockey Cup (Youth)",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47734,
+        "tournamentSlug": "senioren-bezirksliga",
+        "tournamentName": "Senioren Bezirksliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47736,
+        "tournamentSlug": "u15-bezirksliga",
+        "tournamentName": "U15 Bezirksliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47738,
+        "tournamentSlug": "u13-bezirksliga",
+        "tournamentName": "U13 Bezirksliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47792,
+        "tournamentSlug": "u14-greenhope-trophy-davos",
+        "tournamentName": "U14 Greenhope Trophy Davos",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47794,
+        "tournamentSlug": "u16-greenhope-trophy-davos",
+        "tournamentName": "U16 Greenhope Trophy Davos",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47796,
+        "tournamentSlug": "bev-senioren-landesliga",
+        "tournamentName": "BEV - Senioren Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47798,
+        "tournamentSlug": "bev-frauen-bayernliga",
+        "tournamentName": "BEV - Frauen Bayernliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47800,
+        "tournamentSlug": "bev-frauen-landesliga",
+        "tournamentName": "BEV - Frauen Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47802,
+        "tournamentSlug": "bev-u20-bayernliga",
+        "tournamentName": "BEV - U20 Bayernliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47804,
+        "tournamentSlug": "bev-u17-bayernliga",
+        "tournamentName": "BEV - U17 Bayernliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47806,
+        "tournamentSlug": "bev-u15-bayernliga",
+        "tournamentName": "BEV - U15 Bayernliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47808,
+        "tournamentSlug": "bev-u13-bayernliga",
+        "tournamentName": "BEV - U13 Bayernliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47810,
+        "tournamentSlug": "bev-u20-landesliga",
+        "tournamentName": "BEV - U20 Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47812,
+        "tournamentSlug": "bev-u17-landesliga",
+        "tournamentName": "BEV - U17 Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47814,
+        "tournamentSlug": "bev-u15-landesliga",
+        "tournamentName": "BEV - U15 Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47816,
+        "tournamentSlug": "bev-u13-landesliga",
+        "tournamentName": "BEV - U13 Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47818,
+        "tournamentSlug": "ebw-senioren-baden-w\u00fcrttemberg-liga",
+        "tournamentName": "EBW - Senioren Baden-W\u00fcrttemberg Liga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47820,
+        "tournamentSlug": "ebw-u20",
+        "tournamentName": "EBW - U20",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47822,
+        "tournamentSlug": "ebw-u17",
+        "tournamentName": "EBW - U17",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47824,
+        "tournamentSlug": "ebw-u15",
+        "tournamentName": "EBW - U15",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47826,
+        "tournamentSlug": "ebw-u13",
+        "tournamentName": "EBW - U13",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47832,
+        "tournamentSlug": "nrw-senioren-regionalliga",
+        "tournamentName": "NRW - Senioren Regionalliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47834,
+        "tournamentSlug": "nrw-senioren-landesliga",
+        "tournamentName": "NRW - Senioren Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47836,
+        "tournamentSlug": "nrw-senioren-bezirksliga",
+        "tournamentName": "NRW - Senioren Bezirksliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47838,
+        "tournamentSlug": "nrw-frauen-2-liga-nord",
+        "tournamentName": "NRW - Frauen 2. Liga Nord",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47840,
+        "tournamentSlug": "nrw-frauen-landesliga",
+        "tournamentName": "NRW - Frauen Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47842,
+        "tournamentSlug": "nrw-frauen-bezirksliga",
+        "tournamentName": "NRW - Frauen Bezirksliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47844,
+        "tournamentSlug": "nrw-u20",
+        "tournamentName": "NRW - U20",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47846,
+        "tournamentSlug": "nrw-u17",
+        "tournamentName": "NRW - U17",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47848,
+        "tournamentSlug": "nrw-u15-regionalliga-a",
+        "tournamentName": "NRW - U15 Regionalliga A",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47850,
+        "tournamentSlug": "nrw-u15-regionalliga-b",
+        "tournamentName": "NRW - U15 Regionalliga B",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47852,
+        "tournamentSlug": "nrw-u15-landesliga",
+        "tournamentName": "NRW - U15 Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47854,
+        "tournamentSlug": "nrw-u15-bezirksliga",
+        "tournamentName": "NRW - U15 Bezirksliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47856,
+        "tournamentSlug": "nrw-u13-regionalliga-a",
+        "tournamentName": "NRW - U13 Regionalliga A",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47858,
+        "tournamentSlug": "nrw-u13-regionalliga-b",
+        "tournamentName": "NRW - U13 Regionalliga B",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47860,
+        "tournamentSlug": "nrw-u13-landesliga",
+        "tournamentName": "NRW - U13 Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47862,
+        "tournamentSlug": "nrw-u13-bezirksliga",
+        "tournamentName": "NRW - U13 Bezirksliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47912,
+        "tournamentSlug": "nev-senioren-regionalliga",
+        "tournamentName": "NEV - Senioren Regionalliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47914,
+        "tournamentSlug": "nev-senioren-verbandsliga",
+        "tournamentName": "NEV - Senioren Verbandsliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47916,
+        "tournamentSlug": "nev-senioren-landesliga",
+        "tournamentName": "NEV - Senioren Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47918,
+        "tournamentSlug": "nev-senioren-landesliga-oldtimer",
+        "tournamentName": "NEV - Senioren Landesliga Oldtimer",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47920,
+        "tournamentSlug": "nev-1-frauenliga-nordost",
+        "tournamentName": "NEV - 1. Frauenliga Nordost",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47922,
+        "tournamentSlug": "nev-u17",
+        "tournamentName": "NEV - U17",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47924,
+        "tournamentSlug": "nev-u15",
+        "tournamentName": "NEV - U15",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47926,
+        "tournamentSlug": "nev-u13",
+        "tournamentName": "NEV - U13",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47928,
+        "tournamentSlug": "sev-senioren-regionalliga",
+        "tournamentName": "SEV - Senioren Regionalliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47930,
+        "tournamentSlug": "sev-senioren-landesliga-sachsen",
+        "tournamentName": "SEV - Senioren Landesliga Sachsen",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47932,
+        "tournamentSlug": "sev-senioren-landesliga-berlin",
+        "tournamentName": "SEV - Senioren Landesliga Berlin",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47934,
+        "tournamentSlug": "sev-u17",
+        "tournamentName": "SEV - U17",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47936,
+        "tournamentSlug": "sev-u15-lk-i",
+        "tournamentName": "SEV - U15 LK I",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47938,
+        "tournamentSlug": "sev-u15-lk-ii",
+        "tournamentName": "SEV - U15 LK II",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47940,
+        "tournamentSlug": "sev-u13-lk-i",
+        "tournamentName": "SEV - U13 LK I",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47942,
+        "tournamentSlug": "sev-u13-lk-ii",
+        "tournamentName": "SEV - U13 LK II",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48006,
+        "tournamentSlug": "bev-senioren-landesliga",
+        "tournamentName": "BEV - Senioren Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48100,
+        "tournamentSlug": "vc999-herisau-ice-hockey-classics",
+        "tournamentName": "VC999 Herisau Ice Hockey Classics",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48199,
+        "tournamentSlug": "slovensky-pohar",
+        "tournamentName": "Slovensky Pohar",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48295,
+        "tournamentSlug": "2-liga",
+        "tournamentName": "2. Liga",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48297,
+        "tournamentSlug": "u20-extraliga-junioru",
+        "tournamentName": "U20 Extraliga Junioru",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48299,
+        "tournamentSlug": "challenge-cup",
+        "tournamentName": "Challenge Cup",
+        "categorySlug": "england",
+        "categoryName": "England",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48301,
+        "tournamentSlug": "kazakhstan-cup",
+        "tournamentName": "Kazakhstan Cup",
+        "categorySlug": "kazakhstan",
+        "categoryName": "Kazakhstan",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48303,
+        "tournamentSlug": "u20-sm-sarja",
+        "tournamentName": "U20 SM Sarja",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48473,
+        "tournamentSlug": "u20-extraliga-juniorov",
+        "tournamentName": "U20 Extraliga Juniorov",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48475,
+        "tournamentSlug": "u20-elite",
+        "tournamentName": "U20 Elite",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48477,
+        "tournamentSlug": "ihl",
+        "tournamentName": "IHL",
+        "categorySlug": "italy",
+        "categoryName": "Italy",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48479,
+        "tournamentSlug": "nev-u20",
+        "tournamentName": "NEV - U20",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48481,
+        "tournamentSlug": "ebw-senioren-landesliga",
+        "tournamentName": "EBW - Senioren Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48545,
+        "tournamentSlug": "2-shl",
+        "tournamentName": "2. SHL",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48851,
+        "tournamentSlug": "hokiliiga",
+        "tournamentName": "Hokiliiga",
+        "categorySlug": "estonia",
+        "categoryName": "Estonia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48969,
+        "tournamentSlug": "ewhl",
+        "tournamentName": "EWHL",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49053,
+        "tournamentSlug": "bev-senioren-bayernliga",
+        "tournamentName": "BEV Senioren Bayernliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49119,
+        "tournamentSlug": "stehv-landesliga",
+        "tournamentName": "STEHV Landesliga",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49144,
+        "tournamentSlug": "hes-senioren-hessenliga",
+        "tournamentName": "HES - Senioren Hessenliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49146,
+        "tournamentSlug": "hes-senioren-landesliga",
+        "tournamentName": "HES - Senioren Landesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49148,
+        "tournamentSlug": "hes-u15",
+        "tournamentName": "HES - U15",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49150,
+        "tournamentSlug": "hes-u13",
+        "tournamentName": "HES - U13",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49152,
+        "tournamentSlug": "u14-november-challenge",
+        "tournamentName": "U14 November Challenge",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49154,
+        "tournamentSlug": "kehv-division-2-mitte",
+        "tournamentName": "KEHV Division 2 Mitte",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49156,
+        "tournamentSlug": "kehv-division-2-west",
+        "tournamentName": "KEHV Division 2 West",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49158,
+        "tournamentSlug": "kehv-division-3-ost",
+        "tournamentName": "KEHV Division 3 Ost",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49160,
+        "tournamentSlug": "kehv-division-3-mitte",
+        "tournamentName": "KEHV Division 3 Mitte",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49162,
+        "tournamentSlug": "kehv-division-3-west",
+        "tournamentName": "KEHV Division 3 West",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49164,
+        "tournamentSlug": "kehv-women-ahc",
+        "tournamentName": "KEHV WOMEN AHC",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49166,
+        "tournamentSlug": "kehv-u16",
+        "tournamentName": "KEHV U16",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49168,
+        "tournamentSlug": "kehv-u14",
+        "tournamentName": "KEHV U14",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49318,
+        "tournamentSlug": "university-league",
+        "tournamentName": "University League",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49416,
+        "tournamentSlug": "european-cup-of-nations",
+        "tournamentName": "European Cup of Nations",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49658,
+        "tournamentSlug": "kehv-u12",
+        "tournamentName": "KEHV U12",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49828,
+        "tournamentSlug": "u16-nations-tournaments",
+        "tournamentName": "U16 Nations Tournaments",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49830,
+        "tournamentSlug": "u16-nations-tournaments-women",
+        "tournamentName": "U16 Nations Tournaments, Women",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49832,
+        "tournamentSlug": "u17-nations-tournaments",
+        "tournamentName": "U17 Nations Tournaments",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49834,
+        "tournamentSlug": "u18-nations-tournaments",
+        "tournamentName": "U18 Nations Tournaments",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49836,
+        "tournamentSlug": "u18-nations-tournaments-women",
+        "tournamentName": "U18 Nations Tournaments, Women",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49838,
+        "tournamentSlug": "u19-nations-tournaments",
+        "tournamentName": "U19 Nations Tournaments",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49840,
+        "tournamentSlug": "u20-nations-tournaments",
+        "tournamentName": "U20 Nations Tournaments",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49842,
+        "tournamentSlug": "nations-tournaments-women",
+        "tournamentName": "Nations Tournaments, Women",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49844,
+        "tournamentSlug": "nrw-pokal",
+        "tournamentName": "NRW - Pokal",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49902,
+        "tournamentSlug": "poland-cup",
+        "tournamentName": "Poland Cup",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50000,
+        "tournamentSlug": "u18-elite-cup",
+        "tournamentName": "U18 Elite Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50038,
+        "tournamentSlug": "seidenstadt-juniors-cup",
+        "tournamentName": "Seidenstadt Juniors Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50040,
+        "tournamentSlug": "jungadler-hockey-cup",
+        "tournamentName": "Jungadler Hockey Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50192,
+        "tournamentSlug": "u20-world-championship-division-iii-group-b",
+        "tournamentName": "U20 World Championship, Division III, Group B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50234,
+        "tournamentSlug": "u15-whc-innsbruck",
+        "tournamentName": "U15 WHC Innsbruck",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50256,
+        "tournamentSlug": "u18-3-nations-tournament",
+        "tournamentName": "U18 - 3-Nations-Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50652,
+        "tournamentSlug": "sev-u13-st\u00fctzpunktliga",
+        "tournamentName": "SEV - U13 St\u00fctzpunktliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50654,
+        "tournamentSlug": "u11-pro-eissport-turnier",
+        "tournamentName": "U11 Pro-Eissport-Turnier",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50656,
+        "tournamentSlug": "u13-ferenc-vozar-turnier",
+        "tournamentName": "U13 Ferenc-Vozar-Turnier",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50770,
+        "tournamentSlug": "paralympic-games",
+        "tournamentName": "Paralympic Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50912,
+        "tournamentSlug": "u13-l\u00f6wen-frankfurt-osterturnier",
+        "tournamentName": "U13 L\u00f6wen Frankfurt Osterturnier",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51044,
+        "tournamentSlug": "gladiators-trophy",
+        "tournamentName": "Gladiators Trophy",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51202,
+        "tournamentSlug": "swiss-summer-hockey-league",
+        "tournamentName": "Swiss Summer Hockey League",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51798,
+        "tournamentSlug": "superpuchar-polski",
+        "tournamentName": "Superpuchar Polski",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51982,
+        "tournamentSlug": "pwhl-draft",
+        "tournamentName": "PWHL Draft",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

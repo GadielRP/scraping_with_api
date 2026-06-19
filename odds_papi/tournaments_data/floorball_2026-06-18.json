@@ -1,0 +1,192 @@
+[
+    {
+        "tournamentId": 255,
+        "tournamentSlug": "svenska-superligan",
+        "tournamentName": "Svenska Superligan",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 306,
+        "tournamentSlug": "f-liiga",
+        "tournamentName": "F-Liiga",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 313,
+        "tournamentSlug": "unihockey-prime-league",
+        "tournamentName": "Unihockey Prime League",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 318,
+        "tournamentSlug": "eliteserien",
+        "tournamentName": "Eliteserien",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 456,
+        "tournamentSlug": "f-liiga-women",
+        "tournamentName": "F-Liiga, Women",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 457,
+        "tournamentSlug": "dont-use",
+        "tournamentName": "don't use",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 459,
+        "tournamentSlug": "use",
+        "tournamentName": "use",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 617,
+        "tournamentSlug": "world-championship",
+        "tournamentName": "World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 762,
+        "tournamentSlug": "world-championship-women",
+        "tournamentName": "World Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 829,
+        "tournamentSlug": "extraliga",
+        "tournamentName": "Extraliga",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 961,
+        "tournamentSlug": "champions-cup",
+        "tournamentName": "Champions Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1428,
+        "tournamentSlug": "svenska-superligan-women",
+        "tournamentName": "Svenska Superligan, Women",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1430,
+        "tournamentSlug": "allsvenskan-sodra",
+        "tournamentName": "Allsvenskan, Sodra",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1432,
+        "tournamentSlug": "allsvenskan-norra",
+        "tournamentName": "Allsvenskan, Norra",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1436,
+        "tournamentSlug": "floorball-league",
+        "tournamentName": "Floorball League",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24137,
+        "tournamentSlug": "allsvenskan",
+        "tournamentName": "Allsvenskan",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39187,
+        "tournamentSlug": "virsliga",
+        "tournamentName": "Virsliga",
+        "categorySlug": "latvia",
+        "categoryName": "Latvia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39189,
+        "tournamentSlug": "unihockey-prime-league-women",
+        "tournamentName": "Unihockey Prime League, Women",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39283,
+        "tournamentSlug": "extraliga",
+        "tournamentName": "Extraliga",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

@@ -1,0 +1,2992 @@
+[
+    {
+        "tournamentId": 30,
+        "tournamentSlug": "champions-league",
+        "tournamentName": "Champions League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 57,
+        "tournamentSlug": "dhb-pokal",
+        "tournamentName": "DHB Pokal",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 58,
+        "tournamentSlug": "dhb-pokal-women",
+        "tournamentName": "DHB Pokal, Women",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 59,
+        "tournamentSlug": "ehf-european-league",
+        "tournamentName": "EHF European League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 60,
+        "tournamentSlug": "ehf-european-league-women",
+        "tournamentName": "EHF European League, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 63,
+        "tournamentSlug": "european-championship-women",
+        "tournamentName": "European Championship Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 77,
+        "tournamentSlug": "world-championship",
+        "tournamentName": "World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 85,
+        "tournamentSlug": "hla-meisterliga",
+        "tournamentName": "HLA Meisterliga",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 12,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 149,
+        "tournamentSlug": "bundesliga",
+        "tournamentName": "Bundesliga",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 38,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 157,
+        "tournamentSlug": "handboldligaen",
+        "tournamentName": "Handboldligaen",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 5,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 158,
+        "tournamentSlug": "kvindeligaen-women",
+        "tournamentName": "Kvindeligaen, Women",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 159,
+        "tournamentSlug": "lnh-division-1",
+        "tournamentName": "LNH Division 1",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 32,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 160,
+        "tournamentSlug": "ehf-euro",
+        "tournamentName": "EHF Euro",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 161,
+        "tournamentSlug": "handbollsligan",
+        "tournamentName": "Handbollsligan",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 162,
+        "tournamentSlug": "elitserien-women",
+        "tournamentName": "Elitserien Women",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 163,
+        "tournamentSlug": "mnla",
+        "tournamentName": "MNLA",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 165,
+        "tournamentSlug": "world-championship-women",
+        "tournamentName": "World Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 221,
+        "tournamentSlug": "eliteserien",
+        "tournamentName": "Eliteserien",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 223,
+        "tournamentSlug": "eliteserien-women",
+        "tournamentName": "Eliteserien Women",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 245,
+        "tournamentSlug": "bundesliga-women",
+        "tournamentName": "Bundesliga, Women",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 13,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 248,
+        "tournamentSlug": "liga-asobal",
+        "tournamentName": "Liga Asobal",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 24,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 288,
+        "tournamentSlug": "champions-league-women",
+        "tournamentName": "Champions League Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 296,
+        "tournamentSlug": "wha-meisterliga-women",
+        "tournamentName": "WHA Meisterliga, Women",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 12,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 412,
+        "tournamentSlug": "olympic-tournament-women-qf",
+        "tournamentName": "Olympic Tournament Women, QF",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 413,
+        "tournamentSlug": "int-friendly-games-w",
+        "tournamentName": "Int. Friendly Games W",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 418,
+        "tournamentSlug": "sm-liiga",
+        "tournamentName": "SM Liiga",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 434,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 435,
+        "tournamentSlug": "z-not-use",
+        "tournamentName": "z not use",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 438,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 439,
+        "tournamentSlug": "olympic-tournament",
+        "tournamentName": "Olympic Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 478,
+        "tournamentSlug": "olympic-tournament-qf",
+        "tournamentName": "Olympic Tournament, QF",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 499,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 502,
+        "tournamentSlug": "allsvenskan",
+        "tournamentName": "Allsvenskan",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 576,
+        "tournamentSlug": "premijer-liga",
+        "tournamentName": "Premijer Liga",
+        "categorySlug": "croatia",
+        "categoryName": "Croatia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 577,
+        "tournamentSlug": "1-hrl-women",
+        "tournamentName": "1. HRL Women",
+        "categorySlug": "croatia",
+        "categoryName": "Croatia",
+        "futureFixtures": 14,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 612,
+        "tournamentSlug": "super-cup-women",
+        "tournamentName": "Super Cup, Women",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 641,
+        "tournamentSlug": "copa-del-rey",
+        "tournamentName": "Copa del Rey",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 665,
+        "tournamentSlug": "olympic-tournament-women-qf",
+        "tournamentName": "Olympic Tournament Women, QF",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 666,
+        "tournamentSlug": "olympic-tournament-qf",
+        "tournamentName": "Olympic Tournament, QF",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 667,
+        "tournamentSlug": "european-championship-qualification",
+        "tournamentName": "European Championship Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 96,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 744,
+        "tournamentSlug": "ehf-euro-women-qualification",
+        "tournamentName": "EHF EURO Women, Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 747,
+        "tournamentSlug": "not-in-use",
+        "tournamentName": "Not in use",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 768,
+        "tournamentSlug": "copa-de-espana",
+        "tournamentName": "Copa de Espana",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 795,
+        "tournamentSlug": "world-championship-qualification",
+        "tournamentName": "World Championship Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 20,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 814,
+        "tournamentSlug": "extraliga",
+        "tournamentName": "Extraliga",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 815,
+        "tournamentSlug": "premier-1",
+        "tournamentName": "Premier 1",
+        "categorySlug": "greece",
+        "categoryName": "Greece",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 816,
+        "tournamentSlug": "nb-i",
+        "tournamentName": "NB I",
+        "categorySlug": "hungary",
+        "categoryName": "Hungary",
+        "futureFixtures": 15,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 817,
+        "tournamentSlug": "1liga",
+        "tournamentName": "1.liga",
+        "categorySlug": "slovenia",
+        "categoryName": "Slovenia",
+        "futureFixtures": 12,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 818,
+        "tournamentSlug": "superliga",
+        "tournamentName": "Superliga",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 819,
+        "tournamentSlug": "superliga-women",
+        "tournamentName": "Superliga Women",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 867,
+        "tournamentSlug": "int-friendly-games",
+        "tournamentName": "Int. Friendly Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 885,
+        "tournamentSlug": "world-championship-women-qualification",
+        "tournamentName": "World Championship Women, Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 921,
+        "tournamentSlug": "2-hbl",
+        "tournamentName": "2. HBL",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 36,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 927,
+        "tournamentSlug": "tournament-of-champions",
+        "tournamentName": "Tournament of Champions",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1028,
+        "tournamentSlug": "coupe-de-france",
+        "tournamentName": "Coupe de France",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1143,
+        "tournamentSlug": "superliga",
+        "tournamentName": "Superliga",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 10,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1145,
+        "tournamentSlug": "extraliga",
+        "tournamentName": "Extraliga",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1163,
+        "tournamentSlug": "division-1",
+        "tournamentName": "Division 1",
+        "categorySlug": "israel",
+        "categoryName": "Israel",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1169,
+        "tournamentSlug": "seha-league",
+        "tournamentName": "SEHA League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1171,
+        "tournamentSlug": "super-liga",
+        "tournamentName": "Super Liga",
+        "categorySlug": "serbia",
+        "categoryName": "Serbia",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1313,
+        "tournamentSlug": "u21-world-championship",
+        "tournamentName": "U21 World Championship",
+        "categorySlug": "international-youth",
+        "categoryName": "International Youth",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1319,
+        "tournamentSlug": "cup",
+        "tournamentName": "Cup",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1321,
+        "tournamentSlug": "cup-women",
+        "tournamentName": "Cup, Women",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1394,
+        "tournamentSlug": "super-league-women",
+        "tournamentName": "Super League, Women",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 5,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1396,
+        "tournamentSlug": "liga-nationala",
+        "tournamentName": "Liga Nationala",
+        "categorySlug": "romania",
+        "categoryName": "Romania",
+        "futureFixtures": 12,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1398,
+        "tournamentSlug": "liga-nationala-women",
+        "tournamentName": "Liga Nationala, Women",
+        "categorySlug": "romania",
+        "categoryName": "Romania",
+        "futureFixtures": 12,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1400,
+        "tournamentSlug": "friendly-games",
+        "tournamentName": "Friendly Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1402,
+        "tournamentSlug": "friendly-games-women",
+        "tournamentName": "Friendly Games, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1404,
+        "tournamentSlug": "1a-divisao",
+        "tournamentName": "1a Divisao",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 12,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1416,
+        "tournamentSlug": "1-division",
+        "tournamentName": "1. Division",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1418,
+        "tournamentSlug": "1-division-women",
+        "tournamentName": "1. Division, Women",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1420,
+        "tournamentSlug": "1-division",
+        "tournamentName": "1. Division",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1422,
+        "tournamentSlug": "1-division-women",
+        "tournamentName": "1. Division, Women",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1478,
+        "tournamentSlug": "baltic-handball-league",
+        "tournamentName": "Baltic Handball League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1602,
+        "tournamentSlug": "cup-women",
+        "tournamentName": "Cup, Women",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1730,
+        "tournamentSlug": "u20-world-championship-women",
+        "tournamentName": "U20 World Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1842,
+        "tournamentSlug": "super-cupa",
+        "tournamentName": "Super Cupa",
+        "categorySlug": "romania",
+        "categoryName": "Romania",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1844,
+        "tournamentSlug": "super-cupa-women",
+        "tournamentName": "Super Cupa, Women",
+        "categorySlug": "romania",
+        "categoryName": "Romania",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1868,
+        "tournamentSlug": "super-globe",
+        "tournamentName": "Super Globe",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1882,
+        "tournamentSlug": "cup",
+        "tournamentName": "Cup",
+        "categorySlug": "slovakia",
+        "categoryName": "Slovakia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1884,
+        "tournamentSlug": "mol-liga-women",
+        "tournamentName": "MOL Liga Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 9,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1898,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "serbia",
+        "categoryName": "Serbia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1932,
+        "tournamentSlug": "division-de-honor-fem",
+        "tournamentName": "Division De Honor Fem.",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 6,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1940,
+        "tournamentSlug": "asian-games",
+        "tournamentName": "Asian Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1942,
+        "tournamentSlug": "asian-championship-women",
+        "tournamentName": "Asian Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1944,
+        "tournamentSlug": "club-friendly-games",
+        "tournamentName": "Club Friendly Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1946,
+        "tournamentSlug": "club-friendly-games-w",
+        "tournamentName": "Club Friendly Games, W",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2025,
+        "tournamentSlug": "ohb-cup",
+        "tournamentName": "OHB-Cup",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2220,
+        "tournamentSlug": "u21-friendly-games",
+        "tournamentName": "U21 Friendly Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2246,
+        "tournamentSlug": "u21-world-championship",
+        "tournamentName": "U21 World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2264,
+        "tournamentSlug": "u19-world-championship",
+        "tournamentName": "U19 World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2280,
+        "tournamentSlug": "trophee-des-champions",
+        "tournamentName": "Trophee des Champions",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2290,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2312,
+        "tournamentSlug": "hla-supercup",
+        "tournamentName": "HLA Supercup",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2366,
+        "tournamentSlug": "lfh-division-1-women",
+        "tournamentName": "LFH Division 1, Women",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 34,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14187,
+        "tournamentSlug": "supertaca",
+        "tournamentName": "Supertaca",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14323,
+        "tournamentSlug": "urvalsdeild",
+        "tournamentName": "Urvalsdeild",
+        "categorySlug": "iceland",
+        "categoryName": "Iceland",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14325,
+        "tournamentSlug": "urvalsdeild-women",
+        "tournamentName": "Urvalsdeild, Women",
+        "categorySlug": "iceland",
+        "categoryName": "Iceland",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14798,
+        "tournamentSlug": "meistriliiga",
+        "tournamentName": "Meistriliiga",
+        "categorySlug": "estonia",
+        "categoryName": "Estonia",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14899,
+        "tournamentSlug": "european-cup-women",
+        "tournamentName": "European Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14901,
+        "tournamentSlug": "european-cup",
+        "tournamentName": "European Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15149,
+        "tournamentSlug": "coupe-de-france-women",
+        "tournamentName": "Coupe de France, Women",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15225,
+        "tournamentSlug": "ohb-cup-women",
+        "tournamentName": "OHB-Cup, Women",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15896,
+        "tournamentSlug": "u19-european-championship-women",
+        "tournamentName": "U19 European Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 17166,
+        "tournamentSlug": "u17-european-championship-women",
+        "tournamentName": "U17 European Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 18492,
+        "tournamentSlug": "super-cup-women",
+        "tournamentName": "Super Cup, Women",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 18494,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "denmark",
+        "categoryName": "Denmark",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 19710,
+        "tournamentSlug": "lnh-proligue",
+        "tournamentName": "LNH Proligue",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23905,
+        "tournamentSlug": "cupa-romaniei-women",
+        "tournamentName": "Cupa Romaniei, Women",
+        "categorySlug": "romania",
+        "categoryName": "Romania",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24069,
+        "tournamentSlug": "cup",
+        "tournamentName": "Cup",
+        "categorySlug": "iceland",
+        "categoryName": "Iceland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24071,
+        "tournamentSlug": "cup-women",
+        "tournamentName": "Cup, Women",
+        "categorySlug": "iceland",
+        "categoryName": "Iceland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24209,
+        "tournamentSlug": "cupa-romaniei",
+        "tournamentName": "Cupa Romaniei",
+        "categorySlug": "romania",
+        "categoryName": "Romania",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24468,
+        "tournamentSlug": "all-star-game",
+        "tournamentName": "All Star Game",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25045,
+        "tournamentSlug": "u20-ehf-euro",
+        "tournamentName": "U20 EHF Euro",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25047,
+        "tournamentSlug": "u20-european-championship",
+        "tournamentName": "U20 European Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25049,
+        "tournamentSlug": "european-championship-b1",
+        "tournamentName": "European Championship B1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25051,
+        "tournamentSlug": "u20-ehf-championship-2",
+        "tournamentName": "U20 EHF Championship 2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25053,
+        "tournamentSlug": "u20-ehf-championship-1",
+        "tournamentName": "U20 EHF Championship 1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25075,
+        "tournamentSlug": "u18-european-championship",
+        "tournamentName": "U18 European Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25077,
+        "tournamentSlug": "u18-european-championship-b",
+        "tournamentName": "U18 European Championship B",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25079,
+        "tournamentSlug": "u18-ehf-championship-1",
+        "tournamentName": "U18 EHF Championship 1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25081,
+        "tournamentSlug": "u18-euro-championship-b2",
+        "tournamentName": "U18 Euro Championship B2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25705,
+        "tournamentSlug": "hla-challenge",
+        "tournamentName": "HLA Challenge",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 27,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26286,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "iceland",
+        "categoryName": "Iceland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26288,
+        "tournamentSlug": "super-cup-women",
+        "tournamentName": "Super Cup, Women",
+        "categorySlug": "iceland",
+        "categoryName": "Iceland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26446,
+        "tournamentSlug": "central-league-women",
+        "tournamentName": "Central League, Women",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26568,
+        "tournamentSlug": "central-league",
+        "tournamentName": "Central League",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 7,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26866,
+        "tournamentSlug": "ehf-eurocup",
+        "tournamentName": "EHF Eurocup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28027,
+        "tournamentSlug": "ehf-u17-championship-women",
+        "tournamentName": "EHF U17 Championship Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29444,
+        "tournamentSlug": "u19-ehf-championship-women",
+        "tournamentName": "U19 EHF Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29446,
+        "tournamentSlug": "u19-ehf-championship-women-tournament-1",
+        "tournamentName": "U19 EHF Championship, Women - Tournament 1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29638,
+        "tournamentSlug": "pan-american-games",
+        "tournamentName": "Pan American Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29640,
+        "tournamentSlug": "pan-american-games-women",
+        "tournamentName": "Pan American Games, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30060,
+        "tournamentSlug": "nb-i-women",
+        "tournamentName": "NB I, Women",
+        "categorySlug": "hungary",
+        "categoryName": "Hungary",
+        "futureFixtures": 27,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30064,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30066,
+        "tournamentSlug": "supercup-women",
+        "tournamentName": "Supercup, Women",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30098,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30100,
+        "tournamentSlug": "super-cup-women",
+        "tournamentName": "Super Cup, Women",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30572,
+        "tournamentSlug": "superlig",
+        "tournamentName": "Superlig",
+        "categorySlug": "turkiye",
+        "categoryName": "Turkiye",
+        "futureFixtures": 10,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30760,
+        "tournamentSlug": "a1-women",
+        "tournamentName": "A1, Women",
+        "categorySlug": "greece",
+        "categoryName": "Greece",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31215,
+        "tournamentSlug": "croatian-cup",
+        "tournamentName": "Croatian Cup",
+        "categorySlug": "croatia",
+        "categoryName": "Croatia",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31601,
+        "tournamentSlug": "taca-de-portugal",
+        "tournamentName": "Taca de Portugal",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32145,
+        "tournamentSlug": "national-championship",
+        "tournamentName": "National Championship",
+        "categorySlug": "belarus",
+        "categoryName": "Belarus",
+        "futureFixtures": 14,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32147,
+        "tournamentSlug": "national-championship-women",
+        "tournamentName": "National Championship, Women",
+        "categorySlug": "belarus",
+        "categoryName": "Belarus",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32847,
+        "tournamentSlug": "cup",
+        "tournamentName": "Cup",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32849,
+        "tournamentSlug": "cup-women",
+        "tournamentName": "Cup, Women",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33055,
+        "tournamentSlug": "2-bundesliga-women",
+        "tournamentName": "2. Bundesliga, Women",
+        "categorySlug": "germany",
+        "categoryName": "Germany",
+        "futureFixtures": 33,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33111,
+        "tournamentSlug": "junior-championship",
+        "tournamentName": "Junior Championship",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33113,
+        "tournamentSlug": "junior-championship-women",
+        "tournamentName": "Junior Championship, Women",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33364,
+        "tournamentSlug": "vysshaya-liga",
+        "tournamentName": "Vysshaya Liga",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33366,
+        "tournamentSlug": "1st-league",
+        "tournamentName": "1st League",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33368,
+        "tournamentSlug": "1st-league-women",
+        "tournamentName": "1st League, Women",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34556,
+        "tournamentSlug": "u17-ehf-championship-women-tournament-1",
+        "tournamentName": "U17 EHF Championship, Women - Tournament 1",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34598,
+        "tournamentSlug": "u17-championship-2-women",
+        "tournamentName": "U17 Championship 2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34652,
+        "tournamentSlug": "u18-european-championship-3",
+        "tournamentName": "U18 European Championship 3",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35076,
+        "tournamentSlug": "vysshaya-liga-women",
+        "tournamentName": "Vysshaya Liga, Women",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35460,
+        "tournamentSlug": "ehf-euro-cup-women",
+        "tournamentName": "EHF Euro Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35478,
+        "tournamentSlug": "ehf-euro-cup-women-niu",
+        "tournamentName": "EHF Euro Cup Women NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35825,
+        "tournamentSlug": "esiliiga",
+        "tournamentName": "Esiliiga",
+        "categorySlug": "estonia",
+        "categoryName": "Estonia",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35827,
+        "tournamentSlug": "super-liga-women",
+        "tournamentName": "Super Liga, Women",
+        "categorySlug": "serbia",
+        "categoryName": "Serbia",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35829,
+        "tournamentSlug": "cup",
+        "tournamentName": "Cup",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36187,
+        "tournamentSlug": "h-league",
+        "tournamentName": "H League",
+        "categorySlug": "republic-of-korea",
+        "categoryName": "Republic of Korea",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37295,
+        "tournamentSlug": "africa-cup-of-nations",
+        "tournamentName": "Africa Cup of Nations",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37637,
+        "tournamentSlug": "japan-handball-league",
+        "tournamentName": "Japan Handball League",
+        "categorySlug": "japan",
+        "categoryName": "Japan",
+        "futureFixtures": 17,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37639,
+        "tournamentSlug": "japan-handball-league-women",
+        "tournamentName": "Japan Handball League, Women",
+        "categorySlug": "japan",
+        "categoryName": "Japan",
+        "futureFixtures": 15,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38059,
+        "tournamentSlug": "golden-league-women",
+        "tournamentName": "Golden League, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38289,
+        "tournamentSlug": "africa-cup-of-nations-women",
+        "tournamentName": "Africa Cup of Nations, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38587,
+        "tournamentSlug": "svenska-cupen",
+        "tournamentName": "Svenska Cupen",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38593,
+        "tournamentSlug": "puchar-polski",
+        "tournamentName": "Puchar Polski",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38595,
+        "tournamentSlug": "svenska-cupen-women",
+        "tournamentName": "Svenska Cupen, Women",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38597,
+        "tournamentSlug": "nm-cup",
+        "tournamentName": "NM Cup",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38599,
+        "tournamentSlug": "nm-cup-women",
+        "tournamentName": "NM Cup, Women",
+        "categorySlug": "norway",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38601,
+        "tournamentSlug": "puchar-polski-women",
+        "tournamentName": "Puchar Polski, Women",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38605,
+        "tournamentSlug": "cesky-pohar",
+        "tournamentName": "Cesky Pohar",
+        "categorySlug": "czech-republic",
+        "categoryName": "Czech Republic",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38697,
+        "tournamentSlug": "asian-championship-women",
+        "tournamentName": "Asian Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38839,
+        "tournamentSlug": "supercopa-iberica",
+        "tournamentName": "Supercopa Iberica",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38921,
+        "tournamentSlug": "sm-liiga-women",
+        "tournamentName": "SM Liiga, Women",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38923,
+        "tournamentSlug": "magyar-kupa",
+        "tournamentName": "Magyar Kupa",
+        "categorySlug": "hungary",
+        "categoryName": "Hungary",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38953,
+        "tournamentSlug": "h-league-women",
+        "tournamentName": "H League, Women",
+        "categorySlug": "republic-of-korea",
+        "categoryName": "Republic of Korea",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39049,
+        "tournamentSlug": "greece-cup",
+        "tournamentName": "Greece Cup",
+        "categorySlug": "greece",
+        "categoryName": "Greece",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39069,
+        "tournamentSlug": "croatian-cup-women",
+        "tournamentName": "Croatian Cup, Women",
+        "categorySlug": "croatia",
+        "categoryName": "Croatia",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39089,
+        "tournamentSlug": "magyar-kupa-women",
+        "tournamentName": "Magyar Kupa, Women",
+        "categorySlug": "hungary",
+        "categoryName": "Hungary",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39115,
+        "tournamentSlug": "super-liga",
+        "tournamentName": "Super Liga",
+        "categorySlug": "north-macedonia",
+        "categoryName": "North Macedonia",
+        "futureFixtures": 19,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39205,
+        "tournamentSlug": "slovenian-cup",
+        "tournamentName": "Slovenian Cup",
+        "categorySlug": "slovenia",
+        "categoryName": "Slovenia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39399,
+        "tournamentSlug": "division-de-honor-plata",
+        "tournamentName": "Division de Honor Plata",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 8,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39729,
+        "tournamentSlug": "emerging-nations-championship",
+        "tournamentName": "Emerging Nations Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40377,
+        "tournamentSlug": "t10-eci-hungary",
+        "tournamentName": "T10 ECI Hungary",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41494,
+        "tournamentSlug": "golden-league",
+        "tournamentName": "Golden League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41931,
+        "tournamentSlug": "asian-championship",
+        "tournamentName": "Asian Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43001,
+        "tournamentSlug": "spl1",
+        "tournamentName": "SPL1",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43315,
+        "tournamentSlug": "nationalliga-b",
+        "tournamentName": "Nationalliga B",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43857,
+        "tournamentSlug": "super-cup-women",
+        "tournamentName": "Super Cup, Women",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44341,
+        "tournamentSlug": "handball-cup-women",
+        "tournamentName": "Handball Cup, Women",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44959,
+        "tournamentSlug": "prva-liga-women",
+        "tournamentName": "Prva Liga, Women",
+        "categorySlug": "montenegro",
+        "categoryName": "Montenegro",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44961,
+        "tournamentSlug": "1-srl-women",
+        "tournamentName": "1. SRL, Women",
+        "categorySlug": "slovenia",
+        "categoryName": "Slovenia",
+        "futureFixtures": 15,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44963,
+        "tournamentSlug": "super-lig-women",
+        "tournamentName": "Super Lig, Women",
+        "categorySlug": "turkiye",
+        "categoryName": "Turkiye",
+        "futureFixtures": 11,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45203,
+        "tournamentSlug": "senior-national-teams",
+        "tournamentName": "Senior National Teams",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45205,
+        "tournamentSlug": "junior-national-teams",
+        "tournamentName": "Junior National Teams",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45509,
+        "tournamentSlug": "swiss-premium-league-2-women",
+        "tournamentName": "Swiss Premium League 2, Women",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45511,
+        "tournamentSlug": "u19-elite",
+        "tournamentName": "U19 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45513,
+        "tournamentSlug": "u17-elite",
+        "tournamentName": "U17 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45515,
+        "tournamentSlug": "u15-elite",
+        "tournamentName": "U15 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45517,
+        "tournamentSlug": "u13-elite",
+        "tournamentName": "U13 Elite",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45519,
+        "tournamentSlug": "u18-elite-women",
+        "tournamentName": "U18 Elite, Women",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45521,
+        "tournamentSlug": "u16-elite-women",
+        "tournamentName": "U16 Elite, Women",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45523,
+        "tournamentSlug": "u14-elite-women",
+        "tournamentName": "U14 Elite, Women",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45903,
+        "tournamentSlug": "spl1-spl2-promotion-&-relegation",
+        "tournamentName": "SPL1/SPL2 Promotion & Relegation",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45905,
+        "tournamentSlug": "handball-cup-u18",
+        "tournamentName": "Handball Cup U18",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45907,
+        "tournamentSlug": "handball-cup-u19",
+        "tournamentName": "Handball Cup U19",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46207,
+        "tournamentSlug": "1-divisao-women",
+        "tournamentName": "1. Divisao, Women",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 21,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46255,
+        "tournamentSlug": "copa-de-la-reina-women",
+        "tournamentName": "Copa de la Reina, Women",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46744,
+        "tournamentSlug": "ehf-youth-club-trophy",
+        "tournamentName": "EHF Youth Club Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47662,
+        "tournamentSlug": "1-liga-m\u00e4nner",
+        "tournamentName": "1. Liga M\u00e4nner",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47664,
+        "tournamentSlug": "1-liga-frauen",
+        "tournamentName": "1. Liga Frauen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47666,
+        "tournamentSlug": "2-liga-m\u00e4nner",
+        "tournamentName": "2. Liga M\u00e4nner",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47668,
+        "tournamentSlug": "2-liga-frauen",
+        "tournamentName": "2. Liga Frauen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47670,
+        "tournamentSlug": "3-liga-m\u00e4nner",
+        "tournamentName": "3. Liga M\u00e4nner",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47672,
+        "tournamentSlug": "3-liga-frauen",
+        "tournamentName": "3. Liga Frauen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47674,
+        "tournamentSlug": "4-liga-m\u00e4nner",
+        "tournamentName": "4. Liga M\u00e4nner",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47676,
+        "tournamentSlug": "regionalauswahl-junioren",
+        "tournamentName": "Regionalauswahl Junioren",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47678,
+        "tournamentSlug": "regionalauswahl-juniorinnen",
+        "tournamentName": "Regionalauswahl Juniorinnen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47680,
+        "tournamentSlug": "u19-inter-junior",
+        "tournamentName": "U19 Inter Junior",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47682,
+        "tournamentSlug": "u19-promotion-junior",
+        "tournamentName": "U19 Promotion Junior",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47684,
+        "tournamentSlug": "u17-inter-junior",
+        "tournamentName": "U17 Inter Junior",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47686,
+        "tournamentSlug": "u17-promotion-junior-s1",
+        "tournamentName": "U17 Promotion Junior S1",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47688,
+        "tournamentSlug": "u15-inter-junior",
+        "tournamentName": "U15 Inter Junior",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47690,
+        "tournamentSlug": "u15-promotion-junior-s1",
+        "tournamentName": "U15 Promotion Junior S1",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47728,
+        "tournamentSlug": "superpuchar-polski",
+        "tournamentName": "Superpuchar Polski",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47730,
+        "tournamentSlug": "superpuchar-polski-women",
+        "tournamentName": "Superpuchar Polski, Women",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47764,
+        "tournamentSlug": "u13-inter-junior",
+        "tournamentName": "U13 Inter Junior",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47766,
+        "tournamentSlug": "u13-promotion-junior-s1",
+        "tournamentName": "U13 Promotion Junior S1",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47768,
+        "tournamentSlug": "u18-inter-juniorinnen",
+        "tournamentName": "U18 Inter Juniorinnen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47770,
+        "tournamentSlug": "u18-promotion-juniorinnen",
+        "tournamentName": "U18 Promotion Juniorinnen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47772,
+        "tournamentSlug": "u16-inter-juniorinnen",
+        "tournamentName": "U16 Inter Juniorinnen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47774,
+        "tournamentSlug": "u16-promotion-juniorinnen",
+        "tournamentName": "U16 Promotion Juniorinnen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47776,
+        "tournamentSlug": "u14-inter-juniorinnen",
+        "tournamentName": "U14 Inter Juniorinnen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47778,
+        "tournamentSlug": "u14-promotion-juniorinnen",
+        "tournamentName": "U14 Promotion Juniorinnen",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47780,
+        "tournamentSlug": "mu-21",
+        "tournamentName": "MU 21",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47782,
+        "tournamentSlug": "mu-19",
+        "tournamentName": "MU 19",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47784,
+        "tournamentSlug": "mu-17",
+        "tournamentName": "MU 17",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47786,
+        "tournamentSlug": "fu-20",
+        "tournamentName": "FU 20",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47788,
+        "tournamentSlug": "fu-18",
+        "tournamentName": "FU 18",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47790,
+        "tournamentSlug": "fu-16",
+        "tournamentName": "FU 16",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48170,
+        "tournamentSlug": "supertaca-women",
+        "tournamentName": "Supertaca, Women",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48351,
+        "tournamentSlug": "u17-promotion-junior-s2",
+        "tournamentName": "U17 Promotion Junior S2",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48353,
+        "tournamentSlug": "u15-promotion-junior-s2",
+        "tournamentName": "U15 Promotion Junior S2",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48355,
+        "tournamentSlug": "u13-promotion-junior-s2",
+        "tournamentName": "U13 Promotion Junior S2",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48441,
+        "tournamentSlug": "divisao-de-honra",
+        "tournamentName": "Divisao de Honra",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 24,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48443,
+        "tournamentSlug": "divisao-de-honra-women",
+        "tournamentName": "Divisao de Honra, Women",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 16,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48445,
+        "tournamentSlug": "taca-de-portugal-women",
+        "tournamentName": "Taca de Portugal, Women",
+        "categorySlug": "portugal",
+        "categoryName": "Portugal",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48447,
+        "tournamentSlug": "supercopa-iberica-women",
+        "tournamentName": "Supercopa Iberica, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48449,
+        "tournamentSlug": "allsvenskan-women",
+        "tournamentName": "Allsvenskan, Women",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48451,
+        "tournamentSlug": "turkiye-kupasi",
+        "tournamentName": "Turkiye Kupasi",
+        "categorySlug": "turkiye",
+        "categoryName": "Turkiye",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48453,
+        "tournamentSlug": "turkiye-kupasi-women",
+        "tournamentName": "Turkiye Kupasi, Women",
+        "categorySlug": "turkiye",
+        "categoryName": "Turkiye",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48455,
+        "tournamentSlug": "super-kupa",
+        "tournamentName": "Super Kupa",
+        "categorySlug": "turkiye",
+        "categoryName": "Turkiye",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48457,
+        "tournamentSlug": "super-kupa-women",
+        "tournamentName": "Super Kupa, Women",
+        "categorySlug": "turkiye",
+        "categoryName": "Turkiye",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48459,
+        "tournamentSlug": "nb-i/b",
+        "tournamentName": "NB I/B",
+        "categorySlug": "hungary",
+        "categoryName": "Hungary",
+        "futureFixtures": 24,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48461,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "greece",
+        "categoryName": "Greece",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48463,
+        "tournamentSlug": "super-cup-women",
+        "tournamentName": "Super Cup, Women",
+        "categorySlug": "greece",
+        "categoryName": "Greece",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48531,
+        "tournamentSlug": "belarus-cup",
+        "tournamentName": "Belarus Cup",
+        "categorySlug": "belarus",
+        "categoryName": "Belarus",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48533,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "belarus",
+        "categoryName": "Belarus",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48585,
+        "tournamentSlug": "super-cup-women",
+        "tournamentName": "Super Cup, Women",
+        "categorySlug": "serbia",
+        "categoryName": "Serbia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48587,
+        "tournamentSlug": "super-handball-league",
+        "tournamentName": "Super Handball League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 4,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48589,
+        "tournamentSlug": "super-league-women",
+        "tournamentName": "Super League, Women",
+        "categorySlug": "israel",
+        "categoryName": "Israel",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48591,
+        "tournamentSlug": "estonian-cup",
+        "tournamentName": "Estonian Cup",
+        "categorySlug": "estonia",
+        "categoryName": "Estonia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48593,
+        "tournamentSlug": "super-cup",
+        "tournamentName": "Super Cup",
+        "categorySlug": "estonia",
+        "categoryName": "Estonia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48657,
+        "tournamentSlug": "division-de-honor-oro-women",
+        "tournamentName": "Division de Honor Oro, Women",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 7,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48669,
+        "tournamentSlug": "lfh-division-2-women",
+        "tournamentName": "LFH Division 2, Women",
+        "categorySlug": "france",
+        "categoryName": "France",
+        "futureFixtures": 7,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50078,
+        "tournamentSlug": "junioren-u19-inter-finalrunde",
+        "tournamentName": "Junioren U19 Inter Finalrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50080,
+        "tournamentSlug": "junioren-u19-inter-abstiegsrunde",
+        "tournamentName": "Junioren U19 Inter Abstiegsrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50082,
+        "tournamentSlug": "junioren-u17-inter-finalrunde",
+        "tournamentName": "Junioren U17 Inter Finalrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50084,
+        "tournamentSlug": "junioren-u17-inter-abstiegsrunde",
+        "tournamentName": "Junioren U17 Inter Abstiegsrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50086,
+        "tournamentSlug": "junioren-u15-inter-finalrunde",
+        "tournamentName": "Junioren U15 Inter Finalrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50088,
+        "tournamentSlug": "junioren-u15-inter-abstiegsrunde",
+        "tournamentName": "Junioren U15 Inter Abstiegsrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50090,
+        "tournamentSlug": "junioren-u13-inter-finalrunde",
+        "tournamentName": "Junioren U13 Inter Finalrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50092,
+        "tournamentSlug": "junioren-u13-inter-abstiegsrunde",
+        "tournamentName": "Junioren U13 Inter Abstiegsrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50094,
+        "tournamentSlug": "juniorinnen-u18-elite---inter",
+        "tournamentName": "Juniorinnen U18 Elite / Inter",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50096,
+        "tournamentSlug": "juniorinnen-u18-inter-abstiegsrunde",
+        "tournamentName": "Juniorinnen U18 Inter Abstiegsrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50098,
+        "tournamentSlug": "juniorinnen-u16-elite---inter",
+        "tournamentName": "Juniorinnen U16 Elite / Inter",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50100,
+        "tournamentSlug": "juniorinnen-u16-inter-abstiegsrunde",
+        "tournamentName": "Juniorinnen U16 Inter Abstiegsrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50102,
+        "tournamentSlug": "juniorinnen-u14-elite---inter",
+        "tournamentName": "Juniorinnen U14 Elite / Inter",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50104,
+        "tournamentSlug": "juniorinnen-u14-inter-abstiegsrunde",
+        "tournamentName": "Juniorinnen U14 Inter Abstiegsrunde",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50678,
+        "tournamentSlug": "m\u00e4nner-regional-cup-z\u00fcrich",
+        "tournamentName": "M\u00e4nner Regional Cup Z\u00fcrich",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50680,
+        "tournamentSlug": "frauen-regional-cup-z\u00fcrich",
+        "tournamentName": "Frauen Regional Cup Z\u00fcrich",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50682,
+        "tournamentSlug": "junioren-u13-regional-cup-z\u00fcrich",
+        "tournamentName": "Junioren U13 Regional Cup Z\u00fcrich",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50684,
+        "tournamentSlug": "junioren-u15-regional-cup-z\u00fcrich",
+        "tournamentName": "Junioren U15 Regional Cup Z\u00fcrich",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50686,
+        "tournamentSlug": "junioren-u17-regional-cup-z\u00fcrich",
+        "tournamentName": "Junioren U17 Regional Cup Z\u00fcrich",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50688,
+        "tournamentSlug": "junioren-u19-regional-cup-z\u00fcrich",
+        "tournamentName": "Junioren U19 Regional Cup Z\u00fcrich",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50690,
+        "tournamentSlug": "juniorinnen-u14-regional-cup-z\u00fcrich",
+        "tournamentName": "Juniorinnen U14 Regional Cup Z\u00fcrich",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50692,
+        "tournamentSlug": "juniorinnen-u16-regional-cup-z\u00fcrich",
+        "tournamentName": "Juniorinnen U16 Regional Cup Z\u00fcrich",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50694,
+        "tournamentSlug": "m\u00e4nner-regional-cup-romandie",
+        "tournamentName": "M\u00e4nner Regional Cup Romandie",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50696,
+        "tournamentSlug": "frauen-regional-cup-romandie",
+        "tournamentName": "Frauen Regional Cup Romandie",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50698,
+        "tournamentSlug": "junioren-u15-regional-cup-romandie",
+        "tournamentName": "Junioren U15 Regional Cup Romandie",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50700,
+        "tournamentSlug": "junioren-u17-regional-cup-romandie",
+        "tournamentName": "Junioren U17 Regional Cup Romandie",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50702,
+        "tournamentSlug": "juniorinnen-u16-regional-cup-romandie",
+        "tournamentName": "Juniorinnen U16 Regional Cup Romandie",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51040,
+        "tournamentSlug": "ehf-youth-club-trophy-women",
+        "tournamentName": "EHF Youth Club Trophy, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51272,
+        "tournamentSlug": "junioren-u13-elite-inter",
+        "tournamentName": "Junioren U13 Elite/Inter",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51274,
+        "tournamentSlug": "junioren-u15-elite-inter",
+        "tournamentName": "Junioren U15 Elite/Inter",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51276,
+        "tournamentSlug": "junioren-u19-elite-inter",
+        "tournamentName": "Junioren U19 Elite/Inter",
+        "categorySlug": "switzerland",
+        "categoryName": "Switzerland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

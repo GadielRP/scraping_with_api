@@ -1,0 +1,1912 @@
+[
+    {
+        "tournamentId": 50,
+        "tournamentSlug": "matchups",
+        "tournamentName": "2nd Division, avd. 3",
+        "categorySlug": "ufc",
+        "categoryName": "Norway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29216,
+        "tournamentSlug": "dana-whites-contender-series",
+        "tournamentName": "Dana Whites Contender Series",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32659,
+        "tournamentSlug": "ufc-fight-night-abu-dhabi-1",
+        "tournamentName": "UFC Fight Night - Abu Dhabi 1",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32661,
+        "tournamentSlug": "ufc-fight-night-abu-dhabi-2",
+        "tournamentName": "UFC Fight Night - Abu Dhabi 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32663,
+        "tournamentSlug": "ufc-fight-night-abu-dhabi-3",
+        "tournamentName": "UFC Fight Night - Abu Dhabi 3",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32941,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33117,
+        "tournamentSlug": "mmaufcdana-whites-contender-series:-season-4-week-6",
+        "tournamentName": "MMA.UFC.Dana White's Contender Series: Season 4, Week 6",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33792,
+        "tournamentSlug": "ufc-fight-night-blaydes-vs-lewis",
+        "tournamentName": "UFC Fight Night - Blaydes vs. Lewis",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35949,
+        "tournamentSlug": "ufc-fight-night-blachowicz-vs-rakic",
+        "tournamentName": "UFC Fight Night - Blachowicz vs. Rakic",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37517,
+        "tournamentSlug": "ufc-279:-chimaev-vs-diaz",
+        "tournamentName": "UFC 279: Chimaev vs. Diaz",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40291,
+        "tournamentSlug": "noche-ufc:-grasso-vs-shevchenko-2",
+        "tournamentName": "Noche UFC: Grasso vs. Shevchenko 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40371,
+        "tournamentSlug": "ufc-295:-prochazka-vs-pereira",
+        "tournamentName": "UFC 295: Prochazka vs. Pereira",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40373,
+        "tournamentSlug": "ufc-293:-adesanya-vs-strickland",
+        "tournamentName": "UFC 293: Adesanya vs. Strickland",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40375,
+        "tournamentSlug": "ufc-294:-makhachev-vs-volkanovski-2",
+        "tournamentName": "UFC 294: Makhachev vs. Volkanovski 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40453,
+        "tournamentSlug": "dana-white-contender-series:-season-7-week-5",
+        "tournamentName": "Dana White Contender Series: Season 7, Week 5",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40455,
+        "tournamentSlug": "dana-white-contender-series:-season-7-week-6",
+        "tournamentName": "Dana White Contender Series: Season 7, Week 6",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40457,
+        "tournamentSlug": "dana-white-contender-series:-season-7-week-7",
+        "tournamentName": "Dana White Contender Series: Season 7, Week 7",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40459,
+        "tournamentSlug": "dana-white-contender-series:-season-7-week-8",
+        "tournamentName": "Dana White Contender Series: Season 7, Week 8",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40461,
+        "tournamentSlug": "dana-white-contender-series:-season-7-week-9",
+        "tournamentName": "Dana White Contender Series: Season 7, Week 9",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40463,
+        "tournamentSlug": "dana-white-contender-series:-season-7-week-10",
+        "tournamentName": "Dana White Contender Series: Season 7, Week 10",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40739,
+        "tournamentSlug": "ufc-fight-night:-almeida-vs-lewis",
+        "tournamentName": "UFC Fight Night: Almeida vs. Lewis",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40741,
+        "tournamentSlug": "ufc-fight-night:-fiziev-vs-gamrot",
+        "tournamentName": "UFC Fight Night: Fiziev vs. Gamrot",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41017,
+        "tournamentSlug": "ufc-fight-night:-dawson-vs-green",
+        "tournamentName": "UFC Fight Night: Dawson vs. Green",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41019,
+        "tournamentSlug": "ufc-fight-night:-allen-vs-craig",
+        "tournamentName": "UFC Fight Night: Allen vs. Craig",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41023,
+        "tournamentSlug": "mma-internationals",
+        "tournamentName": "MMA Internationals",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41037,
+        "tournamentSlug": "ufc-fight-night:-yusuff-vs-barboza",
+        "tournamentName": "UFC Fight Night: Yusuff vs. Barboza",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41146,
+        "tournamentSlug": "ufc-296:-edwards-vs-covington",
+        "tournamentName": "UFC 296: Edwards vs. Covington",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41534,
+        "tournamentSlug": "ufc-fight-night:-dariush-vs-tsarukyan",
+        "tournamentName": "UFC Fight Night: Dariush vs. Tsarukyan",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41536,
+        "tournamentSlug": "ufc-fight-night:-song-vs-gutierrez",
+        "tournamentName": "UFC Fight Night: Song vs. Gutierrez",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41608,
+        "tournamentSlug": "ufc-297:-strickland-vs-du-plessis",
+        "tournamentName": "UFC 297: Strickland vs. Du Plessis",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41610,
+        "tournamentSlug": "ufc-298:-volkanovski-vs-topuria",
+        "tournamentName": "UFC 298: Volkanovski vs. Topuria",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41612,
+        "tournamentSlug": "ufc-299:-omalley-vs-vera-2",
+        "tournamentName": "UFC 299: O'Malley vs. Vera 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41766,
+        "tournamentSlug": "ufc-fight-night:-ankalaev-vs-walker-2",
+        "tournamentName": "UFC Fight Night: Ankalaev vs. Walker 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41822,
+        "tournamentSlug": "ufc-fight-night:-hermansson-vs-pyfer",
+        "tournamentName": "UFC Fight Night: Hermansson vs. Pyfer",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41887,
+        "tournamentSlug": "ufc-fight-night:-dolidze-vs-imavov",
+        "tournamentName": "UFC Fight Night: Dolidze vs. Imavov",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42037,
+        "tournamentSlug": "ufc-fight-night:-moreno-vs-royval-2",
+        "tournamentName": "UFC Fight Night: Moreno vs. Royval 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42039,
+        "tournamentSlug": "ufc-fight-night:-allen-vs-curtis-2",
+        "tournamentName": "UFC Fight Night: Allen vs. Curtis 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42041,
+        "tournamentSlug": "ufc-300:-pereira-vs-hill",
+        "tournamentName": "UFC 300: Pereira vs. Hill",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42127,
+        "tournamentSlug": "ufc-fight-night:-tuivasa-vs-tybura",
+        "tournamentName": "UFC Fight Night: Tuivasa vs. Tybura",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42129,
+        "tournamentSlug": "ufc-fight-night:-ribas-vs-namajunas",
+        "tournamentName": "UFC Fight Night: Ribas vs. Namajunas",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42131,
+        "tournamentSlug": "ufc-fight-night:-blanchfield-vs-fiorot",
+        "tournamentName": "UFC Fight Night: Blanchfield vs Fiorot",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42279,
+        "tournamentSlug": "ufc-fight-night:-rozenstruik-vs-gaziev",
+        "tournamentName": "UFC Fight Night: Rozenstruik vs. Gaziev",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42335,
+        "tournamentSlug": "ufc-301:-pantoja-vs-erceg",
+        "tournamentName": "UFC 301: Pantoja vs. Erceg",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42471,
+        "tournamentSlug": "ufc-fight-night:-nicolau-vs-perez",
+        "tournamentName": "UFC Fight Night: Nicolau vs. Perez",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42541,
+        "tournamentSlug": "united-fight-league-4",
+        "tournamentName": "United Fight League 4",
+        "categorySlug": "ufl",
+        "categoryName": "UFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42563,
+        "tournamentSlug": "ufc-fight-night:-whittaker-vs-aliskerov",
+        "tournamentName": "UFC Fight Night: Whittaker vs. Aliskerov",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42577,
+        "tournamentSlug": "ufc-fight-night:-lewis-vs-nascimento",
+        "tournamentName": "UFC Fight Night: Lewis vs. Nascimento",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42579,
+        "tournamentSlug": "ufc-fight-night:-barboza-vs-murphy",
+        "tournamentName": "UFC Fight Night: Barboza vs. Murphy",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42581,
+        "tournamentSlug": "ufc-302:-makhachev-vs-poirier",
+        "tournamentName": "UFC 302: Makhachev vs. Poirier",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42651,
+        "tournamentSlug": "ufc-303:-pereira-vs-prochazka-2",
+        "tournamentName": "UFC 303: Pereira vs. Prochazka 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42871,
+        "tournamentSlug": "ufc-304:-edwards-vs-muhammad-2",
+        "tournamentName": "UFC 304: Edwards vs. Muhammad 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42897,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42899,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42995,
+        "tournamentSlug": "ufc-305:-du-plessis-vs-adesanya",
+        "tournamentName": "UFC 305: Du Plessis vs. Adesanya",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43017,
+        "tournamentSlug": "ufc-fight-night:-cannonier-vs-imavov",
+        "tournamentName": "UFC Fight Night: Cannonier vs Imavov",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43047,
+        "tournamentSlug": "ufc-fight-night:-perez-v-taira",
+        "tournamentName": "UFC Fight Night: Perez v Taira",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43205,
+        "tournamentSlug": "cage-63:-elonen-kulmala-vs-oliveira",
+        "tournamentName": "Cage 63: Elonen-Kulmala vs Oliveira",
+        "categorySlug": "cage-finland",
+        "categoryName": "Cage Finland",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43207,
+        "tournamentSlug": "ufc-fight-night:-lemos-vs-jandiroba",
+        "tournamentName": "UFC Fight Night: Lemos vs. Jandiroba",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43263,
+        "tournamentSlug": "ufc-fight-night:-namajunas-vs-cortez",
+        "tournamentName": "UFC Fight Night: Namajunas vs. Cortez",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43269,
+        "tournamentSlug": "ufc-fight-night:-sandhagen-vs-nurmagomedov",
+        "tournamentName": "UFC Fight Night: Sandhagen vs. Nurmagomedov",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43509,
+        "tournamentSlug": "ufc-306:-o-malley-vs-dvalishvili",
+        "tournamentName": "UFC 306: O Malley vs. Dvalishvili",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43543,
+        "tournamentSlug": "ufc-fight-night:-tybura-vs-spivac-2",
+        "tournamentName": "UFC Fight Night: Tybura vs. Spivac 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43579,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-2",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43593,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-1",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 1",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43595,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-3",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 3",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43605,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-4",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 4",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43631,
+        "tournamentSlug": "ufc-fight-night:-cannonier-vs-borralho",
+        "tournamentName": "UFC Fight Night: Cannonier vs. Borralho",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43633,
+        "tournamentSlug": "ufc-fight-night:-moicano-vs-saint-denis",
+        "tournamentName": "UFC Fight Night: Moicano vs. Saint Denis",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43673,
+        "tournamentSlug": "ufc-fight-night-burns-vs-brady",
+        "tournamentName": "UFC Fight Night Burns vs. Brady",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43759,
+        "tournamentSlug": "ufc-307:-pereira-vs-rountree-jr",
+        "tournamentName": "UFC 307: Pereira vs. Rountree Jr.",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44121,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-5",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 5",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44157,
+        "tournamentSlug": "ufc-308:-topuria-vs-holloway",
+        "tournamentName": "UFC 308: Topuria vs. Holloway",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44159,
+        "tournamentSlug": "ufc-fight-night-royval-vs-taira",
+        "tournamentName": "UFC Fight Night Royval vs Taira",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44161,
+        "tournamentSlug": "ufc-fight-night-pereira-v-hernandez",
+        "tournamentName": "UFC Fight Night Pereira v Hernandez",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44163,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-6",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 6",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44185,
+        "tournamentSlug": "ufc-309:-jones-vs-miocic",
+        "tournamentName": "UFC 309: Jones vs. Miocic",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44189,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-7",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 7",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44191,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-8",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 8",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44247,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-9",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 9",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44249,
+        "tournamentSlug": "dana-white-contender-series:-season-8-week-10",
+        "tournamentName": "Dana White Contender Series: Season 8, Week 10",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44525,
+        "tournamentSlug": "ufc-fight-night:-moreno-vs-albazi",
+        "tournamentName": "UFC Fight Night: Moreno vs. Albazi",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44661,
+        "tournamentSlug": "ufc-310:-muhammad-vs-rakhmonov",
+        "tournamentName": "UFC 310: Muhammad vs. Rakhmonov",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44835,
+        "tournamentSlug": "ufc-fight-night:-magny-vs-prates",
+        "tournamentName": "UFC Fight Night: Magny vs. Prates",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44837,
+        "tournamentSlug": "ufc-fight-night:-yan-vs-figueiredo",
+        "tournamentName": "UFC Fight Night: Yan vs. Figueiredo",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45087,
+        "tournamentSlug": "ufc-fight-night:-machado-garry-vs-buckley",
+        "tournamentName": "UFC Fight Night: Machado Garry vs. Buckley",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45355,
+        "tournamentSlug": "ufc-311:-makhachev-vs-tsarukyan-2",
+        "tournamentName": "UFC 311: Makhachev vs. Tsarukyan 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45377,
+        "tournamentSlug": "ufc-312:-du-plessis-vs-strickland-2",
+        "tournamentName": "UFC 312: Du Plessis vs. Strickland 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45403,
+        "tournamentSlug": "ufc-fight-night:-adesanya-vs-imavov",
+        "tournamentName": "UFC Fight Night: Adesanya vs. Imavov",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45411,
+        "tournamentSlug": "ufc-fight-night:-dern-vs-ribas-2",
+        "tournamentName": "UFC Fight Night: Dern vs. Ribas 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45591,
+        "tournamentSlug": "ufc-fight-night:-cannonier-vs-rodrigues",
+        "tournamentName": "UFC Fight Night: Cannonier vs. Rodrigues",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45731,
+        "tournamentSlug": "ufc-fight-night:-cejudo-vs-song",
+        "tournamentName": "UFC Fight Night: Cejudo vs. Song",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45733,
+        "tournamentSlug": "ufc-fight-night:-royval-vs-kape",
+        "tournamentName": "UFC Fight Night: Royval vs. Kape",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45825,
+        "tournamentSlug": "ufc-313:-pereira-vs-ankalaev",
+        "tournamentName": "UFC 313: Pereira vs. Ankalaev",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45827,
+        "tournamentSlug": "ufc-fight-night:-edwards-vs-della-maddalena",
+        "tournamentName": "UFC Fight Night: Edwards vs. Della Maddalena",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46043,
+        "tournamentSlug": "ufc-fight-night:-vettori-vs-dolidze-2",
+        "tournamentName": "UFC Fight Night: Vettori vs. Dolidze 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46095,
+        "tournamentSlug": "ufc-fight-night:-moreno-vs-erceg",
+        "tournamentName": "UFC Fight Night: Moreno vs. Erceg",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46149,
+        "tournamentSlug": "ufc-315:-muhammad-vs-della-maddalena",
+        "tournamentName": "UFC 315: Muhammad vs. Della Maddalena",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46151,
+        "tournamentSlug": "ufc-314:-volkanovski-vs-lopes",
+        "tournamentName": "UFC 314: Volkanovski vs. Lopes",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46227,
+        "tournamentSlug": "ufc-fight-night:-hill-vs-rountree-jr",
+        "tournamentName": "UFC Fight Night: Hill vs. Rountree Jr.",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46257,
+        "tournamentSlug": "ufc-fight-night:-sandhagen-vs-figueiredo",
+        "tournamentName": "UFC Fight Night: Sandhagen vs. Figueiredo",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46259,
+        "tournamentSlug": "ufc-fight-night:-emmett-vs-murphy",
+        "tournamentName": "UFC Fight Night: Emmett vs. Murphy",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46649,
+        "tournamentSlug": "ufc-316:-dvalishvili-vs-o-malley-2",
+        "tournamentName": "UFC 316: Dvalishvili vs. O Malley 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46708,
+        "tournamentSlug": "ufc-fight-night:-blanchfield-vs-barber",
+        "tournamentName": "UFC Fight Night: Blanchfield vs. Barber",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46849,
+        "tournamentSlug": "ufc-fight-night:-burns-vs-morales",
+        "tournamentName": "UFC Fight Night: Burns vs. Morales",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46859,
+        "tournamentSlug": "ufc-318:-dustin-poirier-vs-max-holloway",
+        "tournamentName": "UFC 318: Dustin Poirier vs Max Holloway",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47061,
+        "tournamentSlug": "ufc-317:-topuria-vs-oliveira",
+        "tournamentName": "UFC 317: Topuria vs. Oliveira",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47197,
+        "tournamentSlug": "ufc-319:-du-plessis-vs-chimaev",
+        "tournamentName": "UFC 319: Du Plessis vs. Chimaev",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47199,
+        "tournamentSlug": "ufc-fight-night:-usman-vs-buckley",
+        "tournamentName": "UFC Fight Night: Usman vs. Buckley",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47201,
+        "tournamentSlug": "ufc-fight-night:-hill-vs-rountree-jr",
+        "tournamentName": "UFC Fight Night: Hill vs. Rountree Jr.",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47325,
+        "tournamentSlug": "ufc-fight-night:-whittaker-vs-de-ridder",
+        "tournamentName": "UFC Fight Night: Whittaker vs. de Ridder",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47327,
+        "tournamentSlug": "ufc-fight-night:-lewis-vs-teixeira",
+        "tournamentName": "UFC Fight Night: Lewis vs. Teixeira",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47377,
+        "tournamentSlug": "ufc-fight-night:-albazi-vs-taira",
+        "tournamentName": "UFC Fight Night: Albazi vs. Taira",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47710,
+        "tournamentSlug": "ufc-fight-night:-imavov-vs-borralho",
+        "tournamentName": "UFC Fight Night: Imavov vs. Borralho",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47888,
+        "tournamentSlug": "ufc-fight-night:-dolidze-vs-hernandez",
+        "tournamentName": "UFC Fight Night: Dolidze vs. Hernandez",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48008,
+        "tournamentSlug": "ufc-320:-ankalaev-vs-pereira-2",
+        "tournamentName": "UFC 320: Ankalaev vs. Pereira 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48010,
+        "tournamentSlug": "ufc-321:-aspinall-vs-gane",
+        "tournamentName": "UFC 321: Aspinall vs. Gane",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48012,
+        "tournamentSlug": "ufc-fight-night:-walker-vs-zhang",
+        "tournamentName": "UFC Fight Night: Walker vs. Zhang",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48074,
+        "tournamentSlug": "ufc-fight-night:-ulberg-vs-reyes",
+        "tournamentName": "UFC Fight Night: Ulberg vs. Reyes",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48187,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-1",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 1",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48189,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-2",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48191,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-3",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 3",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48241,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-4",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 4",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48285,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48347,
+        "tournamentSlug": "ufc-fight-night:-lopes-vs-silva",
+        "tournamentName": "UFC Fight Night: Lopes vs. Silva",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48349,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-5",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 5",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48469,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-5",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 5",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48577,
+        "tournamentSlug": "ufc-322:-della-maddalena-vs-makhachev",
+        "tournamentName": "UFC 322: Della Maddalena vs. Makhachev",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48689,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-6",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 6",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48811,
+        "tournamentSlug": "ufc-fight-night-oliveira-vs-fiziev",
+        "tournamentName": "UFC Fight Night Oliveira vs Fiziev",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48813,
+        "tournamentSlug": "ufc-fight-night-de-ridder-vs-hernandez",
+        "tournamentName": "UFC Fight Night de Ridder vs Hernandez",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48815,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-7",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 7",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48833,
+        "tournamentSlug": "lux-055-guadalajara",
+        "tournamentName": "LUX 055, Guadalajara",
+        "categorySlug": "lux-fight-league",
+        "categoryName": "LUX Fight League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48927,
+        "tournamentSlug": "aca-young-eagles-58",
+        "tournamentName": "ACA Young Eagles 58",
+        "categorySlug": "aca",
+        "categoryName": "ACA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48971,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-8",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 8",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48973,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-10",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 10",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48997,
+        "tournamentSlug": "dana-whites-contender-series:-season-9-week-9",
+        "tournamentName": "Dana White's Contender Series: Season 9, Week 9",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49039,
+        "tournamentSlug": "ufc-fight-night:-bonfim-vs-brown",
+        "tournamentName": "UFC Fight Night: Bonfim vs. Brown",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49174,
+        "tournamentSlug": "ufc-323:-dvalishvili-vs-yan-2",
+        "tournamentName": "UFC 323: Dvalishvili vs. Yan 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49176,
+        "tournamentSlug": "ufc-fight-night:-tsarukyan-vs-hooker",
+        "tournamentName": "UFC Fight Night: Tsarukyan vs. Hooker",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49252,
+        "tournamentSlug": "ufc-fight-night:-garcia-vs-onama",
+        "tournamentName": "UFC Fight Night: Garcia vs. Onama",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49446,
+        "tournamentSlug": "ufc-fight-night-royval-vs-kape",
+        "tournamentName": "UFC Fight Night - Royval vs. Kape",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49806,
+        "tournamentSlug": "ufc-324-gaethje-vs-pimblett",
+        "tournamentName": "UFC 324 - Gaethje vs. Pimblett",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49816,
+        "tournamentSlug": "lux-57-zacatecas",
+        "tournamentName": "LUX 57, Zacatecas",
+        "categorySlug": "lux-fight-league",
+        "categoryName": "LUX Fight League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49818,
+        "tournamentSlug": "fac-32",
+        "tournamentName": "FAC 32",
+        "categorySlug": "spectation-sports",
+        "categoryName": "Spectation Sports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49900,
+        "tournamentSlug": "ufc-325:-volkanovski-vs-lopes-2",
+        "tournamentName": "UFC 325: Volkanovski vs. Lopes 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49962,
+        "tournamentSlug": "ffl-seasons-beatings",
+        "tournamentName": "FFL Seasons Beatings",
+        "categorySlug": "spectation-sports",
+        "categoryName": "Spectation Sports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50018,
+        "tournamentSlug": "hype-armenia",
+        "tournamentName": "Hype Armenia",
+        "categorySlug": "hype-fc",
+        "categoryName": "Hype FC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50022,
+        "tournamentSlug": "ufc-brazilian-jui-jitsu",
+        "tournamentName": "UFC Brazilian Jui Jitsu",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50024,
+        "tournamentSlug": "pfl-europe:-nemkov-vs-ferreira",
+        "tournamentName": "PFL Europe: Nemkov vs. Ferreira",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50034,
+        "tournamentSlug": "pfl-africa:-ndebele-vs-godogo",
+        "tournamentName": "PFL Africa: Ndebele vs. Godogo",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50046,
+        "tournamentSlug": "ufc-326-:-holloway-vs-oliveira-2",
+        "tournamentName": "UFC 326 : Holloway vs. Oliveira 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50048,
+        "tournamentSlug": "ufc-fight-night:-bautista-vs-oliveira",
+        "tournamentName": "UFC Fight Night: Bautista vs. Oliveira",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50050,
+        "tournamentSlug": "ufc-fight-night:-strickland-vs-hernandez",
+        "tournamentName": "UFC Fight Night: Strickland vs. Hernandez",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50052,
+        "tournamentSlug": "ufc-fight-night:moreno-vs-almabayev",
+        "tournamentName": "UFC Fight Night:Moreno vs. Almabayev",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50250,
+        "tournamentSlug": "ufc-fight-night:-adesanya-vs-pyfer",
+        "tournamentName": "UFC Fight Night: Adesanya vs. Pyfer",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50260,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50316,
+        "tournamentSlug": "pfl-road-to-dubai",
+        "tournamentName": "PFL Road to Dubai",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50558,
+        "tournamentSlug": "lux-58",
+        "tournamentName": "LUX 58",
+        "categorySlug": "lux-fight-league",
+        "categoryName": "LUX Fight League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50566,
+        "tournamentSlug": "ufc-fight-night:-emmett-vs-vallejos",
+        "tournamentName": "UFC Fight Night: Emmett vs. Vallejos",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50568,
+        "tournamentSlug": "ufc-fight-night:-evloev-vs-murphy",
+        "tournamentName": "UFC Fight Night: Evloev vs. Murphy",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50674,
+        "tournamentSlug": "lux-59",
+        "tournamentName": "LUX 59",
+        "categorySlug": "lux-fight-league",
+        "categoryName": "LUX Fight League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50676,
+        "tournamentSlug": "ufc-327:--van-vs-taira",
+        "tournamentName": "UFC 327:  Van vs. Taira",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50716,
+        "tournamentSlug": "ufc-fight-night:-moreno-vs-kavanagh",
+        "tournamentName": "UFC Fight Night: Moreno vs. Kavanagh",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50754,
+        "tournamentSlug": "ufc-fight-night:-moicano-vs-duncan",
+        "tournamentName": "UFC Fight Night: Moicano vs. Duncan",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50778,
+        "tournamentSlug": "ufc-fight-night:-burns-vs-malott",
+        "tournamentName": "UFC Fight Night: Burns vs. Malott",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50780,
+        "tournamentSlug": "ufc-fight-night:-brady-vs-buckley",
+        "tournamentName": "UFC Fight Night: Brady vs. Buckley",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50782,
+        "tournamentSlug": "ufc-fight-night:-della-maddalena-vs-prates",
+        "tournamentName": "UFC Fight Night: Della Maddalena vs. Prates",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50824,
+        "tournamentSlug": "ufc-freedom-fights-250:-topuria-vs-gaethje",
+        "tournamentName": "UFC Freedom Fights 250: Topuria vs. Gaethje",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50870,
+        "tournamentSlug": "ufc-328:-chimaev-vs-strickland",
+        "tournamentName": "UFC 328: Chimaev vs. Strickland",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50884,
+        "tournamentSlug": "ufc-fight-night:-song-vs-figueiredo",
+        "tournamentName": "UFC Fight Night: Song vs. Figueiredo",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50896,
+        "tournamentSlug": "pfl-madrid:-van-steenis-vs-edwards",
+        "tournamentName": "PFL Madrid: Van Steenis vs. Edwards",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50904,
+        "tournamentSlug": "mvp:-rousey-vs-carano",
+        "tournamentName": "MVP: Rousey vs Carano",
+        "categorySlug": "mvp",
+        "categoryName": "MVP",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50928,
+        "tournamentSlug": "pfl-pittsburgh:-eblen-vs-battle",
+        "tournamentName": "PFL Pittsburgh: Eblen vs. Battle",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51060,
+        "tournamentSlug": "ufc-fight-night-muhammad-vs-bonfim",
+        "tournamentName": "UFC Fight Night Muhammad vs. Bonfim",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51132,
+        "tournamentSlug": "pfl-chicago:-pettis-vs-mckee",
+        "tournamentName": "PFL Chicago: Pettis vs. McKee",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51138,
+        "tournamentSlug": "lux-fight-league-60",
+        "tournamentName": "Lux Fight League 60",
+        "categorySlug": "lux-fight-league",
+        "categoryName": "LUX Fight League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51186,
+        "tournamentSlug": "pfl-belfast:-kelly-vs-wilson",
+        "tournamentName": "PFL Belfast: Kelly vs. Wilson",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51188,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51196,
+        "tournamentSlug": "ufc-fight-night:-allen-vs-costa",
+        "tournamentName": "UFC Fight Night: Allen vs. Costa",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51352,
+        "tournamentSlug": "pfl-sioux-falls:-storley-vs-zendeli",
+        "tournamentName": "PFL Sioux Falls: Storley vs Zendeli",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51380,
+        "tournamentSlug": "pfl-brussels:-habirora-vs-henderson",
+        "tournamentName": "PFL Brussels: Habirora vs Henderson",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51498,
+        "tournamentSlug": "ufc-fight-night-fiziev-vs-torres",
+        "tournamentName": "UFC Fight Night Fiziev vs. Torres",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 11,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51676,
+        "tournamentSlug": "ufc-329:-mcgregor-vs-holloway-2",
+        "tournamentName": "UFC 329: McGregor vs. Holloway 2",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 5,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51748,
+        "tournamentSlug": "lux-fight-league-61",
+        "tournamentName": "Lux Fight League 61",
+        "categorySlug": "lux-fight-league",
+        "categoryName": "LUX Fight League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51752,
+        "tournamentSlug": "ufc-fight-night:-kape-vs-horiguchi",
+        "tournamentName": "UFC Fight Night: Kape vs Horiguchi",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 12,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51756,
+        "tournamentSlug": "pfl-mena-9:-yahya-vs-saadi",
+        "tournamentName": "PFL MENA 9: Yahya vs Saadi",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51828,
+        "tournamentSlug": "ufc-fight-night:-medic-vs-rodriguez",
+        "tournamentName": "UFC Fight Night: Medic vs. Rodriguez",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51844,
+        "tournamentSlug": "pfl-san-diego",
+        "tournamentName": "PFL San Diego",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 10,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51846,
+        "tournamentSlug": "pfl-mena-10:-jeddah",
+        "tournamentName": "PFL MENA 10: Jeddah",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51882,
+        "tournamentSlug": "ufc-fight-night-ankalaev-vs-rountree-jr",
+        "tournamentName": "UFC Fight Night - Ankalaev vs. Rountree Jr.",
+        "categorySlug": "ufc",
+        "categoryName": "UFC",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51884,
+        "tournamentSlug": "pfl-africa:-nigeria",
+        "tournamentName": "PFL Africa: Nigeria",
+        "categorySlug": "pfl",
+        "categoryName": "PFL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

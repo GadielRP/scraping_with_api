@@ -1,0 +1,882 @@
+[
+    {
+        "tournamentId": 2450,
+        "tournamentSlug": "lcs",
+        "tournamentName": "LCS",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2452,
+        "tournamentSlug": "lec",
+        "tournamentName": "LEC",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2454,
+        "tournamentSlug": "lck",
+        "tournamentName": "LCK",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2527,
+        "tournamentSlug": "mid-season-invitational",
+        "tournamentName": "Mid-Season Invitational",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2549,
+        "tournamentSlug": "league-of-legends-world-championship",
+        "tournamentName": "League of Legends World Championship",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15488,
+        "tournamentSlug": "ljl",
+        "tournamentName": "LJL",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15490,
+        "tournamentSlug": "lpl",
+        "tournamentName": "LPL",
+        "categorySlug": "tencent-lol",
+        "categoryName": "Tencent LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20918,
+        "tournamentSlug": "esport-balkan-league",
+        "tournamentName": "Esport Balkan League",
+        "categorySlug": "fortuna-lol",
+        "categoryName": "Fortuna LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 21962,
+        "tournamentSlug": "kespa-cup",
+        "tournamentName": "KeSPA Cup",
+        "categorySlug": "kespa-lol",
+        "categoryName": "KeSPA LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25019,
+        "tournamentSlug": "demacia-cup",
+        "tournamentName": "Demacia Cup",
+        "categorySlug": "tencent-lol",
+        "categoryName": "Tencent LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25443,
+        "tournamentSlug": "rift-rivals",
+        "tournamentName": "Rift Rivals",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26094,
+        "tournamentSlug": "sea-tour",
+        "tournamentName": "SEA Tour",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26590,
+        "tournamentSlug": "emea-masters",
+        "tournamentName": "EMEA Masters",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26698,
+        "tournamentSlug": "cblol",
+        "tournamentName": "CBLOL",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 1
+    },
+    {
+        "tournamentId": 26706,
+        "tournamentSlug": "tcl",
+        "tournamentName": "TCL",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26708,
+        "tournamentSlug": "vcs",
+        "tournamentName": "VCS",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27372,
+        "tournamentSlug": "nest",
+        "tournamentName": "NEST",
+        "categorySlug": "nest-lol",
+        "categoryName": "NEST LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27468,
+        "tournamentSlug": "demacia-cup",
+        "tournamentName": "Demacia Cup",
+        "categorySlug": "demacia-lol",
+        "categoryName": "Demacia LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28520,
+        "tournamentSlug": "european-masters-spring",
+        "tournamentName": "European Masters Spring",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29023,
+        "tournamentSlug": "lla",
+        "tournamentName": "LLA",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29097,
+        "tournamentSlug": "rift-rivals-lck-lpl-lms-vcs",
+        "tournamentName": "Rift Rivals LCK-LPL-LMS-VCS",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29224,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "fortuna-lol",
+        "categoryName": "Fortuna LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31591,
+        "tournamentSlug": "tyler1-championship-series",
+        "tournamentName": "Tyler1 Championship Series",
+        "categorySlug": "tyler1",
+        "categoryName": "Tyler1",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31607,
+        "tournamentSlug": "demacia-cup",
+        "tournamentName": "Demacia Cup",
+        "categorySlug": "tj-sports",
+        "categoryName": "TJ Sports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31835,
+        "tournamentSlug": "pcs",
+        "tournamentName": "PCS",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32517,
+        "tournamentSlug": "mid-season-cup",
+        "tournamentName": "Mid-Season Cup",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33678,
+        "tournamentSlug": "lfl",
+        "tournamentName": "LFL",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33680,
+        "tournamentSlug": "lvp-superliga",
+        "tournamentName": "LVP Superliga",
+        "categorySlug": "lvp-lol",
+        "categoryName": "LVP LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33814,
+        "tournamentSlug": "prime-league-pro-division",
+        "tournamentName": "Prime League Pro Division",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33816,
+        "tournamentSlug": "niu",
+        "tournamentName": "N.I.U.",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33818,
+        "tournamentSlug": "ultraliga",
+        "tournamentName": "Ultraliga",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34010,
+        "tournamentSlug": "baltic-masters",
+        "tournamentName": "Baltic Masters",
+        "categorySlug": "challengermode-lol",
+        "categoryName": "Challengermode LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34012,
+        "tournamentSlug": "gll-spring",
+        "tournamentName": "GLL Spring",
+        "categorySlug": "pvp-media",
+        "categoryName": "PVP Media",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34014,
+        "tournamentSlug": "dutch-league",
+        "tournamentName": "Dutch League",
+        "categorySlug": "4entertainment",
+        "categoryName": "4Entertainment",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34016,
+        "tournamentSlug": "belgian-league",
+        "tournamentName": "Belgian League",
+        "categorySlug": "4entertainment",
+        "categoryName": "4Entertainment",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34018,
+        "tournamentSlug": "lplol",
+        "tournamentName": "LPLOL",
+        "categorySlug": "inygon",
+        "categoryName": "Inygon",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34020,
+        "tournamentSlug": "lit",
+        "tournamentName": "LIT",
+        "categorySlug": "pg-esports",
+        "categoryName": "PG Esports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34092,
+        "tournamentSlug": "lcs-proving-grounds",
+        "tournamentName": "LCS Proving Grounds",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34460,
+        "tournamentSlug": "gll-summer",
+        "tournamentName": "GLL Summer",
+        "categorySlug": "pvp-media",
+        "categoryName": "PVP Media",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34464,
+        "tournamentSlug": "lck-season-2021-summer",
+        "tournamentName": "LCK Season 2021, Summer",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34466,
+        "tournamentSlug": "ultraliga",
+        "tournamentName": "Ultraliga",
+        "categorySlug": "polsat-lol",
+        "categoryName": "Polsat LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34676,
+        "tournamentSlug": "lco",
+        "tournamentName": "LCO",
+        "categorySlug": "esl-lol",
+        "categoryName": "ESL LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34678,
+        "tournamentSlug": "hitpoint-masters",
+        "tournamentName": "Hitpoint Masters",
+        "categorySlug": "hitpoint",
+        "categoryName": "Hitpoint",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36039,
+        "tournamentSlug": "nlc",
+        "tournamentName": "NLC",
+        "categorySlug": "freaks4u-gaming",
+        "categoryName": "Freaks4u Gaming",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36889,
+        "tournamentSlug": "nlc",
+        "tournamentName": "NLC",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36997,
+        "tournamentSlug": "lck-cl",
+        "tournamentName": "LCK CL",
+        "categorySlug": "kespa-lol",
+        "categoryName": "KeSPA LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39009,
+        "tournamentSlug": "nacl",
+        "tournamentName": "NACL",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39985,
+        "tournamentSlug": "lpl",
+        "tournamentName": "LPL",
+        "categorySlug": "tj-sports",
+        "categoryName": "TJ Sports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39997,
+        "tournamentSlug": "elite-series",
+        "tournamentName": "Elite Series",
+        "categorySlug": "unlocked",
+        "categoryName": "Unlocked",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40019,
+        "tournamentSlug": "lck-challengers-league",
+        "tournamentName": "LCK Challengers League",
+        "categorySlug": "wdg",
+        "categoryName": "WDG",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42873,
+        "tournamentSlug": "arabian-league",
+        "tournamentName": "Arabian League",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42997,
+        "tournamentSlug": "cblol-academy",
+        "tournamentName": "CBLOL Academy",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43193,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "esl-lol",
+        "categoryName": "ESL LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44181,
+        "tournamentSlug": "american-challengers",
+        "tournamentName": "American Challengers",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44639,
+        "tournamentSlug": "prime-pokal",
+        "tournamentName": "Prime Pokal",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44641,
+        "tournamentSlug": "hitpoint-winter",
+        "tournamentName": "Hitpoint Winter",
+        "categorySlug": "hitpoint",
+        "categoryName": "Hitpoint",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44643,
+        "tournamentSlug": "gll-pro-am",
+        "tournamentName": "GLL Pro-Am",
+        "categorySlug": "pvp-media",
+        "categoryName": "PVP Media",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44645,
+        "tournamentSlug": "iberian-cup",
+        "tournamentName": "Iberian Cup",
+        "categorySlug": "lvp-lol",
+        "categoryName": "LVP LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44647,
+        "tournamentSlug": "coupe-de-france",
+        "tournamentName": "Coupe de France",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44659,
+        "tournamentSlug": "tcl-cup",
+        "tournamentName": "TCL Cup",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44673,
+        "tournamentSlug": "ebl-pro-am",
+        "tournamentName": "EBL Pro-Am",
+        "categorySlug": "fortuna-lol",
+        "categoryName": "Fortuna LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44903,
+        "tournamentSlug": "elite-series-benelux-masters",
+        "tournamentName": "Elite Series Benelux Masters",
+        "categorySlug": "unlocked",
+        "categoryName": "Unlocked",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45081,
+        "tournamentSlug": "legend-cup",
+        "tournamentName": "Legend Cup",
+        "categorySlug": "huya",
+        "categoryName": "Huya",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45337,
+        "tournamentSlug": "lck-cup",
+        "tournamentName": "LCK Cup",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45397,
+        "tournamentSlug": "league-of-its-own",
+        "tournamentName": "League of Its Own",
+        "categorySlug": "red-bull",
+        "categoryName": "Red Bull",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45589,
+        "tournamentSlug": "lcp",
+        "tournamentName": "LCP",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45617,
+        "tournamentSlug": "first-stand",
+        "tournamentName": "First Stand",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45619,
+        "tournamentSlug": "lta",
+        "tournamentName": "LTA",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45621,
+        "tournamentSlug": "ldl",
+        "tournamentName": "LDL",
+        "categorySlug": "tj-sports",
+        "categoryName": "TJ Sports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45623,
+        "tournamentSlug": "gll",
+        "tournamentName": "GLL",
+        "categorySlug": "pvp-media",
+        "categoryName": "PVP Media",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45855,
+        "tournamentSlug": "rift-legends",
+        "tournamentName": "Rift Legends",
+        "categorySlug": "gam3rs_x",
+        "categoryName": "GAM3RS_X",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45943,
+        "tournamentSlug": "arabian-league",
+        "tournamentName": "Arabian League",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45985,
+        "tournamentSlug": "road-of-legends",
+        "tournamentName": "Road of Legends",
+        "categorySlug": "gamewaves",
+        "categoryName": "GameWaves",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46117,
+        "tournamentSlug": "lrn",
+        "tournamentName": "LRN",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46119,
+        "tournamentSlug": "lrs",
+        "tournamentName": "LRS",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46121,
+        "tournamentSlug": "circuito-desafiante",
+        "tournamentName": "Circuito Desafiante",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46303,
+        "tournamentSlug": "emea-masters-winter",
+        "tournamentName": "EMEA Masters Winter",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46331,
+        "tournamentSlug": "asia-masters",
+        "tournamentName": "Asia Masters",
+        "categorySlug": "tj-sports",
+        "categoryName": "TJ Sports",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47864,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "ewc",
+        "categoryName": "EWC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48993,
+        "tournamentSlug": "asia-invitational",
+        "tournamentName": "Asia Invitational",
+        "categorySlug": "huya",
+        "categoryName": "Huya",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50026,
+        "tournamentSlug": "demacia-cup",
+        "tournamentName": "Demacia Cup",
+        "categorySlug": "huya",
+        "categoryName": "Huya",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50242,
+        "tournamentSlug": "finnish-pro-league-winter",
+        "tournamentName": "Finnish Pro League Winter",
+        "categorySlug": "finnhouse",
+        "categoryName": "Finnhouse",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50586,
+        "tournamentSlug": "les",
+        "tournamentName": "LES",
+        "categorySlug": "lastlap",
+        "categoryName": "Lastlap",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50756,
+        "tournamentSlug": "americas-cup",
+        "tournamentName": "Americas Cup",
+        "categorySlug": "riot-lol",
+        "categoryName": "Riot LoL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50952,
+        "tournamentSlug": "european-circuit",
+        "tournamentName": "European Circuit",
+        "categorySlug": "european-circuit",
+        "categoryName": "European Circuit",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50972,
+        "tournamentSlug": "uzi-cup",
+        "tournamentName": "UZI Cup",
+        "categorySlug": "uzi",
+        "categoryName": "UZI",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51072,
+        "tournamentSlug": "aegis-challengers-league",
+        "tournamentName": "Aegis Challengers League",
+        "categorySlug": "acl",
+        "categoryName": "ACL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51092,
+        "tournamentSlug": "streamers-clash",
+        "tournamentName": "Streamers Clash",
+        "categorySlug": "wesmart",
+        "categoryName": "WeSmart",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

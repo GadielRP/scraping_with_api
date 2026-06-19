@@ -1,0 +1,112 @@
+[
+    {
+        "tournamentId": 28677,
+        "tournamentSlug": "cwl-london",
+        "tournamentName": "CWL London",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29162,
+        "tournamentSlug": "cwl-anaheim",
+        "tournamentName": "CWL Anaheim",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29456,
+        "tournamentSlug": "global-pro-league",
+        "tournamentName": "Global Pro League",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29710,
+        "tournamentSlug": "world-league-championship",
+        "tournamentName": "World League Championship",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42007,
+        "tournamentSlug": "call-of-duty-league",
+        "tournamentName": "Call of Duty League",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 7,
+        "upcomingFixtures": 0,
+        "liveFixtures": 26
+    },
+    {
+        "tournamentId": 43271,
+        "tournamentSlug": "esports-world-cup-warzone",
+        "tournamentName": "Esports World Cup Warzone",
+        "categorySlug": "esl",
+        "categoryName": "ESL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43297,
+        "tournamentSlug": "call-of-duty-challengers",
+        "tournamentName": "Call of Duty Challengers",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43937,
+        "tournamentSlug": "world-series-of-warzone-trios",
+        "tournamentName": "World Series of Warzone, Trios",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43939,
+        "tournamentSlug": "world-series-of-warzone-solos",
+        "tournamentName": "World Series of Warzone, Solos",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44523,
+        "tournamentSlug": "call-of-duty-mobile-world-championship",
+        "tournamentName": "Call of Duty Mobile World Championship",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47307,
+        "tournamentSlug": "warzone-world-cup",
+        "tournamentName": "Warzone World Cup",
+        "categorySlug": "mlg-cod",
+        "categoryName": "MLG CoD",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

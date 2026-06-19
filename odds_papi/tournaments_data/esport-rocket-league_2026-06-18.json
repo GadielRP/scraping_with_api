@@ -1,0 +1,802 @@
+[
+    {
+        "tournamentId": 31499,
+        "tournamentSlug": "rocket-league-championship-series",
+        "tournamentName": "Rocket League Championship Series",
+        "categorySlug": "psyonix",
+        "categoryName": "Psyonix",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40821,
+        "tournamentSlug": "gamers8",
+        "tournamentName": "Gamers8",
+        "categorySlug": "esl",
+        "categoryName": "ESL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43441,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "esl",
+        "categoryName": "ESL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45193,
+        "tournamentSlug": "fifae-world-cup-2024",
+        "tournamentName": "FIFAE World Cup 2024",
+        "categorySlug": "fifa",
+        "categoryName": "FIFA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51650,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "ewc",
+        "categoryName": "EWC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901756,
+        "tournamentSlug": "the-gauntlet",
+        "tournamentName": "The Gauntlet",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901769,
+        "tournamentSlug": "rlcs-the-grid-eu",
+        "tournamentName": "RLCS The Grid EU",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901770,
+        "tournamentSlug": "rlcs-the-grid-na",
+        "tournamentName": "RLCS The Grid NA",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901771,
+        "tournamentSlug": "rlcs-north-america",
+        "tournamentName": "RLCS North America",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901772,
+        "tournamentSlug": "rlcs-europe",
+        "tournamentName": "RLCS Europe",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901779,
+        "tournamentSlug": "rlcs-oceania",
+        "tournamentName": "RLCS Oceania",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901780,
+        "tournamentSlug": "rlcs-south-america",
+        "tournamentName": "RLCS South America",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901783,
+        "tournamentSlug": "rlcs-season-x-european-major",
+        "tournamentName": "RLCS Season X European Major",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901784,
+        "tournamentSlug": "rlcs-season-x-na-major",
+        "tournamentName": "RLCS Season X NA Major",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901785,
+        "tournamentSlug": "rlcs-south-american-major",
+        "tournamentName": "RLCS South American Major",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901786,
+        "tournamentSlug": "rlcs-oceanic-major",
+        "tournamentName": "RLCS Oceanic Major",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901822,
+        "tournamentSlug": "rlcs-north-america-regional-event",
+        "tournamentName": "RLCS North America Regional Event",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901825,
+        "tournamentSlug": "rlcs-na-major-quali-tiebreaker",
+        "tournamentName": "RLCS NA Major Quali Tiebreaker",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901866,
+        "tournamentSlug": "rlcs-oceania-regional-event",
+        "tournamentName": "RLCS Oceania Regional Event",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901867,
+        "tournamentSlug": "rlcs-europe-regional-event",
+        "tournamentName": "RLCS Europe Regional Event",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901967,
+        "tournamentSlug": "weplay-esports-invitational-emea",
+        "tournamentName": "WePlay Esports Invitational EMEA",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901968,
+        "tournamentSlug": "weplay-esports-invitational-na",
+        "tournamentName": "WePlay Esports Invitational NA",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901978,
+        "tournamentSlug": "rlcs-na-regional-event-qualifier",
+        "tournamentName": "RLCS: NA Regional Event Qualifier",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901981,
+        "tournamentSlug": "rlcs-eu-regional-qualifier",
+        "tournamentName": "RLCS EU Regional Qualifier",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902006,
+        "tournamentSlug": "rlcs-fall-split-major",
+        "tournamentName": "RLCS Fall Split Major",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902007,
+        "tournamentSlug": "sweden-skirmish",
+        "tournamentName": "Sweden Skirmish",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902012,
+        "tournamentSlug": "monaco-gaming",
+        "tournamentName": "Monaco gaming",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902017,
+        "tournamentSlug": "knights-winter-bash",
+        "tournamentName": "Knights Winter Bash",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902019,
+        "tournamentSlug": "womens-car-ball-championship",
+        "tournamentName": "Womens Car Ball Championship",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902020,
+        "tournamentSlug": "nitro-league-division-x",
+        "tournamentName": "Nitro League Division X",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902030,
+        "tournamentSlug": "rlcs-sa-regional-event",
+        "tournamentName": "RLCS SA Regional Event",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902034,
+        "tournamentSlug": "rlcs-na-regional-event",
+        "tournamentName": "RLCS NA Regional Event",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902040,
+        "tournamentSlug": "expo-dubai-invitational",
+        "tournamentName": "Expo Dubai: Invitational",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902041,
+        "tournamentSlug": "telialigaen-division-1",
+        "tournamentName": "Telialigaen Division 1",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902042,
+        "tournamentSlug": "elite-series",
+        "tournamentName": "Elite Series",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902050,
+        "tournamentSlug": "rlcs-major",
+        "tournamentName": "RLCS Major",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902088,
+        "tournamentSlug": "european-championship",
+        "tournamentName": "European Championship",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902089,
+        "tournamentSlug": "nitro-league-division-1-league-play",
+        "tournamentName": "Nitro League: Division 1 League Play",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902090,
+        "tournamentSlug": "rlcs-mena",
+        "tournamentName": "RLCS MENA",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902093,
+        "tournamentSlug": "rlcs-spring-split-major",
+        "tournamentName": "RLCS Spring Split Major",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902103,
+        "tournamentSlug": "rlcs-world-championship",
+        "tournamentName": "RLCS World Championship",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902106,
+        "tournamentSlug": "gamers8",
+        "tournamentName": "Gamers8",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902108,
+        "tournamentSlug": "seasonal-shootout",
+        "tournamentName": "Seasonal Shootout",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902129,
+        "tournamentSlug": "roster-royale",
+        "tournamentName": "Roster Royale",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902157,
+        "tournamentSlug": "rlcs-apac-regional-event",
+        "tournamentName": "RLCS APAC Regional Event",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902174,
+        "tournamentSlug": "collegiate-rocket-league-fall-western",
+        "tournamentName": "Collegiate Rocket League Fall - Western",
+        "categorySlug": "overwatch-2",
+        "categoryName": "Overwatch 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902175,
+        "tournamentSlug": "collegiate-western",
+        "tournamentName": "Collegiate - Western",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902176,
+        "tournamentSlug": "collegiate-eastern",
+        "tournamentName": "Collegiate - Eastern",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902222,
+        "tournamentSlug": "g1-invitational",
+        "tournamentName": "G1 Invitational",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902228,
+        "tournamentSlug": "sub-saharan-africa",
+        "tournamentName": "Sub-Saharan Africa",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902229,
+        "tournamentSlug": "rlcs-na-qualifier",
+        "tournamentName": "RLCS NA Qualifier",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902250,
+        "tournamentSlug": "rlcs-ssa",
+        "tournamentName": "RLCS SSA",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902251,
+        "tournamentSlug": "rlcs-sam",
+        "tournamentName": "RLCS SAM",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902252,
+        "tournamentSlug": "rlcs-apac",
+        "tournamentName": "RLCS APAC",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902268,
+        "tournamentSlug": "steelseries-cup",
+        "tournamentName": "SteelSeries Cup",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902272,
+        "tournamentSlug": "gamers-without-borders",
+        "tournamentName": "Gamers Without Borders",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902274,
+        "tournamentSlug": "herculyse-s-new-era-series-na",
+        "tournamentName": "Herculyse\u2019s New Era Series: NA",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902304,
+        "tournamentSlug": "feer-fest-jr-north-america",
+        "tournamentName": "Feer Fest Jr: North America",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902306,
+        "tournamentSlug": "twitch-rivals-face-off",
+        "tournamentName": "Twitch Rivals: Face Off",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902332,
+        "tournamentSlug": "salt-mine-north-america",
+        "tournamentName": "Salt Mine - North America",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902352,
+        "tournamentSlug": "flip-spin",
+        "tournamentName": "Flip & Spin",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902358,
+        "tournamentSlug": "saudi-eleagues",
+        "tournamentName": "Saudi eLeagues",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902363,
+        "tournamentSlug": "italian-rocket-championship",
+        "tournamentName": "Italian Rocket Championship",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902374,
+        "tournamentSlug": "girlgamer",
+        "tournamentName": "GIRLGAMER",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902377,
+        "tournamentSlug": "oxg-holiday-invitational",
+        "tournamentName": "OXG Holiday Invitational",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902386,
+        "tournamentSlug": "rlcs-sam-qualifier",
+        "tournamentName": "RLCS SAM Qualifier",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902387,
+        "tournamentSlug": "rlcs-europe-qualifier",
+        "tournamentName": "RLCS Europe Qualifier",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902398,
+        "tournamentSlug": "lg-boost-blitz",
+        "tournamentName": "LG Boost Blitz",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902409,
+        "tournamentSlug": "shift-league-europe",
+        "tournamentName": "Shift League: Europe",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902410,
+        "tournamentSlug": "shift-league-north-america",
+        "tournamentName": "Shift League: North America",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902411,
+        "tournamentSlug": "shift-summer-league-na",
+        "tournamentName": "Shift Summer League NA",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902412,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902427,
+        "tournamentSlug": "rival-rush",
+        "tournamentName": "Rival Rush",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902434,
+        "tournamentSlug": "fifae-world-cup",
+        "tournamentName": "FIFAe World Cup",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902445,
+        "tournamentSlug": "rlcs-birmingham-major-europe-qualifier",
+        "tournamentName": "RLCS Birmingham Major: Europe Qualifier",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902448,
+        "tournamentSlug": "rlcs-birmingham-major-north-america-qualifier",
+        "tournamentName": "RLCS Birmingham Major: North America Qualifier",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902453,
+        "tournamentSlug": "rlcs-birmingham-major-north-america",
+        "tournamentName": "RLCS Birmingham Major: North America",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902456,
+        "tournamentSlug": "rlcs-1v1-major",
+        "tournamentName": "RLCS 1v1  Major",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904398,
+        "tournamentSlug": "saudi-eleague",
+        "tournamentName": "Saudi eLeague",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904607,
+        "tournamentSlug": "rlcs-boston-major-europe-open",
+        "tournamentName": "RLCS Boston Major: Europe Open",
+        "categorySlug": "rocket-league",
+        "categoryName": "Rocket League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

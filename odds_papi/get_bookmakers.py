@@ -28,8 +28,11 @@ def fetch_bookmakers(folder):
         print(f"❌ API Error {response.status_code}: {response.text}")
 
 def main():
-    parser = argparse.ArgumentParser(description="OddspAPI Bookmaker Discovery Tool")
-    parser.add_argument("action", choices=["fetch"], help="The action to perform (e.g. fetch)")
+    parser = argparse.ArgumentParser(
+        description="OddspAPI Bookmaker Discovery Tool. Fetches all available bookmakers and their unique slugs from OddspAPI and saves them to a local JSON file.",
+        epilog="Example: python get_bookmakers.py fetch"
+    )
+    parser.add_argument("action", choices=["fetch"], help="The action to perform. 'fetch' retrieves the list of bookmakers.")
     
     args = parser.parse_args()
 

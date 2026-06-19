@@ -1,0 +1,42 @@
+[
+    {
+        "tournamentId": 292,
+        "tournamentSlug": "elitserien-playoffs",
+        "tournamentName": "Elitserien, Playoffs",
+        "categorySlug": "speedway",
+        "categoryName": "Speedway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 293,
+        "tournamentSlug": "elitserien",
+        "tournamentName": "Elitserien",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 53,
+        "upcomingFixtures": 1,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1034,
+        "tournamentSlug": "ekstraliga",
+        "tournamentName": "Ekstraliga",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 41,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27687,
+        "tournamentSlug": "poland-nice-1liga-zuzlowa",
+        "tournamentName": "Poland Nice 1.Liga Zuzlowa",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 40,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

@@ -1,0 +1,2552 @@
+[
+    {
+        "tournamentId": 14239,
+        "tournamentSlug": "hong-kong-open",
+        "tournamentName": "Hong Kong Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14411,
+        "tournamentSlug": "us-open",
+        "tournamentName": "US Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14634,
+        "tournamentSlug": "london-open",
+        "tournamentName": "London Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14850,
+        "tournamentSlug": "jp-morgan-tournament-of-champions",
+        "tournamentName": "JP Morgan Tournament of Champions",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14852,
+        "tournamentSlug": "jp-morgan-tournament-of-champions-women",
+        "tournamentName": "JP Morgan Tournament of Champions, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14989,
+        "tournamentSlug": "windy-city-open-women",
+        "tournamentName": "Windy City Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14991,
+        "tournamentSlug": "windy-city-open",
+        "tournamentName": "Windy City Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15169,
+        "tournamentSlug": "psa-world-championship-women",
+        "tournamentName": "PSA World Championship Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 32,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15173,
+        "tournamentSlug": "el-gouna-international-singles",
+        "tournamentName": "El Gouna International, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15175,
+        "tournamentSlug": "el-gouna-international-women",
+        "tournamentName": "El Gouna International, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15201,
+        "tournamentSlug": "houston-open",
+        "tournamentName": "Houston Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 15237,
+        "tournamentSlug": "grasshopper-cup-singles",
+        "tournamentName": "Grasshopper Cup, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20106,
+        "tournamentSlug": "us-open-women",
+        "tournamentName": "US Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20460,
+        "tournamentSlug": "carol-weymuller-open-women",
+        "tournamentName": "Carol Weymuller Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 20766,
+        "tournamentSlug": "qatar-classic",
+        "tournamentName": "Qatar Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 21426,
+        "tournamentSlug": "hong-kong-open-women",
+        "tournamentName": "Hong Kong Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 22006,
+        "tournamentSlug": "world-team-championship",
+        "tournamentName": "World Team Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23159,
+        "tournamentSlug": "psa-world-squash-championship",
+        "tournamentName": "PSA World Squash Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23741,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23743,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23997,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23999,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24445,
+        "tournamentSlug": "british-open",
+        "tournamentName": "British Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24447,
+        "tournamentSlug": "british-open-women-singles",
+        "tournamentName": "British Open, Women, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25011,
+        "tournamentSlug": "world-series-finals-singles",
+        "tournamentName": "World Series Finals, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25013,
+        "tournamentSlug": "psa-world-series-finals-women-singles",
+        "tournamentName": "PSA World Series Finals, Women, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26394,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26396,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26398,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26400,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26520,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26524,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26526,
+        "tournamentSlug": "hamburg-open",
+        "tournamentName": "Hamburg Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26690,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26692,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26790,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26792,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26884,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27490,
+        "tournamentSlug": "black-ball-squash-open-women",
+        "tournamentName": "Black Ball Squash Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27823,
+        "tournamentSlug": "suburban-collection-motor-city-open",
+        "tournamentName": "Suburban Collection Motor City Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27827,
+        "tournamentSlug": "bahl-and-gaynor-cincinnati-cup-women",
+        "tournamentName": "Bahl and Gaynor Cincinnati Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27829,
+        "tournamentSlug": "world-championships-singles",
+        "tournamentName": "World Championships, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27831,
+        "tournamentSlug": "black-ball-squash-open-women-singles",
+        "tournamentName": "Black Ball Squash Open, Women, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27833,
+        "tournamentSlug": "northern-open-women",
+        "tournamentName": "Northern Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27835,
+        "tournamentSlug": "dpd-open",
+        "tournamentName": "DPD Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27841,
+        "tournamentSlug": "irish-squash-open",
+        "tournamentName": "Irish Squash Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27843,
+        "tournamentSlug": "irish-squash-open-ms",
+        "tournamentName": "Irish Squash Open, MS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27845,
+        "tournamentSlug": "irish-squash-open-ws",
+        "tournamentName": "Irish Squash Open, WS",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27847,
+        "tournamentSlug": "manchester-open-women",
+        "tournamentName": "Manchester Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27849,
+        "tournamentSlug": "psa-world-championship",
+        "tournamentName": "PSA World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 32,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28045,
+        "tournamentSlug": "three-rivers-capital-pittsburgh-open",
+        "tournamentName": "Three Rivers Capital Pittsburgh Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28390,
+        "tournamentSlug": "texas-open-women",
+        "tournamentName": "Texas Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30658,
+        "tournamentSlug": "egyptian-open",
+        "tournamentName": "Egyptian Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30993,
+        "tournamentSlug": "st-george-hill-open",
+        "tournamentName": "St George Hill Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31919,
+        "tournamentSlug": "british-national-championships",
+        "tournamentName": "British National Championships",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31921,
+        "tournamentSlug": "british-national-championships-women",
+        "tournamentName": "British National Championships, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32005,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32007,
+        "tournamentSlug": "calgary-squash-week-women",
+        "tournamentName": "Calgary Squash Week, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32071,
+        "tournamentSlug": "grasshopper-cup-women",
+        "tournamentName": "Grasshopper Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33193,
+        "tournamentSlug": "manchester-open",
+        "tournamentName": "Manchester Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33858,
+        "tournamentSlug": "black-ball-squash-open",
+        "tournamentName": "Black Ball Squash Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34600,
+        "tournamentSlug": "squash-on-fire-open",
+        "tournamentName": "Squash on Fire Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34602,
+        "tournamentSlug": "squash-on-fire-open-women",
+        "tournamentName": "Squash on Fire Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35224,
+        "tournamentSlug": "egyptian-open-women",
+        "tournamentName": "Egyptian Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35226,
+        "tournamentSlug": "cib-egyptian-squash-open",
+        "tournamentName": "CIB Egyptian Squash Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35753,
+        "tournamentSlug": "czech-open",
+        "tournamentName": "Czech Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35755,
+        "tournamentSlug": "czech-open-women",
+        "tournamentName": "Czech Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35917,
+        "tournamentSlug": "black-ball-squash-open-(gold)",
+        "tournamentName": "Black Ball Squash Open (Gold)",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36127,
+        "tournamentSlug": "motor-city-open",
+        "tournamentName": "Motor City Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36129,
+        "tournamentSlug": "the-sturbridge-capital-motor-city-open",
+        "tournamentName": "The Sturbridge Capital Motor City Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36301,
+        "tournamentSlug": "optasia-championship",
+        "tournamentName": "Optasia Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36563,
+        "tournamentSlug": "canadian-open",
+        "tournamentName": "Canadian Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36565,
+        "tournamentSlug": "canadian-open",
+        "tournamentName": "Canadian Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36567,
+        "tournamentSlug": "canadian-open-women",
+        "tournamentName": "Canadian Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36569,
+        "tournamentSlug": "manchester-open",
+        "tournamentName": "Manchester Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36833,
+        "tournamentSlug": "el-gouna-international",
+        "tournamentName": "El Gouna International",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36835,
+        "tournamentSlug": "el-gouna-international-singles",
+        "tournamentName": "El Gouna International, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36837,
+        "tournamentSlug": "el-gouna-international-women-singles",
+        "tournamentName": "El Gouna International, Women, Singles",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37537,
+        "tournamentSlug": "commonwealth-games",
+        "tournamentName": "Commonwealth Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37827,
+        "tournamentSlug": "south-western-open-women",
+        "tournamentName": "South Western Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38343,
+        "tournamentSlug": "open-psa-lagord",
+        "tournamentName": "Open PSA Lagord",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38439,
+        "tournamentSlug": "open-international-niort",
+        "tournamentName": "Open International Niort",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38441,
+        "tournamentSlug": "new-zealand-open",
+        "tournamentName": "New Zealand Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38451,
+        "tournamentSlug": "new-zealand-open-women",
+        "tournamentName": "New Zealand Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38557,
+        "tournamentSlug": "singapore-squash-open",
+        "tournamentName": "Singapore Squash Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38559,
+        "tournamentSlug": "singapore-squash-open-women",
+        "tournamentName": "Singapore Squash Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38779,
+        "tournamentSlug": "the-hong-kong-football-club-open",
+        "tournamentName": "The Hong Kong Football Club Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38781,
+        "tournamentSlug": "world-team-championship-women",
+        "tournamentName": "World Team Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39131,
+        "tournamentSlug": "dac-pro-squash-classic-women",
+        "tournamentName": "DAC Pro Squash Classic, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39263,
+        "tournamentSlug": "chestnut-hill-classic",
+        "tournamentName": "Chestnut Hill Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39265,
+        "tournamentSlug": "chestnut-hill-classic-women",
+        "tournamentName": "Chestnut Hill Classic, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39405,
+        "tournamentSlug": "st-james-womens-20k",
+        "tournamentName": "St. James Womens 20K",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39691,
+        "tournamentSlug": "european-team-championship",
+        "tournamentName": "European Team Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39799,
+        "tournamentSlug": "richmond-open-2023-women",
+        "tournamentName": "Richmond Open 2023, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40799,
+        "tournamentSlug": "paris-squash",
+        "tournamentName": "Paris Squash",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40801,
+        "tournamentSlug": "paris-squash-women",
+        "tournamentName": "Paris Squash, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40977,
+        "tournamentSlug": "qatar-classic-women",
+        "tournamentName": "Qatar Classic, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41015,
+        "tournamentSlug": "charlottesville-open",
+        "tournamentName": "Charlottesville Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41103,
+        "tournamentSlug": "nash-cup",
+        "tournamentName": "Nash Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41105,
+        "tournamentSlug": "nash-cup-women",
+        "tournamentName": "Nash Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41168,
+        "tournamentSlug": "louisville-open",
+        "tournamentName": "Louisville Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41270,
+        "tournamentSlug": "qsf-3",
+        "tournamentName": "QSF 3",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41348,
+        "tournamentSlug": "the-hamilton-open",
+        "tournamentName": "The Hamilton Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41350,
+        "tournamentSlug": "chicago-open",
+        "tournamentName": "Chicago Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41402,
+        "tournamentSlug": "qsf-4",
+        "tournamentName": "QSF 4",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41424,
+        "tournamentSlug": "open-de-lagord-2023",
+        "tournamentName": "Open de Lagord 2023",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41462,
+        "tournamentSlug": "the-sa-open-women",
+        "tournamentName": "The SA Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41554,
+        "tournamentSlug": "malaysia-cup",
+        "tournamentName": "Malaysia Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41556,
+        "tournamentSlug": "malaysia-cup-women",
+        "tournamentName": "Malaysia Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41558,
+        "tournamentSlug": "monte-carlo-classic-woman",
+        "tournamentName": "Monte Carlo Classic, Woman",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41628,
+        "tournamentSlug": "the-hong-kong-football-club-open-women",
+        "tournamentName": "The Hong Kong Football Club Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41754,
+        "tournamentSlug": "hong-kong-open",
+        "tournamentName": "Hong Kong Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 41802,
+        "tournamentSlug": "qsf-5",
+        "tournamentName": "QSF 5",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42009,
+        "tournamentSlug": "florida-open",
+        "tournamentName": "Florida Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42011,
+        "tournamentSlug": "florida-open-women",
+        "tournamentName": "Florida Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42153,
+        "tournamentSlug": "montreal-open",
+        "tournamentName": "Montreal Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42319,
+        "tournamentSlug": "squash-in-the-land",
+        "tournamentName": "Squash in the Land",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42321,
+        "tournamentSlug": "squash-in-the-land",
+        "tournamentName": "Squash in the Land",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42323,
+        "tournamentSlug": "squash-in-the-land-women",
+        "tournamentName": "Squash in the Land, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42355,
+        "tournamentSlug": "optasia-championship-women",
+        "tournamentName": "Optasia Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42401,
+        "tournamentSlug": "australian-open",
+        "tournamentName": "Australian Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42403,
+        "tournamentSlug": "australian-open-women",
+        "tournamentName": "Australian Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42449,
+        "tournamentSlug": "london-classic",
+        "tournamentName": "London Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42451,
+        "tournamentSlug": "london-classic-women",
+        "tournamentName": "London Classic, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42453,
+        "tournamentSlug": "kinetic-racquet-squash-women",
+        "tournamentName": "Kinetic Racquet Squash, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42501,
+        "tournamentSlug": "german-open",
+        "tournamentName": "German Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42503,
+        "tournamentSlug": "german-open",
+        "tournamentName": "German Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42505,
+        "tournamentSlug": "german-open-women",
+        "tournamentName": "German Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42707,
+        "tournamentSlug": "cns-international-squash",
+        "tournamentName": "CNS International Squash",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42887,
+        "tournamentSlug": "kinetic-racquet-30k-women",
+        "tournamentName": "Kinetic Racquet 30K, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43007,
+        "tournamentSlug": "psa-club-campestre-de-cali",
+        "tournamentName": "PSA Club Campestre De Cali",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43657,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44107,
+        "tournamentSlug": "budapest-open",
+        "tournamentName": "Budapest Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44381,
+        "tournamentSlug": "open-squash-classic",
+        "tournamentName": "Open Squash Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44383,
+        "tournamentSlug": "silicon-valley-open",
+        "tournamentName": "Silicon Valley Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44385,
+        "tournamentSlug": "silicon-valley-open-women",
+        "tournamentName": "Silicon Valley Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44387,
+        "tournamentSlug": "open-squash-classic-women",
+        "tournamentName": "Open Squash Classic, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44539,
+        "tournamentSlug": "the-hamilton-open-women",
+        "tournamentName": "The Hamilton Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44541,
+        "tournamentSlug": "richardson-open",
+        "tournamentName": "Richardson Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44627,
+        "tournamentSlug": "cambridge-classic",
+        "tournamentName": "Cambridge Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44735,
+        "tournamentSlug": "china-open",
+        "tournamentName": "China Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44737,
+        "tournamentSlug": "china-open-women",
+        "tournamentName": "China Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44829,
+        "tournamentSlug": "london-open-women",
+        "tournamentName": "London Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45155,
+        "tournamentSlug": "cape-town-squash-open",
+        "tournamentName": "Cape Town Squash Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45157,
+        "tournamentSlug": "cape-town-squash-open-women",
+        "tournamentName": "Cape Town Squash Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45977,
+        "tournamentSlug": "texas-open",
+        "tournamentName": "Texas Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46045,
+        "tournamentSlug": "qsf-2",
+        "tournamentName": "QSF 2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46159,
+        "tournamentSlug": "richardson-open-women",
+        "tournamentName": "Richardson Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46345,
+        "tournamentSlug": "indian-open",
+        "tournamentName": "Indian Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46347,
+        "tournamentSlug": "spanish-open-women",
+        "tournamentName": "Spanish Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46507,
+        "tournamentSlug": "indian-open-women",
+        "tournamentName": "Indian Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46803,
+        "tournamentSlug": "bermuda-open",
+        "tournamentName": "Bermuda Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46805,
+        "tournamentSlug": "bermuda-open-women",
+        "tournamentName": "Bermuda Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46875,
+        "tournamentSlug": "hyder-trophy",
+        "tournamentName": "Hyder Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46877,
+        "tournamentSlug": "hyder-trophy",
+        "tournamentName": "Hyder Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46879,
+        "tournamentSlug": "hyder-trophy-women",
+        "tournamentName": "Hyder Trophy, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47021,
+        "tournamentSlug": "palm-hills-squash-open",
+        "tournamentName": "Palm Hills Squash Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47023,
+        "tournamentSlug": "palm-hills-squash-open-women",
+        "tournamentName": "Palm Hills Squash Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47235,
+        "tournamentSlug": "santiago-open-women",
+        "tournamentName": "Santiago Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47237,
+        "tournamentSlug": "aftab-jawaid-memorial-open",
+        "tournamentName": "Aftab Jawaid Memorial Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47319,
+        "tournamentSlug": "vendee-open-squash-international",
+        "tournamentName": "Vendee Open Squash International",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47379,
+        "tournamentSlug": "paris-montmartre-psa-15k",
+        "tournamentName": "Paris Montmartre PSA 15K",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47381,
+        "tournamentSlug": "paris-montmartre-psa-15k-women",
+        "tournamentName": "Paris Montmartre PSA 15K, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47970,
+        "tournamentSlug": "valencia",
+        "tournamentName": "Valencia",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47972,
+        "tournamentSlug": "valencia",
+        "tournamentName": "Valencia",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47974,
+        "tournamentSlug": "valencia-women",
+        "tournamentName": "Valencia, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48140,
+        "tournamentSlug": "nsw-squash-bega-open",
+        "tournamentName": "NSW Squash Bega Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48142,
+        "tournamentSlug": "nsw-squash-bega-open",
+        "tournamentName": "NSW Squash Bega Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48144,
+        "tournamentSlug": "nsw-squash-bega-open-women",
+        "tournamentName": "NSW Squash Bega Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 1
+    },
+    {
+        "tournamentId": 48146,
+        "tournamentSlug": "johns-creek-open",
+        "tournamentName": "Johns Creek Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48393,
+        "tournamentSlug": "the-tuanku-muhriz-trophy",
+        "tournamentName": "The Tuanku Muhriz Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48395,
+        "tournamentSlug": "the-tuanku-muhriz-trophy",
+        "tournamentName": "The Tuanku Muhriz Trophy",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48397,
+        "tournamentSlug": "the-tuanku-muhriz-trophy-women",
+        "tournamentName": "The Tuanku Muhriz Trophy, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48579,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48581,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48607,
+        "tournamentSlug": "london-classic",
+        "tournamentName": "London Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48787,
+        "tournamentSlug": "nash-cup",
+        "tournamentName": "Nash Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48789,
+        "tournamentSlug": "qatar-classic",
+        "tournamentName": "Qatar Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48859,
+        "tournamentSlug": "charlottesville-open",
+        "tournamentName": "Charlottesville Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48861,
+        "tournamentSlug": "open-squash-classic",
+        "tournamentName": "Open Squash Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48863,
+        "tournamentSlug": "simply-the-brest",
+        "tournamentName": "Simply The Brest",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48867,
+        "tournamentSlug": "simply-the-brest-women",
+        "tournamentName": "Simply The Brest, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48961,
+        "tournamentSlug": "silicon-valley-open",
+        "tournamentName": "Silicon Valley Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48963,
+        "tournamentSlug": "japan-open",
+        "tournamentName": "Japan Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49041,
+        "tournamentSlug": "us-open",
+        "tournamentName": "US Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49043,
+        "tournamentSlug": "richardson-open",
+        "tournamentName": "Richardson Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49045,
+        "tournamentSlug": "boston-open",
+        "tournamentName": "Boston Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49047,
+        "tournamentSlug": "boston-open-women",
+        "tournamentName": "Boston Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49085,
+        "tournamentSlug": "toronto-open",
+        "tournamentName": "Toronto Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49206,
+        "tournamentSlug": "open-psa-lagord",
+        "tournamentName": "Open PSA Lagord",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49208,
+        "tournamentSlug": "open-international-psa-couzeix-limoges",
+        "tournamentName": "Open International PSA Couzeix/Limoges",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49210,
+        "tournamentSlug": "open-international-psa-couzeix/limoges-women",
+        "tournamentName": "Open International PSA Couzeix/Limoges, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49280,
+        "tournamentSlug": "andorra-open",
+        "tournamentName": "Andorra Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49282,
+        "tournamentSlug": "andorra-open",
+        "tournamentName": "Andorra Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49284,
+        "tournamentSlug": "st-james-open",
+        "tournamentName": "St James Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49286,
+        "tournamentSlug": "st-james-open",
+        "tournamentName": "St James Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49288,
+        "tournamentSlug": "st-james-open-women",
+        "tournamentName": "St James Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49390,
+        "tournamentSlug": "sacc-costa-rica-open",
+        "tournamentName": "SACC Costa Rica Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49392,
+        "tournamentSlug": "sacc-costa-rica-open-women",
+        "tournamentName": "SACC Costa Rica Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49450,
+        "tournamentSlug": "indian-open-2",
+        "tournamentName": "Indian Open 2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49452,
+        "tournamentSlug": "indian-open-2-women",
+        "tournamentName": "Indian Open 2, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49454,
+        "tournamentSlug": "cdmx-open-tekae-faltami",
+        "tournamentName": "CDMX Open Tekae Faltami",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49468,
+        "tournamentSlug": "china-open",
+        "tournamentName": "China Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49470,
+        "tournamentSlug": "sacc-costa-rica-open",
+        "tournamentName": "SACC Costa Rica Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49472,
+        "tournamentSlug": "open-international-niort-venise-verte",
+        "tournamentName": "Open International Niort Venise Verte",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49474,
+        "tournamentSlug": "indian-open-2",
+        "tournamentName": "Indian Open 2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49476,
+        "tournamentSlug": "london-open",
+        "tournamentName": "London Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49478,
+        "tournamentSlug": "cdmx-open-tekae-faltami",
+        "tournamentName": "CDMX Open Tekae Faltami",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49532,
+        "tournamentSlug": "cas-international-squash-championships",
+        "tournamentName": "CAS International Squash Championships",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49534,
+        "tournamentSlug": "cas-international-squash-championships",
+        "tournamentName": "CAS International Squash Championships",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49536,
+        "tournamentSlug": "white-oaks-cup",
+        "tournamentName": "White Oaks Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49538,
+        "tournamentSlug": "white-oaks-cup",
+        "tournamentName": "White Oaks Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49540,
+        "tournamentSlug": "hkfc-squash-open",
+        "tournamentName": "HKFC Squash Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49542,
+        "tournamentSlug": "hkfc-squash-open",
+        "tournamentName": "HKFC Squash Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49556,
+        "tournamentSlug": "hkfc-squash-open-women",
+        "tournamentName": "HKFC Squash Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49558,
+        "tournamentSlug": "psa-bdo-namibian-open",
+        "tournamentName": "PSA BDO Namibian Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49560,
+        "tournamentSlug": "psa-bdo-namibian-open",
+        "tournamentName": "PSA BDO Namibian Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49608,
+        "tournamentSlug": "hcl-squash-indian-tour-4-chennai",
+        "tournamentName": "HCL Squash Indian Tour 4, Chennai",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49610,
+        "tournamentSlug": "hcl-squash-indian-tour-4-chennai",
+        "tournamentName": "HCL Squash Indian Tour 4, Chennai",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49612,
+        "tournamentSlug": "hcl-squash-indian-tour-4-chennai-women",
+        "tournamentName": "HCL Squash Indian Tour 4, Chennai, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49614,
+        "tournamentSlug": "madeira-international-tournament",
+        "tournamentName": "Madeira International Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49616,
+        "tournamentSlug": "madeira-international-tournament",
+        "tournamentName": "Madeira International Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49618,
+        "tournamentSlug": "madeira-international-tournament-women",
+        "tournamentName": "Madeira International Tournament, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50164,
+        "tournamentSlug": "rich-venus-karachi-open",
+        "tournamentName": "Rich Venus Karachi Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50166,
+        "tournamentSlug": "rich-venus-karachi-open",
+        "tournamentName": "Rich Venus Karachi Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50168,
+        "tournamentSlug": "rich-venus-karachi-open-women",
+        "tournamentName": "Rich Venus Karachi Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50266,
+        "tournamentSlug": "squash-on-fire-open",
+        "tournamentName": "Squash on Fire Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50476,
+        "tournamentSlug": "texas-open",
+        "tournamentName": "Texas Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50522,
+        "tournamentSlug": "cincinnati-gaynor-cup",
+        "tournamentName": "Cincinnati Gaynor Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50524,
+        "tournamentSlug": "weymuller-challenger",
+        "tournamentName": "Weymuller Challenger",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50608,
+        "tournamentSlug": "mcmillan-goodfellow-classic",
+        "tournamentName": "McMillan Goodfellow Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50610,
+        "tournamentSlug": "mcmillan-goodfellow-classic",
+        "tournamentName": "McMillan Goodfellow Classic",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50612,
+        "tournamentSlug": "steel-city-open",
+        "tournamentName": "Steel City Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50614,
+        "tournamentSlug": "steel-city-open-women",
+        "tournamentName": "Steel City Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50728,
+        "tournamentSlug": "new-zealand-open",
+        "tournamentName": "New Zealand Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50730,
+        "tournamentSlug": "australian-open",
+        "tournamentName": "Australian Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50732,
+        "tournamentSlug": "calgary-squash-week",
+        "tournamentName": "Calgary Squash Week",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50816,
+        "tournamentSlug": "indian-open",
+        "tournamentName": "Indian Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50818,
+        "tournamentSlug": "manitoba-open",
+        "tournamentName": "Manitoba Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50862,
+        "tournamentSlug": "optasia-championship",
+        "tournamentName": "Optasia Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50866,
+        "tournamentSlug": "world-championships-oceania-qualifiers",
+        "tournamentName": "World Championships Oceania Qualifiers",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50868,
+        "tournamentSlug": "world-championships-oceania-qualifiers-women",
+        "tournamentName": "World Championships Oceania Qualifiers, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50994,
+        "tournamentSlug": "world-championships-asia-qualifiers",
+        "tournamentName": "World Championships Asia Qualifiers",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50996,
+        "tournamentSlug": "world-championships-asia-qualifiers-women",
+        "tournamentName": "World Championships Asia Qualifiers, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50998,
+        "tournamentSlug": "k2-squash-psa-mens-challenger",
+        "tournamentName": "K2 Squash PSA Mens Challenger",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51000,
+        "tournamentSlug": "world-championships-pan-america-qualifiers",
+        "tournamentName": "World Championships Pan America Qualifiers",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51002,
+        "tournamentSlug": "world-championships-pan-america-qualifiers-women",
+        "tournamentName": "World Championships Pan America Qualifiers, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51066,
+        "tournamentSlug": "world-championships-europe-qualifiers",
+        "tournamentName": "World Championships Europe Qualifiers",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51068,
+        "tournamentSlug": "world-championships-europe-qualifiers-women",
+        "tournamentName": "World Championships Europe Qualifiers, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51076,
+        "tournamentSlug": "bermuda-open",
+        "tournamentName": "Bermuda Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51088,
+        "tournamentSlug": "hamburg-open",
+        "tournamentName": "Hamburg Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51090,
+        "tournamentSlug": "hamburg-open-women",
+        "tournamentName": "Hamburg Open, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51260,
+        "tournamentSlug": "world-championships-africa-qualifiers",
+        "tournamentName": "World Championships Africa Qualifiers",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51262,
+        "tournamentSlug": "world-championships-africa-qualifiers-women",
+        "tournamentName": "World Championships Africa Qualifiers, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 51440,
+        "tournamentSlug": "west-of-ireland-open",
+        "tournamentName": "West of Ireland Open",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

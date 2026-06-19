@@ -1,0 +1,32 @@
+[
+    {
+        "tournamentId": 26816,
+        "tournamentSlug": "pro-kabaddi-league",
+        "tournamentName": "Pro Kabaddi League",
+        "categorySlug": "india",
+        "categoryName": "India",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46355,
+        "tournamentSlug": "world-cup",
+        "tournamentName": "World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46357,
+        "tournamentSlug": "world-cup-women",
+        "tournamentName": "World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

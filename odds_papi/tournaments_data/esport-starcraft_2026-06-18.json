@@ -1,0 +1,1652 @@
+[
+    {
+        "tournamentId": 23511,
+        "tournamentSlug": "2018-gsl-season-1",
+        "tournamentName": "2018 GSL Season 1",
+        "categorySlug": "gsl-sc2",
+        "categoryName": "GSL SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 23513,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "gsl-sc2",
+        "categoryName": "GSL SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 25429,
+        "tournamentSlug": "wcs-valencia",
+        "tournamentName": "WCS Valencia",
+        "categorySlug": "dreamhack-sc2",
+        "categoryName": "Dreamhack SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28603,
+        "tournamentSlug": "gsl-super-tournament",
+        "tournamentName": "GSL Super Tournament",
+        "categorySlug": "blizzard-sc2",
+        "categoryName": "Blizzard SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29250,
+        "tournamentSlug": "homestory-cup",
+        "tournamentName": "Homestory Cup",
+        "categorySlug": "taketv-sc2",
+        "categoryName": "TaKeTV SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29692,
+        "tournamentSlug": "assembly-summer",
+        "tournamentName": "Assembly Summer",
+        "categorySlug": "assembly-sc2",
+        "categoryName": "Assembly SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30648,
+        "tournamentSlug": "wcs-global-finals",
+        "tournamentName": "WCS - Global Finals",
+        "categorySlug": "wcs-sc2",
+        "categoryName": "WCS SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31973,
+        "tournamentSlug": "afreeca-starleague",
+        "tournamentName": "Afreeca Starleague",
+        "categorySlug": "afreeca-sc",
+        "categoryName": "Afreeca SC",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32125,
+        "tournamentSlug": "gsl-super-tournament",
+        "tournamentName": "GSL Super Tournament",
+        "categorySlug": "afreeca-sc2",
+        "categoryName": "Afreeca SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32477,
+        "tournamentSlug": "teamliquid-starleague",
+        "tournamentName": "TeamLiquid StarLeague",
+        "categorySlug": "teamliquid-sc2",
+        "categoryName": "TeamLiquid SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32833,
+        "tournamentSlug": "gsl-season",
+        "tournamentName": "GSL Season",
+        "categorySlug": "afreeca-sc2",
+        "categoryName": "Afreeca SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32887,
+        "tournamentSlug": "war-chest-team-league",
+        "tournamentName": "War Chest Team League",
+        "categorySlug": "warditv-sc2",
+        "categoryName": "WardiTV SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42035,
+        "tournamentSlug": "esl-sc2-masters",
+        "tournamentName": "ESL SC2 Masters",
+        "categorySlug": "esl-sc2",
+        "categoryName": "ESL SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42065,
+        "tournamentSlug": "masters-coliseum",
+        "tournamentName": "Masters Coliseum",
+        "categorySlug": "scboy",
+        "categoryName": "SCBoy",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42299,
+        "tournamentSlug": "global-starcraft-2-league",
+        "tournamentName": "Global StarCraft 2 League",
+        "categorySlug": "afreeca-sc2",
+        "categoryName": "Afreeca SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42693,
+        "tournamentSlug": "global-starcraft-ii",
+        "tournamentName": "Global StarCraft II",
+        "categorySlug": "afreeca-sc2",
+        "categoryName": "Afreeca SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43135,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "esl-sc2",
+        "categoryName": "ESL SC2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 47175,
+        "tournamentSlug": "bellum-gens-elite",
+        "tournamentName": "Bellum Gens Elite",
+        "categorySlug": "bellumgens",
+        "categoryName": "BellumGens",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901711,
+        "tournamentSlug": "globel-starcraft-2-league",
+        "tournamentName": "Globel StarCraft 2 League",
+        "categorySlug": "globel-starcraft-2-league",
+        "categoryName": "Globel StarCraft 2 League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901712,
+        "tournamentSlug": "showmatch",
+        "tournamentName": "Showmatch",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901713,
+        "tournamentSlug": "homestorycup",
+        "tournamentName": "HomeStoryCup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901732,
+        "tournamentSlug": "nation-wars",
+        "tournamentName": "Nation Wars",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901734,
+        "tournamentSlug": "afreeca-starleague",
+        "tournamentName": "Afreeca Starleague",
+        "categorySlug": "starcraft-broodwar",
+        "categoryName": "Starcraft BroodWar",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901735,
+        "tournamentSlug": "olimoleague",
+        "tournamentName": "Olimoleague",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901736,
+        "tournamentSlug": "underdogs",
+        "tournamentName": "Underdogs",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901738,
+        "tournamentSlug": "master-s-coliseum",
+        "tournamentName": "Master's Coliseum",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901739,
+        "tournamentSlug": "afreecatv-gsl-super-tournament",
+        "tournamentName": "AfreecaTV GSL Super Tournament",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901740,
+        "tournamentSlug": "ultimate-series",
+        "tournamentName": "Ultimate Series",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901741,
+        "tournamentSlug": "afreeca-world",
+        "tournamentName": "Afreeca World",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901742,
+        "tournamentSlug": "starline-league",
+        "tournamentName": "StarLine League",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901743,
+        "tournamentSlug": "gsl-super-tournament",
+        "tournamentName": "GSL Super Tournament",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901745,
+        "tournamentSlug": "netease-esports-x-tournaments",
+        "tournamentName": "Netease Esports X Tournaments",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901746,
+        "tournamentSlug": "gg-year-2018",
+        "tournamentName": "GG year 2018",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901748,
+        "tournamentSlug": "alpha-pro-series",
+        "tournamentName": "Alpha Pro Series",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901749,
+        "tournamentSlug": "blazing-series",
+        "tournamentName": "Blazing Series",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901750,
+        "tournamentSlug": "iem-katowice",
+        "tournamentName": "IEM Katowice",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901751,
+        "tournamentSlug": "iem-katowice-qualifier",
+        "tournamentName": "IEM Katowice Qualifier",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901752,
+        "tournamentSlug": "alpha-x",
+        "tournamentName": "Alpha X",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901753,
+        "tournamentSlug": "the-gemini-korean-invitational",
+        "tournamentName": "The Gemini Korean Invitational",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901754,
+        "tournamentSlug": "alpha-scrims",
+        "tournamentName": "Alpha Scrims",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901755,
+        "tournamentSlug": "intothealphax-pro-circuit",
+        "tournamentName": "IntoTheAlphaX Pro Circuit",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901757,
+        "tournamentSlug": "alpha-x-series-special",
+        "tournamentName": "Alpha X Series Special",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901758,
+        "tournamentSlug": "stay-at-homestory-cup",
+        "tournamentName": "Stay at HomeStory Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901759,
+        "tournamentSlug": "itax-super-series",
+        "tournamentName": "ITaX Super Series",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901760,
+        "tournamentSlug": "teamliquid-starleague",
+        "tournamentName": "TeamLiquid StarLeague",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901761,
+        "tournamentSlug": "championship-of-russia",
+        "tournamentName": "Championship of Russia",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901762,
+        "tournamentSlug": "dreamhack-masters-europe",
+        "tournamentName": "Dreamhack Masters Europe",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901763,
+        "tournamentSlug": "dreamhack-masters-latin-america",
+        "tournamentName": "DreamHack Masters Latin America",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901764,
+        "tournamentSlug": "dreamhack-masters-north-america",
+        "tournamentName": "DreamHack Masters North America",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901765,
+        "tournamentSlug": "dreamhack-masters-tw-hk-mo-jp",
+        "tournamentName": "DreamHack Masters TW/HK/MO/JP",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901766,
+        "tournamentSlug": "dreamhack-masters-oceania-roa",
+        "tournamentName": "DreamHack Masters Oceania/RoA",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901768,
+        "tournamentSlug": "moscow-cybersport-series",
+        "tournamentName": "Moscow Cybersport Series",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901773,
+        "tournamentSlug": "dreamhack-masters-finals",
+        "tournamentName": "Dreamhack Masters Finals",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901777,
+        "tournamentSlug": "itax-trovo",
+        "tournamentName": "ITaX Trovo",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901778,
+        "tournamentSlug": "king-of-battles",
+        "tournamentName": "King of Battles",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901789,
+        "tournamentSlug": "laughingfalcon-invitational",
+        "tournamentName": "LaughingFalcon Invitational",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901792,
+        "tournamentSlug": "dreamhack-masters-winter",
+        "tournamentName": "Dreamhack Masters Winter",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901793,
+        "tournamentSlug": "asus-rog-online",
+        "tournamentName": "ASUS ROG Online",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901797,
+        "tournamentSlug": "dh-masters-last-chance-eu-qualifier",
+        "tournamentName": "DH Masters Last Chance EU Qualifier",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901798,
+        "tournamentSlug": "theatre-of-dreams",
+        "tournamentName": "Theatre of Dreams",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901800,
+        "tournamentSlug": "dreamhack-masters-last-chance",
+        "tournamentName": "DreamHack Masters Last Chance",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901801,
+        "tournamentSlug": "genesis-legends-cup",
+        "tournamentName": "Genesis Legends Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901802,
+        "tournamentSlug": "online-sports-championships",
+        "tournamentName": "Online Sports Championships",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901811,
+        "tournamentSlug": "bearme-invitational",
+        "tournamentName": "BearMe Invitational",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901815,
+        "tournamentSlug": "itax-ultimate-battles",
+        "tournamentName": "ITaX Ultimate Battles",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901816,
+        "tournamentSlug": "cheeseadelphia-championship",
+        "tournamentName": "Cheeseadelphia Championship",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901818,
+        "tournamentSlug": "the-three-winged-angel",
+        "tournamentName": "The Three-Winged Angel",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901819,
+        "tournamentSlug": "herebalance-tournament",
+        "tournamentName": "HereBalance Tournament",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901823,
+        "tournamentSlug": "iem-katowice-round-of-36",
+        "tournamentName": "IEM Katowice: Round of 36",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901852,
+        "tournamentSlug": "challengers-cup",
+        "tournamentName": "Challengers Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901857,
+        "tournamentSlug": "global-starcraft-ii-league-code-a",
+        "tournamentName": "Global StarCraft II League Code A",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901858,
+        "tournamentSlug": "global-starcraft-ii-league-code-s",
+        "tournamentName": "Global StarCraft II League Code S",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901860,
+        "tournamentSlug": "world-team-league",
+        "tournamentName": "World Team League",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901864,
+        "tournamentSlug": "pink-drip-pylon",
+        "tournamentName": "Pink Drip Pylon",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901865,
+        "tournamentSlug": "mapper-s-delight",
+        "tournamentName": "Mapper's Delight",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901877,
+        "tournamentSlug": "itax-pro-circuit",
+        "tournamentName": "ITaX Pro Circuit",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901882,
+        "tournamentSlug": "champions-brawl",
+        "tournamentName": "Champions Brawl",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901887,
+        "tournamentSlug": "spring-clean-up",
+        "tournamentName": "Spring Clean-Up",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901895,
+        "tournamentSlug": "dreamhack-masters-korea-play-ins",
+        "tournamentName": "DreamHack Masters: Korea Play-Ins",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901901,
+        "tournamentSlug": "alternative-battle",
+        "tournamentName": "Alternative Battle",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901904,
+        "tournamentSlug": "dreamhack-masters-china",
+        "tournamentName": "DreamHack Masters China",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901908,
+        "tournamentSlug": "brawler-s-club",
+        "tournamentName": "Brawler's Club",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901933,
+        "tournamentSlug": "warditv-team-liquid-map-contest-tournaments",
+        "tournamentName": "WardiTV Team Liquid Map Contest Tournaments",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901937,
+        "tournamentSlug": "goodgame-cup",
+        "tournamentName": "Goodgame Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901938,
+        "tournamentSlug": "pcforman-super-tournament",
+        "tournamentName": "PCForMan Super Tournament",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901941,
+        "tournamentSlug": "dreamhack-masters-tw-hk",
+        "tournamentName": "DreamHack Masters TW/HK",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901948,
+        "tournamentSlug": "alpha-x-junior-championships",
+        "tournamentName": "Alpha X Junior Championships",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901958,
+        "tournamentSlug": "urgaming-arena",
+        "tournamentName": "UrGaming Arena",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901962,
+        "tournamentSlug": "asus-rog-fall-korea-qualifier",
+        "tournamentName": "ASUS ROG Fall: Korea Qualifier",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901963,
+        "tournamentSlug": "meta-plays-show-match",
+        "tournamentName": "Meta Plays Show Match",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901964,
+        "tournamentSlug": "the-first-step",
+        "tournamentName": "The First Step",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901982,
+        "tournamentSlug": "esl-anz-champs",
+        "tournamentName": "ESL ANZ Champs",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901986,
+        "tournamentSlug": "pig-sty-festival",
+        "tournamentName": "PiG Sty Festival",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 901988,
+        "tournamentSlug": "sensei-s-halloween-event-clash",
+        "tournamentName": "SenSei's Halloween Event Clash",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902010,
+        "tournamentSlug": "dreamhack-masters-last-chance-asia-qualifier",
+        "tournamentName": "DreamHack Masters Last Chance Asia Qualifier",
+        "categorySlug": "starcraft-2",
+        "categoryName": "Starcraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902011,
+        "tournamentSlug": "starcraft2-fi-cup",
+        "tournamentName": "StarCraft2.fi Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902018,
+        "tournamentSlug": "alpha-x-x-mas-ny-tourney",
+        "tournamentName": "Alpha X X-mas/NY Tourney",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902022,
+        "tournamentSlug": "argentum-cup",
+        "tournamentName": "Argentum Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902024,
+        "tournamentSlug": "lan-scii-spot-warszawa",
+        "tournamentName": "LAN SCII SPOT Warszawa",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902032,
+        "tournamentSlug": "jumy-championship",
+        "tournamentName": "Jumy Championship",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902057,
+        "tournamentSlug": "alpha-pro-series-ultimate-showdown",
+        "tournamentName": "Alpha Pro Series: Ultimate Showdown",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902069,
+        "tournamentSlug": "alpha-x-eu-code-s",
+        "tournamentName": "Alpha X EU - Code S",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902070,
+        "tournamentSlug": "casters-civil-war",
+        "tournamentName": "Casters Civil War",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902074,
+        "tournamentSlug": "gengar-s-brawl",
+        "tournamentName": "Gengar's Brawl",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902081,
+        "tournamentSlug": "dreamhack-masters-valencia-oce-roa",
+        "tournamentName": "DreamHack Masters Valencia: OCE/RoA",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902082,
+        "tournamentSlug": "dreamhack-masters-valencia-eu",
+        "tournamentName": "DreamHack Masters Valencia: EU",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902083,
+        "tournamentSlug": "dreamhack-masters-valencia-na",
+        "tournamentName": "DreamHack Masters Valencia: NA",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902084,
+        "tournamentSlug": "dreamhack-masters-valencia-latam",
+        "tournamentName": "DreamHack Masters Valencia: LATAM",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902085,
+        "tournamentSlug": "dreamhack-masters-valencia-cn",
+        "tournamentName": "DreamHack Masters Valencia: CN",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902086,
+        "tournamentSlug": "dreamhack-masters-valencia-tw-hk",
+        "tournamentName": "DreamHack Masters Valencia: TW/HK",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902092,
+        "tournamentSlug": "nationwars-qualifiers",
+        "tournamentName": "NationWars Qualifiers",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902099,
+        "tournamentSlug": "dreamhack-masters-valencia",
+        "tournamentName": "DreamHack Masters Valencia",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902107,
+        "tournamentSlug": "nationwars",
+        "tournamentName": "NationWars",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902120,
+        "tournamentSlug": "afreecatv-theatre-of-dreams",
+        "tournamentName": "AfreecaTV Theatre of Dreams",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902121,
+        "tournamentSlug": "gladiators-cup",
+        "tournamentName": "Gladiators Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902126,
+        "tournamentSlug": "zeg-allstar",
+        "tournamentName": "ZEG Allstar",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902149,
+        "tournamentSlug": "espot-sc2-circuit",
+        "tournamentName": "ESPOT SC2 Circuit",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902150,
+        "tournamentSlug": "espot-circuit",
+        "tournamentName": "ESPOT Circuit",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902152,
+        "tournamentSlug": "afreecatv-champions-cup",
+        "tournamentName": "AfreecaTV Champions Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902165,
+        "tournamentSlug": "osc",
+        "tournamentName": "OSC",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902166,
+        "tournamentSlug": "the-dam-training",
+        "tournamentName": "The Dam Training",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902173,
+        "tournamentSlug": "dreamhack-masters-atlanta",
+        "tournamentName": "DreamHack Masters Atlanta",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902188,
+        "tournamentSlug": "basilisk-big-brain-bouts",
+        "tournamentName": "Basilisk Big Brain Bouts",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902197,
+        "tournamentSlug": "ladies-afreecatv",
+        "tournamentName": "Ladies AfreecaTV",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902199,
+        "tournamentSlug": "ax-xmas-cup",
+        "tournamentName": "aX Xmas Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902202,
+        "tournamentSlug": "sunrise-cup",
+        "tournamentName": "Sunrise Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902216,
+        "tournamentSlug": "red-cross-cup",
+        "tournamentName": "Red Cross Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902230,
+        "tournamentSlug": "alpha-k-cup",
+        "tournamentName": "Alpha K-Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902254,
+        "tournamentSlug": "afreecatv-starcraft-league-remastered",
+        "tournamentName": "AfreecaTV StarCraft League Remastered",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902256,
+        "tournamentSlug": "passioncraft-knockout",
+        "tournamentName": "PassionCraft Knockout",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902264,
+        "tournamentSlug": "gamers-without-borders-korea",
+        "tournamentName": "Gamers Without Borders: Korea",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902265,
+        "tournamentSlug": "gamers-without-borders-world",
+        "tournamentName": "Gamers Without Borders: World",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902266,
+        "tournamentSlug": "esl-masters-europe",
+        "tournamentName": "ESL Masters Europe",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902267,
+        "tournamentSlug": "esl-masters-americas",
+        "tournamentName": "ESL Masters Americas",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902269,
+        "tournamentSlug": "esl-masters-asia",
+        "tournamentName": "ESL Masters Asia",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902271,
+        "tournamentSlug": "gamers8",
+        "tournamentName": "Gamers8",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902281,
+        "tournamentSlug": "esl-masters",
+        "tournamentName": "ESL Masters",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902301,
+        "tournamentSlug": "ham-cup",
+        "tournamentName": "Ham Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902310,
+        "tournamentSlug": "gamers8-legends",
+        "tournamentName": "Gamers8 Legends",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902312,
+        "tournamentSlug": "afreecatv-pro-series",
+        "tournamentName": "AfreecaTV Pro Series",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902318,
+        "tournamentSlug": "ksl-summer-slam",
+        "tournamentName": "KSL Summer Slam",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902319,
+        "tournamentSlug": "afreecatv-starcraft-league-remastered",
+        "tournamentName": "AfreecaTV StarCraft League Remastered",
+        "categorySlug": "starcraft-brood-war",
+        "categoryName": "StarCraft: Brood War",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902337,
+        "tournamentSlug": "comebacktv",
+        "tournamentName": "ComeBackTV",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902369,
+        "tournamentSlug": "matcherino-inu",
+        "tournamentName": "Matcherino iNu",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902388,
+        "tournamentSlug": "club-nv-x-duckling-showdown",
+        "tournamentName": "Club NV x Duckling Showdown",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902391,
+        "tournamentSlug": "starswar-korea-qualifier",
+        "tournamentName": "StarsWar: Korea Qualifier",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902392,
+        "tournamentSlug": "starswar-eu-am-qualifier",
+        "tournamentName": "StarsWar: EU&AM Qualifier",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902402,
+        "tournamentSlug": "starswar",
+        "tournamentName": "StarsWar",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902406,
+        "tournamentSlug": "esports-world-cup",
+        "tournamentName": "Esports World Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902414,
+        "tournamentSlug": "bellum-gens-elite-stara-zagora",
+        "tournamentName": "Bellum Gens Elite Stara Zagora",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902417,
+        "tournamentSlug": "sooper7s",
+        "tournamentName": "SOOPer7s",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902419,
+        "tournamentSlug": "big-liuli-cup",
+        "tournamentName": "Big LiuLi Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902423,
+        "tournamentSlug": "liuli-cup",
+        "tournamentName": "Liuli Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902443,
+        "tournamentSlug": "soop-global",
+        "tournamentName": "SOOP Global",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902449,
+        "tournamentSlug": "phoenix-li-cup",
+        "tournamentName": "Phoenix Li Cup",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902450,
+        "tournamentSlug": "pl-invitational",
+        "tournamentName": "PL Invitational",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902455,
+        "tournamentSlug": "rex-march-madness",
+        "tournamentName": "Rex March Madness",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902457,
+        "tournamentSlug": "rex-april-madness",
+        "tournamentName": "Rex April Madness",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902462,
+        "tournamentSlug": "dreamhack-dallas",
+        "tournamentName": "DreamHack Dallas",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902464,
+        "tournamentSlug": "esports-world-cup-qualifier",
+        "tournamentName": "Esports World Cup Qualifier",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902466,
+        "tournamentSlug": "rsl-revival",
+        "tournamentName": "RSL Revival",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904349,
+        "tournamentSlug": "maestros-of-the-game",
+        "tournamentName": "Maestros of the Game",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904467,
+        "tournamentSlug": "crank-gathers",
+        "tournamentName": "CranK Gathers",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904611,
+        "tournamentSlug": "thunderfire-all-star-invitational",
+        "tournamentName": "Thunderfire All-Star Invitational",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 904967,
+        "tournamentSlug": "global-starcraft-ii-league",
+        "tournamentName": "Global Starcraft II League",
+        "categorySlug": "starcraft-2",
+        "categoryName": "StarCraft 2",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

@@ -1,0 +1,72 @@
+[
+    {
+        "tournamentId": 292,
+        "tournamentSlug": "elitserien-playoffs",
+        "tournamentName": "Elitserien, Playoffs",
+        "categorySlug": "speedway",
+        "categoryName": "Speedway",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 293,
+        "tournamentSlug": "elitserien",
+        "tournamentName": "Elitserien",
+        "categorySlug": "sweden",
+        "categoryName": "Sweden",
+        "futureFixtures": 30,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1034,
+        "tournamentSlug": "ekstraliga",
+        "tournamentName": "Ekstraliga",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 25,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27687,
+        "tournamentSlug": "poland-nice-1liga-zuzlowa",
+        "tournamentName": "Poland Nice 1.Liga Zuzlowa",
+        "categorySlug": "poland",
+        "categoryName": "Poland",
+        "futureFixtures": 22,
+        "upcomingFixtures": 2,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34116,
+        "tournamentSlug": "speedway-world-cup",
+        "tournamentName": "Speedway World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37285,
+        "tournamentSlug": "european-championship",
+        "tournamentName": "European Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37287,
+        "tournamentSlug": "fim-speedway-sgp-2",
+        "tournamentName": "FIM Speedway SGP 2",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

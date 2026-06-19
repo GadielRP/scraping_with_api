@@ -1,0 +1,322 @@
+[
+    {
+        "tournamentId": 553,
+        "tournamentSlug": "olympic-tournament",
+        "tournamentName": "Olympic Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 554,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 694,
+        "tournamentSlug": "world-championship",
+        "tournamentName": "World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 820,
+        "tournamentSlug": "european-championship",
+        "tournamentName": "European Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 821,
+        "tournamentSlug": "european-championship-women",
+        "tournamentName": "European Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 963,
+        "tournamentSlug": "serie-a1",
+        "tournamentName": "Serie A1",
+        "categorySlug": "italy",
+        "categoryName": "Italy",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1181,
+        "tournamentSlug": "adriatic-league",
+        "tournamentName": "Adriatic League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1187,
+        "tournamentSlug": "ob-i",
+        "tournamentName": "OB I",
+        "categorySlug": "hungary",
+        "categoryName": "Hungary",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 1264,
+        "tournamentSlug": "champions-league",
+        "tournamentName": "Champions League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2258,
+        "tournamentSlug": "world-championship-women",
+        "tournamentName": "World Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 24339,
+        "tournamentSlug": "inter-continental-cup-niu",
+        "tournamentName": "Inter-Continental Cup N.I.U.",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26282,
+        "tournamentSlug": "fina-world-cup",
+        "tournamentName": "FINA World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 26284,
+        "tournamentSlug": "fina-world-cup-women",
+        "tournamentName": "FINA World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30292,
+        "tournamentSlug": "len-euro-cup",
+        "tournamentName": "LEN Euro Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 30989,
+        "tournamentSlug": "len-champions-league-women",
+        "tournamentName": "LEN Champions League, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33630,
+        "tournamentSlug": "olympic-qualification-tournament-women",
+        "tournamentName": "Olympic Qualification Tournament, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33786,
+        "tournamentSlug": "olympic-qualification-tournament",
+        "tournamentName": "Olympic Qualification Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37217,
+        "tournamentSlug": "u19-european-championship-women",
+        "tournamentName": "U19 European Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37975,
+        "tournamentSlug": "u19-european-championship",
+        "tournamentName": "U19 European Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38291,
+        "tournamentSlug": "world-league-women",
+        "tournamentName": "World League, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38361,
+        "tournamentSlug": "serie-a1-women",
+        "tournamentName": "Serie A1 Women",
+        "categorySlug": "italy",
+        "categoryName": "Italy",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38603,
+        "tournamentSlug": "niu",
+        "tournamentName": "NIU",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39129,
+        "tournamentSlug": "len-euro-cup-women",
+        "tournamentName": "LEN Euro Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40075,
+        "tournamentSlug": "u20-world-championship",
+        "tournamentName": "U20 World Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44373,
+        "tournamentSlug": "len-super-cup",
+        "tournamentName": "LEN Super Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44393,
+        "tournamentSlug": "superleague",
+        "tournamentName": "Superleague",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44395,
+        "tournamentSlug": "superleague-women",
+        "tournamentName": "Superleague, Women",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44955,
+        "tournamentSlug": "a1-league",
+        "tournamentName": "A1 League",
+        "categorySlug": "greece",
+        "categoryName": "Greece",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 44957,
+        "tournamentSlug": "division-de-honor",
+        "tournamentName": "Division de Honor",
+        "categorySlug": "spain",
+        "categoryName": "Spain",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48667,
+        "tournamentSlug": "croatian-championship",
+        "tournamentName": "Croatian Championship",
+        "categorySlug": "croatia",
+        "categoryName": "Croatia",
+        "futureFixtures": 1,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48881,
+        "tournamentSlug": "vrl-premier-liga",
+        "tournamentName": "VRL Premier Liga",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 50628,
+        "tournamentSlug": "international-friendly-games",
+        "tournamentName": "International Friendly Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

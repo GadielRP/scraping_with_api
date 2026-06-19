@@ -1,0 +1,72 @@
+[
+    {
+        "tournamentId": 29686,
+        "tournamentSlug": "fifa-eworld-cup",
+        "tournamentName": "FIFA eWorld Cup",
+        "categorySlug": "fifa",
+        "categoryName": "FIFA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33496,
+        "tournamentSlug": "gt-leagues",
+        "tournamentName": "GT Leagues",
+        "categorySlug": "gt-sports-league",
+        "categoryName": "GT Sports League",
+        "futureFixtures": 672,
+        "upcomingFixtures": 18,
+        "liveFixtures": 2
+    },
+    {
+        "tournamentId": 33908,
+        "tournamentSlug": "virtual-bundesliga-club-championship",
+        "tournamentName": "Virtual Bundesliga Club Championship",
+        "categorySlug": "virtual-bundesliga",
+        "categoryName": "Virtual Bundesliga",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38611,
+        "tournamentSlug": "gt-esuperlig",
+        "tournamentName": "GT eSuperLig",
+        "categorySlug": "gt-sports-league",
+        "categoryName": "GT Sports League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38797,
+        "tournamentSlug": "esports-battle",
+        "tournamentName": "eSports Battle",
+        "categorySlug": "esports-battle",
+        "categoryName": "eSports Battle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39749,
+        "tournamentSlug": "eadriatic-league",
+        "tournamentName": "eAdriatic League",
+        "categorySlug": "eadriatic-league",
+        "categoryName": "eAdriatic League",
+        "futureFixtures": 374,
+        "upcomingFixtures": 40,
+        "liveFixtures": 4
+    },
+    {
+        "tournamentId": 46776,
+        "tournamentSlug": "virtual-bundesliga",
+        "tournamentName": "Virtual Bundesliga",
+        "categorySlug": "virtual-bundesliga",
+        "categoryName": "Virtual Bundesliga",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

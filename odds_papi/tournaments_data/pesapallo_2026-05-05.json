@@ -1,0 +1,32 @@
+[
+    {
+        "tournamentId": 783,
+        "tournamentSlug": "superpesis",
+        "tournamentName": "Superpesis",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 195,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 787,
+        "tournamentSlug": "superpesis-women",
+        "tournamentName": "Superpesis, Women",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 155,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 788,
+        "tournamentSlug": "ykkospesis",
+        "tournamentName": "Ykkospesis",
+        "categorySlug": "finland",
+        "categoryName": "Finland",
+        "futureFixtures": 132,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

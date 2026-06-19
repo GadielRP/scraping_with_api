@@ -1,0 +1,92 @@
+[
+    {
+        "tournamentId": 27923,
+        "tournamentSlug": "ncaa-regular-season",
+        "tournamentName": "NCAA, Regular Season",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 27925,
+        "tournamentSlug": "ncaa-women",
+        "tournamentName": "NCAA, Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34370,
+        "tournamentSlug": "ncaa-division-i-national-championship",
+        "tournamentName": "NCAA Division I National Championship",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34372,
+        "tournamentSlug": "ncaa-division-i-national-championship-women",
+        "tournamentName": "NCAA Division I National Championship, Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 35587,
+        "tournamentSlug": "national-lacrosse-league-regular-season",
+        "tournamentName": "National Lacrosse League, Regular Season",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 2,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 37289,
+        "tournamentSlug": "premier-lacrosse-league",
+        "tournamentName": "Premier Lacrosse League",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39301,
+        "tournamentSlug": "ncaa-women",
+        "tournamentName": "NCAA Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39303,
+        "tournamentSlug": "ncaa",
+        "tournamentName": "NCAA",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45859,
+        "tournamentSlug": "premier-lacrosse-league-championship-series",
+        "tournamentName": "Premier Lacrosse League Championship Series",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

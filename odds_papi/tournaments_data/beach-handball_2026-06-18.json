@@ -1,0 +1,92 @@
+[
+    {
+        "tournamentId": 28019,
+        "tournamentSlug": "ehf-european-beach-handball-championship",
+        "tournamentName": "EHF European Beach Handball Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28021,
+        "tournamentSlug": "ehf-beach-handball-champions-cup",
+        "tournamentName": "EHF Beach Handball Champions Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28023,
+        "tournamentSlug": "u18-beach-euro-2018",
+        "tournamentName": "U18 Beach EURO 2018",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28025,
+        "tournamentSlug": "ebt-finals",
+        "tournamentName": "EBT Finals",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29300,
+        "tournamentSlug": "ehf-european-beach-handball-championship-women",
+        "tournamentName": "EHF European Beach Handball Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29396,
+        "tournamentSlug": "niu",
+        "tournamentName": "N.I.U.",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32845,
+        "tournamentSlug": "ihf-world-beach-handball-championship",
+        "tournamentName": "IHF World Beach Handball Championship",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33083,
+        "tournamentSlug": "russian-cup",
+        "tournamentName": "Russian Cup",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33085,
+        "tournamentSlug": "russian-championship",
+        "tournamentName": "Russian Championship",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

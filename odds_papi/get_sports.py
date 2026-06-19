@@ -26,8 +26,11 @@ def fetch_sports(folder, date):
     save_to_file(response, filename)
 
 def main():
-    parser = argparse.ArgumentParser(description="OddspAPI Sports Discovery Tool")
-    parser.add_argument("action", choices=["fetch"], help="The action to perform")
+    parser = argparse.ArgumentParser(
+        description="OddspAPI Sports Discovery Tool. Retrieves a complete list of sports supported by the API and saves it to a JSON file.",
+        epilog="Example: python get_sports.py fetch"
+    )
+    parser.add_argument("action", choices=["fetch"], help="The action to perform. 'fetch' retrieves all available sports.")
     args = parser.parse_args()
 
     today = datetime.now().strftime("%Y-%m-%d")

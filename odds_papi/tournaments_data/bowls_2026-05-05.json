@@ -1,0 +1,32 @@
+[
+    {
+        "tournamentId": 1820,
+        "tournamentSlug": "world-indoor-bowls-chsh",
+        "tournamentName": "World Indoor Bowls Ch.sh",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 2005,
+        "tournamentSlug": "grand-prix-bowls",
+        "tournamentName": "Grand Prix Bowls",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 14856,
+        "tournamentSlug": "world-indoor-bowls-championship-women",
+        "tournamentName": "World Indoor Bowls Championship, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

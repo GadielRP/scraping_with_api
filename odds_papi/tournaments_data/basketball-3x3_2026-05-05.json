@@ -1,0 +1,392 @@
+[
+    {
+        "tournamentId": 25125,
+        "tournamentSlug": "big-3",
+        "tournamentName": "BIG 3",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29105,
+        "tournamentSlug": "world-cup",
+        "tournamentName": "World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29107,
+        "tournamentSlug": "world-cup-women",
+        "tournamentName": "World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29688,
+        "tournamentSlug": "pan-american-games",
+        "tournamentName": "Pan American Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29690,
+        "tournamentSlug": "pan-american-games-women",
+        "tournamentName": "Pan American Games, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31455,
+        "tournamentSlug": "sea-games",
+        "tournamentName": "SEA Games",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31457,
+        "tournamentSlug": "sea-games-women",
+        "tournamentName": "SEA Games, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32181,
+        "tournamentSlug": "liga-pro",
+        "tournamentName": "Liga Pro",
+        "categorySlug": "russia",
+        "categoryName": "Russia",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34298,
+        "tournamentSlug": "olympic-tournament-qualification",
+        "tournamentName": "Olympic Tournament Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34300,
+        "tournamentSlug": "olympic-tournament-qualification-women",
+        "tournamentName": "Olympic Tournament Qualification, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34468,
+        "tournamentSlug": "universality-olympic-tournament-qualification",
+        "tournamentName": "Universality Olympic Tournament Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34470,
+        "tournamentSlug": "universality-olympic-tournament-qualification-women",
+        "tournamentName": "Universality Olympic Tournament Qualification, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34672,
+        "tournamentSlug": "olympic-tournament-women",
+        "tournamentName": "Olympic Tournament, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 34674,
+        "tournamentSlug": "olympic-tournament",
+        "tournamentName": "Olympic Tournament",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38109,
+        "tournamentSlug": "3x3-tour",
+        "tournamentName": "3x3 Tour",
+        "categorySlug": "austria",
+        "categoryName": "Austria",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40209,
+        "tournamentSlug": "nations-league",
+        "tournamentName": "Nations League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40211,
+        "tournamentSlug": "nations-league-women",
+        "tournamentName": "Nations League, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40213,
+        "tournamentSlug": "women-series",
+        "tournamentName": "Women Series",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 40215,
+        "tournamentSlug": "3x3-women-series",
+        "tournamentName": "3x3 Women Series",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42527,
+        "tournamentSlug": "asia-cup",
+        "tournamentName": "Asia Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 42529,
+        "tournamentSlug": "asia-cup-women",
+        "tournamentName": "Asia Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43037,
+        "tournamentSlug": "europe-cup-women-qualification",
+        "tournamentName": "Europe Cup, Women, Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43039,
+        "tournamentSlug": "europe-cup-qualification",
+        "tournamentName": "Europe Cup, Qualification",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43051,
+        "tournamentSlug": "u21-nations-league",
+        "tournamentName": "U21 Nations League",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43053,
+        "tournamentSlug": "u21-nations-league-women",
+        "tournamentName": "U21 Nations League, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43061,
+        "tournamentSlug": "3x3-challengers",
+        "tournamentName": "3x3 Challengers",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45013,
+        "tournamentSlug": "ice-25-product-demo",
+        "tournamentName": "ICE-25 Product Demo",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45315,
+        "tournamentSlug": "unrivaled-women",
+        "tournamentName": "Unrivaled, Women",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46309,
+        "tournamentSlug": "champions-cup",
+        "tournamentName": "Champions Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46311,
+        "tournamentSlug": "champions-cup-women",
+        "tournamentName": "Champions Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 46813,
+        "tournamentSlug": "3x3-world-tour",
+        "tournamentName": "3x3 World Tour",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48659,
+        "tournamentSlug": "europe-cup",
+        "tournamentName": "Europe Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48661,
+        "tournamentSlug": "europe-cup-women",
+        "tournamentName": "Europe Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48807,
+        "tournamentSlug": "u23-world-cup",
+        "tournamentName": "U23 World Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 48809,
+        "tournamentSlug": "u23-world-cup-women",
+        "tournamentName": "U23 World Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49662,
+        "tournamentSlug": "americup",
+        "tournamentName": "AmeriCup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49664,
+        "tournamentSlug": "americup-women",
+        "tournamentName": "AmeriCup Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49822,
+        "tournamentSlug": "africa-cup",
+        "tournamentName": "Africa Cup",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 49824,
+        "tournamentSlug": "africa-cup-women",
+        "tournamentName": "Africa Cup, Women",
+        "categorySlug": "international",
+        "categoryName": "International",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

@@ -1,0 +1,272 @@
+[
+    {
+        "tournamentId": 28941,
+        "tournamentSlug": "echampions-league",
+        "tournamentName": "eChampions League",
+        "categorySlug": "ea-sports-global-series",
+        "categoryName": "EA Sports Global Series",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 28943,
+        "tournamentSlug": "pgl-masters",
+        "tournamentName": "PGL Masters",
+        "categorySlug": "pgl",
+        "categoryName": "PGL",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 29686,
+        "tournamentSlug": "fifa-eworld-cup",
+        "tournamentName": "FIFA eWorld Cup",
+        "categorySlug": "fifa",
+        "categoryName": "FIFA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31005,
+        "tournamentSlug": "fut-champions-cup",
+        "tournamentName": "FUT Champions Cup",
+        "categorySlug": "fifa",
+        "categoryName": "FIFA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31837,
+        "tournamentSlug": "fifa-eclub-world-cup",
+        "tournamentName": "FIFA eClub World Cup",
+        "categorySlug": "fifa",
+        "categoryName": "FIFA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31845,
+        "tournamentSlug": "netherlands-edivisie",
+        "tournamentName": "Netherlands eDivisie",
+        "categorySlug": "eredivisie",
+        "categoryName": "Eredivisie",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 31847,
+        "tournamentSlug": "usa-emls-league-2020",
+        "tournamentName": "USA eMLS League 2020",
+        "categorySlug": "usa",
+        "categoryName": "USA",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 32143,
+        "tournamentSlug": "dummy",
+        "tournamentName": "Dummy",
+        "categorySlug": "other",
+        "categoryName": "Other",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33496,
+        "tournamentSlug": "gt-leagues",
+        "tournamentName": "GT Leagues",
+        "categorySlug": "gt-sports-league",
+        "categoryName": "GT Sports League",
+        "futureFixtures": 552,
+        "upcomingFixtures": 106,
+        "liveFixtures": 4
+    },
+    {
+        "tournamentId": 33498,
+        "tournamentSlug": "spain-cup",
+        "tournamentName": "Spain Cup",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33500,
+        "tournamentSlug": "italy-cup",
+        "tournamentName": "Italy Cup",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33502,
+        "tournamentSlug": "germany-cup",
+        "tournamentName": "Germany Cup",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33504,
+        "tournamentSlug": "france-cup",
+        "tournamentName": "France Cup",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33506,
+        "tournamentSlug": "england-cup",
+        "tournamentName": "England Cup",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33508,
+        "tournamentSlug": "europa-league",
+        "tournamentName": "Europa League",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33510,
+        "tournamentSlug": "champions-league",
+        "tournamentName": "Champions League",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33512,
+        "tournamentSlug": "world-cup",
+        "tournamentName": "World Cup",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33528,
+        "tournamentSlug": "liga-pro",
+        "tournamentName": "Liga Pro",
+        "categorySlug": "liga-pro",
+        "categoryName": "Liga Pro",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33744,
+        "tournamentSlug": "liga-pro-division-2",
+        "tournamentName": "Liga Pro, Division 2",
+        "categorySlug": "liga-pro",
+        "categoryName": "Liga Pro",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 33908,
+        "tournamentSlug": "virtual-bundesliga-club-championship",
+        "tournamentName": "Virtual Bundesliga Club Championship",
+        "categorySlug": "virtual-bundesliga",
+        "categoryName": "Virtual Bundesliga",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 36357,
+        "tournamentSlug": "e-world-league",
+        "tournamentName": "E World League",
+        "categorySlug": "eworld-league",
+        "categoryName": "EWorld League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38611,
+        "tournamentSlug": "gt-esuperlig",
+        "tournamentName": "GT eSuperLig",
+        "categorySlug": "gt-sports-league",
+        "categoryName": "GT Sports League",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 38797,
+        "tournamentSlug": "esports-battle",
+        "tournamentName": "eSports Battle",
+        "categorySlug": "esports-battle",
+        "categoryName": "eSports Battle",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39565,
+        "tournamentSlug": "euro-cup-qualifiers",
+        "tournamentName": "Euro Cup Qualifiers",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39609,
+        "tournamentSlug": "cla-eurocup",
+        "tournamentName": "CLA EuroCup",
+        "categorySlug": "cyber-live-arena",
+        "categoryName": "Cyber Live Arena",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 39749,
+        "tournamentSlug": "eadriatic-league",
+        "tournamentName": "eAdriatic League",
+        "categorySlug": "eadriatic-league",
+        "categoryName": "eAdriatic League",
+        "futureFixtures": 674,
+        "upcomingFixtures": 138,
+        "liveFixtures": 6
+    },
+    {
+        "tournamentId": 46776,
+        "tournamentSlug": "virtual-bundesliga",
+        "tournamentName": "Virtual Bundesliga",
+        "categorySlug": "virtual-bundesliga",
+        "categoryName": "Virtual Bundesliga",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

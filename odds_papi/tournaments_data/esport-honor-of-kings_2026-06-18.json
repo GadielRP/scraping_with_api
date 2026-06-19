@@ -1,0 +1,292 @@
+[
+    {
+        "tournamentId": 901747,
+        "tournamentSlug": "honor-of-kings-champion-cup",
+        "tournamentName": "Honor of Kings Champion Cup",
+        "categorySlug": "king-of-glory",
+        "categoryName": "King of Glory",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902128,
+        "tournamentSlug": "honor-of-kings-challenger-cup",
+        "tournamentName": "Honor of Kings Challenger Cup",
+        "categorySlug": "arena-of-valor",
+        "categoryName": "Arena of Valor",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902139,
+        "tournamentSlug": "honor-of-kings-world-champion-cup-brazil-qualifier",
+        "tournamentName": "Honor of Kings World Champion Cup - Brazil Qualifier",
+        "categorySlug": "king-of-glory",
+        "categoryName": "King of Glory",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902177,
+        "tournamentSlug": "international-championship",
+        "tournamentName": "International Championship",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902198,
+        "tournamentSlug": "leiting-cup",
+        "tournamentName": "LeiTing Cup",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902231,
+        "tournamentSlug": "king-pro-league",
+        "tournamentName": "King Pro League",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902253,
+        "tournamentSlug": "king-growth-league",
+        "tournamentName": "King Growth League",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902275,
+        "tournamentSlug": "gemini-lucky-cup",
+        "tournamentName": "Gemini Lucky Cup",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902305,
+        "tournamentSlug": "asian-wave",
+        "tournamentName": "Asian Wave",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902311,
+        "tournamentSlug": "brazil-championship",
+        "tournamentName": "Brazil Championship",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902316,
+        "tournamentSlug": "national-electronic-sports-tournament",
+        "tournamentName": "National Electronic Sports Tournament",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902326,
+        "tournamentSlug": "douyu-honor-cup",
+        "tournamentName": "Douyu Honor Cup",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902329,
+        "tournamentSlug": "asian-games",
+        "tournamentName": "Asian Games",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902336,
+        "tournamentSlug": "challenger-cup",
+        "tournamentName": "Challenger Cup",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902350,
+        "tournamentSlug": "international-championship-qualifier",
+        "tournamentName": "International Championship Qualifier",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902359,
+        "tournamentSlug": "king-pro-league-academy-tournament",
+        "tournamentName": "King Pro League Academy Tournament",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902368,
+        "tournamentSlug": "international-championship-wildcard",
+        "tournamentName": "International Championship Wildcard",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902370,
+        "tournamentSlug": "king-growth-league-promotion",
+        "tournamentName": "King Growth League Promotion",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902371,
+        "tournamentSlug": "shanghai-masters",
+        "tournamentName": "Shanghai Masters",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902383,
+        "tournamentSlug": "galaxy-cup",
+        "tournamentName": "Galaxy Cup",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902385,
+        "tournamentSlug": "chongqing-champions-cup",
+        "tournamentName": "Chongqing Champions Cup",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902389,
+        "tournamentSlug": "invitational-istanbul",
+        "tournamentName": "Invitational: Istanbul",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902404,
+        "tournamentSlug": "king-pro-league-promotion",
+        "tournamentName": "King Pro League Promotion",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902405,
+        "tournamentSlug": "soar-cup",
+        "tournamentName": "Soar Cup",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902408,
+        "tournamentSlug": "invitational",
+        "tournamentName": "Invitational",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902413,
+        "tournamentSlug": "jingxi-festival",
+        "tournamentName": "Jingxi Festival",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902415,
+        "tournamentSlug": "road-to-kc-2024-philippines",
+        "tournamentName": "Road to KC 2024 - Philippines",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902416,
+        "tournamentSlug": "king-overlord",
+        "tournamentName": "King Overlord",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 902418,
+        "tournamentSlug": "kings-expedition-cup",
+        "tournamentName": "Kings Expedition Cup",
+        "categorySlug": "honor-of-kings",
+        "categoryName": "Honor of Kings",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]

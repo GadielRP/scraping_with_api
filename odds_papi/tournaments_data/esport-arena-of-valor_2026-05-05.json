@@ -1,0 +1,42 @@
+[
+    {
+        "tournamentId": 43651,
+        "tournamentSlug": "arena-of-glory",
+        "tournamentName": "Arena of Glory",
+        "categorySlug": "garena-vietnam",
+        "categoryName": "Garena Vietnam",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43663,
+        "tournamentSlug": "rov-pro-league",
+        "tournamentName": "RoV Pro League",
+        "categorySlug": "garena-thailand",
+        "categoryName": "Garena Thailand",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 43665,
+        "tournamentSlug": "garena-challenger-series",
+        "tournamentName": "Garena Challenger Series",
+        "categorySlug": "garena-taipei",
+        "categoryName": "Garena Taipei",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    },
+    {
+        "tournamentId": 45343,
+        "tournamentSlug": "international-championship",
+        "tournamentName": "International Championship",
+        "categorySlug": "tencent",
+        "categoryName": "Tencent",
+        "futureFixtures": 0,
+        "upcomingFixtures": 0,
+        "liveFixtures": 0
+    }
+]
