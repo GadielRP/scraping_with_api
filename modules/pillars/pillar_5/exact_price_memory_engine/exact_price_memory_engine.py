@@ -269,12 +269,22 @@ def _extract_current_price_set(
     if debug_mode:
         _debug_section("Búsqueda y extracción del precio actual (1X2/ML)")
         _debug_line("Trayectoria de cuotas disponible: %s", ft_1x2_odds_trajectory.available)
-        _debug_line("Mercados disponibles en la trayectoria: %s", list(ft_1x2_odds_trajectory.markets.keys()) if ft_1x2_odds_trajectory.markets else "Ninguno")
+        _debug_line("Minutos esperados: %s", ft_1x2_odds_trajectory.target_minutes_expected)
+        _debug_line("Minutos presentes: %s", ft_1x2_odds_trajectory.target_minutes_present)
+        _debug_line("Minutos ausentes: %s", ft_1x2_odds_trajectory.missing_target_minutes)
+        if ft_1x2_odds_trajectory.markets:
+            for group, periods in ft_1x2_odds_trajectory.markets.items():
+                for period, names in periods.items():
+                    for name, lines in names.items():
+                        _debug_line("  - Mercado en trayectoria: Group=%s, Period=%s, Name=%s (lineas=%s)",
+                                    group, period, name, list(lines.keys()))
+        else:
+            _debug_line("Mercados disponibles en la trayectoria: Ninguno")
 
     if not ft_1x2_odds_trajectory.available or not ft_1x2_odds_trajectory.markets:
         trace["reason"] = "odds_trajectory_unavailable_or_empty"
         if debug_mode:
-            _debug_line("Trayectoria no disponible o vacía. Abortando búsqueda.")
+            _debug_line("Trayectoria no disponible o vacía (o filtrada). Abortando búsqueda.")
         return trace
 
     grouped_market_names = list(

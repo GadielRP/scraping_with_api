@@ -328,12 +328,44 @@ class EventPillarProcessor:
 
         ft_1x2_odds_trajectory = odds_trajectory_context
         try:
+            if self.debug_mode:
+                logger.info(
+                    "P5: Context before filtering for event %s (%s): available=%s, markets=%s",
+                    event_obj.id,
+                    event_context.participants_label,
+                    odds_trajectory_context.available,
+                    {group: list(periods.keys()) for group, periods in odds_trajectory_context.markets.items()}
+                    if odds_trajectory_context.markets else "None",
+                )
+
             ft_1x2_odds_trajectory = odds_trajectory_context.filter_by_market_groups(
                 allowed_groups={"1X2", "Home/Away", "ML"}
             )
+            
+            if self.debug_mode:
+                logger.info(
+                    "P5: Context after market group filtering for event %s (%s): available=%s, markets=%s",
+                    event_obj.id,
+                    event_context.participants_label,
+                    ft_1x2_odds_trajectory.available,
+                    {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
+                    if ft_1x2_odds_trajectory.markets else "None",
+                )
+
             ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_market_period(
-                allowed_periods={"Full-time"}
+                allowed_periods={"Full-time", "Match"}
             )
+
+            if self.debug_mode:
+                logger.info(
+                    "P5: Context after period filtering for event %s (%s): available=%s, markets=%s",
+                    event_obj.id,
+                    event_context.participants_label,
+                    ft_1x2_odds_trajectory.available,
+                    {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
+                    if ft_1x2_odds_trajectory.markets else "None",
+                )
+
             p5_result = calculate_pillar_5(
                 event_context=event_context,
                 ft_1x2_odds_trajectory=ft_1x2_odds_trajectory,
