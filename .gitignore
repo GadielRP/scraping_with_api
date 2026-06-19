@@ -109,3 +109,7 @@ pre_start_check_oddsportal_case.txt
 pre_start_check_oddsportal_case_only_oddsportal_logs.txt
 pg_to_sqlite_reduced.py
 reduced_sofascore.sqlite3
+
+# documentacion
+
+!docs/audits/*.md
