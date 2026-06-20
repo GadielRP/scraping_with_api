@@ -1,20 +1,25 @@
 import logging
+import re
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import Session
 
-from infrastructure.persistence.models import Bookie, Market, MarketChoice, MarketChoiceSnapshot
+from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceSnapshot
 from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.repositories.bookie_repository import BookieRepository
 from shared.timezone_utils import get_local_now
 
-try:
-    from modules.oddsportal.oddsportal_config import BOOKIE_ALIASES
-except ImportError:
-    BOOKIE_ALIASES = {}
-
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MarketSaveResult:
+    markets_saved: int = 0
+    choices_saved: int = 0
+    snapshots_saved: int = 0
 
 
 class MarketRepository:
@@ -52,21 +57,97 @@ class MarketRepository:
         return val_stripped if val_stripped else None
 
     @staticmethod
+    def _parse_source_datetime(value) -> Optional[datetime]:
+        if value in (None, ""):
+            return None
+        if isinstance(value, datetime):
+            return value
+        normalized = str(value).strip()
+        if not normalized:
+            return None
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _numeric_or_none(value):
+        if value in (None, ""):
+            return None
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _float_or_none(value):
+        if value in (None, "", "-"):
+            return None
+        try:
+            return round(float(value), 3)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _slugify_source_bookie_name(name: str) -> str:
+        normalized = str(name or "").strip().lower()
+        if not normalized:
+            return ""
+        normalized = normalized.replace("&", " and ")
+        normalized = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-")
+        return normalized
+
+    @staticmethod
+    def _build_single_market_response(
+        market_name: str,
+        market_group: Optional[str],
+        market_period: Optional[str],
+        choice_group: Optional[str],
+        choices: List[Dict],
+        is_live: bool = False,
+    ) -> Dict:
+        return {
+            "markets": [
+                {
+                    "marketName": market_name,
+                    "marketGroup": market_group,
+                    "marketPeriod": market_period,
+                    "choiceGroup": choice_group,
+                    "isLive": is_live,
+                    "choices": choices,
+                }
+            ]
+        }
+
+    @staticmethod
     def save_markets_from_response(event_id: int, odds_response: Dict, bookie_id: int) -> int:
-        """
-        Save all markets from an odds API response to the database.
-        """
+        """Save all markets from an odds API response to the database."""
+        return MarketRepository.save_markets_from_response_with_stats(
+            event_id=event_id,
+            odds_response=odds_response,
+            bookie_id=bookie_id,
+        ).markets_saved
+
+    @staticmethod
+    def save_markets_from_response_with_stats(
+        event_id: int,
+        odds_response: Dict,
+        bookie_id: int,
+        source: Optional[str] = None,
+    ) -> MarketSaveResult:
         try:
             if bookie_id is None:
                 logger.error("Cannot save markets for event %s without an explicit bookie_id", event_id)
-                return 0
+                return MarketSaveResult()
 
             markets_data = odds_response.get('markets', [])
             if not markets_data:
                 logger.debug(f"No markets in odds response for event {event_id}")
-                return 0
+                return MarketSaveResult()
 
-            saved_count = 0
+            result = MarketSaveResult()
 
             with db_manager.get_session() as session:
                 for market_data in markets_data:
@@ -74,7 +155,7 @@ class MarketRepository:
                         with session.begin_nested():
                             market_name = MarketRepository._normalize_market_name(market_data.get('marketName'))
                             market_group = MarketRepository._normalize_market_group(market_data.get('marketGroup'))
-                            market_period_normalized = MarketRepository._normalize_string_or_none(MarketRepository._normalize_market_period(market_data.get('marketPeriod')))
+                            market_period_normalized = MarketRepository._normalize_market_period(market_data.get('marketPeriod'))
                             choice_group_normalized = MarketRepository._normalize_string_or_none(market_data.get('choiceGroup'))
                             is_live = market_data.get('isLive', False)
 
@@ -88,7 +169,7 @@ class MarketRepository:
                                     Market.event_id == event_id,
                                     Market.bookie_id == bookie_id,
                                     Market.market_name == market_name,
-                                    or_(Market.market_period == market_period_normalized, Market.market_period == "") if market_period_normalized is None else Market.market_period == market_period_normalized,
+                                    Market.market_period == market_period_normalized,
                                     or_(Market.choice_group == choice_group_normalized, Market.choice_group == "") if choice_group_normalized is None else Market.choice_group == choice_group_normalized,
                                     Market.is_live == is_live
                                 )
@@ -164,25 +245,44 @@ class MarketRepository:
                                     session.flush()
 
                                 if current_odds is not None:
+                                    source_collected_at = MarketRepository._parse_source_datetime(
+                                        choice_data.get("changedAt") or choice_data.get("sourceCollectedAt")
+                                    )
                                     snapshot = MarketChoiceSnapshot(
                                         choice_id=choice.choice_id,
                                         odds_value=current_odds,
-                                        collected_at=market.collected_at
+                                        collected_at=market.collected_at,
+                                        source=source,
+                                        source_collected_at=source_collected_at,
+                                        source_market_id=choice_data.get('sourceMarketId'),
+                                        source_outcome_id=choice_data.get('sourceOutcomeId'),
+                                        bookmaker_outcome_id=choice_data.get('bookmakerOutcomeId'),
+                                        main_line=choice_data.get('mainLine'),
+                                        source_limit=MarketRepository._numeric_or_none(choice_data.get('limit')),
                                     )
                                     session.add(snapshot)
+                                    result.snapshots_saved += 1
 
-                            saved_count += 1
+                                result.choices_saved += 1
+
+                            result.markets_saved += 1
                     except Exception as e:
                         logger.warning(f"Error processing market for event {event_id}: {e}")
                         continue
 
                 session.commit()
-                logger.info(f"💾 Saved {saved_count} markets for event {event_id}")
-                return saved_count
+                logger.info(
+                    "Saved %s markets, %s choices and %s snapshots for event %s",
+                    result.markets_saved,
+                    result.choices_saved,
+                    result.snapshots_saved,
+                    event_id,
+                )
+                return result
 
         except Exception as e:
             logger.error(f"Error saving markets for event {event_id}: {e}")
-            return 0
+            return MarketSaveResult()
 
     @staticmethod
     def _choice_odds_value(choice_data: Dict, fractional_key: str, *decimal_keys):
@@ -305,72 +405,6 @@ class MarketRepository:
             return 0
 
     @staticmethod
-    def get_or_create_bookie_by_slug(name: str, slug: str) -> Bookie:
-        """Return a bookmaker using its stable source slug as identity."""
-        with db_manager.get_session() as session:
-            return MarketRepository._get_or_create_bookie_by_slug_in_session(
-                session,
-                name,
-                slug,
-            )
-
-    @staticmethod
-    def _get_or_create_bookie_by_slug_in_session(
-        session: Session,
-        name: str,
-        slug: str,
-    ) -> Bookie:
-        normalized_name = str(name or "").strip()
-        normalized_slug = str(slug or "").strip().lower()
-        if not normalized_name:
-            raise ValueError("Bookie name is required")
-        if not normalized_slug:
-            raise ValueError("Bookie slug is required")
-
-        bookie = session.query(Bookie).filter(Bookie.slug == normalized_slug).first()
-        if bookie:
-            if bookie.name != normalized_name:
-                name_owner = session.query(Bookie).filter(Bookie.name == normalized_name).first()
-                if name_owner is None or name_owner.bookie_id == bookie.bookie_id:
-                    bookie.name = normalized_name
-                else:
-                    logger.warning(
-                        "Keeping bookie name %s for slug %s because desired name %s is already in use",
-                        bookie.name,
-                        normalized_slug,
-                        normalized_name,
-                    )
-            session.flush()
-            return bookie
-
-        bookie = session.query(Bookie).filter(Bookie.name == normalized_name).first()
-        if bookie:
-            return bookie
-
-        bookie = Bookie(name=normalized_name, slug=normalized_slug)
-        session.add(bookie)
-        session.flush()
-        return bookie
-
-    @staticmethod
-    def _get_or_create_bookie(session: Session, name: str) -> Bookie:
-        db_name = BOOKIE_ALIASES.get(name, name)
-
-        bookie = session.query(Bookie).filter(Bookie.name == db_name).first()
-        if bookie:
-            return bookie
-
-        slug = db_name.lower().replace(' ', '-').replace('.', '')
-        bookie = session.query(Bookie).filter(Bookie.slug == slug).first()
-        if bookie:
-            return bookie
-
-        bookie = Bookie(name=db_name, slug=slug)
-        session.add(bookie)
-        session.flush()
-        return bookie
-
-    @staticmethod
     def _normalize_market_period(period: str) -> str:
         """
         Normalize OddsPortal market period strings to the canonical DB value.
@@ -379,11 +413,11 @@ class MarketRepository:
         strings (e.g. '1st half') are returned unchanged after stripping.
         """
         if period is None:
-            return None
+            return "Full-time"
 
         normalized = str(period).strip()
         if not normalized:
-            return None
+            return "Full-time"
 
         full_time_variants = {
             "Full Time",
@@ -397,6 +431,56 @@ class MarketRepository:
             return "Full-time"
 
         return normalized
+
+    @staticmethod
+    def _build_choice_payload(choice_name: str, current_odds, initial_odds=None) -> Dict:
+        payload = {
+            "name": choice_name,
+            "currentOdds": current_odds,
+        }
+        if initial_odds is not None:
+            payload["initialOdds"] = initial_odds
+        return payload
+
+    @staticmethod
+    def _save_oddsportal_market(
+        event_id: int,
+        source_bookie_name: str,
+        source_bookie_slug: str,
+        market_name: str,
+        market_group: Optional[str],
+        market_period: Optional[str],
+        choice_group: Optional[str],
+        choices: List[Dict],
+    ) -> int:
+        resolution = BookieRepository.resolve_bookie_from_source(
+            source="oddsportal",
+            source_bookie_name=source_bookie_name,
+            source_bookie_slug=source_bookie_slug,
+            allow_create=False,
+        )
+        if not resolution.resolved or resolution.bookie is None:
+            logger.warning(
+                "Skipping unresolved OddsPortal bookie slug=%s name=%s",
+                source_bookie_slug,
+                source_bookie_name,
+            )
+            return 0
+
+        odds_response = MarketRepository._build_single_market_response(
+            market_name=market_name,
+            market_group=market_group,
+            market_period=market_period,
+            choice_group=choice_group,
+            choices=choices,
+        )
+        save_result = MarketRepository.save_markets_from_response_with_stats(
+            event_id=event_id,
+            odds_response=odds_response,
+            bookie_id=resolution.bookie.bookie_id,
+            source="oddsportal",
+        )
+        return save_result.markets_saved
 
     @staticmethod
     def save_markets_from_oddsportal(event_id: int, odds_data: object) -> int:
@@ -442,264 +526,125 @@ class MarketRepository:
             total_bookies = sum(len(t[3]) for t in extraction_tuples)
             total_betfair = sum(1 for t in extraction_tuples if t[4])
             logger.debug(f"💾 Saving OddsPortal data for event {event_id}: {len(extraction_tuples)} period(s), {total_bookies} bookies, {total_betfair} Betfair sections")
+            for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
+                market_period_normalized = MarketRepository._normalize_market_period(market_period)
+                is_ou = market_group == "Over/Under"
+                choice_1_key = "Over" if is_ou else "1"
+                choice_2_key = "Under" if is_ou else "2"
 
-            with db_manager.get_session() as session:
-                for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
-                    market_period_normalized = MarketRepository._normalize_string_or_none(MarketRepository._normalize_market_period(market_period))
-                    for b_odds in bookie_odds_list:
-                        try:
-                            bookie = MarketRepository._get_or_create_bookie(session, b_odds.name)
+                for b_odds in bookie_odds_list:
+                    source_bookie_name = MarketRepository._normalize_string_or_none(b_odds.name)
+                    source_bookie_slug = MarketRepository._slugify_source_bookie_name(source_bookie_name)
+                    if not source_bookie_name or not source_bookie_slug:
+                        logger.warning(
+                            "Skipping OddsPortal bookie with missing name/slug for event %s (%s)",
+                            event_id,
+                            market_name,
+                        )
+                        continue
 
-                            handicap_normalized = MarketRepository._normalize_string_or_none(getattr(b_odds, 'handicap', None))
+                    initial_map = {
+                        choice_1_key: MarketRepository._float_or_none(b_odds.initial_odds_1),
+                        "X": MarketRepository._float_or_none(b_odds.initial_odds_x),
+                        choice_2_key: MarketRepository._float_or_none(b_odds.initial_odds_2),
+                    }
+                    choices = []
+                    for choice_name, raw_value in {
+                        choice_1_key: b_odds.odds_1,
+                        "X": b_odds.odds_x,
+                        choice_2_key: b_odds.odds_2,
+                    }.items():
+                        current_odds = MarketRepository._float_or_none(raw_value)
+                        if current_odds is None:
+                            continue
+                        choices.append(
+                            MarketRepository._build_choice_payload(
+                                choice_name,
+                                current_odds,
+                                initial_map.get(choice_name),
+                            )
+                        )
 
-                            market = session.query(Market).filter(
-                                 and_(
-                                     Market.event_id == event_id,
-                                     Market.bookie_id == bookie.bookie_id,
-                                     Market.market_name == market_name,
-                                     or_(Market.market_period == market_period_normalized, Market.market_period == "") if market_period_normalized is None else Market.market_period == market_period_normalized,
-                                     or_(Market.choice_group == handicap_normalized, Market.choice_group == "") if handicap_normalized is None else Market.choice_group == handicap_normalized,
-                                     Market.is_live == False
-                                 )
-                            ).first()
+                    if not choices:
+                        continue
 
-                            if not market:
-                                market = Market(
-                                    event_id=event_id,
-                                    bookie_id=bookie.bookie_id,
-                                    market_name=market_name,
-                                    market_group=market_group,
-                                    market_period=market_period_normalized,
-                                    choice_group=handicap_normalized,
-                                    is_live=False,
-                                    collected_at=get_local_now()
+                    handicap_normalized = MarketRepository._normalize_string_or_none(getattr(b_odds, "handicap", None))
+                    saved_count += MarketRepository._save_oddsportal_market(
+                        event_id=event_id,
+                        source_bookie_name=source_bookie_name,
+                        source_bookie_slug=source_bookie_slug,
+                        market_name=market_name,
+                        market_group=market_group,
+                        market_period=market_period_normalized,
+                        choice_group=handicap_normalized,
+                        choices=choices,
+                    )
+
+                if betfair_data:
+                    source_bookie_name = "Betfair Exchange"
+                    source_bookie_slug = "betfair-exchange"
+                    exchange_configs = [
+                        {
+                            "group": "Back",
+                            "initials": {
+                                choice_1_key: MarketRepository._float_or_none(betfair_data.initial_back_1),
+                                "X": MarketRepository._float_or_none(betfair_data.initial_back_x),
+                                choice_2_key: MarketRepository._float_or_none(betfair_data.initial_back_2),
+                            },
+                            "choices": {
+                                choice_1_key: betfair_data.back_1,
+                                "X": betfair_data.back_x,
+                                choice_2_key: betfair_data.back_2,
+                            },
+                        },
+                        {
+                            "group": "Lay",
+                            "initials": {
+                                choice_1_key: MarketRepository._float_or_none(betfair_data.initial_lay_1),
+                                "X": MarketRepository._float_or_none(betfair_data.initial_lay_x),
+                                choice_2_key: MarketRepository._float_or_none(betfair_data.initial_lay_2),
+                            },
+                            "choices": {
+                                choice_1_key: betfair_data.lay_1,
+                                "X": betfair_data.lay_x,
+                                choice_2_key: betfair_data.lay_2,
+                            },
+                        },
+                    ]
+
+                    for config in exchange_configs:
+                        choices = []
+                        for choice_name, raw_value in config["choices"].items():
+                            current_odds = MarketRepository._float_or_none(raw_value)
+                            if current_odds is None:
+                                continue
+                            choices.append(
+                                MarketRepository._build_choice_payload(
+                                    choice_name,
+                                    current_odds,
+                                    config["initials"].get(choice_name),
                                 )
-                                session.add(market)
-                                session.flush()
-                            else:
-                                market.market_group = market_group
-                                market.market_period = market_period_normalized
-                                market.collected_at = get_local_now()
+                            )
 
-                            is_ou = market_group == "Over/Under"
-                            choice_1_key = "Over" if is_ou else "1"
-                            choice_2_key = "Under" if is_ou else "2"
-
-                            initial_map = {
-                                choice_1_key: None,
-                                "X": None,
-                                choice_2_key: None
-                            }
-                            try:
-                                if b_odds.initial_odds_1:
-                                    initial_map[choice_1_key] = float(b_odds.initial_odds_1)
-                            except (ValueError, TypeError):
-                                pass
-                            try:
-                                if b_odds.initial_odds_x:
-                                    initial_map["X"] = float(b_odds.initial_odds_x)
-                            except (ValueError, TypeError):
-                                pass
-                            try:
-                                if b_odds.initial_odds_2:
-                                    initial_map[choice_2_key] = float(b_odds.initial_odds_2)
-                            except (ValueError, TypeError):
-                                pass
-
-                            choices_map = {
-                                choice_1_key: b_odds.odds_1,
-                                "X": b_odds.odds_x,
-                                choice_2_key: b_odds.odds_2
-                            }
-
-                            for choice_name, val_str in choices_map.items():
-                                if not val_str or val_str == '-':
-                                    continue
-
-                                try:
-                                    current_odds = float(val_str)
-                                except ValueError:
-                                    continue
-
-                                choice = session.query(MarketChoice).filter(
-                                    and_(
-                                        MarketChoice.market_id == market.market_id,
-                                        MarketChoice.choice_name == choice_name
-                                    )
-                                ).first()
-
-                                if choice:
-                                    if abs(float(choice.current_odds or 0) - current_odds) > 0.001:
-                                        choice.change = 1 if current_odds > float(choice.current_odds or 0) else -1
-                                        choice.current_odds = current_odds
-                                    if initial_map.get(choice_name) and not choice.initial_odds:
-                                        choice.initial_odds = initial_map[choice_name]
-                                else:
-                                    init_val = initial_map.get(choice_name)
-                                    if init_val and abs(init_val - current_odds) > 0.001:
-                                        computed_change = 1 if current_odds > init_val else -1
-                                    else:
-                                        computed_change = 0
-                                    choice = MarketChoice(
-                                        market_id=market.market_id,
-                                        choice_name=choice_name,
-                                        initial_odds=init_val,
-                                        current_odds=current_odds,
-                                        change=computed_change
-                                    )
-                                    session.add(choice)
-                                    session.flush()
-
-                                snapshot = MarketChoiceSnapshot(
-                                    choice_id=choice.choice_id,
-                                    odds_value=current_odds,
-                                    collected_at=market.collected_at
-                                )
-                                session.add(snapshot)
-
-                            saved_count += 1
-
-                        except Exception as e:
-                            logger.warning(f"Error saving bookie {b_odds.name} for event {event_id} ({market_period}): {e}")
+                        if not choices:
                             continue
 
-                    if betfair_data:
-                        try:
-                            bookie = MarketRepository._get_or_create_bookie(session, "Betfair Exchange")
+                        bf_choice_group = config["group"]
+                        if getattr(betfair_data, "handicap", None):
+                            bf_choice_group = f"{bf_choice_group} {betfair_data.handicap}"
+                        bf_choice_group_normalized = MarketRepository._normalize_string_or_none(bf_choice_group)
+                        saved_count += MarketRepository._save_oddsportal_market(
+                            event_id=event_id,
+                            source_bookie_name=source_bookie_name,
+                            source_bookie_slug=source_bookie_slug,
+                            market_name=market_name,
+                            market_group=market_group,
+                            market_period=market_period_normalized,
+                            choice_group=bf_choice_group_normalized,
+                            choices=choices,
+                        )
 
-                            is_ou = market_group == "Over/Under"
-                            choice_1_key = "Over" if is_ou else "1"
-                            choice_2_key = "Under" if is_ou else "2"
-
-                            exchange_configs = [
-                                {
-                                    "group": "Back",
-                                    "choices": {
-                                        choice_1_key: betfair_data.back_1,
-                                        "X": betfair_data.back_x,
-                                        choice_2_key: betfair_data.back_2
-                                    }
-                                },
-                                {
-                                    "group": "Lay",
-                                    "choices": {
-                                        choice_1_key: betfair_data.lay_1,
-                                        "X": betfair_data.lay_x,
-                                        choice_2_key: betfair_data.lay_2
-                                    }
-                                }
-                            ]
-
-                            for config in exchange_configs:
-                                group_name = config["group"]
-                                choices_map = config["choices"]
-
-                                if not any(v and v != '-' and v.strip() for v in choices_map.values()):
-                                    continue
-
-                                bf_cg = group_name
-                                if getattr(betfair_data, 'handicap', None):
-                                    bf_cg = f"{group_name} {betfair_data.handicap}"
-                                
-                                bf_cg_normalized = MarketRepository._normalize_string_or_none(bf_cg)
-
-                                market = session.query(Market).filter(
-                                     and_(
-                                         Market.event_id == event_id,
-                                         Market.bookie_id == bookie.bookie_id,
-                                         Market.market_name == market_name,
-                                         or_(Market.market_period == market_period_normalized, Market.market_period == "") if market_period_normalized is None else Market.market_period == market_period_normalized,
-                                         or_(Market.choice_group == bf_cg_normalized, Market.choice_group == "") if bf_cg_normalized is None else Market.choice_group == bf_cg_normalized,
-                                         Market.is_live == False
-                                     )
-                                ).first()
-
-                                if not market:
-                                    market = Market(
-                                        event_id=event_id,
-                                        bookie_id=bookie.bookie_id,
-                                        market_name=market_name,
-                                        market_group=market_group,
-                                        market_period=market_period_normalized,
-                                        choice_group=bf_cg_normalized,
-                                        is_live=False,
-                                        collected_at=get_local_now()
-                                    )
-                                    session.add(market)
-                                    session.flush()
-                                else:
-                                    market.market_group = market_group
-                                    market.market_period = market_period_normalized
-                                    market.collected_at = get_local_now()
-
-                                for choice_name, val_str in choices_map.items():
-                                     if not val_str or val_str == '-' or not val_str.strip():
-                                         continue
-                                     try:
-                                         current_odds = float(val_str)
-                                     except ValueError:
-                                         continue
-
-                                     choice = session.query(MarketChoice).filter(
-                                        and_(
-                                            MarketChoice.market_id == market.market_id,
-                                            MarketChoice.choice_name == choice_name
-                                        )
-                                    ).first()
-
-                                     if choice:
-                                        if abs(float(choice.current_odds or 0) - current_odds) > 0.001:
-                                            choice.change = 1 if current_odds > float(choice.current_odds or 0) else -1
-                                            choice.current_odds = current_odds
-                                     else:
-                                        bf = betfair_data
-                                        if group_name == "Back":
-                                            bf_initial_map = {
-                                                choice_1_key: bf.initial_back_1,
-                                                "X": bf.initial_back_x,
-                                                choice_2_key: bf.initial_back_2
-                                            }
-                                        elif group_name == "Lay":
-                                            bf_initial_map = {
-                                                choice_1_key: bf.initial_lay_1,
-                                                "X": bf.initial_lay_x,
-                                                choice_2_key: bf.initial_lay_2
-                                            }
-                                        else:
-                                            bf_initial_map = {}
-                                        init_str = bf_initial_map.get(choice_name)
-                                        try:
-                                            init_val = float(init_str) if init_str else None
-                                        except (ValueError, TypeError):
-                                            init_val = None
-                                        if init_val and abs(init_val - current_odds) > 0.001:
-                                            computed_change = 1 if current_odds > init_val else -1
-                                        else:
-                                            computed_change = 0
-                                        choice = MarketChoice(
-                                            market_id=market.market_id,
-                                            choice_name=choice_name,
-                                            initial_odds=init_val,
-                                            current_odds=current_odds,
-                                            change=computed_change
-                                        )
-                                        session.add(choice)
-                                        session.flush()
-
-                                     snapshot = MarketChoiceSnapshot(
-                                         choice_id=choice.choice_id,
-                                         odds_value=current_odds,
-                                         collected_at=market.collected_at
-                                     )
-                                     session.add(snapshot)
-
-                                saved_count += 1
-
-                        except Exception as e:
-                            logger.warning(f"Error saving Betfair Exchange for event {event_id} ({market_period}): {e}")
-
-                session.commit()
-                return saved_count
+            return saved_count
 
         except Exception as e:
             logger.error(f"Error saving OddsPortal markets for event {event_id}: {e}")

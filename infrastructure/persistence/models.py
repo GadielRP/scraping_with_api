@@ -198,9 +198,41 @@ class Bookie(Base):
     
     # Relationships
     markets = relationship("Market", back_populates="bookie")
+    source_mappings = relationship(
+        "BookieSourceMapping",
+        back_populates="bookie",
+        cascade="all, delete-orphan",
+    )
     
     def __repr__(self):
         return f"<Bookie(bookie_id={self.bookie_id}, name='{self.name}')>"
+
+
+class BookieSourceMapping(Base):
+    __tablename__ = "bookie_source_mappings"
+
+    mapping_id = Column(Integer, primary_key=True, autoincrement=True)
+    bookie_id = Column(
+        Integer,
+        ForeignKey("bookies.bookie_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source = Column(Text, nullable=False)
+    source_bookie_name = Column(Text, nullable=False)
+    source_bookie_slug = Column(Text, nullable=False)
+    match_method = Column(Text, nullable=False, default="direct")
+    confidence = Column(Numeric(5, 3), nullable=True)
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+
+    bookie = relationship("Bookie", back_populates="source_mappings")
+
+    __table_args__ = (
+        UniqueConstraint("source", "source_bookie_slug", name="unique_bookie_source_slug"),
+        Index("idx_bookie_source_mappings_bookie_id", "bookie_id"),
+        Index("idx_bookie_source_mappings_source_slug", "source", "source_bookie_slug"),
+        Index("idx_bookie_source_mappings_source_name", "source", "source_bookie_name"),
+    )
 
 
 class Market(Base):
@@ -223,7 +255,7 @@ class Market(Base):
     # Market description
     market_name = Column(Text, nullable=False)  # "Full time", "Match goals", "Asian handicap"
     market_group = Column(Text)  # "1X2", "Match goals", "Asian Handicap"
-    market_period = Column(Text)  # "Full-time", "1st half"
+    market_period = Column(Text, nullable=False, default="Full-time")  # "Full-time", "1st half"
     choice_group = Column(Text)  # For Over/Under: "2.5", "3.5", etc. NULL for non-line markets
     is_live = Column(Boolean, default=False, nullable=False)
     
@@ -296,10 +328,20 @@ class MarketChoiceSnapshot(Base):
     choice_id = Column(Integer, ForeignKey('market_choices.choice_id', ondelete='CASCADE'), nullable=False)
     odds_value = Column(Numeric(8, 3), nullable=False)
     collected_at = Column(DateTime, default=get_local_now, nullable=False)
+    source = Column(Text)
+    source_collected_at = Column(DateTime)
+    source_market_id = Column(Text)
+    source_outcome_id = Column(Text)
+    bookmaker_outcome_id = Column(Text)
+    main_line = Column(Boolean)
+    source_limit = Column(Numeric(12, 3))
     
     # Constraints & Indexes
     __table_args__ = (
         Index('idx_choice_collected', 'choice_id', 'collected_at'),
+        Index('idx_market_choice_snapshots_source', 'source'),
+        Index('idx_market_choice_snapshots_source_collected', 'source', 'source_collected_at'),
+        Index('idx_market_choice_snapshots_source_market', 'source', 'source_market_id'),
     )
     
     # Relationships
@@ -673,6 +715,9 @@ PRE_START_ODDS_TRAJECTORY_INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_events_start_time_utc ON events (start_time_utc);",
     "CREATE INDEX IF NOT EXISTS idx_events_season_start_time_utc ON events (season_id, start_time_utc);",
     "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_choice_collected_desc ON market_choice_snapshots (choice_id, collected_at DESC, snapshot_id DESC);",
+    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source ON market_choice_snapshots (source);",
+    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source_collected ON market_choice_snapshots (source, source_collected_at);",
+    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source_market ON market_choice_snapshots (source, source_market_id);",
 ]
 
 # ---------------------------------------------------------------------------

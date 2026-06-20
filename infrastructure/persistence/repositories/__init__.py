@@ -11,6 +11,7 @@ from .odds_trajectory_repository import OddsTrajectoryRepository, OddsTrajectory
 from .result_repository import ResultRepository
 from .observation_repository import ObservationRepository
 from .market_repository import MarketRepository
+from .bookie_repository import BookieRepository, BookieResolution
 from .oddsportal_cache_repository import OddsPortalCacheRepository
 from .daily_discovery_repository import DailyDiscoveryRepository
 
@@ -28,6 +29,8 @@ __all__ = [
     'ResultRepository',
     'ObservationRepository',
     'MarketRepository',
+    'BookieRepository',
+    'BookieResolution',
     'OddsPortalCacheRepository',
     'DailyDiscoveryRepository'
 ]

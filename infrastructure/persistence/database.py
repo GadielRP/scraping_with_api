@@ -20,12 +20,15 @@ class DatabaseManager:
     def _setup_engine(self):
         """Setup database engine and session factory"""
         try:
+            connect_args = {}
+            if not self.database_url.startswith("sqlite"):
+                connect_args["connect_timeout"] = Config.DB_CONNECT_TIMEOUT
             self.engine = create_engine(
                 self.database_url,
                 echo=False,  # Set to True for SQL debugging
                 pool_pre_ping=True,
                 pool_recycle=300,
-                connect_args={"connect_timeout": Config.DB_CONNECT_TIMEOUT}
+                connect_args=connect_args,
             )
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=self.engine)
             logger.info(f"Database engine created for: {self.database_url}")
@@ -111,6 +114,9 @@ class DatabaseManager:
             # This ensures complex migrations (e.g., backfilling NOT NULL columns) run
             # before the generic migration tries to add them with NOT NULL constraint.
             self._migrate_markets_to_bookies()
+            self._migrate_bookie_source_mappings()
+            self._migrate_market_period_not_null()
+            self._migrate_market_choice_snapshot_lineage()
             
             # Check and fix column order (bookie_id should be next to event_id)
             self._reorder_markets_columns()
@@ -351,7 +357,187 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"❌ Markets→Bookies migration failed: {e}")
             logger.error(traceback.format_exc())
-    
+
+    def _migrate_bookie_source_mappings(self):
+        """Create and seed canonical/source bookie mappings without creating new canonical bookies."""
+        try:
+            from sqlalchemy import inspect
+            from infrastructure.persistence.models import Bookie, BookieSourceMapping
+            from infrastructure.persistence.repositories.bookie_repository import BookieRepository
+
+            inspector = inspect(self.engine)
+            table_names = set(inspector.get_table_names())
+            if 'bookies' not in table_names:
+                logger.debug("Bookies table doesn't exist yet, skipping bookie source mapping migration")
+                return
+
+            with self.get_session() as session:
+                connection = session.connection()
+
+                if 'bookie_source_mappings' not in table_names:
+                    BookieSourceMapping.__table__.create(connection, checkfirst=True)
+                    logger.info("Created bookie_source_mappings table")
+
+                index_statements = [
+                    "CREATE UNIQUE INDEX IF NOT EXISTS unique_bookie_source_slug ON bookie_source_mappings (source, source_bookie_slug)",
+                    "CREATE INDEX IF NOT EXISTS idx_bookie_source_mappings_bookie_id ON bookie_source_mappings (bookie_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_bookie_source_mappings_source_slug ON bookie_source_mappings (source, source_bookie_slug)",
+                    "CREATE INDEX IF NOT EXISTS idx_bookie_source_mappings_source_name ON bookie_source_mappings (source, source_bookie_name)",
+                ]
+                for statement in index_statements:
+                    session.execute(text(statement))
+
+                bookies = session.query(Bookie).order_by(Bookie.bookie_id).all()
+                for bookie in bookies:
+                    BookieRepository.upsert_source_mapping(
+                        bookie_id=bookie.bookie_id,
+                        source="canonical",
+                        source_bookie_name=bookie.name,
+                        source_bookie_slug=bookie.slug,
+                        match_method="canonical_seed",
+                        confidence=1.000,
+                        session=session,
+                    )
+                    BookieRepository.upsert_source_mapping(
+                        bookie_id=bookie.bookie_id,
+                        source="oddspapi",
+                        source_bookie_name=bookie.name,
+                        source_bookie_slug=bookie.slug,
+                        match_method="canonical_slug_seed",
+                        confidence=1.000,
+                        session=session,
+                    )
+
+                sofascore_bookie = session.query(Bookie).filter(Bookie.slug == "sofascore").first()
+                if sofascore_bookie is not None:
+                    BookieRepository.upsert_source_mapping(
+                        bookie_id=sofascore_bookie.bookie_id,
+                        source="sofascore",
+                        source_bookie_name="SofaScore",
+                        source_bookie_slug="sofascore",
+                        match_method="pseudobookie_seed",
+                        confidence=1.000,
+                        session=session,
+                    )
+                else:
+                    logger.warning("Canonical bookie slug 'sofascore' missing while seeding source mappings")
+
+                betfair_exchange = session.query(Bookie).filter(Bookie.slug == "betfair-ex").first()
+                if betfair_exchange is not None:
+                    BookieRepository.upsert_source_mapping(
+                        bookie_id=betfair_exchange.bookie_id,
+                        source="oddsportal",
+                        source_bookie_name="Betfair Exchange",
+                        source_bookie_slug="betfair-exchange",
+                        match_method="manual_alias",
+                        confidence=1.000,
+                        session=session,
+                    )
+                    BookieRepository.upsert_source_mapping(
+                        bookie_id=betfair_exchange.bookie_id,
+                        source="oddspapi",
+                        source_bookie_name="BetFair Exchange",
+                        source_bookie_slug="betfair-ex",
+                        match_method="canonical_slug_seed",
+                        confidence=1.000,
+                        session=session,
+                    )
+                else:
+                    logger.warning("Canonical bookie slug 'betfair-ex' missing while seeding alias mappings")
+
+                session.commit()
+                logger.info("Bookie source mappings migration completed")
+        except Exception as e:
+            logger.error(f"Bookie source mappings migration failed: {e}")
+            logger.error(traceback.format_exc())
+
+    def _migrate_market_period_not_null(self):
+        """Backfill market_period and enforce a canonical Full-time default when supported by the dialect."""
+        try:
+            from sqlalchemy import inspect
+
+            inspector = inspect(self.engine)
+            if 'markets' not in inspector.get_table_names():
+                return
+
+            db_columns = {col['name'] for col in inspector.get_columns('markets')}
+            if 'market_period' not in db_columns:
+                logger.debug("markets.market_period not present yet, skipping not-null migration")
+                return
+
+            with self.get_session() as session:
+                session.execute(text("""
+                    UPDATE markets
+                    SET market_period = 'Full-time'
+                    WHERE market_period IS NULL OR TRIM(market_period) = ''
+                """))
+
+                if self.engine.dialect.name == 'postgresql':
+                    try:
+                        session.execute(text(
+                            "ALTER TABLE markets ALTER COLUMN market_period SET DEFAULT 'Full-time'"
+                        ))
+                    except Exception as exc:
+                        logger.debug("Could not set markets.market_period default: %s", exc)
+                    try:
+                        session.execute(text(
+                            "ALTER TABLE markets ALTER COLUMN market_period SET NOT NULL"
+                        ))
+                    except Exception as exc:
+                        logger.debug("Could not set markets.market_period NOT NULL: %s", exc)
+
+                session.commit()
+                logger.info("markets.market_period backfill completed")
+        except Exception as e:
+            logger.error(f"Market period not-null migration failed: {e}")
+            logger.error(traceback.format_exc())
+
+    def _migrate_market_choice_snapshot_lineage(self):
+        """Add source lineage fields to market_choice_snapshots without backfilling historical raw payloads."""
+        try:
+            from sqlalchemy import inspect
+
+            inspector = inspect(self.engine)
+            if 'market_choice_snapshots' not in inspector.get_table_names():
+                return
+
+            db_columns = {col['name'] for col in inspector.get_columns('market_choice_snapshots')}
+
+            with self.get_session() as session:
+                column_definitions = {
+                    'source': 'TEXT',
+                    'source_collected_at': 'TIMESTAMP',
+                    'source_market_id': 'TEXT',
+                    'source_outcome_id': 'TEXT',
+                    'bookmaker_outcome_id': 'TEXT',
+                    'main_line': 'BOOLEAN',
+                    'source_limit': 'NUMERIC(12, 3)',
+                }
+
+                for column_name, column_sql in column_definitions.items():
+                    if column_name not in db_columns:
+                        session.execute(text(
+                            f"ALTER TABLE market_choice_snapshots ADD COLUMN {column_name} {column_sql}"
+                        ))
+                        logger.info("Added market_choice_snapshots.%s", column_name)
+
+                index_statements = [
+                    "CREATE INDEX IF NOT EXISTS idx_choice_collected ON market_choice_snapshots (choice_id, collected_at)",
+                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_choice_collected_desc ON market_choice_snapshots (choice_id, collected_at DESC, snapshot_id DESC)",
+                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source ON market_choice_snapshots (source)",
+                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source_collected ON market_choice_snapshots (source, source_collected_at)",
+                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source_market ON market_choice_snapshots (source, source_market_id)",
+                ]
+
+                for statement in index_statements:
+                    session.execute(text(statement))
+
+                session.commit()
+                logger.info("market_choice_snapshots lineage migration completed")
+        except Exception as e:
+            logger.error(f"Market choice snapshot lineage migration failed: {e}")
+            logger.error(traceback.format_exc())
+
     def _reorder_markets_columns(self):
         """
         Ensure 'bookie_id' is positioned correctly (after 'event_id') in 'markets' table.
