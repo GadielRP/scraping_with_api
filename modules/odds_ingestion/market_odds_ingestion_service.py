@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from infrastructure.persistence.repositories import DualProcessOddsRepository, MarketRepository
+from modules.oddspapi import OddspapiEventResolver
 
+from .adapters.oddspapi_market_adapter import OddspapiMarketAdapter
 from .adapters.sofascore_market_adapter import SofaScoreMarketAdapter
 
 logger = logging.getLogger(__name__)
@@ -15,17 +17,120 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MarketIngestionResult:
-    event_id: int
+    event_id: Optional[int]
     source: str
     markets_saved: int = 0
     choices_saved: int = 0
     snapshots_saved: int = 0
+    bookies_saved: int = 0
+    mappings_created: int = 0
     dual_process_market_available: bool = False
     skipped: bool = False
     reason: Optional[str] = None
 
 
 class MarketOddsIngestionService:
+    @staticmethod
+    def save_from_oddspapi_response(
+        odds_response: dict,
+        market_catalog: dict | list | None = None,
+        bookmaker_catalog: dict | list | None = None,
+        source: str = "oddspapi_odds",
+        dry_run: bool = False,
+    ) -> MarketIngestionResult:
+        if dry_run:
+            resolution = OddspapiEventResolver.resolve_from_odds_response(
+                odds_response,
+                create_mappings=False,
+            )
+        else:
+            resolution = OddspapiEventResolver.resolve_from_odds_response(odds_response)
+        if not resolution.resolved:
+            return MarketIngestionResult(
+                event_id=None,
+                source=source,
+                skipped=True,
+                reason=resolution.skipped_reason,
+            )
+
+        adapted = OddspapiMarketAdapter.from_odds_response(
+            odds_response,
+            market_catalog=market_catalog,
+            bookmaker_catalog=bookmaker_catalog,
+        )
+        bookmakers = adapted.get("bookmakers", [])
+        markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in bookmakers)
+        choices_detected = sum(
+            len(market.get("choices", []))
+            for bookmaker in bookmakers
+            for market in bookmaker.get("markets", [])
+        )
+        mappings_created = len(resolution.created_mappings)
+
+        if not bookmakers or markets_detected == 0:
+            return MarketIngestionResult(
+                event_id=resolution.canonical_event_id,
+                source=source,
+                mappings_created=mappings_created,
+                skipped=True,
+                reason="no normalized markets found",
+            )
+
+        if dry_run:
+            return MarketIngestionResult(
+                event_id=resolution.canonical_event_id,
+                source=source,
+                markets_saved=markets_detected,
+                choices_saved=choices_detected,
+                bookies_saved=len(bookmakers),
+                mappings_created=0,
+            )
+
+        markets_saved = 0
+        bookies_saved = 0
+        try:
+            for bookmaker in bookmakers:
+                bookie = MarketRepository.get_or_create_bookie_by_slug(
+                    bookmaker["name"],
+                    bookmaker["slug"],
+                )
+                bookies_saved += 1
+                markets_saved += MarketRepository.save_markets_from_response(
+                    event_id=resolution.canonical_event_id,
+                    odds_response={"markets": bookmaker["markets"]},
+                    bookie_id=bookie.bookie_id,
+                )
+
+            dual_process_available = DualProcessOddsRepository.event_has_dual_process_odds(
+                resolution.canonical_event_id
+            )
+            return MarketIngestionResult(
+                event_id=resolution.canonical_event_id,
+                source=source,
+                markets_saved=markets_saved,
+                choices_saved=choices_detected,
+                bookies_saved=bookies_saved,
+                mappings_created=mappings_created,
+                dual_process_market_available=dual_process_available,
+                skipped=markets_saved <= 0,
+                reason=None if markets_saved > 0 else "no markets saved",
+            )
+        except Exception as exc:
+            logger.error(
+                "Error ingesting OddsPapi markets for event %s: %s",
+                resolution.canonical_event_id,
+                exc,
+            )
+            return MarketIngestionResult(
+                event_id=resolution.canonical_event_id,
+                source=source,
+                markets_saved=markets_saved,
+                bookies_saved=bookies_saved,
+                mappings_created=mappings_created,
+                skipped=True,
+                reason=str(exc),
+            )
+
     @staticmethod
     def save_from_event_odds_response(
         event_id: int,

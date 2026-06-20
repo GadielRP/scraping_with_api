@@ -305,6 +305,54 @@ class MarketRepository:
             return 0
 
     @staticmethod
+    def get_or_create_bookie_by_slug(name: str, slug: str) -> Bookie:
+        """Return a bookmaker using its stable source slug as identity."""
+        with db_manager.get_session() as session:
+            return MarketRepository._get_or_create_bookie_by_slug_in_session(
+                session,
+                name,
+                slug,
+            )
+
+    @staticmethod
+    def _get_or_create_bookie_by_slug_in_session(
+        session: Session,
+        name: str,
+        slug: str,
+    ) -> Bookie:
+        normalized_name = str(name or "").strip()
+        normalized_slug = str(slug or "").strip().lower()
+        if not normalized_name:
+            raise ValueError("Bookie name is required")
+        if not normalized_slug:
+            raise ValueError("Bookie slug is required")
+
+        bookie = session.query(Bookie).filter(Bookie.slug == normalized_slug).first()
+        if bookie:
+            if bookie.name != normalized_name:
+                name_owner = session.query(Bookie).filter(Bookie.name == normalized_name).first()
+                if name_owner is None or name_owner.bookie_id == bookie.bookie_id:
+                    bookie.name = normalized_name
+                else:
+                    logger.warning(
+                        "Keeping bookie name %s for slug %s because desired name %s is already in use",
+                        bookie.name,
+                        normalized_slug,
+                        normalized_name,
+                    )
+            session.flush()
+            return bookie
+
+        bookie = session.query(Bookie).filter(Bookie.name == normalized_name).first()
+        if bookie:
+            return bookie
+
+        bookie = Bookie(name=normalized_name, slug=normalized_slug)
+        session.add(bookie)
+        session.flush()
+        return bookie
+
+    @staticmethod
     def _get_or_create_bookie(session: Session, name: str) -> Bookie:
         db_name = BOOKIE_ALIASES.get(name, name)
 

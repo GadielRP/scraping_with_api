@@ -89,6 +89,13 @@ test_*.py
 *.json
 !odds_papi/**/*.json
 !odds_papi/*.json
+
+# Phase 1 OddsPapi offline ingestion verification
+!tests/
+tests/*
+!tests/oddspapi/
+!tests/oddspapi/**
+!scripts/maintenance/test_oddspapi_local_ingestion.py
 *debug/
 *.log
 debug*/

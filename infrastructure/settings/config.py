@@ -209,6 +209,22 @@ class Config:
     # Rate limiting
     REQUEST_DELAY_SECONDS = float(os.getenv('REQUEST_DELAY_SECONDS', '0.5'))
     MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
+
+    # OddsPapi API Configuration
+    ODDSPAPI_BASE_URL = os.getenv('ODDSPAPI_BASE_URL', 'https://api.oddspapi.io').rstrip('/')
+    ODDSPAPI_KEY = os.getenv('ODDSPAPI_KEY') or os.getenv('ODDSpapi_KEY', '')
+    ODDSPAPI_TIMEOUT_SECONDS = float(os.getenv('ODDSPAPI_TIMEOUT_SECONDS', '15'))
+    ODDSPAPI_MAX_RETRIES = int(os.getenv('ODDSPAPI_MAX_RETRIES', str(MAX_RETRIES)))
+    ODDSPAPI_REQUEST_DELAY_SECONDS = float(
+        os.getenv('ODDSPAPI_REQUEST_DELAY_SECONDS', str(REQUEST_DELAY_SECONDS))
+    )
+    ODDSPAPI_DEFAULT_BOOKMAKERS = _parse_optional_env_list(
+        'ODDSPAPI_DEFAULT_BOOKMAKERS',
+        ['pinnacle'],
+    )
+    ODDSPAPI_DEFAULT_LANGUAGE = os.getenv('ODDSPAPI_DEFAULT_LANGUAGE', 'en')
+    ODDSPAPI_DEFAULT_ODDS_FORMAT = os.getenv('ODDSPAPI_DEFAULT_ODDS_FORMAT', 'decimal')
+    ODDSPAPI_DEFAULT_VERBOSITY = int(os.getenv('ODDSPAPI_DEFAULT_VERBOSITY', '3'))
     
     # Notification Configuration
     NOTIFICATIONS_ENABLED = os.getenv('NOTIFICATIONS_ENABLED', 'true').lower() == 'true'
