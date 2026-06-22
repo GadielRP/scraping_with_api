@@ -1,8 +1,8 @@
 from modules.odds_ingestion.adapters.oddspapi_market_adapter import OddspapiMarketAdapter
 
 
-def player(bookmaker_outcome_id, price, active=True):
-    return {
+def player(bookmaker_outcome_id, price, active=True, exchange_meta=None):
+    result = {
         "active": active,
         "bookmakerOutcomeId": bookmaker_outcome_id,
         "price": price,
@@ -10,6 +10,9 @@ def player(bookmaker_outcome_id, price, active=True):
         "mainLine": True,
         "limit": 100,
     }
+    if exchange_meta is not None:
+        result["exchangeMeta"] = exchange_meta
+    return result
 
 
 def market(outcomes):
@@ -126,3 +129,97 @@ def test_groups_markets_under_each_bookmaker():
     }
     adapted = OddspapiMarketAdapter.from_odds_response(payload)
     assert [bookmaker["slug"] for bookmaker in adapted["bookmakers"]] == ["pinnacle", "bet365"]
+
+
+def test_sportsbook_choice_does_not_include_exchange_quotes():
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        response({"100": market([player("home", 1.8)])})
+    )
+
+    choice = adapted["bookmakers"][0]["markets"][0]["choices"][0]
+    assert "exchangeQuotes" not in choice
+
+    exchange_without_meta = OddspapiMarketAdapter.from_odds_response(
+        response({"100": market([player("home", 1.8)])}, slug="betfair-ex")
+    )
+    exchange_choice = exchange_without_meta["bookmakers"][0]["markets"][0]["choices"][0]
+    assert "exchangeQuotes" not in exchange_choice
+
+
+def test_exchange_choice_normalizes_back_and_lay_ladders():
+    exchange_meta = {
+        "availableToBack": [
+            {"price": 4.8, "size": 64.9},
+            {"price": 4.7, "size": 2091.25},
+        ],
+        "availableToLay": [
+            {"price": 5.0, "size": 100.92},
+            {"price": 5.1, "size": 103.6},
+        ],
+        "tradedVolume": 10618.74,
+    }
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        response(
+            {"100": market([player("away", 4.8, exchange_meta=exchange_meta)])},
+            slug="betfair-ex",
+        )
+    )
+
+    choice = adapted["bookmakers"][0]["markets"][0]["choices"][0]
+    assert choice["name"] == "2"
+    assert choice["decimalValue"] == 4.8
+    assert choice["exchangeQuotes"] == [
+        {"side": "back", "level": 0, "price": 4.8, "size": 64.9},
+        {"side": "back", "level": 1, "price": 4.7, "size": 2091.25},
+        {"side": "lay", "level": 0, "price": 5.0, "size": 100.92},
+        {"side": "lay", "level": 1, "price": 5.1, "size": 103.6},
+    ]
+
+
+def test_exchange_ladder_tolerates_missing_sides_and_skips_invalid_prices():
+    back_only = OddspapiMarketAdapter.from_odds_response(
+        response(
+            {
+                "100": market(
+                    [
+                        player(
+                            "home",
+                            1.8,
+                            exchange_meta={
+                                "availableToBack": [
+                                    {"price": "invalid", "size": 10},
+                                    {"price": 1.8, "size": "invalid"},
+                                ]
+                            },
+                        )
+                    ]
+                )
+            },
+            slug="betfair-ex",
+        )
+    )
+    lay_only = OddspapiMarketAdapter.from_odds_response(
+        response(
+            {
+                "100": market(
+                    [
+                        player(
+                            "away",
+                            2.2,
+                            exchange_meta={"availableToLay": [{"price": 2.24, "size": 50}]},
+                        )
+                    ]
+                )
+            },
+            slug="betfair-ex",
+        )
+    )
+
+    back_quotes = back_only["bookmakers"][0]["markets"][0]["choices"][0][
+        "exchangeQuotes"
+    ]
+    lay_quotes = lay_only["bookmakers"][0]["markets"][0]["choices"][0][
+        "exchangeQuotes"
+    ]
+    assert back_quotes == [{"side": "back", "level": 1, "price": 1.8, "size": None}]
+    assert lay_quotes == [{"side": "lay", "level": 0, "price": 2.24, "size": 50.0}]

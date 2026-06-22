@@ -1,5 +1,14 @@
+from datetime import datetime
 from unittest.mock import patch
 
+from infrastructure.persistence.database import DatabaseManager
+from infrastructure.persistence.models import (
+    Bookie,
+    Event,
+    MarketChoice,
+    MarketChoiceSnapshot,
+)
+from infrastructure.persistence.repositories.market_repository import MarketRepository
 from modules.oddspapi import OddspapiEventResolution
 from modules.odds_ingestion.market_odds_ingestion_service import MarketOddsIngestionService
 from infrastructure.persistence.repositories.bookie_repository import BookieResolution
@@ -164,3 +173,116 @@ def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
     assert result.bookie_mappings_created == 1
     assert result.event_mappings_created == 1
     assert result.mappings_created == 1
+
+
+def _repository_manager(tmp_path):
+    manager = DatabaseManager(f"sqlite:///{tmp_path / 'exchange-markets.db'}")
+    manager.create_tables()
+    return manager
+
+
+def _seed_repository_entities(manager):
+    with manager.get_session() as session:
+        event = Event(
+            slug="exchange-test-event",
+            start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
+            sport="Football",
+            competition="Premier League",
+            home_team="Home",
+            away_team="Away",
+        )
+        bookie = Bookie(name="Betfair Exchange", slug="betfair-ex")
+        session.add_all([event, bookie])
+        session.flush()
+        return event.id, bookie.bookie_id
+
+
+def _repository_response(choice):
+    return {
+        "markets": [
+            {
+                "marketName": "Full-time",
+                "marketGroup": "1X2",
+                "marketPeriod": "Full-time",
+                "choiceGroup": None,
+                "isLive": False,
+                "choices": [choice],
+            }
+        ]
+    }
+
+
+def test_repository_sportsbook_choice_keeps_single_null_exchange_snapshot(tmp_path):
+    manager = _repository_manager(tmp_path)
+    event_id, bookie_id = _seed_repository_entities(manager)
+    response_data = _repository_response(
+        {"name": "1", "decimalValue": 1.9, "exchangeQuotes": None}
+    )
+
+    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
+        result = MarketRepository.save_markets_from_response_with_stats(
+            event_id=event_id,
+            odds_response=response_data,
+            bookie_id=bookie_id,
+            source="oddspapi",
+        )
+
+    assert result.snapshots_saved == 1
+    with manager.get_session() as session:
+        snapshot = session.query(MarketChoiceSnapshot).one()
+    assert snapshot.exchange_side is None
+    assert snapshot.exchange_level is None
+    assert snapshot.exchange_size is None
+
+
+def test_repository_exchange_choice_persists_ladder_and_best_back_current_odds(tmp_path):
+    manager = _repository_manager(tmp_path)
+    event_id, bookie_id = _seed_repository_entities(manager)
+    response_data = _repository_response(
+        {
+            "name": "2",
+            "decimalValue": 4.8,
+            "changedAt": "2026-06-19T12:34:56Z",
+            "limit": 64.9,
+            "exchangeQuotes": [
+                {"side": "back", "level": 0, "price": 4.8, "size": 64.9},
+                {"side": "back", "level": 1, "price": 4.7, "size": 2091.25},
+                {"side": "lay", "level": 0, "price": 5.0, "size": 100.92},
+                {"side": "lay", "level": 1, "price": 5.1, "size": 103.6},
+            ],
+        }
+    )
+
+    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
+        result = MarketRepository.save_markets_from_response_with_stats(
+            event_id=event_id,
+            odds_response=response_data,
+            bookie_id=bookie_id,
+            source="oddspapi",
+        )
+
+    assert result.snapshots_saved == 4
+    with manager.get_session() as session:
+        choice = session.query(MarketChoice).one()
+        snapshots = (
+            session.query(MarketChoiceSnapshot)
+            .order_by(MarketChoiceSnapshot.snapshot_id)
+            .all()
+        )
+
+    assert choice.choice_name == "2"
+    assert float(choice.current_odds) == 4.8
+    assert [
+        (
+            snapshot.exchange_side,
+            snapshot.exchange_level,
+            float(snapshot.odds_value),
+            float(snapshot.exchange_size),
+        )
+        for snapshot in snapshots
+    ] == [
+        ("back", 0, 4.8, 64.9),
+        ("back", 1, 4.7, 2091.25),
+        ("lay", 0, 5.0, 100.92),
+        ("lay", 1, 5.1, 103.6),
+    ]

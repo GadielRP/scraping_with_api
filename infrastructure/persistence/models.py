@@ -335,6 +335,9 @@ class MarketChoiceSnapshot(Base):
     bookmaker_outcome_id = Column(Text)
     main_line = Column(Boolean)
     source_limit = Column(Numeric(12, 3))
+    exchange_side = Column(Text)
+    exchange_level = Column(Integer)
+    exchange_size = Column(Numeric(18, 3))
     
     # Constraints & Indexes
     __table_args__ = (

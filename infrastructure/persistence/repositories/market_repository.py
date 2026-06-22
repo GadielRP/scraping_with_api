@@ -244,23 +244,57 @@ class MarketRepository:
                                     session.add(choice)
                                     session.flush()
 
-                                if current_odds is not None:
-                                    source_collected_at = MarketRepository._parse_source_datetime(
-                                        choice_data.get("changedAt") or choice_data.get("sourceCollectedAt")
+                                source_collected_at = MarketRepository._parse_source_datetime(
+                                    choice_data.get("changedAt") or choice_data.get("sourceCollectedAt")
+                                )
+                                snapshot_fields = {
+                                    "choice_id": choice.choice_id,
+                                    "collected_at": market.collected_at,
+                                    "source": source,
+                                    "source_collected_at": source_collected_at,
+                                    "source_market_id": choice_data.get('sourceMarketId'),
+                                    "source_outcome_id": choice_data.get('sourceOutcomeId'),
+                                    "bookmaker_outcome_id": choice_data.get('bookmakerOutcomeId'),
+                                    "main_line": choice_data.get('mainLine'),
+                                    "source_limit": MarketRepository._numeric_or_none(choice_data.get('limit')),
+                                }
+
+                                exchange_quotes = choice_data.get("exchangeQuotes")
+                                if isinstance(exchange_quotes, list):
+                                    for quote in exchange_quotes:
+                                        if not isinstance(quote, dict):
+                                            continue
+                                        quote_price = MarketRepository._float_or_none(quote.get("price"))
+                                        quote_side = str(quote.get("side") or "").strip().lower()
+                                        try:
+                                            quote_level = int(quote.get("level"))
+                                        except (TypeError, ValueError):
+                                            continue
+                                        if quote_price is None or quote_side not in {"back", "lay"}:
+                                            continue
+
+                                        session.add(
+                                            MarketChoiceSnapshot(
+                                                odds_value=quote_price,
+                                                exchange_side=quote_side,
+                                                exchange_level=quote_level,
+                                                exchange_size=MarketRepository._numeric_or_none(
+                                                    quote.get("size")
+                                                ),
+                                                **snapshot_fields,
+                                            )
+                                        )
+                                        result.snapshots_saved += 1
+                                elif current_odds is not None:
+                                    session.add(
+                                        MarketChoiceSnapshot(
+                                            odds_value=current_odds,
+                                            exchange_side=None,
+                                            exchange_level=None,
+                                            exchange_size=None,
+                                            **snapshot_fields,
+                                        )
                                     )
-                                    snapshot = MarketChoiceSnapshot(
-                                        choice_id=choice.choice_id,
-                                        odds_value=current_odds,
-                                        collected_at=market.collected_at,
-                                        source=source,
-                                        source_collected_at=source_collected_at,
-                                        source_market_id=choice_data.get('sourceMarketId'),
-                                        source_outcome_id=choice_data.get('sourceOutcomeId'),
-                                        bookmaker_outcome_id=choice_data.get('bookmakerOutcomeId'),
-                                        main_line=choice_data.get('mainLine'),
-                                        source_limit=MarketRepository._numeric_or_none(choice_data.get('limit')),
-                                    )
-                                    session.add(snapshot)
                                     result.snapshots_saved += 1
 
                                 result.choices_saved += 1

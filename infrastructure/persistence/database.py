@@ -1564,13 +1564,13 @@ class DatabaseManager:
         
         col_type = col.type
         
-        if isinstance(col_type, String):
+        if isinstance(col_type, Text):
+            return "TEXT"
+        elif isinstance(col_type, String):
             if col_type.length:
                 return f"VARCHAR({col_type.length})"
             else:
                 return "VARCHAR"
-        elif isinstance(col_type, Text):
-            return "TEXT"
         elif isinstance(col_type, Integer):
             return "INTEGER"
         elif isinstance(col_type, BigInteger):

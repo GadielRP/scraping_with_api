@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Iterable
 
 
 class OddspapiMarketAdapter:
+    _EXCHANGE_BOOKMAKER_SLUGS = {"betfair-ex"}
+
     @staticmethod
     def _entries(value: Any) -> Iterable[tuple[str, dict]]:
         if isinstance(value, dict):
@@ -135,6 +138,43 @@ class OddspapiMarketAdapter:
         return OddspapiMarketAdapter._format_line(handicap)
 
     @staticmethod
+    def _exchange_quotes(exchange_meta: dict) -> list[dict]:
+        quotes = []
+        for source_key, side in (
+            ("availableToBack", "back"),
+            ("availableToLay", "lay"),
+        ):
+            source_quotes = exchange_meta.get(source_key)
+            if not isinstance(source_quotes, list):
+                continue
+            for level, quote in enumerate(source_quotes):
+                if not isinstance(quote, dict):
+                    continue
+                try:
+                    price = float(quote.get("price"))
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(price):
+                    continue
+
+                try:
+                    size = float(quote.get("size"))
+                    if not math.isfinite(size):
+                        size = None
+                except (TypeError, ValueError):
+                    size = None
+
+                quotes.append(
+                    {
+                        "side": side,
+                        "level": level,
+                        "price": price,
+                        "size": size,
+                    }
+                )
+        return quotes
+
+    @staticmethod
     def from_odds_response(
         odds_response: dict,
         market_catalog: dict | list | None = None,
@@ -257,6 +297,15 @@ class OddspapiMarketAdapter:
                             "mainLine": player.get("mainLine"),
                             "limit": player.get("limit"),
                         }
+                        exchange_meta = player.get("exchangeMeta")
+                        is_exchange = (
+                            isinstance(exchange_meta, dict)
+                            or slug in OddspapiMarketAdapter._EXCHANGE_BOOKMAKER_SLUGS
+                        )
+                        if is_exchange and isinstance(exchange_meta, dict):
+                            choice["exchangeQuotes"] = OddspapiMarketAdapter._exchange_quotes(
+                                exchange_meta
+                            )
                         normalized_market["choices"].append(choice)
 
             markets = [market for market in grouped_markets.values() if market["choices"]]
