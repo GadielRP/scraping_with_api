@@ -432,14 +432,10 @@ def main() -> int:
         "selected_market_groups": trajectory_market_groups or None,
         "selected_market_periods": trajectory_market_periods or None,
     })
+    _emit_section("odds_trajectory_raw_context_summary", _trajectory_counts(db_context["trajectory_context"], raw_row_count=len(db_context["trajectory_rows"])))
+    _emit_section("odds_trajectory_raw_context", _trajectory_detail(db_context["trajectory_context"]))
     _emit_section("odds_trajectory_filtered_context_summary", _trajectory_counts(db_context["filtered_trajectory_context"]))
     _emit_section("odds_trajectory_filtered_context", _trajectory_detail(db_context["filtered_trajectory_context"]))
-    if args.show_raw_trajectory:
-        _emit_section(
-            "odds_trajectory_db_context_summary",
-            _trajectory_counts(db_context["trajectory_context"], raw_row_count=len(db_context["trajectory_rows"])),
-        )
-        _emit_section("odds_trajectory_db_context", _trajectory_detail(db_context["trajectory_context"]))
     return 0 if event_match["matched"] else 1
 
 
