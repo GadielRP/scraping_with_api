@@ -73,6 +73,46 @@ def test_unresolved_event_is_skipped_before_adaptation():
     assert result.reason == "sofascore_mapping_not_found"
 
 
+def test_filter_normalized_oddspapi_response_applies_cli_aliases():
+    adapted = {
+        "fixtureId": "fixture-1",
+        "bookmakers": [
+            {
+                "slug": "pinnacle",
+                "name": "Pinnacle Sports",
+                "markets": [
+                    {
+                        "marketName": "Full-time",
+                        "marketGroup": "1X2",
+                        "marketPeriod": "Full-time",
+                        "choiceGroup": None,
+                        "isLive": False,
+                        "choices": [{"name": "1", "decimalValue": 1.9}],
+                    },
+                    {
+                        "marketName": "Total",
+                        "marketGroup": "Over/Under",
+                        "marketPeriod": "Full-time",
+                        "choiceGroup": None,
+                        "isLive": False,
+                        "choices": [{"name": "Over", "decimalValue": 1.9}],
+                    },
+                ],
+            }
+        ],
+    }
+
+    filtered = MarketOddsIngestionService.filter_normalized_oddspapi_response(
+        adapted,
+        allowed_market_groups={"Home/Away"},
+        allowed_market_periods={"Match"},
+    )
+
+    assert [bookmaker["slug"] for bookmaker in filtered["bookmakers"]] == ["pinnacle"]
+    assert [market["marketGroup"] for market in filtered["bookmakers"][0]["markets"]] == ["1X2"]
+    assert [market["marketPeriod"] for market in filtered["bookmakers"][0]["markets"]] == ["Full-time"]
+
+
 def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
     adapted = {
         "fixtureId": "fixture-1",

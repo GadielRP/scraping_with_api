@@ -56,12 +56,94 @@ class MarketIngestionResult:
 
 class MarketOddsIngestionService:
     @staticmethod
+    def filter_normalized_oddspapi_response_by_groups_and_periods(
+        normalized_response: Dict,
+        allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
+        allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
+    ) -> Dict:
+        if not normalized_response or not normalized_response.get("bookmakers"):
+            return normalized_response
+
+        normalized_groups = MarketOddsIngestionService._normalize_market_group_filters(allowed_market_groups)
+        normalized_periods = MarketOddsIngestionService._normalize_market_period_filters(allowed_market_periods)
+
+        if normalized_groups is None and normalized_periods is None:
+            return normalized_response
+
+        filtered_bookmakers = []
+        for bookmaker in normalized_response.get("bookmakers", []):
+            filtered_markets = []
+            for market in bookmaker.get("markets", []):
+                market_group = str(market.get("marketGroup") or "").strip()
+                market_period = str(market.get("marketPeriod") or "").strip()
+
+                if normalized_groups is not None and market_group not in normalized_groups:
+                    continue
+                if normalized_periods is not None and market_period not in normalized_periods:
+                    continue
+                filtered_markets.append(market)
+
+            if filtered_markets:
+                filtered_bookmaker = dict(bookmaker)
+                filtered_bookmaker["markets"] = filtered_markets
+                filtered_bookmakers.append(filtered_bookmaker)
+
+        return {
+            "fixtureId": normalized_response.get("fixtureId"),
+            "bookmakers": filtered_bookmakers,
+        }
+
+    @staticmethod
+    def _normalize_market_group_filters(
+        allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]],
+    ) -> Optional[set[str]]:
+        if not allowed_market_groups:
+            return None
+
+        normalized: set[str] = set()
+        for item in allowed_market_groups:
+            if item is None:
+                continue
+            text = str(item).strip()
+            if not text:
+                continue
+            lowered = text.lower()
+            if lowered in {"home/away", "ml", "1x2"}:
+                normalized.add("1X2")
+            else:
+                normalized.add(text)
+        return normalized or None
+
+    @staticmethod
+    def _normalize_market_period_filters(
+        allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]],
+    ) -> Optional[set[str]]:
+        if not allowed_market_periods:
+            return None
+
+        normalized: set[str] = set()
+        for item in allowed_market_periods:
+            if item is None:
+                continue
+            text = str(item).strip()
+            if not text:
+                continue
+            lowered = text.lower()
+            if lowered in {"match", "ft", "full-time", "fulltime"}:
+                normalized.add("Full-time")
+            else:
+                normalized.add(text)
+        return normalized or None
+
+    @staticmethod
     def save_from_oddspapi_response(
         odds_response: dict,
         market_catalog: dict | list | None = None,
         bookmaker_catalog: dict | list | None = None,
         source: str = "oddspapi_odds",
         dry_run: bool = False,
+        allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
+        allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
     ) -> MarketIngestionResult:
         if dry_run:
             resolution = OddspapiEventResolver.resolve_from_odds_response(
@@ -82,6 +164,11 @@ class MarketOddsIngestionService:
             odds_response,
             market_catalog=market_catalog,
             bookmaker_catalog=bookmaker_catalog,
+        )
+        adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response_by_groups_and_periods(
+            adapted,
+            allowed_market_groups=allowed_market_groups,
+            allowed_market_periods=allowed_market_periods,
         )
         bookmakers = adapted.get("bookmakers", [])
         markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in bookmakers)

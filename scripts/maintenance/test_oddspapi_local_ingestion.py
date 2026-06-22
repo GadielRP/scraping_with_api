@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import json
 import sys
 from pathlib import Path
@@ -27,6 +28,10 @@ from modules.odds_ingestion.market_odds_ingestion_service import (  # noqa: E402
     MarketOddsIngestionService,
 )
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context  # noqa: E402
+from app.logging_setup import setup_logging  # noqa: E402
+
+
+logger = logging.getLogger("test_oddspapi_local_ingestion")
 
 
 def _load_json(path: str | None):
@@ -38,6 +43,11 @@ def _load_json(path: str | None):
 
 def _json_dump(data) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2, default=str)
+
+
+def _emit_section(title: str, payload) -> None:
+    logger.info("%s:", title)
+    logger.info("%s", _json_dump(payload))
 
 
 def _event_summary(event) -> dict:
@@ -130,6 +140,31 @@ def _trajectory_detail(context) -> dict:
     payload = asdict(context)
     payload["markets"] = payload.get("markets") or {}
     return payload
+
+
+def _normalized_bookmakers_summary(adapted: dict) -> list[dict]:
+    summary = []
+    for bookmaker in adapted.get("bookmakers") or []:
+        markets = bookmaker.get("markets") or []
+        summary.append(
+            {
+                "slug": bookmaker.get("slug"),
+                "name": bookmaker.get("name"),
+                "market_count": len(markets),
+                "market_groups": sorted({
+                    market.get("marketGroup")
+                    for market in markets
+                    if market.get("marketGroup")
+                }),
+                "market_periods": sorted({
+                    market.get("marketPeriod")
+                    for market in markets
+                    if market.get("marketPeriod")
+                }),
+                "choice_count": sum(len(market.get("choices", [])) for market in markets),
+            }
+        )
+    return summary
 
 
 def _event_match_status(
@@ -227,11 +262,15 @@ def _load_db_context(event_id: int, trajectory_market_groups, trajectory_market_
     )
     trajectory_rows = [point.to_dict() for point in trajectory_rows_by_event_id.get(event_id, [])]
     trajectory_context = build_odds_trajectory_context(trajectory_rows)
-    filtered_trajectory_context = trajectory_context.filter_by_market_groups(
-        allowed_groups=set(trajectory_market_groups),
-    ).filter_by_market_period(
-        allowed_periods=set(trajectory_market_periods),
-    )
+    filtered_trajectory_context = trajectory_context
+    if trajectory_market_groups:
+        filtered_trajectory_context = filtered_trajectory_context.filter_by_market_groups(
+            allowed_groups=set(trajectory_market_groups),
+        )
+    if trajectory_market_periods:
+        filtered_trajectory_context = filtered_trajectory_context.filter_by_market_period(
+            allowed_periods=set(trajectory_market_periods),
+        )
 
     return {
         "event": event,
@@ -256,18 +295,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--trajectory-market-groups",
         nargs="+",
         default=None,
-        help="Market groups to keep in the printed odds trajectory (default: 1X2 Home/Away ML)",
+        help="Market groups to keep in the printed odds trajectory and selected OddsPapi processing. Omit to keep all groups.",
     )
     parser.add_argument(
         "--trajectory-market-periods",
         nargs="+",
         default=None,
-        help="Market periods to keep in the printed odds trajectory (default: Full-time Match)",
+        help="Market periods to keep in the printed odds trajectory and selected OddsPapi processing. Omit to keep all periods.",
     )
     parser.add_argument(
         "--show-raw-trajectory",
         action="store_true",
-        help="Also print the unfiltered odds trajectory context",
+        help="Also print the unfiltered odds trajectory context loaded from the database",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Validate without database writes (default)")
@@ -277,17 +316,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    setup_logging()
     odds_response = _load_json(args.file)
     market_catalog = _load_json(args.markets_catalog)
     bookmaker_catalog = _load_json(args.bookmakers_catalog)
     dry_run = not args.commit
-    trajectory_market_groups = args.trajectory_market_groups or ["1X2", "Home/Away", "ML"]
-    trajectory_market_periods = args.trajectory_market_periods or ["Full-time", "Match"]
+    trajectory_market_groups = args.trajectory_market_groups or []
+    trajectory_market_periods = args.trajectory_market_periods or []
+
+    logger.info("fixtureId: %s", odds_response.get("fixtureId"))
 
     schema_ready = db_manager.check_and_migrate_schema()
-    print(f"schema_ready: {schema_ready}")
+    logger.info("schema_ready: %s", schema_ready)
     if not schema_ready:
-        print("schema_error: failed to synchronize database schema before ingestion")
+        logger.error("schema_error: failed to synchronize database schema before ingestion")
         return 1
 
     adapted = OddspapiMarketAdapter.from_odds_response(
@@ -295,17 +337,37 @@ def main() -> int:
         market_catalog=market_catalog,
         bookmaker_catalog=bookmaker_catalog,
     )
+    selected_adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response_by_groups_and_periods(
+        adapted,
+        allowed_market_groups=trajectory_market_groups,
+        allowed_market_periods=trajectory_market_periods,
+    )
     result = MarketOddsIngestionService.save_from_oddspapi_response(
         odds_response,
         market_catalog=market_catalog,
         bookmaker_catalog=bookmaker_catalog,
         dry_run=dry_run,
+        allowed_market_groups=trajectory_market_groups,
+        allowed_market_periods=trajectory_market_periods,
     )
 
     external_providers = odds_response.get("externalProviders") or {}
     payload_sofascore_id = external_providers.get("sofascoreId")
     bookmakers = adapted.get("bookmakers", [])
-    markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in bookmakers)
+    selected_bookmakers = selected_adapted.get("bookmakers", [])
+    input_bookies_detected = len(bookmakers)
+    input_markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in bookmakers)
+    input_choices_detected = sum(
+        len(market.get("choices", []))
+        for bookmaker in bookmakers
+        for market in bookmaker.get("markets", [])
+    )
+    selected_markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in selected_bookmakers)
+    selected_choices_detected = sum(
+        len(market.get("choices", []))
+        for bookmaker in selected_bookmakers
+        for market in bookmaker.get("markets", [])
+    )
     resolved_canonical_event_id = EventSourceMappingRepository.get_event_id_by_source("sofascore", payload_sofascore_id)
     db_event_id = result.event_id if result.event_id is not None else resolved_canonical_event_id
     db_source_event_id = EventSourceMappingRepository.get_source_event_id(db_event_id, "sofascore") if db_event_id is not None else None
@@ -329,53 +391,55 @@ def main() -> int:
         event=db_context["event"],
     )
 
-    print(f"fixtureId: {odds_response.get('fixtureId')}")
-    print(f"externalProviders.sofascoreId: {payload_sofascore_id}")
-    print(f"canonical_event_id: {result.event_id}")
-    print(f"resolved_canonical_event_id_from_db: {resolved_canonical_event_id}")
-    print(f"db_source_event_id: {db_source_event_id}")
-    print(f"db_event_id: {db_event_id}")
-    print(f"resolved: {result.event_id is not None}")
-    print(f"matched_in_db: {event_match['matched']}")
-    print(f"match_reason: {event_match['reason']}")
-    print(f"skipped: {result.skipped}")
-    print(f"skipped_reason: {result.reason}")
-    print(f"event_mappings_created: {result.event_mappings_created}")
-    print(f"bookies_detected: {result.bookies_detected}")
-    print(f"bookies_processed: {result.bookies_processed}")
-    print(f"bookies_created: {result.bookies_created}")
-    print(f"bookies_reused: {result.bookies_reused}")
-    print(f"bookie_mappings_created: {result.bookie_mappings_created}")
-    print(f"bookie_mappings_updated: {result.bookie_mappings_updated}")
-    print(f"markets_detected: {markets_detected}")
-    print(f"choices_detected: {result.choices_detected}")
-    print(f"snapshots_detected: {result.snapshots_detected}")
-    print(f"markets_saved: {result.markets_saved}")
-    print(f"choices_saved: {result.choices_saved}")
-    print(f"snapshots_saved: {result.snapshots_saved}")
-    print(f"mode: {'dry-run' if dry_run else 'commit'}")
-    print("db_event:")
-    print(_json_dump(db_context["event_summary"] or {"status": "missing", "reason": event_match["reason"]}))
-    print("db_result:")
-    print(_json_dump(db_context["result_summary"] or {"status": "missing"}))
-    print("odds_trajectory_query_filters:")
-    print(_json_dump({
+    logger.info("externalProviders.sofascoreId: %s", payload_sofascore_id)
+    logger.info("canonical_event_id: %s", result.event_id)
+    logger.info("resolved_canonical_event_id_from_db: %s", resolved_canonical_event_id)
+    logger.info("db_source_event_id: %s", db_source_event_id)
+    logger.info("db_event_id: %s", db_event_id)
+    logger.info("resolved: %s", result.event_id is not None)
+    logger.info("matched_in_db: %s", event_match["matched"])
+    logger.info("match_reason: %s", event_match["reason"])
+    logger.info("skipped: %s", result.skipped)
+    logger.info("skipped_reason: %s", result.reason)
+    logger.info("event_mappings_created: %s", result.event_mappings_created)
+    logger.info("input_bookies_detected: %s", input_bookies_detected)
+    logger.info("input_markets_detected: %s", input_markets_detected)
+    logger.info("input_choices_detected: %s", input_choices_detected)
+    logger.info("selected_bookies_detected: %s", len(selected_bookmakers))
+    logger.info("selected_markets_detected: %s", selected_markets_detected)
+    logger.info("selected_choices_detected: %s", selected_choices_detected)
+    logger.info("bookies_processed: %s", result.bookies_processed)
+    logger.info("bookies_created: %s", result.bookies_created)
+    logger.info("bookies_reused: %s", result.bookies_reused)
+    logger.info("bookie_mappings_created: %s", result.bookie_mappings_created)
+    logger.info("bookie_mappings_updated: %s", result.bookie_mappings_updated)
+    logger.info("markets_detected: %s", result.markets_detected)
+    logger.info("choices_detected: %s", result.choices_detected)
+    logger.info("snapshots_detected: %s", result.snapshots_detected)
+    logger.info("markets_saved: %s", result.markets_saved)
+    logger.info("choices_saved: %s", result.choices_saved)
+    logger.info("snapshots_saved: %s", result.snapshots_saved)
+    logger.info("mode: %s", "dry-run" if dry_run else "commit")
+    _emit_section("normalized_bookmakers_input", _normalized_bookmakers_summary(adapted))
+    _emit_section("normalized_bookmakers_selected", _normalized_bookmakers_summary(selected_adapted))
+    _emit_section("db_event", db_context["event_summary"] or {"status": "missing", "reason": event_match["reason"]})
+    _emit_section("db_result", db_context["result_summary"] or {"status": "missing"})
+    _emit_section("odds_trajectory_query_filters", {
         "target_minutes_expected": Config.PRE_START_ODDS_MOMENTS,
         "tolerance_minutes": Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES,
         "config_markets": Config.PRE_START_ODDS_TRAJECTORY_MARKETS,
         "config_periods": Config.PRE_START_ODDS_TRAJECTORY_PERIODS,
-        "selected_market_groups": trajectory_market_groups,
-        "selected_market_periods": trajectory_market_periods,
-    }))
-    print("odds_trajectory_filtered_context_summary:")
-    print(_json_dump(_trajectory_counts(db_context["filtered_trajectory_context"])))
-    print("odds_trajectory_filtered_context:")
-    print(_json_dump(_trajectory_detail(db_context["filtered_trajectory_context"])))
+        "selected_market_groups": trajectory_market_groups or None,
+        "selected_market_periods": trajectory_market_periods or None,
+    })
+    _emit_section("odds_trajectory_filtered_context_summary", _trajectory_counts(db_context["filtered_trajectory_context"]))
+    _emit_section("odds_trajectory_filtered_context", _trajectory_detail(db_context["filtered_trajectory_context"]))
     if args.show_raw_trajectory:
-        print("odds_trajectory_db_context_summary:")
-        print(_json_dump(_trajectory_counts(db_context["trajectory_context"], raw_row_count=len(db_context["trajectory_rows"]))))
-        print("odds_trajectory_db_context:")
-        print(_json_dump(_trajectory_detail(db_context["trajectory_context"])))
+        _emit_section(
+            "odds_trajectory_db_context_summary",
+            _trajectory_counts(db_context["trajectory_context"], raw_row_count=len(db_context["trajectory_rows"])),
+        )
+        _emit_section("odds_trajectory_db_context", _trajectory_detail(db_context["trajectory_context"]))
     return 0 if event_match["matched"] else 1
 
 
