@@ -93,8 +93,11 @@ test_*.py
 # Phase 1 OddsPapi offline ingestion verification
 !tests/
 tests/*
-!tests/oddspapi/
-!tests/oddspapi/**
+!tests/pillars/
+tests/pillars/*.pyc
+!tests/pillars/test_odds_trajectory_context.py
+
+
 !scripts/maintenance/test_oddspapi_local_ingestion.py
 *debug/
 *.log

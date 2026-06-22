@@ -765,30 +765,6 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
 )
 
 
-MARKET_CHOICE_TRAJECTORY_VIEW_SQL = (
-    """
-    CREATE OR REPLACE VIEW v_market_choice_trajectory AS
-    SELECT 
-        e.id AS event_id,
-        e.start_time_utc,
-        m.market_name,
-        m.market_group,
-        m.market_period,
-        m.choice_group,
-        b.name AS bookie_name,
-        mc.choice_name,
-        mcs.odds_value,
-        mcs.collected_at,
-        ROUND(EXTRACT(EPOCH FROM (e.start_time_utc - mcs.collected_at)) / 60) AS minutes_before_start
-    FROM market_choice_snapshots mcs
-    JOIN market_choices mc ON mc.choice_id = mcs.choice_id
-    JOIN markets m ON m.market_id = mc.market_id
-    JOIN events e ON e.id = m.event_id
-    JOIN bookies b ON b.bookie_id = m.bookie_id;
-    """
-)
-
-
 PRE_START_ODDS_TRAJECTORY_VIEW_SQL = (
     """
     CREATE OR REPLACE VIEW v_pre_start_odds_trajectory AS
@@ -837,8 +813,7 @@ def create_or_replace_views(engine):
         conn.exec_driver_sql("DROP VIEW IF EXISTS season_events_with_results CASCADE;")
         # Create season events with results view for historical standings
         conn.exec_driver_sql(SEASON_EVENTS_WITH_RESULTS_VIEW_SQL)
-        # Create market choice trajectory view
-        conn.exec_driver_sql(MARKET_CHOICE_TRAJECTORY_VIEW_SQL)
+        conn.exec_driver_sql("DROP VIEW IF EXISTS v_market_choice_trajectory CASCADE;")
         conn.exec_driver_sql(PRE_START_ODDS_TRAJECTORY_VIEW_SQL)
 
 def create_or_replace_materialized_views(engine):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from infrastructure.settings import Config
 
@@ -166,122 +166,138 @@ class OddsTrajectoryContext:
         self,
         allowed_groups: set[str] | list[str] | tuple[str, ...] = ("1X2", "Home/Away"),
     ) -> OddsTrajectoryContext:
-        """Filter this OddsTrajectoryContext to keep only the specified market groups.
-
-        Recalculates available, target_minutes_present, and missing_target_minutes
-        based on the remaining/filtered markets.
-        """
         allowed_set = set(allowed_groups)
-
-        # Filter the markets dictionary
-        filtered_markets = {
-            group: periods
-            for group, periods in self.markets.items()
-            if group in allowed_set
-        }
-
-        # If no markets are left, return an unavailable context with empty lists
-        if not filtered_markets:
-            return OddsTrajectoryContext(
-                available=False,
-                event_id=self.event_id,
-                target_minutes_expected=self.target_minutes_expected,
-                target_minutes_present=[],
-                missing_target_minutes=list(self.target_minutes_expected),
-                markets={},
-            )
-
-        # Collect present minutes from the remaining markets
-        present_minutes = set()
-        for market_group in filtered_markets.values():
-            for market_period in market_group.values():
-                for market_name in market_period.values():
-                    for market_line in market_name.values():
-                        for bookie in market_line.bookies.values():
-                            for choice in bookie.choices.values():
-                                present_minutes.update(choice.odds_values.keys())
-
-        # Recompute target minutes present and missing
-        target_minutes_present = [
-            minute for minute in self.target_minutes_expected
-            if minute in present_minutes
-        ]
-        missing_target_minutes = [
-            minute for minute in self.target_minutes_expected
-            if minute not in present_minutes
-        ]
-
-        return OddsTrajectoryContext(
-            available=bool(present_minutes),
-            event_id=self.event_id,
-            target_minutes_expected=self.target_minutes_expected,
-            target_minutes_present=target_minutes_present,
-            missing_target_minutes=missing_target_minutes,
-            markets=filtered_markets,
+        filtered_markets = _filter_market_tree(
+            self.markets,
+            keep_group=lambda group: group in allowed_set,
         )
+        return _build_filtered_context(self, filtered_markets)
 
     def filter_by_market_period(
         self,
         allowed_periods: set[str] | list[str] | tuple[str, ...] = ("Full-time",),
     ) -> OddsTrajectoryContext:
-        """Filter this OddsTrajectoryContext to keep only the specified market periods.
-
-        Recalculates available, target_minutes_present, and missing_target_minutes
-        based on the remaining/filtered markets.
-        """
         allowed_set = set(allowed_periods)
+        filtered_markets = _filter_market_tree(
+            self.markets,
+            keep_group=lambda _group: True,
+            keep_period=lambda period: period in allowed_set,
+        )
+        return _build_filtered_context(self, filtered_markets)
 
-        filtered_markets = {}
-        for group, periods in self.markets.items():
-            filtered_periods = {
-                period: names
-                for period, names in periods.items()
-                if period in allowed_set
-            }
-            if filtered_periods:
-                filtered_markets[group] = filtered_periods
+    def filter_by_bookie_ids(
+        self,
+        allowed_bookie_ids: set[int] | list[int] | tuple[int, ...] = (1,),
+    ) -> OddsTrajectoryContext:
+        allowed_set = {
+            int(bookie_id)
+            for bookie_id in allowed_bookie_ids
+            if bookie_id is not None
+        }
+        filtered_markets = _filter_market_tree(
+            self.markets,
+            keep_group=lambda _group: True,
+            keep_period=lambda _period: True,
+            keep_bookie=lambda bookie: bookie.bookie_id in allowed_set,
+        )
+        return _build_filtered_context(self, filtered_markets)
 
-        # If no markets are left, return an unavailable context with empty lists
-        if not filtered_markets:
-            return OddsTrajectoryContext(
-                available=False,
-                event_id=self.event_id,
-                target_minutes_expected=self.target_minutes_expected,
-                target_minutes_present=[],
-                missing_target_minutes=list(self.target_minutes_expected),
-                markets={},
-            )
 
-        # Collect present minutes from the remaining markets
-        present_minutes = set()
-        for market_group in filtered_markets.values():
-            for market_period in market_group.values():
-                for market_name in market_period.values():
-                    for market_line in market_name.values():
-                        for bookie in market_line.bookies.values():
-                            for choice in bookie.choices.values():
-                                present_minutes.update(choice.odds_values.keys())
 
-        # Recompute target minutes present and missing
-        target_minutes_present = [
-            minute for minute in self.target_minutes_expected
-            if minute in present_minutes
-        ]
-        missing_target_minutes = [
-            minute for minute in self.target_minutes_expected
-            if minute not in present_minutes
-        ]
 
+def _filter_market_tree(
+    source_markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]],
+    *,
+    keep_group: Callable[[str], bool],
+    keep_period: Callable[[str], bool] | None = None,
+    keep_bookie: Callable[[BookieOddsTrajectory], bool] | None = None,
+) -> Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]]:
+    filtered_markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]] = {}
+
+    for group, periods in source_markets.items():
+        if not keep_group(group):
+            continue
+
+        filtered_periods: Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]] = {}
+        for period, names in periods.items():
+            if keep_period is not None and not keep_period(period):
+                continue
+
+            filtered_names: Dict[str, Dict[str, MarketLineOddsTrajectory]] = {}
+            for market_name, choice_groups in names.items():
+                filtered_choice_groups: Dict[str, MarketLineOddsTrajectory] = {}
+                for choice_group_key, market_line in choice_groups.items():
+                    filtered_bookies = {
+                        bookie_key: bookie
+                        for bookie_key, bookie in market_line.bookies.items()
+                        if keep_bookie is None or keep_bookie(bookie)
+                    }
+                    if not filtered_bookies:
+                        continue
+
+                    filtered_choice_groups[choice_group_key] = MarketLineOddsTrajectory(
+                        market_id=market_line.market_id,
+                        market_name=market_line.market_name,
+                        market_group=market_line.market_group,
+                        market_period=market_line.market_period,
+                        choice_group=market_line.choice_group,
+                        bookies=filtered_bookies,
+                    )
+
+                if filtered_choice_groups:
+                    filtered_names[market_name] = filtered_choice_groups
+
+            if filtered_names:
+                filtered_periods[period] = filtered_names
+
+        if filtered_periods:
+            filtered_markets[group] = filtered_periods
+
+    return filtered_markets
+
+
+def _build_filtered_context(
+    source: OddsTrajectoryContext,
+    filtered_markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]],
+) -> OddsTrajectoryContext:
+    if not filtered_markets:
         return OddsTrajectoryContext(
-            available=bool(present_minutes),
-            event_id=self.event_id,
-            target_minutes_expected=self.target_minutes_expected,
-            target_minutes_present=target_minutes_present,
-            missing_target_minutes=missing_target_minutes,
-            markets=filtered_markets,
+            available=False,
+            event_id=source.event_id,
+            target_minutes_expected=list(source.target_minutes_expected),
+            target_minutes_present=[],
+            missing_target_minutes=list(source.target_minutes_expected),
+            markets={},
         )
 
+    present_minutes: set[int] = set()
+    for market_groups in filtered_markets.values():
+        for market_periods in market_groups.values():
+            for market_names in market_periods.values():
+                for market_line in market_names.values():
+                    for bookie in market_line.bookies.values():
+                        for choice in bookie.choices.values():
+                            present_minutes.update(choice.odds_values.keys())
 
+    target_minutes_present = [
+        minute
+        for minute in source.target_minutes_expected
+        if minute in present_minutes
+    ]
+    missing_target_minutes = [
+        minute
+        for minute in source.target_minutes_expected
+        if minute not in present_minutes
+    ]
+
+    return OddsTrajectoryContext(
+        available=bool(present_minutes),
+        event_id=source.event_id,
+        target_minutes_expected=list(source.target_minutes_expected),
+        target_minutes_present=target_minutes_present,
+        missing_target_minutes=missing_target_minutes,
+        markets=filtered_markets,
+    )
 
 
 def _get_market_line_container(

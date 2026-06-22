@@ -366,6 +366,30 @@ class EventPillarProcessor:
                     if ft_1x2_odds_trajectory.markets else "None",
                 )
 
+            ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_bookie_ids(
+                allowed_bookie_ids={1}
+            )
+
+            if self.debug_mode:
+                remaining_bookie_ids = sorted({
+                    bookie.bookie_id
+                    for periods in ft_1x2_odds_trajectory.markets.values()
+                    for market_period in periods.values()
+                    for market_name in market_period.values()
+                    for market_line in market_name.values()
+                    for bookie in market_line.bookies.values()
+                    if bookie.bookie_id is not None
+                })
+                logger.info(
+                    "P5: Context after bookie filtering for event %s (%s): available=%s, markets=%s, bookie_ids=%s",
+                    event_obj.id,
+                    event_context.participants_label,
+                    ft_1x2_odds_trajectory.available,
+                    {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
+                    if ft_1x2_odds_trajectory.markets else "None",
+                    remaining_bookie_ids if remaining_bookie_ids else "None",
+                )
+
             p5_result = calculate_pillar_5(
                 event_context=event_context,
                 ft_1x2_odds_trajectory=ft_1x2_odds_trajectory,

@@ -111,7 +111,6 @@ class OddsTrajectoryRepository:
 
         where_clauses = [
             "traj.event_id IN :event_ids",
-            "traj.bookie_id = 1",
             "ABS(traj.minutes_before_start - tm.target_minute) <= :tolerance_minutes",
         ]
         query_params = {

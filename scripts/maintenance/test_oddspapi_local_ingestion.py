@@ -367,13 +367,13 @@ def main() -> int:
         "selected_market_groups": trajectory_market_groups,
         "selected_market_periods": trajectory_market_periods,
     }))
-    print("odds_trajectory_db_context_summary:")
-    print(_json_dump(_trajectory_counts(db_context["trajectory_context"], raw_row_count=len(db_context["trajectory_rows"]))))
-    print("odds_trajectory_pillar_filtered_context_summary:")
+    print("odds_trajectory_filtered_context_summary:")
     print(_json_dump(_trajectory_counts(db_context["filtered_trajectory_context"])))
     print("odds_trajectory_filtered_context:")
     print(_json_dump(_trajectory_detail(db_context["filtered_trajectory_context"])))
     if args.show_raw_trajectory:
+        print("odds_trajectory_db_context_summary:")
+        print(_json_dump(_trajectory_counts(db_context["trajectory_context"], raw_row_count=len(db_context["trajectory_rows"]))))
         print("odds_trajectory_db_context:")
         print(_json_dump(_trajectory_detail(db_context["trajectory_context"])))
     return 0 if event_match["matched"] else 1
