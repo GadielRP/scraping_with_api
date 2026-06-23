@@ -49,7 +49,9 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
         ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
             event_id,
             final_odds_response,
-            source="rescheduled_event",
+            source="sofascore",
+            home_team=event.home_team,
+            away_team=event.away_team,
         )
         if ingestion_result.markets_saved > 0 or ingestion_result.dual_process_market_available:
             logger.info("Market odds extracted for rescheduled event %s", event_id)

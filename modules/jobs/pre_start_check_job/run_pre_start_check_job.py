@@ -318,7 +318,9 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                 ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
                     event_data["id"],
                     final_odds_response,
-                    source="pre_start_check",
+                    source="sofascore",
+                    home_team=event_data.get("home_team"),
+                    away_team=event_data.get("away_team"),
                 )
                 if ingestion_result.markets_saved > 0 or ingestion_result.dual_process_market_available:
                     event_info["event_with_odds"] = {

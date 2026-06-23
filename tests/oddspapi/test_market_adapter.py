@@ -1,4 +1,8 @@
+import json
+from pathlib import Path
+
 from modules.odds_ingestion.adapters.oddspapi_market_adapter import OddspapiMarketAdapter
+from modules.odds_ingestion.adapters.sofascore_market_adapter import SofaScoreMarketAdapter
 
 
 def player(bookmaker_outcome_id, price, active=True, exchange_meta=None):
@@ -223,3 +227,113 @@ def test_exchange_ladder_tolerates_missing_sides_and_skips_invalid_prices():
     ]
     assert back_quotes == [{"side": "back", "level": 1, "price": 1.8, "size": None}]
     assert lay_quotes == [{"side": "lay", "level": 0, "price": 2.24, "size": 50.0}]
+
+
+def _load_sofascore_fixture(name: str) -> dict:
+    fixture_path = Path(__file__).resolve().parents[2] / name
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
+def test_sofascore_adapter_preserves_all_market_types_from_real_fixture():
+    adapted = SofaScoreMarketAdapter.from_event_odds_response(
+        _load_sofascore_fixture("61507_odds_response.json"),
+        home_team="IFK Mariehamn",
+        away_team="HJK",
+    )
+
+    markets = adapted["markets"]
+    assert len(markets) == 17
+
+    market_names = [market["marketName"] for market in markets]
+    assert market_names.count("Full time") == 1
+    assert market_names.count("Double chance") == 1
+    assert market_names.count("1st half") == 1
+    assert market_names.count("Draw no bet") == 1
+    assert market_names.count("Both teams to score") == 1
+    assert market_names.count("Asian handicap") == 1
+    assert market_names.count("Corners 2-Way") == 1
+    assert market_names.count("First team to score") == 1
+    assert market_names.count("Match goals") == 9
+
+    asian_handicap = next(market for market in markets if market["marketName"] == "Asian handicap")
+    assert asian_handicap["choiceGroup"] == "1.5"
+    assert [choice["name"] for choice in asian_handicap["choices"]] == ["1", "2"]
+    assert asian_handicap["choices"][0]["sourceOutcomeId"] == "1468771326"
+    assert asian_handicap["choices"][0]["sourceMarketId"] == "196042959"
+
+    first_team_to_score = next(
+        market for market in markets if market["marketName"] == "First team to score"
+    )
+    assert [choice["name"] for choice in first_team_to_score["choices"]] == [
+        "IFK Mariehamn",
+        "No goal",
+        "HJK",
+    ]
+
+
+def test_sofascore_adapter_accepts_market_dict_containers():
+    payload = {
+        "markets": {
+            "market-a": {
+                "marketName": "Special market",
+                "marketGroup": "Special market",
+                "marketPeriod": "Full-time",
+                "choices": [
+                    {
+                        "name": "(2.5) Team A",
+                        "fractionalValue": "2/1",
+                        "sourceId": 11,
+                    },
+                    {
+                        "name": "(-2.5) Team B",
+                        "fractionalValue": "3/1",
+                        "sourceId": 12,
+                    },
+                ],
+            }
+        }
+    }
+
+    adapted = SofaScoreMarketAdapter.from_event_odds_response(payload)
+
+    assert len(adapted["markets"]) == 1
+    market = adapted["markets"][0]
+    assert market["marketName"] == "Special market"
+    assert market["choiceGroup"] == "2.5"
+    assert [choice["name"] for choice in market["choices"]] == ["(2.5) Team A", "(-2.5) Team B"]
+    assert market["choices"][0]["sourceOutcomeId"] == "11"
+
+
+def test_sofascore_adapter_maps_parenthesized_team_names_to_1_and_2():
+    payload = {
+        "markets": {
+            "market-a": {
+                "marketName": "Asian handicap",
+                "marketGroup": "Asian Handicap",
+                "marketPeriod": "Full-time",
+                "choices": [
+                    {
+                        "name": "(1.5) IFK Mariehamn",
+                        "fractionalValue": "9/10",
+                        "sourceId": 11,
+                    },
+                    {
+                        "name": "(-1.5) HJK",
+                        "fractionalValue": "9/10",
+                        "sourceId": 12,
+                    },
+                ],
+            }
+        }
+    }
+
+    adapted = SofaScoreMarketAdapter.from_event_odds_response(
+        payload,
+        home_team="IFK Mariehamn",
+        away_team="HJK",
+    )
+
+    market = adapted["markets"][0]
+    assert market["choiceGroup"] == "1.5"
+    assert [choice["name"] for choice in market["choices"]] == ["1", "2"]
+    assert market["choices"][0]["sourceOutcomeId"] == "11"

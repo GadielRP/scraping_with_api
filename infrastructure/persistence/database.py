@@ -1090,6 +1090,32 @@ class DatabaseManager:
         except Exception as exc:
             logger.debug("Could not ensure event_source_mappings constraints/indexes: %s", exc)
 
+    def _cleanup_orphan_event_source_mappings(self, session) -> int:
+        """Delete stale source mappings whose event row no longer exists."""
+        try:
+            orphan_count = session.execute(text("""
+                SELECT COUNT(*)
+                FROM event_source_mappings esm
+                LEFT JOIN events e ON esm.event_id = e.id
+                WHERE e.id IS NULL
+            """)).scalar() or 0
+
+            if orphan_count:
+                session.execute(text("""
+                    DELETE FROM event_source_mappings
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM events e
+                        WHERE e.id = event_source_mappings.event_id
+                    )
+                """))
+                logger.warning("Removed %s orphan event source mapping(s) during migration cleanup", orphan_count)
+
+            return orphan_count
+        except Exception as exc:
+            logger.debug("Could not cleanup orphan event source mappings: %s", exc)
+            return 0
+
     def _drop_event_identity_foreign_keys(self, session, inspector) -> None:
         """Drop foreign keys that still point at events.id so the PK rewrite can happen safely."""
         tables = [
@@ -1342,6 +1368,7 @@ class DatabaseManager:
                     logger.info("Created event_source_mappings table")
 
                 self._ensure_event_source_mappings_table_ready(session, dialect_name)
+                self._cleanup_orphan_event_source_mappings(session)
 
                 if self._event_identity_migration_already_applied(session):
                     logger.info("Event identity migration already applied; refreshing defaults and validations")

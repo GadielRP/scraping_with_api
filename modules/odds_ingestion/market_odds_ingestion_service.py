@@ -318,9 +318,15 @@ class MarketOddsIngestionService:
     def save_from_event_odds_response(
         event_id: int,
         odds_response: Dict,
-        source: str = "sofascore_event_odds",
+        source: str = "sofascore",
+        home_team: str | None = None,
+        away_team: str | None = None,
     ) -> MarketIngestionResult:
-        normalized_response = SofaScoreMarketAdapter.from_event_odds_response(odds_response)
+        normalized_response = SofaScoreMarketAdapter.from_event_odds_response(
+            odds_response,
+            home_team=home_team,
+            away_team=away_team,
+        )
         return MarketOddsIngestionService._save_normalized(event_id, normalized_response, source)
 
     @staticmethod
