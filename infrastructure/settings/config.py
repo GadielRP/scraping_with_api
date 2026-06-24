@@ -225,6 +225,10 @@ class Config:
     ODDSPAPI_DEFAULT_LANGUAGE = os.getenv('ODDSPAPI_DEFAULT_LANGUAGE', 'en')
     ODDSPAPI_DEFAULT_ODDS_FORMAT = os.getenv('ODDSPAPI_DEFAULT_ODDS_FORMAT', 'decimal')
     ODDSPAPI_DEFAULT_VERBOSITY = int(os.getenv('ODDSPAPI_DEFAULT_VERBOSITY', '3'))
+    ODDSPAPI_DEFAULT_MARKET_KEYS = _parse_env_list(
+        'ODDSPAPI_DEFAULT_MARKET_KEYS',
+        ['1x2_full_time', 'total_full_time', 'asian_handicap_full_time'],
+    )
     
     # Notification Configuration
     NOTIFICATIONS_ENABLED = os.getenv('NOTIFICATIONS_ENABLED', 'true').lower() == 'true'
@@ -239,16 +243,6 @@ class Config:
     MARKETS_DUAL_PROCESS = _parse_env_list_alias('MARKETS_DUAL_PROCESS', 'markets_dual_process', ['1X2', 'Home/Away'])
 
     PERIODS_DUAL_PROCESS = _parse_env_list_alias('PERIODS_DUAL_PROCESS', 'periods_dual_process', ['Full-time', 'Match'])
-
-    PRE_START_ODDS_TRAJECTORY_MARKETS = _parse_optional_env_list(
-        "PRE_START_ODDS_TRAJECTORY_MARKETS",
-        None,
-    )
-
-    PRE_START_ODDS_TRAJECTORY_PERIODS = _parse_optional_env_list(
-        "PRE_START_ODDS_TRAJECTORY_PERIODS",
-        None,
-    )
 
     # OddsPortal scraping activation toggle for the pre-start flow
     ODDSPORTAL_SCRAPING_ENABLED = _parse_env_bool('ODDSPORTAL_SCRAPING_ENABLED', True)

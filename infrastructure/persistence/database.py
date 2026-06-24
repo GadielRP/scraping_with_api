@@ -113,6 +113,11 @@ class DatabaseManager:
             # Run one-time manual migrations FIRST (before generic column migration)
             # This ensures complex migrations (e.g., backfilling NOT NULL columns) run
             # before the generic migration tries to add them with NOT NULL constraint.
+            self._migrate_market_mapping_schema_cleanup()
+            self._migrate_canonical_market_types()
+            self._migrate_market_source_mappings()
+            self._migrate_market_outcome_source_mappings()
+            self._migrate_source_catalog_syncs()
             self._migrate_markets_to_bookies()
             self._migrate_bookie_source_mappings()
             self._migrate_market_period_not_null()
@@ -214,7 +219,113 @@ class DatabaseManager:
             logger.error(f"❌ Schema migration failed: {e}")
             logger.error(traceback.format_exc())
             return False
-    
+
+    def _create_table_and_indexes(self, model, index_statements: list[str]) -> None:
+        with self.get_session() as session:
+            model.__table__.create(session.connection(), checkfirst=True)
+            for statement in index_statements:
+                session.execute(text(statement))
+            session.commit()
+
+    def _migrate_canonical_market_types(self):
+        """Ensure canonical market catalog tables exist and seed internal market types."""
+        from infrastructure.persistence.models import CanonicalMarketType
+        from infrastructure.persistence.repositories.market_mapping_repository import (
+            MarketMappingRepository,
+        )
+
+        self._create_table_and_indexes(
+            CanonicalMarketType,
+            [
+                "CREATE INDEX IF NOT EXISTS idx_canonical_market_types_group_period "
+                "ON canonical_market_types (canonical_market_group, canonical_market_period)",
+                "CREATE INDEX IF NOT EXISTS idx_canonical_market_types_enabled "
+                "ON canonical_market_types (enabled_for_ingestion, enabled_for_trajectory)",
+            ],
+        )
+        with self.get_session() as session:
+            MarketMappingRepository.seed_canonical_market_types(session)
+
+    def _migrate_market_source_mappings(self):
+        """Ensure market source mappings table exists with runtime indexes."""
+        from infrastructure.persistence.models import MarketSourceMapping
+
+        self._create_table_and_indexes(
+            MarketSourceMapping,
+            [
+                "CREATE UNIQUE INDEX IF NOT EXISTS unique_market_source_mapping "
+                "ON market_source_mappings (source, source_sport_id, source_market_id)",
+                "CREATE INDEX IF NOT EXISTS idx_market_source_mappings_canonical_key "
+                "ON market_source_mappings (canonical_market_key)",
+                "CREATE INDEX IF NOT EXISTS idx_market_source_mappings_source_market "
+                "ON market_source_mappings (source, source_sport_id, source_market_id)",
+                "CREATE INDEX IF NOT EXISTS idx_market_source_mappings_group_period "
+                "ON market_source_mappings (canonical_market_group, canonical_market_period)",
+            ],
+        )
+
+    def _migrate_market_mapping_schema_cleanup(self):
+        """Drop removed columns and rename market mapping fields to the final canonical schema."""
+        from sqlalchemy import inspect
+
+        inspector = inspect(self.engine)
+        table_names = set(inspector.get_table_names())
+        with self.get_session() as session:
+            if "market_source_mappings" in table_names:
+                columns = {col["name"] for col in inspector.get_columns("market_source_mappings")}
+                if "source_market_type" in columns and "source_market_group" not in columns:
+                    session.execute(
+                        text(
+                            "ALTER TABLE market_source_mappings "
+                            "RENAME COLUMN source_market_type TO source_market_group"
+                        )
+                    )
+                    columns.remove("source_market_type")
+                    columns.add("source_market_group")
+                session.execute(text("DROP INDEX IF EXISTS idx_market_source_mappings_supported"))
+                if "is_supported" in columns:
+                    session.execute(
+                        text("ALTER TABLE market_source_mappings DROP COLUMN is_supported")
+                    )
+
+            if "canonical_market_types" in table_names:
+                columns = {col["name"] for col in inspector.get_columns("canonical_market_types")}
+                if "is_supported" in columns:
+                    session.execute(
+                        text("ALTER TABLE canonical_market_types DROP COLUMN is_supported")
+                    )
+            session.commit()
+
+    def _migrate_market_outcome_source_mappings(self):
+        """Ensure market outcome source mappings table exists with runtime indexes."""
+        from infrastructure.persistence.models import MarketOutcomeSourceMapping
+
+        self._create_table_and_indexes(
+            MarketOutcomeSourceMapping,
+            [
+                "CREATE UNIQUE INDEX IF NOT EXISTS unique_market_outcome_source_mapping "
+                "ON market_outcome_source_mappings (market_source_mapping_id, source_outcome_id)",
+                "CREATE INDEX IF NOT EXISTS idx_market_outcome_source_mappings_market "
+                "ON market_outcome_source_mappings (market_source_mapping_id)",
+                "CREATE INDEX IF NOT EXISTS idx_market_outcome_source_mappings_choice "
+                "ON market_outcome_source_mappings (canonical_choice_name)",
+            ],
+        )
+
+    def _migrate_source_catalog_syncs(self):
+        """Ensure local catalog import metadata table exists."""
+        from infrastructure.persistence.models import SourceCatalogSync
+
+        self._create_table_and_indexes(
+            SourceCatalogSync,
+            [
+                "CREATE INDEX IF NOT EXISTS idx_source_catalog_syncs_source_type "
+                "ON source_catalog_syncs (source, catalog_type)",
+                "CREATE INDEX IF NOT EXISTS idx_source_catalog_syncs_hash "
+                "ON source_catalog_syncs (payload_hash)",
+            ],
+        )
+
     def _migrate_markets_to_bookies(self):
         """
         One-time migration: transition markets table from sofascore_market_id to bookie_id.

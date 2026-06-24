@@ -51,13 +51,18 @@ def test_dry_run_performs_no_writes():
         f"{SERVICE}.OddspapiEventResolver.resolve_from_odds_response",
         return_value=resolution(created_mappings=[]),
     ) as resolve, patch(
+        f"{SERVICE}.MarketMappingRepository.build_index",
+        return_value=type("Index", (), {"market_mappings": {("oddspapi", "10", "101"): object()}})(),
+    ) as build_index, patch(
         f"{SERVICE}.OddspapiMarketAdapter.from_odds_response", return_value=ADAPTED
-    ), patch(f"{SERVICE}.BookieRepository.resolve_bookie_from_source") as resolve_bookie, patch(
+    ) as adapt, patch(f"{SERVICE}.BookieRepository.resolve_bookie_from_source") as resolve_bookie, patch(
         f"{SERVICE}.MarketRepository.save_markets_from_response_with_stats"
     ) as save:
         result = MarketOddsIngestionService.save_from_oddspapi_response({}, dry_run=True)
 
     resolve.assert_called_once_with({}, create_mappings=False)
+    build_index.assert_called_once_with(source="oddspapi", enabled_only=True)
+    assert adapt.call_args.kwargs["market_mapping_index"] is not None
     resolve_bookie.assert_not_called()
     save.assert_not_called()
     assert result.event_id == 55
@@ -142,6 +147,9 @@ def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
         f"{SERVICE}.OddspapiEventResolver.resolve_from_odds_response",
         return_value=resolution(created_mappings=["oddspapi"]),
     ), patch(
+        f"{SERVICE}.MarketMappingRepository.build_index",
+        return_value=type("Index", (), {"market_mappings": {("oddspapi", "10", "101"): object()}})(),
+    ), patch(
         f"{SERVICE}.OddspapiMarketAdapter.from_odds_response", return_value=adapted
     ), patch(
         f"{SERVICE}.BookieRepository.resolve_bookie_from_source",
@@ -173,6 +181,79 @@ def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
     assert result.bookie_mappings_created == 1
     assert result.event_mappings_created == 1
     assert result.mappings_created == 1
+
+
+def test_save_from_oddspapi_response_skips_when_market_mapping_index_unavailable():
+    with patch(
+        f"{SERVICE}.OddspapiEventResolver.resolve_from_odds_response",
+        return_value=resolution(created_mappings=[]),
+    ), patch(
+        f"{SERVICE}.MarketMappingRepository.build_index",
+        return_value=type("Index", (), {"market_mappings": {}})(),
+    ) as build_index, patch(f"{SERVICE}.OddspapiMarketAdapter.from_odds_response") as adapt:
+        result = MarketOddsIngestionService.save_from_oddspapi_response({}, dry_run=True)
+
+    build_index.assert_called_once_with(source="oddspapi", enabled_only=True)
+    adapt.assert_not_called()
+    assert result.skipped is True
+    assert result.reason == "market_mapping_index_unavailable"
+
+
+def test_commit_skips_unmapped_markets_from_mapping_mode():
+    adapted = {
+        "fixtureId": "fixture-1",
+        "bookmakers": [],
+        "diagnostics": {
+            "unmapped_markets": [{"sourceMarketId": "999"}],
+            "unmapped_outcomes": [],
+            "skipped_missing_handicap": [],
+        },
+    }
+    with patch(
+        f"{SERVICE}.OddspapiEventResolver.resolve_from_odds_response",
+        return_value=resolution(created_mappings=[]),
+    ), patch(
+        f"{SERVICE}.MarketMappingRepository.build_index",
+        return_value=type("Index", (), {"market_mappings": {("oddspapi", "10", "101"): object()}})(),
+    ), patch(
+        f"{SERVICE}.OddspapiMarketAdapter.from_odds_response",
+        return_value=adapted,
+    ), patch(f"{SERVICE}.BookieRepository.resolve_bookie_from_source") as resolve_bookie:
+        result = MarketOddsIngestionService.save_from_oddspapi_response({})
+
+    resolve_bookie.assert_not_called()
+    assert result.skipped is True
+    assert result.reason == "no normalized markets found"
+    assert result.unmapped_markets_detected == 1
+
+
+def test_commit_passes_canonical_market_payload_to_repository():
+    with patch(
+        f"{SERVICE}.OddspapiEventResolver.resolve_from_odds_response",
+        return_value=resolution(created_mappings=[]),
+    ), patch(
+        f"{SERVICE}.MarketMappingRepository.build_index",
+        return_value=type("Index", (), {"market_mappings": {("oddspapi", "10", "101"): object()}})(),
+    ), patch(
+        f"{SERVICE}.OddspapiMarketAdapter.from_odds_response",
+        return_value=ADAPTED,
+    ), patch(
+        f"{SERVICE}.BookieRepository.resolve_bookie_from_source",
+        return_value=BookieResolution(bookie=type("Bookie", (), {"bookie_id": 23})(), resolved=True, reused=True),
+    ), patch(
+        f"{SERVICE}.MarketRepository.save_markets_from_response_with_stats",
+        return_value=type("SaveResult", (), {"markets_saved": 1, "choices_saved": 1, "snapshots_saved": 1})(),
+    ) as save, patch(
+        f"{SERVICE}.DualProcessOddsRepository.event_has_dual_process_odds", return_value=True
+    ):
+        result = MarketOddsIngestionService.save_from_oddspapi_response({})
+
+    saved_payload = save.call_args.kwargs["odds_response"]
+    saved_market = saved_payload["markets"][0]
+    assert saved_market["marketName"] == "Full-time"
+    assert saved_market["marketGroup"] == "1X2"
+    assert saved_market["marketPeriod"] == "Full-time"
+    assert result.markets_saved == 1
 
 
 def _repository_manager(tmp_path):

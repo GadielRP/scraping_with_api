@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 class OddsTrajectoryPoint:
     event_id: int
     market_id: Optional[int]
+    canonical_market_key: Optional[str]
+    market_family: Optional[str]
+    market_display_order: Optional[int]
     market_name: Optional[str]
     market_group: Optional[str]
     market_period: Optional[str]
@@ -25,6 +28,7 @@ class OddsTrajectoryPoint:
     bookie_name: Optional[str]
     choice_id: Optional[int]
     choice_name: Optional[str]
+    choice_display_order: Optional[int]
     initial_odds: Optional[Decimal]
     odds_value: Optional[Decimal]
     snapshot_id: Optional[int]
@@ -37,6 +41,9 @@ class OddsTrajectoryPoint:
         return {
             "event_id": self.event_id,
             "market_id": self.market_id,
+            "canonical_market_key": self.canonical_market_key,
+            "market_family": self.market_family,
+            "market_display_order": self.market_display_order,
             "market_name": self.market_name,
             "market_group": self.market_group,
             "market_period": self.market_period,
@@ -45,6 +52,7 @@ class OddsTrajectoryPoint:
             "bookie_name": self.bookie_name,
             "choice_id": self.choice_id,
             "choice_name": self.choice_name,
+            "choice_display_order": self.choice_display_order,
             "initial_odds": self.initial_odds,
             "odds_value": self.odds_value,
             "snapshot_id": self.snapshot_id,
@@ -62,6 +70,9 @@ class OddsTrajectoryRepository:
         return OddsTrajectoryPoint(
             event_id=data["event_id"],
             market_id=data.get("market_id"),
+            canonical_market_key=data.get("canonical_market_key"),
+            market_family=data.get("market_family"),
+            market_display_order=data.get("market_display_order"),
             market_name=data.get("market_name"),
             market_group=data.get("market_group"),
             market_period=data.get("market_period"),
@@ -70,6 +81,7 @@ class OddsTrajectoryRepository:
             bookie_name=data.get("bookie_name"),
             choice_id=data.get("choice_id"),
             choice_name=data.get("choice_name"),
+            choice_display_order=data.get("choice_display_order"),
             initial_odds=data.get("initial_odds"),
             odds_value=data.get("odds_value"),
             snapshot_id=data.get("snapshot_id"),
@@ -95,9 +107,6 @@ class OddsTrajectoryRepository:
             else tolerance_minutes
         )
 
-        markets = Config.PRE_START_ODDS_TRAJECTORY_MARKETS
-        periods = Config.PRE_START_ODDS_TRAJECTORY_PERIODS
-
         if not target_minutes:
             return {}
 
@@ -121,21 +130,6 @@ class OddsTrajectoryRepository:
         bind_params = [
             bindparam("event_ids", expanding=True),
         ]
-
-        if markets is not None and markets:
-            where_clauses.append(
-                "("
-                "traj.market_name IN :markets "
-                "OR traj.market_group IN :markets"
-                ")"
-            )
-            query_params["markets"] = markets
-            bind_params.append(bindparam("markets", expanding=True))
-
-        if periods is not None and periods:
-            where_clauses.append("traj.market_period IN :periods")
-            query_params["periods"] = periods
-            bind_params.append(bindparam("periods", expanding=True))
 
         query = text(
             f"""
@@ -174,11 +168,13 @@ class OddsTrajectoryRepository:
             WHERE rn = 1
             ORDER BY
                 event_id,
+                market_display_order NULLS LAST,
                 market_group,
                 market_period,
                 choice_group NULLS FIRST,
                 bookie_name,
                 target_minute DESC,
+                choice_display_order NULLS LAST,
                 choice_name;
             """
         ).bindparams(*bind_params)

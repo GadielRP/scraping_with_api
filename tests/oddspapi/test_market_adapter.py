@@ -1,6 +1,11 @@
 import json
 from pathlib import Path
 
+from infrastructure.persistence.repositories.market_mapping_repository import (
+    CanonicalMarketResolution,
+    CanonicalOutcomeResolution,
+    MarketMappingIndex,
+)
 from modules.odds_ingestion.adapters.oddspapi_market_adapter import OddspapiMarketAdapter
 from modules.odds_ingestion.adapters.sofascore_market_adapter import SofaScoreMarketAdapter
 
@@ -32,8 +37,53 @@ def market(outcomes):
 def response(markets, slug="pinnacle"):
     return {
         "fixtureId": "fixture-1",
+        "sportId": "10",
         "bookmakerOdds": {slug: {"markets": markets}},
     }
+
+
+def mapped_index(
+    *,
+    source_market_id="101",
+    source_sport_id="10",
+    source_handicap=None,
+    requires_choice_group=False,
+    canonical_market_key="1x2_full_time",
+    canonical_market_name="Full-time",
+    canonical_market_group="1X2",
+    canonical_market_period="Full-time",
+    market_family="side",
+    outcome_pairs=(("101", "1"), ("102", "X"), ("103", "2")),
+):
+    mapping_id = 1
+    return MarketMappingIndex(
+        market_mappings={
+            ("oddspapi", source_sport_id, source_market_id): CanonicalMarketResolution(
+                resolved=True,
+                mapping_id=mapping_id,
+                canonical_market_key=canonical_market_key,
+                canonical_market_name=canonical_market_name,
+                canonical_market_group=canonical_market_group,
+                canonical_market_period=canonical_market_period,
+                market_family=market_family,
+                requires_choice_group=requires_choice_group,
+                source_handicap=source_handicap,
+                reason="resolved_from_db_mapping",
+            )
+        },
+        outcome_mappings={
+            (mapping_id, source_outcome_id): CanonicalOutcomeResolution(
+                resolved=True,
+                canonical_choice_name=canonical_choice_name,
+                display_order=index,
+                reason="resolved_from_db_mapping",
+            )
+            for index, (source_outcome_id, canonical_choice_name) in enumerate(
+                outcome_pairs,
+                start=1,
+            )
+        },
+    )
 
 
 def test_moneyline_home_draw_away_and_bookmaker_catalog():
@@ -43,6 +93,10 @@ def test_moneyline_home_draw_away_and_bookmaker_catalog():
     adapted = OddspapiMarketAdapter.from_odds_response(
         payload,
         bookmaker_catalog=[{"slug": "pinnacle", "bookmakerName": "Pinnacle Sports"}],
+        market_mapping_index=mapped_index(
+            source_market_id="100",
+            outcome_pairs=(("1", "1"), ("2", "X"), ("3", "2")),
+        ),
     )
     bookmaker = adapted["bookmakers"][0]
     assert bookmaker["name"] == "Pinnacle Sports"
@@ -51,7 +105,11 @@ def test_moneyline_home_draw_away_and_bookmaker_catalog():
 
 def test_moneyline_without_draw_is_kept():
     adapted = OddspapiMarketAdapter.from_odds_response(
-        response({"100": market([player("home", 1.6), player("away", 2.3)])})
+        response({"100": market([player("home", 1.6), player("away", 2.3)])}),
+        market_mapping_index=mapped_index(
+            source_market_id="100",
+            outcome_pairs=(("1", "1"), ("2", "2")),
+        ),
     )
     assert [choice["name"] for choice in adapted["bookmakers"][0]["markets"][0]["choices"]] == [
         "1",
@@ -61,7 +119,17 @@ def test_moneyline_without_draw_is_kept():
 
 def test_totals_are_grouped_by_line_without_catalog():
     adapted = OddspapiMarketAdapter.from_odds_response(
-        response({"200": market([player("62.5/over", 1.909), player("62.5/under", 1.925)])})
+        response({"200": market([player("62.5/over", 1.909), player("62.5/under", 1.925)])}),
+        market_mapping_index=mapped_index(
+            source_market_id="200",
+            requires_choice_group=True,
+            source_handicap="62.5",
+            canonical_market_key="total_full_time",
+            canonical_market_name="Total",
+            canonical_market_group="Over/Under",
+            market_family="total",
+            outcome_pairs=(("1", "Over"), ("2", "Under")),
+        ),
     )
     normalized = adapted["bookmakers"][0]["markets"][0]
     assert normalized["marketGroup"] == "Over/Under"
@@ -71,7 +139,17 @@ def test_totals_are_grouped_by_line_without_catalog():
 
 def test_spreads_are_normalized_without_catalog():
     adapted = OddspapiMarketAdapter.from_odds_response(
-        response({"300": market([player("-3.5/home", 2.01), player("-3.5/away", 1.833)])})
+        response({"300": market([player("-3.5/home", 2.01), player("-3.5/away", 1.833)])}),
+        market_mapping_index=mapped_index(
+            source_market_id="300",
+            requires_choice_group=True,
+            source_handicap="-3.5",
+            canonical_market_key="asian_handicap_full_time",
+            canonical_market_name="Asian handicap",
+            canonical_market_group="Asian handicap",
+            market_family="spread",
+            outcome_pairs=(("1", "1"), ("2", "2")),
+        ),
     )
     normalized = adapted["bookmakers"][0]["markets"][0]
     assert normalized["marketGroup"] == "Asian handicap"
@@ -79,28 +157,165 @@ def test_spreads_are_normalized_without_catalog():
     assert [choice["name"] for choice in normalized["choices"]] == ["1", "2"]
 
 
-def test_catalog_maps_outcome_ids_and_period():
+def test_mapping_index_resolves_market_and_outcomes():
     payload = response(
-        {"101": market([player("opaque-home", 1.5555), player("opaque-away", 2.4)])}
-    )
-    catalog = [
         {
-            "marketId": 101,
-            "marketName": "Full Time Result",
-            "marketType": "moneyline",
-            "period": "fulltime",
-            "handicap": 0,
-            "outcomes": [
-                {"outcomeId": 1, "outcomeName": "Home"},
-                {"outcomeId": 2, "outcomeName": "Away"},
-            ],
+            "101": {
+                "marketActive": True,
+                "outcomes": {
+                    "101": {"players": {"0": player("opaque-home", 1.91)}},
+                    "102": {"players": {"0": player("opaque-draw", 3.2)}},
+                    "103": {"players": {"0": player("opaque-away", 4.4)}},
+                },
+            }
         }
-    ]
-    normalized = OddspapiMarketAdapter.from_odds_response(payload, market_catalog=catalog)[
-        "bookmakers"
-    ][0]["markets"][0]
+    )
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=mapped_index(),
+    )
+
+    normalized = adapted["bookmakers"][0]["markets"][0]
+    assert normalized["marketName"] == "Full-time"
+    assert normalized["marketGroup"] == "1X2"
     assert normalized["marketPeriod"] == "Full-time"
-    assert [choice["decimalValue"] for choice in normalized["choices"]] == [1.556, 2.4]
+    assert [choice["name"] for choice in normalized["choices"]] == ["1", "X", "2"]
+
+
+def test_mapping_choice_group_comes_only_from_mapping_handicap():
+    payload = response(
+        {
+            "1010": {
+                "marketActive": True,
+                "outcomes": {
+                    "1010": {"players": {"0": player("62.5/over", 1.91)}},
+                    "1011": {"players": {"0": player("62.5/under", 1.93)}},
+                },
+            }
+        }
+    )
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=mapped_index(
+            source_market_id="1010",
+            requires_choice_group=True,
+            source_handicap="0.5",
+            canonical_market_key="total_full_time",
+            canonical_market_name="Total",
+            canonical_market_group="Over/Under",
+            market_family="total",
+            outcome_pairs=(("1010", "Over"), ("1011", "Under")),
+        ),
+    )
+
+    normalized = adapted["bookmakers"][0]["markets"][0]
+    assert normalized["choiceGroup"] == "0.5"
+    assert [choice["name"] for choice in normalized["choices"]] == ["Over", "Under"]
+
+
+def test_mapping_mode_does_not_use_bookmaker_outcome_id_to_override_line():
+    payload = response(
+        {
+            "1010": {
+                "marketActive": True,
+                "outcomes": {
+                    "1010": {"players": {"0": player("62.5/over", 1.91)}},
+                    "1011": {"players": {"0": player("62.5/under", 1.93)}},
+                },
+            }
+        }
+    )
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=mapped_index(
+            source_market_id="1010",
+            requires_choice_group=True,
+            source_handicap="0",
+            canonical_market_key="total_full_time",
+            canonical_market_name="Total",
+            canonical_market_group="Over/Under",
+            market_family="total",
+            outcome_pairs=(("1010", "Over"), ("1011", "Under")),
+        ),
+    )
+
+    normalized = adapted["bookmakers"][0]["markets"][0]
+    assert normalized["choiceGroup"] == "0"
+
+
+def test_mapping_mode_skips_unmapped_market():
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        response({"999": market([player("home", 1.9)])}),
+        market_mapping_index=mapped_index(),
+    )
+
+    assert adapted["bookmakers"] == []
+    assert adapted["diagnostics"]["unmapped_markets"][0]["sourceMarketId"] == "999"
+
+
+def test_mapping_mode_skips_unmapped_outcome():
+    payload = response(
+        {
+            "101": {
+                "marketActive": True,
+                "outcomes": {
+                    "101": {"players": {"0": player("opaque-home", 1.91)}},
+                    "999": {"players": {"0": player("opaque-unknown", 9.99)}},
+                },
+            }
+        }
+    )
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=mapped_index(
+            outcome_pairs=(("101", "1"),),
+        ),
+    )
+
+    normalized = adapted["bookmakers"][0]["markets"][0]
+    assert [choice["name"] for choice in normalized["choices"]] == ["1"]
+    assert adapted["diagnostics"]["unmapped_outcomes"][0]["sourceOutcomeId"] == "999"
+
+
+def test_mapping_mode_requires_handicap_when_mapping_demands_line():
+    payload = response(
+        {
+            "1010": {
+                "marketActive": True,
+                "outcomes": {
+                    "1010": {"players": {"0": player("opaque-over", 1.91)}},
+                    "1011": {"players": {"0": player("opaque-under", 1.93)}},
+                },
+            }
+        }
+    )
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=mapped_index(
+            source_market_id="1010",
+            requires_choice_group=True,
+            source_handicap=None,
+            canonical_market_key="total_full_time",
+            canonical_market_name="Total",
+            canonical_market_group="Over/Under",
+            market_family="total",
+            outcome_pairs=(("1010", "Over"), ("1011", "Under")),
+        ),
+    )
+
+    assert adapted["bookmakers"] == []
+    assert adapted["diagnostics"]["skipped_missing_handicap"][0]["sourceMarketId"] == "1010"
+
+
+def test_market_mapping_index_is_required():
+    try:
+        OddspapiMarketAdapter.from_odds_response(
+            response({"100": market([player("home", 1.8)])}),
+        )
+    except ValueError as exc:
+        assert "market_mapping_index" in str(exc)
+    else:
+        raise AssertionError("Expected market mapping index to be required")
 
 
 def test_inactive_and_missing_price_players_are_ignored_and_choices_are_deduplicated():
@@ -116,7 +331,11 @@ def test_inactive_and_missing_price_players_are_ignored_and_choices_are_deduplic
                     ]
                 )
             }
-        )
+        ),
+        market_mapping_index=mapped_index(
+            source_market_id="100",
+            outcome_pairs=(("1", "1"), ("2", "X"), ("3", "2")),
+        ),
     )
     choices = adapted["bookmakers"][0]["markets"][0]["choices"]
     assert [(choice["name"], choice["decimalValue"]) for choice in choices] == [("1", 1.8)]
@@ -125,26 +344,67 @@ def test_inactive_and_missing_price_players_are_ignored_and_choices_are_deduplic
 def test_groups_markets_under_each_bookmaker():
     payload = {
         "fixtureId": "fixture-1",
+        "sportId": "10",
         "bookmakerOdds": {
             "pinnacle": {"markets": {"1": market([player("home", 1.8)])}},
             "bet365": {"markets": {"2": market([player("away", 2.1)])}},
             "empty": {"markets": {}},
         },
     }
-    adapted = OddspapiMarketAdapter.from_odds_response(payload)
+    index = MarketMappingIndex(
+        market_mappings={
+            ("oddspapi", "10", "1"): CanonicalMarketResolution(
+                resolved=True,
+                mapping_id=1,
+                canonical_market_key="1x2_full_time",
+                canonical_market_name="Full-time",
+                canonical_market_group="1X2",
+                canonical_market_period="Full-time",
+                market_family="side",
+                requires_choice_group=False,
+                source_handicap=None,
+                reason="resolved_from_db_mapping",
+            ),
+            ("oddspapi", "10", "2"): CanonicalMarketResolution(
+                resolved=True,
+                mapping_id=2,
+                canonical_market_key="1x2_full_time",
+                canonical_market_name="Full-time",
+                canonical_market_group="1X2",
+                canonical_market_period="Full-time",
+                market_family="side",
+                requires_choice_group=False,
+                source_handicap=None,
+                reason="resolved_from_db_mapping",
+            ),
+        },
+        outcome_mappings={
+            (1, "1"): CanonicalOutcomeResolution(resolved=True, canonical_choice_name="1", display_order=1),
+            (2, "1"): CanonicalOutcomeResolution(resolved=True, canonical_choice_name="2", display_order=1),
+        },
+    )
+    adapted = OddspapiMarketAdapter.from_odds_response(payload, market_mapping_index=index)
     assert [bookmaker["slug"] for bookmaker in adapted["bookmakers"]] == ["pinnacle", "bet365"]
 
 
 def test_sportsbook_choice_does_not_include_exchange_quotes():
     adapted = OddspapiMarketAdapter.from_odds_response(
-        response({"100": market([player("home", 1.8)])})
+        response({"100": market([player("home", 1.8)])}),
+        market_mapping_index=mapped_index(
+            source_market_id="100",
+            outcome_pairs=(("1", "1"),),
+        ),
     )
 
     choice = adapted["bookmakers"][0]["markets"][0]["choices"][0]
     assert "exchangeQuotes" not in choice
 
     exchange_without_meta = OddspapiMarketAdapter.from_odds_response(
-        response({"100": market([player("home", 1.8)])}, slug="betfair-ex")
+        response({"100": market([player("home", 1.8)])}, slug="betfair-ex"),
+        market_mapping_index=mapped_index(
+            source_market_id="100",
+            outcome_pairs=(("1", "1"),),
+        ),
     )
     exchange_choice = exchange_without_meta["bookmakers"][0]["markets"][0]["choices"][0]
     assert "exchangeQuotes" not in exchange_choice
@@ -166,7 +426,11 @@ def test_exchange_choice_normalizes_back_and_lay_ladders():
         response(
             {"100": market([player("away", 4.8, exchange_meta=exchange_meta)])},
             slug="betfair-ex",
-        )
+        ),
+        market_mapping_index=mapped_index(
+            source_market_id="100",
+            outcome_pairs=(("1", "2"),),
+        ),
     )
 
     choice = adapted["bookmakers"][0]["markets"][0]["choices"][0]
@@ -200,7 +464,11 @@ def test_exchange_ladder_tolerates_missing_sides_and_skips_invalid_prices():
                 )
             },
             slug="betfair-ex",
-        )
+        ),
+        market_mapping_index=mapped_index(
+            source_market_id="100",
+            outcome_pairs=(("1", "1"),),
+        ),
     )
     lay_only = OddspapiMarketAdapter.from_odds_response(
         response(
@@ -216,7 +484,11 @@ def test_exchange_ladder_tolerates_missing_sides_and_skips_invalid_prices():
                 )
             },
             slug="betfair-ex",
-        )
+        ),
+        market_mapping_index=mapped_index(
+            source_market_id="100",
+            outcome_pairs=(("1", "2"),),
+        ),
     )
 
     back_quotes = back_only["bookmakers"][0]["markets"][0]["choices"][0][

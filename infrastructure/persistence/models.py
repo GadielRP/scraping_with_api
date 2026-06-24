@@ -235,6 +235,148 @@ class BookieSourceMapping(Base):
     )
 
 
+class CanonicalMarketType(Base):
+    __tablename__ = "canonical_market_types"
+
+    canonical_market_key = Column(Text, primary_key=True)
+    canonical_market_name = Column(Text, nullable=False)
+    canonical_market_group = Column(Text, nullable=False)
+    canonical_market_period = Column(Text, nullable=False)
+    market_family = Column(Text, nullable=False)
+    requires_choice_group = Column(Boolean, nullable=False, default=False)
+    enabled_for_ingestion = Column(Boolean, nullable=False, default=True)
+    enabled_for_trajectory = Column(Boolean, nullable=False, default=False)
+    display_order = Column(Integer)
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+
+    source_mappings = relationship(
+        "MarketSourceMapping",
+        back_populates="canonical_market_type",
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_canonical_market_types_group_period",
+            "canonical_market_group",
+            "canonical_market_period",
+        ),
+        Index(
+            "idx_canonical_market_types_enabled",
+            "enabled_for_ingestion",
+            "enabled_for_trajectory",
+        ),
+    )
+
+
+class MarketSourceMapping(Base):
+    __tablename__ = "market_source_mappings"
+
+    mapping_id = Column(Integer, primary_key=True, autoincrement=True)
+    canonical_market_key = Column(
+        Text,
+        ForeignKey("canonical_market_types.canonical_market_key", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source = Column(Text, nullable=False)
+    source_sport_id = Column(Text, nullable=True)
+    source_market_id = Column(Text, nullable=False)
+    source_market_name = Column(Text, nullable=False)
+    source_market_group = Column(Text)
+    source_period = Column(Text)
+    source_handicap = Column(Text)
+    player_prop = Column(Boolean)
+    canonical_market_name = Column(Text, nullable=False)
+    canonical_market_group = Column(Text, nullable=False)
+    canonical_market_period = Column(Text, nullable=False)
+    match_method = Column(Text, nullable=False, default="catalog_rule")
+    confidence = Column(Numeric(5, 3))
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+
+    canonical_market_type = relationship(
+        "CanonicalMarketType",
+        back_populates="source_mappings",
+    )
+    outcome_mappings = relationship(
+        "MarketOutcomeSourceMapping",
+        back_populates="market_source_mapping",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source",
+            "source_sport_id",
+            "source_market_id",
+            name="unique_market_source_mapping",
+        ),
+        Index("idx_market_source_mappings_canonical_key", "canonical_market_key"),
+        Index(
+            "idx_market_source_mappings_source_market",
+            "source",
+            "source_sport_id",
+            "source_market_id",
+        ),
+        Index(
+            "idx_market_source_mappings_group_period",
+            "canonical_market_group",
+            "canonical_market_period",
+        ),
+    )
+
+
+class MarketOutcomeSourceMapping(Base):
+    __tablename__ = "market_outcome_source_mappings"
+
+    outcome_mapping_id = Column(Integer, primary_key=True, autoincrement=True)
+    market_source_mapping_id = Column(
+        Integer,
+        ForeignKey("market_source_mappings.mapping_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_outcome_id = Column(Text, nullable=False)
+    source_outcome_name = Column(Text, nullable=False)
+    canonical_choice_name = Column(Text, nullable=False)
+    display_order = Column(Integer)
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+
+    market_source_mapping = relationship(
+        "MarketSourceMapping",
+        back_populates="outcome_mappings",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "market_source_mapping_id",
+            "source_outcome_id",
+            name="unique_market_outcome_source_mapping",
+        ),
+        Index("idx_market_outcome_source_mappings_market", "market_source_mapping_id"),
+        Index("idx_market_outcome_source_mappings_choice", "canonical_choice_name"),
+    )
+
+
+class SourceCatalogSync(Base):
+    __tablename__ = "source_catalog_syncs"
+
+    sync_id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(Text, nullable=False)
+    catalog_type = Column(Text, nullable=False)
+    language = Column(Text)
+    file_path = Column(Text, nullable=False)
+    payload_hash = Column(Text, nullable=False)
+    item_count = Column(Integer, nullable=False)
+    imported_at = Column(DateTime, default=get_local_now)
+    created_at = Column(DateTime, default=get_local_now)
+
+    __table_args__ = (
+        Index("idx_source_catalog_syncs_source_type", "source", "catalog_type"),
+        Index("idx_source_catalog_syncs_hash", "payload_hash"),
+    )
+
+
 class Market(Base):
     """
     Stores individual betting markets for an event.
@@ -771,29 +913,117 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
 PRE_START_ODDS_TRAJECTORY_VIEW_SQL = (
     """
     CREATE OR REPLACE VIEW v_pre_start_odds_trajectory AS
+    WITH snapshot_context AS (
+        SELECT
+            e.id AS event_id,
+            e.start_time_utc,
+            m.market_id,
+            m.market_name,
+            m.market_group,
+            m.market_period,
+            m.choice_group,
+            m.bookie_id,
+            b.name AS bookie_name,
+            mc.choice_id,
+            mc.choice_name,
+            mc.initial_odds,
+            mcs.snapshot_id,
+            mcs.source,
+            mcs.source_collected_at,
+            mcs.source_market_id,
+            mcs.source_outcome_id,
+            mcs.bookmaker_outcome_id,
+            mcs.main_line,
+            mcs.source_limit,
+            mcs.odds_value,
+            mcs.collected_at,
+            esm.source_sport_id AS event_source_sport_id,
+            ROUND(EXTRACT(EPOCH FROM (e.start_time_utc - mcs.collected_at)) / 60)::int AS minutes_before_start
+        FROM market_choice_snapshots mcs
+        JOIN market_choices mc ON mc.choice_id = mcs.choice_id
+        JOIN markets m ON m.market_id = mc.market_id
+        JOIN events e ON e.id = m.event_id
+        JOIN bookies b ON b.bookie_id = m.bookie_id
+        LEFT JOIN event_source_mappings esm
+            ON esm.event_id = e.id
+           AND esm.source = mcs.source
+        WHERE m.is_live = false
+    ),
+    source_mapped AS (
+        SELECT
+            sc.*,
+            COALESCE(msm_exact.mapping_id, msm_fallback.mapping_id) AS market_source_mapping_id,
+            COALESCE(msm_exact.canonical_market_key, msm_fallback.canonical_market_key) AS mapped_canonical_market_key
+        FROM snapshot_context sc
+        LEFT JOIN market_source_mappings msm_exact
+            ON msm_exact.source = sc.source
+           AND msm_exact.source_market_id = sc.source_market_id
+           AND msm_exact.source_sport_id = sc.event_source_sport_id
+        LEFT JOIN market_source_mappings msm_fallback
+            ON msm_fallback.source = sc.source
+           AND msm_fallback.source_market_id = sc.source_market_id
+           AND msm_fallback.source_sport_id IS NULL
+    ),
+    textual_canonical_match AS (
+        SELECT
+            sm.*,
+            cmt.canonical_market_key AS textual_canonical_market_key,
+            cmt.canonical_market_name AS textual_market_name,
+            cmt.canonical_market_group AS textual_market_group,
+            cmt.canonical_market_period AS textual_market_period,
+            cmt.market_family AS textual_market_family,
+            cmt.requires_choice_group AS textual_requires_choice_group,
+            cmt.enabled_for_ingestion AS textual_enabled_for_ingestion,
+            cmt.enabled_for_trajectory AS textual_enabled_for_trajectory,
+            cmt.display_order AS textual_market_display_order
+        FROM source_mapped sm
+        LEFT JOIN canonical_market_types cmt
+            ON LOWER(REPLACE(REPLACE(REPLACE(COALESCE(sm.market_name, ''), '-', ''), '_', ''), ' ', '')) =
+               LOWER(REPLACE(REPLACE(REPLACE(cmt.canonical_market_name, '-', ''), '_', ''), ' ', ''))
+           AND LOWER(REPLACE(REPLACE(REPLACE(COALESCE(sm.market_group, ''), '-', ''), '_', ''), ' ', '')) =
+               LOWER(REPLACE(REPLACE(REPLACE(cmt.canonical_market_group, '-', ''), '_', ''), ' ', ''))
+           AND LOWER(REPLACE(REPLACE(REPLACE(COALESCE(sm.market_period, ''), '-', ''), '_', ''), ' ', '')) =
+               LOWER(REPLACE(REPLACE(REPLACE(cmt.canonical_market_period, '-', ''), '_', ''), ' ', ''))
+    )
     SELECT
-        e.id AS event_id,
-        e.start_time_utc,
-        m.market_id,
-        m.market_name,
-        m.market_group,
-        m.market_period,
-        m.choice_group,
-        m.bookie_id,
-        b.name AS bookie_name,
-        mc.choice_id,
-        mc.choice_name,
-        mc.initial_odds,
-        mcs.snapshot_id,
-        mcs.odds_value,
-        mcs.collected_at,
-        ROUND(EXTRACT(EPOCH FROM (e.start_time_utc - mcs.collected_at)) / 60)::int AS minutes_before_start
-    FROM market_choice_snapshots mcs
-    JOIN market_choices mc ON mc.choice_id = mcs.choice_id
-    JOIN markets m ON m.market_id = mc.market_id
-    JOIN events e ON e.id = m.event_id
-    JOIN bookies b ON b.bookie_id = m.bookie_id
-    WHERE m.is_live = false;
+        tcm.event_id,
+        tcm.start_time_utc,
+        tcm.market_id,
+        COALESCE(mapped_cmt.canonical_market_key, tcm.textual_canonical_market_key) AS canonical_market_key,
+        COALESCE(mapped_cmt.market_family, tcm.textual_market_family) AS market_family,
+        COALESCE(mapped_cmt.display_order, tcm.textual_market_display_order) AS market_display_order,
+        COALESCE(mapped_cmt.canonical_market_name, tcm.textual_market_name, tcm.market_name) AS market_name,
+        COALESCE(mapped_cmt.canonical_market_group, tcm.textual_market_group, tcm.market_group) AS market_group,
+        COALESCE(mapped_cmt.canonical_market_period, tcm.textual_market_period, tcm.market_period) AS market_period,
+        tcm.choice_group,
+        tcm.bookie_id,
+        tcm.bookie_name,
+        tcm.choice_id,
+        tcm.choice_name,
+        mo.display_order AS choice_display_order,
+        tcm.initial_odds,
+        tcm.snapshot_id,
+        tcm.source,
+        tcm.source_collected_at,
+        tcm.source_market_id,
+        tcm.source_outcome_id,
+        tcm.bookmaker_outcome_id,
+        tcm.main_line,
+        tcm.source_limit,
+        tcm.odds_value,
+        tcm.collected_at,
+        tcm.minutes_before_start
+    FROM textual_canonical_match tcm
+    LEFT JOIN canonical_market_types mapped_cmt
+        ON mapped_cmt.canonical_market_key = tcm.mapped_canonical_market_key
+    LEFT JOIN market_outcome_source_mappings mo
+        ON mo.market_source_mapping_id = tcm.market_source_mapping_id
+       AND mo.source_outcome_id = tcm.source_outcome_id
+    WHERE COALESCE(mapped_cmt.enabled_for_trajectory, tcm.textual_enabled_for_trajectory, false) = true
+      AND (
+          COALESCE(mapped_cmt.requires_choice_group, tcm.textual_requires_choice_group, false) = false
+          OR tcm.choice_group IS NOT NULL
+      );
     """
 )
 
@@ -816,6 +1046,7 @@ def create_or_replace_views(engine):
         conn.exec_driver_sql("DROP VIEW IF EXISTS season_events_with_results CASCADE;")
         # Create season events with results view for historical standings
         conn.exec_driver_sql(SEASON_EVENTS_WITH_RESULTS_VIEW_SQL)
+        conn.exec_driver_sql("DROP VIEW IF EXISTS v_pre_start_odds_trajectory CASCADE;")
         conn.exec_driver_sql("DROP VIEW IF EXISTS v_market_choice_trajectory CASCADE;")
         conn.exec_driver_sql(PRE_START_ODDS_TRAJECTORY_VIEW_SQL)
 

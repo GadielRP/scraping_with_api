@@ -18,6 +18,9 @@ from infrastructure.persistence.repositories.event_repository import EventReposi
 from infrastructure.persistence.repositories.event_source_mapping_repository import (  # noqa: E402
     EventSourceMappingRepository,
 )
+from infrastructure.persistence.repositories.market_mapping_repository import (  # noqa: E402
+    MarketMappingRepository,
+)
 from infrastructure.persistence.repositories.odds_trajectory_repository import (  # noqa: E402
     OddsTrajectoryRepository,
 )
@@ -289,7 +292,6 @@ def build_parser() -> argparse.ArgumentParser:
         description="Validate or persist a local OddsPapi odds response without HTTP calls."
     )
     parser.add_argument("--file", required=True, help="Local OddsPapi odds JSON file")
-    parser.add_argument("--markets-catalog", help="Optional local /v4/markets JSON file")
     parser.add_argument("--bookmakers-catalog", help="Optional local /v4/bookmakers JSON file")
     parser.add_argument(
         "--trajectory-market-groups",
@@ -318,7 +320,6 @@ def main() -> int:
     args = build_parser().parse_args()
     setup_logging()
     odds_response = _load_json(args.file)
-    market_catalog = _load_json(args.markets_catalog)
     bookmaker_catalog = _load_json(args.bookmakers_catalog)
     dry_run = not args.commit
     trajectory_market_groups = args.trajectory_market_groups or []
@@ -332,10 +333,20 @@ def main() -> int:
         logger.error("schema_error: failed to synchronize database schema before ingestion")
         return 1
 
+    market_mapping_index = MarketMappingRepository.build_index(
+        source="oddspapi",
+        enabled_only=True,
+    )
+    logger.info(
+        "market_mapping_index_loaded: %s",
+        bool(market_mapping_index.market_mappings),
+    )
+
     adapted = OddspapiMarketAdapter.from_odds_response(
         odds_response,
-        market_catalog=market_catalog,
         bookmaker_catalog=bookmaker_catalog,
+        market_mapping_index=market_mapping_index,
+        source="oddspapi",
     )
     selected_adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response_by_groups_and_periods(
         adapted,
@@ -344,11 +355,11 @@ def main() -> int:
     )
     result = MarketOddsIngestionService.save_from_oddspapi_response(
         odds_response,
-        market_catalog=market_catalog,
         bookmaker_catalog=bookmaker_catalog,
         dry_run=dry_run,
         allowed_market_groups=trajectory_market_groups,
         allowed_market_periods=trajectory_market_periods,
+        market_mapping_index=market_mapping_index,
     )
 
     external_providers = odds_response.get("externalProviders") or {}
@@ -419,16 +430,22 @@ def main() -> int:
     logger.info("markets_saved: %s", result.markets_saved)
     logger.info("choices_saved: %s", result.choices_saved)
     logger.info("snapshots_saved: %s", result.snapshots_saved)
+    logger.info("unmapped_markets_detected: %s", result.unmapped_markets_detected)
+    logger.info("unmapped_outcomes_detected: %s", result.unmapped_outcomes_detected)
+    logger.info(
+        "skipped_missing_handicap_detected: %s",
+        result.skipped_missing_handicap_detected,
+    )
     logger.info("mode: %s", "dry-run" if dry_run else "commit")
     _emit_section("normalized_bookmakers_input", _normalized_bookmakers_summary(adapted))
     _emit_section("normalized_bookmakers_selected", _normalized_bookmakers_summary(selected_adapted))
+    _emit_section("market_mapping_diagnostics", adapted.get("diagnostics") or {})
     _emit_section("db_event", db_context["event_summary"] or {"status": "missing", "reason": event_match["reason"]})
     _emit_section("db_result", db_context["result_summary"] or {"status": "missing"})
     _emit_section("odds_trajectory_query_filters", {
         "target_minutes_expected": Config.PRE_START_ODDS_MOMENTS,
         "tolerance_minutes": Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES,
-        "config_markets": Config.PRE_START_ODDS_TRAJECTORY_MARKETS,
-        "config_periods": Config.PRE_START_ODDS_TRAJECTORY_PERIODS,
+        "trajectory_source": "v_pre_start_odds_trajectory filtered by canonical_market_types.enabled_for_trajectory",
         "selected_market_groups": trajectory_market_groups or None,
         "selected_market_periods": trajectory_market_periods or None,
     })

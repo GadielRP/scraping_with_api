@@ -9,8 +9,10 @@ from typing import Dict, Optional
 from infrastructure.persistence.repositories import (
     BookieRepository,
     DualProcessOddsRepository,
+    MarketMappingRepository,
     MarketRepository,
 )
+from infrastructure.persistence.repositories.market_mapping_repository import MarketMappingIndex
 from modules.oddspapi import OddspapiEventResolver
 
 from .adapters.oddspapi_market_adapter import OddspapiMarketAdapter
@@ -40,6 +42,10 @@ class MarketIngestionResult:
     bookie_mappings_updated: int = 0
 
     event_mappings_created: int = 0
+
+    unmapped_markets_detected: int = 0
+    unmapped_outcomes_detected: int = 0
+    skipped_missing_handicap_detected: int = 0
 
     dual_process_market_available: bool = False
     skipped: bool = False
@@ -88,10 +94,25 @@ class MarketOddsIngestionService:
                 filtered_bookmaker["markets"] = filtered_markets
                 filtered_bookmakers.append(filtered_bookmaker)
 
-        return {
+        filtered = {
             "fixtureId": normalized_response.get("fixtureId"),
             "bookmakers": filtered_bookmakers,
         }
+        if "diagnostics" in normalized_response:
+            filtered["diagnostics"] = normalized_response.get("diagnostics")
+        return filtered
+
+    @staticmethod
+    def filter_normalized_oddspapi_response(
+        normalized_response: Dict,
+        allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
+        allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
+    ) -> Dict:
+        return MarketOddsIngestionService.filter_normalized_oddspapi_response_by_groups_and_periods(
+            normalized_response,
+            allowed_market_groups=allowed_market_groups,
+            allowed_market_periods=allowed_market_periods,
+        )
 
     @staticmethod
     def _normalize_market_group_filters(
@@ -138,12 +159,12 @@ class MarketOddsIngestionService:
     @staticmethod
     def save_from_oddspapi_response(
         odds_response: dict,
-        market_catalog: dict | list | None = None,
         bookmaker_catalog: dict | list | None = None,
         source: str = "oddspapi_odds",
         dry_run: bool = False,
         allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
+        market_mapping_index: MarketMappingIndex | None = None,
     ) -> MarketIngestionResult:
         if dry_run:
             resolution = OddspapiEventResolver.resolve_from_odds_response(
@@ -160,16 +181,39 @@ class MarketOddsIngestionService:
                 reason=resolution.skipped_reason,
             )
 
+        if market_mapping_index is None:
+            market_mapping_index = MarketMappingRepository.build_index(
+                source="oddspapi",
+                enabled_only=True,
+            )
+        if not market_mapping_index.market_mappings:
+            return MarketIngestionResult(
+                event_id=resolution.canonical_event_id,
+                source=source,
+                skipped=True,
+                reason="market_mapping_index_unavailable",
+                event_mappings_created=len(resolution.created_mappings),
+            )
+
         adapted = OddspapiMarketAdapter.from_odds_response(
             odds_response,
-            market_catalog=market_catalog,
             bookmaker_catalog=bookmaker_catalog,
+            market_mapping_index=market_mapping_index,
+            source="oddspapi",
         )
         adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response_by_groups_and_periods(
             adapted,
             allowed_market_groups=allowed_market_groups,
             allowed_market_periods=allowed_market_periods,
         )
+        diagnostics = adapted.get("diagnostics") or {}
+        unmapped_markets_detected = len(diagnostics.get("unmapped_markets") or [])
+        unmapped_outcomes_detected = len(diagnostics.get("unmapped_outcomes") or [])
+        skipped_missing_handicap_detected = len(
+            diagnostics.get("skipped_missing_handicap") or []
+        )
+        if diagnostics:
+            logger.info("OddsPapi market mapping diagnostics: %s", diagnostics)
         bookmakers = adapted.get("bookmakers", [])
         markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in bookmakers)
         choices_detected = sum(
@@ -188,6 +232,9 @@ class MarketOddsIngestionService:
                 markets_detected=markets_detected,
                 choices_detected=choices_detected,
                 snapshots_detected=snapshots_detected,
+                unmapped_markets_detected=unmapped_markets_detected,
+                unmapped_outcomes_detected=unmapped_outcomes_detected,
+                skipped_missing_handicap_detected=skipped_missing_handicap_detected,
                 event_mappings_created=event_mappings_created,
                 skipped=True,
                 reason="no normalized markets found",
@@ -201,6 +248,9 @@ class MarketOddsIngestionService:
                 choices_detected=choices_detected,
                 snapshots_detected=snapshots_detected,
                 bookies_detected=bookies_detected,
+                unmapped_markets_detected=unmapped_markets_detected,
+                unmapped_outcomes_detected=unmapped_outcomes_detected,
+                skipped_missing_handicap_detected=skipped_missing_handicap_detected,
                 event_mappings_created=event_mappings_created,
             )
 
@@ -260,6 +310,9 @@ class MarketOddsIngestionService:
                     snapshots_detected=snapshots_detected,
                     bookies_detected=bookies_detected,
                     event_mappings_created=event_mappings_created,
+                    unmapped_markets_detected=unmapped_markets_detected,
+                    unmapped_outcomes_detected=unmapped_outcomes_detected,
+                    skipped_missing_handicap_detected=skipped_missing_handicap_detected,
                     dual_process_market_available=dual_process_available,
                     skipped=True,
                     reason="no resolved canonical bookies",
@@ -284,6 +337,9 @@ class MarketOddsIngestionService:
                 bookie_mappings_created=bookie_mappings_created,
                 bookie_mappings_updated=bookie_mappings_updated,
                 event_mappings_created=event_mappings_created,
+                unmapped_markets_detected=unmapped_markets_detected,
+                unmapped_outcomes_detected=unmapped_outcomes_detected,
+                skipped_missing_handicap_detected=skipped_missing_handicap_detected,
                 dual_process_market_available=dual_process_available,
                 skipped=markets_saved <= 0,
                 reason=None if markets_saved > 0 else "no markets saved",
@@ -310,6 +366,9 @@ class MarketOddsIngestionService:
                 bookie_mappings_created=bookie_mappings_created,
                 bookie_mappings_updated=bookie_mappings_updated,
                 event_mappings_created=event_mappings_created,
+                unmapped_markets_detected=unmapped_markets_detected,
+                unmapped_outcomes_detected=unmapped_outcomes_detected,
+                skipped_missing_handicap_detected=skipped_missing_handicap_detected,
                 skipped=True,
                 reason=str(exc),
             )

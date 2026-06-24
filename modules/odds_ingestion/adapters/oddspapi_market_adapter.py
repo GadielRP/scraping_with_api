@@ -5,6 +5,11 @@ from __future__ import annotations
 import math
 from typing import Any, Iterable
 
+from infrastructure.persistence.repositories.market_mapping_repository import (
+    MarketMappingIndex,
+    MarketMappingRepository,
+)
+
 
 class OddspapiMarketAdapter:
     _EXCHANGE_BOOKMAKER_SLUGS = {"betfair-ex"}
@@ -39,33 +44,14 @@ class OddspapiMarketAdapter:
                 if not isinstance(item, dict):
                     continue
                 normalized = dict(item)
-                if wrapper_key == "markets":
-                    normalized.setdefault("marketId", key)
-                else:
-                    normalized.setdefault("slug", key)
+                normalized.setdefault("slug", key)
                 result.append(normalized)
             return result
         return []
 
     @staticmethod
     def _format_line(value: Any) -> str | None:
-        if value is None or value == "":
-            return None
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            return str(value).strip() or None
-        if number.is_integer():
-            return str(int(number))
-        return str(number).rstrip("0").rstrip(".")
-
-    @staticmethod
-    def _period(value: Any) -> str:
-        normalized = str(value or "").strip()
-        compact = normalized.lower().replace("-", "").replace("_", "").replace(" ", "")
-        if not compact or compact in {"fulltime", "match", "ft"}:
-            return "Full-time"
-        return normalized.replace("_", " ").replace("-", " ").title()
+        return MarketMappingRepository._format_line(value)
 
     @staticmethod
     def _bookmaker_name(slug: str, bookmaker_index: dict[str, dict]) -> str:
@@ -75,67 +61,6 @@ class OddspapiMarketAdapter:
             if name:
                 return name
         return slug.replace("-", " ").replace("_", " ").title()
-
-    @staticmethod
-    def _market_kind(market_type: Any, outcome_name: Any, bookmaker_outcome_id: Any) -> str | None:
-        market_type_text = str(market_type or "").strip().lower().replace("-", "").replace("_", "")
-        outcome_text = str(outcome_name or "").strip().lower()
-        bookmaker_text = str(bookmaker_outcome_id or "").strip().lower()
-        parts = bookmaker_text.rsplit("/", 1)
-        suffix = parts[-1] if parts else ""
-
-        if "total" in market_type_text or suffix in {"over", "under"}:
-            return "totals"
-        if "spread" in market_type_text or "handicap" in market_type_text:
-            return "spreads"
-        if len(parts) == 2 and suffix in {"home", "away"}:
-            try:
-                float(parts[0])
-                return "spreads"
-            except ValueError:
-                pass
-        if market_type_text in {"moneyline", "1x2", "homeaway", "matchwinner", "winner"}:
-            return "moneyline"
-        if outcome_text in {"home", "draw", "away", "1", "x", "2"}:
-            return "moneyline"
-        if bookmaker_text in {"home", "draw", "away", "1", "x", "2"}:
-            return "moneyline"
-        return None
-
-    @staticmethod
-    def _normalized_choice(
-        kind: str,
-        outcome_name: Any,
-        bookmaker_outcome_id: Any,
-    ) -> str | None:
-        outcome_text = str(outcome_name or "").strip().lower()
-        bookmaker_text = str(bookmaker_outcome_id or "").strip().lower()
-        token = outcome_text or bookmaker_text.rsplit("/", 1)[-1]
-        if kind == "moneyline":
-            return {
-                "home": "1",
-                "1": "1",
-                "draw": "X",
-                "x": "X",
-                "away": "2",
-                "2": "2",
-            }.get(token)
-        if kind == "totals":
-            return {"over": "Over", "under": "Under"}.get(token)
-        if kind == "spreads":
-            return {"home": "1", "1": "1", "away": "2", "2": "2"}.get(token)
-        return None
-
-    @staticmethod
-    def _choice_group(kind: str, bookmaker_outcome_id: Any, handicap: Any) -> str | None:
-        if kind == "moneyline":
-            return None
-        bookmaker_text = str(bookmaker_outcome_id or "").strip()
-        if "/" in bookmaker_text:
-            line = bookmaker_text.rsplit("/", 1)[0].strip()
-            if line:
-                return line
-        return OddspapiMarketAdapter._format_line(handicap)
 
     @staticmethod
     def _exchange_quotes(exchange_meta: dict) -> list[dict]:
@@ -175,20 +100,28 @@ class OddspapiMarketAdapter:
         return quotes
 
     @staticmethod
+    def _append_diagnostic(diagnostics: dict, key: str, payload: dict) -> None:
+        diagnostics.setdefault(key, []).append(payload)
+
+    @staticmethod
     def from_odds_response(
         odds_response: dict,
-        market_catalog: dict | list | None = None,
         bookmaker_catalog: dict | list | None = None,
+        market_mapping_index: MarketMappingIndex | None = None,
+        source: str = "oddspapi",
     ) -> dict:
+        if market_mapping_index is None:
+            raise ValueError("market_mapping_index is required")
+
         payload = odds_response if isinstance(odds_response, dict) else {}
         fixture_id = payload.get("fixtureId")
-
-        market_items = OddspapiMarketAdapter._catalog_items(market_catalog, "markets")
-        market_index = {
-            str(item.get("marketId")): item
-            for item in market_items
-            if item.get("marketId") is not None
+        source_sport_id = payload.get("sportId")
+        diagnostics = {
+            "unmapped_markets": [],
+            "unmapped_outcomes": [],
+            "skipped_missing_handicap": [],
         }
+
         bookmaker_items = OddspapiMarketAdapter._catalog_items(bookmaker_catalog, "bookmakers")
         bookmaker_index = {
             str(item.get("slug") or "").strip().lower(): item
@@ -209,20 +142,87 @@ class OddspapiMarketAdapter:
             for source_market_id, market_data in OddspapiMarketAdapter._entries(markets_data):
                 if market_data.get("marketActive") is False:
                     continue
-                catalog_market = market_index.get(str(source_market_id), {})
-                market_type = catalog_market.get("marketType")
-                period = OddspapiMarketAdapter._period(catalog_market.get("period"))
-                handicap = catalog_market.get("handicap")
-                outcome_index = {
-                    str(outcome.get("outcomeId")): outcome.get("outcomeName")
-                    for outcome in catalog_market.get("outcomes", [])
-                    if isinstance(outcome, dict) and outcome.get("outcomeId") is not None
-                }
+
+                market_resolution = MarketMappingRepository.resolve_market(
+                    market_mapping_index,
+                    source=source,
+                    source_sport_id=source_sport_id,
+                    source_market_id=source_market_id,
+                )
+                normalized_market_id = MarketMappingRepository._normalize_source_id(source_market_id)
+                if not market_resolution.resolved:
+                    OddspapiMarketAdapter._append_diagnostic(
+                        diagnostics,
+                        "unmapped_markets",
+                        {
+                            "sourceMarketId": normalized_market_id,
+                            "sourceSportId": MarketMappingRepository._normalize_source_id(
+                                source_sport_id
+                            ),
+                            "reason": market_resolution.reason,
+                        },
+                    )
+                    continue
+
+                choice_group = None
+                if market_resolution.requires_choice_group:
+                    choice_group = OddspapiMarketAdapter._format_line(
+                        market_resolution.source_handicap
+                    )
+                    if choice_group is None:
+                        OddspapiMarketAdapter._append_diagnostic(
+                            diagnostics,
+                            "skipped_missing_handicap",
+                            {
+                                "sourceMarketId": normalized_market_id,
+                                "canonicalMarketKey": market_resolution.canonical_market_key,
+                                "reason": "missing_required_handicap",
+                            },
+                        )
+                        continue
+
+                market_key = (
+                    market_resolution.canonical_market_name,
+                    market_resolution.canonical_market_group,
+                    market_resolution.canonical_market_period,
+                    choice_group,
+                    bool(market_data.get("isLive", payload.get("isLive", False))),
+                )
+                normalized_market = grouped_markets.setdefault(
+                    market_key,
+                    {
+                        "marketName": market_resolution.canonical_market_name,
+                        "marketGroup": market_resolution.canonical_market_group,
+                        "marketPeriod": market_resolution.canonical_market_period,
+                        "choiceGroup": choice_group,
+                        "isLive": market_key[-1],
+                        "choices": [],
+                    },
+                )
 
                 for source_outcome_id, outcome_data in OddspapiMarketAdapter._entries(
                     market_data.get("outcomes", {})
                 ):
-                    outcome_name = outcome_index.get(str(source_outcome_id))
+                    outcome_resolution = MarketMappingRepository.resolve_outcome(
+                        market_mapping_index,
+                        market_source_mapping_id=market_resolution.mapping_id,
+                        source_outcome_id=source_outcome_id,
+                    )
+                    normalized_outcome_id = MarketMappingRepository._normalize_source_id(
+                        source_outcome_id
+                    )
+                    if not outcome_resolution.resolved:
+                        OddspapiMarketAdapter._append_diagnostic(
+                            diagnostics,
+                            "unmapped_outcomes",
+                            {
+                                "sourceMarketId": normalized_market_id,
+                                "sourceOutcomeId": normalized_outcome_id,
+                                "reason": outcome_resolution.reason,
+                            },
+                        )
+                        continue
+
                     players = outcome_data.get("players")
                     if not players and "price" in outcome_data:
                         players = [outcome_data]
@@ -238,61 +238,16 @@ class OddspapiMarketAdapter:
                         except (TypeError, ValueError):
                             continue
 
-                        bookmaker_outcome_id = player.get("bookmakerOutcomeId")
-                        kind = OddspapiMarketAdapter._market_kind(
-                            market_type,
-                            outcome_name,
-                            bookmaker_outcome_id,
-                        )
-                        if kind is None:
-                            continue
-                        choice_name = OddspapiMarketAdapter._normalized_choice(
-                            kind,
-                            outcome_name,
-                            bookmaker_outcome_id,
-                        )
-                        if choice_name is None:
-                            continue
-
-                        choice_group = OddspapiMarketAdapter._choice_group(
-                            kind,
-                            bookmaker_outcome_id,
-                            handicap,
-                        )
-                        if kind == "moneyline":
-                            market_name, market_group = "Full-time", "1X2"
-                        elif kind == "totals":
-                            market_name, market_group = "Total", "Over/Under"
-                        else:
-                            market_name = market_group = "Asian handicap"
-
-                        market_key = (
-                            market_name,
-                            market_group,
-                            period,
-                            choice_group,
-                            bool(market_data.get("isLive", payload.get("isLive", False))),
-                        )
-                        normalized_market = grouped_markets.setdefault(
-                            market_key,
-                            {
-                                "marketName": market_name,
-                                "marketGroup": market_group,
-                                "marketPeriod": period,
-                                "choiceGroup": choice_group,
-                                "isLive": market_key[-1],
-                                "choices": [],
-                            },
-                        )
+                        choice_name = outcome_resolution.canonical_choice_name
                         if any(choice["name"] == choice_name for choice in normalized_market["choices"]):
                             continue
 
                         choice = {
                             "name": choice_name,
                             "decimalValue": decimal_value,
-                            "sourceMarketId": str(source_market_id),
-                            "sourceOutcomeId": str(source_outcome_id),
-                            "bookmakerOutcomeId": bookmaker_outcome_id,
+                            "sourceMarketId": normalized_market_id,
+                            "sourceOutcomeId": normalized_outcome_id,
+                            "bookmakerOutcomeId": player.get("bookmakerOutcomeId"),
                             "changedAt": player.get("changedAt"),
                             "mainLine": player.get("mainLine"),
                             "limit": player.get("limit"),
@@ -308,6 +263,9 @@ class OddspapiMarketAdapter:
                             )
                         normalized_market["choices"].append(choice)
 
+                if not normalized_market["choices"]:
+                    grouped_markets.pop(market_key, None)
+
             markets = [market for market in grouped_markets.values() if market["choices"]]
             if markets:
                 normalized_bookmakers.append(
@@ -318,4 +276,7 @@ class OddspapiMarketAdapter:
                     }
                 )
 
-        return {"fixtureId": fixture_id, "bookmakers": normalized_bookmakers}
+        result = {"fixtureId": fixture_id, "bookmakers": normalized_bookmakers}
+        if any(diagnostics.values()):
+            result["diagnostics"] = diagnostics
+        return result
