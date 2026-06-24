@@ -540,7 +540,7 @@ class DatabaseManager:
                         bookie_id=betfair_exchange.bookie_id,
                         source="oddsportal",
                         source_bookie_name="Betfair Exchange",
-                        source_bookie_slug="betfair-exchange",
+                        source_bookie_slug="betfair-ex",
                         match_method="manual_alias",
                         confidence=1.000,
                         session=session,

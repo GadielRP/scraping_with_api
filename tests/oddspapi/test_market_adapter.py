@@ -5,6 +5,7 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
     CanonicalMarketResolution,
     CanonicalOutcomeResolution,
     MarketMappingIndex,
+    MarketMappingRepository,
 )
 from modules.odds_ingestion.adapters.oddspapi_market_adapter import OddspapiMarketAdapter
 from modules.odds_ingestion.adapters.sofascore_market_adapter import SofaScoreMarketAdapter
@@ -39,6 +40,26 @@ def response(markets, slug="pinnacle"):
         "fixtureId": "fixture-1",
         "sportId": "10",
         "bookmakerOdds": {slug: {"markets": markets}},
+    }
+
+
+def catalog_item(
+    *,
+    market_type,
+    outcomes,
+    market_name="Sample market",
+    period="fulltime",
+    handicap=0,
+):
+    return {
+        "marketType": market_type,
+        "marketName": market_name,
+        "period": period,
+        "handicap": handicap,
+        "outcomes": [
+            {"outcomeId": index + 1, "outcomeName": outcome_name}
+            for index, outcome_name in enumerate(outcomes)
+        ],
     }
 
 
@@ -182,6 +203,109 @@ def test_mapping_index_resolves_market_and_outcomes():
     assert [choice["name"] for choice in normalized["choices"]] == ["1", "X", "2"]
 
 
+def test_catalog_moneyline_resolves_to_home_away_full_time():
+    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+        catalog_item(
+            market_type="moneyline",
+            market_name="Moneyline",
+            outcomes=["1", "2"],
+        )
+    )
+
+    assert canonical_key == "moneyline_full_time"
+    assert reason == "matched_moneyline"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1") == "1"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "2") == "2"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X") is None
+
+
+def test_catalog_1x2_resolves_to_1x2_full_time():
+    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+        catalog_item(
+            market_type="1x2",
+            market_name="Full Time Result",
+            outcomes=["1", "X", "2"],
+        )
+    )
+
+    assert canonical_key == "1x2_full_time"
+    assert reason == "matched_1x2"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1") == "1"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X") == "X"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "2") == "2"
+
+
+def test_catalog_draw_no_bet_resolves_to_draw_no_bet_full_time():
+    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+        catalog_item(
+            market_type="drawnobet",
+            market_name="Draw No Bet",
+            outcomes=["1", "2"],
+        )
+    )
+
+    assert canonical_key == "draw_no_bet_full_time"
+    assert reason == "matched_draw_no_bet"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1") == "1"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "2") == "2"
+
+
+def test_catalog_double_chance_resolves_to_double_chance_full_time():
+    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+        catalog_item(
+            market_type="doublechance",
+            market_name="Double Chance",
+            outcomes=["1X", "X2", "12"],
+        )
+    )
+
+    assert canonical_key == "double_chance_full_time"
+    assert reason == "matched_double_chance"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1X") == "1X"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X2") == "X2"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "12") == "12"
+
+
+def test_catalog_first_half_total_resolves_to_total_1st_half():
+    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+        catalog_item(
+            market_type="totals",
+            market_name="1st Half Over Under",
+            period="1st half",
+            handicap=0.5,
+            outcomes=["Over", "Under"],
+        )
+    )
+
+    assert canonical_key == "total_1st_half"
+    assert reason == "matched_total_1st_half"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "Over") == "Over"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "Under") == "Under"
+    assert MarketMappingRepository._format_line(0.5) == "0.5"
+
+
+def test_catalog_total_and_asian_handicap_regressions_still_resolve():
+    total_key, _ = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+        catalog_item(
+            market_type="totals",
+            market_name="Over Under Full Time",
+            handicap=2.5,
+            outcomes=["Over", "Under"],
+        )
+    )
+    handicap_key, _ = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+        catalog_item(
+            market_type="spreads",
+            market_name="Asian Handicap",
+            handicap=-1.5,
+            outcomes=["1", "2"],
+        )
+    )
+
+    assert total_key == "total_full_time"
+    assert handicap_key == "asian_handicap_full_time"
+
+
 def test_mapping_choice_group_comes_only_from_mapping_handicap():
     payload = response(
         {
@@ -318,7 +442,7 @@ def test_market_mapping_index_is_required():
         raise AssertionError("Expected market mapping index to be required")
 
 
-def test_inactive_and_missing_price_players_are_ignored_and_choices_are_deduplicated():
+def test_inactive_and_missing_price_players_are_ignored_and_bookmaker_outcome_id_does_not_drive_choice():
     adapted = OddspapiMarketAdapter.from_odds_response(
         response(
             {
@@ -338,7 +462,10 @@ def test_inactive_and_missing_price_players_are_ignored_and_choices_are_deduplic
         ),
     )
     choices = adapted["bookmakers"][0]["markets"][0]["choices"]
-    assert [(choice["name"], choice["decimalValue"]) for choice in choices] == [("1", 1.8)]
+    assert [(choice["name"], choice["decimalValue"]) for choice in choices] == [
+        ("1", 1.8),
+        ("X", 1.9),
+    ]
 
 
 def test_groups_markets_under_each_bookmaker():

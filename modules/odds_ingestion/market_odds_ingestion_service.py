@@ -129,8 +129,14 @@ class MarketOddsIngestionService:
             if not text:
                 continue
             lowered = text.lower()
-            if lowered in {"home/away", "ml", "1x2"}:
+            if lowered == "1x2":
                 normalized.add("1X2")
+            elif lowered in {"home/away", "ml", "moneyline"}:
+                normalized.add("Home/Away")
+            elif lowered in {"over/under", "total", "totals"}:
+                normalized.add("Over/Under")
+            elif lowered in {"asian handicap", "ah", "spread"}:
+                normalized.add("Asian handicap")
             else:
                 normalized.add(text)
         return normalized or None

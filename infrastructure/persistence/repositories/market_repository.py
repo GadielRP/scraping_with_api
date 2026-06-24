@@ -616,7 +616,7 @@ class MarketRepository:
 
                 if betfair_data:
                     source_bookie_name = "Betfair Exchange"
-                    source_bookie_slug = "betfair-exchange"
+                    source_bookie_slug = "betfair-ex"
                     exchange_configs = [
                         {
                             "group": "Back",

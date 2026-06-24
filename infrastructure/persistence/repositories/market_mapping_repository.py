@@ -29,6 +29,36 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         "enabled_for_trajectory": True,
         "display_order": 10,
     },
+    "moneyline_full_time": {
+        "canonical_market_name": "Full time",
+        "canonical_market_group": "Home/Away",
+        "canonical_market_period": "Full-time",
+        "market_family": "side",
+        "requires_choice_group": False,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": True,
+        "display_order": 11,
+    },
+    "moneyline_1st_half": {
+        "canonical_market_name": "1st half",
+        "canonical_market_group": "Home/Away",
+        "canonical_market_period": "1st Half",
+        "market_family": "side",
+        "requires_choice_group": False,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": True,
+        "display_order": 12,
+    },
+    "1x2_1st_half": {
+        "canonical_market_name": "1st half",
+        "canonical_market_group": "1X2",
+        "canonical_market_period": "1st Half",
+        "market_family": "side",
+        "requires_choice_group": False,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": True,
+        "display_order": 13,
+    },
     "total_full_time": {
         "canonical_market_name": "Total",
         "canonical_market_group": "Over/Under",
@@ -39,6 +69,16 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         "enabled_for_trajectory": True,
         "display_order": 20,
     },
+    "total_1st_half": {
+        "canonical_market_name": "Total",
+        "canonical_market_group": "Over/Under",
+        "canonical_market_period": "1st Half",
+        "market_family": "total",
+        "requires_choice_group": True,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": True,
+        "display_order": 21,
+    },
     "asian_handicap_full_time": {
         "canonical_market_name": "Asian handicap",
         "canonical_market_group": "Asian handicap",
@@ -48,6 +88,96 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         "enabled_for_ingestion": True,
         "enabled_for_trajectory": True,
         "display_order": 30,
+    },
+    "asian_handicap_1st_half": {
+        "canonical_market_name": "Asian handicap",
+        "canonical_market_group": "Asian handicap",
+        "canonical_market_period": "1st Half",
+        "market_family": "spread",
+        "requires_choice_group": True,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": True,
+        "display_order": 31,
+    },
+    "draw_no_bet_full_time": {
+        "canonical_market_name": "Draw no bet",
+        "canonical_market_group": "Draw no bet",
+        "canonical_market_period": "Full-time",
+        "market_family": "side",
+        "requires_choice_group": False,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": False,
+        "display_order": 40,
+    },
+    "double_chance_full_time": {
+        "canonical_market_name": "Double chance",
+        "canonical_market_group": "Double chance",
+        "canonical_market_period": "Full-time",
+        "market_family": "side_combo",
+        "requires_choice_group": False,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": False,
+        "display_order": 41,
+    },
+    "both_teams_to_score_full_time": {
+        "canonical_market_name": "Both teams to score",
+        "canonical_market_group": "Both teams to score",
+        "canonical_market_period": "Full-time",
+        "market_family": "special",
+        "requires_choice_group": False,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": False,
+        "display_order": 42,
+    },
+    "european_handicap_full_time": {
+        "canonical_market_name": "European handicap",
+        "canonical_market_group": "European handicap",
+        "canonical_market_period": "Full-time",
+        "market_family": "spread_3way",
+        "requires_choice_group": True,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": False,
+        "display_order": 43,
+    },
+    "team_total_home_full_time": {
+        "canonical_market_name": "Team 1 total",
+        "canonical_market_group": "Over/Under Team 1",
+        "canonical_market_period": "Full-time",
+        "market_family": "team_total",
+        "requires_choice_group": True,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": True,
+        "display_order": 50,
+    },
+    "team_total_away_full_time": {
+        "canonical_market_name": "Team 2 total",
+        "canonical_market_group": "Over/Under Team 2",
+        "canonical_market_period": "Full-time",
+        "market_family": "team_total",
+        "requires_choice_group": True,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": True,
+        "display_order": 51,
+    },
+    "first_goal_full_time": {
+        "canonical_market_name": "First goal",
+        "canonical_market_group": "First goal",
+        "canonical_market_period": "Full-time",
+        "market_family": "special",
+        "requires_choice_group": False,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": False,
+        "display_order": 60,
+    },
+    "last_goal_full_time": {
+        "canonical_market_name": "Last goal",
+        "canonical_market_group": "Last goal",
+        "canonical_market_period": "Full-time",
+        "market_family": "special",
+        "requires_choice_group": False,
+        "enabled_for_ingestion": True,
+        "enabled_for_trajectory": False,
+        "display_order": 61,
     },
 }
 
@@ -81,8 +211,10 @@ class MarketMappingIndex:
 
 
 class MarketMappingRepository:
-    FULL_TIME_PERIOD_ALIASES = {"fulltime", "full-time", "ft", "match"}
-    MONEYLINE_TYPES = {"1x2", "moneyline", "homeaway", "matchwinner", "winner"}
+    FULL_TIME_PERIOD_ALIASES = {"fulltime", "ft", "match", "result", "full-time"}
+    FIRST_HALF_PERIOD_ALIASES = {"1sthalf", "firsthalf"}
+    SECOND_HALF_PERIOD_ALIASES = {"2ndhalf", "secondhalf"}
+    TWO_WAY_MARKET_TYPES = {"moneyline", "homeaway", "matchwinner", "winner"}
 
     @staticmethod
     def _normalize_source(source) -> str:
@@ -134,6 +266,80 @@ class MarketMappingRepository:
         )
 
     @staticmethod
+    def _canonical_key(base: str, period_suffix: str) -> str:
+        return f"{base}_{period_suffix}"
+
+    @staticmethod
+    def _resolve_canonical_period(item: dict) -> tuple[str | None, str | None]:
+        period_compact = MarketMappingRepository._normalized_compact(item.get("period"))
+        market_name_compact = MarketMappingRepository._normalized_compact(item.get("marketName"))
+
+        if period_compact in MarketMappingRepository.FULL_TIME_PERIOD_ALIASES:
+            return "Full-time", "full_time"
+
+        if period_compact in MarketMappingRepository.FIRST_HALF_PERIOD_ALIASES:
+            return "1st Half", "1st_half"
+
+        if period_compact == "p1":
+            if "1sthalf" in market_name_compact or "firsthalf" in market_name_compact:
+                return "1st Half", "1st_half"
+            return None, "unsupported_period_context"
+
+        if period_compact in MarketMappingRepository.SECOND_HALF_PERIOD_ALIASES:
+            return None, "unsupported_period"
+
+        if period_compact == "p2":
+            if "2ndhalf" in market_name_compact or "secondhalf" in market_name_compact:
+                return None, "unsupported_period"
+            return None, "unsupported_period_context"
+
+        return None, "unsupported_period"
+
+    @staticmethod
+    def _outcome_role(source_outcome_name) -> str | None:
+        token = MarketMappingRepository._normalized_token(source_outcome_name)
+        return {
+            "1": "1",
+            "home": "1",
+            "x": "X",
+            "draw": "X",
+            "2": "2",
+            "away": "2",
+            "over": "Over",
+            "under": "Under",
+            "yes": "Yes",
+            "no": "No",
+            "1x": "1X",
+            "x2": "X2",
+            "12": "12",
+            "nogoal": "No Goal",
+            "no goal": "No Goal",
+        }.get(token)
+
+    @staticmethod
+    def _outcome_roles(item: dict) -> set[str]:
+        roles = set()
+        for outcome in item.get("outcomes", []):
+            if not isinstance(outcome, dict):
+                continue
+            role = MarketMappingRepository._outcome_role(outcome.get("outcomeName"))
+            if role is not None:
+                roles.add(role)
+        return roles
+
+    @staticmethod
+    def _is_two_way_side_market(outcome_roles: set[str]) -> bool:
+        return outcome_roles == {"1", "2"}
+
+    @staticmethod
+    def _is_three_way_side_market(outcome_roles: set[str]) -> bool:
+        return outcome_roles == {"1", "X", "2"}
+
+    @staticmethod
+    def _is_total_market(outcome_roles: set[str]) -> bool:
+        return outcome_roles == {"Over", "Under"}
+
+    @staticmethod
     def seed_canonical_market_types(session: Optional[Session] = None) -> list[CanonicalMarketType]:
         def _seed(active_session: Session) -> list[CanonicalMarketType]:
             seeded = []
@@ -160,36 +366,88 @@ class MarketMappingRepository:
         if bool(item.get("playerProp")):
             return None, "player_prop_unsupported"
 
-        period_compact = MarketMappingRepository._normalized_compact(item.get("period"))
-        if period_compact not in MarketMappingRepository.FULL_TIME_PERIOD_ALIASES:
-            return None, "unsupported_period"
+        canonical_period, period_suffix_or_reason = MarketMappingRepository._resolve_canonical_period(item)
+        if canonical_period is None:
+            return None, period_suffix_or_reason or "unsupported_period"
 
+        period_suffix = period_suffix_or_reason
         market_type = MarketMappingRepository._normalized_compact(item.get("marketType"))
-        market_name = MarketMappingRepository._normalized_token(item.get("marketName"))
-        outcomes = [
-            MarketMappingRepository._normalized_token(outcome.get("outcomeName"))
-            for outcome in item.get("outcomes", [])
-            if isinstance(outcome, dict)
-        ]
-        outcome_set = {outcome for outcome in outcomes if outcome}
+        market_name = MarketMappingRepository._normalized_compact(item.get("marketName"))
+        outcome_roles = MarketMappingRepository._outcome_roles(item)
 
-        if market_type in MarketMappingRepository.MONEYLINE_TYPES:
-            if outcome_set and outcome_set.issubset({"1", "x", "2", "home", "draw", "away"}):
-                return "1x2_full_time", "matched_moneyline"
-            return None, "unsupported_moneyline_outcomes"
+        if market_type == "1x2":
+            if not MarketMappingRepository._is_three_way_side_market(outcome_roles):
+                return None, "unsupported_1x2_outcomes"
+            return MarketMappingRepository._canonical_key("1x2", period_suffix), "matched_1x2"
 
-        if "total" in market_type or "over under" in market_name:
-            if {"over", "under"}.issubset(outcome_set):
-                return "total_full_time", "matched_totals"
-            return None, "unsupported_total_outcomes"
+        if market_type == "moneyline":
+            if not MarketMappingRepository._is_two_way_side_market(outcome_roles):
+                return None, "unsupported_moneyline_outcomes"
+            return MarketMappingRepository._canonical_key("moneyline", period_suffix), "matched_moneyline"
 
-        if (
-            "spread" in market_type
-            or "handicap" in market_type
-            or "handicap" in market_name
-        ):
-            if outcome_set and outcome_set.issubset({"1", "2", "home", "away"}):
-                return "asian_handicap_full_time", "matched_spread"
+        if market_type in MarketMappingRepository.TWO_WAY_MARKET_TYPES:
+            if MarketMappingRepository._is_two_way_side_market(outcome_roles):
+                return MarketMappingRepository._canonical_key("moneyline", period_suffix), "matched_two_way_side_market"
+            if MarketMappingRepository._is_three_way_side_market(outcome_roles):
+                return MarketMappingRepository._canonical_key("1x2", period_suffix), "matched_three_way_side_market"
+            return None, "unsupported_side_market_outcomes"
+
+        if market_type == "drawnobet":
+            if canonical_period != "Full-time":
+                return None, "unsupported_draw_no_bet_period"
+            if not MarketMappingRepository._is_two_way_side_market(outcome_roles):
+                return None, "unsupported_draw_no_bet_outcomes"
+            return "draw_no_bet_full_time", "matched_draw_no_bet"
+
+        if market_type == "doublechance":
+            if canonical_period != "Full-time":
+                return None, "unsupported_double_chance_period"
+            if outcome_roles != {"1X", "X2", "12"}:
+                return None, "unsupported_double_chance_outcomes"
+            return "double_chance_full_time", "matched_double_chance"
+
+        if market_type == "bothteamsscore":
+            if canonical_period != "Full-time":
+                return None, "unsupported_btts_period"
+            if outcome_roles != {"Yes", "No"}:
+                return None, "unsupported_btts_outcomes"
+            return "both_teams_to_score_full_time", "matched_btts"
+
+        if market_type in {"firstteamtoscore", "firstgoal"} or "firstteamtoscore" in market_name or "firstgoal" in market_name:
+            if canonical_period != "Full-time":
+                return None, "unsupported_first_goal_period"
+            if outcome_roles == {"1", "No Goal", "2"}:
+                return "first_goal_full_time", "matched_first_goal"
+            return None, "unsupported_first_goal_outcomes"
+
+        if market_type in {"lastteamtoscore", "lastgoal"} or "lastteamtoscore" in market_name or "lastgoal" in market_name:
+            if canonical_period != "Full-time":
+                return None, "unsupported_last_goal_period"
+            if outcome_roles == {"1", "No Goal", "2"}:
+                return "last_goal_full_time", "matched_last_goal"
+            return None, "unsupported_last_goal_outcomes"
+
+        if "total" in market_type or "overunder" in market_name:
+            if not MarketMappingRepository._is_total_market(outcome_roles):
+                return None, "unsupported_total_outcomes"
+            if canonical_period == "1st Half":
+                return "total_1st_half", "matched_total_1st_half"
+            if market_type == "teamtotalsteam1":
+                return "team_total_home_full_time", "matched_team_total_home"
+            if market_type == "teamtotalsteam2":
+                return "team_total_away_full_time", "matched_team_total_away"
+            return "total_full_time", "matched_total_full_time"
+
+        if "spread" in market_type or "handicap" in market_type or "handicap" in market_name:
+            if MarketMappingRepository._is_three_way_side_market(outcome_roles):
+                if canonical_period != "Full-time":
+                    return None, "unsupported_european_handicap_period"
+                return "european_handicap_full_time", "matched_european_handicap"
+            if MarketMappingRepository._is_two_way_side_market(outcome_roles):
+                return MarketMappingRepository._canonical_key(
+                    "asian_handicap",
+                    period_suffix,
+                ), "matched_asian_handicap"
             return None, "unsupported_spread_outcomes"
 
         return None, "unsupported_market_type"
@@ -199,25 +457,30 @@ class MarketMappingRepository:
         canonical_market_key: str,
         source_outcome_name,
     ) -> str | None:
-        token = MarketMappingRepository._normalized_token(source_outcome_name)
-        if canonical_market_key == "1x2_full_time":
-            return {
-                "1": "1",
-                "home": "1",
-                "x": "X",
-                "draw": "X",
-                "2": "2",
-                "away": "2",
-            }.get(token)
-        if canonical_market_key == "total_full_time":
-            return {"over": "Over", "under": "Under"}.get(token)
-        if canonical_market_key == "asian_handicap_full_time":
-            return {
-                "1": "1",
-                "home": "1",
-                "2": "2",
-                "away": "2",
-            }.get(token)
+        role = MarketMappingRepository._outcome_role(source_outcome_name)
+        if canonical_market_key in {"1x2_full_time", "1x2_1st_half", "european_handicap_full_time"}:
+            return role if role in {"1", "X", "2"} else None
+        if canonical_market_key in {
+            "moneyline_full_time",
+            "moneyline_1st_half",
+            "asian_handicap_full_time",
+            "asian_handicap_1st_half",
+            "draw_no_bet_full_time",
+        }:
+            return role if role in {"1", "2"} else None
+        if canonical_market_key in {
+            "total_full_time",
+            "total_1st_half",
+            "team_total_home_full_time",
+            "team_total_away_full_time",
+        }:
+            return role if role in {"Over", "Under"} else None
+        if canonical_market_key == "double_chance_full_time":
+            return role if role in {"1X", "X2", "12"} else None
+        if canonical_market_key == "both_teams_to_score_full_time":
+            return role if role in {"Yes", "No"} else None
+        if canonical_market_key in {"first_goal_full_time", "last_goal_full_time"}:
+            return role if role in {"1", "No Goal", "2"} else None
         return None
 
     @staticmethod

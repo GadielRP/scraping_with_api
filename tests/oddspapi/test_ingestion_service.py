@@ -104,12 +104,12 @@ def test_filter_normalized_oddspapi_response_applies_cli_aliases():
                         "choices": [{"name": "1", "decimalValue": 1.9}],
                     },
                     {
-                        "marketName": "Total",
-                        "marketGroup": "Over/Under",
+                        "marketName": "Full time",
+                        "marketGroup": "Home/Away",
                         "marketPeriod": "Full-time",
                         "choiceGroup": None,
                         "isLive": False,
-                        "choices": [{"name": "Over", "decimalValue": 1.9}],
+                        "choices": [{"name": "1", "decimalValue": 1.9}],
                     },
                 ],
             }
@@ -118,12 +118,12 @@ def test_filter_normalized_oddspapi_response_applies_cli_aliases():
 
     filtered = MarketOddsIngestionService.filter_normalized_oddspapi_response(
         adapted,
-        allowed_market_groups={"Home/Away"},
+        allowed_market_groups={"ml"},
         allowed_market_periods={"Match"},
     )
 
     assert [bookmaker["slug"] for bookmaker in filtered["bookmakers"]] == ["pinnacle"]
-    assert [market["marketGroup"] for market in filtered["bookmakers"][0]["markets"]] == ["1X2"]
+    assert [market["marketGroup"] for market in filtered["bookmakers"][0]["markets"]] == ["Home/Away"]
     assert [market["marketPeriod"] for market in filtered["bookmakers"][0]["markets"]] == ["Full-time"]
 
 
