@@ -20,6 +20,10 @@ Bets-Hoja24.csv
 exports/
 testjson.py
 
+markets_detailed_query.csv
+markets_detailed_query_after.csv
+
+
 test_proxy.py
 tests/
 
@@ -93,6 +97,7 @@ test_*.py
 # Phase 1 OddsPapi offline ingestion verification
 !tests/
 tests/*
+!tests/test_backfill_sofascore_canonical_markets.py
 !tests/pillars/
 tests/pillars/*.pyc
 !tests/pillars/test_odds_trajectory_context.py
