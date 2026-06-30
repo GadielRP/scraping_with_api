@@ -22,6 +22,8 @@ testjson.py
 
 markets_detailed_query.csv
 markets_detailed_query_after.csv
+audit_recent_sofascore_odds_order.py
+choice_names_outcome_diagnostic.py
 
 
 test_proxy.py
