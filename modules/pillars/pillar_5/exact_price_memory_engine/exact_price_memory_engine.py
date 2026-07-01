@@ -337,11 +337,11 @@ def _extract_current_price_set(
                                 _debug_line("    - Cuota HOME o AWAY es nula en el minuto %s. Omitiendo.", CURRENT_TARGET_MINUTE)
                             continue
 
-                        draw_choice = bookie.choices.get("X")
+                        draw_choice = bookie.choices.get("x")
                         current_draw_odds = _extract_price_from_choice(draw_choice)
                         has_draw = current_draw_odds is not None
                         if debug_mode:
-                            _debug_line("    - Cuota DRAW ('X') extraída para el minuto %s: %s (has_draw=%s)",
+                            _debug_line("    - Cuota DRAW ('x') extraída para el minuto %s: %s (has_draw=%s)",
                                         CURRENT_TARGET_MINUTE, current_draw_odds, has_draw)
 
                         trace.update(
@@ -659,4 +659,3 @@ def calculate_p5_exact_price_memory_engine(
         serialized_result.get("sample_size"),
     )
     return serialized_result
-

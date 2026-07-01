@@ -70,11 +70,11 @@ def mapped_index(
     source_handicap=None,
     requires_choice_group=False,
     canonical_market_key="1x2_full_time",
-    canonical_market_name="Full-time",
+    canonical_market_name="1X2 Full Time",
     canonical_market_group="1X2",
-    canonical_market_period="Full-time",
+    canonical_market_period="Full Time",
     market_family="side",
-    outcome_pairs=(("101", "1"), ("102", "X"), ("103", "2")),
+    outcome_pairs=(("101", "1"), ("102", "x"), ("103", "2")),
 ):
     mapping_id = 1
     return MarketMappingIndex(
@@ -116,12 +116,12 @@ def test_moneyline_home_draw_away_and_bookmaker_catalog():
         bookmaker_catalog=[{"slug": "pinnacle", "bookmakerName": "Pinnacle Sports"}],
         market_mapping_index=mapped_index(
             source_market_id="100",
-            outcome_pairs=(("1", "1"), ("2", "X"), ("3", "2")),
+            outcome_pairs=(("1", "1"), ("2", "x"), ("3", "2")),
         ),
     )
     bookmaker = adapted["bookmakers"][0]
     assert bookmaker["name"] == "Pinnacle Sports"
-    assert [choice["name"] for choice in bookmaker["markets"][0]["choices"]] == ["1", "X", "2"]
+    assert [choice["name"] for choice in bookmaker["markets"][0]["choices"]] == ["1", "x", "2"]
 
 
 def test_moneyline_without_draw_is_kept():
@@ -145,17 +145,17 @@ def test_totals_are_grouped_by_line_without_catalog():
             source_market_id="200",
             requires_choice_group=True,
             source_handicap="62.5",
-            canonical_market_key="total_full_time",
-            canonical_market_name="Total",
+            canonical_market_key="over_under_full_time",
+            canonical_market_name="Over/Under Full Time",
             canonical_market_group="Over/Under",
             market_family="total",
-            outcome_pairs=(("1", "Over"), ("2", "Under")),
+            outcome_pairs=(("1", "over"), ("2", "under")),
         ),
     )
     normalized = adapted["bookmakers"][0]["markets"][0]
     assert normalized["marketGroup"] == "Over/Under"
     assert normalized["choiceGroup"] == "62.5"
-    assert [choice["name"] for choice in normalized["choices"]] == ["Over", "Under"]
+    assert [choice["name"] for choice in normalized["choices"]] == ["over", "under"]
 
 
 def test_spreads_are_normalized_without_catalog():
@@ -166,14 +166,14 @@ def test_spreads_are_normalized_without_catalog():
             requires_choice_group=True,
             source_handicap="-3.5",
             canonical_market_key="asian_handicap_full_time",
-            canonical_market_name="Asian handicap",
-            canonical_market_group="Asian handicap",
+            canonical_market_name="Asian Handicap Full Time",
+            canonical_market_group="Asian Handicap",
             market_family="spread",
             outcome_pairs=(("1", "1"), ("2", "2")),
         ),
     )
     normalized = adapted["bookmakers"][0]["markets"][0]
-    assert normalized["marketGroup"] == "Asian handicap"
+    assert normalized["marketGroup"] == "Asian Handicap"
     assert normalized["choiceGroup"] == "-3.5"
     assert [choice["name"] for choice in normalized["choices"]] == ["1", "2"]
 
@@ -197,10 +197,10 @@ def test_mapping_index_resolves_market_and_outcomes():
     )
 
     normalized = adapted["bookmakers"][0]["markets"][0]
-    assert normalized["marketName"] == "Full-time"
+    assert normalized["marketName"] == "1X2 Full Time"
     assert normalized["marketGroup"] == "1X2"
-    assert normalized["marketPeriod"] == "Full-time"
-    assert [choice["name"] for choice in normalized["choices"]] == ["1", "X", "2"]
+    assert normalized["marketPeriod"] == "Full Time"
+    assert [choice["name"] for choice in normalized["choices"]] == ["1", "x", "2"]
 
 
 def test_catalog_moneyline_resolves_to_home_away_full_time():
@@ -212,7 +212,7 @@ def test_catalog_moneyline_resolves_to_home_away_full_time():
         )
     )
 
-    assert canonical_key == "moneyline_full_time"
+    assert canonical_key == "home_away_full_time"
     assert reason == "matched_moneyline"
     assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1") == "1"
     assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "2") == "2"
@@ -231,7 +231,7 @@ def test_catalog_1x2_resolves_to_1x2_full_time():
     assert canonical_key == "1x2_full_time"
     assert reason == "matched_1x2"
     assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1") == "1"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X") == "X"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X") == "x"
     assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "2") == "2"
 
 
@@ -261,12 +261,12 @@ def test_catalog_double_chance_resolves_to_double_chance_full_time():
 
     assert canonical_key == "double_chance_full_time"
     assert reason == "matched_double_chance"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1X") == "1X"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X2") == "X2"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1X") == "1x"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X2") == "x2"
     assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "12") == "12"
 
 
-def test_catalog_first_half_total_resolves_to_total_1st_half():
+def test_catalog_first_half_total_resolves_to_over_under_1st_half():
     canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
         catalog_item(
             market_type="totals",
@@ -277,10 +277,10 @@ def test_catalog_first_half_total_resolves_to_total_1st_half():
         )
     )
 
-    assert canonical_key == "total_1st_half"
-    assert reason == "matched_total_1st_half"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "Over") == "Over"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "Under") == "Under"
+    assert canonical_key == "over_under_1st_half"
+    assert reason == "matched_over_under_1st_half"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "Over") == "over"
+    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "Under") == "under"
     assert MarketMappingRepository._format_line(0.5) == "0.5"
 
 
@@ -302,7 +302,7 @@ def test_catalog_total_and_asian_handicap_regressions_still_resolve():
         )
     )
 
-    assert total_key == "total_full_time"
+    assert total_key == "over_under_full_time"
     assert handicap_key == "asian_handicap_full_time"
 
 
@@ -324,17 +324,17 @@ def test_mapping_choice_group_comes_only_from_mapping_handicap():
             source_market_id="1010",
             requires_choice_group=True,
             source_handicap="0.5",
-            canonical_market_key="total_full_time",
-            canonical_market_name="Total",
+            canonical_market_key="over_under_full_time",
+            canonical_market_name="Over/Under Full Time",
             canonical_market_group="Over/Under",
             market_family="total",
-            outcome_pairs=(("1010", "Over"), ("1011", "Under")),
+            outcome_pairs=(("1010", "over"), ("1011", "under")),
         ),
     )
 
     normalized = adapted["bookmakers"][0]["markets"][0]
     assert normalized["choiceGroup"] == "0.5"
-    assert [choice["name"] for choice in normalized["choices"]] == ["Over", "Under"]
+    assert [choice["name"] for choice in normalized["choices"]] == ["over", "under"]
 
 
 def test_mapping_mode_does_not_use_bookmaker_outcome_id_to_override_line():
@@ -355,11 +355,11 @@ def test_mapping_mode_does_not_use_bookmaker_outcome_id_to_override_line():
             source_market_id="1010",
             requires_choice_group=True,
             source_handicap="0",
-            canonical_market_key="total_full_time",
-            canonical_market_name="Total",
+            canonical_market_key="over_under_full_time",
+            canonical_market_name="Over/Under Full Time",
             canonical_market_group="Over/Under",
             market_family="total",
-            outcome_pairs=(("1010", "Over"), ("1011", "Under")),
+            outcome_pairs=(("1010", "over"), ("1011", "under")),
         ),
     )
 
@@ -419,11 +419,11 @@ def test_mapping_mode_requires_handicap_when_mapping_demands_line():
             source_market_id="1010",
             requires_choice_group=True,
             source_handicap=None,
-            canonical_market_key="total_full_time",
-            canonical_market_name="Total",
+            canonical_market_key="over_under_full_time",
+            canonical_market_name="Over/Under Full Time",
             canonical_market_group="Over/Under",
             market_family="total",
-            outcome_pairs=(("1010", "Over"), ("1011", "Under")),
+            outcome_pairs=(("1010", "over"), ("1011", "under")),
         ),
     )
 
@@ -458,13 +458,13 @@ def test_inactive_and_missing_price_players_are_ignored_and_bookmaker_outcome_id
         ),
         market_mapping_index=mapped_index(
             source_market_id="100",
-            outcome_pairs=(("1", "1"), ("2", "X"), ("3", "2")),
+            outcome_pairs=(("1", "1"), ("2", "x"), ("3", "2")),
         ),
     )
     choices = adapted["bookmakers"][0]["markets"][0]["choices"]
     assert [(choice["name"], choice["decimalValue"]) for choice in choices] == [
         ("1", 1.8),
-        ("X", 1.9),
+        ("x", 1.9),
     ]
 
 
@@ -484,9 +484,9 @@ def test_groups_markets_under_each_bookmaker():
                 resolved=True,
                 mapping_id=1,
                 canonical_market_key="1x2_full_time",
-                canonical_market_name="Full-time",
+                canonical_market_name="1X2 Full Time",
                 canonical_market_group="1X2",
-                canonical_market_period="Full-time",
+                canonical_market_period="Full Time",
                 market_family="side",
                 requires_choice_group=False,
                 source_handicap=None,
@@ -496,9 +496,9 @@ def test_groups_markets_under_each_bookmaker():
                 resolved=True,
                 mapping_id=2,
                 canonical_market_key="1x2_full_time",
-                canonical_market_name="Full-time",
+                canonical_market_name="1X2 Full Time",
                 canonical_market_group="1X2",
-                canonical_market_period="Full-time",
+                canonical_market_period="Full Time",
                 market_family="side",
                 requires_choice_group=False,
                 source_handicap=None,
@@ -676,7 +676,7 @@ def test_sofascore_adapter_accepts_market_dict_containers():
             "market-a": {
                 "marketName": "Special market",
                 "marketGroup": "Special market",
-                "marketPeriod": "Full-time",
+                "marketPeriod": "Full Time",
                 "choices": [
                     {
                         "name": "(2.5) Team A",
@@ -709,7 +709,7 @@ def test_sofascore_adapter_maps_parenthesized_team_names_to_1_and_2():
             "market-a": {
                 "marketName": "Asian handicap",
                 "marketGroup": "Asian Handicap",
-                "marketPeriod": "Full-time",
+                "marketPeriod": "Full Time",
                 "choices": [
                     {
                         "name": "(1.5) IFK Mariehamn",

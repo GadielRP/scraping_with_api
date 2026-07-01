@@ -175,7 +175,7 @@ class OddsTrajectoryContext:
 
     def filter_by_market_period(
         self,
-        allowed_periods: set[str] | list[str] | tuple[str, ...] = ("Full-time",),
+        allowed_periods: set[str] | list[str] | tuple[str, ...] = ("Full Time",),
     ) -> OddsTrajectoryContext:
         allowed_set = set(allowed_periods)
         filtered_markets = _filter_market_tree(

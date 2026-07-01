@@ -214,7 +214,7 @@ def _format_oddsportal_section(op_markets: List[Dict], event_data: Dict = None, 
         
     for (market_group, market_period), markets in sorted(grouped_markets.items()):
         if market_group == '1X2':
-            display_group = "Full time" if market_period == 'Full-time' else market_period
+            display_group = "Full Time" if market_period == 'Full Time' else market_period
         else:
             display_group = f"{market_group} - {market_period}"
             

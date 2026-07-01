@@ -564,7 +564,7 @@ class DatabaseManager:
             logger.error(traceback.format_exc())
 
     def _migrate_market_period_not_null(self):
-        """Backfill market_period and enforce a canonical Full-time default when supported by the dialect."""
+        """Backfill market_period and enforce the canonical Full Time default when supported by the dialect."""
         try:
             from sqlalchemy import inspect
 
@@ -580,14 +580,14 @@ class DatabaseManager:
             with self.get_session() as session:
                 session.execute(text("""
                     UPDATE markets
-                    SET market_period = 'Full-time'
+                    SET market_period = 'Full Time'
                     WHERE market_period IS NULL OR TRIM(market_period) = ''
                 """))
 
                 if self.engine.dialect.name == 'postgresql':
                     try:
                         session.execute(text(
-                            "ALTER TABLE markets ALTER COLUMN market_period SET DEFAULT 'Full-time'"
+                            "ALTER TABLE markets ALTER COLUMN market_period SET DEFAULT 'Full Time'"
                         ))
                     except Exception as exc:
                         logger.debug("Could not set markets.market_period default: %s", exc)

@@ -381,7 +381,7 @@ class Market(Base):
     """
     Stores individual betting markets for an event.
     
-    Each event can have multiple markets (Full time, Match goals 2.5, Asian handicap, etc.)
+    Each event can have multiple canonical markets (1X2 Full Time, Over/Under Full Time, Asian Handicap Full Time, etc.)
     Each market belongs to a specific bookie.
     Each market has multiple choices stored in MarketChoice table.
     """
@@ -395,9 +395,9 @@ class Market(Base):
     bookie_id = Column(Integer, ForeignKey('bookies.bookie_id', ondelete='CASCADE'), nullable=False)
     
     # Market description
-    market_name = Column(Text, nullable=False)  # "Full time", "Match goals", "Asian handicap"
-    market_group = Column(Text)  # "1X2", "Match goals", "Asian Handicap"
-    market_period = Column(Text, nullable=False, default="Full-time")  # "Full-time", "1st half"
+    market_name = Column(Text, nullable=False)  # "Home/Away Full Time", "Over/Under Full Time"
+    market_group = Column(Text)  # "1X2", "Home/Away", "Over/Under", "Asian Handicap"
+    market_period = Column(Text, nullable=False, default="Full Time")  # "Full Time", "1st Half"
     choice_group = Column(Text)  # For Over/Under: "2.5", "3.5", etc. NULL for non-line markets
     is_live = Column(Boolean, default=False, nullable=False)
     
@@ -425,7 +425,7 @@ class MarketChoice(Base):
     """
     Stores individual odds choices for a market.
     
-    Each market has multiple choices (e.g., "1", "X", "2" for Full time, or "Over", "Under" for Match goals).
+    Each market has canonical choices (e.g., "1", "x", "2" or "over", "under").
     """
     __tablename__ = 'market_choices'
     
@@ -436,7 +436,7 @@ class MarketChoice(Base):
     market_id = Column(Integer, ForeignKey('markets.market_id', ondelete='CASCADE'), nullable=False)
     
     # Choice identification
-    choice_name = Column(Text, nullable=False)  # "1", "X", "2", "Over", "Under", team name, etc.
+    choice_name = Column(Text, nullable=False)  # "1", "x", "2", "over", "under", "yes", "no", "no_goal"
     
     # Odds values (stored as decimals for easy math)
     initial_odds = Column(Numeric(8, 3))  # Opening odds (decimal, e.g., 1.53)
@@ -607,7 +607,7 @@ def build_dual_process_event_odds_view_sql(markets, periods) -> str:
               OR m.market_group IN ({market_values})
           )
           AND m.market_period IN ({period_values})
-          AND mc.choice_name IN ('1', 'X', '2')
+          AND mc.choice_name IN ('1', 'x', '2')
     ),
     pivoted AS (
         SELECT
@@ -620,8 +620,8 @@ def build_dual_process_event_odds_view_sql(markets, periods) -> str:
             collected_at,
             MAX(CASE WHEN choice_name = '1' THEN initial_odds END) AS one_open,
             MAX(CASE WHEN choice_name = '1' THEN current_odds END) AS one_final,
-            MAX(CASE WHEN choice_name = 'X' THEN initial_odds END) AS x_open,
-            MAX(CASE WHEN choice_name = 'X' THEN current_odds END) AS x_final,
+            MAX(CASE WHEN choice_name = 'x' THEN initial_odds END) AS x_open,
+            MAX(CASE WHEN choice_name = 'x' THEN current_odds END) AS x_final,
             MAX(CASE WHEN choice_name = '2' THEN initial_odds END) AS two_open,
             MAX(CASE WHEN choice_name = '2' THEN current_odds END) AS two_final,
             MAX(latest_snapshot_at) AS last_sync_at

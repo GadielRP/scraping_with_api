@@ -420,7 +420,7 @@ class MarketMappingRepository:
         market_name_compact = MarketMappingRepository._normalized_compact(item.get("marketName"))
 
         if period_compact in MarketMappingRepository.FULL_TIME_PERIOD_ALIASES:
-            return "Full-time", "full_time"
+            return "Full Time", "full_time"
 
         if period_compact in MarketMappingRepository.FIRST_QUARTER_PERIOD_ALIASES:
             return "1st Quarter", "1st_quarter"
@@ -438,7 +438,7 @@ class MarketMappingRepository:
             return "1st Period", "1st_period"
 
         if period_compact in MarketMappingRepository.EXTRA_TIME_PERIOD_ALIASES:
-            return "Extra time", "extra_time"
+            return "Extra Time", "extra_time"
 
         if period_compact == "p1":
             if "1sthalf" in market_name_compact or "firsthalf" in market_name_compact:
@@ -461,19 +461,19 @@ class MarketMappingRepository:
         return {
             "1": "1",
             "home": "1",
-            "x": "X",
-            "draw": "X",
+            "x": "x",
+            "draw": "x",
             "2": "2",
             "away": "2",
-            "over": "Over",
-            "under": "Under",
-            "yes": "Yes",
-            "no": "No",
-            "1x": "1X",
-            "x2": "X2",
+            "over": "over",
+            "under": "under",
+            "yes": "yes",
+            "no": "no",
+            "1x": "1x",
+            "x2": "x2",
             "12": "12",
-            "nogoal": "No Goal",
-            "no goal": "No Goal",
+            "nogoal": "no_goal",
+            "no goal": "no_goal",
         }.get(token)
 
     @staticmethod
@@ -493,11 +493,11 @@ class MarketMappingRepository:
 
     @staticmethod
     def _is_three_way_side_market(outcome_roles: set[str]) -> bool:
-        return outcome_roles == {"1", "X", "2"}
+        return outcome_roles == {"1", "x", "2"}
 
     @staticmethod
     def _is_total_market(outcome_roles: set[str]) -> bool:
-        return outcome_roles == {"Over", "Under"}
+        return outcome_roles == {"over", "under"}
 
     @staticmethod
     def seed_canonical_market_types(session: Optional[Session] = None) -> list[CanonicalMarketType]:
@@ -543,47 +543,47 @@ class MarketMappingRepository:
         if market_type == "moneyline":
             if not MarketMappingRepository._is_two_way_side_market(outcome_roles):
                 return None, "unsupported_moneyline_outcomes"
-            return MarketMappingRepository._canonical_key("moneyline", period_suffix), "matched_moneyline"
+            return MarketMappingRepository._canonical_key("home_away", period_suffix), "matched_moneyline"
 
         if market_type in MarketMappingRepository.TWO_WAY_MARKET_TYPES:
             if MarketMappingRepository._is_two_way_side_market(outcome_roles):
-                return MarketMappingRepository._canonical_key("moneyline", period_suffix), "matched_two_way_side_market"
+                return MarketMappingRepository._canonical_key("home_away", period_suffix), "matched_two_way_side_market"
             if MarketMappingRepository._is_three_way_side_market(outcome_roles):
                 return MarketMappingRepository._canonical_key("1x2", period_suffix), "matched_three_way_side_market"
             return None, "unsupported_side_market_outcomes"
 
         if market_type == "drawnobet":
-            if canonical_period != "Full-time":
+            if canonical_period != "Full Time":
                 return None, "unsupported_draw_no_bet_period"
             if not MarketMappingRepository._is_two_way_side_market(outcome_roles):
                 return None, "unsupported_draw_no_bet_outcomes"
             return "draw_no_bet_full_time", "matched_draw_no_bet"
 
         if market_type == "doublechance":
-            if canonical_period != "Full-time":
+            if canonical_period != "Full Time":
                 return None, "unsupported_double_chance_period"
-            if outcome_roles != {"1X", "X2", "12"}:
+            if outcome_roles != {"1x", "x2", "12"}:
                 return None, "unsupported_double_chance_outcomes"
             return "double_chance_full_time", "matched_double_chance"
 
         if market_type == "bothteamsscore":
-            if canonical_period != "Full-time":
+            if canonical_period != "Full Time":
                 return None, "unsupported_btts_period"
-            if outcome_roles != {"Yes", "No"}:
+            if outcome_roles != {"yes", "no"}:
                 return None, "unsupported_btts_outcomes"
             return "both_teams_to_score_full_time", "matched_btts"
 
-        if market_type in {"firstteamtoscore", "firstgoal"} or "firstteamtoscore" in market_name or "firstgoal" in market_name:
-            if canonical_period != "Full-time":
+        if market_type == "firstgoal" or "firstgoal" in market_name:
+            if canonical_period != "Full Time":
                 return None, "unsupported_first_goal_period"
-            if outcome_roles == {"1", "No Goal", "2"}:
+            if outcome_roles == {"1", "no_goal", "2"}:
                 return "first_goal_full_time", "matched_first_goal"
             return None, "unsupported_first_goal_outcomes"
 
         if market_type in {"lastteamtoscore", "lastgoal"} or "lastteamtoscore" in market_name or "lastgoal" in market_name:
-            if canonical_period != "Full-time":
+            if canonical_period != "Full Time":
                 return None, "unsupported_last_goal_period"
-            if outcome_roles == {"1", "No Goal", "2"}:
+            if outcome_roles == {"1", "no_goal", "2"}:
                 return "last_goal_full_time", "matched_last_goal"
             return None, "unsupported_last_goal_outcomes"
 
@@ -595,11 +595,11 @@ class MarketMappingRepository:
             return "1x2_1st_quarter", "matched_1x2_1st_quarter"
 
         if market_type == "fulltime(includingovertime)" or "fulltime(includingovertime)" in market_name:
-            if canonical_period != "Full-time":
-                return None, "unsupported_full_time_including_overtime_period"
+            if canonical_period != "Full Time":
+                return None, "unsupported_home_away_including_overtime_period"
             if not MarketMappingRepository._is_two_way_side_market(outcome_roles):
-                return None, "unsupported_full_time_including_overtime_outcomes"
-            return "full_time_including_overtime", "matched_full_time_including_overtime"
+                return None, "unsupported_home_away_including_overtime_outcomes"
+            return "home_away_full_time_including_overtime", "matched_home_away_including_overtime"
 
         if market_type == "firstsetwinner" or "firstsetwinner" in market_name:
             if canonical_period != "1st Set":
@@ -616,7 +616,7 @@ class MarketMappingRepository:
             return "current_set_winner_current_set", "matched_current_set_winner"
 
         if market_type == "pointspread" or "pointspread" in market_name:
-            if canonical_period != "Full-time":
+            if canonical_period != "Full Time":
                 return None, "unsupported_point_spread_period"
             if not MarketMappingRepository._is_two_way_side_market(outcome_roles):
                 return None, "unsupported_point_spread_outcomes"
@@ -625,29 +625,29 @@ class MarketMappingRepository:
         if market_type == "gametotal" or "gametotal" in market_name:
             if not MarketMappingRepository._is_total_market(outcome_roles):
                 return None, "unsupported_game_total_outcomes"
-            return "game_total_full_time", "matched_game_total"
+            return "over_under_full_time", "matched_game_total"
 
         if market_type == "totalpoints" or "totalpoints" in market_name:
             if not MarketMappingRepository._is_total_market(outcome_roles):
                 return None, "unsupported_total_points_outcomes"
-            return "total_points_full_time", "matched_total_points"
+            return "over_under_full_time", "matched_total_points"
 
         if market_type == "matchgoals" or "matchgoals" in market_name:
             if not MarketMappingRepository._is_total_market(outcome_roles):
                 return None, "unsupported_match_goals_outcomes"
-            return "match_goals_full_time", "matched_match_goals"
+            return "over_under_full_time", "matched_match_goals"
 
         if market_type == "1stperiodgoals" or "1stperiodgoals" in market_name:
             if canonical_period != "1st Period":
                 return None, "unsupported_1st_period_goals_period"
             if not MarketMappingRepository._is_total_market(outcome_roles):
                 return None, "unsupported_1st_period_goals_outcomes"
-            return "1st_period_goals_1st_period", "matched_1st_period_goals"
+            return "over_under_1st_period", "matched_1st_period_goals"
 
         if market_type == "totalcards" or "cardsinmatch" in market_name:
             if not MarketMappingRepository._is_total_market(outcome_roles):
                 return None, "unsupported_cards_in_match_outcomes"
-            return "cards_in_match_full_time", "matched_cards_in_match"
+            return "total_cards_full_time", "matched_cards_in_match"
 
         if market_type == "corners2way" or "corners2way" in market_name:
             if not MarketMappingRepository._is_total_market(outcome_roles):
@@ -655,26 +655,26 @@ class MarketMappingRepository:
             return "corners_2_way_full_time", "matched_corners_2_way"
 
         if market_type == "totalsets/games" or "totalgameswon" in market_name:
-            if canonical_period != "Extra time":
+            if canonical_period != "Extra Time":
                 return None, "unsupported_total_games_won_period"
             if not MarketMappingRepository._is_total_market(outcome_roles):
                 return None, "unsupported_total_games_won_outcomes"
-            return "total_games_won_extra_time", "matched_total_games_won"
+            return "total_sets_games_extra_time", "matched_total_games_won"
 
         if market_type == "firstteamtoscore" or "firstteamtoscore" in market_name:
-            if canonical_period != "Full-time":
+            if canonical_period != "Full Time":
                 return None, "unsupported_first_team_to_score_period"
             return "first_team_to_score_full_time", "matched_first_team_to_score"
 
         if market_type == "nextgoal" or "nextgoal" in market_name:
-            if canonical_period != "Full-time":
+            if canonical_period != "Full Time":
                 return None, "unsupported_next_goal_period"
             return "next_goal_full_time", "matched_next_goal"
 
         if market_type == "tiebreakinmatch" or "tiebreakinmatch" in market_name:
-            if canonical_period != "Extra time":
+            if canonical_period != "Extra Time":
                 return None, "unsupported_tie_break_period"
-            if not MarketMappingRepository._is_two_way_side_market(outcome_roles) and outcome_roles != {"Yes", "No"}:
+            if not MarketMappingRepository._is_two_way_side_market(outcome_roles) and outcome_roles != {"yes", "no"}:
                 return None, "unsupported_tie_break_outcomes"
             return "tie_break_in_match_extra_time", "matched_tie_break_in_match"
 
@@ -682,16 +682,16 @@ class MarketMappingRepository:
             if not MarketMappingRepository._is_total_market(outcome_roles):
                 return None, "unsupported_total_outcomes"
             if canonical_period == "1st Half":
-                return "total_1st_half", "matched_total_1st_half"
+                return "over_under_1st_half", "matched_over_under_1st_half"
             if market_type == "teamtotalsteam1":
                 return "team_total_home_full_time", "matched_team_total_home"
             if market_type == "teamtotalsteam2":
                 return "team_total_away_full_time", "matched_team_total_away"
-            return "total_full_time", "matched_total_full_time"
+            return "over_under_full_time", "matched_over_under_full_time"
 
         if "spread" in market_type or "handicap" in market_type or "handicap" in market_name:
             if MarketMappingRepository._is_three_way_side_market(outcome_roles):
-                if canonical_period != "Full-time":
+                if canonical_period != "Full Time":
                     return None, "unsupported_european_handicap_period"
                 return "european_handicap_full_time", "matched_european_handicap"
             if MarketMappingRepository._is_two_way_side_market(outcome_roles):
@@ -710,11 +710,12 @@ class MarketMappingRepository:
     ) -> str | None:
         role = MarketMappingRepository._outcome_role(source_outcome_name)
         if canonical_market_key in {"1x2_full_time", "1x2_1st_half", "1x2_1st_quarter", "european_handicap_full_time"}:
-            return role if role in {"1", "X", "2"} else None
+            return role if role in {"1", "x", "2"} else None
         if canonical_market_key in {
-            "moneyline_full_time",
-            "moneyline_1st_half",
-            "full_time_including_overtime",
+            "home_away_full_time",
+            "home_away_1st_half",
+            "home_away_1st_quarter",
+            "home_away_full_time_including_overtime",
             "first_set_winner_1st_set",
             "current_set_winner_current_set",
             "asian_handicap_full_time",
@@ -724,33 +725,30 @@ class MarketMappingRepository:
         }:
             return role if role in {"1", "2"} else None
         if canonical_market_key in {
-            "total_full_time",
-            "total_1st_half",
-            "game_total_full_time",
-            "total_points_full_time",
-            "match_goals_full_time",
-            "1st_period_goals_1st_period",
-            "cards_in_match_full_time",
+            "over_under_full_time",
+            "over_under_1st_half",
+            "over_under_1st_period",
+            "total_cards_full_time",
             "corners_2_way_full_time",
             "team_total_home_full_time",
             "team_total_away_full_time",
-            "total_games_won_extra_time",
+            "total_sets_games_extra_time",
         }:
-            return role if role in {"Over", "Under"} else None
+            return role if role in {"over", "under"} else None
         if canonical_market_key == "double_chance_full_time":
-            return role if role in {"1X", "X2", "12"} else None
+            return role if role in {"1x", "x2", "12"} else None
         if canonical_market_key == "both_teams_to_score_full_time":
-            return role if role in {"Yes", "No"} else None
+            return role if role in {"yes", "no"} else None
         if canonical_market_key in {
             "first_goal_full_time",
             "last_goal_full_time",
             "first_team_to_score_full_time",
         }:
-            return role if role in {"1", "No Goal", "No", "2"} else None
+            return role if role in {"1", "no_goal", "no", "2"} else None
         if canonical_market_key == "next_goal_full_time":
-            return role if role in {"1", "No", "No Goal", "2"} else None
+            return role if role in {"1", "no", "no_goal", "2"} else None
         if canonical_market_key == "tie_break_in_match_extra_time":
-            return role if role in {"Yes", "No"} else None
+            return role if role in {"yes", "no"} else None
         return None
 
     @staticmethod

@@ -8,9 +8,9 @@ def _make_rows() -> list[dict[str, object]]:
         {
             "event_id": 1,
             "market_id": 10,
-            "market_name": "Full time",
+            "market_name": "1X2 Full Time",
             "market_group": "1X2",
-            "market_period": "Full-time",
+            "market_period": "Full Time",
             "choice_group": None,
             "bookie_id": 1,
             "bookie_name": "SofaScore",
@@ -27,9 +27,9 @@ def _make_rows() -> list[dict[str, object]]:
         {
             "event_id": 1,
             "market_id": 11,
-            "market_name": "Full time",
+            "market_name": "1X2 Full Time",
             "market_group": "1X2",
-            "market_period": "Full-time",
+            "market_period": "Full Time",
             "choice_group": None,
             "bookie_id": 2,
             "bookie_name": "Pinnacle",
@@ -56,10 +56,10 @@ def test_filter_by_bookie_ids_keeps_only_requested_bookie() -> None:
     assert filtered.missing_target_minutes == []
 
     original_bookies = (
-        context.markets["1X2"]["Full-time"]["Full time"]["__default__"].bookies
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"].bookies
     )
     filtered_bookies = (
-        filtered.markets["1X2"]["Full-time"]["Full time"]["__default__"].bookies
+        filtered.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"].bookies
     )
 
     assert set(original_bookies.keys()) == {"SofaScore", "Pinnacle"}
@@ -84,7 +84,7 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
         {
             "event_id": 1,
             "market_id": 12,
-            "market_name": "Full time",
+            "market_name": "1X2 Full Time",
             "market_group": "1X2",
             "market_period": "1st half",
             "choice_group": None,
@@ -103,14 +103,14 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
         {
             "event_id": 1,
             "market_id": 13,
-            "market_name": "Full time",
+            "market_name": "Over/Under Full Time",
             "market_group": "totals",
-            "market_period": "Full-time",
+            "market_period": "Full Time",
             "choice_group": None,
             "bookie_id": 1,
             "bookie_name": "SofaScore",
             "choice_id": 103,
-            "choice_name": "Over",
+            "choice_name": "over",
             "initial_odds": "1.750",
             "odds_value": "1.720",
             "snapshot_id": 4001,
@@ -123,10 +123,10 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
 
     context = build_odds_trajectory_context(rows, target_minutes_expected=[0])
 
-    filtered = context.filter_by_market_groups({"1X2"}).filter_by_market_period({"Full-time"})
+    filtered = context.filter_by_market_groups({"1X2"}).filter_by_market_period({"Full Time"})
 
     assert filtered.available is True
     assert set(filtered.markets.keys()) == {"1X2"}
-    assert set(filtered.markets["1X2"].keys()) == {"Full-time"}
+    assert set(filtered.markets["1X2"].keys()) == {"Full Time"}
     assert set(filtered.target_minutes_present) == {0}
     assert filtered.missing_target_minutes == []

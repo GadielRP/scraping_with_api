@@ -23,9 +23,9 @@ ADAPTED = {
             "name": "Pinnacle Sports",
             "markets": [
                 {
-                    "marketName": "Full-time",
+                    "marketName": "1X2 Full Time",
                     "marketGroup": "1X2",
-                    "marketPeriod": "Full-time",
+                    "marketPeriod": "Full Time",
                     "choiceGroup": None,
                     "isLive": False,
                     "choices": [{"name": "1", "decimalValue": 1.9}],
@@ -96,9 +96,9 @@ def test_filter_normalized_oddspapi_response_applies_cli_aliases():
                 "name": "Pinnacle Sports",
                 "markets": [
                     {
-                        "marketName": "Full-time",
+                        "marketName": "1X2 Full Time",
                         "marketGroup": "1X2",
-                        "marketPeriod": "Full-time",
+                        "marketPeriod": "Full Time",
                         "choiceGroup": None,
                         "isLive": False,
                         "choices": [{"name": "1", "decimalValue": 1.9}],
@@ -106,7 +106,7 @@ def test_filter_normalized_oddspapi_response_applies_cli_aliases():
                     {
                         "marketName": "Full time",
                         "marketGroup": "Home/Away",
-                        "marketPeriod": "Full-time",
+                        "marketPeriod": "Full Time",
                         "choiceGroup": None,
                         "isLive": False,
                         "choices": [{"name": "1", "decimalValue": 1.9}],
@@ -124,7 +124,7 @@ def test_filter_normalized_oddspapi_response_applies_cli_aliases():
 
     assert [bookmaker["slug"] for bookmaker in filtered["bookmakers"]] == ["pinnacle"]
     assert [market["marketGroup"] for market in filtered["bookmakers"][0]["markets"]] == ["Home/Away"]
-    assert [market["marketPeriod"] for market in filtered["bookmakers"][0]["markets"]] == ["Full-time"]
+    assert [market["marketPeriod"] for market in filtered["bookmakers"][0]["markets"]] == ["Full Time"]
 
 
 def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
@@ -250,9 +250,9 @@ def test_commit_passes_canonical_market_payload_to_repository():
 
     saved_payload = save.call_args.kwargs["odds_response"]
     saved_market = saved_payload["markets"][0]
-    assert saved_market["marketName"] == "Full-time"
+    assert saved_market["marketName"] == "1X2 Full Time"
     assert saved_market["marketGroup"] == "1X2"
-    assert saved_market["marketPeriod"] == "Full-time"
+    assert saved_market["marketPeriod"] == "Full Time"
     assert result.markets_saved == 1
 
 
@@ -282,9 +282,9 @@ def _repository_response(choice):
     return {
         "markets": [
             {
-                "marketName": "Full-time",
+                "marketName": "1X2 Full Time",
                 "marketGroup": "1X2",
-                "marketPeriod": "Full-time",
+                "marketPeriod": "Full Time",
                 "choiceGroup": None,
                 "isLive": False,
                 "choices": [choice],

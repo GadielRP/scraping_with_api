@@ -417,7 +417,7 @@ class MarketRepository:
                 def sort_key(m):
                     group_order = {'1X2': 1, 'Asian Handicap': 2, 'Over/Under': 3}
                     mg_order = group_order.get(m.get('market_group', ''), 4)
-                    period_order = {'Full-time': 1, '1st half': 2, '2nd half': 3}
+                    period_order = {'Full Time': 1, '1st Half': 2, '2nd Half': 3}
                     mp_order = period_order.get(m.get('market_period', ''), 4)
                     bookie_is_betfair = 1 if 'betfair' in m['bookie_name'].lower() else 0
                     cg = m.get('choice_group') or ''
@@ -443,26 +443,25 @@ class MarketRepository:
         """
         Normalize OddsPortal market period strings to the canonical DB value.
 
-        All full-time variants are collapsed to 'Full-time'. Other period
+        All full time variants are collapsed to 'Full Time'. Other period
         strings (e.g. '1st half') are returned unchanged after stripping.
         """
         if period is None:
-            return "Full-time"
+            return "Full Time"
 
         normalized = str(period).strip()
         if not normalized:
-            return "Full-time"
+            return "Full Time"
 
         full_time_variants = {
             "Full Time",
             "Full time",
-            "Full-time",
             "Fulltime",
             "FT",
         }
 
         if normalized in full_time_variants:
-            return "Full-time"
+            return "Full Time"
 
         return normalized
 
@@ -546,8 +545,8 @@ class MarketRepository:
             elif odds_data.bookie_odds or odds_data.betfair:
                 extraction_tuples.append((
                     "1X2",
-                    "Full-time",
-                    "Full-time",
+                    "Full Time",
+                    "Full Time",
                     odds_data.bookie_odds,
                     odds_data.betfair,
                 ))
@@ -563,8 +562,8 @@ class MarketRepository:
             for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
                 market_period_normalized = MarketRepository._normalize_market_period(market_period)
                 is_ou = market_group == "Over/Under"
-                choice_1_key = "Over" if is_ou else "1"
-                choice_2_key = "Under" if is_ou else "2"
+                choice_1_key = "over" if is_ou else "1"
+                choice_2_key = "under" if is_ou else "2"
 
                 for b_odds in bookie_odds_list:
                     source_bookie_name = MarketRepository._normalize_string_or_none(b_odds.name)
@@ -579,13 +578,13 @@ class MarketRepository:
 
                     initial_map = {
                         choice_1_key: MarketRepository._float_or_none(b_odds.initial_odds_1),
-                        "X": MarketRepository._float_or_none(b_odds.initial_odds_x),
+                        "x": MarketRepository._float_or_none(b_odds.initial_odds_x),
                         choice_2_key: MarketRepository._float_or_none(b_odds.initial_odds_2),
                     }
                     choices = []
                     for choice_name, raw_value in {
                         choice_1_key: b_odds.odds_1,
-                        "X": b_odds.odds_x,
+                        "x": b_odds.odds_x,
                         choice_2_key: b_odds.odds_2,
                     }.items():
                         current_odds = MarketRepository._float_or_none(raw_value)
@@ -622,12 +621,12 @@ class MarketRepository:
                             "group": "Back",
                             "initials": {
                                 choice_1_key: MarketRepository._float_or_none(betfair_data.initial_back_1),
-                                "X": MarketRepository._float_or_none(betfair_data.initial_back_x),
+                                "x": MarketRepository._float_or_none(betfair_data.initial_back_x),
                                 choice_2_key: MarketRepository._float_or_none(betfair_data.initial_back_2),
                             },
                             "choices": {
                                 choice_1_key: betfair_data.back_1,
-                                "X": betfair_data.back_x,
+                                "x": betfair_data.back_x,
                                 choice_2_key: betfair_data.back_2,
                             },
                         },
@@ -635,12 +634,12 @@ class MarketRepository:
                             "group": "Lay",
                             "initials": {
                                 choice_1_key: MarketRepository._float_or_none(betfair_data.initial_lay_1),
-                                "X": MarketRepository._float_or_none(betfair_data.initial_lay_x),
+                                "x": MarketRepository._float_or_none(betfair_data.initial_lay_x),
                                 choice_2_key: MarketRepository._float_or_none(betfair_data.initial_lay_2),
                             },
                             "choices": {
                                 choice_1_key: betfair_data.lay_1,
-                                "X": betfair_data.lay_x,
+                                "x": betfair_data.lay_x,
                                 choice_2_key: betfair_data.lay_2,
                             },
                         },

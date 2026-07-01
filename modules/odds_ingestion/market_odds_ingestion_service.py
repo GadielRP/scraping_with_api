@@ -156,8 +156,8 @@ class MarketOddsIngestionService:
             if not text:
                 continue
             lowered = text.lower()
-            if lowered in {"match", "ft", "full-time", "fulltime"}:
-                normalized.add("Full-time")
+            if lowered in {"match", "ft", "full time", "fulltime"}:
+                normalized.add("Full Time")
             else:
                 normalized.add(text)
         return normalized or None

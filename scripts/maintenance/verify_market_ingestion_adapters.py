@@ -22,7 +22,7 @@ def main() -> int:
             "marketPeriod": "Full Time",
             "choices": [
                 {"name": "1", "initialFractionalValue": "1/2", "fractionalValue": "4/9"},
-                {"name": "X", "initialFractionalValue": "2/1", "fractionalValue": "21/10"},
+                {"name": "x", "initialFractionalValue": "2/1", "fractionalValue": "21/10"},
                 {"name": "2", "initialFractionalValue": "4/1", "fractionalValue": "9/2"},
             ]
         }
@@ -30,8 +30,8 @@ def main() -> int:
     market = three_way["markets"][0]
     assert market["marketName"] == "Full time"
     assert "marketGroup" not in market
-    assert market["marketPeriod"] == "Full-time"
-    assert [choice["name"] for choice in market["choices"]] == ["1", "X", "2"]
+    assert market["marketPeriod"] == "Full Time"
+    assert [choice["name"] for choice in market["choices"]] == ["1", "x", "2"]
 
     two_way = SofaScoreMarketAdapter.from_dropping_odds_map_entry(
         {

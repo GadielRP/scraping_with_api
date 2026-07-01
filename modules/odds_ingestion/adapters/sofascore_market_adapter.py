@@ -208,8 +208,8 @@ class SofaScoreMarketAdapter:
         normalized = SofaScoreMarketAdapter._normalize_text(period)
         if not normalized:
             return None
-        if normalized in {"Full Time", "Full time", "Full-time", "Fulltime", "FT"}:
-            return "Full-time"
+        if normalized in {"Full Time", "Full time", "Fulltime", "FT"}:
+            return "Full Time"
         return normalized
 
     @staticmethod

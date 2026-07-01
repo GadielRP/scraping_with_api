@@ -339,7 +339,7 @@ class EventPillarProcessor:
                 )
 
             ft_1x2_odds_trajectory = odds_trajectory_context.filter_by_market_groups(
-                allowed_groups={"1X2", "Home/Away", "ML"}
+                allowed_groups={"1X2", "Home/Away"}
             )
             
             if self.debug_mode:
@@ -353,7 +353,7 @@ class EventPillarProcessor:
                 )
 
             ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_market_period(
-                allowed_periods={"Full-time", "Match"}
+                allowed_periods={"Full Time"}
             )
 
             if self.debug_mode:

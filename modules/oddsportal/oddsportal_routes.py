@@ -52,7 +52,7 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "1X2",
                 "has_draw": True,
                 "periods": [
-                    ("FULL_TIME", "Full Time", "Full-time"),
+                    ("FULL_TIME", "Full Time", "Full Time"),
                     ("1ST_HALF", "1st Half", "1st half")
                 ],
                 "betfair_period_index": 0,
@@ -89,7 +89,7 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "Home/Away",
                 "has_draw": False,
                 "periods": [
-                    ("FT_INC_OT", "Full Time", "Full-time"),
+                    ("FT_INC_OT", "Full Time", "Full Time"),
                     ("1ST_HALF", "1st Half", "1st half")
                 ],
                 "betfair_period_index": 0,
@@ -126,7 +126,7 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "Home/Away",
                 "has_draw": False,
                 "periods": [
-                    ("FT_INC_OT", "Full Time", "Full-time"),
+                    ("FT_INC_OT", "Full Time", "Full Time"),
                     ("1ST_HALF", "1st Half", "1st half")
                 ],
                 "betfair_period_index": 0,
@@ -163,7 +163,7 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "Home/Away",
                 "has_draw": False,
                 "periods": [
-                    ("FT_INC_OT", "Full Time", "Full-time"),
+                    ("FT_INC_OT", "Full Time", "Full Time"),
                     ("1ST_HALF", "1st Half", "1st half")
                 ],
                 "betfair_period_index": 0,
@@ -200,7 +200,7 @@ SPORT_SCRAPING_ROUTES = {
                 "db_market_group": "Home/Away",
                 "has_draw": False,
                 "periods": [
-                    ("FT_INC_OT", "Full Time", "Full-time")
+                    ("FT_INC_OT", "Full Time", "Full Time")
                 ],
                 "betfair_period_index": 0,
                 "extract_fn": "standard",
@@ -278,7 +278,7 @@ def flatten_sport_scraping_route(sport: Optional[str]) -> List[Dict[str, Any]]:
         groups = [{
             "group_key": route.get("primary_group"),
             "db_market_group": route.get("db_market_group", "1X2"),
-            "periods": route.get("periods", [("FULL_TIME", "Full Time", "Full-time")]),
+            "periods": route.get("periods", [("FULL_TIME", "Full Time", "Full Time")]),
             "betfair_period_index": route.get("betfair_period_index", 0),
             "extract_fn": route.get("extract_fn", "standard"),
         }]
@@ -286,7 +286,7 @@ def flatten_sport_scraping_route(sport: Optional[str]) -> List[Dict[str, Any]]:
         groups = [{
             "group_key": None,
             "db_market_group": "1X2",
-            "periods": [("FULL_TIME", "Full Time", "Full-time")],
+            "periods": [("FULL_TIME", "Full Time", "Full Time")],
             "betfair_period_index": 0,
             "extract_fn": "standard",
         }]
@@ -298,7 +298,7 @@ def flatten_sport_scraping_route(sport: Optional[str]) -> List[Dict[str, Any]]:
         db_market_group = group.get("db_market_group", "1X2")
         group_display = OP_GROUPS_DISPLAY.get(group_key, db_market_group)
         betfair_period_index = group.get("betfair_period_index")
-        periods = group.get("periods") or [("FULL_TIME", "Full Time", "Full-time")]
+        periods = group.get("periods") or [("FULL_TIME", "Full Time", "Full Time")]
         for period_idx, period in enumerate(periods):
             if isinstance(period, (list, tuple)):
                 period_key = period[0] if len(period) > 0 else None
