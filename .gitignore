@@ -25,6 +25,8 @@ markets_detailed_query_after.csv
 audit_recent_sofascore_odds_order.py
 choice_names_outcome_diagnostic.py
 
+server_markets_detailed.csv
+
 
 test_proxy.py
 tests/
