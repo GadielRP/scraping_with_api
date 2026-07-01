@@ -197,7 +197,7 @@ class MarketRepository:
                             choices_data = market_data.get('choices', [])
                             seen_choice_names = {}
                             for choice_data in choices_data:
-                                choice_name = choice_data.get('name')
+                                choice_name = MarketRepository._normalize_string_or_none(choice_data.get('name'))
                                 if choice_name and choice_name not in seen_choice_names:
                                     seen_choice_names[choice_name] = choice_data
 
@@ -440,30 +440,8 @@ class MarketRepository:
 
     @staticmethod
     def _normalize_market_period(period: str) -> str:
-        """
-        Normalize OddsPortal market period strings to the canonical DB value.
-
-        All full time variants are collapsed to 'Full Time'. Other period
-        strings (e.g. '1st half') are returned unchanged after stripping.
-        """
-        if period is None:
-            return "Full Time"
-
-        normalized = str(period).strip()
-        if not normalized:
-            return "Full Time"
-
-        full_time_variants = {
-            "Full Time",
-            "Full time",
-            "Fulltime",
-            "FT",
-        }
-
-        if normalized in full_time_variants:
-            return "Full Time"
-
-        return normalized
+        """Apply only defensive trimming; provider semantics are normalized upstream."""
+        return MarketRepository._normalize_string_or_none(period) or "Full Time"
 
     @staticmethod
     def _build_choice_payload(choice_name: str, current_odds, initial_odds=None) -> Dict:

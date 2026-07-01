@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import pprint
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -17,6 +18,7 @@ from modules.oddspapi import OddspapiEventResolver
 
 from .adapters.oddspapi_market_adapter import OddspapiMarketAdapter
 from .adapters.sofascore_market_adapter import SofaScoreMarketAdapter
+from .canonical_market_normalizer import CanonicalMarketNormalizer
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,7 @@ class MarketIngestionResult:
     unmapped_markets_detected: int = 0
     unmapped_outcomes_detected: int = 0
     skipped_missing_handicap_detected: int = 0
+    skipped_missing_choice_group_detected: int = 0
 
     dual_process_market_available: bool = False
     skipped: bool = False
@@ -386,13 +389,26 @@ class MarketOddsIngestionService:
         source: str = "sofascore",
         home_team: str | None = None,
         away_team: str | None = None,
+        debug_mode: bool = False,
     ) -> MarketIngestionResult:
-        normalized_response = SofaScoreMarketAdapter.from_event_odds_response(
+        adapted_response = SofaScoreMarketAdapter.from_event_odds_response(
             odds_response,
             home_team=home_team,
             away_team=away_team,
         )
-        return MarketOddsIngestionService._save_normalized(event_id, normalized_response, source)
+        if debug_mode:
+            logger.info(
+                "CanonicalMarketNormalizer input for event %s (source=%s):\n%s",
+                event_id,
+                source,
+                pprint.pformat(adapted_response, indent=2, width=120, sort_dicts=False),
+            )
+        canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(
+            adapted_response,
+            home_team=home_team,
+            away_team=away_team,
+        )
+        return MarketOddsIngestionService._save_normalized(event_id, canonical_response, source)
 
     @staticmethod
     def save_from_dropping_odds_map_entry(
@@ -400,8 +416,9 @@ class MarketOddsIngestionService:
         odds_map_entry: Dict,
         source: str = "sofascore_dropping_odds",
     ) -> MarketIngestionResult:
-        normalized_response = SofaScoreMarketAdapter.from_dropping_odds_map_entry(odds_map_entry)
-        return MarketOddsIngestionService._save_normalized(event_id, normalized_response, source)
+        adapted_response = SofaScoreMarketAdapter.from_dropping_odds_map_entry(odds_map_entry)
+        canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(adapted_response)
+        return MarketOddsIngestionService._save_normalized(event_id, canonical_response, source)
 
     @staticmethod
     def save_from_daily_odds_entry(
@@ -409,15 +426,30 @@ class MarketOddsIngestionService:
         daily_odds_entry: Dict,
         source: str = "sofascore_daily_discovery",
     ) -> MarketIngestionResult:
-        normalized_response = SofaScoreMarketAdapter.from_daily_odds_entry(daily_odds_entry)
-        return MarketOddsIngestionService._save_normalized(event_id, normalized_response, source)
+        adapted_response = SofaScoreMarketAdapter.from_daily_odds_entry(daily_odds_entry)
+        canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(adapted_response)
+        return MarketOddsIngestionService._save_normalized(event_id, canonical_response, source)
 
     @staticmethod
     def _save_normalized(event_id: int, normalized_response: Dict, source: str) -> MarketIngestionResult:
+        diagnostics = (normalized_response or {}).get("diagnostics") or {}
+        unmapped_markets = len(diagnostics.get("unmapped_markets") or [])
+        unmapped_choices = len(diagnostics.get("unmapped_choices") or [])
+        skipped_missing_choice_group = len(diagnostics.get("skipped_missing_choice_group") or [])
+        markets = (normalized_response or {}).get("markets") or []
+        choices_detected = sum(len(market.get("choices") or []) for market in markets)
         if not normalized_response or not normalized_response.get("markets"):
             reason = "no normalized markets found"
             logger.info("Skipped market odds ingestion for event %s: %s", event_id, reason)
-            return MarketIngestionResult(event_id=event_id, source=source, skipped=True, reason=reason)
+            return MarketIngestionResult(
+                event_id=event_id,
+                source=source,
+                unmapped_markets_detected=unmapped_markets,
+                unmapped_outcomes_detected=unmapped_choices,
+                skipped_missing_choice_group_detected=skipped_missing_choice_group,
+                skipped=True,
+                reason=reason,
+            )
 
         try:
             logger.info(f"\nsource: {source}")
@@ -432,9 +464,15 @@ class MarketOddsIngestionService:
             result = MarketIngestionResult(
                 event_id=event_id,
                 source=source,
+                markets_detected=len(markets),
+                choices_detected=choices_detected,
+                snapshots_detected=choices_detected,
                 markets_saved=save_result.markets_saved,
                 choices_saved=save_result.choices_saved,
                 snapshots_saved=save_result.snapshots_saved,
+                unmapped_markets_detected=unmapped_markets,
+                unmapped_outcomes_detected=unmapped_choices,
+                skipped_missing_choice_group_detected=skipped_missing_choice_group,
                 dual_process_market_available=dual_process_available,
                 skipped=save_result.markets_saved <= 0,
                 reason=None if save_result.markets_saved > 0 else "no markets saved",

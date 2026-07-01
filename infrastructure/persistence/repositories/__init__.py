@@ -11,6 +11,10 @@ from .odds_trajectory_repository import OddsTrajectoryRepository, OddsTrajectory
 from .result_repository import ResultRepository
 from .observation_repository import ObservationRepository
 from .market_repository import MarketRepository
+from .canonical_market_type_repository import (
+    CanonicalMarketTypeRepository,
+    CanonicalMarketTypeResolution,
+)
 from .bookie_repository import BookieRepository, BookieResolution
 from .market_mapping_repository import (
     CanonicalMarketResolution,
@@ -35,6 +39,8 @@ __all__ = [
     'ResultRepository',
     'ObservationRepository',
     'MarketRepository',
+    'CanonicalMarketTypeRepository',
+    'CanonicalMarketTypeResolution',
     'BookieRepository',
     'BookieResolution',
     'CanonicalMarketResolution',

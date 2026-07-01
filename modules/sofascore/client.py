@@ -467,10 +467,12 @@ class SofaScoreAPI:
         update_event_info: bool = True,
         return_snapshot: bool = False,
         current_start_time: Optional[datetime] = None,
+        canonical_event_id: int | None = None,
     ) -> Optional[Dict]:
         return get_event_results(
             self,
             event_id,
+            canonical_event_id=canonical_event_id,
             update_time=update_time,
             update_court_type=update_court_type,
             minutes_until_start=minutes_until_start,

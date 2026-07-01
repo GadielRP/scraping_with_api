@@ -321,6 +321,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                     source="sofascore",
                     home_team=event_data.get("home_team"),
                     away_team=event_data.get("away_team"),
+                    debug_mode=global_debug_mode,
                 )
                 if ingestion_result.markets_saved > 0 or ingestion_result.dual_process_market_available:
                     event_info["event_with_odds"] = {
@@ -336,7 +337,11 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                             if snapshot and snapshot.get("observations"):
                                 event_info["observations"] = snapshot["observations"]
                             else:
-                                observations = api_client.get_event_results(sofascore_event_id, update_court_type=True)
+                                observations = api_client.get_event_results(
+                                    sofascore_event_id,
+                                    canonical_event_id=event_data["id"],
+                                    update_court_type=True,
+                                )
                                 if observations:
                                     event_info["observations"] = observations
                 else:

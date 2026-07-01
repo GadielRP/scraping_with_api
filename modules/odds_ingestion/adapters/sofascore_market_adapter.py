@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Dict, List
 
 logger = logging.getLogger(__name__)
@@ -88,31 +87,14 @@ class SofaScoreMarketAdapter:
             return {"markets": []}
 
         market_group = SofaScoreMarketAdapter._normalize_text(entry.get("marketGroup"))
-        market_period = SofaScoreMarketAdapter._normalize_period(entry.get("marketPeriod"))
+        market_period = SofaScoreMarketAdapter._normalize_text(entry.get("marketPeriod"))
         choice_group = SofaScoreMarketAdapter._normalize_text(entry.get("choiceGroup"))
-        if not choice_group:
-            raw_choice_iterable = raw_choices.values() if isinstance(raw_choices, dict) else raw_choices or []
-            for raw_choice in raw_choice_iterable:
-                choice_name = SofaScoreMarketAdapter._normalize_text(
-                    raw_choice.get("name") if isinstance(raw_choice, dict) else None
-                )
-                if not choice_name:
-                    continue
-                match = re.match(r"^\(\s*([^)]+?)\s*\)\s*.+$", choice_name)
-                if match:
-                    choice_group = SofaScoreMarketAdapter._normalize_text(match.group(1))
-                    if choice_group:
-                        break
 
         source_market_id = entry.get("sourceId")
         if source_market_id is None:
             source_market_id = entry.get("id")
         if source_market_id is None:
             source_market_id = entry.get("marketId")
-
-        for choice in choices:
-            if source_market_id is not None and choice.get("sourceMarketId") is None:
-                choice["sourceMarketId"] = str(source_market_id)
 
         market = {
             "marketName": market_name,
@@ -152,64 +134,33 @@ class SofaScoreMarketAdapter:
         home_team: str | None = None,
         away_team: str | None = None,
     ) -> List[Dict]:
+        del home_team, away_team  # Team semantics belong to CanonicalMarketNormalizer.
         normalized = []
         iterable = choices.values() if isinstance(choices, dict) else choices or []
-        home_team_normalized = SofaScoreMarketAdapter._normalize_text(home_team)
-        away_team_normalized = SofaScoreMarketAdapter._normalize_text(away_team)
-        home_team_key = home_team_normalized.lower() if home_team_normalized else None
-        away_team_key = away_team_normalized.lower() if away_team_normalized else None
         for choice in iterable:
             if not isinstance(choice, dict):
                 continue
-            raw_name = SofaScoreMarketAdapter._normalize_text(choice.get("name"))
-            name = raw_name
+            name = SofaScoreMarketAdapter._normalize_text(choice.get("name"))
             if not name:
                 continue
-
-            if raw_name not in {"1", "X", "2", "1X", "X2", "12"}:
-                match = re.match(r"^\(\s*([^)]+?)\s*\)\s*(.+)$", raw_name)
-                if match:
-                    parsed_choice_group = SofaScoreMarketAdapter._normalize_text(match.group(1))
-                    parsed_team_name = SofaScoreMarketAdapter._normalize_text(match.group(2))
-                    if parsed_choice_group:
-                        choice["choiceGroup"] = parsed_choice_group
-                    parsed_team_key = parsed_team_name.lower() if parsed_team_name else None
-                    if parsed_team_key and (
-                        parsed_team_key == home_team_key
-                        or parsed_team_key == away_team_key
-                    ):
-                        name = "1" if parsed_team_key == home_team_key else "2"
-
             source_outcome_id = choice.get("sourceId")
             if source_outcome_id is None:
                 source_outcome_id = choice.get("id")
             if source_outcome_id is None:
                 source_outcome_id = choice.get("outcomeId")
-
-            normalized.append(
-                {
-                    "name": name,
-                    "initialFractionalValue": choice.get("initialFractionalValue"),
-                    "fractionalValue": choice.get("fractionalValue"),
-                    "initialDecimalValue": choice.get("initialDecimalValue"),
-                    "decimalValue": choice.get("decimalValue"),
-                    "initialOdds": choice.get("initialOdds"),
-                    "currentOdds": choice.get("currentOdds"),
-                    "odds": choice.get("odds"),
-                    "change": choice.get("change", 0),
-                    "sourceOutcomeId": str(source_outcome_id) if source_outcome_id is not None else None,
-                }
-            )
-
-        return normalized
-
-    @staticmethod
-    def _normalize_period(period: str) -> str:
-        normalized = SofaScoreMarketAdapter._normalize_text(period)
-        if not normalized:
-            return None
-        if normalized in {"Full Time", "Full time", "Fulltime", "FT"}:
-            return "Full Time"
+            normalized.append({
+                "name": name,
+                "choiceGroup": SofaScoreMarketAdapter._normalize_text(choice.get("choiceGroup")),
+                "initialFractionalValue": choice.get("initialFractionalValue"),
+                "fractionalValue": choice.get("fractionalValue"),
+                "initialDecimalValue": choice.get("initialDecimalValue"),
+                "decimalValue": choice.get("decimalValue"),
+                "initialOdds": choice.get("initialOdds"),
+                "currentOdds": choice.get("currentOdds"),
+                "odds": choice.get("odds"),
+                "change": choice.get("change", 0),
+                "sourceOutcomeId": str(source_outcome_id) if source_outcome_id is not None else None,
+            })
         return normalized
 
     @staticmethod

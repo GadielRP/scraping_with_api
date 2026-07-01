@@ -143,6 +143,7 @@ def get_event_results(
     update_event_info: bool = True,
     return_snapshot: bool = False,
     current_start_time=None,
+    canonical_event_id: int | None = None,
 ) -> Optional[Dict]:
     try:
         if update_court_type:
@@ -166,10 +167,27 @@ def get_event_results(
             event_data = response.get("event", {})
             home_team_ranking = event_data.get("homeTeam", {}).get("ranking")
             away_team_ranking = event_data.get("awayTeam", {}).get("ranking")
+            observation_event_id = canonical_event_id
+            if observation_event_id is None:
+                observation_event_id = EventSourceMappingRepository.get_event_id_by_source(
+                    "sofascore",
+                    str(event_id),
+                )
+            ground_type = None
+            if observation_event_id is None:
+                logger.warning(
+                    "Skipping tennis ground-type persistence: canonical event ID was not resolved for SofaScore event %s",
+                    event_id,
+                )
+            else:
+                ground_type = sport_observation_service.extract_and_save_tennis_ground_type(
+                    observation_event_id,
+                    response,
+                )
             return [
                 {
                     "type": "ground_type",
-                    "value": sport_observation_service.extract_and_save_tennis_ground_type(event_id, response),
+                    "value": ground_type,
                 },
                 {
                     "type": "rankings",
