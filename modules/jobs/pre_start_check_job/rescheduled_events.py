@@ -29,7 +29,7 @@ def reset_event_alert_sent(event_id: int) -> bool:
         return False
 
 
-def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int, metadata_snapshot: dict = None):
+def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int, metadata_snapshot: dict = None, sofascore_event_id: int | None = None):
     """Minimal rescheduled-event handler used by the refactored pre-start job."""
     try:
         event = event_repo.get_event_by_id(event_id)
@@ -40,7 +40,8 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
         if minutes_until_start not in [30, 0] and minutes_until_start >= 0:
             return
 
-        sofascore_event_id = resolve_sofascore_event_id(event_id)
+        if sofascore_event_id is None:
+            sofascore_event_id = resolve_sofascore_event_id(event_id)
         final_odds_response = api_client.get_event_final_odds(sofascore_event_id, event.slug)
         if not final_odds_response:
             logger.warning("Failed to fetch odds for rescheduled event %s", event_id)

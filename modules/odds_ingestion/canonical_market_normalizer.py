@@ -70,6 +70,10 @@ class CanonicalMarketNormalizer:
         if name == "double chance" and group == "double chance" and full_time:
             return "double_chance_full_time"
         if name == "1st quarter winner" and group == "home/away" and period == "1st quarter":
+            choices = market.get("choices", [])
+            has_draw = any(str(c.get("name", "")).strip().lower() == "x" for c in choices if isinstance(c, dict))
+            if has_draw or len(choices) == 3:
+                return "1x2_1st_quarter"
             return "home_away_1st_quarter"
         if name == "full time (including overtime)" and group == "full time (including overtime)" and full_time:
             return "home_away_full_time_including_overtime"
@@ -161,8 +165,12 @@ class CanonicalMarketNormalizer:
                 if not choice_result.resolved:
                     detail = {
                         "source": "sofascore",
+                        "source_event_id": (normalized_response or {}).get("eventId"),
                         "canonicalMarketKey": canonical_key,
                         "marketFamily": canonical_type.market_family,
+                        "raw_market_name": raw_market.get("marketName"),
+                        "raw_market_group": raw_market.get("marketGroup"),
+                        "raw_market_period": raw_market.get("marketPeriod"),
                         "rawChoiceName": raw_choice_name,
                         "reason": choice_result.reason,
                     }

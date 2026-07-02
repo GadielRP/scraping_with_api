@@ -39,7 +39,6 @@ from modules.jobs.pre_start_check_job.timing import (
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.observations import sport_observation_service
 from modules.alerts.matchup_streak_analysis.standings_engine import (
     standings_calculator,
@@ -271,7 +270,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
             try:
                 event_id = event_data["id"]
                 minutes = pre_calculated_timings.get(event_id, minutes_until_start(event_data["start_time_utc"]))
-                should_extract_odds, metadata_snapshot, timing_changed = should_extract_odds_for_event(
+                should_extract_odds, metadata_snapshot, timing_changed, sofascore_event_id = should_extract_odds_for_event(
                     event_id,
                     minutes,
                     event_data.get("start_time_utc"),
@@ -279,7 +278,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
 
                 if timing_changed:
                     scheduler.recently_rescheduled.add(event_id)
-                    handle_rescheduled_event(event_id, scheduler.event_repo, minutes, metadata_snapshot=metadata_snapshot)
+                    handle_rescheduled_event(event_id, scheduler.event_repo, minutes, metadata_snapshot=metadata_snapshot, sofascore_event_id=sofascore_event_id)
 
                 refreshed_event = scheduler.event_repo.get_event_by_id(event_id)
                 if refreshed_event:
@@ -294,6 +293,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                         "should_extract_odds": should_extract_odds,
                         "original_start_time": event_data["start_time_utc"],
                         "metadata_snapshot": metadata_snapshot,
+                        "sofascore_event_id": sofascore_event_id,
                     }
                 )
                 event_meta_lookup[event_id] = events_to_process[-1]
@@ -309,7 +309,10 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                 if not event_info["should_extract_odds"]:
                     continue
 
-                sofascore_event_id = resolve_sofascore_event_id(event_data["id"])
+                sofascore_event_id = event_info.get("sofascore_event_id")
+                if sofascore_event_id is None:
+                    logger.warning("No sofascore_event_id available for event %s, skipping odds extraction", event_data["id"])
+                    continue
                 final_odds_response = api_client.get_event_final_odds(sofascore_event_id, event_data["slug"])
                 if not final_odds_response:
                     continue
@@ -368,7 +371,10 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                         "Fetching metadata snapshot for event %s for pre-start context enrichment, useful for tennis events",
                         event_id,
                     )
-                    sofascore_event_id = resolve_sofascore_event_id(event_id)
+                    sofascore_event_id = event_info.get("sofascore_event_id")
+                    if sofascore_event_id is None:
+                        logger.warning("No sofascore_event_id for event %s, skipping metadata snapshot", event_id)
+                        continue
                     _, metadata_snapshot = api_client.get_event_results(
                         sofascore_event_id,
                         update_time=False,

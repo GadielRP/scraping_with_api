@@ -31,32 +31,34 @@ def minutes_since_start(start_time_utc) -> int:
     return minutes_until_start(start_time_utc)
 
 
-def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start_time: datetime = None):
+def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start_time: datetime = None, sofascore_event_id: int | None = None):
     """Determine whether odds should be extracted at this moment.
     Returns:
         should_extract_odds (bool)
         metadata_snapshot (dict or None)
         timing_changed (bool)
+        sofascore_event_id (int or None)
     """
     from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
     from modules.sofascore import api_client
 
     if not Config.ENABLE_ODDS_EXTRACTION:
         logger.info(f"🚫 ODDS EXTRACTION DISABLED: Skipping odds extraction for event {event_id}")
-        return False, None, False
+        return False, None, False, sofascore_event_id
 
-    try:
-        sofascore_event_id = resolve_sofascore_event_id(event_id)
-    except ValueError as exc:
-        logger.warning("Unable to resolve sofascore_event_id for canonical event %s: %s", event_id, exc)
-        return False, None, False
+    if sofascore_event_id is None:
+        try:
+            sofascore_event_id = resolve_sofascore_event_id(event_id)
+        except ValueError as exc:
+            logger.warning("Unable to resolve sofascore_event_id for canonical event %s: %s", event_id, exc)
+            return False, None, False, None
 
     key_moments = Config.PRE_START_ODDS_MOMENTS
     if minutes_until not in key_moments:
         logger.debug(
             f"⏭️ Not a key moment for event {event_id}: {minutes_until} minutes until start - SKIPPING API CALL AND ODDS EXTRACTION"
         )
-        return False, None, False
+        return False, None, False, sofascore_event_id
 
     if not Config.ENABLE_TIMESTAMP_CORRECTION:
         
@@ -69,14 +71,15 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
                 current_start_time=event_start_time,
                 minutes_until_start=minutes_until,
             )
-            return True, metadata_snapshot, False
+            return True, metadata_snapshot, False, sofascore_event_id
         else:
             logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - WILL EXTRACT ODDS")
-            return True, None, False
+            return True, None, False, sofascore_event_id
 
     logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - TIMESTAMP CORRECTION ENABLED")
     is_timing_consistent, metadata_snapshot = api_client.get_event_results(
         sofascore_event_id,
+        canonical_event_id=event_id,
         update_time=True,
         return_snapshot=True,
         current_start_time=event_start_time,
@@ -87,11 +90,11 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
 
     if is_timing_consistent is None:
         logger.warning(f"⏭️ API error for event {event_id} - skipping odds extraction")
-        return False, None, False
+        return False, None, False, sofascore_event_id
 
     if is_timing_consistent:
         logger.info(f"✅ Timing verified for event {event_id} ({minutes_until}m until start). Proceeding with odds extraction.")
-        return True, metadata_snapshot, False
+        return True, metadata_snapshot, False, sofascore_event_id
 
     logger.info(f"🔄 [TIME UPDATE] Timing mismatch detected for event {event_id}. DB corrected.")
-    return False, metadata_snapshot, True
+    return False, metadata_snapshot, True, sofascore_event_id
