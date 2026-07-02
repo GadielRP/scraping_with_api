@@ -110,6 +110,7 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                 logger.info(f"Checking recently started event {event_id} ({sport}) for timestamp correction (started {minutes_ago:.1f} minutes ago)")
                 correct_starting_time = api_client.get_event_results(
                     sofascore_event_id,
+                    canonical_event_id=event_id,
                     update_time=True,
                     minutes_until_start=minutes_since_start(stored_start_time),
                 )

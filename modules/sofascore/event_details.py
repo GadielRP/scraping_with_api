@@ -206,8 +206,24 @@ def get_event_results(
                     return None, None
                 return None
 
+            timing_event_id = canonical_event_id
+            if timing_event_id is None:
+                timing_event_id = EventSourceMappingRepository.get_event_id_by_source(
+                    "sofascore",
+                    str(event_id),
+                )
+
+            if timing_event_id is None:
+                logger.warning(
+                    "Skipping time update: canonical event ID was not resolved for SofaScore event %s",
+                    event_id,
+                )
+                if return_snapshot:
+                    return None, _extract_metadata_snapshot(response)
+                return None
+
             timing_result = client.check_and_update_starting_time(
-                event_id,
+                timing_event_id,
                 start_timestamp,
                 send_alert=True,
                 current_starting_time=current_start_time,

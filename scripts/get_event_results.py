@@ -20,9 +20,15 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     try:
-        sofascore_event_id = args.event_id if args.source == "sofascore" else resolve_sofascore_event_id(args.event_id)
+        if args.source == "canonical":
+            canonical_event_id = args.event_id
+            sofascore_event_id = resolve_sofascore_event_id(args.event_id)
+        else:
+            canonical_event_id = None
+            sofascore_event_id = args.event_id
         response = api_client.get_event_results(
             sofascore_event_id,
+            canonical_event_id=canonical_event_id,
             update_time=args.update_time,
             update_court_type=args.update_court_type,
             minutes_until_start=args.minutes_until_start,
