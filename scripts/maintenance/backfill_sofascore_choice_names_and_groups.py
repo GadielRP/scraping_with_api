@@ -1430,6 +1430,12 @@ def _load_candidate_rows(connection, args: argparse.Namespace) -> list[dict[str,
     if args.event_id is not None:
         where_clauses.append("m.event_id = :event_id")
         params["event_id"] = args.event_id
+    if getattr(args, "event_id_start", None) is not None:
+        where_clauses.append("m.event_id >= :event_id_start")
+        params["event_id_start"] = args.event_id_start
+    if getattr(args, "event_id_end", None) is not None:
+        where_clauses.append("m.event_id <= :event_id_end")
+        params["event_id_end"] = args.event_id_end
     if args.market_id is not None:
         where_clauses.append("m.market_id = :market_id")
         params["market_id"] = args.market_id
@@ -2000,6 +2006,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bookie-id", type=int, default=DEFAULT_BOOKIE_ID)
     parser.add_argument("--sport")
     parser.add_argument("--event-id", type=int)
+    parser.add_argument("--event-id-start", type=int)
+    parser.add_argument("--event-id-end", type=int)
     parser.add_argument("--market-id", type=int)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--include-draw-no-bet", action=argparse.BooleanOptionalAction, default=True)
