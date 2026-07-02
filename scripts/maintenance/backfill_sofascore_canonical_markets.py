@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, bindparam
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
@@ -61,6 +61,7 @@ class CanonicalizationRule:
     expected_choice_pattern: str
     expected_choice_names: tuple[str, ...]
     safe: bool = True
+    trajectory_required: bool = True
 
     @property
     def source_shape(self) -> str:
@@ -85,62 +86,174 @@ RULES: tuple[CanonicalizationRule, ...] = (
     CanonicalizationRule(
         "full_time_home_away_match",
         "Full time", "Home/Away", "Match",
-        "Full time", "Home/Away", "Full-time",
-        "moneyline_full_time", False, SIDE_2_WAY_PATTERN, ("1", "2"),
+        "Home/Away Full Time", "Home/Away", "Full Time",
+        "home_away_full_time", False, SIDE_2_WAY_PATTERN, ("1", "2"),
     ),
     CanonicalizationRule(
         "full_time_1x2_full_time",
         "Full time", "1X2", "Full-time",
-        "Full-time", "1X2", "Full-time",
+        "1X2 Full Time", "1X2", "Full Time",
         "1x2_full_time", False, SIDE_3_WAY_PATTERN, ("1", "X", "2"),
     ),
     CanonicalizationRule(
         "first_half_home_away",
         "1st half", "Home/Away", "1st half",
-        "1st half", "Home/Away", "1st Half",
-        "moneyline_1st_half", False, SIDE_2_WAY_PATTERN, ("1", "2"),
+        "Home/Away 1st Half", "Home/Away", "1st Half",
+        "home_away_1st_half", False, SIDE_2_WAY_PATTERN, ("1", "2"),
     ),
     CanonicalizationRule(
         "first_half_1x2",
         "1st half", "1X2", "1st half",
-        "1st half", "1X2", "1st Half",
+        "1X2 1st Half", "1X2", "1st Half",
         "1x2_1st_half", False, SIDE_3_WAY_PATTERN, ("1", "X", "2"),
     ),
     CanonicalizationRule(
         "game_total_match",
         "Game total", "Over/Under", "Match",
-        "Total", "Over/Under", "Full-time",
-        "total_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
+        "Over/Under Full Time", "Over/Under", "Full Time",
+        "over_under_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
     ),
     CanonicalizationRule(
         "total_points_match",
         "Total points", "Over/Under", "Match",
-        "Total", "Over/Under", "Full-time",
-        "total_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
+        "Over/Under Full Time", "Over/Under", "Full Time",
+        "over_under_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
     ),
     CanonicalizationRule(
         "match_goals_match",
         "Match goals", "Match goals", "Match",
-        "Total", "Over/Under", "Full-time",
-        "total_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
+        "Over/Under Full Time", "Over/Under", "Full Time",
+        "over_under_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
     ),
     CanonicalizationRule(
         "match_goals_full_time",
         "Match goals", "Match goals", "Full-time",
-        "Total", "Over/Under", "Full-time",
-        "total_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
+        "Over/Under Full Time", "Over/Under", "Full Time",
+        "over_under_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
     ),
     CanonicalizationRule(
         "point_spread_match",
         "Point spread", "Point spread", "Match",
-        "Asian handicap", "Asian handicap", "Full-time",
+        "Asian Handicap Full Time", "Asian Handicap", "Full Time",
         "asian_handicap_full_time", True, HANDICAP_PATTERN, ("1", "2"),
     ),
     CanonicalizationRule(
         "asian_handicap_group_case",
         "Asian handicap", "Asian Handicap", "Full-time",
-        "Asian handicap", "Asian handicap", "Full-time",
+        "Asian Handicap Full Time", "Asian Handicap", "Full Time",
         "asian_handicap_full_time", True, HANDICAP_PATTERN, ("1", "2"),
+    ),
+    CanonicalizationRule(
+        "double_chance_full_time",
+        "Double chance", "Double chance", "Full-time",
+        "Double Chance Full Time", "Double Chance", "Full Time",
+        "double_chance_full_time", False, r"^(1X|12|X2)$", ("12", "1X", "X2"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "full_time_including_overtime",
+        "Full time (including overtime)", "Full time (including overtime)", "Full-time",
+        "Home/Away Full Time Including Overtime", "Home/Away", "Full Time Including Overtime",
+        "home_away_full_time_including_overtime", False, SIDE_2_WAY_PATTERN, ("1", "2"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "home_away_1st_quarter",
+        "1st quarter winner", "Home/Away", "1st quarter",
+        "Home/Away 1st Quarter", "Home/Away", "1st Quarter",
+        "home_away_1st_quarter", False, SIDE_3_WAY_PATTERN, ("1", "X", "2"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "first_set_winner_1st_set",
+        "First set winner", "Home/Away", "1st set",
+        "First Set Winner 1st Set", "First Set Winner", "1st Set",
+        "first_set_winner_1st_set", False, SIDE_2_WAY_PATTERN, ("1", "2"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "current_set_winner_current_set",
+        "Current set winner", "Current set winner", "Current set",
+        "Current Set Winner Current Set", "Current Set Winner", "Current Set",
+        "current_set_winner_current_set", False, SIDE_2_WAY_PATTERN, ("1", "2"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "over_under_1st_period",
+        "1st period goals", "Over/Under", "1st period",
+        "Over/Under 1st Period", "Over/Under", "1st Period",
+        "over_under_1st_period", True, TOTAL_PATTERN, ("Over", "Under"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "total_cards_full_time",
+        "Cards in match", "Total Cards", "Full-time",
+        "Total Cards Full Time", "Total Cards", "Full Time",
+        "total_cards_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "corners_2_way_full_time",
+        "Corners 2-Way", "Corners 2-Way", "Full-time",
+        "Corners 2-Way Full Time", "Corners 2-Way", "Full Time",
+        "corners_2_way_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "total_sets_games_extra_time",
+        "Total games won", "Total sets/games", "Extra time",
+        "Total Sets/Games Extra Time", "Total Sets/Games", "Extra Time",
+        "total_sets_games_extra_time", True, TOTAL_PATTERN, ("Over", "Under"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "draw_no_bet_full_time",
+        "Draw no bet", "Draw no bet", "Full-time",
+        "Draw No Bet Full Time", "Draw No Bet", "Full Time",
+        "draw_no_bet_full_time", False, SIDE_2_WAY_PATTERN, ("1", "2"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "both_teams_to_score_full_time",
+        "Both teams to score", "Both teams to score", "Full-time",
+        "Both Teams To Score Full Time", "Both Teams To Score", "Full Time",
+        "both_teams_to_score_full_time", False, r"^(yes|no|Yes|No|YES|NO)$", ("yes", "no"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "first_goal_full_time",
+        "First goal", "First goal", "Full-time",
+        "First Goal Full Time", "First Goal", "Full Time",
+        "first_goal_full_time", False, r"^(1|2|no_goal|no goal|No goal|No Goal)$", ("1", "2", "no_goal"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "last_goal_full_time",
+        "Last goal", "Last goal", "Full-time",
+        "Last Goal Full Time", "Last Goal", "Full Time",
+        "last_goal_full_time", False, r"^(1|2|no_goal|no goal|No goal|No Goal)$", ("1", "2", "no_goal"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "first_team_to_score_full_time",
+        "First team to score", "First team to score", "Full-time",
+        "First Team To Score Full Time", "First Team To Score", "Full Time",
+        "first_team_to_score_full_time", False, r"^(1|2|no_goal|no goal|No goal|No Goal)$", ("1", "2", "no_goal"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "next_goal_full_time",
+        "Next goal", "Next goal", "Full-time",
+        "Next Goal Full Time", "Next Goal", "Full Time",
+        "next_goal_full_time", False, r"^(1|2|no_goal|no goal|No goal|No Goal)$", ("1", "2", "no_goal"),
+        trajectory_required=False,
+    ),
+    CanonicalizationRule(
+        "tie_break_in_match_extra_time",
+        "Tie break in match", "Tie break in match", "Extra time",
+        "Tie Break In Match Extra Time", "Tie Break In Match", "Extra Time",
+        "tie_break_in_match_extra_time", False, r"^(yes|no|Yes|No|YES|NO)$", ("yes", "no"),
+        trajectory_required=False,
     ),
 )
 
@@ -510,7 +623,7 @@ def _preflight(connection, rules: Sequence[CanonicalizationRule]) -> list[dict]:
                 f"{rule.rule_id}: requires_choice_group expected="
                 f"{rule.requires_choice_group} database={target['requires_choice_group']}"
             )
-        if not bool(target["enabled_for_trajectory"]):
+        if rule.trajectory_required and not bool(target["enabled_for_trajectory"]):
             errors.append(
                 f"{rule.rule_id}: canonical target is not enabled_for_trajectory"
             )
@@ -882,6 +995,105 @@ def _find_conflicts(connection, rules: Sequence[CanonicalizationRule], params: d
     }
 
 
+def _merge_duplicate_markets(connection, keeper_id: int, duplicate_id: int) -> None:
+    # 1. Find all choices for duplicate market
+    dup_choices = connection.execute(
+        text("SELECT choice_id, choice_name, initial_odds, current_odds, change FROM market_choices WHERE market_id = :dup_id"),
+        {"dup_id": duplicate_id}
+    ).mappings().all()
+    
+    for dup_choice in dup_choices:
+        # Check if choice_name exists in keeper
+        keeper_choice = connection.execute(
+            text("SELECT choice_id FROM market_choices WHERE market_id = :keeper_id AND LOWER(choice_name) = LOWER(:name)"),
+            {"keeper_id": keeper_id, "name": dup_choice["choice_name"]}
+        ).mappings().one_or_none()
+        
+        if not keeper_choice:
+            # Reassign choice to keeper
+            connection.execute(
+                text("UPDATE market_choices SET market_id = :keeper_id WHERE choice_id = :choice_id"),
+                {"keeper_id": keeper_id, "choice_id": dup_choice["choice_id"]}
+            )
+        else:
+            keeper_choice_id = keeper_choice["choice_id"]
+            # Reassign snapshots to keeper choice
+            connection.execute(
+                text("UPDATE market_choice_snapshots SET choice_id = :keeper_choice_id WHERE choice_id = :choice_id"),
+                {"keeper_choice_id": keeper_choice_id, "choice_id": dup_choice["choice_id"]}
+            )
+            # Update keeper choice odds if they are NULL
+            connection.execute(
+                text("""
+                    UPDATE market_choices
+                    SET initial_odds = COALESCE(initial_odds, :init_odds),
+                        current_odds = COALESCE(:curr_odds, current_odds),
+                        change = COALESCE(:change, change)
+                    WHERE choice_id = :keeper_choice_id
+                """),
+                {
+                    "init_odds": dup_choice["initial_odds"],
+                    "curr_odds": dup_choice["current_odds"],
+                    "change": dup_choice["change"],
+                    "keeper_choice_id": keeper_choice_id
+                }
+            )
+            # Delete duplicate choice
+            connection.execute(
+                text("DELETE FROM market_choices WHERE choice_id = :choice_id"),
+                {"choice_id": dup_choice["choice_id"]}
+            )
+            
+    # 2. Update keeper market collected_at to latest of both
+    connection.execute(
+        text("""
+            UPDATE markets keeper
+            SET collected_at = GREATEST(keeper.collected_at, duplicate.collected_at)
+            FROM markets duplicate
+            WHERE keeper.market_id = :keeper_id AND duplicate.market_id = :dup_id
+        """),
+        {"keeper_id": keeper_id, "dup_id": duplicate_id}
+    )
+    
+    # 3. Delete duplicate market
+    connection.execute(
+        text("DELETE FROM markets WHERE market_id = :dup_id"),
+        {"dup_id": duplicate_id}
+    )
+
+
+def _resolve_and_merge_conflicts(connection, conflicts: list[dict], rules: Sequence[CanonicalizationRule]) -> int:
+    merged_count = 0
+    for conflict in conflicts:
+        market_ids = conflict["market_ids"]
+        # Fetch details to determine keeper
+        rows = connection.execute(
+            text("SELECT market_id, market_name, market_period, collected_at FROM markets WHERE market_id IN :ids").bindparams(
+                bindparam("ids", expanding=True)
+            ),
+            {"ids": list(market_ids)}
+        ).mappings().all()
+        
+        # Sort rows: is_canonical first, then collected_at, then market_id
+        sorted_rows = sorted(
+            rows,
+            key=lambda r: (
+                1 if any(r["market_name"] == rule.target_market_name and r["market_period"] == rule.target_market_period for rule in rules) else 0,
+                r["collected_at"].timestamp() if r["collected_at"] else 0,
+                r["market_id"]
+            ),
+            reverse=True
+        )
+        keeper_id = sorted_rows[0]["market_id"]
+        duplicate_ids = [r["market_id"] for r in sorted_rows[1:]]
+        
+        for dup_id in duplicate_ids:
+            _merge_duplicate_markets(connection, keeper_id, dup_id)
+            merged_count += 1
+            
+    return merged_count
+
+
 def _apply_updates(connection, rules: Sequence[CanonicalizationRule], params: dict) -> dict[str, int]:
     ctes, _ = build_candidate_ctes(rules)
     rows = connection.execute(
@@ -1135,19 +1347,13 @@ def run(args: argparse.Namespace) -> tuple[int, dict | None]:
                         )
 
                     if conflicts_report["total_conflicts"]:
-                        print("Projected unique-constraint conflicts:", file=sys.stderr)
-                        for conflict in conflicts_report["rows"]:
-                            print(
-                                "  event_id={event_id} bookie_id={bookie_id} "
-                                "market={projected_market_name!r} "
-                                "period={projected_market_period!r} "
-                                "choice_group={choice_group!r} is_live={is_live} "
-                                "market_ids={market_ids}".format(**conflict),
-                                file=sys.stderr,
+                        with progress_step(
+                            f"Merging {conflicts_report['total_conflicts']} projected unique-constraint conflicts"
+                        ):
+                            merged_count = _resolve_and_merge_conflicts(
+                                connection, conflicts_report["rows"], rules
                             )
-                        raise RuntimeError(
-                            f"Aborting commit: {conflicts_report['total_conflicts']} projected unique-constraint conflict(s)"
-                        )
+                            logger.info("Successfully merged %s duplicate markets", merged_count)
 
                     with progress_step("Updating eligible market metadata by event batch"):
                         total_update_batches = len(batch_ranges)

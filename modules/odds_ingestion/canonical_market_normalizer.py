@@ -65,6 +65,18 @@ class CanonicalMarketNormalizer:
             return "both_teams_to_score_full_time"
         if name == "first team to score" and group == "first team to score" and full_time:
             return "first_team_to_score_full_time"
+        if name == "draw no bet" and group == "draw no bet" and full_time:
+            return "draw_no_bet_full_time"
+        if name == "double chance" and group == "double chance" and full_time:
+            return "double_chance_full_time"
+        if name == "1st quarter winner" and group == "home/away" and period == "1st quarter":
+            return "home_away_1st_quarter"
+        if name == "full time (including overtime)" and group == "full time (including overtime)" and full_time:
+            return "home_away_full_time_including_overtime"
+        if name == "cards in match" and group == "total cards" and full_time:
+            return "total_cards_full_time"
+        if name == "corners 2 way" and group == "corners 2 way" and full_time:
+            return "corners_2_way_full_time"
         return None
 
     @staticmethod
@@ -128,10 +140,10 @@ class CanonicalMarketNormalizer:
                 continue
 
             market_choice_group = CanonicalMarketNormalizer._text(raw_market.get("choiceGroup"))
+            raw_choices = [c for c in raw_market.get("choices", []) if isinstance(c, dict)]
+            total_choices_count = len(raw_choices)
             choices = []
-            for raw_choice in raw_market.get("choices", []):
-                if not isinstance(raw_choice, dict):
-                    continue
+            for idx, raw_choice in enumerate(raw_choices):
                 raw_choice_name = raw_choice.get("name")
                 choice_context = ChoiceNormalizationContext(
                     market_family=canonical_type.market_family,
@@ -142,6 +154,8 @@ class CanonicalMarketNormalizer:
                         market_choice_group
                         or CanonicalMarketNormalizer._text(raw_choice.get("choiceGroup"))
                     ),
+                    choice_index=idx,
+                    total_choices=total_choices_count,
                 )
                 choice_result = ChoiceNormalizer.normalize_choice_name(raw_choice_name, choice_context)
                 if not choice_result.resolved:

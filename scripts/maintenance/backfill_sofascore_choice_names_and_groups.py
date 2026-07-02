@@ -30,7 +30,7 @@ from app.logging_setup import setup_logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-CANONICAL_CHOICE_NAME_SEQUENCE = ("1", "2", "1x", "12", "x", "over", "under", "yes", "no", "no_goal")
+CANONICAL_CHOICE_NAME_SEQUENCE = ("1", "2", "1x", "12", "x2", "x", "over", "under", "yes", "no", "no_goal")
 CANONICAL_CHOICE_NAMES = frozenset(CANONICAL_CHOICE_NAME_SEQUENCE)
 ALLOWED_TARGET_CHOICE_NAMES = CANONICAL_CHOICE_NAMES
 DEFAULT_BOOKIE_ID = 1
@@ -664,12 +664,13 @@ MARKET_SHAPE_DEFINITIONS: tuple[MarketShapeDefinition, ...] = (
                 ("full time", "home/away", "match"),
                 ("full time", "home/away", "full-time"),
                 ("full time", "home/away", "full time"),
+                ("home/away full time", "home/away", "full time"),
             }
         ),
-        canonical_target_key="moneyline_full_time",
-        canonical_target_name="Full time",
+        canonical_target_key="home_away_full_time",
+        canonical_target_name="Home/Away Full Time",
         canonical_target_group="Home/Away",
-        canonical_target_period="Full-time",
+        canonical_target_period="Full Time",
         market_family="side",
     ),
     MarketShapeDefinition(
@@ -678,10 +679,11 @@ MARKET_SHAPE_DEFINITIONS: tuple[MarketShapeDefinition, ...] = (
             {
                 ("1st half", "home/away", "1st half"),
                 ("1st half", "home/away", "1st Half"),
+                ("home/away 1st half", "home/away", "1st half"),
             }
         ),
-        canonical_target_key="moneyline_1st_half",
-        canonical_target_name="1st half",
+        canonical_target_key="home_away_1st_half",
+        canonical_target_name="Home/Away 1st Half",
         canonical_target_group="Home/Away",
         canonical_target_period="1st Half",
         market_family="side",
@@ -691,15 +693,15 @@ MARKET_SHAPE_DEFINITIONS: tuple[MarketShapeDefinition, ...] = (
         source_shapes=frozenset(
             {
                 ("full time", "1x2", "full-time"),
-                ("full time", "1x2", "full-time"),
                 ("full-time", "1x2", "full-time"),
                 ("full-time", "1x2", "full time"),
+                ("1x2 full time", "1x2", "full time"),
             }
         ),
         canonical_target_key="1x2_full_time",
-        canonical_target_name="Full-time",
+        canonical_target_name="1X2 Full Time",
         canonical_target_group="1X2",
-        canonical_target_period="Full-time",
+        canonical_target_period="Full Time",
         market_family="side",
         allows_draw=True,
     ),
@@ -709,10 +711,11 @@ MARKET_SHAPE_DEFINITIONS: tuple[MarketShapeDefinition, ...] = (
             {
                 ("1st half", "1x2", "1st half"),
                 ("1st half", "1x2", "1st Half"),
+                ("1x2 1st half", "1x2", "1st half"),
             }
         ),
         canonical_target_key="1x2_1st_half",
-        canonical_target_name="1st half",
+        canonical_target_name="1X2 1st Half",
         canonical_target_group="1X2",
         canonical_target_period="1st Half",
         market_family="side",
@@ -720,11 +723,16 @@ MARKET_SHAPE_DEFINITIONS: tuple[MarketShapeDefinition, ...] = (
     ),
     MarketShapeDefinition(
         kind="draw_no_bet_full_time",
-        source_shapes=frozenset({("draw no bet", "draw no bet", "full-time")}),
+        source_shapes=frozenset(
+            {
+                ("draw no bet", "draw no bet", "full-time"),
+                ("draw no bet full time", "draw no bet", "full time"),
+            }
+        ),
         canonical_target_key="draw_no_bet_full_time",
-        canonical_target_name="Draw no bet",
-        canonical_target_group="Draw no bet",
-        canonical_target_period="Full-time",
+        canonical_target_name="Draw No Bet Full Time",
+        canonical_target_group="Draw No Bet",
+        canonical_target_period="Full Time",
         market_family="draw_no_bet",
     ),
     MarketShapeDefinition(
@@ -736,12 +744,13 @@ MARKET_SHAPE_DEFINITIONS: tuple[MarketShapeDefinition, ...] = (
                 ("total points", "over/under", "match"),
                 ("match goals", "match goals", "match"),
                 ("match goals", "match goals", "full-time"),
+                ("over/under full time", "over/under", "full time"),
             }
         ),
-        canonical_target_key="total_full_time",
-        canonical_target_name="Total",
+        canonical_target_key="over_under_full_time",
+        canonical_target_name="Over/Under Full Time",
         canonical_target_group="Over/Under",
-        canonical_target_period="Full-time",
+        canonical_target_period="Full Time",
         market_family="total",
         line_based=True,
     ),
@@ -752,31 +761,84 @@ MARKET_SHAPE_DEFINITIONS: tuple[MarketShapeDefinition, ...] = (
                 ("point spread", "point spread", "match"),
                 ("asian handicap", "asian handicap", "full-time"),
                 ("asian handicap", "asian handicap", "full time"),
+                ("asian handicap full time", "asian handicap", "full time"),
             }
         ),
         canonical_target_key="asian_handicap_full_time",
-        canonical_target_name="Asian handicap",
-        canonical_target_group="Asian handicap",
-        canonical_target_period="Full-time",
+        canonical_target_name="Asian Handicap Full Time",
+        canonical_target_group="Asian Handicap",
+        canonical_target_period="Full Time",
         market_family="handicap",
         line_based=True,
     ),
     MarketShapeDefinition(
         kind="both_teams_to_score_full_time",
-        source_shapes=frozenset({("both teams to score", "both teams to score", "full-time")}),
+        source_shapes=frozenset(
+            {
+                ("both teams to score", "both teams to score", "full-time"),
+                ("both teams to score full time", "both teams to score", "full time"),
+            }
+        ),
         canonical_target_key="both_teams_to_score_full_time",
-        canonical_target_name="Both teams to score",
-        canonical_target_group="Both teams to score",
-        canonical_target_period="Full-time",
+        canonical_target_name="Both Teams To Score Full Time",
+        canonical_target_group="Both Teams To Score",
+        canonical_target_period="Full Time",
         market_family="btts",
     ),
     MarketShapeDefinition(
         kind="first_team_to_score_full_time",
-        source_shapes=frozenset({("first team to score", "first team to score", "full-time")}),
+        source_shapes=frozenset(
+            {
+                ("first team to score", "first team to score", "full-time"),
+                ("first team to score full time", "first team to score", "full time"),
+            }
+        ),
         canonical_target_key="first_team_to_score_full_time",
-        canonical_target_name="First team to score",
-        canonical_target_group="First team to score",
-        canonical_target_period="Full-time",
+        canonical_target_name="First Team To Score Full Time",
+        canonical_target_group="First Team To Score",
+        canonical_target_period="Full Time",
+        market_family="first_team_to_score",
+    ),
+    MarketShapeDefinition(
+        kind="double_chance_full_time",
+        source_shapes=frozenset(
+            {
+                ("double chance", "double chance", "full-time"),
+                ("double chance full time", "double chance", "full time"),
+            }
+        ),
+        canonical_target_key="double_chance_full_time",
+        canonical_target_name="Double Chance Full Time",
+        canonical_target_group="Double Chance",
+        canonical_target_period="Full Time",
+        market_family="side",
+    ),
+    MarketShapeDefinition(
+        kind="home_away_full_time_including_overtime",
+        source_shapes=frozenset(
+            {
+                ("full time (including overtime)", "full time (including overtime)", "full-time"),
+                ("home/away full time including overtime", "home/away", "full time including overtime"),
+            }
+        ),
+        canonical_target_key="home_away_full_time_including_overtime",
+        canonical_target_name="Home/Away Full Time Including Overtime",
+        canonical_target_group="Home/Away",
+        canonical_target_period="Full Time Including Overtime",
+        market_family="side",
+    ),
+    MarketShapeDefinition(
+        kind="next_goal_full_time",
+        source_shapes=frozenset(
+            {
+                ("next goal", "next goal", "full-time"),
+                ("next goal full time", "next goal", "full time"),
+            }
+        ),
+        canonical_target_key="next_goal_full_time",
+        canonical_target_name="Next Goal Full Time",
+        canonical_target_group="Next Goal",
+        canonical_target_period="Full Time",
         market_family="first_team_to_score",
     ),
 )
@@ -787,15 +849,18 @@ for definition in MARKET_SHAPE_DEFINITIONS:
         SHAPE_BY_KEY[shape] = definition
 
 CANONICAL_TARGET_KEYS = {
-    "moneyline_full_time",
-    "moneyline_1st_half",
+    "home_away_full_time",
+    "home_away_1st_half",
+    "home_away_full_time_including_overtime",
     "1x2_full_time",
     "1x2_1st_half",
-    "total_full_time",
+    "over_under_full_time",
     "asian_handicap_full_time",
     "draw_no_bet_full_time",
+    "double_chance_full_time",
     "both_teams_to_score_full_time",
     "first_team_to_score_full_time",
+    "next_goal_full_time",
 }
 
 
@@ -860,14 +925,14 @@ def resolve_choice_name(
             )
             return result
         if normalized_choice == "no_goal":
-            if kind == "first_team_to_score_full_time":
+            if kind in {"first_team_to_score_full_time", "next_goal_full_time"}:
                 result.update(
                     {
                         "target_choice_name": "no_goal",
                         "target_choice_group": target_group_from_context,
                         "action_type": "noop" if raw == "no_goal" else "rename",
                         "status": "resolved",
-                        "reason": "first team to score no goal canonicalized",
+                        "reason": "no goal canonicalized",
                     }
                 )
                 return result
@@ -875,7 +940,7 @@ def resolve_choice_name(
                 {
                     "action_type": "anomaly",
                     "status": "anomaly",
-                    "reason": "no_goal only allowed for first_team_to_score_full_time",
+                    "reason": "no_goal only allowed for first_team_to_score_full_time or next_goal_full_time",
                 }
             )
             return result
@@ -1093,7 +1158,67 @@ def resolve_choice_name(
             )
             return result
 
-    if kind == "first_team_to_score_full_time":
+    if kind == "double_chance_full_time":
+        normalized = normalize_text(raw)
+        if normalized in {"1x", "x2", "12"}:
+            result.update(
+                {
+                    "target_choice_name": normalized,
+                    "target_choice_group": target_group_from_context,
+                    "action_type": "noop" if raw == normalized else "rename",
+                    "status": "resolved",
+                    "reason": "canonical choice",
+                }
+            )
+            return result
+        
+        if " or " in normalized:
+            parts = [p.strip() for p in normalized.split(" or ")]
+            if len(parts) == 2:
+                p1, p2 = parts[0], parts[1]
+                if p1 == "draw" or p2 == "draw":
+                    team_label = p2 if p1 == "draw" else p1
+                    team_resolution = resolve_team_side(team_label, home_team, away_team, home_slug, away_slug)
+                    if _team_resolution_can_persist(team_resolution):
+                        side = team_resolution.side
+                        target_name = "1x" if side == "1" else "x2"
+                        result.update(
+                            {
+                                "target_choice_name": target_name,
+                                "target_choice_group": target_group_from_context,
+                                "action_type": "rename",
+                                "status": "resolved",
+                                "reason": f"resolved double chance draw combination from {team_resolution.strategy} match",
+                            }
+                        )
+                        return result
+                else:
+                    res1 = resolve_team_side(p1, home_team, away_team, home_slug, away_slug)
+                    res2 = resolve_team_side(p2, home_team, away_team, home_slug, away_slug)
+                    if _team_resolution_can_persist(res1) and _team_resolution_can_persist(res2):
+                        sides = {res1.side, res2.side}
+                        if sides == {"1", "2"}:
+                            result.update(
+                                {
+                                    "target_choice_name": "12",
+                                    "target_choice_group": target_group_from_context,
+                                    "action_type": "rename",
+                                    "status": "resolved",
+                                    "reason": "resolved double chance home-away combination",
+                                }
+                            )
+                            return result
+
+        result.update(
+            {
+                "action_type": "unresolved",
+                "status": "unresolved",
+                "reason": f"unable to resolve double chance side from label={raw!r}",
+            }
+        )
+        return result
+
+    if kind in {"first_team_to_score_full_time", "next_goal_full_time"}:
         normalized_choice = normalize_choice_name_to_canonical(raw)
 
         if normalized_choice == "no_goal":
@@ -1103,7 +1228,7 @@ def resolve_choice_name(
                     "target_choice_group": target_group_from_context,
                     "action_type": "noop" if raw == "no_goal" else "rename",
                     "status": "resolved",
-                    "reason": "first team to score no goal canonicalized",
+                    "reason": "no goal canonicalized",
                 }
             )
             return result
@@ -1120,7 +1245,7 @@ def resolve_choice_name(
                     "target_choice_group": target_group_from_context,
                     "action_type": "noop" if raw == team_resolution.side else "rename",
                     "status": "resolved",
-                    "reason": "resolved first team to score from team label",
+                    "reason": "resolved team side from team label",
                 }
             )
             return result
@@ -1130,7 +1255,7 @@ def resolve_choice_name(
                 "action_type": "unresolved",
                 "status": "unresolved",
                 "reason": (
-                    "unable to resolve first team to score side "
+                    "unable to resolve team side "
                     f"(label={raw!r}, home_team={home_team!r}, away_team={away_team!r}, "
                     f"strategy={team_resolution.strategy}, confidence={team_resolution.confidence})"
                 ),
@@ -1240,15 +1365,18 @@ def validate_canonical_targets(connection) -> dict[str, dict[str, Any]]:
     ).mappings().all()
     by_key = {row["canonical_market_key"]: dict(row) for row in rows}
     expected = {
-        "moneyline_full_time": ("Full time", "Home/Away", "Full-time", False),
-        "moneyline_1st_half": ("1st half", "Home/Away", "1st Half", False),
-        "1x2_full_time": ("Full-time", "1X2", "Full-time", False),
-        "1x2_1st_half": ("1st half", "1X2", "1st Half", False),
-        "total_full_time": ("Total", "Over/Under", "Full-time", True),
-        "asian_handicap_full_time": ("Asian handicap", "Asian handicap", "Full-time", True),
-        "draw_no_bet_full_time": ("Draw no bet", "Draw no bet", "Full-time", False),
-        "both_teams_to_score_full_time": ("Both teams to score", "Both teams to score", "Full-time", False),
-        "first_team_to_score_full_time": ("First team to score", "First team to score", "Full-time", False),
+        "home_away_full_time": ("Home/Away Full Time", "Home/Away", "Full Time", False),
+        "home_away_1st_half": ("Home/Away 1st Half", "Home/Away", "1st Half", False),
+        "home_away_full_time_including_overtime": ("Home/Away Full Time Including Overtime", "Home/Away", "Full Time Including Overtime", False),
+        "1x2_full_time": ("1X2 Full Time", "1X2", "Full Time", False),
+        "1x2_1st_half": ("1X2 1st Half", "1X2", "1st Half", False),
+        "over_under_full_time": ("Over/Under Full Time", "Over/Under", "Full Time", True),
+        "asian_handicap_full_time": ("Asian Handicap Full Time", "Asian Handicap", "Full Time", True),
+        "draw_no_bet_full_time": ("Draw No Bet Full Time", "Draw No Bet", "Full Time", False),
+        "double_chance_full_time": ("Double Chance Full Time", "Double Chance", "Full Time", False),
+        "both_teams_to_score_full_time": ("Both Teams To Score Full Time", "Both Teams To Score", "Full Time", False),
+        "first_team_to_score_full_time": ("First Team To Score Full Time", "First Team To Score", "Full Time", False),
+        "next_goal_full_time": ("Next Goal Full Time", "Next Goal", "Full Time", False),
     }
     errors = []
     for key, expected_shape in expected.items():
