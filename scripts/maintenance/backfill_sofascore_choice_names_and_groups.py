@@ -39,7 +39,7 @@ _CANONICAL_CHOICE_SQL_VALUES = ", ".join(f"'{choice}'" for choice in CANONICAL_C
 
 
 def _noncanonical_choice_sql(alias: str) -> str:
-    return f"trim(coalesce({alias}.choice_name, '')) NOT IN ({_CANONICAL_CHOICE_SQL_VALUES})"
+    return f"{alias}.choice_name IS NOT NULL AND {alias}.choice_name != '' AND {alias}.choice_name NOT IN ({_CANONICAL_CHOICE_SQL_VALUES})"
 
 
 NONCANONICAL_CHOICE_SQL = _noncanonical_choice_sql("c2")
@@ -1414,7 +1414,7 @@ def _candidate_shape_sql(args: argparse.Namespace) -> tuple[str, dict[str, Any]]
             params[f"{prefix}_group"] = group
             params[f"{prefix}_period"] = period
             shape_parts.append(
-                f"(lower(trim(m.market_name)) = :{prefix}_name AND lower(trim(coalesce(m.market_group, ''))) = :{prefix}_group AND lower(trim(m.market_period)) = :{prefix}_period)"
+                f"(lower(m.market_name) = :{prefix}_name AND lower(m.market_group) = :{prefix}_group AND lower(m.market_period) = :{prefix}_period)"
             )
         pieces.append("(" + " OR ".join(shape_parts) + ")")
     return (" OR ".join(pieces) if pieces else "1 = 0"), params
