@@ -11,7 +11,7 @@ venv/
 
 logs/
 profile.yaml
-
+detect_unsupported_markets.py
 scratch/
 modulo*.txt
 

@@ -39,6 +39,7 @@ from .schedule_feeds import (
     get_live_events_response_per_sport,
     get_today_sport_events_odds_response,
     get_today_sport_events_response,
+    get_unique_tournament_scheduled_events,
 )
 from .standings import get_standings_response, process_standings_response
 from .team_history import get_nearest_event_for_team, get_team_last_results_response
@@ -434,8 +435,11 @@ class SofaScoreAPI:
     def get_h2h_events_for_event(self, custom_id: str) -> Optional[Dict]:
         return get_h2h_events_for_event(self, custom_id)
 
-    def get_today_sport_events_response(self, date: str, sport: str):
-        return get_today_sport_events_response(self, date, sport)
+    def get_today_sport_events_response(self, date: str, sport: str, page: int = 1):
+        return get_today_sport_events_response(self, date, sport, page)
+
+    def get_unique_tournament_scheduled_events(self, unique_tournament_id: int | str, date: str):
+        return get_unique_tournament_scheduled_events(self, unique_tournament_id, date)
 
     def get_today_sport_events_odds_response(self, date: str, sport: str):
         return get_today_sport_events_odds_response(self, date, sport)

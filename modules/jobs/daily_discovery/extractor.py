@@ -54,71 +54,107 @@ class DailyDiscoveryExtractor:
                 try:
                     logger.info("Processing %s...", sport)
                     logger.info("Fetching today's %s odds...", sport)
-                    odds_response = self.api_client.get_today_sport_events_odds_response(date, sport)
-
-                    if not odds_response:
-                        logger.warning("No odds response for %s, skipping", sport)
-                        DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "failed")
-                        continue
-
-                    odds_map = parse_today_market_odds_response(odds_response)
-                    if not odds_map:
-                        logger.info("No events with odds found for %s", sport)
-                        DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
-                        continue
+                    odds_map = {}
+                    try:
+                        odds_response = self.api_client.get_today_sport_events_odds_response(date, sport)
+                        if odds_response:
+                            odds_map = parse_today_market_odds_response(odds_response) or {}
+                        else:
+                            logger.warning("No odds response for %s, proceeding to fetch events without odds", sport)
+                    except Exception as exc:
+                        logger.warning("Failed to fetch odds for %s: %s. Will proceed without odds.", sport, exc)
 
                     odds_event_ids = set(odds_map.keys())
-                    logger.info("Found %s %s events with odds", len(odds_event_ids), sport)
+                    logger.info("Found %s %s events with odds in the feed", len(odds_event_ids), sport)
 
-                    logger.info("Fetching today's %s events...", sport)
-                    events_response = self.api_client.get_today_sport_events_response(date, sport)
+                    logger.info("Fetching today's %s scheduled tournaments...", sport)
 
-                    if not events_response:
-                        logger.warning("No events response for %s, skipping", sport)
+                    unique_tournament_ids = []
+                    page = 1
+                    failed = False
+
+                    while True:
+                        page_response = self.api_client.get_today_sport_events_response(date, sport, page)
+
+                        if not page_response:
+                            if page == 1:
+                                failed = True
+                            break
+
+                        scheduled = page_response.get("scheduled", [])
+                        if not scheduled:
+                            break
+
+                        for item in scheduled:
+                            tz_count = item.get("timezoneEventCount", {})
+                            total_events_in_tz = sum(tz_count.values()) if tz_count else 0
+                            if tz_count and total_events_in_tz == 0:
+                                continue
+
+                            ut = item.get("tournament", {}).get("uniqueTournament", {})
+                            ut_id = ut.get("id")
+                            if ut_id and ut_id not in unique_tournament_ids:
+                                unique_tournament_ids.append(ut_id)
+
+                        if not page_response.get("hasNextPage", False):
+                            break
+
+                        page += 1
+
+                    if failed:
+                        logger.warning("No tournaments response for %s, skipping", sport)
                         DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "failed")
                         continue
 
-                    filtered_events = filter_events_present_in_odds_feed(events_response, odds_event_ids)
-                    if not filtered_events:
-                        logger.info("No matching %s events found after filtering", sport)
+                    logger.info("Found %d unique tournaments for %s. Fetching events...", len(unique_tournament_ids), sport)
+
+                    all_events = []
+                    for ut_id in unique_tournament_ids:
+                        try:
+                            ut_events_response = self.api_client.get_unique_tournament_scheduled_events(ut_id, date)
+                            if ut_events_response and "events" in ut_events_response:
+                                all_events.extend(ut_events_response["events"])
+                        except Exception as exc:
+                            logger.warning("Failed to fetch events for tournament %s: %s", ut_id, exc)
+
+                    if not all_events:
+                        logger.info("No %s events found", sport)
                         DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
                         continue
 
-                    upcoming_events = filter_events_starting_after_threshold(filtered_events, min_minutes_away=10)
-                    if not upcoming_events:
-                        logger.info("No upcoming %s events found after time filtering", sport)
-                        DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
-                        continue
+                    # Determine which events have not started yet (using our standard min_minutes_away=10 threshold)
+                    upcoming_events = filter_events_starting_after_threshold(all_events, min_minutes_away=10)
+                    upcoming_event_ids = {e["id"] for e in upcoming_events if e.get("id")}
 
-                    logger.info("Processing %s %s events...", len(upcoming_events), sport)
+                    logger.info("Processing %s %s events...", len(all_events), sport)
                     sport_events_inserted = 0
                     sport_odds_inserted = 0
 
-                    for event in upcoming_events:
+                    for event in all_events:
                         event_id = event.get("id")
                         if not event_id:
                             continue
 
-                        event_odds = odds_map.get(event_id)
-                        if not event_odds:
-                            logger.warning("No odds found for event %s, skipping", event_id)
-                            continue
+                        # Only persist odds if the event has not started yet and is present in the odds feed
+                        has_odds_data = event_id in odds_event_ids and event_id in upcoming_event_ids
+                        event_odds = odds_map.get(event_id) if has_odds_data else None
 
                         success = persist_event_with_odds(self.api_client, event, event_odds)
                         if success:
                             sport_events_inserted += 1
-                            sport_odds_inserted += 1
+                            if event_odds:
+                                sport_odds_inserted += 1
 
                     DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
                     logger.info(
                         "%s completed: %s/%s events inserted, %s with odds",
                         sport,
                         sport_events_inserted,
-                        len(upcoming_events),
+                        len(all_events),
                         sport_odds_inserted,
                     )
 
-                    total_events_processed += len(upcoming_events)
+                    total_events_processed += len(all_events)
                     total_events_inserted += sport_events_inserted
                     total_odds_inserted += sport_odds_inserted
                 except Exception as exc:

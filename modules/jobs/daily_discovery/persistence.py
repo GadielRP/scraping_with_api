@@ -11,7 +11,7 @@ from modules.odds_ingestion import MarketOddsIngestionService
 logger = logging.getLogger(__name__)
 
 
-def persist_event_with_odds(api_client, event: Dict, odds_data: Dict) -> bool:
+def persist_event_with_odds(api_client, event: Dict, odds_data: Dict | None = None) -> bool:
     try:
         sofascore_event_id = event.get("id")
         if not sofascore_event_id:
@@ -37,14 +37,15 @@ def persist_event_with_odds(api_client, event: Dict, odds_data: Dict) -> bool:
             event_payload["awayTeam"],
         )
 
-        ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
-            db_event.id,
-            odds_data,
-            source="daily_discovery",
-        )
-        if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
-            logger.warning("Failed to save market odds for event %s: %s", db_event.id, ingestion_result.reason)
-            return False
+        if odds_data:
+            ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
+                db_event.id,
+                odds_data,
+                source="daily_discovery",
+            )
+            if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
+                logger.warning("Failed to save market odds for event %s: %s", db_event.id, ingestion_result.reason)
+                return False
 
         return True
     except Exception as exc:
