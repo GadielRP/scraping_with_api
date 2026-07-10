@@ -256,6 +256,7 @@ def normalize_event_payload(event: Dict, discovery_source: str = "dropping_odds"
                 "name": home_team.get("name"),
                 "slug": home_team.get("slug"),
                 "short_name": home_team.get("shortName"),
+                "code_name": home_team.get("nameCode"),
             },
             "away_participant": {
                 "source": "sofascore",
@@ -263,6 +264,7 @@ def normalize_event_payload(event: Dict, discovery_source: str = "dropping_odds"
                 "name": away_team.get("name"),
                 "slug": away_team.get("slug"),
                 "short_name": away_team.get("shortName"),
+                "code_name": away_team.get("nameCode"),
             },
             "competition_ref": competition_ref,
         }

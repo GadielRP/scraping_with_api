@@ -17,6 +17,7 @@ class Participant(Base):
     name = Column(Text, nullable=False)
     slug = Column(Text)
     short_name = Column(Text)
+    code_name = Column(Text)
     created_at = Column(DateTime, default=get_local_now)
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
 

@@ -48,6 +48,7 @@ class ParticipantRepository:
             name=name,
             slug=participant_data.get("slug"),
             short_name=participant_data.get("short_name"),
+            code_name=participant_data.get("code_name"),
         )
 
         try:
@@ -70,7 +71,7 @@ class ParticipantRepository:
 
     @staticmethod
     def _apply_updates(participant: Participant, participant_data: Dict) -> None:
-        for attr in ("name", "slug", "short_name"):
+        for attr in ("name", "slug", "short_name", "code_name"):
             value = participant_data.get(attr)
             if value is not None:
                 setattr(participant, attr, value)
