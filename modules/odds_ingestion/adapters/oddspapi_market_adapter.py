@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import math
 from typing import Any, Iterable
 
 from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingIndex,
     MarketMappingRepository,
 )
+from modules.oddspapi.exchange_quotes import best_exchange_quotes
 from modules.oddspapi.format_utils import format_line, normalize_source_id
 
 
@@ -64,41 +64,8 @@ class OddspapiMarketAdapter:
         return slug.replace("-", " ").replace("_", " ").title()
 
     @staticmethod
-    def _exchange_quotes(exchange_meta: dict) -> list[dict]:
-        quotes = []
-        for source_key, side in (
-            ("availableToBack", "back"),
-            ("availableToLay", "lay"),
-        ):
-            source_quotes = exchange_meta.get(source_key)
-            if not isinstance(source_quotes, list):
-                continue
-            for level, quote in enumerate(source_quotes):
-                if not isinstance(quote, dict):
-                    continue
-                try:
-                    price = float(quote.get("price"))
-                except (TypeError, ValueError):
-                    continue
-                if not math.isfinite(price):
-                    continue
-
-                try:
-                    size = float(quote.get("size"))
-                    if not math.isfinite(size):
-                        size = None
-                except (TypeError, ValueError):
-                    size = None
-
-                quotes.append(
-                    {
-                        "side": side,
-                        "level": level,
-                        "price": price,
-                        "size": size,
-                    }
-                )
-        return quotes
+    def _is_exchange_bookmaker(slug: str, exchange_meta: Any) -> bool:
+        return isinstance(exchange_meta, dict) or slug in OddspapiMarketAdapter._EXCHANGE_BOOKMAKER_SLUGS
 
     @staticmethod
     def _append_diagnostic(diagnostics: dict, key: str, payload: dict) -> None:
@@ -250,13 +217,14 @@ class OddspapiMarketAdapter:
                             "limit": player.get("limit"),
                         }
                         exchange_meta = player.get("exchangeMeta")
-                        is_exchange = (
-                            isinstance(exchange_meta, dict)
-                            or slug in OddspapiMarketAdapter._EXCHANGE_BOOKMAKER_SLUGS
-                        )
-                        if is_exchange and isinstance(exchange_meta, dict):
-                            choice["exchangeQuotes"] = OddspapiMarketAdapter._exchange_quotes(
-                                exchange_meta
+                        if OddspapiMarketAdapter._is_exchange_bookmaker(
+                            slug, exchange_meta
+                        ) and isinstance(exchange_meta, dict):
+                            # Persist only top-of-book back + best lay.
+                            choice["exchangeQuotes"] = best_exchange_quotes(
+                                back_price=decimal_value,
+                                back_size=player.get("limit"),
+                                exchange_meta=exchange_meta,
                             )
                         normalized_market["choices"].append(choice)
 

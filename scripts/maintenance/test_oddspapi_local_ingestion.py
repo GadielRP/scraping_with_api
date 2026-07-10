@@ -343,6 +343,43 @@ def _load_db_context(event_id: int, trajectory_market_groups, trajectory_market_
     }
 
 
+def _enrich_market_examples(examples: list[dict], markets_index: dict) -> list[dict]:
+    if not markets_index:
+        return examples
+    enriched = []
+    for ex in examples:
+        item = dict(ex)
+        m_id = str(item.get("sourceMarketId"))
+        cat_m = markets_index.get(m_id)
+        if cat_m:
+            item["marketName"] = cat_m.get("marketName")
+            item["marketType"] = cat_m.get("marketType")
+            item["period"] = cat_m.get("period")
+            item["handicap"] = cat_m.get("handicap")
+        enriched.append(item)
+    return enriched
+
+
+def _enrich_outcome_examples(
+    examples: list[dict], markets_index: dict, outcomes_index: dict
+) -> list[dict]:
+    if not markets_index and not outcomes_index:
+        return examples
+    enriched = []
+    for ex in examples:
+        item = dict(ex)
+        m_id = str(item.get("sourceMarketId"))
+        o_id = str(item.get("sourceOutcomeId"))
+        cat_m = markets_index.get(m_id)
+        if cat_m:
+            item["marketName"] = cat_m.get("marketName")
+            item["marketType"] = cat_m.get("marketType")
+        if o_id in outcomes_index:
+            item["outcomeName"] = outcomes_index[o_id]
+        enriched.append(item)
+    return enriched
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -352,6 +389,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--file", required=True, help="Local OddsPapi odds JSON file")
     parser.add_argument("--bookmakers-catalog", help="Optional local /v4/bookmakers JSON file")
+    parser.add_argument(
+        "--markets-catalog",
+        help="Optional local markets catalog JSON file to enrich unmapped logs",
+    )
     parser.add_argument(
         "--trajectory-market-groups",
         nargs="+",
@@ -380,6 +421,27 @@ def main() -> int:
         return 1
 
     bookmaker_catalog = _load_json(args.bookmakers_catalog)
+    markets_catalog_raw = _load_json(args.markets_catalog)
+    
+    # Load markets catalog and build indexes if provided
+    markets_index = {}
+    outcomes_index = {}
+    if markets_catalog_raw:
+        market_items = []
+        if isinstance(markets_catalog_raw, list):
+            market_items = markets_catalog_raw
+        elif isinstance(markets_catalog_raw, dict):
+            market_items = markets_catalog_raw.get("markets") or []
+        
+        for item in market_items:
+            if isinstance(item, dict):
+                m_id = str(item.get("marketId"))
+                markets_index[m_id] = item
+                for out in item.get("outcomes") or []:
+                    if isinstance(out, dict):
+                        out_id = str(out.get("outcomeId"))
+                        outcomes_index[out_id] = out.get("outcomeName")
+
     dry_run = not args.commit
     trajectory_market_groups = args.trajectory_market_groups or []
     trajectory_market_periods = args.trajectory_market_periods or []
@@ -495,6 +557,15 @@ def main() -> int:
         event=db_context["event"],
     )
 
+    raw_unmapped = diagnostics.get("unmapped_markets") or []
+    enriched_unmapped = _enrich_market_examples(raw_unmapped, markets_index)
+    filtered_unmapped = [
+        m for m in enriched_unmapped
+        if not ("handicap" in (m.get("marketName") or "").lower() 
+                and "asian handicap" not in (m.get("marketName") or "").lower() 
+                and "european handicap" not in (m.get("marketName") or "").lower())
+    ]
+
     report = {
         "mode": "dry-run" if dry_run else "commit",
         "file": str(Path(args.file)),
@@ -550,11 +621,16 @@ def main() -> int:
                 "skipped_missing_handicap": len(
                     diagnostics.get("skipped_missing_handicap") or []
                 ),
-                "unmapped_market_examples": (diagnostics.get("unmapped_markets") or [])[:20],
-                "unmapped_outcome_examples": (diagnostics.get("unmapped_outcomes") or [])[:20],
-                "skipped_missing_handicap_examples": (
-                    diagnostics.get("skipped_missing_handicap") or []
-                )[:20],
+                "unmapped_market_examples": filtered_unmapped[:20],
+                "unmapped_outcome_examples": _enrich_outcome_examples(
+                    (diagnostics.get("unmapped_outcomes") or [])[:20],
+                    markets_index,
+                    outcomes_index,
+                ),
+                "skipped_missing_handicap_examples": _enrich_market_examples(
+                    (diagnostics.get("skipped_missing_handicap") or [])[:20],
+                    markets_index,
+                ),
             },
         },
         "ingestion_result": asdict(result),

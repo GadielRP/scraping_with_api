@@ -260,7 +260,31 @@ CANONICAL_MARKET_TYPE_SEEDS = {
                 "total (incl. overtime and penalties)",
                 "over under (incl. extra innings)",
                 "over under frames",
-                "over under rounds"
+                "over under rounds",
+                "total sets over under",
+                "total sets",
+            },
+            "period_lock": "Full Time",
+        },
+    ),
+    "sets_over_under_full_time": _seed(
+        name="Sets Over/Under Full Time",
+        group="Total Sets",
+        period="Full Time",
+        family="total",
+        requires_group=True,
+        trajectory=False,
+        order=31,
+        sofascore_match={
+            "market_name": {"total sets", "match sets", "sets total"},
+            "market_group": {"over/under", "total sets", "sets total"},
+            "market_period": FULL_TIME_PERIODS,
+        },
+        oddspapi_match={
+            "market_type": {"totals"},
+            "market_name": {
+                "total sets over under",
+                "total sets",
             },
             "period_lock": "Full Time",
         },
@@ -295,6 +319,19 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "period_lock": "1st Half",
         },
     ),
+    "over_under_1st_quarter": _seed(
+        name="Over/Under 1st Quarter",
+        group="Over/Under",
+        period="1st Quarter",
+        family="total",
+        requires_group=True,
+        trajectory=True,
+        order=33,
+        oddspapi_match={
+            "market_type": {"totals", "totals-points"},
+            "period_lock": "1st Quarter",
+        },
+    ),
     "over_under_1st_period": _seed(
         name="Over/Under 1st Period",
         group="Over/Under",
@@ -302,7 +339,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         family="total",
         requires_group=True,
         trajectory=False,
-        order=33,
+        order=34,
         oddspapi_match={
             "market_type": {"1stperiodgoals"},
             "period_lock": "1st Period",
@@ -440,7 +477,6 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         oddspapi_match={
             "market_type": {"spreads", "spreads-points"},
             "market_name": {
-                "handicap",
                 "asian handicap",
                 "point handicap",
             },
@@ -458,7 +494,6 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         oddspapi_match={
             "market_type": {"spreads"},
             "market_name": {
-                "handicap first half",
                 "asian handicap first half",
             },
             "period_lock": "1st Half",
@@ -475,7 +510,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         oddspapi_match={
             "market_type": {"spreads"},
             "market_name": {
-                "handicap (incl. overtime)",
+                "asian handicap (incl. overtime)",
             },
             "period_lock": "Full Time",
         },
@@ -551,6 +586,25 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "period_lock": "Full Time",
         },
     ),
+    "both_teams_to_score_full_time_including_overtime": _seed(
+        name="Both Teams To Score Full Time (Incl. Overtime)",
+        group="Both Teams To Score",
+        period="Full Time Including Overtime",
+        family="decision",
+        requires_group=False,
+        trajectory=False,
+        order=63,
+        sofascore_match={
+            "market_name": {"both teams to score (incl. overtime and penalties)"},
+            "market_group": {"both teams to score"},
+            "market_period": {"Full Time"},
+        },
+        oddspapi_match={
+            "market_type": {"bothteamsscore"},
+            "market_name": {"both teams to score (incl. overtime and penalties)"},
+            "period_lock": "Full Time",
+        },
+    ),
     "first_goal_full_time": _seed(
         name="First Goal Full Time",
         group="First Goal",
@@ -560,6 +614,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         trajectory=False,
         order=70,
         oddspapi_match={
+            "exclude_market_names": {"First Goal (incl. overtime and penalties)"},
             "market_type": {"firstgoal"},
             "period_lock": "Full Time",
             "outcome_role_sets": [{"1", "no_goal", "2"}],
@@ -574,6 +629,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         trajectory=False,
         order=71,
         oddspapi_match={
+            "exclude_market_names": {"last goal (incl. overtime and penalties)"},
             "market_type": {"lastteamtoscore", "lastgoal"},
             "period_lock": "Full Time",
             "outcome_role_sets": [{"1", "no_goal", "2"}],
