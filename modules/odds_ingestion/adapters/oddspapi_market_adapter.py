@@ -9,6 +9,7 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingIndex,
     MarketMappingRepository,
 )
+from modules.oddspapi.format_utils import format_line, normalize_source_id
 
 
 class OddspapiMarketAdapter:
@@ -51,7 +52,7 @@ class OddspapiMarketAdapter:
 
     @staticmethod
     def _format_line(value: Any) -> str | None:
-        return MarketMappingRepository._format_line(value)
+        return format_line(value)
 
     @staticmethod
     def _bookmaker_name(slug: str, bookmaker_index: dict[str, dict]) -> str:
@@ -149,16 +150,14 @@ class OddspapiMarketAdapter:
                     source_sport_id=source_sport_id,
                     source_market_id=source_market_id,
                 )
-                normalized_market_id = MarketMappingRepository._normalize_source_id(source_market_id)
+                normalized_market_id = normalize_source_id(source_market_id)
                 if not market_resolution.resolved:
                     OddspapiMarketAdapter._append_diagnostic(
                         diagnostics,
                         "unmapped_markets",
                         {
                             "sourceMarketId": normalized_market_id,
-                            "sourceSportId": MarketMappingRepository._normalize_source_id(
-                                source_sport_id
-                            ),
+                            "sourceSportId": normalize_source_id(source_sport_id),
                             "reason": market_resolution.reason,
                         },
                     )
@@ -208,9 +207,7 @@ class OddspapiMarketAdapter:
                         market_source_mapping_id=market_resolution.mapping_id,
                         source_outcome_id=source_outcome_id,
                     )
-                    normalized_outcome_id = MarketMappingRepository._normalize_source_id(
-                        source_outcome_id
-                    )
+                    normalized_outcome_id = normalize_source_id(source_outcome_id)
                     if not outcome_resolution.resolved:
                         OddspapiMarketAdapter._append_diagnostic(
                             diagnostics,

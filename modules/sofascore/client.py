@@ -24,7 +24,7 @@ from .discovery_feeds import (
     get_winning_odds_events,
 )
 from .event_details import get_event_details, get_event_results, update_event_information_from_response
-from .event_normalizer import clean_competition, get_event_information, get_gender
+from .event_normalizer import clean_competition, get_gender, normalize_event_payload
 from .challenge import (
     build_challenge_evidence,
     body_preview,
@@ -361,8 +361,8 @@ class SofaScoreAPI:
     def get_gender(self, home_team: Dict, away_team: Dict) -> str:
         return get_gender(home_team, away_team)
 
-    def get_event_information(self, event: Dict, discovery_source: str = "dropping_odds") -> Dict:
-        return get_event_information(event, discovery_source)
+    def normalize_event_payload(self, event: Dict, discovery_source: str = "dropping_odds") -> Dict:
+        return normalize_event_payload(event, discovery_source)
 
     def get_dropping_odds_with_odds_and_events_response(self, sport: str = None) -> Optional[Dict]:
         return get_dropping_odds_with_odds_and_events_response(self, sport=sport)

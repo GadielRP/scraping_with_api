@@ -160,7 +160,7 @@ def _build_competition_text(event: Dict) -> str:
     )
 
 
-def get_event_information(event: Dict, discovery_source: str = "dropping_odds") -> Dict:
+def normalize_event_payload(event: Dict, discovery_source: str = "dropping_odds") -> Dict:
     try:
         event = event or {}
         tournament = event.get("tournament") or {}
@@ -278,5 +278,5 @@ def get_event_information(event: Dict, discovery_source: str = "dropping_odds") 
 
         return event_data
     except Exception as exc:
-        logger.error("Error extracting event information: %s", exc)
+        logger.error("Error normalizing event payload: %s", exc)
         return {}

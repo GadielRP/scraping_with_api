@@ -193,10 +193,10 @@ RULES: tuple[CanonicalizationRule, ...] = (
         trajectory_required=False,
     ),
     CanonicalizationRule(
-        "corners_2_way_full_time",
+        "total_corners_full_time",
         "Corners 2-Way", "Corners 2-Way", "Full-time",
-        "Corners 2-Way Full Time", "Corners 2-Way", "Full Time",
-        "corners_2_way_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
+        "Total Corners Full Time", "Total Corners", "Full Time",
+        "total_corners_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
         trajectory_required=False,
     ),
     CanonicalizationRule(

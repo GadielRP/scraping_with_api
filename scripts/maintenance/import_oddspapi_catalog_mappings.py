@@ -15,8 +15,18 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from infrastructure.persistence.database import db_manager  # noqa: E402
 from infrastructure.persistence.models import BookieSourceMapping, SourceCatalogSync  # noqa: E402
-from infrastructure.persistence.repositories.market_mapping_repository import (  # noqa: E402
-    MarketMappingRepository,
+from infrastructure.persistence.repositories.canonical_market_type_repository import (  # noqa: E402
+    CanonicalMarketTypeRepository,
+)
+from modules.odds_ingestion.canonical_market_resolver import resolve_oddspapi_key  # noqa: E402
+from modules.oddspapi.catalog_mapping_service import (  # noqa: E402
+    canonical_choice_from_outcome,
+    upsert_market_source_mapping_from_catalog_item,
+)
+from modules.oddspapi.format_utils import (  # noqa: E402
+    format_line,
+    normalize_source,
+    normalize_source_id,
 )
 
 
@@ -66,7 +76,7 @@ def _count_supported_outcomes(item: dict, canonical_market_key: str | None) -> i
     for outcome in item.get("outcomes", []):
         if not isinstance(outcome, dict):
             continue
-        canonical_choice = MarketMappingRepository.canonical_choice_from_outcome(
+        canonical_choice = canonical_choice_from_outcome(
             canonical_market_key,
             outcome.get("outcomeName"),
         )
@@ -76,7 +86,7 @@ def _count_supported_outcomes(item: dict, canonical_market_key: str | None) -> i
 
 
 def _bookmaker_mapping_summary(bookmakers_payload, source: str) -> dict:
-    normalized_source = MarketMappingRepository._normalize_source(source)
+    normalized_source = normalize_source(source)
     if bookmakers_payload is None:
         return {}
 
@@ -129,7 +139,7 @@ def main() -> int:
     dry_run = not args.commit
     markets_path = Path(args.markets_file)
     bookmakers_path = Path(args.bookmakers_file) if args.bookmakers_file else None
-    normalized_source = MarketMappingRepository._normalize_source(args.source)
+    normalized_source = normalize_source(args.source)
 
     markets_payload = _load_json_file(markets_path)
     market_items = _extract_market_items(markets_payload)
@@ -140,7 +150,7 @@ def main() -> int:
         print("schema_ready=false")
         return 1
 
-    MarketMappingRepository.seed_canonical_market_types()
+    CanonicalMarketTypeRepository.seed_canonical_market_types()
 
     by_sport_id = Counter()
     by_canonical_market_key = Counter()
@@ -151,24 +161,18 @@ def main() -> int:
 
     if dry_run:
         for item in market_items:
-            canonical_market_key, reason = (
-                MarketMappingRepository.resolve_canonical_key_from_catalog_market(item)
-            )
-            source_sport_id = MarketMappingRepository._normalize_source_id(item.get("sportId"))
+            canonical_market_key, reason = resolve_oddspapi_key(item)
+            source_sport_id = normalize_source_id(item.get("sportId"))
             if canonical_market_key is None:
                 unsupported += 1
                 if len(unsupported_examples) < 20:
                     unsupported_examples.append(
                         {
-                            "source_market_id": MarketMappingRepository._normalize_source_id(
-                                item.get("marketId")
-                            ),
+                            "source_market_id": normalize_source_id(item.get("marketId")),
                             "marketName": item.get("marketName"),
                             "marketType": item.get("marketType"),
                             "period": item.get("period"),
-                            "handicap": MarketMappingRepository._normalize_handicap(
-                                item.get("handicap")
-                            ),
+                            "handicap": format_line(item.get("handicap")),
                             "reason": reason,
                         }
                     )
@@ -180,32 +184,26 @@ def main() -> int:
             by_canonical_market_key[canonical_market_key] += 1
     else:
         with db_manager.get_session() as session:
-            MarketMappingRepository.seed_canonical_market_types(session)
+            CanonicalMarketTypeRepository.seed_canonical_market_types(session)
             for item in market_items:
-                canonical_market_key, reason = (
-                    MarketMappingRepository.resolve_canonical_key_from_catalog_market(item)
-                )
-                source_sport_id = MarketMappingRepository._normalize_source_id(item.get("sportId"))
+                canonical_market_key, reason = resolve_oddspapi_key(item)
+                source_sport_id = normalize_source_id(item.get("sportId"))
                 if canonical_market_key is None:
                     unsupported += 1
                     if len(unsupported_examples) < 20:
                         unsupported_examples.append(
                             {
-                                "source_market_id": MarketMappingRepository._normalize_source_id(
-                                    item.get("marketId")
-                                ),
+                                "source_market_id": normalize_source_id(item.get("marketId")),
                                 "marketName": item.get("marketName"),
                                 "marketType": item.get("marketType"),
                                 "period": item.get("period"),
-                                "handicap": MarketMappingRepository._normalize_handicap(
-                                    item.get("handicap")
-                                ),
+                                "handicap": format_line(item.get("handicap")),
                                 "reason": reason,
                             }
                         )
                     continue
 
-                mapping = MarketMappingRepository.upsert_market_source_mapping_from_catalog_item(
+                mapping = upsert_market_source_mapping_from_catalog_item(
                     item,
                     source=normalized_source,
                     session=session,

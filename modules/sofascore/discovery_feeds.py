@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Tuple
 
-from .event_normalizer import get_event_information
+from .event_normalizer import normalize_event_payload
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def extract_events_and_odds_from_dropping_response(
 
         for event in response["events"]:
             try:
-                event_data = get_event_information(event, discovery_source)
+                event_data = normalize_event_payload(event, discovery_source)
                 event_payload = event_data.get("event", event_data)
                 required_fields = ["id", "slug", "startTimestamp", "sport", "competition", "homeTeam", "awayTeam"]
                 if all(event_payload.get(field) for field in required_fields):

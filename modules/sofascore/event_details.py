@@ -9,7 +9,7 @@ from infrastructure.persistence.repositories import EventRepository, SeasonRepos
 from modules.observations import sport_observation_service
 from modules.observations.sofascore_extractor import extract_observations_from_sofascore_response
 
-from .event_normalizer import get_event_information
+from .event_normalizer import normalize_event_payload
 from .exceptions import SofaScoreNotFoundException, SofaScoreRateLimitException
 from .results_parser import extract_results_from_response
 
@@ -52,7 +52,7 @@ def update_event_information_from_response(response: Dict) -> bool:
             return False
 
         event_response = response["event"]
-        event_data = get_event_information(event_response, discovery_source="results_sync")
+        event_data = normalize_event_payload(event_response, discovery_source="results_sync")
         event_payload = event_data.get("event", event_data) if event_data else {}
         if not event_payload or not event_payload.get("id"):
             logger.warning("Could not extract event information from response")

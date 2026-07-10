@@ -18,7 +18,7 @@ def persist_event_with_odds(api_client, event: Dict, odds_data: Dict | None = No
             logger.warning("Event has no ID, skipping")
             return False
 
-        event_data = api_client.get_event_information(event, discovery_source="daily_discovery")
+        event_data = api_client.normalize_event_payload(event, discovery_source="daily_discovery")
         event_payload = event_data.get("event", event_data) if event_data else {}
         if not event_payload or not event_payload.get("id"):
             logger.warning("Could not extract event information for event %s", sofascore_event_id)

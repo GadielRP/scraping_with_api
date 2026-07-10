@@ -14,7 +14,7 @@ import time
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import EventRepository
-from modules.sofascore import api_client, get_event_information
+from modules.sofascore import api_client, normalize_event_payload
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ def backfill(limit: int | None = None, sleep_seconds: float = 0.5, only_missing:
                 logger.warning("No SofaScore event payload for %s", event_id)
                 continue
 
-            event_data = get_event_information(event_response, discovery_source="backfill")
+            event_data = normalize_event_payload(event_response, discovery_source="backfill")
             updated_event = EventRepository.upsert_event(event_data)
             if updated_event:
                 processed += 1

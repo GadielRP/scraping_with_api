@@ -228,10 +228,16 @@ class DatabaseManager:
             session.commit()
 
     def _migrate_canonical_market_types(self):
-        """Ensure canonical market catalog tables exist and seed internal market types."""
+        """Ensure canonical market catalog tables exist and sync seed catalog into DB.
+
+        Seed applies:
+        - CANONICAL_MARKET_KEY_RENAMES (e.g. corners_2_way_full_time -> total_corners_full_time)
+        - upsert of CANONICAL_MARKET_TYPE_SEEDS into canonical_market_types
+        - remapped/synced denormalized fields on market_source_mappings
+        """
         from infrastructure.persistence.models import CanonicalMarketType
-        from infrastructure.persistence.repositories.market_mapping_repository import (
-            MarketMappingRepository,
+        from infrastructure.persistence.repositories.canonical_market_type_repository import (
+            CanonicalMarketTypeRepository,
         )
 
         self._create_table_and_indexes(
@@ -244,7 +250,7 @@ class DatabaseManager:
             ],
         )
         with self.get_session() as session:
-            MarketMappingRepository.seed_canonical_market_types(session)
+            CanonicalMarketTypeRepository.seed_canonical_market_types(session)
 
     def _migrate_market_source_mappings(self):
         """Ensure market source mappings table exists with runtime indexes."""

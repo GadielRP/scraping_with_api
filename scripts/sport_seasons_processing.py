@@ -236,7 +236,7 @@ def reconcile_existing_season_events(
                 continue
 
             raw_event = response["event"]
-            event_data = api_client.get_event_information(raw_event, discovery_source="scraping_on_command")
+            event_data = api_client.normalize_event_payload(raw_event, discovery_source="scraping_on_command")
             event_payload = dict(event_data.get("event", event_data))
             event_payload.pop("discovery_source", None)
             event_data["event"] = event_payload
@@ -322,7 +322,7 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
             # Process each event through get_event_information
             for event in batch_events:
                 try:
-                    event_data = api_client.get_event_information(event, discovery_source='scraping_on_command')
+                    event_data = api_client.normalize_event_payload(event, discovery_source='scraping_on_command')
                     event_payload = event_data.get('event', event_data)
                     
                     # Validate required fields

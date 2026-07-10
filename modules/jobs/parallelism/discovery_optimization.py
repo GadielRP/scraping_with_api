@@ -32,7 +32,7 @@ def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> L
                 logger.debug("No nearest event found for team %s", team_id)
                 return None
 
-            event_data = api_client.get_event_information(event_response, discovery_source="team_streaks")
+            event_data = api_client.normalize_event_payload(event_response, discovery_source="team_streaks")
             if not event_data:
                 logger.debug("Failed to structure event data for team %s", team_id)
                 return None

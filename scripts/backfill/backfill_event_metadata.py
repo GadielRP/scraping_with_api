@@ -11,7 +11,7 @@ Progressive backfill of normalized metadata for historical events:
 
 Uses the current architecture:
   SofaScore /event/{id}
-  -> api_client.get_event_information()
+  -> api_client.normalize_event_payload()
   -> EventRepository.upsert_event()
   -> ResultRepository.upsert_result()  (optional)
   -> checkpoint
@@ -473,7 +473,7 @@ def process_event(
         return BackfillEventResult(status="empty_response", detail="Response missing 'event' key")
 
     # 3. Normalise
-    event_data = api_client.get_event_information(
+    event_data = api_client.normalize_event_payload(
         response["event"],
         discovery_source="backfill_event_metadata",
     )

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 
 from infrastructure.persistence.repositories.canonical_market_type_repository import (
     CanonicalMarketTypeRepository,
 )
+from modules.odds_ingestion.canonical_market_resolver import resolve_sofascore_key
 
 from .choice_normalization import ChoiceNormalizationContext, ChoiceNormalizer
 
@@ -23,65 +23,12 @@ class MarketNormalizationContext:
 
 
 class CanonicalMarketNormalizer:
-    _SPACE = re.compile(r"\s+")
-    _FULL_TIME_PERIODS = {"match", "full time"}
-
     @staticmethod
     def _text(value) -> str | None:
         if value is None:
             return None
         value = str(value).strip()
         return value or None
-
-    @staticmethod
-    def _semantic_token(value) -> str:
-        text = CanonicalMarketNormalizer._text(value) or ""
-        return CanonicalMarketNormalizer._SPACE.sub(" ", text.lower().replace("-", " ")).strip()
-
-    @staticmethod
-    def _resolve_sofascore_key(market: dict) -> str | None:
-        name = CanonicalMarketNormalizer._semantic_token(market.get("marketName"))
-        group = CanonicalMarketNormalizer._semantic_token(market.get("marketGroup"))
-        period = CanonicalMarketNormalizer._semantic_token(market.get("marketPeriod"))
-        full_time = period in CanonicalMarketNormalizer._FULL_TIME_PERIODS
-
-        if group == "1x2" and name == "full time" and full_time:
-            return "1x2_full_time"
-        if group == "1x2" and name == "1st half" and period == "1st half":
-            return "1x2_1st_half"
-        if group == "home/away" and name == "full time" and full_time:
-            return "home_away_full_time"
-        if group == "home/away" and name == "1st half" and period == "1st half":
-            return "home_away_1st_half"
-        if name in {"game total", "total points"} and group == "over/under" and full_time:
-            return "over_under_full_time"
-        if name == "match goals" and group in {"match goals", "over/under"} and full_time:
-            return "over_under_full_time"
-        if name == "asian handicap" and group == "asian handicap" and full_time:
-            return "asian_handicap_full_time"
-        if name == "point spread" and group == "point spread" and full_time:
-            return "asian_handicap_full_time"
-        if name == "both teams to score" and group == "both teams to score" and full_time:
-            return "both_teams_to_score_full_time"
-        if name == "first team to score" and group == "first team to score" and full_time:
-            return "first_team_to_score_full_time"
-        if name == "draw no bet" and group == "draw no bet" and full_time:
-            return "draw_no_bet_full_time"
-        if name == "double chance" and group == "double chance" and full_time:
-            return "double_chance_full_time"
-        if name == "1st quarter winner" and group == "home/away" and period == "1st quarter":
-            choices = market.get("choices", [])
-            has_draw = any(str(c.get("name", "")).strip().lower() == "x" for c in choices if isinstance(c, dict))
-            if has_draw or len(choices) == 3:
-                return "1x2_1st_quarter"
-            return "home_away_1st_quarter"
-        if name == "full time (including overtime)" and group == "full time (including overtime)" and full_time:
-            return "home_away_full_time_including_overtime"
-        if name == "cards in match" and group == "total cards" and full_time:
-            return "total_cards_full_time"
-        if name == "corners 2 way" and group == "corners 2 way" and full_time:
-            return "corners_2_way_full_time"
-        return None
 
     @staticmethod
     def normalize_response(normalized_response: dict, context: MarketNormalizationContext) -> dict:
@@ -110,7 +57,7 @@ class CanonicalMarketNormalizer:
         for raw_market in (normalized_response or {}).get("markets", []):
             if not isinstance(raw_market, dict):
                 continue
-            canonical_key = CanonicalMarketNormalizer._resolve_sofascore_key(raw_market)
+            canonical_key = resolve_sofascore_key(raw_market)
             if canonical_key is None:
                 detail = {
                     "source": "sofascore",
