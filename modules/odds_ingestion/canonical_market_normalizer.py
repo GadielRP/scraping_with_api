@@ -24,6 +24,10 @@ class MarketNormalizationContext:
 
 class CanonicalMarketNormalizer:
     @staticmethod
+    def _resolve_sofascore_key(market: dict) -> str | None:
+        return resolve_sofascore_key(market)
+
+    @staticmethod
     def _text(value) -> str | None:
         if value is None:
             return None
