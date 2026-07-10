@@ -115,6 +115,10 @@ def extract_results_from_response(
             else:
                 home_score = home_score_data.get("normaltime")
                 away_score = away_score_data.get("normaltime")
+                # Fallback for amateur leagues that only provide 'display'/'current'
+                if home_score is None and away_score is None:
+                    home_score = home_score_data.get("display", home_score_data.get("current"))
+                    away_score = away_score_data.get("display", away_score_data.get("current"))
         else:
             home_score = (
                 home_score_data.get("display")
