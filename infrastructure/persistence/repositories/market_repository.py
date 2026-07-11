@@ -305,13 +305,23 @@ class MarketRepository:
                         continue
 
                 session.commit()
-                logger.info(
-                    "Saved %s markets, %s choices and %s snapshots for event %s",
-                    result.markets_saved,
-                    result.choices_saved,
-                    result.snapshots_saved,
-                    event_id,
-                )
+                if source:
+                    logger.info(
+                        "Saved %s markets, %s choices and %s snapshots for event %s (source=%s)",
+                        result.markets_saved,
+                        result.choices_saved,
+                        result.snapshots_saved,
+                        event_id,
+                        source,
+                    )
+                else:
+                    logger.info(
+                        "Saved %s markets, %s choices and %s snapshots for event %s",
+                        result.markets_saved,
+                        result.choices_saved,
+                        result.snapshots_saved,
+                        event_id,
+                    )
                 return result
 
         except Exception as e:

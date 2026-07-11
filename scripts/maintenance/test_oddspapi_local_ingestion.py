@@ -51,6 +51,14 @@ from modules.pillars.odds_trajectory_context import build_odds_trajectory_contex
 logger = logging.getLogger("test_oddspapi_local_ingestion")
 
 
+def _enable_runtime_module_logging(level: int = logging.INFO) -> None:
+    """Keep the script's real-module logs visible during local validation."""
+    for logger_name in ("modules", "infrastructure", "app", "shared"):
+        module_logger = logging.getLogger(logger_name)
+        module_logger.setLevel(level)
+        module_logger.propagate = True
+
+
 def _load_json(path: str | None):
     if not path:
         return None
@@ -414,6 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     setup_logging()
+    _enable_runtime_module_logging()
 
     odds_response = _load_json(args.file)
     if not isinstance(odds_response, dict):

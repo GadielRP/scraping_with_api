@@ -65,6 +65,10 @@ class MarketIngestionResult:
 
 class MarketOddsIngestionService:
     @staticmethod
+    def _normalize_source(source: str, default: str) -> str:
+        return str(source or default).strip().lower()
+
+    @staticmethod
     def filter_normalized_oddspapi_response_by_groups_and_periods(
         normalized_response: Dict,
         allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
@@ -175,6 +179,7 @@ class MarketOddsIngestionService:
         allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         market_mapping_index: MarketMappingIndex | None = None,
     ) -> MarketIngestionResult:
+        source = MarketOddsIngestionService._normalize_source(source, "oddspapi_odds")
         if dry_run:
             resolution = OddspapiEventResolver.resolve_from_odds_response(
                 odds_response,
@@ -391,6 +396,7 @@ class MarketOddsIngestionService:
         away_team: str | None = None,
         debug_mode: bool = False,
     ) -> MarketIngestionResult:
+        source = MarketOddsIngestionService._normalize_source(source, "sofascore")
         adapted_response = SofaScoreMarketAdapter.from_event_odds_response(
             odds_response,
             home_team=home_team,
@@ -416,6 +422,7 @@ class MarketOddsIngestionService:
         odds_map_entry: Dict,
         source: str = "sofascore_dropping_odds",
     ) -> MarketIngestionResult:
+        source = MarketOddsIngestionService._normalize_source(source, "sofascore_dropping_odds")
         adapted_response = SofaScoreMarketAdapter.from_dropping_odds_map_entry(odds_map_entry)
         canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(adapted_response)
         return MarketOddsIngestionService._save_normalized(event_id, canonical_response, source)
@@ -426,12 +433,14 @@ class MarketOddsIngestionService:
         daily_odds_entry: Dict,
         source: str = "sofascore_daily_discovery",
     ) -> MarketIngestionResult:
+        source = MarketOddsIngestionService._normalize_source(source, "sofascore_daily_discovery")
         adapted_response = SofaScoreMarketAdapter.from_daily_odds_entry(daily_odds_entry)
         canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(adapted_response)
         return MarketOddsIngestionService._save_normalized(event_id, canonical_response, source)
 
     @staticmethod
     def _save_normalized(event_id: int, normalized_response: Dict, source: str) -> MarketIngestionResult:
+        source = MarketOddsIngestionService._normalize_source(source, "unknown")
         diagnostics = (normalized_response or {}).get("diagnostics") or {}
         unmapped_markets = len(diagnostics.get("unmapped_markets") or [])
         unmapped_choices = len(diagnostics.get("unmapped_choices") or [])
@@ -452,7 +461,6 @@ class MarketOddsIngestionService:
             )
 
         try:
-            logger.info(f"\nsource: {source}")
             save_result = MarketRepository.save_markets_from_response_with_stats(
                 event_id,
                 normalized_response,
@@ -479,7 +487,12 @@ class MarketOddsIngestionService:
             )
 
             if save_result.markets_saved > 0:
-                logger.info("Market odds saved for event %s: %s markets (%s)", event_id, save_result.markets_saved, source)
+                logger.info(
+                    "Market odds saved for event %s: %s markets (source=%s)",
+                    event_id,
+                    save_result.markets_saved,
+                    source,
+                )
                 if not dual_process_available:
                     logger.warning(
                         "Market odds saved for event %s, but no dual-process-compatible market found. "
@@ -487,7 +500,11 @@ class MarketOddsIngestionService:
                         event_id,
                     )
             else:
-                logger.info("Skipped market odds ingestion for event %s: no markets saved", event_id)
+                logger.info(
+                    "Skipped market odds ingestion for event %s: no markets saved (source=%s)",
+                    event_id,
+                    source,
+                )
 
             return result
         except Exception as exc:
