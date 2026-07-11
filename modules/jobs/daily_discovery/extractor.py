@@ -7,11 +7,12 @@ from typing import Dict, List
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from modules.sofascore import api_client as default_api_client
+from shared.shutdown import is_shutdown_requested
 
 from .constants import DEFAULT_DAILY_DISCOVERY_SPORTS
 from .filters import filter_events_present_in_odds_feed, filter_events_starting_after_threshold
 from .odds_parser import parse_today_market_odds_response
-from .persistence import persist_event_with_odds
+from .persistence import persist_event_and_optional_odds
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,9 @@ class DailyDiscoveryExtractor:
 
         try:
             for sport in sports:
+                if is_shutdown_requested():
+                    raise KeyboardInterrupt()
+
                 try:
                     logger.info("Processing %s...", sport)
                     logger.info("Fetching today's %s odds...", sport)
@@ -131,6 +135,9 @@ class DailyDiscoveryExtractor:
                     sport_odds_inserted = 0
 
                     for event in all_events:
+                        if is_shutdown_requested():
+                            raise KeyboardInterrupt()
+
                         event_id = event.get("id")
                         if not event_id:
                             continue
@@ -139,7 +146,7 @@ class DailyDiscoveryExtractor:
                         has_odds_data = event_id in odds_event_ids and event_id in upcoming_event_ids
                         event_odds = odds_map.get(event_id) if has_odds_data else None
 
-                        success = persist_event_with_odds(self.api_client, event, event_odds)
+                        success = persist_event_and_optional_odds(self.api_client, event, event_odds)
                         if success:
                             sport_events_inserted += 1
                             if event_odds:

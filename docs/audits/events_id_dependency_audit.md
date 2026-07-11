@@ -152,8 +152,8 @@ Antes de la migración, `events.id` almacenaba el **ID externo de SofaScore** co
 
 | File | Function/Class | Line/Pattern | Current Meaning | Desired Meaning | Risk | Required Action |
 |------|---------------|-------------|-----------------|----------------|------|-----------------|
-| `daily_discovery/persistence.py` | `persist_event_with_odds()` | L16 `event.get("id")` | sofascore_external_event_id | sofascore_external_event_id (from API) | **CRITICAL** | After upsert, use `db_event.id` (canonical) for DB writes, keep SofaScore ID for API calls |
-| `daily_discovery/persistence.py` | `persist_event_with_odds()` | L34-35 `MarketOddsIngestionService.save_from_event_odds_response(event_id, ...)` | sofascore_external_event_id passed as DB FK | Must be canonical_internal_event_id | **CRITICAL** | Replace with `db_event.id` |
+| `daily_discovery/persistence.py` | `persist_event_and_optional_odds()` | L16 `event.get("id")` | sofascore_external_event_id | sofascore_external_event_id (from API) | **CRITICAL** | After upsert, use `db_event.id` (canonical) for DB writes, keep SofaScore ID for API calls |
+| `daily_discovery/persistence.py` | `persist_event_and_optional_odds()` | L34-35 `MarketOddsIngestionService.save_from_event_odds_response(event_id, ...)` | sofascore_external_event_id passed as DB FK | Must be canonical_internal_event_id | **CRITICAL** | Replace with `db_event.id` |
 
 ### F. Pre-Start Check Flow
 
@@ -246,7 +246,7 @@ Antes de la migración, `events.id` almacenaba el **ID externo de SofaScore** co
 - `get_event_final_odds()`, `get_event_results()`, `get_event_details()`, `fetch_event_response()` — **CRITICAL** — Must receive `sofascore_event_id` (resolved from mapping), NOT `canonical_event_id`.
 
 ### E. Daily Discovery Flow
-- `persist_event_with_odds()` — **CRITICAL** — Must separate SofaScore ID from canonical ID after upsert.
+- `persist_event_and_optional_odds()` — **CRITICAL** — Must separate SofaScore ID from canonical ID after upsert.
 
 ### F. Pre-Start Check Flow
 - Multiple entry points — **CRITICAL** — SofaScore API calls (`get_event_final_odds`, `get_event_results`) must resolve `sofascore_event_id` from mapping.
@@ -366,7 +366,7 @@ canonical_event_id (42)
 - **Qué dato recibiría**: Un autoincremental que no coincide con el SofaScore ID.
 - **Cómo corregirlo**: No pasar `id` al constructor de `Event`. Dejar que autoincrement asigne. Crear `EventSourceMapping` con el SofaScore ID.
 
-### Breaking Point 2: `persist_event_with_odds()` — `MarketOddsIngestionService.save_from_event_odds_response(event_id, ...)`
+### Breaking Point 2: `persist_event_and_optional_odds()` — `MarketOddsIngestionService.save_from_event_odds_response(event_id, ...)`
 
 - **Por qué se rompe**: Usa `event.get("id")` (SofaScore ID) para guardar markets. Después de la migración, `event_id` en markets debe ser canonical.
 - **Qué dato espera**: SofaScore ID (que coincide con `events.id` actual).

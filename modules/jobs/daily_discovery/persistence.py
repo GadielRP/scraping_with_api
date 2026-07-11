@@ -11,31 +11,24 @@ from modules.odds_ingestion import MarketOddsIngestionService
 logger = logging.getLogger(__name__)
 
 
-def persist_event_with_odds(api_client, event: Dict, odds_data: Dict | None = None) -> bool:
+def persist_event_and_optional_odds(api_client, event: Dict, odds_data: Dict | None = None) -> bool:
     try:
-        sofascore_event_id = event.get("id")
-        if not sofascore_event_id:
+        source = "sofascore"
+        source_event_id = event.get("id")
+        if not source_event_id:
             logger.warning("Event has no ID, skipping")
             return False
 
         event_data = api_client.normalize_event_payload(event, discovery_source="daily_discovery")
         event_payload = event_data.get("event", event_data) if event_data else {}
         if not event_payload or not event_payload.get("id"):
-            logger.warning("Could not extract event information for event %s", sofascore_event_id)
+            logger.warning("Could not extract event information for source=%s source_event_id=%s", source, source_event_id)
             return False
 
         db_event = EventRepository.upsert_event(event_data)
         if not db_event:
-            logger.error("Failed to upsert event %s to database", sofascore_event_id)
+            logger.error("Failed to upsert event source=%s source_event_id=%s to database", source, source_event_id)
             return False
-
-        logger.info(
-            "Upserted event %s -> canonical event_id=%s: %s vs %s",
-            sofascore_event_id,
-            db_event.id,
-            event_payload["homeTeam"],
-            event_payload["awayTeam"],
-        )
 
         if odds_data:
             ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(

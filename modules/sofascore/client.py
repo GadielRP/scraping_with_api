@@ -13,6 +13,7 @@ from curl_cffi import requests
 
 from infrastructure.network import ProxyIdentityManager
 from infrastructure.settings import Config
+from shared.shutdown import is_shutdown_requested
 
 from .discovery_feeds import (
     extract_events_and_odds_from_dropping_response,
@@ -160,7 +161,13 @@ class SofaScoreAPI:
         self._proxy_error_streak = 0
 
     def _rate_limit(self):
+        if is_shutdown_requested():
+            raise KeyboardInterrupt()
+
         with self._rate_limit_lock:
+            if is_shutdown_requested():
+                raise KeyboardInterrupt()
+
             current_time = time.time()
             time_since_last = current_time - self.last_request_time
             min_interval = Config.REQUEST_DELAY_SECONDS
@@ -169,6 +176,9 @@ class SofaScoreAPI:
                 sleep_time = min_interval - time_since_last
                 logger.debug("Rate limiting: sleeping for %.2f seconds", sleep_time)
                 time.sleep(sleep_time)
+
+            if is_shutdown_requested():
+                raise KeyboardInterrupt()
 
             self.last_request_time = time.time()
 
@@ -191,7 +201,13 @@ class SofaScoreAPI:
 
         for attempt in range(Config.MAX_RETRIES):
             try:
+                if is_shutdown_requested():
+                    raise KeyboardInterrupt()
+
                 self._rate_limit()
+                if is_shutdown_requested():
+                    raise KeyboardInterrupt()
+
                 logger.debug("Making request to: %s", url)
                 response = self.session.get(url, headers=headers, params=params, timeout=30)
 
@@ -339,7 +355,12 @@ class SofaScoreAPI:
                 SofaScoreRateLimitException,
             ):
                 raise
+            except KeyboardInterrupt:
+                raise
             except Exception as exc:
+                if is_shutdown_requested():
+                    logger.info("Shutdown requested while requesting %s", endpoint)
+                    raise KeyboardInterrupt() from exc
                 logger.error("Unexpected error for %s: %s", endpoint, exc)
                 break
 

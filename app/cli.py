@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 
 from infrastructure.settings import Config
+from shared.shutdown import clear_shutdown_request, request_shutdown, is_shutdown_requested
 
 from .logging_setup import setup_logging
 
@@ -228,6 +229,7 @@ def _run_command(args):
 def main():
     """Main entry point for the CLI."""
     setup_logging()
+    clear_shutdown_request()
 
     logger = logging.getLogger(__name__)
     logger.info(
@@ -241,11 +243,24 @@ def main():
 
     logger.info(f"Starting SofaScore Odds System with command: {args.command}")
 
+    def _handle_shutdown_signal(signum, frame):
+        request_shutdown()
+        logger.info("Shutdown signal received (%s). Stopping command: %s", signum, args.command)
+
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+
     try:
         _run_command(args)
+    except KeyboardInterrupt:
+        logger.info("Shutdown requested via Ctrl+C. Stopping command: %s", args.command)
+        sys.exit(130)
     except Exception as exc:
         logger.error(f"Error running command {args.command}: {exc}")
         sys.exit(1)
+    finally:
+        if is_shutdown_requested():
+            sys.exit(130)
 
 
 __all__ = [
