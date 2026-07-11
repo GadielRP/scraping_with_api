@@ -51,7 +51,7 @@ class CanonicalMarketTypeRepository:
                 continue
 
             persisted = persisted_seed_values(seed)
-            if old_row is None and new_row is None:
+            if old_row is None:
                 continue
 
             if new_row is None:
