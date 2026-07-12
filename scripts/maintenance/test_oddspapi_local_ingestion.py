@@ -236,9 +236,11 @@ def _adapted_market_breakdown(adapted: dict) -> dict:
 
 def _event_match_status(
     payload_source_event_id,
+    payload_oddspapi_fixture_id,
     service_event_id: int | None,
     resolved_canonical_event_id,
-    db_source_event_id,
+    db_sofascore_source_event_id,
+    db_oddspapi_source_event_id,
     event,
 ) -> dict:
     if service_event_id is None:
@@ -246,19 +248,23 @@ def _event_match_status(
             "status": "failed",
             "reason": "oddspapi_event_not_resolved",
             "payload_source_event_id": payload_source_event_id,
+            "payload_oddspapi_fixture_id": payload_oddspapi_fixture_id,
             "resolved_canonical_event_id": resolved_canonical_event_id,
-            "db_source_event_id": db_source_event_id,
+            "db_sofascore_source_event_id": db_sofascore_source_event_id,
+            "db_oddspapi_source_event_id": db_oddspapi_source_event_id,
             "canonical_event_id": None,
             "matched": False,
         }
 
-    if resolved_canonical_event_id is None:
+    if payload_source_event_id is not None and resolved_canonical_event_id is None:
         return {
             "status": "failed",
             "reason": "source_event_not_resolved_in_db",
             "payload_source_event_id": payload_source_event_id,
+            "payload_oddspapi_fixture_id": payload_oddspapi_fixture_id,
             "resolved_canonical_event_id": resolved_canonical_event_id,
-            "db_source_event_id": db_source_event_id,
+            "db_sofascore_source_event_id": db_sofascore_source_event_id,
+            "db_oddspapi_source_event_id": db_oddspapi_source_event_id,
             "canonical_event_id": service_event_id,
             "matched": False,
         }
@@ -268,51 +274,89 @@ def _event_match_status(
             "status": "failed",
             "reason": "canonical_event_row_missing",
             "payload_source_event_id": payload_source_event_id,
+            "payload_oddspapi_fixture_id": payload_oddspapi_fixture_id,
             "resolved_canonical_event_id": resolved_canonical_event_id,
-            "db_source_event_id": db_source_event_id,
+            "db_sofascore_source_event_id": db_sofascore_source_event_id,
+            "db_oddspapi_source_event_id": db_oddspapi_source_event_id,
             "canonical_event_id": service_event_id,
             "matched": False,
         }
 
-    if db_source_event_id is None:
-        return {
-            "status": "failed",
-            "reason": "missing_sofascore_source_mapping",
-            "payload_source_event_id": payload_source_event_id,
-            "resolved_canonical_event_id": resolved_canonical_event_id,
-            "db_source_event_id": db_source_event_id,
-            "canonical_event_id": service_event_id,
-            "matched": False,
-        }
+    if payload_source_event_id is not None:
+        if db_sofascore_source_event_id is None:
+            return {
+                "status": "failed",
+                "reason": "missing_sofascore_source_mapping",
+                "payload_source_event_id": payload_source_event_id,
+                "payload_oddspapi_fixture_id": payload_oddspapi_fixture_id,
+                "resolved_canonical_event_id": resolved_canonical_event_id,
+                "db_sofascore_source_event_id": db_sofascore_source_event_id,
+                "db_oddspapi_source_event_id": db_oddspapi_source_event_id,
+                "canonical_event_id": service_event_id,
+                "matched": False,
+            }
 
-    if str(payload_source_event_id) != str(db_source_event_id):
-        return {
-            "status": "failed",
-            "reason": "source_event_id_mismatch",
-            "payload_source_event_id": payload_source_event_id,
-            "resolved_canonical_event_id": resolved_canonical_event_id,
-            "db_source_event_id": db_source_event_id,
-            "canonical_event_id": service_event_id,
-            "matched": False,
-        }
+        if str(payload_source_event_id) != str(db_sofascore_source_event_id):
+            return {
+                "status": "failed",
+                "reason": "source_event_id_mismatch",
+                "payload_source_event_id": payload_source_event_id,
+                "payload_oddspapi_fixture_id": payload_oddspapi_fixture_id,
+                "resolved_canonical_event_id": resolved_canonical_event_id,
+                "db_sofascore_source_event_id": db_sofascore_source_event_id,
+                "db_oddspapi_source_event_id": db_oddspapi_source_event_id,
+                "canonical_event_id": service_event_id,
+                "matched": False,
+            }
+        if int(service_event_id) != int(resolved_canonical_event_id):
+            return {
+                "status": "failed",
+                "reason": "canonical_event_id_mismatch",
+                "payload_source_event_id": payload_source_event_id,
+                "payload_oddspapi_fixture_id": payload_oddspapi_fixture_id,
+                "resolved_canonical_event_id": resolved_canonical_event_id,
+                "db_sofascore_source_event_id": db_sofascore_source_event_id,
+                "db_oddspapi_source_event_id": db_oddspapi_source_event_id,
+                "canonical_event_id": service_event_id,
+                "matched": False,
+            }
+        resolved_via = "sofascore"
+    else:
+        if db_oddspapi_source_event_id is None:
+            return {
+                "status": "failed",
+                "reason": "missing_oddspapi_source_mapping",
+                "payload_source_event_id": payload_source_event_id,
+                "payload_oddspapi_fixture_id": payload_oddspapi_fixture_id,
+                "resolved_canonical_event_id": resolved_canonical_event_id,
+                "db_sofascore_source_event_id": db_sofascore_source_event_id,
+                "db_oddspapi_source_event_id": db_oddspapi_source_event_id,
+                "canonical_event_id": service_event_id,
+                "matched": False,
+            }
 
-    if int(service_event_id) != int(resolved_canonical_event_id):
-        return {
-            "status": "failed",
-            "reason": "canonical_event_id_mismatch",
-            "payload_source_event_id": payload_source_event_id,
-            "resolved_canonical_event_id": resolved_canonical_event_id,
-            "db_source_event_id": db_source_event_id,
-            "canonical_event_id": service_event_id,
-            "matched": False,
-        }
+        if str(payload_oddspapi_fixture_id) != str(db_oddspapi_source_event_id):
+            return {
+                "status": "failed",
+                "reason": "oddspapi_fixture_id_mismatch",
+                "payload_source_event_id": payload_source_event_id,
+                "payload_oddspapi_fixture_id": payload_oddspapi_fixture_id,
+                "resolved_canonical_event_id": resolved_canonical_event_id,
+                "db_sofascore_source_event_id": db_sofascore_source_event_id,
+                "db_oddspapi_source_event_id": db_oddspapi_source_event_id,
+                "canonical_event_id": service_event_id,
+                "matched": False,
+            }
+        resolved_via = "oddspapi"
 
     return {
         "status": "matched",
-        "reason": "matched_via_sofascore_source_mapping",
+        "reason": f"matched_via_{resolved_via}_source_mapping",
         "payload_source_event_id": payload_source_event_id,
+        "payload_oddspapi_fixture_id": payload_oddspapi_fixture_id,
         "resolved_canonical_event_id": resolved_canonical_event_id,
-        "db_source_event_id": db_source_event_id,
+        "db_sofascore_source_event_id": db_sofascore_source_event_id,
+        "db_oddspapi_source_event_id": db_oddspapi_source_event_id,
         "canonical_event_id": service_event_id,
         "matched": True,
     }
@@ -477,6 +521,7 @@ def main() -> int:
     event_resolution = OddspapiEventResolver.resolve_from_odds_response(
         odds_response,
         create_mappings=False,
+        persist_queue=False,
     )
 
     # 2) Real DB-backed market mapping index
@@ -534,7 +579,12 @@ def main() -> int:
         payload_sofascore_id,
     )
     db_event_id = result.event_id if result.event_id is not None else resolved_canonical_event_id
-    db_source_event_id = (
+    db_oddspapi_source_event_id = (
+        EventSourceMappingRepository.get_source_event_id(db_event_id, "oddspapi")
+        if db_event_id is not None
+        else None
+    )
+    db_sofascore_source_event_id = (
         EventSourceMappingRepository.get_source_event_id(db_event_id, "sofascore")
         if db_event_id is not None
         else None
@@ -560,9 +610,11 @@ def main() -> int:
 
     event_match = _event_match_status(
         payload_source_event_id=payload_sofascore_id,
+        payload_oddspapi_fixture_id=event_resolution.oddspapi_fixture_id,
         service_event_id=result.event_id,
         resolved_canonical_event_id=resolved_canonical_event_id,
-        db_source_event_id=db_source_event_id,
+        db_sofascore_source_event_id=db_sofascore_source_event_id,
+        db_oddspapi_source_event_id=db_oddspapi_source_event_id,
         event=db_context["event"],
     )
 
@@ -574,6 +626,8 @@ def main() -> int:
                 and "asian handicap" not in (m.get("marketName") or "").lower() 
                 and "european handicap" not in (m.get("marketName") or "").lower())
     ]
+
+    event_resolution_report = asdict(event_resolution)
 
     report = {
         "mode": "dry-run" if dry_run else "commit",
@@ -600,13 +654,7 @@ def main() -> int:
             "sofascoreId": payload_sofascore_id,
             **_raw_payload_market_stats(odds_response),
         },
-        "event_resolution": {
-            "resolved": event_resolution.resolved,
-            "canonical_event_id": event_resolution.canonical_event_id,
-            "match_method": event_resolution.match_method,
-            "skipped_reason": event_resolution.skipped_reason,
-            "confidence": event_resolution.confidence,
-        },
+        "event_resolution": event_resolution_report,
         "market_mapping_index": {
             "source": "oddspapi",
             "enabled_only": True,

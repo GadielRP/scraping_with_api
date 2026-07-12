@@ -133,6 +133,64 @@ class EventSourceMapping(Base):
         Index('idx_event_source_mappings_source', 'source'),
     )
 
+
+class EventSourceResolutionQueue(Base):
+    __tablename__ = 'event_source_resolution_queue'
+
+    queue_id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(Text, nullable=False)
+    source_event_id = Column(Text, nullable=False)
+    resolution_status = Column(Text, nullable=False)
+    best_candidate_event_id = Column(
+        Integer,
+        ForeignKey('events.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    best_candidate_confidence = Column(Numeric(5, 3), nullable=True)
+    second_candidate_event_id = Column(
+        Integer,
+        ForeignKey('events.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    second_candidate_confidence = Column(Numeric(5, 3), nullable=True)
+    score_gap = Column(Numeric(5, 3), nullable=True)
+    source_sport_id = Column(Text, nullable=True)
+    source_sport_name = Column(Text, nullable=True)
+    normalized_sport = Column(Text, nullable=True)
+    source_tournament_id = Column(Text, nullable=True)
+    source_tournament_name = Column(Text, nullable=True)
+    source_tournament_slug = Column(Text, nullable=True)
+    source_category_name = Column(Text, nullable=True)
+    source_category_slug = Column(Text, nullable=True)
+    source_season_id = Column(Text, nullable=True)
+    participant1_id = Column(Text, nullable=True)
+    participant1_name = Column(Text, nullable=True)
+    participant1_short_name = Column(Text, nullable=True)
+    participant1_abbr = Column(Text, nullable=True)
+    participant2_id = Column(Text, nullable=True)
+    participant2_name = Column(Text, nullable=True)
+    participant2_short_name = Column(Text, nullable=True)
+    participant2_abbr = Column(Text, nullable=True)
+    source_start_time_utc = Column(DateTime, nullable=True)
+    raw_external_providers = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=True)
+    raw_payload = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=True)
+    candidate_scores = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=1)
+    first_seen_at = Column(DateTime, default=get_local_now)
+    last_attempted_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'source',
+            'source_event_id',
+            name='unique_event_source_resolution_queue_source_event',
+        ),
+        Index('idx_event_source_resolution_queue_status', 'source', 'resolution_status'),
+        Index('idx_event_source_resolution_queue_start_time', 'source_start_time_utc'),
+        Index('idx_event_source_resolution_queue_best_candidate', 'best_candidate_event_id'),
+    )
+
 class Season(Base):
     __tablename__ = 'seasons'
     

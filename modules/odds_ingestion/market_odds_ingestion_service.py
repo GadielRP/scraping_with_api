@@ -184,6 +184,7 @@ class MarketOddsIngestionService:
             resolution = OddspapiEventResolver.resolve_from_odds_response(
                 odds_response,
                 create_mappings=False,
+                persist_queue=False,
             )
         else:
             resolution = OddspapiEventResolver.resolve_from_odds_response(odds_response)

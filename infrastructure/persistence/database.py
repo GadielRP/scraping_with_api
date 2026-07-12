@@ -122,6 +122,7 @@ class DatabaseManager:
             self._migrate_bookie_source_mappings()
             self._migrate_market_period_not_null()
             self._migrate_market_choice_snapshot_lineage()
+            self._migrate_event_source_resolution_queue()
             
             # Check and fix column order (bookie_id should be next to event_id)
             self._reorder_markets_columns()
@@ -567,6 +568,40 @@ class DatabaseManager:
                 logger.info("Bookie source mappings migration completed")
         except Exception as e:
             logger.error(f"Bookie source mappings migration failed: {e}")
+            logger.error(traceback.format_exc())
+
+    def _migrate_event_source_resolution_queue(self):
+        """Create the unresolved provider event queue used by deterministic matching."""
+        try:
+            from sqlalchemy import inspect
+            from infrastructure.persistence.models import EventSourceResolutionQueue
+
+            inspector = inspect(self.engine)
+            table_names = set(inspector.get_table_names())
+
+            with self.get_session() as session:
+                connection = session.connection()
+                if 'event_source_resolution_queue' not in table_names:
+                    EventSourceResolutionQueue.__table__.create(connection, checkfirst=True)
+                    logger.info("Created event_source_resolution_queue table")
+
+                index_statements = [
+                    "CREATE UNIQUE INDEX IF NOT EXISTS unique_event_source_resolution_queue_source_event "
+                    "ON event_source_resolution_queue (source, source_event_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_event_source_resolution_queue_status "
+                    "ON event_source_resolution_queue (source, resolution_status)",
+                    "CREATE INDEX IF NOT EXISTS idx_event_source_resolution_queue_start_time "
+                    "ON event_source_resolution_queue (source_start_time_utc)",
+                    "CREATE INDEX IF NOT EXISTS idx_event_source_resolution_queue_best_candidate "
+                    "ON event_source_resolution_queue (best_candidate_event_id)",
+                ]
+                for statement in index_statements:
+                    session.execute(text(statement))
+
+                session.commit()
+                logger.info("Event source resolution queue migration completed")
+        except Exception as e:
+            logger.error(f"Event source resolution queue migration failed: {e}")
             logger.error(traceback.format_exc())
 
     def _migrate_market_period_not_null(self):

@@ -28,7 +28,11 @@ class EventSourceMappingRepository:
         return normalized or None
 
     @staticmethod
-    def get_event_id_by_source(source: str, source_event_id: str) -> Optional[int]:
+    def get_event_id_by_source(
+        source: str,
+        source_event_id: str,
+        session: Optional[Session] = None,
+    ) -> Optional[int]:
         """Return the canonical event_id for a source + external event ID."""
         normalized_source = EventSourceMappingRepository._normalize_source(source)
         normalized_source_event_id = EventSourceMappingRepository._normalize_source_event_id(source_event_id)
@@ -37,9 +41,9 @@ class EventSourceMappingRepository:
             return None
 
         try:
-            with db_manager.get_session() as session:
+            def _lookup(scoped_session: Session) -> Optional[int]:
                 mapping = (
-                    session.query(EventSourceMapping)
+                    scoped_session.query(EventSourceMapping)
                     .filter(
                         EventSourceMapping.source == normalized_source,
                         EventSourceMapping.source_event_id == normalized_source_event_id,
@@ -47,6 +51,12 @@ class EventSourceMappingRepository:
                     .first()
                 )
                 return mapping.event_id if mapping else None
+
+            if session is not None:
+                return _lookup(session)
+
+            with db_manager.get_session() as session:
+                return _lookup(session)
         except Exception as exc:
             logger.error(
                 "Error resolving canonical event_id for source=%s source_event_id=%s: %s",
@@ -57,16 +67,16 @@ class EventSourceMappingRepository:
             return None
 
     @staticmethod
-    def get_source_event_id(event_id: int, source: str) -> Optional[str]:
+    def get_source_event_id(event_id: int, source: str, session: Optional[Session] = None) -> Optional[str]:
         """Return the external source event ID for a canonical event."""
         normalized_source = EventSourceMappingRepository._normalize_source(source)
         if not normalized_source:
             return None
 
         try:
-            with db_manager.get_session() as session:
+            def _lookup(scoped_session: Session) -> Optional[str]:
                 mapping = (
-                    session.query(EventSourceMapping)
+                    scoped_session.query(EventSourceMapping)
                     .filter(
                         EventSourceMapping.event_id == event_id,
                         EventSourceMapping.source == normalized_source,
@@ -74,6 +84,12 @@ class EventSourceMappingRepository:
                     .first()
                 )
                 return mapping.source_event_id if mapping else None
+
+            if session is not None:
+                return _lookup(session)
+
+            with db_manager.get_session() as session:
+                return _lookup(session)
         except Exception as exc:
             logger.error(
                 "Error resolving source event id for event_id=%s source=%s: %s",
@@ -149,6 +165,12 @@ class EventSourceMappingRepository:
             if raw_external_providers is not None:
                 mapping.raw_external_providers = raw_external_providers
 
+            logger.info(
+                "Updated event source mapping source=%s source_event_id=%s -> event_id=%s",
+                normalized_source,
+                normalized_source_event_id,
+                mapping.event_id,
+            )
             logger.debug(
                 "Updated mapping for event_id=%s source=%s source_event_id=%s",
                 mapping.event_id,
@@ -170,6 +192,12 @@ class EventSourceMappingRepository:
         )
         session.add(mapping)
         session.flush()
+        logger.info(
+            "Created event source mapping source=%s source_event_id=%s -> event_id=%s",
+            normalized_source,
+            normalized_source_event_id,
+            event_id,
+        )
         logger.debug(
             "Created mapping for event_id=%s source=%s source_event_id=%s",
             event_id,
