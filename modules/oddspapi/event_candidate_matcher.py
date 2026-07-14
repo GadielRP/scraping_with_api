@@ -131,15 +131,58 @@ def _event_start_time_local(event_start_time) -> object | None:
     return event_start_time
 
 
+def _stringify_values(values: Iterable[object]) -> list[str]:
+    return [str(value) for value in values if value is not None and str(value).strip()]
+
+
+def _normalize_values(values: Iterable[object]) -> set[str]:
+    return {
+        _normalize_text(value)
+        for value in values
+        if _normalize_text(value)
+    }
+
+
+def _unmatched_values(left_values: list[str], right_values: list[str]) -> list[str]:
+    right_normalized = _normalize_values(right_values)
+    unmatched = [
+        value
+        for value in left_values
+        if _normalize_text(value) not in right_normalized
+    ]
+    return unmatched
+
+
 def _candidate_preview(candidate: EventCandidateScore) -> str:
     delta = (
-        f"{candidate.start_time_delta_minutes:.3f}m"
+        f"{candidate.start_time_delta_minutes:.1f}m"
         if candidate.start_time_delta_minutes is not None
         else "n/a"
     )
+    db_teams = f"{candidate.event_home_values[0] if candidate.event_home_values else 'None'} vs {candidate.event_away_values[0] if candidate.event_away_values else 'None'}"
+    subscores = (
+        f"sport={candidate.sport_score:.2f} "
+        f"time={candidate.time_score:.2f} "
+        f"teams={candidate.participants_score:.2f} "
+        f"(p1={candidate.participant1_score:.2f}, p2={candidate.participant2_score:.2f}) "
+        f"tournament={candidate.tournament_score:.2f}"
+    )
+    
+    unmatched_info = []
+    if candidate.event_home_unmatched_values:
+        unmatched_info.append(f"home_unmatched={candidate.event_home_unmatched_values}")
+    if candidate.event_away_unmatched_values:
+        unmatched_info.append(f"away_unmatched={candidate.event_away_unmatched_values}")
+    if candidate.event_tournament_unmatched_values:
+        unmatched_info.append(f"tournament_unmatched={candidate.event_tournament_unmatched_values}")
+    unmatched_str = f" | {' '.join(unmatched_info)}" if unmatched_info else ""
+
+    db_tournament = candidate.event_tournament_values[0] if candidate.event_tournament_values else "None"
+
     return (
-        f"id={candidate.event_id} score={candidate.score:.3f} "
-        f"orientation={candidate.orientation} delta={delta}"
+        f"  - [Event #{candidate.event_id}] Score: {candidate.score:.3f} | {candidate.orientation} | Delta: {delta}{unmatched_str}\n"
+        f"    DB Event: {db_teams} | DB Tournament: {db_tournament}\n"
+        f"    Scores: {subscores}"
     )
 
 
@@ -156,6 +199,16 @@ class EventCandidateScore:
     participants_score: float
     tournament_score: float
     both_teams_strong: bool
+    fixture_participant1_values: list[str] = field(default_factory=list)
+    fixture_participant2_values: list[str] = field(default_factory=list)
+    event_home_values: list[str] = field(default_factory=list)
+    event_away_values: list[str] = field(default_factory=list)
+    fixture_participant1_unmatched_values: list[str] = field(default_factory=list)
+    fixture_participant2_unmatched_values: list[str] = field(default_factory=list)
+    event_home_unmatched_values: list[str] = field(default_factory=list)
+    event_away_unmatched_values: list[str] = field(default_factory=list)
+    event_tournament_values: list[str] = field(default_factory=list)
+    event_tournament_unmatched_values: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
@@ -171,6 +224,16 @@ class EventCandidateScore:
             "participants_score": round(float(self.participants_score), 3),
             "tournament_score": round(float(self.tournament_score), 3),
             "both_teams_strong": self.both_teams_strong,
+            "fixture_participant1_values": list(self.fixture_participant1_values),
+            "fixture_participant2_values": list(self.fixture_participant2_values),
+            "event_home_values": list(self.event_home_values),
+            "event_away_values": list(self.event_away_values),
+            "fixture_participant1_unmatched_values": list(self.fixture_participant1_unmatched_values),
+            "fixture_participant2_unmatched_values": list(self.fixture_participant2_unmatched_values),
+            "event_home_unmatched_values": list(self.event_home_unmatched_values),
+            "event_away_unmatched_values": list(self.event_away_unmatched_values),
+            "event_tournament_values": list(self.event_tournament_values),
+            "event_tournament_unmatched_values": list(self.event_tournament_unmatched_values),
             "reasons": list(self.reasons),
         }
 
@@ -340,6 +403,27 @@ class OddspapiEventCandidateMatcher:
             participant1_score >= self.STRONG_TEAM_THRESHOLD
             and participant2_score >= self.STRONG_TEAM_THRESHOLD
         )
+        fixture_participant1_unmatched_values = _unmatched_values(_stringify_values(participant1_values), home_values + away_values)
+        fixture_participant2_unmatched_values = _unmatched_values(_stringify_values(participant2_values), home_values + away_values)
+        event_home_unmatched_values = _unmatched_values(home_values, _stringify_values(participant1_values) + _stringify_values(participant2_values))
+        event_away_unmatched_values = _unmatched_values(away_values, _stringify_values(participant1_values) + _stringify_values(participant2_values))
+
+        competition = getattr(event, "competition_ref", None)
+        raw_competition_values = [
+            getattr(competition, "display_name", None) if competition else None,
+            getattr(competition, "category_name", None) if competition else None,
+            getattr(event, "competition", None),
+            getattr(event, "country", None),
+        ]
+        event_tournament_values = _stringify_values(raw_competition_values)
+        fixture_tournament_values = _stringify_values([
+            fixture.tournament_name,
+            fixture.category_name,
+        ])
+        event_tournament_unmatched_values = _unmatched_values(
+            event_tournament_values,
+            fixture_tournament_values
+        )
 
         score = (
             (sport_score * 0.20)
@@ -373,6 +457,16 @@ class OddspapiEventCandidateMatcher:
             participants_score=participants_score,
             tournament_score=tournament_score,
             both_teams_strong=both_teams_strong,
+            fixture_participant1_values=_stringify_values(participant1_values),
+            fixture_participant2_values=_stringify_values(participant2_values),
+            event_home_values=_stringify_values(home_values),
+            event_away_values=_stringify_values(away_values),
+            fixture_participant1_unmatched_values=fixture_participant1_unmatched_values,
+            fixture_participant2_unmatched_values=fixture_participant2_unmatched_values,
+            event_home_unmatched_values=event_home_unmatched_values,
+            event_away_unmatched_values=event_away_unmatched_values,
+            event_tournament_values=event_tournament_values,
+            event_tournament_unmatched_values=event_tournament_unmatched_values,
             reasons=reasons,
         )
 
@@ -440,15 +534,32 @@ class OddspapiEventCandidateMatcher:
         if scored_candidates:
             preview_items = [
                 _candidate_preview(candidate)
-                for candidate in scored_candidates[:MAX_LOGGED_CANDIDATES]
+                for candidate in scored_candidates[:2]
             ]
             suffix = ""
-            if len(scored_candidates) > MAX_LOGGED_CANDIDATES:
-                suffix = f" ... (+{len(scored_candidates) - MAX_LOGGED_CANDIDATES} more)"
+            if len(scored_candidates) > 2:
+                suffix = f"\n  ... (+{len(scored_candidates) - 2} more candidates omitted; showing top 2)"
+            
+            fixture_name = f"{fixture.participant1_name or ''} vs {fixture.participant2_name or ''}"
+            fixture_p1_all = [fixture.participant1_name, fixture.participant1_short_name, fixture.participant1_abbr]
+            fixture_p2_all = [fixture.participant2_name, fixture.participant2_short_name, fixture.participant2_abbr]
+            fixture_p1_clean = [str(x) for x in fixture_p1_all if x]
+            fixture_p2_clean = [str(x) for x in fixture_p2_all if x]
+
             logger.info(
-                "OddsPapi candidate ranking for fixture %s: %s%s",
+                "OddsPapi candidate ranking for fixture %s [%s] (sport=%s) [showing top 2]:\n"
+                "  Fixture P1: %s\n"
+                "  Fixture P2: %s\n"
+                "  Fixture Tournament: %s (%s)\n"
+                "%s%s",
                 fixture.fixture_id,
-                " | ".join(preview_items),
+                fixture_name,
+                fixture.normalized_sport,
+                fixture_p1_clean,
+                fixture_p2_clean,
+                fixture.tournament_name or "None",
+                fixture.category_name or "None",
+                "\n".join(preview_items),
                 suffix,
             )
 
