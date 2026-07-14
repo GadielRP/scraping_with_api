@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any
 
@@ -27,6 +28,7 @@ class OddsPapiClient:
         timeout: float | None = None,
         max_retries: int | None = None,
         request_delay_seconds: float | None = None,
+        fixtures_cooldown_seconds: float | None = None,
     ) -> None:
         self.base_url = (base_url or Config.ODDSPAPI_BASE_URL).rstrip("/")
         self.api_key = Config.ODDSPAPI_KEY if api_key is None else api_key
@@ -37,6 +39,13 @@ class OddsPapiClient:
             if request_delay_seconds is None
             else request_delay_seconds
         )
+        self.fixtures_cooldown_seconds = (
+            getattr(Config, "ODDSPAPI_FIXTURES_COOLDOWN_SECONDS", 2.0)
+            if fixtures_cooldown_seconds is None
+            else fixtures_cooldown_seconds
+        )
+        self._last_request_at: dict[str, float] = {}
+        self._cooldown_lock = threading.Lock()
         self.session = requests.Session()
         # OddsPapi must never inherit HTTP(S)_PROXY or other request settings from env.
         self.session.trust_env = False
@@ -49,6 +58,50 @@ class OddsPapiClient:
             return None
         cleaned = [str(value).strip() for value in values if str(value).strip()]
         return ",".join(cleaned) or None
+
+    def _wait_for_endpoint_cooldown(self, endpoint: str) -> None:
+        """Enforce documented endpoint cooldowns across all client requests."""
+        cooldown_seconds = (
+            self.fixtures_cooldown_seconds
+            if endpoint == "fixtures"
+            else 0.0
+        )
+        if cooldown_seconds <= 0:
+            return
+
+        with self._cooldown_lock:
+            now = time.monotonic()
+            last_request_at = self._last_request_at.get(endpoint)
+            if last_request_at is not None:
+                remaining = cooldown_seconds - (now - last_request_at)
+                if remaining > 0:
+                    time.sleep(remaining)
+            self._last_request_at[endpoint] = time.monotonic()
+
+    @staticmethod
+    def _retry_after_seconds(response) -> float | None:
+        header_value = getattr(response, "headers", {}).get("Retry-After")
+        try:
+            if header_value is not None:
+                return max(float(header_value), 0.0)
+        except (TypeError, ValueError):
+            pass
+
+        try:
+            body = response.json()
+        except (ValueError, TypeError, AttributeError):
+            return None
+        if not isinstance(body, dict):
+            return None
+
+        error = body.get("error") if isinstance(body.get("error"), dict) else body
+        retry_ms = error.get("retryMs") if isinstance(error, dict) else None
+        try:
+            if retry_ms is not None:
+                return max(float(retry_ms) / 1000.0, 0.0)
+        except (TypeError, ValueError):
+            pass
+        return None
 
     def _request(self, endpoint: str, params: dict | None = None) -> dict | list:
         if not str(self.api_key or "").strip():
@@ -71,12 +124,14 @@ class OddsPapiClient:
         logger.info("OddsPapi GET /v4/%s params=%s", normalized_endpoint, safe_params)
 
         attempts = max(1, int(self.max_retries))
+        retry_delay_seconds = self.request_delay_seconds
         for attempt in range(attempts):
             if attempt and self.request_delay_seconds > 0:
-                time.sleep(self.request_delay_seconds)
+                time.sleep(retry_delay_seconds)
 
             try:
                 # Do not add a proxies argument: trust_env=False is the single source of truth.
+                self._wait_for_endpoint_cooldown(normalized_endpoint)
                 response = self.session.get(url, params=request_params, timeout=self.timeout)
             except requests.RequestException as exc:
                 if attempt < attempts - 1:
@@ -95,6 +150,11 @@ class OddsPapiClient:
 
             status_code = response.status_code
             if status_code in self.TRANSIENT_STATUS_CODES and attempt < attempts - 1:
+                retry_after_seconds = self._retry_after_seconds(response)
+                retry_delay_seconds = max(
+                    self.request_delay_seconds,
+                    retry_after_seconds or 0.0,
+                )
                 logger.warning(
                     "Transient OddsPapi HTTP %s for /v4/%s (attempt %s/%s)",
                     status_code,

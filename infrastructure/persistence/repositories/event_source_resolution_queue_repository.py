@@ -29,7 +29,16 @@ class EventSourceResolutionQueueRepository:
     def _as_serializable_candidate_scores(
         candidate_scores: Iterable[EventCandidateScore],
     ) -> list[dict[str, object]]:
-        return [score.to_dict() for score in candidate_scores]
+        return [
+            score.to_dict() if hasattr(score, "to_dict") else dict(score)
+            for score in candidate_scores
+        ]
+
+    @staticmethod
+    def _candidate_value(candidate, key: str):
+        if isinstance(candidate, dict):
+            return candidate.get(key)
+        return getattr(candidate, key, None)
 
     @staticmethod
     def _upsert_unresolved_attempt_in_session(
@@ -45,12 +54,22 @@ class EventSourceResolutionQueueRepository:
         if not normalized_source_event_id:
             raise ValueError("fixture_id is required for event_source_resolution_queue")
 
-        sorted_scores = sorted(candidate_scores, key=lambda item: (-item.score, item.event_id))
+        sorted_scores = sorted(
+            candidate_scores,
+            key=lambda item: (
+                -float(EventSourceResolutionQueueRepository._candidate_value(item, "score") or 0),
+                int(EventSourceResolutionQueueRepository._candidate_value(item, "event_id") or 0),
+            ),
+        )
         best_candidate = sorted_scores[0] if sorted_scores else None
         second_candidate = sorted_scores[1] if len(sorted_scores) > 1 else None
         score_gap = None
         if best_candidate is not None and second_candidate is not None:
-            score_gap = round(best_candidate.score - second_candidate.score, 3)
+            score_gap = round(
+                float(EventSourceResolutionQueueRepository._candidate_value(best_candidate, "score") or 0)
+                - float(EventSourceResolutionQueueRepository._candidate_value(second_candidate, "score") or 0),
+                3,
+            )
 
         queue_row = (
             session.query(EventSourceResolutionQueue)
@@ -66,10 +85,10 @@ class EventSourceResolutionQueueRepository:
                 source=normalized_source,
                 source_event_id=normalized_source_event_id,
                 resolution_status=resolution_status,
-                best_candidate_event_id=best_candidate.event_id if best_candidate else None,
-                best_candidate_confidence=best_candidate.score if best_candidate else None,
-                second_candidate_event_id=second_candidate.event_id if second_candidate else None,
-                second_candidate_confidence=second_candidate.score if second_candidate else None,
+                best_candidate_event_id=EventSourceResolutionQueueRepository._candidate_value(best_candidate, "event_id") if best_candidate else None,
+                best_candidate_confidence=EventSourceResolutionQueueRepository._candidate_value(best_candidate, "score") if best_candidate else None,
+                second_candidate_event_id=EventSourceResolutionQueueRepository._candidate_value(second_candidate, "event_id") if second_candidate else None,
+                second_candidate_confidence=EventSourceResolutionQueueRepository._candidate_value(second_candidate, "score") if second_candidate else None,
                 score_gap=score_gap,
                 source_sport_id=fixture.sport_id,
                 source_sport_name=fixture.sport_name,
@@ -106,10 +125,10 @@ class EventSourceResolutionQueueRepository:
             )
         else:
             queue_row.resolution_status = resolution_status
-            queue_row.best_candidate_event_id = best_candidate.event_id if best_candidate else None
-            queue_row.best_candidate_confidence = best_candidate.score if best_candidate else None
-            queue_row.second_candidate_event_id = second_candidate.event_id if second_candidate else None
-            queue_row.second_candidate_confidence = second_candidate.score if second_candidate else None
+            queue_row.best_candidate_event_id = EventSourceResolutionQueueRepository._candidate_value(best_candidate, "event_id") if best_candidate else None
+            queue_row.best_candidate_confidence = EventSourceResolutionQueueRepository._candidate_value(best_candidate, "score") if best_candidate else None
+            queue_row.second_candidate_event_id = EventSourceResolutionQueueRepository._candidate_value(second_candidate, "event_id") if second_candidate else None
+            queue_row.second_candidate_confidence = EventSourceResolutionQueueRepository._candidate_value(second_candidate, "score") if second_candidate else None
             queue_row.score_gap = score_gap
             queue_row.source_sport_id = fixture.sport_id
             queue_row.source_sport_name = fixture.sport_name

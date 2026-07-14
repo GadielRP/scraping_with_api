@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import signal
 import sys
@@ -98,6 +99,33 @@ def run_daily_discovery():
     job_scheduler.run_job_daily_discovery_now()
 
 
+def run_oddspapi_fixture_discovery(args):
+    """Run Oddspapi fixture discovery for a UTC day from the application CLI."""
+    logger = logging.getLogger(__name__)
+    logger.info("Running Oddspapi fixture discovery command...")
+
+    from infrastructure.scheduler import job_scheduler
+    from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import _resolve_sports
+
+    sports = _resolve_sports(args.sports)
+    summary = job_scheduler.run_job_oddspapi_fixture_discovery_now(
+        target_date=args.date,
+        lookahead_days=args.lookahead_days,
+        sports=sports,
+        create_mappings=bool(args.commit and not args.dry_run),
+        persist_queue=bool(args.persist_queue and args.commit and not args.dry_run),
+        max_fixtures_per_sport=args.max_fixtures_per_sport,
+    )
+    if args.log_json:
+        print(json.dumps(summary.to_dict(), default=lambda value: value.isoformat()))
+    else:
+        print(
+            "Oddspapi fixture discovery complete: "
+            f"fixtures={summary.total_fixtures_fetched} "
+            f"mappings_created={summary.total_mappings_created}"
+        )
+
+
 def start_scheduler():
     """Start the job scheduler."""
     logger = logging.getLogger(__name__)
@@ -127,6 +155,11 @@ def start_scheduler():
     print(
         f"    - Real runs are limited by DB slots: AM opens at {Config.DAILY_DISCOVERY_AM_OPEN_HOUR}:00, "
         f"PM opens at {Config.DAILY_DISCOVERY_PM_OPEN_HOUR}:00"
+    )
+    print(
+        "  - Oddspapi fixture discovery: Daily at "
+        f"{', '.join(getattr(Config, 'ODDSPAPI_FIXTURE_DISCOVERY_TIMES', ['03:00']))} "
+        "(UTC calendar day)"
     )
 
     print("\nSystem is running in background. Press Ctrl+C to stop.")
@@ -162,6 +195,7 @@ def _build_parser():
             "results-date",
             "results-all",
             "daily-discovery",
+            "oddspapi-fixture-discovery",
             "backfill-results",
             "status",
             "events",
@@ -174,8 +208,26 @@ def _build_parser():
         "--date",
         type=str,
         default=None,
-        help="Target date in yyyy-mm-dd format (for results-date command)",
+        help="Target UTC date in yyyy-mm-dd format (for results-date or Oddspapi discovery)",
     )
+    parser.add_argument(
+        "--sports",
+        type=str,
+        default=None,
+        help="Comma-separated Oddspapi sport slugs",
+    )
+    parser.add_argument(
+        "--lookahead-days",
+        type=int,
+        default=1,
+        help="Oddspapi discovery days starting at the UTC day boundary",
+    )
+    discovery_mode = parser.add_mutually_exclusive_group()
+    discovery_mode.add_argument("--dry-run", action="store_true")
+    discovery_mode.add_argument("--commit", action="store_true")
+    parser.add_argument("--persist-queue", action="store_true")
+    parser.add_argument("--max-fixtures-per-sport", type=int, default=None)
+    parser.add_argument("--log-json", action="store_true")
     return parser
 
 
@@ -216,6 +268,8 @@ def _run_command(args):
         run_results_collection_all()
     elif args.command == "daily-discovery":
         run_daily_discovery()
+    elif args.command == "oddspapi-fixture-discovery":
+        run_oddspapi_fixture_discovery(args)
     elif args.command == "backfill-results":
         run_backfill_results(args.limit)
     elif args.command == "status":
@@ -266,6 +320,7 @@ def main():
 __all__ = [
     "main",
     "run_daily_discovery",
+    "run_oddspapi_fixture_discovery",
     "run_discovery",
     "run_discovery2",
     "run_midnight_sync",

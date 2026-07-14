@@ -61,6 +61,17 @@ class OddspapiEventResolver:
         normalized = str(value).strip()
         return normalized or None
 
+    @staticmethod
+    def _fixture_summary(fixture: OddspapiFixtureIdentity) -> str:
+        return (
+            f"fixture_id={fixture.fixture_id} "
+            f"participants=({fixture.participant1_name} | {fixture.participant1_short_name} | {fixture.participant1_abbr}) vs "
+            f"({fixture.participant2_name} | {fixture.participant2_short_name} | {fixture.participant2_abbr}) "
+            f"tournament=({fixture.tournament_name} | {fixture.tournament_slug}) "
+            f"category=({fixture.category_name} | {fixture.category_slug}) "
+            f"start_utc={fixture.start_time_utc} start_local={fixture.start_time_local}"
+        )
+
     @classmethod
     def _build_resolution(
         cls,
@@ -228,21 +239,22 @@ class OddspapiEventResolver:
         create_mappings: bool = True,
         persist_queue: bool = True,
     ) -> OddspapiEventResolution:
-        payload = odds_response if isinstance(odds_response, dict) else {}
-        logger.info("Starting OddsPapi event resolution from odds response")
+        """Resolve an odds payload through direct mappings only.
+
+        Odds ingestion must not trigger fuzzy candidate matching.  Candidate
+        matching belongs to fixture discovery and the explicit fixture-response
+        resolver path.
+        """
         try:
-            fixture = OddspapiFixtureIdentity.from_payload(payload)
+            fixture = OddspapiFixtureIdentity.from_payload(
+                odds_response if isinstance(odds_response, dict) else {},
+            )
         except ValueError:
             logger.warning("Skipping OddsPapi payload without fixtureId")
-            return OddspapiEventResolution(
-                oddspapi_fixture_id="",
-                canonical_event_id=None,
-                resolved=False,
-                skipped_reason="missing_oddspapi_fixture_id",
-            )
+            return cls.invalid_resolution()
 
         with db_manager.get_session() as session:
-            logger.info("Resolving OddsPapi fixture %s", fixture.fixture_id)
+            logger.info("Resolving OddsPapi fixture payload: %s", cls._fixture_summary(fixture))
             resolution = cls._resolve_via_existing_mappings(
                 fixture=fixture,
                 session=session,
@@ -250,9 +262,19 @@ class OddspapiEventResolver:
                 persist_queue=persist_queue,
             )
             if resolution is not None:
+                logger.info(
+                    "Oddspapi fixture %s resolved via %s (canonical_event_id=%s confidence=%s)",
+                    fixture.fixture_id,
+                    resolution.match_method,
+                    resolution.canonical_event_id,
+                    resolution.confidence,
+                )
                 return resolution
 
-            logger.info("OddsPapi fixture %s unresolved: no direct mapping found", fixture.fixture_id)
+            logger.warning(
+                "OddsPapi fixture %s unresolved after direct mapping checks; skipping candidate matching",
+                fixture.fixture_id,
+            )
             return cls._build_resolution(
                 fixture_id=fixture.fixture_id,
                 resolved=False,
@@ -270,95 +292,180 @@ class OddspapiEventResolver:
         create_mappings: bool = True,
         persist_queue: bool = True,
     ) -> OddspapiEventResolution:
-        payload = fixture_response if isinstance(fixture_response, dict) else {}
-        logger.info("Starting OddsPapi event resolution from fixture response")
+        """Resolve one fixture while retaining the legacy session-owning API."""
         try:
-            fixture = OddspapiFixtureIdentity.from_payload(payload)
+            fixture = OddspapiFixtureIdentity.from_payload(
+                fixture_response if isinstance(fixture_response, dict) else {},
+            )
         except ValueError:
             logger.warning("Skipping OddsPapi payload without fixtureId")
-            return OddspapiEventResolution(
-                oddspapi_fixture_id="",
-                canonical_event_id=None,
-                resolved=False,
-                skipped_reason="missing_oddspapi_fixture_id",
-            )
+            return cls.invalid_resolution()
 
         with db_manager.get_session() as session:
-            logger.info("Resolving OddsPapi fixture %s", fixture.fixture_id)
-            resolution = cls._resolve_via_existing_mappings(
+            return cls.resolve_fixture_identity_in_session(
                 fixture=fixture,
                 session=session,
                 create_mappings=create_mappings,
                 persist_queue=persist_queue,
             )
-            if resolution is not None:
-                return resolution
 
-            # Proceed to Layer 3: Candidate matcher (Fuzzy Matcher)
-            decision = cls._candidate_matcher.find_best_match(fixture, session=session)
-            if decision.resolved and decision.canonical_event_id is not None:
-                logger.info(
-                    "Candidate matcher resolved fixture %s -> event %s (orientation=%s, confidence=%s)",
-                    fixture.fixture_id,
-                    decision.canonical_event_id,
-                    decision.best_candidate_orientation,
-                    decision.confidence,
+    @staticmethod
+    def invalid_resolution() -> OddspapiEventResolution:
+        return OddspapiEventResolution(
+            oddspapi_fixture_id="",
+            canonical_event_id=None,
+            resolved=False,
+            skipped_reason="missing_oddspapi_fixture_id",
+        )
+
+    @classmethod
+    def resolve_fixture_identity_in_session(
+        cls,
+        fixture: OddspapiFixtureIdentity,
+        session,
+        create_mappings: bool = True,
+        persist_queue: bool = False,
+        *,
+        existing_oddspapi: dict[str, int] | None = None,
+        existing_sofascore: dict[str, int] | None = None,
+        candidate_events: list | None = None,
+        queue_pure_no_candidates: bool = True,
+    ) -> OddspapiEventResolution:
+        """Resolve a normalized fixture using a caller-owned DB session.
+
+        ``existing_oddspapi`` and ``existing_sofascore`` are optional preloaded
+        dictionaries used by batch jobs.  Leaving them as ``None`` preserves
+        the single-fixture lookup behavior for existing scripts.
+        """
+        if existing_oddspapi is None and existing_sofascore is None:
+            direct_resolution = cls._resolve_via_existing_mappings(
+                fixture=fixture,
+                session=session,
+                create_mappings=create_mappings,
+                persist_queue=persist_queue,
+            )
+        else:
+            canonical_event_id = (existing_oddspapi or {}).get(fixture.fixture_id)
+            if canonical_event_id is not None:
+                direct_resolution = cls._build_resolution(
+                    fixture_id=fixture.fixture_id,
+                    resolved=True,
+                    canonical_event_id=canonical_event_id,
+                    match_method="existing_oddspapi_mapping",
+                    confidence=1.0,
+                    layer1_resolved=True,
                 )
-                created_mappings = []
-                if create_mappings:
-                    logger.info(
-                        "Persisting Oddspapi mapping for fixture %s -> event %s",
-                        fixture.fixture_id,
-                        decision.canonical_event_id,
-                    )
-                    EventSourceMappingRepository.upsert_mapping(
-                        event_id=decision.canonical_event_id,
-                        source="oddspapi",
-                        source_event_id=fixture.fixture_id,
-                        source_sport_id=fixture.sport_id,
-                        source_tournament_id=fixture.tournament_id,
-                        source_season_id=fixture.season_id,
-                        match_method="deterministic_candidate_match",
-                        confidence=decision.confidence,
-                        raw_external_providers=fixture.external_providers,
-                        session=session,
-                    )
-                    created_mappings.append("oddspapi")
-                    if persist_queue:
-                        EventSourceResolutionQueueRepository.clear_resolved(
-                            "oddspapi",
-                            fixture.fixture_id,
+            else:
+                sofascore_id = cls._external_id(fixture.external_providers.get("sofascoreId"))
+                canonical_event_id = (existing_sofascore or {}).get(sofascore_id) if sofascore_id else None
+                direct_resolution = None
+                if canonical_event_id is not None:
+                    created_mappings = (
+                        cls._persist_layer2_mappings(
+                            canonical_event_id=canonical_event_id,
+                            fixture=fixture,
                             session=session,
                         )
-                return cls._build_resolution(
-                    fixture_id=fixture.fixture_id,
-                    decision=decision,
-                    resolved=True,
-                    canonical_event_id=decision.canonical_event_id,
+                        if create_mappings
+                        else []
+                    )
+                    direct_resolution = cls._build_resolution(
+                        fixture_id=fixture.fixture_id,
+                        resolved=True,
+                        canonical_event_id=canonical_event_id,
+                        match_method="external_provider_sofascore_id",
+                        confidence=1.0,
+                        created_mappings=created_mappings,
+                        layer2_resolved=True,
+                    )
+
+        if direct_resolution is not None:
+            logger.info(
+                "Oddspapi direct resolution succeeded for %s via %s",
+                fixture.fixture_id,
+                direct_resolution.match_method,
+            )
+            return direct_resolution
+
+        if candidate_events is None:
+            logger.info("Running candidate matcher for OddsPapi fixture %s", fixture.fixture_id)
+            decision = cls._candidate_matcher.find_best_match(fixture, session=session)
+        else:
+            logger.info(
+                "Running candidate matcher against preloaded %s event(s) for OddsPapi fixture %s",
+                len(candidate_events),
+                fixture.fixture_id,
+            )
+            decision = cls._candidate_matcher.find_best_match_from_candidates(
+                fixture,
+                candidate_events,
+            )
+
+        if decision.resolved and decision.canonical_event_id is not None:
+            logger.info(
+                "Candidate matcher resolved OddsPapi fixture %s -> event %s orientation=%s score=%.3f gap=%s",
+                fixture.fixture_id,
+                decision.canonical_event_id,
+                decision.best_candidate_orientation,
+                decision.confidence,
+                decision.score_gap,
+            )
+            created_mappings = []
+            if create_mappings:
+                EventSourceMappingRepository.upsert_mapping(
+                    event_id=decision.canonical_event_id,
+                    source="oddspapi",
+                    source_event_id=fixture.fixture_id,
+                    source_sport_id=fixture.sport_id,
+                    source_tournament_id=fixture.tournament_id,
+                    source_season_id=fixture.season_id,
                     match_method="deterministic_candidate_match",
                     confidence=decision.confidence,
-                    created_mappings=created_mappings,
-                )
-
-            if create_mappings and persist_queue:
-                logger.info(
-                    "Persisting unresolved OddsPapi fixture %s with status=%s",
-                    fixture.fixture_id,
-                    decision.status,
-                )
-                EventSourceResolutionQueueRepository.upsert_unresolved_attempt(
-                    fixture=fixture,
-                    resolution_status=decision.status,
-                    candidate_scores=decision.candidate_scores,
+                    raw_external_providers=fixture.external_providers,
                     session=session,
                 )
-
+                created_mappings.append("oddspapi")
+                if persist_queue:
+                    EventSourceResolutionQueueRepository.clear_resolved(
+                        "oddspapi",
+                        fixture.fixture_id,
+                        session=session,
+                    )
             return cls._build_resolution(
                 fixture_id=fixture.fixture_id,
                 decision=decision,
-                resolved=False,
-                canonical_event_id=None,
-                match_method=decision.status,
+                resolved=True,
+                canonical_event_id=decision.canonical_event_id,
+                match_method="deterministic_candidate_match",
                 confidence=decision.confidence,
-                skipped_reason=decision.status,
+                created_mappings=created_mappings,
             )
+
+        should_queue = (
+            create_mappings
+            and persist_queue
+            and (queue_pure_no_candidates or decision.status != "unresolved_no_candidates")
+        )
+        if should_queue:
+            logger.info(
+                "Persisting unresolved OddsPapi fixture %s status=%s candidate_count=%s",
+                fixture.fixture_id,
+                decision.status,
+                len(decision.candidate_scores),
+            )
+            EventSourceResolutionQueueRepository.upsert_unresolved_attempt(
+                fixture=fixture,
+                resolution_status=decision.status,
+                candidate_scores=decision.candidate_scores,
+                session=session,
+            )
+
+        return cls._build_resolution(
+            fixture_id=fixture.fixture_id,
+            decision=decision,
+            resolved=False,
+            canonical_event_id=None,
+            match_method=decision.status,
+            confidence=decision.confidence,
+            skipped_reason=decision.status,
+        )

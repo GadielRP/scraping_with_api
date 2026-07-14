@@ -52,6 +52,7 @@ The application is driven by main.py, which delegates to app/cli.py. cli.py defi
 | midnight | Performs the midnight sync job – collects results, updates prediction logs and refreshes materialised views. |
 | results | Collects previous‑day results and updates prediction logs. |
 | results-date --date YYYY-MM-DD | Collects results for the specified date. |
+| oddspapi-fixture-discovery | Discovers Oddspapi fixture IDs for the UTC day and maps them to existing canonical events. It does not create events or ingest odds. |
 | results-all | Retrieves results for all finished events. |
 | daily-discovery | Runs daily sports discovery – extracts today’s events and odds for each sport. |
 | backfill-results --limit N | Backfills missing results history up to N events. |
@@ -72,6 +73,11 @@ basketball_4q/ – prediction engine for basketball fourth‑quarter analysis. I
 dual_process/ – implements the dual process alert strategy. The process_1 and process_2 submodules handle candidate search, evaluation and sport‑specific rules for football and other sports. The top‑level run_dual_process.py entrypoint orchestrates both phases.
 matchup_streak_analysis/ – analyses head‑to‑head records, historical form and standings. It defines constants.py, head_to_head.py, historical_form.py, standings_engine.py, standings_rules.py, standings_simulator.py and winning_odds.py. The run_matchup_streak_analysis.py script triggers this pipeline and uses the materialised view mv_alert_events for candidate lookup.
 ### Jobs (modules/jobs)
+
+Oddspapi jobs are grouped under `modules/jobs/oddspapi/`, with each job in its
+own subpackage. The current fixture discovery runtime lives under
+`modules/jobs/oddspapi/fixture_discovery/`; this keeps future Oddspapi jobs
+separate and avoids mixing their orchestration modules.
 
 Scheduled work is compartmentalised in the jobs/ package. Each job has its own sub‑directory with a run_*.py script and helper modules. Highlights include:
 
@@ -167,6 +173,10 @@ Set up environment variables. Copy .env.example to .env and populate the require
 *   `POLL_INTERVAL_MINUTES` – polling interval for the pre‑start check job.
 *   `DISCOVERY_INTERVAL_HOURS` and `DISCOVERY2_INTERVAL_HOURS` – intervals for discovery jobs.
 *   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `PERSONAL_CHAT_ID` – credentials for Telegram alerts.
+*   `ODDSPAPI_KEY` - API key required for Oddspapi requests.
+*   `ODDSPAPI_BASE_URL`, `ODDSPAPI_TIMEOUT_SECONDS` and `ODDSPAPI_DEFAULT_LANGUAGE` - Oddspapi client settings.
+*   `ODDSPAPI_FIXTURE_DISCOVERY_TIMES` - comma-separated scheduler times for automatic fixture discovery.
+*   `ODDSPAPI_FIXTURES_COOLDOWN_SECONDS` - minimum delay between `/v4/fixtures` requests; default `2.0` seconds.
 *   Proxy toggles and credentials (if scraping behind a proxy).
 *   Optional toggles like `ENABLE_TIMESTAMP_CORRECTION`, `ENABLE_ODDS_EXTRACTION`, `EXCLUDED_SPORTS`, `STREAK_ALERT_MIN_RESULTS`.
 
@@ -204,6 +214,137 @@ python main.py daily-discovery
 ```
 
 Refer to the command table above for the full list of options.
+
+### Oddspapi Fixture Discovery
+
+The Oddspapi fixture discovery job finds fixtures for the configured sports and
+maps their `fixtureId` values to events that already exist in the canonical
+`events` table. It writes rows to `event_source_mappings` with
+`source=oddspapi`; it does not create canonical events, participants,
+competitions or tournaments, and it does not call any Oddspapi odds endpoint.
+
+The default discovery window is the current UTC calendar day: midnight UTC
+through midnight UTC of the following day. A requested window larger than 48
+hours is split into smaller API requests. The default sports are:
+
+```text
+soccer=10, basketball=11, tennis=12, baseball=13,
+american-football=14, ice-hockey=15
+```
+
+#### Job package
+
+The runtime implementation is under `modules/jobs/oddspapi/fixture_discovery/`:
+
+* `oddspapi/__init__.py` marks the parent Oddspapi jobs package and is kept
+  intentionally free of job-specific exports.
+* `fixture_discovery/__init__.py` exposes the current job, summary dataclasses
+  and programmatic runner.
+* `fixture_discovery/constants.py` defines the discovery sport IDs, status/language defaults,
+  UTC window defaults, queue default and maximum API request window.
+* `fixture_discovery/response_utils.py` extracts fixture lists from raw arrays or defensive
+  wrapper objects (`fixtures`, `data` or `items`), formats UTC timestamps for
+  Oddspapi and splits long windows into chunks.
+* `fixture_discovery/fixture_batch_processor.py` performs efficient resolution for one response
+  batch. It normalizes and deduplicates fixtures, performs bulk mapping
+  lookups, loads a sport-filtered candidate pool once, and sends only
+  unresolved fixtures through Layer 3 matching. It uses a one-hour candidate
+  tolerance and a caller-owned SQLAlchemy session.
+* `fixture_discovery/fixture_discovery_job.py` orchestrates the API calls sport by sport, handles
+  empty 404 responses and per-sport failures, opens an independent transaction
+  for each response batch, and aggregates per-sport and total statistics.
+* `fixture_discovery/run_fixture_discovery.py` provides the standalone module runner, CLI
+  argument parsing, UTC-day window resolution, sport validation and JSON
+  summary output.
+
+#### Resolution flow
+
+For each sport and each API window, the job:
+
+1. Calls `/v4/fixtures` sequentially with `sportId`, `from`, `to`,
+   `statusId`, `language` and the configured `hasOdds` value.
+2. Extracts fixture dictionaries, skips invalid entries without `fixtureId`,
+   and deduplicates by normalized `fixtureId`.
+3. Bulk-loads existing Oddspapi mappings and SofaScore mappings in the same
+   database session.
+4. Resolves Layer 1 existing Oddspapi mappings and Layer 2
+   `externalProviders.sofascoreId` mappings without candidate matching.
+5. Loads canonical candidate events once for the unresolved fixtures,
+   filtering by sport and the one-hour start-time window. Candidates are then
+   indexed and selected in memory per fixture.
+6. Reuses the deterministic Layer 3 matcher. Successful matches are persisted
+   with `match_method=deterministic_candidate_match` when commit mode is
+   enabled.
+7. Leaves unresolved fixtures out of
+   `event_source_resolution_queue` by default. `--persist-queue` is opt-in,
+   and pure no-candidate noise is still excluded.
+
+The Oddspapi client enforces the documented fixtures endpoint cooldown,
+currently two seconds by default, and honors retry information returned for
+HTTP 429 responses. Sports are processed sequentially so one failed sport is
+recorded in the summary without rolling back successful sports.
+
+#### Manual execution
+
+The default mode is dry-run. It performs lookups and matching but writes no
+mappings or queue rows:
+
+```bash
+python -m modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery \
+  --date 2026-07-15 \
+  --sports soccer,basketball,baseball \
+  --dry-run \
+  --log-json
+```
+
+Commit successful mappings with:
+
+```bash
+python -m modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery \
+  --date 2026-07-15 \
+  --sports soccer,basketball,baseball \
+  --commit \
+  --log-json
+```
+
+The application CLI exposes the same job through `main.py` and initializes
+the application/database before running it:
+
+```bash
+python main.py oddspapi-fixture-discovery \
+  --date 2026-07-15 \
+  --sports soccer,basketball,baseball \
+  --commit \
+  --log-json
+```
+
+Useful options include `--from-date` and `--to-date` for an explicit UTC
+window, `--lookahead-days` for a date-based window, `--status-id`,
+`--max-fixtures-per-sport` for controlled validation runs and
+`--persist-queue` for opt-in review queue persistence. Unknown sport slugs
+fail with a list of supported values.
+
+#### Automatic execution
+
+When the full scheduler is started with:
+
+```bash
+python main.py start
+```
+
+`infrastructure/scheduler/job_scheduler.py` registers the job once per day at
+the times in `ODDSPAPI_FIXTURE_DISCOVERY_TIMES`. The default is `03:00` and
+can be changed in `.env` as a comma-separated list, for example:
+
+```text
+ODDSPAPI_FIXTURE_DISCOVERY_TIMES=03:00,15:00
+```
+
+The scheduled invocation processes the current UTC day, all configured sports,
+commits successful mappings, and keeps queue persistence disabled unless the
+job is explicitly invoked with queue persistence enabled. The scheduler also
+exposes an immediate trigger through
+`JobScheduler.run_job_oddspapi_fixture_discovery_now()`.
 
 ## Developing & Extending
 

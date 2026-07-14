@@ -171,6 +171,10 @@ class Config:
     DAILY_DISCOVERY_PM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_PM_OPEN_HOUR', '16'))
     DAILY_DISCOVERY_SLOTS = _parse_env_list('DAILY_DISCOVERY_SLOTS', ['AM', 'PM'])
     DAILY_DISCOVERY_DAYS_TO_KEEP = int(os.getenv('DAILY_DISCOVERY_DAYS_TO_KEEP', '1'))
+    ODDSPAPI_FIXTURE_DISCOVERY_TIMES = _parse_env_list(
+        'ODDSPAPI_FIXTURE_DISCOVERY_TIMES',
+        ['03:00'],
+    )
     
     # Discovery Schedule Times (dynamically generated based on DISCOVERY_INTERVAL_HOURS)
     # Runs at exact hours: 00:00, 06:00, 12:00, 18:00 (if interval is 6)
@@ -217,6 +221,9 @@ class Config:
     ODDSPAPI_MAX_RETRIES = int(os.getenv('ODDSPAPI_MAX_RETRIES', str(MAX_RETRIES)))
     ODDSPAPI_REQUEST_DELAY_SECONDS = float(
         os.getenv('ODDSPAPI_REQUEST_DELAY_SECONDS', str(REQUEST_DELAY_SECONDS))
+    )
+    ODDSPAPI_FIXTURES_COOLDOWN_SECONDS = float(
+        os.getenv('ODDSPAPI_FIXTURES_COOLDOWN_SECONDS', '2.0')
     )
     ODDSPAPI_DEFAULT_BOOKMAKERS = _parse_optional_env_list(
         'ODDSPAPI_DEFAULT_BOOKMAKERS',

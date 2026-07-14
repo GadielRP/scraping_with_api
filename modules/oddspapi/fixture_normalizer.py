@@ -99,12 +99,16 @@ class OddspapiFixtureIdentity:
         )
 
         logger.info(
-            "Normalized OddsPapi fixture %s sport=%s start_utc=%s start_local=%s providers=%s",
+            "Normalized OddsPapi fixture %s sport=%s start_utc=%s start_local=%s providers=%s participants=%s vs %s tournament=%s / %s",
             fixture_id,
             _normalize_sport_name(data.get("sportName")),
             start_time_utc,
             start_time_local,
             external_provider_keys,
+            _normalize_optional_text(data.get("participant1Name")),
+            _normalize_optional_text(data.get("participant2Name")),
+            _normalize_optional_text(data.get("tournamentName")),
+            _normalize_optional_text(data.get("categoryName")),
         )
 
         return cls(

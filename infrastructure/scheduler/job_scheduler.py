@@ -16,6 +16,7 @@ from modules.jobs.daily_discovery import run_daily_discovery_job, run_daily_disc
 from modules.jobs.discover_dropping_odds import run_discover_dropping_odds
 from modules.jobs.discover_secondary_sources import run_discover_secondary_sources
 from modules.jobs.midnight_sync_job import run_midnight_sync_job
+from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import run_fixture_discovery_job
 from modules.jobs.pre_start_check_job.run_pre_start_check_job import run_pre_start_check_job
 from modules.jobs.results_collection_job import (
     run_results_collection_all_finished,
@@ -59,6 +60,14 @@ class JobScheduler:
         )
         schedule.every(daily_discovery_interval).minutes.do(self.job_daily_discovery)
 
+        oddspapi_fixture_discovery_times = getattr(
+            Config,
+            "ODDSPAPI_FIXTURE_DISCOVERY_TIMES",
+            ["03:00"],
+        )
+        for time_str in oddspapi_fixture_discovery_times:
+            schedule.every().day.at(time_str).do(self.job_oddspapi_fixture_discovery)
+
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
         logger.info(f"  - Discovery 2: daily at {', '.join(Config.DISCOVERY2_TIMES)}")
@@ -71,6 +80,10 @@ class JobScheduler:
             daily_discovery_interval,
             Config.DAILY_DISCOVERY_AM_OPEN_HOUR,
             Config.DAILY_DISCOVERY_PM_OPEN_HOUR,
+        )
+        logger.info(
+            "  - Oddspapi fixture discovery: daily at %s (UTC calendar day)",
+            ", ".join(oddspapi_fixture_discovery_times),
         )
         logger.info("  - League cache cleanup: every 3 days at 05:00")
 
@@ -193,6 +206,21 @@ class JobScheduler:
         except Exception as exc:
             logger.error(f"Error in Job E (Daily Discovery): {exc}")
 
+    def job_oddspapi_fixture_discovery(self, **kwargs):
+        logger.info("Starting Oddspapi fixture discovery for the current UTC day")
+        try:
+            summary = run_fixture_discovery_job(**kwargs)
+            logger.info(
+                "Oddspapi fixture discovery completed fixtures=%s mappings_created=%s errors=%s",
+                summary.total_fixtures_fetched,
+                summary.total_mappings_created,
+                sum(sport.errors for sport in summary.sports),
+            )
+            return summary
+        except Exception as exc:
+            logger.error(f"Error in Oddspapi fixture discovery: {exc}")
+            raise
+
     def job_clean_league_cache(self):
         logger.info("Starting Job F: Clean up OddsPortal league cache")
         try:
@@ -244,6 +272,10 @@ class JobScheduler:
         logger.info("Running Job E (Daily Discovery) immediately")
         self.job_daily_discovery()
 
+    def run_job_oddspapi_fixture_discovery_now(self, **kwargs):
+        logger.info("Running Oddspapi fixture discovery immediately")
+        return self.job_oddspapi_fixture_discovery(**kwargs)
+
     def get_scheduled_jobs(self) -> List[Dict]:
         jobs = []
         for job in schedule.jobs:
@@ -274,6 +306,12 @@ class JobScheduler:
             elif job.job_func.__name__ == "job_daily_discovery":
                 job_info["display"] = (
                     f"Daily discovery heartbeat: Every {job.interval} {job.unit}"
+                )
+            elif job.job_func.__name__ == "job_oddspapi_fixture_discovery":
+                job_info["display"] = (
+                    f"Oddspapi fixture discovery: Daily at {job.at_time}"
+                    if job.at_time
+                    else f"Oddspapi fixture discovery: Every {job.interval} {job.unit}"
                 )
             else:
                 job_info["display"] = f"{job.job_func.__name__}: Every {job.interval} {job.unit}"

@@ -55,8 +55,8 @@ class EventSourceMappingRepository:
             if session is not None:
                 return _lookup(session)
 
-            with db_manager.get_session() as session:
-                return _lookup(session)
+            with db_manager.get_session() as scoped_session:
+                return _lookup(scoped_session)
         except Exception as exc:
             logger.error(
                 "Error resolving canonical event_id for source=%s source_event_id=%s: %s",
@@ -65,6 +65,66 @@ class EventSourceMappingRepository:
                 exc,
             )
             return None
+
+    @staticmethod
+    def get_event_ids_by_source_event_ids(
+        source: str,
+        source_event_ids: list[str],
+        session: Optional[Session] = None,
+    ) -> dict[str, int]:
+        """Return canonical event IDs for a batch of source event IDs.
+
+        Missing or blank IDs are ignored.  The supplied session is deliberately
+        reused so callers can perform all lookups in the same transaction.
+        """
+        normalized_source = EventSourceMappingRepository._normalize_source(source)
+        normalized_ids = {
+            EventSourceMappingRepository._normalize_source_event_id(value)
+            for value in (source_event_ids or [])
+            if str(value or "").strip()
+        }
+        if not normalized_source or not normalized_ids:
+            return {}
+
+        def _lookup(scoped_session: Session) -> dict[str, int]:
+            rows = (
+                scoped_session.query(
+                    EventSourceMapping.source_event_id,
+                    EventSourceMapping.event_id,
+                )
+                .filter(
+                    EventSourceMapping.source == normalized_source,
+                    EventSourceMapping.source_event_id.in_(normalized_ids),
+                )
+                .all()
+            )
+            return {str(source_event_id): event_id for source_event_id, event_id in rows}
+
+        try:
+            if session is not None:
+                return _lookup(session)
+            with db_manager.get_session() as scoped_session:
+                return _lookup(scoped_session)
+        except Exception as exc:
+            logger.error(
+                "Error resolving batch event IDs for source=%s count=%s: %s",
+                normalized_source,
+                len(normalized_ids),
+                exc,
+            )
+            raise
+
+    @staticmethod
+    def get_event_ids_by_sofascore_ids(
+        sofascore_ids: list[str],
+        session: Optional[Session] = None,
+    ) -> dict[str, int]:
+        """Return canonical event IDs for SofaScore IDs in one query."""
+        return EventSourceMappingRepository.get_event_ids_by_source_event_ids(
+            source="sofascore",
+            source_event_ids=sofascore_ids,
+            session=session,
+        )
 
     @staticmethod
     def get_source_event_id(event_id: int, source: str, session: Optional[Session] = None) -> Optional[str]:
