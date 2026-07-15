@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from shared.timezone_utils import get_local_now
@@ -21,14 +21,21 @@ def resolve_daily_discovery_slot(now=None) -> str | None:
         now = get_local_now()
 
     current_hour = now.hour
+    am_hour = Config.DAILY_DISCOVERY_AM_OPEN_HOUR
+    pm_hour = Config.DAILY_DISCOVERY_PM_OPEN_HOUR
 
-    if current_hour >= Config.DAILY_DISCOVERY_PM_OPEN_HOUR:
-        return "PM"
-
-    if current_hour >= Config.DAILY_DISCOVERY_AM_OPEN_HOUR:
+    # If am_hour is in the evening (e.g. 17) and pm_hour is in the morning (e.g. 8)
+    if am_hour > pm_hour:
+        if pm_hour <= current_hour < am_hour:
+            return "PM"
         return "AM"
-
-    return None
+    else:
+        # Standard case (am_hour < pm_hour, e.g. AM=5, PM=16)
+        if current_hour >= pm_hour:
+            return "PM"
+        if current_hour >= am_hour:
+            return "AM"
+        return None
 
 
 def run_daily_discovery(sports=None, date_str=None, run_slot=None):
@@ -52,19 +59,23 @@ def run_daily_discovery_job() -> None:
 
     try:
         now = get_local_now()
-        # Use the UTC date so that at 18:10 MX (= 00:10 UTC next day) we fetch
-        # the next UTC day's events. This guarantees SofaScore events are in the
-        # DB before OddsPapi fixture_discovery runs at 18:45 MX.
-        utc_now = datetime.now(timezone.utc)
-        today_str = utc_now.strftime("%Y-%m-%d")
         run_slot = resolve_daily_discovery_slot(now)
 
         if not run_slot:
             logger.info(
-                "No Daily Discovery slot is open yet for %s. Skipping.",
-                today_str,
+                "No Daily Discovery slot is open yet. Skipping."
             )
             return
+
+        # Calculate target date:
+        # AM slot (evening MX / night UTC) targets tomorrow's UTC date.
+        # PM slot (morning MX / afternoon UTC) targets today's UTC date.
+        utc_now = datetime.now(timezone.utc)
+        if run_slot == "AM":
+            target_date_obj = utc_now + timedelta(days=1)
+        else:
+            target_date_obj = utc_now
+        today_str = target_date_obj.strftime("%Y-%m-%d")
 
         DailyDiscoveryRepository.initialize_sports_for_slot(
             today_str,

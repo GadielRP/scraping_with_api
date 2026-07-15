@@ -84,11 +84,20 @@ def current_utc_day_window(
     now: datetime | None = None,
     lookahead_days: int = DEFAULT_LOOKAHEAD_DAYS,
 ) -> tuple[datetime, datetime]:
-    """Return current UTC time through the requested lookahead."""
+    """Return the start of the current UTC day through the requested lookahead.
+
+    The window is anchored to midnight of the current UTC day (not the current
+    moment) so that OddsPapi's fetch window aligns exactly with the daily date
+    boundary that SofaScore uses. This prevents events starting in the first
+    ~45 minutes of a UTC day from falling into a gap where OddsPapi fetches them
+    but SofaScore has not yet discovered them for that calendar date.
+    """
     if lookahead_days <= 0:
         raise ValueError("lookahead_days must be positive")
-    start = as_utc_datetime(now or datetime.now(timezone.utc))
-    return start, start + timedelta(days=lookahead_days)
+    utc_now = as_utc_datetime(now or datetime.now(timezone.utc))
+    # Anchor to the start of the UTC day, not the current moment.
+    day_start = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return day_start, day_start + timedelta(days=lookahead_days)
 
 
 def run_fixture_discovery_job(

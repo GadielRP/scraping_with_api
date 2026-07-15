@@ -6,7 +6,7 @@ import logging
 import schedule
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
 from infrastructure.persistence.repositories import EventRepository, ResultRepository
@@ -67,7 +67,7 @@ class JobScheduler:
         oddspapi_fixture_discovery_times = getattr(
             Config,
             "ODDSPAPI_FIXTURE_DISCOVERY_TIMES",
-            ["18:45"],
+            ["17:45"],
         )
         for time_str in oddspapi_fixture_discovery_times:
             schedule.every().day.at(time_str).do(self.job_oddspapi_fixture_discovery)
@@ -212,7 +212,20 @@ class JobScheduler:
             logger.error(f"Error in Job E (Daily Discovery): {exc}")
 
     def job_oddspapi_fixture_discovery(self, **kwargs):
-        logger.info("Starting Oddspapi fixture discovery for the current UTC day")
+        # If target_date is not explicitly passed, compute it dynamically.
+        # Since this job runs late in the MX evening (23:45 UTC), we target the upcoming UTC day
+        # (tomorrow UTC) to avoid trying to resolve matches that have already started.
+        if "target_date" not in kwargs:
+            utc_now = datetime.now(timezone.utc)
+            # If running after 12:00 UTC, target tomorrow's UTC calendar day
+            if utc_now.hour >= 12:
+                target = utc_now + timedelta(days=1)
+            else:
+                target = utc_now
+            kwargs["target_date"] = target.strftime("%Y-%m-%d")
+
+        target_date_str = kwargs.get("target_date")
+        logger.info(f"Starting Oddspapi fixture discovery for UTC day: {target_date_str}")
         try:
             summary = run_fixture_discovery_job(**kwargs)
             logger.info(
