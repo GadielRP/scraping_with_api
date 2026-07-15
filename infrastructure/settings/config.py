@@ -244,6 +244,26 @@ class Config:
         'ODDSPAPI_DEFAULT_MARKET_KEYS',
         ['1x2_full_time', 'over_under_full_time', 'asian_handicap_full_time'],
     )
+    # Runs inside the existing pre-start lifecycle after SofaScore ingestion.
+    ENABLE_ODDSPAPI_PRE_START_ODDS = _parse_env_bool(
+        'ENABLE_ODDSPAPI_PRE_START_ODDS',
+        True,
+    )
+    ODDSPAPI_PRE_START_BOOKMAKERS = _parse_optional_env_list(
+        'ODDSPAPI_PRE_START_BOOKMAKERS',
+        ODDSPAPI_DEFAULT_BOOKMAKERS,
+    )
+    ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS = _parse_optional_env_list(
+        'ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS',
+        None,
+    )
+    ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS = _parse_optional_env_list(
+        'ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS',
+        None,
+    )
+    ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN = int(
+        os.getenv('ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN', '0')
+    )
     
     # Notification Configuration
     NOTIFICATIONS_ENABLED = os.getenv('NOTIFICATIONS_ENABLED', 'true').lower() == 'true'

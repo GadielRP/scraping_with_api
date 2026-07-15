@@ -36,6 +36,9 @@ from modules.jobs.pre_start_check_job.timing import (
     minutes_until_start,
     should_extract_odds_for_event,
 )
+from modules.jobs.oddspapi.pre_start_odds.pre_start_odds_job import (
+    run_oddspapi_pre_start_odds_ingestion,
+)
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
@@ -351,6 +354,25 @@ def run_pre_start_check_job(scheduler, global_debug_mode=False) -> None:
                     logger.warning("No market odds saved for event %s: %s", event_data["id"], ingestion_result.reason)
             except Exception as exc:
                 logger.error(f"Error processing upcoming event odds {event_info.get('event_id', 'unknown')}: {exc}")
+
+        try:
+            oddspapi_pre_start_summary = run_oddspapi_pre_start_odds_ingestion(
+                events_to_process,
+                debug_mode=global_debug_mode,
+            )
+            logger.info(
+                "Oddspapi pre-start odds ingestion completed candidates=%s mapped=%s requests=%s "
+                "ingested=%s skipped=%s failed=%s snapshots_saved=%s",
+                oddspapi_pre_start_summary.candidates_seen,
+                oddspapi_pre_start_summary.candidates_with_mapping,
+                oddspapi_pre_start_summary.requests_attempted,
+                oddspapi_pre_start_summary.events_ingested,
+                oddspapi_pre_start_summary.events_skipped,
+                oddspapi_pre_start_summary.events_failed,
+                oddspapi_pre_start_summary.snapshots_saved,
+            )
+        except Exception:
+            logger.exception("Oddspapi pre-start odds ingestion failed")
 
         for event_info in events_to_process:
             if event_info.get("metadata_snapshot") is not None:

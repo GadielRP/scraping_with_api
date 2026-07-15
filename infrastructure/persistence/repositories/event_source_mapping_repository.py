@@ -127,6 +127,60 @@ class EventSourceMappingRepository:
         )
 
     @staticmethod
+    def get_source_event_ids_by_event_ids(
+        event_ids: list[int],
+        source: str,
+        session: Optional[Session] = None,
+    ) -> dict[int, str]:
+        """Return source event IDs for canonical event IDs in one query."""
+        normalized_source = EventSourceMappingRepository._normalize_source(source)
+        normalized_ids: set[int] = set()
+        for event_id in event_ids or []:
+            if event_id is None or not str(event_id).strip():
+                continue
+            try:
+                normalized_ids.add(int(event_id))
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Ignoring invalid canonical event ID in batch source lookup: %r",
+                    event_id,
+                )
+        if not normalized_source or not normalized_ids:
+            return {}
+
+        def _lookup(scoped_session: Session) -> dict[int, str]:
+            rows = (
+                scoped_session.query(
+                    EventSourceMapping.event_id,
+                    EventSourceMapping.source_event_id,
+                )
+                .filter(
+                    EventSourceMapping.source == normalized_source,
+                    EventSourceMapping.event_id.in_(normalized_ids),
+                )
+                .all()
+            )
+            return {
+                int(event_id): str(source_event_id)
+                for event_id, source_event_id in rows
+                if source_event_id is not None and str(source_event_id).strip()
+            }
+
+        try:
+            if session is not None:
+                return _lookup(session)
+            with db_manager.get_session() as scoped_session:
+                return _lookup(scoped_session)
+        except Exception as exc:
+            logger.error(
+                "Error resolving batch source event IDs for source=%s count=%s: %s",
+                normalized_source,
+                len(normalized_ids),
+                exc,
+            )
+            raise
+
+    @staticmethod
     def get_source_event_id(event_id: int, source: str, session: Optional[Session] = None) -> Optional[str]:
         """Return the external source event ID for a canonical event."""
         normalized_source = EventSourceMappingRepository._normalize_source(source)

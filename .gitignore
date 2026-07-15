@@ -103,9 +103,13 @@ test_*.py
 !tests/
 tests/*
 !tests/test_backfill_sofascore_canonical_markets.py
+!tests/test_oddspapi_pre_start_odds_job.py
 !tests/pillars/
 tests/pillars/*.pyc
 !tests/pillars/test_odds_trajectory_context.py
+!tests/oddspapi/
+!tests/oddspapi/test_pre_start_odds_job.py
+!tests/oddspapi/test_pre_start_odds_batch_processor.py
 
 
 !scripts/maintenance/test_oddspapi_local_ingestion.py

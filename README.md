@@ -75,9 +75,10 @@ matchup_streak_analysis/ – analyses head‑to‑head records, historical form 
 ### Jobs (modules/jobs)
 
 Oddspapi jobs are grouped under `modules/jobs/oddspapi/`, with each job in its
-own subpackage. The current fixture discovery runtime lives under
-`modules/jobs/oddspapi/fixture_discovery/`; this keeps future Oddspapi jobs
-separate and avoids mixing their orchestration modules.
+own subpackage. `fixture_discovery/` creates mappings for known canonical
+events, while `pre_start_odds/` requests and ingests odds for those existing
+mappings inside the main pre-start lifecycle. This keeps discovery and odds
+ingestion separate without creating a second pre-start scheduler.
 
 Scheduled work is compartmentalised in the jobs/ package. Each job has its own sub‑directory with a run_*.py script and helper modules. Highlights include:
 
@@ -177,6 +178,8 @@ Set up environment variables. Copy .env.example to .env and populate the require
 *   `ODDSPAPI_BASE_URL`, `ODDSPAPI_TIMEOUT_SECONDS` and `ODDSPAPI_DEFAULT_LANGUAGE` - Oddspapi client settings.
 *   `ODDSPAPI_FIXTURE_DISCOVERY_TIMES` - comma-separated scheduler times for automatic fixture discovery.
 *   `ODDSPAPI_FIXTURES_COOLDOWN_SECONDS` - minimum delay between `/v4/fixtures` requests; default `2.0` seconds.
+*   `ENABLE_ODDSPAPI_PRE_START_ODDS` - enables Oddspapi odds ingestion inside the normal pre-start run.
+*   `ODDSPAPI_PRE_START_BOOKMAKERS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` and `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` - scope the provider's pre-start requests and persisted markets.
 *   Proxy toggles and credentials (if scraping behind a proxy).
 *   Optional toggles like `ENABLE_TIMESTAMP_CORRECTION`, `ENABLE_ODDS_EXTRACTION`, `EXCLUDED_SPORTS`, `STREAK_ALERT_MIN_RESULTS`.
 
@@ -214,6 +217,74 @@ python main.py daily-discovery
 ```
 
 Refer to the command table above for the full list of options.
+
+### Oddspapi Pre-start Odds Ingestion
+
+Oddspapi pre-start odds ingestion is part of `python main.py pre-start` and
+the pre-start polling cycle started by `python main.py start`. It is **not** a
+separate scheduled job. After the normal SofaScore odds loop, it selects only
+events for which the existing pre-start timing decision set
+`should_extract_odds=True`, bulk-loads their `event_source_mappings` rows with
+`source=oddspapi`, requests `/v4/odds` by `fixtureId`, and sends the payload to
+the existing market ingestion service. It runs before materialized views and
+odds trajectories are refreshed.
+
+The fixture-discovery job must create the mapping first. Events with no
+Oddspapi mapping are skipped; this ingestion path never runs fuzzy matching,
+creates events, or calls `/v4/fixtures`.
+
+Add the following to `.env` (the same defaults are present in `.env.example`):
+
+```dotenv
+# Required for any Oddspapi request. Leave empty only to disable requests safely.
+ODDSPAPI_KEY=replace_with_your_oddspapi_key
+
+# The pre-start scheduler cadence and its shared timing moments.
+POLL_INTERVAL_MINUTES=5
+PRE_START_ODDS_MOMENTS=120,30,5,0,-5
+PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES=3
+
+# Oddspapi pre-start ingestion.
+ENABLE_ODDSPAPI_PRE_START_ODDS=true
+ODDSPAPI_PRE_START_BOOKMAKERS=pinnacle
+ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS=
+ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS=
+ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN=0
+```
+
+`ODDSPAPI_KEY` is the only Oddspapi pre-start value that must contain a secret;
+without it the flow logs one warning and skips eligible events. The remaining
+values are optional because `infrastructure/settings/config.py` supplies the
+shown defaults:
+
+| Setting | Default | Effect |
+| :--- | :--- | :--- |
+| `ENABLE_ODDSPAPI_PRE_START_ODDS` | `true` | Set to `false` to disable only the Oddspapi subflow; SofaScore pre-start ingestion, views, alerts and pillars continue normally. |
+| `ODDSPAPI_PRE_START_BOOKMAKERS` | `ODDSPAPI_DEFAULT_BOOKMAKERS` (normally `pinnacle`) | Comma-separated or Python-list-style bookmaker slugs sent to `/v4/odds`. It does not request every bookmaker by default. |
+| `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS` | no filter | Optional comma-separated market groups to persist, e.g. `1X2,Home/Away,Over/Under,Asian handicap`. Blank means all mapped groups. |
+| `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` | no filter | Optional comma-separated periods to persist, e.g. `Full Time`. Blank means all mapped periods. |
+| `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` | `0` | Maximum mapped events to request in one pre-start pass. `0` means unlimited; extra candidates are skipped for that pass. |
+| `POLL_INTERVAL_MINUTES` | `5` | Frequency of the existing pre-start cycle. The job checks exact rounded minute values, so choose a cadence that lands on the configured key moments. |
+| `PRE_START_ODDS_MOMENTS` | `120,30,5,0,-5` | Exact rounded minutes before/after kickoff at which **both** SofaScore and Oddspapi are eligible to capture odds. |
+| `PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES` | `3` | Allowed distance from a configured moment when loading the downstream trajectory. |
+
+These shared Oddspapi client settings normally need no change, but can be
+overridden if required: `ODDSPAPI_BASE_URL=https://api.oddspapi.io`,
+`ODDSPAPI_TIMEOUT_SECONDS=15`, `ODDSPAPI_DEFAULT_ODDS_FORMAT=decimal`,
+`ODDSPAPI_DEFAULT_LANGUAGE=en`, and `ODDSPAPI_DEFAULT_VERBOSITY=3`.
+`ODDSPAPI_FIXTURE_DISCOVERY_TIMES` and
+`ODDSPAPI_FIXTURES_COOLDOWN_SECONDS` configure the separate mapping-discovery
+job only; they do not schedule or throttle this pre-start subflow.
+
+To validate only this path for one canonical event, without running the rest
+of the pre-start job, use the manual integration harness. It prompts for an
+`events.id` when none is supplied. The default performs real persistence;
+`--dry-run` still requests and parses odds but writes no market data:
+
+```bash
+python -m tests.test_oddspapi_pre_start_odds_job 12345
+python -m tests.test_oddspapi_pre_start_odds_job 12345 --dry-run
+```
 
 ### Oddspapi Fixture Discovery
 
