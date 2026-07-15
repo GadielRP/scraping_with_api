@@ -158,7 +158,7 @@ def start_scheduler():
     )
     print(
         "  - Oddspapi fixture discovery: Daily at "
-        f"{', '.join(getattr(Config, 'ODDSPAPI_FIXTURE_DISCOVERY_TIMES', ['03:00']))} "
+        f"{', '.join(Config.ODDSPAPI_FIXTURE_DISCOVERY_TIMES)} "
         "(UTC calendar day)"
     )
 

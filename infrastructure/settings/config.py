@@ -173,7 +173,7 @@ class Config:
     DAILY_DISCOVERY_DAYS_TO_KEEP = int(os.getenv('DAILY_DISCOVERY_DAYS_TO_KEEP', '1'))
     ODDSPAPI_FIXTURE_DISCOVERY_TIMES = _parse_env_list(
         'ODDSPAPI_FIXTURE_DISCOVERY_TIMES',
-        ['03:00'],
+        ['02:35'],
     )
     
     # Discovery Schedule Times (dynamically generated based on DISCOVERY_INTERVAL_HOURS)

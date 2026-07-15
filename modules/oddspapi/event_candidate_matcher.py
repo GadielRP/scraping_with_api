@@ -43,6 +43,20 @@ GENERIC_TEAM_SUFFIXES = {
     "fk",
     "ac",
 }
+# Youth/national category markers omitted by some providers when the
+# tournament already encodes the age band (e.g. "Albania" vs "Albania U20").
+AGE_GROUP_TOKENS = {
+    "u15",
+    "u16",
+    "u17",
+    "u18",
+    "u19",
+    "u20",
+    "u21",
+    "u22",
+    "u23",
+}
+AGE_GROUP_YEARS = {15, 16, 17, 18, 19, 20, 21, 22, 23}
 MAX_LOGGED_CANDIDATES = 10
 
 
@@ -89,6 +103,71 @@ def _person_text_similarity(left: object, right: object) -> float:
     return _text_similarity(left_normalized, right_normalized)
 
 
+def _iter_age_group_spans(tokens: list[str]) -> list[tuple[int, int, str]]:
+    """Return (start, end_exclusive, canonical_age_token) spans in token list."""
+    spans: list[tuple[int, int, str]] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token in AGE_GROUP_TOKENS:
+            spans.append((index, index + 1, token))
+            index += 1
+            continue
+        if (
+            token in {"u", "under"}
+            and index + 1 < len(tokens)
+            and tokens[index + 1].isdigit()
+            and int(tokens[index + 1]) in AGE_GROUP_YEARS
+        ):
+            year = int(tokens[index + 1])
+            spans.append((index, index + 2, f"u{year}"))
+            index += 2
+            continue
+        index += 1
+    return spans
+
+
+def _extract_age_group_token(value: str) -> str | None:
+    tokens = [token for token in _normalize_text(value).split(" ") if token]
+    spans = _iter_age_group_spans(tokens)
+    if not spans:
+        return None
+    # Prefer a single consistent marker; mixed markers are left untouched.
+    markers = {span[2] for span in spans}
+    if len(markers) != 1:
+        return None
+    return next(iter(markers))
+
+
+def _strip_age_group_tokens(value: str) -> str:
+    tokens = [token for token in _normalize_text(value).split(" ") if token]
+    if not tokens:
+        return ""
+    drop_indexes: set[int] = set()
+    for start, end, _marker in _iter_age_group_spans(tokens):
+        drop_indexes.update(range(start, end))
+    stripped = [token for index, token in enumerate(tokens) if index not in drop_indexes]
+    return " ".join(stripped).strip() or " ".join(tokens)
+
+
+def _age_normalized_forms(left: str, right: str) -> tuple[str, str] | None:
+    """Return comparable forms after safe age-group normalization, if applicable.
+
+    - One side has Uxx and the other does not → strip the marked side.
+    - Both sides share the same Uxx → strip both.
+    - Different age bands (U20 vs U21) → no normalization (avoid false equals).
+    """
+    left_age = _extract_age_group_token(left)
+    right_age = _extract_age_group_token(right)
+    if left_age and not right_age:
+        return _strip_age_group_tokens(left), right
+    if right_age and not left_age:
+        return left, _strip_age_group_tokens(right)
+    if left_age and right_age and left_age == right_age:
+        return _strip_age_group_tokens(left), _strip_age_group_tokens(right)
+    return None
+
+
 def _strip_generic_suffixes(value: str) -> str:
     tokens = [token for token in _normalize_text(value).split(" ") if token]
     if len(tokens) <= 1:
@@ -116,16 +195,25 @@ def _text_similarity(left: object, right: object) -> float:
     if left_normalized == right_normalized:
         return 1.0
 
-    left_stripped = _strip_generic_suffixes(left_normalized)
-    right_stripped = _strip_generic_suffixes(right_normalized)
+    left_compare = left_normalized
+    right_compare = right_normalized
+    age_forms = _age_normalized_forms(left_normalized, right_normalized)
+    if age_forms is not None:
+        left_compare, right_compare = age_forms
+        if left_compare and right_compare and left_compare == right_compare:
+            return 1.0
+
+    left_stripped = _strip_generic_suffixes(left_compare)
+    right_stripped = _strip_generic_suffixes(right_compare)
     if left_stripped == right_stripped:
         return 1.0
 
     scores = [
         SequenceMatcher(None, left_normalized, right_normalized).ratio(),
+        SequenceMatcher(None, left_compare, right_compare).ratio(),
         SequenceMatcher(None, left_stripped, right_stripped).ratio(),
     ]
-    if _compact_text(left_normalized) == _compact_text(right_normalized):
+    if _compact_text(left_compare) == _compact_text(right_compare):
         scores.append(1.0)
     return max(scores)
 
@@ -324,7 +412,13 @@ class OddspapiEventCandidateMatcher:
     AUTO_LINK_THRESHOLD = 0.93
     MIN_SCORE_GAP = 0.08
     MAX_AUTO_LINK_TIME_DELTA_MINUTES = 30
+    NEAR_EXACT_TIME_DELTA_MINUTES = 5
     STRONG_TEAM_THRESHOLD = 0.82
+    # Contextual team relaxation: one near-perfect anchor + strong tournament/time
+    # may absorb colloquial/nickname variance on the weaker side.
+    RELAXED_TEAM_THRESHOLD = 0.70
+    ANCHOR_TEAM_THRESHOLD = 0.95
+    STRONG_TOURNAMENT_FOR_TEAM_RELAXATION = 0.90
     IDENTITY_PARTICIPANT_THRESHOLD = 0.98
     IDENTITY_TOURNAMENT_THRESHOLD = 0.75
 
@@ -349,6 +443,52 @@ class OddspapiEventCandidateMatcher:
         if delta_minutes <= 60:
             return 0.40
         return 0.10
+
+    @classmethod
+    def _is_near_exact_time(cls, candidate: EventCandidateScore) -> bool:
+        delta = candidate.start_time_delta_minutes
+        return delta is not None and delta <= cls.NEAR_EXACT_TIME_DELTA_MINUTES
+
+    @classmethod
+    def _teams_acceptable_for_auto_link(cls, candidate: EventCandidateScore) -> bool:
+        """Strict both-teams gate, with one contextual relaxation path.
+
+        Relaxation requires sport agreement, near-exact kickoff, a strong
+        tournament alignment, one near-perfect participant, and a still-plausible
+        weaker participant. This avoids hard-blocking aliases such as
+        "Weston Bears" vs "Weston Workers" when every other signal is strong.
+        """
+        if candidate.both_teams_strong:
+            return True
+
+        weaker = min(candidate.participant1_score, candidate.participant2_score)
+        stronger = max(candidate.participant1_score, candidate.participant2_score)
+        return (
+            candidate.sport_score == 1.0
+            and cls._is_near_exact_time(candidate)
+            and candidate.tournament_score >= cls.STRONG_TOURNAMENT_FOR_TEAM_RELAXATION
+            and stronger >= cls.ANCHOR_TEAM_THRESHOLD
+            and weaker >= cls.RELAXED_TEAM_THRESHOLD
+        )
+
+    @classmethod
+    def _is_strong_identity_match(cls, candidate: EventCandidateScore) -> bool:
+        """High-confidence identity that can bypass the composite score floor.
+
+        Tournament taxonomy often diverges across providers (cup vs friendly).
+        When both participants are identity-grade and kickoff is near-exact,
+        tournament mismatch alone should not force manual review.
+        """
+        if candidate.sport_score != 1.0:
+            return False
+        if (
+            candidate.participant1_score < cls.IDENTITY_PARTICIPANT_THRESHOLD
+            or candidate.participant2_score < cls.IDENTITY_PARTICIPANT_THRESHOLD
+        ):
+            return False
+        if candidate.tournament_score >= cls.IDENTITY_TOURNAMENT_THRESHOLD:
+            return True
+        return cls._is_near_exact_time(candidate)
 
     @staticmethod
     def _sport_score(fixture_sport: str | None, event_sport: str | None) -> float:
@@ -628,12 +768,8 @@ class OddspapiEventCandidateMatcher:
         best_candidate = scored_candidates[0]
         second_best_candidate = scored_candidates[1] if len(scored_candidates) > 1 else None
         score_gap = self._score_gap(best_candidate, second_best_candidate)
-        strong_identity_match = (
-            best_candidate.sport_score == 1.0
-            and best_candidate.participant1_score >= self.IDENTITY_PARTICIPANT_THRESHOLD
-            and best_candidate.participant2_score >= self.IDENTITY_PARTICIPANT_THRESHOLD
-            and best_candidate.tournament_score >= self.IDENTITY_TOURNAMENT_THRESHOLD
-        )
+        strong_identity_match = self._is_strong_identity_match(best_candidate)
+        teams_acceptable = self._teams_acceptable_for_auto_link(best_candidate)
         auto_link_allowed = (
             (
                 best_candidate.score >= self.AUTO_LINK_THRESHOLD
@@ -641,7 +777,7 @@ class OddspapiEventCandidateMatcher:
             )
             and best_candidate.start_time_delta_minutes is not None
             and best_candidate.start_time_delta_minutes <= self.MAX_AUTO_LINK_TIME_DELTA_MINUTES
-            and best_candidate.both_teams_strong
+            and teams_acceptable
         )
 
         competing_candidate_is_strong = bool(
