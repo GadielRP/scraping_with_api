@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from shared.timezone_utils import get_local_now
@@ -51,7 +52,11 @@ def run_daily_discovery_job() -> None:
 
     try:
         now = get_local_now()
-        today_str = now.strftime("%Y-%m-%d")
+        # Use the UTC date so that at 18:10 MX (= 00:10 UTC next day) we fetch
+        # the next UTC day's events. This guarantees SofaScore events are in the
+        # DB before OddsPapi fixture_discovery runs at 18:45 MX.
+        utc_now = datetime.now(timezone.utc)
+        today_str = utc_now.strftime("%Y-%m-%d")
         run_slot = resolve_daily_discovery_slot(now)
 
         if not run_slot:

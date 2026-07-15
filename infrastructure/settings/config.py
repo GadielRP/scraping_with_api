@@ -167,15 +167,23 @@ class Config:
             str(DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES),
         )
     )
-    DAILY_DISCOVERY_AM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_AM_OPEN_HOUR', '5'))
-    DAILY_DISCOVERY_PM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_PM_OPEN_HOUR', '16'))
+    # AM slot: 18:00 MX = 00:00 UTC (start of next UTC day — fetches tomorrow's events via UTC date).
+    # PM slot:  8:00 MX = 14:00 UTC (midday retry for any sports that failed overnight).
+    DAILY_DISCOVERY_AM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_AM_OPEN_HOUR', '18'))
+    DAILY_DISCOVERY_PM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_PM_OPEN_HOUR', '8'))
+
+    # Fixed trigger times for daily discovery. The interval-based heartbeat stays as a safety retry net;
+    # these fixed times are the primary triggers and fire first in the vast majority of cases.
+    DAILY_DISCOVERY_FIXED_TIMES = _parse_env_list('DAILY_DISCOVERY_FIXED_TIMES', ['18:10'])
     DAILY_DISCOVERY_SLOTS = _parse_env_list('DAILY_DISCOVERY_SLOTS', ['AM', 'PM'])
     DAILY_DISCOVERY_DAYS_TO_KEEP = int(os.getenv('DAILY_DISCOVERY_DAYS_TO_KEEP', '1'))
+    # Runs at 18:45 MX (00:45 UTC) — after the 18:10 daily discovery AM slot has completed.
     ODDSPAPI_FIXTURE_DISCOVERY_TIMES = _parse_env_list(
         'ODDSPAPI_FIXTURE_DISCOVERY_TIMES',
-        ['02:35'],
+        ['18:45'],
     )
-    
+
+
     # Discovery Schedule Times (dynamically generated based on DISCOVERY_INTERVAL_HOURS)
     # Runs at exact hours: 00:00, 06:00, 12:00, 18:00 (if interval is 6)
     @staticmethod

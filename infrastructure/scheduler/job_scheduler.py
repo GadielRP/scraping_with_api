@@ -53,6 +53,10 @@ class JobScheduler:
         schedule.every().day.at("04:00").do(self.job_midnight_sync)
         schedule.every(3).days.at("05:00").do(self.job_clean_league_cache)
 
+        daily_discovery_fixed_times = getattr(Config, "DAILY_DISCOVERY_FIXED_TIMES", ["18:10"])
+        for time_str in daily_discovery_fixed_times:
+            schedule.every().day.at(time_str).do(self.job_daily_discovery)
+
         daily_discovery_interval = getattr(
             Config,
             "DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES",
@@ -63,7 +67,7 @@ class JobScheduler:
         oddspapi_fixture_discovery_times = getattr(
             Config,
             "ODDSPAPI_FIXTURE_DISCOVERY_TIMES",
-            ["03:00"],
+            ["18:45"],
         )
         for time_str in oddspapi_fixture_discovery_times:
             schedule.every().day.at(time_str).do(self.job_oddspapi_fixture_discovery)
@@ -76,7 +80,8 @@ class JobScheduler:
         )
         logger.info("  - Midnight sync: daily at 04:00")
         logger.info(
-            "  - Daily discovery heartbeat: every %s minutes; AM opens at %s:00, PM opens at %s:00",
+            "  - Daily discovery: fixed trigger(s) at %s; retry heartbeat every %s minutes; AM opens at %s:00, PM opens at %s:00",
+            ", ".join(daily_discovery_fixed_times),
             daily_discovery_interval,
             Config.DAILY_DISCOVERY_AM_OPEN_HOUR,
             Config.DAILY_DISCOVERY_PM_OPEN_HOUR,

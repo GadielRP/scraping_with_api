@@ -151,10 +151,11 @@ def start_scheduler():
     print("    - Fetches final odds only when games are starting soon")
 
     print("  - Results collection: Daily at 00:05 (collect results from finished games)")
-    print(f"  - Daily discovery heartbeat: Every {Config.DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES} minutes")
     print(
-        f"    - Real runs are limited by DB slots: AM opens at {Config.DAILY_DISCOVERY_AM_OPEN_HOUR}:00, "
-        f"PM opens at {Config.DAILY_DISCOVERY_PM_OPEN_HOUR}:00"
+        f"  - Daily discovery: Fixed trigger at {', '.join(Config.DAILY_DISCOVERY_FIXED_TIMES)}"
+        f" | Retry heartbeat every {Config.DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES} minutes"
+        f" | AM opens at {Config.DAILY_DISCOVERY_AM_OPEN_HOUR}:00 MX (UTC date)"
+        f", PM opens at {Config.DAILY_DISCOVERY_PM_OPEN_HOUR}:00 MX"
     )
     print(
         "  - Oddspapi fixture discovery: Daily at "
