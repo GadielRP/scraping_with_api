@@ -18,7 +18,11 @@ from .constants import (
     DEFAULT_STATUS_ID,
     DISCOVERY_SPORT_IDS,
 )
-from .fixture_batch_processor import OddspapiFixtureBatchProcessor
+from .fixture_batch_processor import (
+    OddspapiFixtureBatchProcessor,
+    OddspapiFixtureBatchResult,
+    format_batch_metrics,
+)
 from .response_utils import extract_fixture_list, split_time_window, to_oddspapi_iso
 
 logger = logging.getLogger(__name__)
@@ -170,6 +174,7 @@ class OddspapiFixtureDiscoveryJob:
 
             seen_fixture_ids: set[str] = set()
             processed_count = 0
+            sport_metrics = OddspapiFixtureBatchResult()
             try:
                 for chunk_from, chunk_to in chunks:
                     if (
@@ -238,21 +243,26 @@ class OddspapiFixtureDiscoveryJob:
                     sport_summary.unresolved_no_candidates += batch_result.unresolved_no_candidates
                     sport_summary.needs_review += batch_result.needs_review
                     sport_summary.queue_rows_written += batch_result.queue_rows_written
+                    sport_metrics.merge_metrics_from(batch_result)
 
+            except Exception:
+                sport_summary.errors += 1
+                logger.exception("Oddspapi fixture discovery failed sport=%s", sport_slug)
+            finally:
+                sport_summary.duration_seconds = round(monotonic() - sport_started, 3)
                 logger.info(
-                    "Oddspapi fixture batch processed sport=%s resolved_existing=%s resolved_sofascore=%s resolved_candidate=%s unresolved=%s mappings_created=%s",
+                    "Oddspapi fixture batch processed sport=%s resolved_existing=%s resolved_sofascore=%s "
+                    "resolved_candidate=%s unresolved=%s mappings_created=%s queue_rows=%s duration_s=%s %s",
                     sport_slug,
                     sport_summary.resolved_existing_oddspapi,
                     sport_summary.resolved_external_sofascore,
                     sport_summary.resolved_candidate_match,
                     sport_summary.unresolved_no_candidates + sport_summary.needs_review,
                     sport_summary.mappings_created,
+                    sport_summary.queue_rows_written,
+                    sport_summary.duration_seconds,
+                    format_batch_metrics(sport_metrics),
                 )
-            except Exception:
-                sport_summary.errors += 1
-                logger.exception("Oddspapi fixture discovery failed sport=%s", sport_slug)
-            finally:
-                sport_summary.duration_seconds = round(monotonic() - sport_started, 3)
 
         summary.finished_at = datetime.now(timezone.utc)
         return summary

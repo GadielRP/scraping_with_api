@@ -98,7 +98,7 @@ class OddspapiFixtureIdentity:
             key for key in external_providers.keys() if str(key or "").strip()
         )
 
-        logger.info(
+        logger.debug(
             "Normalized OddsPapi fixture %s sport=%s start_utc=%s start_local=%s providers=%s participants=%s vs %s tournament=%s / %s",
             fixture_id,
             _normalize_sport_name(data.get("sportName")),

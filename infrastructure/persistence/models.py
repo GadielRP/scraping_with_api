@@ -917,6 +917,7 @@ DUAL_PROCESS_MARKET_INDEXES_SQL = [
 
 PRE_START_ODDS_TRAJECTORY_INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_events_start_time_utc ON events (start_time_utc);",
+    "CREATE INDEX IF NOT EXISTS idx_events_sport_start_time_utc ON events (sport, start_time_utc);",
     "CREATE INDEX IF NOT EXISTS idx_events_season_start_time_utc ON events (season_id, start_time_utc);",
     "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_choice_collected_desc ON market_choice_snapshots (choice_id, collected_at DESC, snapshot_id DESC);",
     "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source ON market_choice_snapshots (source);",

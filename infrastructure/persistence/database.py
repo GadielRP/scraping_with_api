@@ -1017,6 +1017,7 @@ class DatabaseManager:
                     "CREATE INDEX IF NOT EXISTS idx_events_home_participant_id ON events (home_participant_id)",
                     "CREATE INDEX IF NOT EXISTS idx_events_away_participant_id ON events (away_participant_id)",
                     "CREATE INDEX IF NOT EXISTS idx_events_competition_id ON events (competition_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_events_sport_start_time_utc ON events (sport, start_time_utc)",
                     "CREATE INDEX IF NOT EXISTS idx_participants_source_participant ON participants (source, source_participant_id)",
                     "CREATE INDEX IF NOT EXISTS idx_competitions_source_tournament ON competitions (source, source_tournament_id)",
                 ]

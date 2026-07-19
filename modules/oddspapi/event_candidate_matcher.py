@@ -6,8 +6,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import timedelta
 from difflib import SequenceMatcher
+from functools import lru_cache
 import logging
 import re
+from time import perf_counter
 import unicodedata
 from typing import Iterable
 
@@ -60,15 +62,21 @@ AGE_GROUP_YEARS = {15, 16, 17, 18, 19, 20, 21, 22, 23}
 MAX_LOGGED_CANDIDATES = 10
 
 
+@lru_cache(maxsize=8192)
+def _normalize_text_cached(text: str) -> str:
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", text)
+    normalized = normalized.encode("ascii", "ignore").decode("ascii")
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
 def _normalize_text(value: object) -> str:
     text = str(value or "").strip().casefold()
     if not text:
         return ""
-    text = unicodedata.normalize("NFKD", text)
-    text = text.encode("ascii", "ignore").decode("ascii")
-    text = re.sub(r"[^a-z0-9]+", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    return _normalize_text_cached(text)
 
 
 def _normalize_person_text(value: object) -> str:
@@ -187,7 +195,7 @@ def _compact_text(value: str) -> str:
     return _normalize_text(value).replace(" ", "")
 
 
-def _text_similarity(left: object, right: object) -> float:
+def _text_similarity(left: object, right: object, *, allow_age_group: bool = True) -> float:
     left_normalized = _normalize_text(left)
     right_normalized = _normalize_text(right)
     if not left_normalized or not right_normalized:
@@ -197,11 +205,12 @@ def _text_similarity(left: object, right: object) -> float:
 
     left_compare = left_normalized
     right_compare = right_normalized
-    age_forms = _age_normalized_forms(left_normalized, right_normalized)
-    if age_forms is not None:
-        left_compare, right_compare = age_forms
-        if left_compare and right_compare and left_compare == right_compare:
-            return 1.0
+    if allow_age_group:
+        age_forms = _age_normalized_forms(left_normalized, right_normalized)
+        if age_forms is not None:
+            left_compare, right_compare = age_forms
+            if left_compare and right_compare and left_compare == right_compare:
+                return 1.0
 
     left_stripped = _strip_generic_suffixes(left_compare)
     right_stripped = _strip_generic_suffixes(right_compare)
@@ -218,13 +227,21 @@ def _text_similarity(left: object, right: object) -> float:
     return max(scores)
 
 
-def _best_text_match(left_values: Iterable[object], right_values: Iterable[object]) -> float:
+def _best_text_match(
+    left_values: Iterable[object],
+    right_values: Iterable[object],
+    *,
+    allow_age_group: bool = True,
+) -> float:
     best = 0.0
     left_list = [value for value in left_values if _normalize_text(value)]
     right_list = [value for value in right_values if _normalize_text(value)]
     for left_value in left_list:
         for right_value in right_list:
-            best = max(best, _text_similarity(left_value, right_value))
+            best = max(
+                best,
+                _text_similarity(left_value, right_value, allow_age_group=allow_age_group),
+            )
             if best >= 1.0:
                 return 1.0
     return best
@@ -406,6 +423,11 @@ class MatchDecision:
     candidate_scores: list[EventCandidateScore] = field(default_factory=list)
     best_candidate: EventCandidateScore | None = None
     second_best_candidate: EventCandidateScore | None = None
+    pool_candidate_count: int = 0
+    fuzzy_candidate_count: int = 0
+    shortlist_widened: bool = False
+    shortlist_fallback_used: bool = False
+    score_duration_ms: float | None = None
 
 
 class OddspapiEventCandidateMatcher:
@@ -421,6 +443,7 @@ class OddspapiEventCandidateMatcher:
     STRONG_TOURNAMENT_FOR_TEAM_RELAXATION = 0.90
     IDENTITY_PARTICIPANT_THRESHOLD = 0.98
     IDENTITY_TOURNAMENT_THRESHOLD = 0.75
+    RETAINED_CANDIDATE_SCORES = 2
 
     @contextmanager
     def _session_scope(self, session: Session | None):
@@ -568,7 +591,13 @@ class OddspapiEventCandidateMatcher:
             return "swapped", swapped_a, swapped_b, swapped_score
         return "ordered", ordered_a, ordered_b, ordered_score
 
-    def _score_candidate(self, fixture: OddspapiFixtureIdentity, event: Event) -> EventCandidateScore:
+    def _score_candidate(
+        self,
+        fixture: OddspapiFixtureIdentity,
+        event: Event,
+        *,
+        include_unmatched: bool = False,
+    ) -> EventCandidateScore:
         fixture_sport = fixture.normalized_sport
         event_sport = getattr(event, "sport", None)
         sport_score = self._sport_score(fixture_sport, event_sport)
@@ -610,10 +639,6 @@ class OddspapiEventCandidateMatcher:
             participant1_score >= self.STRONG_TEAM_THRESHOLD
             and participant2_score >= self.STRONG_TEAM_THRESHOLD
         )
-        fixture_participant1_unmatched_values = _unmatched_person_values(_stringify_values(participant1_values), home_values + away_values)
-        fixture_participant2_unmatched_values = _unmatched_person_values(_stringify_values(participant2_values), home_values + away_values)
-        event_home_unmatched_values = _unmatched_person_values(home_values, _stringify_values(participant1_values) + _stringify_values(participant2_values))
-        event_away_unmatched_values = _unmatched_person_values(away_values, _stringify_values(participant1_values) + _stringify_values(participant2_values))
 
         competition = getattr(event, "competition_ref", None)
         raw_competition_values = [
@@ -629,10 +654,37 @@ class OddspapiEventCandidateMatcher:
             fixture.tournament_slug,
             fixture.category_slug,
         ])
-        event_tournament_unmatched_values = _unmatched_values(
-            event_tournament_values,
-            fixture_tournament_values
-        )
+
+        fixture_participant1_unmatched_values: list[str] = []
+        fixture_participant2_unmatched_values: list[str] = []
+        event_home_unmatched_values: list[str] = []
+        event_away_unmatched_values: list[str] = []
+        event_tournament_unmatched_values: list[str] = []
+        if include_unmatched:
+            fixture_p1 = _stringify_values(participant1_values)
+            fixture_p2 = _stringify_values(participant2_values)
+            home_strings = _stringify_values(home_values)
+            away_strings = _stringify_values(away_values)
+            fixture_participant1_unmatched_values = _unmatched_person_values(
+                fixture_p1,
+                home_strings + away_strings,
+            )
+            fixture_participant2_unmatched_values = _unmatched_person_values(
+                fixture_p2,
+                home_strings + away_strings,
+            )
+            event_home_unmatched_values = _unmatched_person_values(
+                home_strings,
+                fixture_p1 + fixture_p2,
+            )
+            event_away_unmatched_values = _unmatched_person_values(
+                away_strings,
+                fixture_p1 + fixture_p2,
+            )
+            event_tournament_unmatched_values = _unmatched_values(
+                event_tournament_values,
+                fixture_tournament_values,
+            )
 
         score = (
             (sport_score * 0.20)
@@ -679,6 +731,14 @@ class OddspapiEventCandidateMatcher:
             event_tournament_unmatched_values=event_tournament_unmatched_values,
             reasons=reasons,
         )
+
+    def _attach_unmatched_diagnostics(
+        self,
+        fixture: OddspapiFixtureIdentity,
+        event: Event,
+    ) -> EventCandidateScore:
+        """Fill unmatched fields for unresolved logging."""
+        return self._score_candidate(fixture, event, include_unmatched=True)
 
     def _query_candidates(self, fixture: OddspapiFixtureIdentity, session: Session) -> list[Event]:
         query = (
@@ -742,12 +802,20 @@ class OddspapiEventCandidateMatcher:
         fixture: OddspapiFixtureIdentity,
         candidate_events: list[Event],
     ) -> MatchDecision:
-        """Score an already-loaded candidate set without issuing DB queries."""
+        """Score an already-loaded candidate set without issuing DB queries.
+
+        Callers that need dense-pool protection (fixture discovery) should
+        shortlist candidates before invoking this method.
+        """
+        started = perf_counter()
+        events_by_id = {event.id: event for event in candidate_events}
         scored_candidates = [
-            self._score_candidate(fixture, event)
+            self._score_candidate(fixture, event, include_unmatched=False)
             for event in candidate_events
         ]
         scored_candidates.sort(key=self._sort_key)
+        score_duration_ms = round((perf_counter() - started) * 1000.0, 3)
+        input_count = len(candidate_events)
 
         if not scored_candidates:
             logger.info("OddsPapi fixture %s had no viable candidates", fixture.fixture_id)
@@ -763,6 +831,9 @@ class OddspapiEventCandidateMatcher:
                 best_candidate_orientation=None,
                 score_gap=None,
                 candidate_scores=[],
+                pool_candidate_count=input_count,
+                fuzzy_candidate_count=0,
+                score_duration_ms=score_duration_ms,
             )
 
         best_candidate = scored_candidates[0]
@@ -798,20 +869,20 @@ class OddspapiEventCandidateMatcher:
                 or not competing_candidate_is_strong
             )
 
+        retained = scored_candidates[: self.RETAINED_CANDIDATE_SCORES]
+
         if auto_link_allowed:
             logger.info(
-                "OddsPapi fixture %s resolved to event %s via %s (score=%.3f, gap=%s%s)",
+                "OddsPapi fixture %s resolved to event %s via %s "
+                "(score=%.3f, gap=%s, candidates=%s, ms=%s%s)",
                 fixture.fixture_id,
                 best_candidate.event_id,
                 best_candidate.orientation,
                 best_candidate.score,
                 score_gap,
+                input_count,
+                score_duration_ms,
                 ", strong identity" if strong_identity_match else "",
-            )
-            logger.info(
-                "Matched OddsPapi candidate for fixture %s:\n%s",
-                fixture.fixture_id,
-                _candidate_preview(best_candidate, include_unmatched=False),
             )
             return MatchDecision(
                 resolved=True,
@@ -824,9 +895,12 @@ class OddspapiEventCandidateMatcher:
                 second_candidate_event_id=second_best_candidate.event_id if second_best_candidate else None,
                 best_candidate_orientation=best_candidate.orientation,
                 score_gap=score_gap,
-                candidate_scores=scored_candidates,
+                candidate_scores=retained,
                 best_candidate=best_candidate,
                 second_best_candidate=second_best_candidate,
+                pool_candidate_count=input_count,
+                fuzzy_candidate_count=input_count,
+                score_duration_ms=score_duration_ms,
             )
 
         if (
@@ -838,27 +912,37 @@ class OddspapiEventCandidateMatcher:
         else:
             status = "needs_review_low_confidence"
 
+        # Attach unmatched diagnostics only for the unresolved top candidates.
+        diagnosed: list[EventCandidateScore] = []
+        for candidate in retained:
+            event = events_by_id.get(candidate.event_id)
+            if event is None:
+                diagnosed.append(candidate)
+                continue
+            diagnosed.append(self._attach_unmatched_diagnostics(fixture, event))
+        best_candidate = diagnosed[0]
+        second_best_candidate = diagnosed[1] if len(diagnosed) > 1 else None
+
         logger.warning(
-            "OddsPapi fixture %s not auto-resolved: status=%s best_event=%s score=%.3f gap=%s orientation=%s",
+            "OddsPapi fixture %s not auto-resolved: status=%s best_event=%s score=%.3f "
+            "gap=%s orientation=%s candidates=%s ms=%s",
             fixture.fixture_id,
             status,
             best_candidate.event_id,
             best_candidate.score,
             score_gap,
             best_candidate.orientation,
+            input_count,
+            score_duration_ms,
         )
         preview_items = [
             _candidate_preview(candidate, include_unmatched=True)
-            for candidate in scored_candidates[:2]
+            for candidate in diagnosed[:2]
         ]
-        suffix = ""
-        if len(scored_candidates) > 2:
-            suffix = f"\n  ... (+{len(scored_candidates) - 2} more candidates omitted; showing top 2)"
         logger.info(
-            "OddsPapi unresolved candidate ranking for fixture %s [showing top 2]:\n%s%s",
+            "OddsPapi unresolved candidate ranking for fixture %s [showing top 2]:\n%s",
             fixture.fixture_id,
             "\n".join(preview_items),
-            suffix,
         )
 
         return MatchDecision(
@@ -872,7 +956,10 @@ class OddspapiEventCandidateMatcher:
             second_candidate_event_id=second_best_candidate.event_id if second_best_candidate else None,
             best_candidate_orientation=best_candidate.orientation,
             score_gap=score_gap,
-            candidate_scores=scored_candidates,
+            candidate_scores=diagnosed,
             best_candidate=best_candidate,
             second_best_candidate=second_best_candidate,
+            pool_candidate_count=input_count,
+            fuzzy_candidate_count=input_count,
+            score_duration_ms=score_duration_ms,
         )

@@ -37,6 +37,11 @@ class OddspapiEventResolution:
     layer1_resolved: bool = False
     layer2_resolved: bool = False
     layer3_found_candidates: bool = False
+    pool_candidate_count: int = 0
+    fuzzy_candidate_count: int = 0
+    shortlist_widened: bool = False
+    shortlist_fallback_used: bool = False
+    score_duration_ms: float | None = None
 
 
 class OddspapiEventResolver:
@@ -100,10 +105,22 @@ class OddspapiEventResolver:
             second_candidate_event_id=decision.second_candidate_event_id if decision else None,
             best_candidate_orientation=decision.best_candidate_orientation if decision else None,
             score_gap=decision.score_gap if decision else None,
-            candidate_scores=[score.to_dict() for score in decision.candidate_scores] if decision else [],
+            candidate_scores=(
+                [
+                    score.to_dict() if hasattr(score, "to_dict") else dict(score)
+                    for score in decision.candidate_scores
+                ]
+                if decision
+                else []
+            ),
             layer1_resolved=layer1_resolved,
             layer2_resolved=layer2_resolved,
-            layer3_found_candidates=bool(decision.candidate_scores) if decision is not None else False,
+            layer3_found_candidates=bool(decision and decision.pool_candidate_count) if decision is not None else False,
+            pool_candidate_count=decision.pool_candidate_count if decision else 0,
+            fuzzy_candidate_count=decision.fuzzy_candidate_count if decision else 0,
+            shortlist_widened=bool(decision.shortlist_widened) if decision else False,
+            shortlist_fallback_used=bool(decision.shortlist_fallback_used) if decision else False,
+            score_duration_ms=decision.score_duration_ms if decision else None,
         )
 
     @classmethod
@@ -403,12 +420,16 @@ class OddspapiEventResolver:
 
         if decision.resolved and decision.canonical_event_id is not None:
             logger.info(
-                "Candidate matcher resolved OddsPapi fixture %s -> event %s orientation=%s score=%.3f gap=%s",
+                "Candidate matcher resolved OddsPapi fixture %s -> event %s "
+                "orientation=%s score=%.3f gap=%s pool=%s fuzzy=%s ms=%s",
                 fixture.fixture_id,
                 decision.canonical_event_id,
                 decision.best_candidate_orientation,
                 decision.confidence,
                 decision.score_gap,
+                decision.pool_candidate_count,
+                decision.fuzzy_candidate_count,
+                decision.score_duration_ms,
             )
             created_mappings = []
             if create_mappings:
