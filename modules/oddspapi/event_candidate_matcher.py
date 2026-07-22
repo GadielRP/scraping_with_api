@@ -327,6 +327,9 @@ def _candidate_preview(candidate: EventCandidateScore, *, include_unmatched: boo
         f"time={candidate.time_score:.2f} "
         f"teams={candidate.participants_score:.2f} "
         f"(p1={candidate.participant1_score:.2f}, p2={candidate.participant2_score:.2f}) "
+        f"primary={candidate.participants_primary_score:.2f} "
+        f"(p1p={candidate.participant1_primary_score:.2f}, "
+        f"p2p={candidate.participant2_primary_score:.2f}) "
         f"tournament={candidate.tournament_score:.2f}"
     )
     
@@ -365,6 +368,11 @@ class EventCandidateScore:
     participant1_score: float
     participant2_score: float
     participants_score: float
+    # Name/short-only quality (excludes abbr/code_name). Used as tie-breaker
+    # when many candidates reach the same composite score via weak abbr ties.
+    participant1_primary_score: float
+    participant2_primary_score: float
+    participants_primary_score: float
     tournament_score: float
     both_teams_strong: bool
     fixture_participant1_values: list[str] = field(default_factory=list)
@@ -391,6 +399,9 @@ class EventCandidateScore:
             "participant1_score": round(float(self.participant1_score), 3),
             "participant2_score": round(float(self.participant2_score), 3),
             "participants_score": round(float(self.participants_score), 3),
+            "participant1_primary_score": round(float(self.participant1_primary_score), 3),
+            "participant2_primary_score": round(float(self.participant2_primary_score), 3),
+            "participants_primary_score": round(float(self.participants_primary_score), 3),
             "tournament_score": round(float(self.tournament_score), 3),
             "both_teams_strong": self.both_teams_strong,
             "fixture_participant1_values": list(self.fixture_participant1_values),
@@ -443,6 +454,9 @@ class OddspapiEventCandidateMatcher:
     STRONG_TOURNAMENT_FOR_TEAM_RELAXATION = 0.90
     IDENTITY_PARTICIPANT_THRESHOLD = 0.98
     IDENTITY_TOURNAMENT_THRESHOLD = 0.75
+    # When composite scores tie (often via shared abbr/code_name), require this
+    # primary-name gap before auto-linking instead of marking ambiguous.
+    MIN_PRIMARY_SCORE_GAP = 0.08
     RETAINED_CANDIDATE_SCORES = 2
 
     @contextmanager
@@ -537,6 +551,21 @@ class OddspapiEventCandidateMatcher:
         return [value for value in values if value is not None]
 
     @staticmethod
+    def _primary_participant_values(participant, legacy_name: str | None) -> list[object]:
+        """Name/short/legacy only — excludes abbr-like code_name."""
+        values: list[object] = []
+        if participant is not None:
+            values.extend(
+                [
+                    getattr(participant, "name", None),
+                    getattr(participant, "short_name", None),
+                ]
+            )
+        if legacy_name:
+            values.append(legacy_name)
+        return [value for value in values if value is not None]
+
+    @staticmethod
     def _tournament_score(fixture: OddspapiFixtureIdentity, event: Event) -> float:
         competition = getattr(event, "competition_ref", None)
         fixture_competition_values = [
@@ -578,18 +607,44 @@ class OddspapiEventCandidateMatcher:
         fixture_participant_b: list[object],
         home_values: list[object],
         away_values: list[object],
-    ) -> tuple[str, float, float, float]:
+        fixture_primary_a: list[object],
+        fixture_primary_b: list[object],
+        home_primary_values: list[object],
+        away_primary_values: list[object],
+    ) -> tuple[str, float, float, float, float, float, float]:
         ordered_a = _best_person_match(fixture_participant_a, home_values)
         ordered_b = _best_person_match(fixture_participant_b, away_values)
         ordered_score = (ordered_a + ordered_b) / 2
+        ordered_primary_a = _best_person_match(fixture_primary_a, home_primary_values)
+        ordered_primary_b = _best_person_match(fixture_primary_b, away_primary_values)
 
         swapped_a = _best_person_match(fixture_participant_a, away_values)
         swapped_b = _best_person_match(fixture_participant_b, home_values)
         swapped_score = (swapped_a + swapped_b) / 2
+        swapped_primary_a = _best_person_match(fixture_primary_a, away_primary_values)
+        swapped_primary_b = _best_person_match(fixture_primary_b, home_primary_values)
 
         if swapped_score > ordered_score:
-            return "swapped", swapped_a, swapped_b, swapped_score
-        return "ordered", ordered_a, ordered_b, ordered_score
+            primary_score = (swapped_primary_a + swapped_primary_b) / 2
+            return (
+                "swapped",
+                swapped_a,
+                swapped_b,
+                swapped_score,
+                swapped_primary_a,
+                swapped_primary_b,
+                primary_score,
+            )
+        primary_score = (ordered_primary_a + ordered_primary_b) / 2
+        return (
+            "ordered",
+            ordered_a,
+            ordered_b,
+            ordered_score,
+            ordered_primary_a,
+            ordered_primary_b,
+            primary_score,
+        )
 
     def _score_candidate(
         self,
@@ -610,14 +665,14 @@ class OddspapiEventCandidateMatcher:
             start_time_delta_minutes = round(abs(delta.total_seconds()) / 60.0, 3)
         time_score = self._time_score(start_time_delta_minutes)
 
-        home_values = self._participant_values(
-            getattr(event, "home_participant", None),
-            getattr(event, "home_team", None),
-        )
-        away_values = self._participant_values(
-            getattr(event, "away_participant", None),
-            getattr(event, "away_team", None),
-        )
+        home_participant = getattr(event, "home_participant", None)
+        away_participant = getattr(event, "away_participant", None)
+        home_legacy = getattr(event, "home_team", None)
+        away_legacy = getattr(event, "away_team", None)
+        home_values = self._participant_values(home_participant, home_legacy)
+        away_values = self._participant_values(away_participant, away_legacy)
+        home_primary_values = self._primary_participant_values(home_participant, home_legacy)
+        away_primary_values = self._primary_participant_values(away_participant, away_legacy)
         participant1_values = [
             fixture.participant1_name,
             fixture.participant1_short_name,
@@ -628,11 +683,31 @@ class OddspapiEventCandidateMatcher:
             fixture.participant2_short_name,
             fixture.participant2_abbr,
         ]
-        orientation, participant1_score, participant2_score, participants_score = self._orientation_score(
+        participant1_primary_values = [
+            fixture.participant1_name,
+            fixture.participant1_short_name,
+        ]
+        participant2_primary_values = [
+            fixture.participant2_name,
+            fixture.participant2_short_name,
+        ]
+        (
+            orientation,
+            participant1_score,
+            participant2_score,
+            participants_score,
+            participant1_primary_score,
+            participant2_primary_score,
+            participants_primary_score,
+        ) = self._orientation_score(
             participant1_values,
             participant2_values,
             home_values,
             away_values,
+            participant1_primary_values,
+            participant2_primary_values,
+            home_primary_values,
+            away_primary_values,
         )
         tournament_score = self._tournament_score(fixture, event)
         both_teams_strong = (
@@ -716,6 +791,9 @@ class OddspapiEventCandidateMatcher:
             participant1_score=participant1_score,
             participant2_score=participant2_score,
             participants_score=participants_score,
+            participant1_primary_score=participant1_primary_score,
+            participant2_primary_score=participant2_primary_score,
+            participants_primary_score=participants_primary_score,
             tournament_score=tournament_score,
             both_teams_strong=both_teams_strong,
             fixture_participant1_values=_stringify_values(participant1_values),
@@ -777,16 +855,49 @@ class OddspapiEventCandidateMatcher:
         return events
 
     @staticmethod
-    def _sort_key(candidate: EventCandidateScore) -> tuple[float, float, int]:
+    def _sort_key(candidate: EventCandidateScore) -> tuple[float, float, float, int]:
         delta = candidate.start_time_delta_minutes
         delta_sort = delta if delta is not None else 10_000.0
-        return (-candidate.score, delta_sort, candidate.event_id)
+        # Prefer candidates whose full/short names matched, not only abbr/code.
+        return (
+            -candidate.score,
+            -candidate.participants_primary_score,
+            delta_sort,
+            candidate.event_id,
+        )
 
     @staticmethod
     def _score_gap(best: EventCandidateScore, second: EventCandidateScore | None) -> float | None:
         if second is None:
             return None
         return round(best.score - second.score, 3)
+
+    @classmethod
+    def _has_primary_identity(cls, candidate: EventCandidateScore) -> bool:
+        return (
+            candidate.participant1_primary_score >= cls.IDENTITY_PARTICIPANT_THRESHOLD
+            and candidate.participant2_primary_score >= cls.IDENTITY_PARTICIPANT_THRESHOLD
+        )
+
+    @classmethod
+    def _primary_names_disambiguate(
+        cls,
+        best: EventCandidateScore,
+        second: EventCandidateScore | None,
+    ) -> bool:
+        """True when only the top candidate earned identity on name/short fields.
+
+        Composite scores can tie at 1.0 when many events share the same abbr
+        (e.g. league code "DSL"). Primary scores expose the real name match.
+        """
+        if second is None:
+            return False
+        if not cls._has_primary_identity(best):
+            return False
+        if cls._has_primary_identity(second):
+            return False
+        primary_gap = best.participants_primary_score - second.participants_primary_score
+        return primary_gap >= cls.MIN_PRIMARY_SCORE_GAP
 
     def find_best_match(
         self,
@@ -855,6 +966,10 @@ class OddspapiEventCandidateMatcher:
             second_best_candidate is not None
             and second_best_candidate.both_teams_strong
         )
+        primary_names_disambiguate = self._primary_names_disambiguate(
+            best_candidate,
+            second_best_candidate,
+        )
         if second_best_candidate is None:
             auto_link_allowed = auto_link_allowed and (
                 best_candidate.score >= 0.96
@@ -867,11 +982,20 @@ class OddspapiEventCandidateMatcher:
                     and score_gap >= self.MIN_SCORE_GAP
                 )
                 or not competing_candidate_is_strong
+                or primary_names_disambiguate
             )
 
         retained = scored_candidates[: self.RETAINED_CANDIDATE_SCORES]
 
         if auto_link_allowed:
+            extra_flags = []
+            if strong_identity_match:
+                extra_flags.append("strong identity")
+            if primary_names_disambiguate:
+                extra_flags.append(
+                    f"primary disambiguation "
+                    f"(primary={best_candidate.participants_primary_score:.3f})"
+                )
             logger.info(
                 "OddsPapi fixture %s resolved to event %s via %s "
                 "(score=%.3f, gap=%s, candidates=%s, ms=%s%s)",
@@ -882,7 +1006,7 @@ class OddspapiEventCandidateMatcher:
                 score_gap,
                 input_count,
                 score_duration_ms,
-                ", strong identity" if strong_identity_match else "",
+                f", {', '.join(extra_flags)}" if extra_flags else "",
             )
             return MatchDecision(
                 resolved=True,

@@ -58,6 +58,12 @@ class EventSourceResolutionQueueRepository:
             candidate_scores,
             key=lambda item: (
                 -float(EventSourceResolutionQueueRepository._candidate_value(item, "score") or 0),
+                -float(
+                    EventSourceResolutionQueueRepository._candidate_value(
+                        item, "participants_primary_score"
+                    )
+                    or 0
+                ),
                 int(EventSourceResolutionQueueRepository._candidate_value(item, "event_id") or 0),
             ),
         )
