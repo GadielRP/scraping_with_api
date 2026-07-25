@@ -1,5 +1,8 @@
 import json
+import os
 import time
+
+import pytest
 
 import shared.runtime_observability as runtime_observability
 
@@ -77,3 +80,43 @@ def test_get_cgroup_memory_snapshot_reads_v2_files(monkeypatch, tmp_path):
         "oom": 2,
         "oom_kill": 1,
     }
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows working-set fallback only")
+def test_get_rss_mb_works_on_windows():
+    rss_mb = runtime_observability.get_rss_mb()
+
+    assert rss_mb is not None
+    assert rss_mb > 0
+
+
+def test_observe_operation_logs_rss_when_available(monkeypatch, tmp_path, caplog):
+    monkeypatch.setattr(runtime_observability, "_STATE_PATH", tmp_path / "runtime_state.json")
+    monkeypatch.setattr(runtime_observability, "get_rss_mb", lambda: 115.0)
+    monkeypatch.setattr(
+        runtime_observability,
+        "get_cgroup_memory_snapshot",
+        lambda: {
+            "current_mb": None,
+            "kernel_peak_mb": None,
+            "anon_mb": None,
+            "file_mb": None,
+            "oom": None,
+            "oom_kill": None,
+        },
+    )
+    monkeypatch.setattr(runtime_observability, "get_memory_limit_mb", lambda: None)
+    runtime_observability._STATE.clear()
+
+    with caplog.at_level("INFO", logger="shared.runtime_observability"):
+        with runtime_observability.observe_operation("pre_start_check"):
+            pass
+
+    finished = [
+        record.message
+        for record in caplog.records
+        if "Operation finished name=pre_start_check" in record.getMessage()
+    ]
+    assert finished
+    assert "rss_mb=115.0" in finished[0]
+    assert "peak_rss_mb=115.0" in finished[0]

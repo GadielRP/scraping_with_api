@@ -26,6 +26,51 @@ _CGROUP_V2_ROOT = Path('/sys/fs/cgroup')
 _CGROUP_V1_MEMORY_ROOT = Path('/sys/fs/cgroup/memory')
 
 
+def _get_rss_mb_windows() -> float | None:
+    """Return current working-set size on Windows via WinAPI (no psutil)."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except ImportError:
+        return None
+
+    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    try:
+        counters = PROCESS_MEMORY_COUNTERS()
+        counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+        get_current_process = ctypes.windll.kernel32.GetCurrentProcess
+        get_current_process.restype = wintypes.HANDLE
+        get_process_memory_info = ctypes.windll.psapi.GetProcessMemoryInfo
+        get_process_memory_info.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+            wintypes.DWORD,
+        ]
+        get_process_memory_info.restype = wintypes.BOOL
+        if not get_process_memory_info(
+            get_current_process(),
+            ctypes.byref(counters),
+            counters.cb,
+        ):
+            return None
+        return round(counters.WorkingSetSize / (1024 * 1024), 1)
+    except (AttributeError, OSError, ValueError, TypeError):
+        return None
+
+
 def get_rss_mb() -> float | None:
     """Return current resident memory without adding a psutil dependency."""
     try:
@@ -44,7 +89,12 @@ def get_rss_mb() -> float | None:
         divisor = 1024 * 1024 if rss > 10_000_000 else 1024
         return round(rss / divisor, 1)
     except (ImportError, OSError, ValueError):
-        return None
+        pass
+
+    # Windows has neither /proc nor the resource module.
+    if os.name == 'nt':
+        return _get_rss_mb_windows()
+    return None
 
 
 def get_memory_limit_mb() -> float | None:

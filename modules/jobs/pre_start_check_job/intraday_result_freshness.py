@@ -79,6 +79,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
 
     if not events:
         logger.info("Intraday result freshness: no events received")
+        logger.info("Intraday result freshness: job finished with stats=%s", stats)
         return stats
 
     candidates = []
@@ -101,6 +102,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
     )
 
     if not candidates:
+        logger.info("Intraday result freshness: job finished with stats=%s", stats)
         return stats
 
     delete_event_ids: Set[int] = set()
@@ -218,4 +220,5 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             deleted_count,
         )
 
+    logger.info("Intraday result freshness: job finished with stats=%s", stats)
     return stats

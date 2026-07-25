@@ -6,7 +6,7 @@ historical form retrieval.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import text
 
@@ -210,6 +210,60 @@ def _apply_game_result(
         elif winner == "X":
             team_stats[home_team]["draws"] += 1
             team_stats[away_team]["draws"] += 1
+
+
+def _register_match_record(
+    record: Dict[str, Any],
+    team_stats: Dict[str, Dict[str, object]],
+    standings_method: str,
+    grouping_method: str,
+    season_id: int,
+    warned_unknown_group_teams: Set[str],
+) -> None:
+    """Ensure both teams exist in team_stats and apply one match result."""
+    home_team = record["home_team"]
+    away_team = record["away_team"]
+
+    for team in (home_team, away_team):
+        if team not in team_stats:
+            group = None
+            if grouping_method != "league_wide":
+                group = get_team_group(team, grouping_method)
+                if not group:
+                    if team not in warned_unknown_group_teams:
+                        logger.warning(
+                            "Standings group mapping missing for season %s team '%s'; keeping in UNKNOWN group",
+                            season_id,
+                            team,
+                        )
+                        warned_unknown_group_teams.add(team)
+                    group = "UNKNOWN"
+
+            team_stats[team] = _create_team_stats(group)
+
+    _apply_game_result(
+        team_stats=team_stats,
+        home_team=home_team,
+        away_team=away_team,
+        home_score=record["home_score"],
+        away_score=record["away_score"],
+        winner=record["winner"],
+        result_subtype=record.get("result_subtype"),
+        standings_method=standings_method,
+    )
+
+
+def _finalize_standings_snapshot(
+    team_stats: Dict[str, Dict[str, object]],
+    standings_method: str,
+    grouping_method: str,
+    match_records: Optional[List[Dict[str, object]]],
+) -> Dict[str, Dict]:
+    """Build a standings payload from running stats without mutating them."""
+    finalized_stats = {team: dict(stats) for team, stats in team_stats.items()}
+    for stats in finalized_stats.values():
+        _finalize_team_stats(stats, standings_method)
+    return _build_standings_payload(finalized_stats, standings_method, grouping_method, match_records)
 
 
 def _build_standings_payload(
@@ -542,15 +596,12 @@ class HistoricalStandingsCalculator:
         )
         if cache_key in self._cache:
             cached_bundle = self._cache[cache_key]
-            normalized_bundle = {
+            # Cached bundles are always stored normalized; return a copy so
+            # callers cannot mutate the cached payload.
+            return {
                 **cached_bundle,
-                "status": cached_bundle.get("status", "ACTIVE"),
-                "error": cached_bundle.get("error"),
                 "match_records": _serialize_match_records(cached_bundle.get("match_records", [])),
             }
-            if normalized_bundle != cached_bundle:
-                self._cache[cache_key] = normalized_bundle
-            return normalized_bundle
 
         try:
             bundle = self._calculate_standings_bundle_internal(
@@ -596,15 +647,13 @@ class HistoricalStandingsCalculator:
             send_debug_standings=send_debug_standings,
         )
 
-    def _calculate_standings_bundle_internal(
-        self,
-        season_id: int,
-        cutoff_timestamp: float,
-        sport: str,
-        source_unique_tournament_id: Optional[int] = None,
-        source_tournament_id: Optional[int] = None,
-        send_debug_standings: bool = False,
-    ) -> Dict[str, Any]:
+    @staticmethod
+    def _resolve_methods(
+        sport: Optional[str],
+        source_unique_tournament_id: Optional[int],
+        source_tournament_id: Optional[int],
+    ) -> Tuple[str, str]:
+        """Resolve (standings_method, grouping_method) for a competition scope."""
         standings_method = get_standings_method(
             source_unique_tournament_id,
             source_tournament_id,
@@ -614,9 +663,108 @@ class HistoricalStandingsCalculator:
             source_unique_tournament_id,
             source_tournament_id,
         )
-        group_by_conference = getattr(Config, "MATCHUP_STANDINGS_GROUP_BY_CONFERENCE", True)
-        if not group_by_conference:
+        if not getattr(Config, "MATCHUP_STANDINGS_GROUP_BY_CONFERENCE", True):
             grouping_method = "league_wide"
+        return standings_method, grouping_method
+
+    def calculate_standings_timeline(
+        self,
+        season_id: int,
+        cutoff_timestamps: Iterable[float],
+        sport: str = None,
+        source_unique_tournament_id: Optional[int] = None,
+        source_tournament_id: Optional[int] = None,
+    ) -> Dict[float, Dict[str, Dict]]:
+        """Compute standings snapshots for many cutoffs with one league fetch.
+
+        Returns a mapping of each requested cutoff timestamp to the same
+        standings payload that calculate_standings_at() would produce for that
+        cutoff, but performing a single league-wide SQL query instead of one
+        per cutoff. On failure every cutoff maps to an empty dict, mirroring
+        the per-cutoff error behavior.
+        """
+        unique_cutoffs = sorted({float(cutoff) for cutoff in cutoff_timestamps})
+        if not unique_cutoffs:
+            return {}
+
+        try:
+            return self._calculate_standings_timeline_internal(
+                season_id=season_id,
+                unique_cutoffs=unique_cutoffs,
+                sport=sport,
+                source_unique_tournament_id=source_unique_tournament_id,
+                source_tournament_id=source_tournament_id,
+            )
+        except Exception as exc:
+            logger.error("Error computing standings timeline for season %s: %s", season_id, exc)
+            return {cutoff: {} for cutoff in unique_cutoffs}
+
+    def _calculate_standings_timeline_internal(
+        self,
+        season_id: int,
+        unique_cutoffs: List[float],
+        sport: Optional[str],
+        source_unique_tournament_id: Optional[int],
+        source_tournament_id: Optional[int],
+    ) -> Dict[float, Dict[str, Dict]]:
+        standings_method, grouping_method = self._resolve_methods(
+            sport,
+            source_unique_tournament_id,
+            source_tournament_id,
+        )
+
+        # One league-wide fetch bounded by the latest cutoff covers every
+        # earlier snapshot: records are re-filtered in memory per cutoff.
+        match_records = self._fetch_match_records_before_cutoff(
+            season_id=season_id,
+            cutoff_timestamp=unique_cutoffs[-1],
+            sport=sport,
+            source_unique_tournament_id=source_unique_tournament_id,
+            source_tournament_id=source_tournament_id,
+        )
+        record_timestamps = [record["start_time_utc"].timestamp() for record in match_records]
+        needs_h2h_records = standings_method == "football_3_1_0_h2h"
+
+        snapshots: Dict[float, Dict[str, Dict]] = {}
+        team_stats: Dict[str, Dict[str, object]] = {}
+        warned_unknown_group_teams: Set[str] = set()
+        applied_count = 0
+
+        for cutoff in unique_cutoffs:
+            while applied_count < len(match_records) and record_timestamps[applied_count] < cutoff:
+                _register_match_record(
+                    match_records[applied_count],
+                    team_stats,
+                    standings_method,
+                    grouping_method,
+                    season_id,
+                    warned_unknown_group_teams,
+                )
+                applied_count += 1
+
+            snapshots[cutoff] = _finalize_standings_snapshot(
+                team_stats,
+                standings_method,
+                grouping_method,
+                match_records[:applied_count] if needs_h2h_records else None,
+            )
+
+        return snapshots
+
+    def _calculate_standings_bundle_internal(
+        self,
+        season_id: int,
+        cutoff_timestamp: float,
+        sport: str,
+        source_unique_tournament_id: Optional[int] = None,
+        source_tournament_id: Optional[int] = None,
+        send_debug_standings: bool = False,
+    ) -> Dict[str, Any]:
+        standings_method, grouping_method = self._resolve_methods(
+            sport,
+            source_unique_tournament_id,
+            source_tournament_id,
+        )
 
         canonical_season_id = get_canonical_season_id(
             source_unique_tournament_id,
@@ -631,39 +779,15 @@ class HistoricalStandingsCalculator:
             source_tournament_id=source_tournament_id,
         )
         team_stats: Dict[str, Dict[str, object]] = {}
-        warned_unknown_group_teams = set()
+        warned_unknown_group_teams: Set[str] = set()
         for row in match_records:
-            home_team = row["home_team"]
-            away_team = row["away_team"]
-            winner = row["winner"]
-            result_subtype = row.get("result_subtype")
-
-            for team in (home_team, away_team):
-                if team not in team_stats:
-                    group = None
-                    if grouping_method != "league_wide":
-                        group = get_team_group(team, grouping_method)
-                        if not group:
-                            if team not in warned_unknown_group_teams:
-                                logger.warning(
-                                    "Standings group mapping missing for season %s team '%s'; keeping in UNKNOWN group",
-                                    season_id,
-                                    team,
-                                )
-                                warned_unknown_group_teams.add(team)
-                            group = "UNKNOWN"
-
-                    team_stats[team] = _create_team_stats(group)
-
-            _apply_game_result(
-                team_stats=team_stats,
-                home_team=home_team,
-                away_team=away_team,
-                home_score=row["home_score"],
-                away_score=row["away_score"],
-                winner=winner,
-                result_subtype=result_subtype,
-                standings_method=standings_method,
+            _register_match_record(
+                row,
+                team_stats,
+                standings_method,
+                grouping_method,
+                season_id,
+                warned_unknown_group_teams,
             )
 
         for stats in team_stats.values():

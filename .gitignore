@@ -139,4 +139,4 @@ reduced_sofascore.sqlite3
 
 # documentacion
 
-!docs/audits/*.md
+docs/audits/*.md
