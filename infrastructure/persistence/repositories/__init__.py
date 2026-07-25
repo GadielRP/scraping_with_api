@@ -24,6 +24,9 @@ from .market_mapping_repository import (
 )
 from .oddsportal_cache_repository import OddsPortalCacheRepository
 from .daily_discovery_repository import DailyDiscoveryRepository
+from .oddspapi_fixture_discovery_run_repository import (
+    OddspapiFixtureDiscoveryRunRepository,
+)
 
 __all__ = [
     'EventRepository',
@@ -48,5 +51,6 @@ __all__ = [
     'MarketMappingIndex',
     'MarketMappingRepository',
     'OddsPortalCacheRepository',
-    'DailyDiscoveryRepository'
+    'DailyDiscoveryRepository',
+    'OddspapiFixtureDiscoveryRunRepository',
 ]

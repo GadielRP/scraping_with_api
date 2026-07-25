@@ -104,6 +104,9 @@ test_*.py
 tests/*
 !tests/test_backfill_sofascore_canonical_markets.py
 !tests/test_oddspapi_pre_start_odds_job.py
+!tests/test_oddspapi_fixture_discovery_recovery.py
+!tests/test_pre_start_memory_limits.py
+!tests/test_runtime_observability.py
 !tests/pillars/
 tests/pillars/*.pyc
 !tests/pillars/test_odds_trajectory_context.py

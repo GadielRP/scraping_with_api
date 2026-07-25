@@ -1,0 +1,15 @@
+services:
+  app:
+    # This is a test-only hard ceiling. Matching memswap_limit disables swap,
+    # making an OOM reproducible instead of hiding it behind host swap.
+    mem_limit: "${APP_MEMORY_TEST_LIMIT:-1g}"
+    memswap_limit: "${APP_MEMORY_TEST_LIMIT:-1g}"
+    mem_swappiness: 0
+    restart: "no"
+    environment:
+      # A profiling run must not send real alerts.
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
+    healthcheck:
+      disable: true
+    command: [ "python", "main.py", "pre-start" ]

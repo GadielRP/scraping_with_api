@@ -306,53 +306,54 @@ def build_matchup_streak_context(
 
         event_start_ts = event_start_time.timestamp() if event_start_time else None
 
-        with ThreadPoolExecutor(max_workers=2) as team_executor:
-            home_future = None
-            away_future = None
+        def _load_team_results(team_id, team_name):
+            return get_team_last_results_by_id(
+                team_id,
+                team_name,
+                competition_slug,
+                sport,
+                season_id=season_id,
+                source_unique_tournament_id=source_unique_tournament_id,
+                source_tournament_id=source_tournament_id,
+                season_year=target_season_year,
+                observations=observations,
+                exclude_event_id=event_id,
+                event_start_timestamp=event_start_ts,
+                debug_mode=debug_mode,
+            )
 
+        team_workers = min(Config.MATCHUP_TEAM_HISTORY_WORKERS, 2)
+        if team_workers == 1:
             if home_team_id:
-                home_future = team_executor.submit(
-                    get_team_last_results_by_id,
+                home_team_results, home_overall_win_streak = _load_team_results(
                     home_team_id,
                     home_team_name,
-                    competition_slug,
-                    sport,
-                    season_id=season_id,
-                    source_unique_tournament_id=source_unique_tournament_id,
-                    source_tournament_id=source_tournament_id,
-                    season_year=target_season_year,
-                    observations=observations,
-                    exclude_event_id=event_id,
-                    event_start_timestamp=event_start_ts,
-                    debug_mode=debug_mode,
                 )
             else:
                 logger.debug(f"No home_team_id provided for {home_team_name}")
-
             if away_team_id:
-                away_future = team_executor.submit(
-                    get_team_last_results_by_id,
+                away_team_results, away_overall_win_streak = _load_team_results(
                     away_team_id,
                     away_team_name,
-                    competition_slug,
-                    sport,
-                    season_id=season_id,
-                    source_unique_tournament_id=source_unique_tournament_id,
-                    source_tournament_id=source_tournament_id,
-                    season_year=target_season_year,
-                    observations=observations,
-                    exclude_event_id=event_id,
-                    event_start_timestamp=event_start_ts,
-                    debug_mode=debug_mode,
                 )
             else:
                 logger.debug(f"No away_team_id provided for {away_team_name}")
-
-        # Collect results from parallel execution
-        if home_future:
-            home_team_results, home_overall_win_streak = home_future.result()
-        if away_future:
-            away_team_results, away_overall_win_streak = away_future.result()
+        else:
+            with ThreadPoolExecutor(max_workers=team_workers) as team_executor:
+                home_future = (
+                    team_executor.submit(_load_team_results, home_team_id, home_team_name)
+                    if home_team_id
+                    else None
+                )
+                away_future = (
+                    team_executor.submit(_load_team_results, away_team_id, away_team_name)
+                    if away_team_id
+                    else None
+                )
+                if home_future:
+                    home_team_results, home_overall_win_streak = home_future.result()
+                if away_future:
+                    away_team_results, away_overall_win_streak = away_future.result()
 
         # Trim results to match the player with fewer results (for fair ranking comparison)
         if home_team_results and away_team_results:

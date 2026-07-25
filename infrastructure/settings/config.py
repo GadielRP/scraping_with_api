@@ -182,6 +182,27 @@ class Config:
         'ODDSPAPI_FIXTURE_DISCOVERY_TIMES',
         ['17:45'],
     )
+    # Replay recently missed fixture-discovery slots after an unplanned restart.
+    # Keep the window bounded so a long outage cannot create an unbounded backlog.
+    ODDSPAPI_FIXTURE_DISCOVERY_CATCHUP_LOOKBACK_HOURS = int(
+        os.getenv('ODDSPAPI_FIXTURE_DISCOVERY_CATCHUP_LOOKBACK_HOURS', '36')
+    )
+    ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS = int(
+        os.getenv('ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS', '2')
+    )
+
+    # Soft memory guardrails for ~1 GB app containers. Defaults are applied
+    # here so production does not need these keys in .env. Override only when
+    # measuring RSS on a larger host (or temporarily lowering under pressure).
+    # 2 is a middle ground vs the old hard-coded 4-way fan-out: roughly half
+    # the concurrent peak, without forcing fully serial alert/pillar work.
+    ALERT_PIPELINE_WORKERS = max(1, int(os.getenv('ALERT_PIPELINE_WORKERS', '2')))
+    PILLAR_PIPELINE_WORKERS = max(1, int(os.getenv('PILLAR_PIPELINE_WORKERS', '2')))
+    MATCHUP_TEAM_HISTORY_WORKERS = max(
+        1,
+        int(os.getenv('MATCHUP_TEAM_HISTORY_WORKERS', '2')),
+    )
+    MATCHUP_H2H_MAX_EVENTS = max(1, int(os.getenv('MATCHUP_H2H_MAX_EVENTS', '200')))
 
 
     # Discovery Schedule Times (dynamically generated based on DISCOVERY_INTERVAL_HOURS)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import schedule
 import threading
@@ -9,7 +10,11 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
-from infrastructure.persistence.repositories import EventRepository, ResultRepository
+from infrastructure.persistence.repositories import (
+    EventRepository,
+    OddspapiFixtureDiscoveryRunRepository,
+    ResultRepository,
+)
 from infrastructure.settings import Config
 from modules.jobs.clean_league_cache import run_clean_league_cache_job
 from modules.jobs.daily_discovery import run_daily_discovery_job, run_daily_discovery_retry_job
@@ -23,6 +28,8 @@ from modules.jobs.results_collection_job import (
     run_results_collection_for_date,
     run_results_collection_previous_day,
 )
+from shared.runtime_observability import observe_operation
+from shared.timezone_utils import TIMEZONE, get_local_now
 
 logger = logging.getLogger(__name__)
 
@@ -114,12 +121,17 @@ class JobScheduler:
             return
 
         self.running = True
+        self._recover_missed_oddspapi_fixture_discovery_runs()
+
+        # Do startup work before the scheduler thread begins. The old order
+        # allowed an immediate pre-start check and a due scheduled check to
+        # overlap, multiplying memory use during restarts.
+        logger.info("Running immediate pre-start check for any games starting soon...")
+        self.job_pre_start_check()
+
         self.thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.thread.start()
         logger.info("Job scheduler started")
-
-        logger.info("Running immediate pre-start check for any games starting soon...")
-        self.job_pre_start_check()
 
     def stop(self):
         """Stop the scheduler loop."""
@@ -134,11 +146,25 @@ class JobScheduler:
 
         while self.running:
             try:
-                pending_jobs = schedule.run_pending()
-                if pending_jobs:
-                    logger.info(f"Executed {len(pending_jobs)} pending jobs")
-                    for job in pending_jobs:
-                        logger.info(f"  - Executed: {job.job_func.__name__}")
+                due_jobs = [job for job in schedule.jobs if job.should_run]
+                if due_jobs:
+                    now = datetime.now()
+                    logger.info(
+                        "Scheduler dispatching %s due job(s): %s",
+                        len(due_jobs),
+                        ", ".join(
+                            f"{job.job_func.__name__}"
+                            f"(late_s={max(0, int((now - job.next_run).total_seconds()))})"
+                            for job in due_jobs
+                        ),
+                    )
+                    dispatch_started = time.monotonic()
+                    schedule.run_pending()
+                    logger.info(
+                        "Scheduler completed due batch jobs=%s duration_s=%.1f",
+                        ", ".join(job.job_func.__name__ for job in due_jobs),
+                        time.monotonic() - dispatch_started,
+                    )
 
                 current_time = time.time()
                 if current_time - last_check >= 30:
@@ -149,7 +175,7 @@ class JobScheduler:
 
                 time.sleep(1)
             except Exception as exc:
-                logger.error(f"Error in scheduler loop: {exc}")
+                logger.exception(f"Error in scheduler loop: {exc}")
                 time.sleep(5)
 
     def job_discovery(self):
@@ -167,14 +193,14 @@ class JobScheduler:
             logger.error(f"Error in Job B: {exc}")
 
     def job_pre_start_check(self):
-        
-        debug_mode = Config.global_debug_mode
-        try:
-            if debug_mode:
-                logger.info(f"Global debug mode set for pre start check to {debug_mode}")
-            run_pre_start_check_job(self, debug_mode)
-        except Exception as exc:
-            logger.error(f"Error in Job C: {exc}")
+        with observe_operation("pre_start_check"):
+            debug_mode = Config.global_debug_mode
+            try:
+                if debug_mode:
+                    logger.info(f"Global debug mode set for pre start check to {debug_mode}")
+                run_pre_start_check_job(self, debug_mode)
+            except Exception as exc:
+                logger.exception(f"Error in Job C: {exc}")
 
     def job_results_collection(self):
         logger.info("Starting Job E: Results collection for finished events")
@@ -212,6 +238,10 @@ class JobScheduler:
             logger.error(f"Error in Job E (Daily Discovery): {exc}")
 
     def job_oddspapi_fixture_discovery(self, **kwargs):
+        trigger = kwargs.pop("_trigger", "scheduled")
+        scheduled_local_date = kwargs.pop("_scheduled_local_date", None)
+        scheduled_time = kwargs.pop("_scheduled_time", None)
+
         # If target_date is not explicitly passed, compute it dynamically.
         # Since this job runs late in the MX evening (23:45 UTC), we target the upcoming UTC day
         # (tomorrow UTC) to avoid trying to resolve matches that have already started.
@@ -225,19 +255,222 @@ class JobScheduler:
             kwargs["target_date"] = target.strftime("%Y-%m-%d")
 
         target_date_str = kwargs.get("target_date")
-        logger.info(f"Starting Oddspapi fixture discovery for UTC day: {target_date_str}")
+        tracked_run = False
         try:
-            summary = run_fixture_discovery_job(**kwargs)
+            tracked_run = OddspapiFixtureDiscoveryRunRepository.begin(
+                target_date_str,
+                trigger=trigger,
+                scheduled_local_date=scheduled_local_date,
+                scheduled_time=scheduled_time,
+            )
+            if not tracked_run:
+                logger.info(
+                    "Skipping Oddspapi fixture discovery for UTC day %s: "
+                    "a successful or currently running durable run already exists",
+                    target_date_str,
+                )
+                return None
+        except Exception as exc:
+            # Discovery is more important than observability. Run fail-open if
+            # the marker cannot be written, while making the durability loss loud.
+            logger.exception(
+                "Could not claim durable Oddspapi fixture-discovery run for %s; "
+                "continuing without a marker: %s",
+                target_date_str,
+                exc,
+            )
+
+        logger.info(
+            "Starting Oddspapi fixture discovery for UTC day: %s trigger=%s "
+            "scheduled_local_date=%s scheduled_time=%s",
+            target_date_str,
+            trigger,
+            scheduled_local_date,
+            scheduled_time,
+        )
+        try:
+            with observe_operation(
+                f"oddspapi_fixture_discovery:{target_date_str}:{trigger}"
+            ):
+                summary = run_fixture_discovery_job(**kwargs)
+            errors = sum(sport.errors for sport in summary.sports)
             logger.info(
                 "Oddspapi fixture discovery completed fixtures=%s mappings_created=%s errors=%s",
                 summary.total_fixtures_fetched,
                 summary.total_mappings_created,
-                sum(sport.errors for sport in summary.sports),
+                errors,
             )
+            if tracked_run and errors == 0:
+                summary_payload = json.loads(
+                    json.dumps(
+                        summary.to_dict(),
+                        default=lambda value: value.isoformat(),
+                    )
+                )
+                OddspapiFixtureDiscoveryRunRepository.finish_success(
+                    target_date_str,
+                    summary_payload,
+                )
+            elif tracked_run:
+                OddspapiFixtureDiscoveryRunRepository.finish_failed(
+                    target_date_str,
+                    f"Discovery completed with {errors} sport error(s)",
+                )
+                logger.warning(
+                    "Oddspapi fixture discovery target %s was not marked successful "
+                    "because %s sport error(s) were reported",
+                    target_date_str,
+                    errors,
+                )
+                self._send_fixture_discovery_ops_alert(
+                    target_date=target_date_str,
+                    trigger=trigger,
+                    detail=f"completed with {errors} sport error(s)",
+                )
             return summary
         except Exception as exc:
-            logger.error(f"Error in Oddspapi fixture discovery: {exc}")
+            if tracked_run:
+                try:
+                    OddspapiFixtureDiscoveryRunRepository.finish_failed(
+                        target_date_str,
+                        repr(exc),
+                    )
+                except Exception:
+                    logger.exception(
+                        "Could not mark failed Oddspapi fixture-discovery run for %s",
+                        target_date_str,
+                    )
+            self._send_fixture_discovery_ops_alert(
+                target_date=target_date_str,
+                trigger=trigger,
+                detail=f"failed: {type(exc).__name__}: {exc}",
+            )
+            logger.exception(f"Error in Oddspapi fixture discovery: {exc}")
             raise
+
+    @staticmethod
+    def _send_fixture_discovery_ops_alert(
+        *,
+        target_date: str,
+        trigger: str,
+        detail: str,
+    ) -> None:
+        """Best-effort alert using the already configured Telegram transport."""
+        try:
+            from modules.alerts import pre_start_notifier
+
+            message = (
+                "🚨 Oddspapi fixture discovery requires attention\n"
+                f"UTC target: {target_date}\n"
+                f"Trigger: {trigger}\n"
+                f"Detail: {detail}"
+            )
+            if not pre_start_notifier.send_telegram_message(message):
+                logger.warning(
+                    "Oddspapi fixture-discovery ops alert was not delivered "
+                    "target_date=%s trigger=%s",
+                    target_date,
+                    trigger,
+                )
+        except Exception:
+            logger.exception(
+                "Could not send Oddspapi fixture-discovery ops alert "
+                "target_date=%s trigger=%s",
+                target_date,
+                trigger,
+            )
+
+    @staticmethod
+    def _target_date_for_local_slot(slot_local: datetime) -> str:
+        slot_utc = TIMEZONE.localize(slot_local).astimezone(timezone.utc)
+        target = slot_utc + timedelta(days=1) if slot_utc.hour >= 12 else slot_utc
+        return target.strftime("%Y-%m-%d")
+
+    def _missed_fixture_discovery_slots(
+        self,
+        *,
+        now_local: datetime | None = None,
+    ) -> list[tuple[datetime, str, str]]:
+        now_local = now_local or get_local_now()
+        lookback_hours = max(
+            0,
+            Config.ODDSPAPI_FIXTURE_DISCOVERY_CATCHUP_LOOKBACK_HOURS,
+        )
+        cutoff = now_local - timedelta(hours=lookback_hours)
+        day_count = lookback_hours // 24 + 2
+        slots: list[tuple[datetime, str, str]] = []
+        seen_targets: set[str] = set()
+
+        for days_ago in range(day_count, -1, -1):
+            local_date = (now_local - timedelta(days=days_ago)).date()
+            for configured_time in Config.ODDSPAPI_FIXTURE_DISCOVERY_TIMES:
+                try:
+                    slot_time = datetime.strptime(configured_time, "%H:%M").time()
+                except ValueError:
+                    logger.error(
+                        "Ignoring invalid ODDSPAPI_FIXTURE_DISCOVERY_TIMES value: %s",
+                        configured_time,
+                    )
+                    continue
+                occurrence = datetime.combine(local_date, slot_time)
+                if occurrence < cutoff or occurrence > now_local:
+                    continue
+                target_date = self._target_date_for_local_slot(occurrence)
+                if target_date in seen_targets:
+                    continue
+                seen_targets.add(target_date)
+                slots.append((occurrence, configured_time, target_date))
+
+        slots.sort(key=lambda item: item[0])
+        max_runs = max(0, Config.ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS)
+        return slots[-max_runs:] if max_runs else []
+
+    def _recover_missed_oddspapi_fixture_discovery_runs(self) -> None:
+        try:
+            interrupted = (
+                OddspapiFixtureDiscoveryRunRepository.mark_running_as_interrupted()
+            )
+            if interrupted:
+                logger.critical(
+                    "Recovered %s Oddspapi fixture-discovery run marker(s) left "
+                    "running by an unclean process exit",
+                    interrupted,
+                )
+        except Exception:
+            logger.exception(
+                "Could not mark interrupted Oddspapi fixture-discovery runs"
+            )
+
+        for occurrence, configured_time, target_date in self._missed_fixture_discovery_slots():
+            try:
+                if OddspapiFixtureDiscoveryRunRepository.has_success(target_date):
+                    continue
+            except Exception:
+                logger.exception(
+                    "Could not check prior Oddspapi fixture-discovery success "
+                    "for %s; attempting catch-up fail-open",
+                    target_date,
+                )
+
+            logger.warning(
+                "Catch-up Oddspapi fixture discovery for missed slot "
+                "local_date=%s time=%s target_utc_date=%s",
+                occurrence.strftime("%Y-%m-%d"),
+                configured_time,
+                target_date,
+            )
+            try:
+                self.job_oddspapi_fixture_discovery(
+                    target_date=target_date,
+                    _trigger="catch_up",
+                    _scheduled_local_date=occurrence.strftime("%Y-%m-%d"),
+                    _scheduled_time=configured_time,
+                )
+            except Exception:
+                logger.exception(
+                    "Catch-up Oddspapi fixture discovery failed for target UTC day %s",
+                    target_date,
+                )
 
     def job_clean_league_cache(self):
         logger.info("Starting Job F: Clean up OddsPortal league cache")

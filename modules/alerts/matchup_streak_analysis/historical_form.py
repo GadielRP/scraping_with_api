@@ -536,7 +536,9 @@ def _process_events_into_results(
 
             if overall_results is not None and overall_seen_event_ids is not None:
                 if event_id_from_api not in overall_seen_event_ids:
-                    overall_results.append(dict(result_dict))
+                    # This result is treated as immutable below, so sharing the
+                    # object avoids retaining a duplicate dict per API event.
+                    overall_results.append(result_dict)
                     overall_seen_event_ids.add(event_id_from_api)
 
             if apply_filters and not passes_filters:

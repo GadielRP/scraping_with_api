@@ -9,6 +9,9 @@ services:
 
   app:
     restart: unless-stopped
+    # Hard containment boundary for the 1 GB production host. This is not a
+    # reservation; Docker only kills/restarts the app if it reaches the ceiling.
+    mem_limit: "${APP_MEMORY_LIMIT:-768m}"
     logging:
       driver: "json-file"
       options:

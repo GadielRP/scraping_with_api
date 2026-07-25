@@ -27,7 +27,7 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && mkdir -p /app/logs /app/data /ms-playwright \
-    && chown -R appuser:appuser /app /ms-playwright
+    && chown -R appuser:appuser /app
 
 COPY --chown=appuser:appuser . .
 

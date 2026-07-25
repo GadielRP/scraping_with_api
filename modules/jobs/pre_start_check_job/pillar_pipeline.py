@@ -16,6 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional
 
+from infrastructure.settings import Config
 from modules.pillars.context import (
     build_event_context,
     summarize_number_of_teams_from_streak_analysis,
@@ -787,7 +788,21 @@ def evaluate_and_calculate_pillars_batch(
         debug_mode=debug_mode,
     )
 
-    with ThreadPoolExecutor(max_workers=min(4, len(events_for_pillars))) as executor:
+    max_workers = min(Config.PILLAR_PIPELINE_WORKERS, len(events_for_pillars))
+    logger.info(
+        "Pillar pipeline concurrency events=%s workers=%s",
+        len(events_for_pillars),
+        max_workers,
+    )
+    if max_workers == 1:
+        for payload in events_for_pillars:
+            try:
+                processor.process_event(payload)
+            except Exception as exc:
+                logger.error("Critical failure in pillar processing: %s", exc)
+        return
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(processor.process_event, payload)
             for payload in events_for_pillars

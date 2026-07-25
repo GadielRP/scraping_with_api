@@ -618,6 +618,37 @@ class DailyDiscoveryLog(Base):
     )
 
 
+class OddspapiFixtureDiscoveryRun(Base):
+    """Durable execution marker used to recover missed daily discovery slots."""
+
+    __tablename__ = 'oddspapi_fixture_discovery_runs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    target_date = Column(String(10), nullable=False)
+    scheduled_local_date = Column(String(10))
+    scheduled_time = Column(String(5))
+    trigger = Column(String(20), nullable=False, default='scheduled')
+    status = Column(String(20), nullable=False, default='running')
+    process_id = Column(Integer)
+    started_at = Column(DateTime, nullable=False, default=get_local_now)
+    heartbeat_at = Column(DateTime, nullable=False, default=get_local_now)
+    finished_at = Column(DateTime)
+    summary = Column(JSONB().with_variant(JSON(), 'sqlite'))
+    error = Column(Text)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'target_date',
+            name='unique_oddspapi_fixture_discovery_target_date',
+        ),
+        Index(
+            'idx_oddspapi_fixture_discovery_runs_status_target',
+            'status',
+            'target_date',
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # SQL view helper – unified odds view (no filtering by var_one)
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import logging
 from typing import Optional, Tuple
 
 from infrastructure.persistence.repositories import DualProcessOddsRepository
+from infrastructure.settings import Config
 from modules.alerts.matchup_streak_analysis import (
     MatchupStreakContext,
     build_matchup_streak_context,
@@ -102,6 +103,23 @@ def resolve_matchup_streak_analysis(
     try:
         matchup_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
         matchup_events = matchup_response.get("events", []) if matchup_response else []
+        raw_matchup_count = len(matchup_events)
+        max_h2h_events = Config.MATCHUP_H2H_MAX_EVENTS
+        if raw_matchup_count > max_h2h_events:
+            # Keep the newest raw events in-place, then release the rest of the
+            # response before loading team histories.
+            matchup_events.sort(
+                key=lambda item: item.get("startTimestamp", 0),
+                reverse=True,
+            )
+            del matchup_events[max_h2h_events:]
+            logger.info(
+                "Bounded H2H payload for event %s from %s to %s newest events",
+                event_obj.id,
+                raw_matchup_count,
+                len(matchup_events),
+            )
+        matchup_response = None
         dual_process_odds = DualProcessOddsRepository.get_event_odds(event_obj.id)
 
         logger.debug(

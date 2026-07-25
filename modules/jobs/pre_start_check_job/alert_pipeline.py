@@ -306,8 +306,21 @@ def evaluate_and_dispatch_alerts_batch(
         debug_mode=debug_mode,
     )
 
-    # Parallelize the processing of each event
-    with ThreadPoolExecutor(max_workers=min(4, len(events_for_alerts))) as executor:
+    max_workers = min(Config.ALERT_PIPELINE_WORKERS, len(events_for_alerts))
+    logger.info(
+        "Alert pipeline concurrency events=%s workers=%s",
+        len(events_for_alerts),
+        max_workers,
+    )
+    if max_workers == 1:
+        for payload in events_for_alerts:
+            try:
+                processor.process_event(payload)
+            except Exception as exc:
+                logger.error(f"Critical failure in alert processing: {exc}")
+        return
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(processor.process_event, payload) for payload in events_for_alerts]
         for future in futures:
             try:

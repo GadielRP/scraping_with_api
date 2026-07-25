@@ -1,50 +1,20 @@
-# Git
-.git/
-.gitignore
+# Production image allowlist. The repository contains database dumps, captured
+# API payloads, browser traces, and local logs that must never enter the image.
+**
 
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
+!Dockerfile
+!main.py
+!requirements.txt
+!requirements_cloud.txt
 
-# Env and secrets
-.env
-.env.*
-!.env.example
-env.cloud.template
+!app/
+!app/**
+!infrastructure/
+!infrastructure/**
+!modules/
+!modules/**
+!shared/
+!shared/**
 
-
-# Local data & logs
-data/
-logs/
-*.log
-
-# Debug/export artifacts
-debug_discovery_*.json
-dropping_odds.json
-ejemplo.json
-exports/
-csv/
-old/
-
-# Tests and notebooks
-test_*.py
-*.ipynb
-
-# IDE/editor
-.cursor/
-.vscode/
-.idea/
-
-# OS cruft
-.DS_Store
-Thumbs.db
-
-# Deployment files not needed inside image
-*.service
-deploy_direct.sh
+**/__pycache__/
+**/*.py[cod]

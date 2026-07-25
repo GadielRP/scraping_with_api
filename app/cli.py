@@ -8,6 +8,10 @@ from datetime import datetime
 
 from infrastructure.settings import Config
 from shared.shutdown import clear_shutdown_request, request_shutdown, is_shutdown_requested
+from shared.runtime_observability import (
+    mark_clean_shutdown,
+    start_runtime_observability,
+)
 
 from .logging_setup import setup_logging
 
@@ -168,6 +172,7 @@ def start_scheduler():
 
     def signal_handler(signum, frame):
         logger.info("Received shutdown signal, stopping scheduler...")
+        request_shutdown()
         job_scheduler.stop()
         sys.exit(0)
 
@@ -284,6 +289,7 @@ def _run_command(args):
 def main():
     """Main entry point for the CLI."""
     setup_logging()
+    start_runtime_observability()
     clear_shutdown_request()
 
     logger = logging.getLogger(__name__)
@@ -305,8 +311,10 @@ def main():
     signal.signal(signal.SIGINT, _handle_shutdown_signal)
     signal.signal(signal.SIGTERM, _handle_shutdown_signal)
 
+    completed_cleanly = False
     try:
         _run_command(args)
+        completed_cleanly = True
     except KeyboardInterrupt:
         logger.info("Shutdown requested via Ctrl+C. Stopping command: %s", args.command)
         sys.exit(130)
@@ -314,6 +322,8 @@ def main():
         logger.error(f"Error running command {args.command}: {exc}")
         sys.exit(1)
     finally:
+        if completed_cleanly or is_shutdown_requested():
+            mark_clean_shutdown()
         if is_shutdown_requested():
             sys.exit(130)
 
