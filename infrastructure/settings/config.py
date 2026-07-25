@@ -177,10 +177,11 @@ class Config:
     DAILY_DISCOVERY_FIXED_TIMES = _parse_env_list('DAILY_DISCOVERY_FIXED_TIMES', ['17:10'])
     DAILY_DISCOVERY_SLOTS = _parse_env_list('DAILY_DISCOVERY_SLOTS', ['AM', 'PM'])
     DAILY_DISCOVERY_DAYS_TO_KEEP = int(os.getenv('DAILY_DISCOVERY_DAYS_TO_KEEP', '1'))
-    # Runs at 17:45 MX (23:45 UTC) — after the 17:10 daily discovery AM slot has completed.
+    # Runs at 17:47 MX — after the 17:10 daily discovery AM slot, and off the
+    # :45 pre-start tick so both jobs are not due in the same scheduler batch.
     ODDSPAPI_FIXTURE_DISCOVERY_TIMES = _parse_env_list(
         'ODDSPAPI_FIXTURE_DISCOVERY_TIMES',
-        ['17:45'],
+        ['17:47'],
     )
     # Replay recently missed fixture-discovery slots after an unplanned restart.
     # Keep the window bounded so a long outage cannot create an unbounded backlog.

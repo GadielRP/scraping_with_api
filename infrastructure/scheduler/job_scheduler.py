@@ -74,7 +74,7 @@ class JobScheduler:
         oddspapi_fixture_discovery_times = getattr(
             Config,
             "ODDSPAPI_FIXTURE_DISCOVERY_TIMES",
-            ["17:45"],
+            ["17:47"],
         )
         for time_str in oddspapi_fixture_discovery_times:
             schedule.every().day.at(time_str).do(self.job_oddspapi_fixture_discovery)
