@@ -76,7 +76,7 @@ def fetch_authoritative_event_response(
     """Fetch `/event/{id}` and handle a confirmed missing canonical event."""
     endpoint = f"/event/{event_id}"
     try:
-        return client._make_request(endpoint)
+        return client.request_json(endpoint)
     except SofaScoreNotFoundException:
         _remove_or_defer_canonical_event(
             canonical_event_id,

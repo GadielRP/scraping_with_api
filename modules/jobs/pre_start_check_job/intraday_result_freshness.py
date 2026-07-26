@@ -117,7 +117,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
 
         try:
             sofascore_event_id = resolve_sofascore_event_id(event_id)
-            response = api_client._request_json(f"/event/{sofascore_event_id}")
+            response = api_client.request_json_or_none(f"/event/{sofascore_event_id}")
             if not response or "event" not in response:
                 logger.info(
                     "Intraday result freshness: event %s has no response payload yet",

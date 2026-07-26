@@ -428,7 +428,7 @@ def fetch_event_response_strict(event_id: int) -> Optional[Dict]:
     """
     try:
         sofascore_event_id = resolve_sofascore_event_id(event_id)
-        return api_client._make_request(f"/event/{sofascore_event_id}")
+        return api_client.request_json(f"/event/{sofascore_event_id}")
     except ValueError as exc:
         logger.warning("No SofaScore mapping available for canonical event %s: %s", event_id, exc)
         return None

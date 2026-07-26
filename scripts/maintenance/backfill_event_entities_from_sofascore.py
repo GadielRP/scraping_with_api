@@ -45,7 +45,7 @@ def backfill(limit: int | None = None, sleep_seconds: float = 0.5, only_missing:
     for event_id in event_ids:
         try:
             sofascore_event_id = resolve_sofascore_event_id(event_id)
-            response = api_client._request_json(f"/event/{sofascore_event_id}")
+            response = api_client.request_json_or_none(f"/event/{sofascore_event_id}")
             event_response = (response or {}).get("event")
             if not event_response:
                 skipped += 1

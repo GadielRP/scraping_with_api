@@ -235,7 +235,7 @@ def reconcile_existing_season_events(
                 logger.info("Reconciling season event %s not returned by current season endpoint", event_id)
 
             sofascore_event_id = resolve_sofascore_event_id(event_id)
-            response = api_client._request_json(f"/event/{sofascore_event_id}")
+            response = api_client.request_json_or_none(f"/event/{sofascore_event_id}")
             if not response or "event" not in response:
                 failed_direct_fetch_count += 1
                 logger.warning("Could not fetch direct event response for reconciliation event %s", event_id)
@@ -314,7 +314,7 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
         
         
         # Use the safe request facade so 404s still end the fetch loop cleanly.
-        response = api_client._request_json(endpoint)
+        response = api_client.request_json_or_none(endpoint)
         
         if not response:
             logger.info(f"No more events found (received 404 or error). Total batches fetched: {fetch_number}")
@@ -462,7 +462,7 @@ def process_season(tournament_id: int, season_id: int):
                         if fetch_result.endpoint_missing:
                             missing_odds_event_ids.add(event_id)
                             logger.info(
-                                "SofaScore odds endpoint missing for event %s",
+                                "🚫 SofaScore odds endpoint missing for event %s",
                                 event_id,
                             )
                             final_odds_response = None

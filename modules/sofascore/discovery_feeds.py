@@ -17,27 +17,27 @@ def get_dropping_odds_with_odds_and_events_response(client, sport: str = None):
     else:
         endpoint = "/odds/1/dropping/all"
         logger.info("✈️ Fetching dropping odds feed for all sports")
-    return client._request_json(endpoint)
+    return client.request_json_or_none(endpoint)
 
 
 def get_high_value_streaks_events(client):
     logger.info("✈️ Fetching high value streaks feed")
-    return client._request_json("/odds/1/high-value-streaks")
+    return client.request_json_or_none("/odds/1/high-value-streaks")
 
 
 def get_team_streaks_events(client):
     logger.info("✈️ Fetching team streaks feed")
-    return client._request_json("/odds/top-team-streaks/wins/all")
+    return client.request_json_or_none("/odds/top-team-streaks/wins/all")
 
 
 def get_h2h_events(client):
     logger.info("✈️ Fetching top H2H feed")
-    return client._request_json("/odds/1/top-h2h/all")
+    return client.request_json_or_none("/odds/1/top-h2h/all")
 
 
 def get_winning_odds_events(client):
     logger.info("✈️ Fetching winning odds discovery feed")
-    return client._request_json("/odds/1/winning/all")
+    return client.request_json_or_none("/odds/1/winning/all")
 
 
 def extract_events_from_high_value_streaks(response: Dict) -> Tuple[List[Dict], List[Dict]]:

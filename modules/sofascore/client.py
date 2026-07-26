@@ -1,7 +1,8 @@
-"""Transport and compatibility facade for SofaScore."""
+"""SofaScore HTTP client and endpoint facade."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import threading
 import time
@@ -25,6 +26,13 @@ from .discovery_feeds import (
 )
 from .event_details import get_event_details, get_event_results, update_event_information_from_response
 from .event_normalizer import clean_competition, get_gender, normalize_event_payload
+from .challenge import (
+    body_preview,
+    build_challenge_evidence,
+    get_challenge_reason,
+    is_sofascore_challenge_response,
+    write_challenge_evidence,
+)
 from .exceptions import SofaScoreChallengeException, SofaScoreNotFoundException, SofaScoreRateLimitException
 from .h2h import get_h2h_events_for_event
 from .results_parser import extract_results_from_response
@@ -36,10 +44,32 @@ from .schedule_feeds import (
 )
 from .standings import get_standings_response, process_standings_response
 from .team_history import get_nearest_event_for_team, get_team_last_results_response
-from .transport import request_json as execute_json_request
 from .winning_odds import get_winning_odds_response
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_token_fingerprint(token: str | None) -> str:
+    if not token:
+        return "none"
+    digest = hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+    return f"sha256:{digest[:10]}"
+
+
+def _safe_token_suffix(token: str | None) -> str:
+    if not token:
+        return "none"
+    normalized_token = str(token)
+    return normalized_token[-2:] if len(normalized_token) >= 2 else "**"
+
+
+def _safe_token_context(token: str | None, header_sent: bool) -> dict:
+    return {
+        "x_requested_with_header_sent": bool(header_sent),
+        "x_requested_with_value_non_empty": bool(token),
+        "x_requested_with_fingerprint": _safe_token_fingerprint(token),
+        "x_requested_with_suffix": _safe_token_suffix(token),
+    }
 
 
 class SofaScoreAPI:
@@ -158,26 +188,215 @@ class SofaScoreAPI:
             return int(parts[2])
         return 0
 
-    def _make_request(
-        self,
-        endpoint: str,
-        params: Optional[Dict] = None,
-    ) -> Optional[Dict]:
-        return execute_json_request(self, endpoint, params=params)
-
     def request_json(
         self,
         endpoint: str,
         params: Optional[Dict] = None,
     ) -> Optional[Dict]:
-        """Make a JSON request while preserving structured transport exceptions."""
-        return self._make_request(endpoint, params=params)
+        """Execute a JSON request while preserving structured HTTP exceptions."""
+        url = f"{self.base_url}{endpoint}"
+        headers = self._build_headers()
+        x_requested_with_token = headers.get("X-Requested-With")
 
-    def _request_json(
+        for attempt in range(Config.MAX_RETRIES):
+            try:
+                if is_shutdown_requested():
+                    raise KeyboardInterrupt()
+
+                self._rate_limit()
+                if is_shutdown_requested():
+                    raise KeyboardInterrupt()
+
+                logger.debug("Making request to: %s", url)
+                response = self.session.get(
+                    url,
+                    headers=headers,
+                    params=params,
+                    timeout=30,
+                )
+
+                if response.status_code == 200:
+                    self._proxy_error_streak = 0
+                    return response.json()
+
+                if is_sofascore_challenge_response(response):
+                    reason = get_challenge_reason(response)
+                    token_context = _safe_token_context(
+                        x_requested_with_token,
+                        "X-Requested-With" in headers,
+                    )
+                    evidence = {"request_token_context": token_context}
+
+                    logger.info(
+                        "SofaScore challenge token context: "
+                        "token_fingerprint=%s token_suffix=%s endpoint=%s",
+                        token_context["x_requested_with_fingerprint"],
+                        token_context["x_requested_with_suffix"],
+                        endpoint,
+                    )
+
+                    if self._should_capture_challenge_evidence():
+                        challenge_evidence = build_challenge_evidence(
+                            response=response,
+                            endpoint=endpoint,
+                            base_url=self.base_url,
+                            attempt=attempt + 1,
+                            max_retries=Config.MAX_RETRIES,
+                            params=params,
+                            proxy_identity=self.proxy_identity,
+                            request_url=url,
+                        )
+                        challenge_evidence["request_token_context"] = token_context
+                        evidence = challenge_evidence
+                        write_challenge_evidence(evidence)
+                    else:
+                        logger.debug(
+                            "SofaScore challenge evidence capture disabled for %s "
+                            "(debug_mode=%s)",
+                            endpoint,
+                            self.challenge_evidence_enabled,
+                        )
+
+                    logger.error(
+                        "SofaScore challenge detected for %s, reason=%s, attempt %s/%s",
+                        endpoint,
+                        reason,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                    )
+
+                    if (
+                        attempt == 0
+                        and self.proxy_manager.should_rotate_on_sofascore_error()
+                        and Config.MAX_RETRIES > 1
+                    ):
+                        self._rotate_proxy_identity(
+                            reason=f"http_403_challenge_attempt_{attempt + 1}_{endpoint}"
+                        )
+                        continue
+
+                    raise SofaScoreChallengeException(
+                        self._extract_endpoint_event_id(endpoint),
+                        endpoint=endpoint,
+                        reason=reason,
+                        evidence=evidence,
+                    )
+
+                if response.status_code == 407:
+                    wait_time = min(30 * (2**attempt), 300)
+                    logger.warning(
+                        "Proxy authentication error (407) for %s, waiting %ss, attempt %s/%s",
+                        endpoint,
+                        wait_time,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                    )
+                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                        self._rotate_proxy_identity(
+                            reason=f"http_407_attempt_{attempt + 1}_{endpoint}"
+                        )
+                    if attempt < Config.MAX_RETRIES - 1:
+                        time.sleep(wait_time)
+                        continue
+                    break
+
+                if response.status_code == 429:
+                    wait_time = min(60 * (2**attempt), 600)
+                    logger.warning(
+                        "Rate limited (429) for %s, waiting %ss, attempt %s/%s",
+                        endpoint,
+                        wait_time,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                    )
+                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                        self._rotate_proxy_identity(
+                            reason=f"http_429_attempt_{attempt + 1}_{endpoint}"
+                        )
+                    if attempt < Config.MAX_RETRIES - 1:
+                        time.sleep(wait_time)
+                        continue
+                    raise SofaScoreRateLimitException(
+                        self._extract_endpoint_event_id(endpoint),
+                        endpoint=endpoint,
+                        status_code=response.status_code,
+                    )
+
+                if response.status_code == 404:
+                    logger.debug("HTTP 404 for %s - skipping retries", endpoint)
+                    raise SofaScoreNotFoundException(
+                        self._extract_endpoint_event_id(endpoint),
+                        endpoint=endpoint,
+                    )
+
+                if response.status_code == 403:
+                    wait_time = min(30 * (2**attempt), 300)
+                    logger.warning(
+                        "HTTP 403 for %s, waiting %ss, attempt %s/%s, body=%s",
+                        endpoint,
+                        wait_time,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                        body_preview(getattr(response, "text", "") or ""),
+                    )
+                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                        self._rotate_proxy_identity(
+                            reason=f"http_403_attempt_{attempt + 1}_{endpoint}"
+                        )
+                    if attempt < Config.MAX_RETRIES - 1:
+                        time.sleep(wait_time)
+                        continue
+                    raise SofaScoreRateLimitException(
+                        self._extract_endpoint_event_id(endpoint),
+                        endpoint=endpoint,
+                        status_code=response.status_code,
+                    )
+
+                if response.status_code in [500, 502, 503, 504, 522, 525]:
+                    wait_time = min(5 * (2**attempt), 60)
+                    logger.warning(
+                        "HTTP %s for %s, waiting %ss, attempt %s/%s",
+                        response.status_code,
+                        endpoint,
+                        wait_time,
+                        attempt + 1,
+                        Config.MAX_RETRIES,
+                    )
+                    if attempt < Config.MAX_RETRIES - 1:
+                        time.sleep(wait_time)
+                        continue
+                    break
+
+                logger.error(
+                    "HTTP %s for %s: %s",
+                    response.status_code,
+                    endpoint,
+                    response.text,
+                )
+                break
+            except (
+                SofaScoreChallengeException,
+                SofaScoreNotFoundException,
+                SofaScoreRateLimitException,
+            ):
+                raise
+            except KeyboardInterrupt:
+                raise
+            except Exception as exc:
+                if is_shutdown_requested():
+                    logger.info("Shutdown requested while requesting %s", endpoint)
+                    raise KeyboardInterrupt() from exc
+                logger.error("Unexpected error for %s: %s", endpoint, exc)
+                break
+
+        return None
+
+    def request_json_or_none(
         self,
         endpoint: str,
         params: Optional[Dict] = None,
     ) -> Optional[Dict]:
+        """Execute a tolerant JSON request and return None for expected failures."""
         try:
             return self.request_json(endpoint, params=params)
         except SofaScoreChallengeException as exc:

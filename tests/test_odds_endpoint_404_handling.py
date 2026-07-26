@@ -231,14 +231,16 @@ def test_sofascore_404_is_batched_and_empty_response_is_not(monkeypatch):
     assert calls == [({101}, "sofascore")]
 
 
-def test_sofascore_client_separates_strict_and_compatibility_requests(monkeypatch):
+def test_sofascore_client_separates_strict_and_tolerant_requests(monkeypatch):
     client = object.__new__(SofaScoreAPI)
     not_found = SofaScoreNotFoundException(9001, "/event/9001/odds/1/all")
-    monkeypatch.setattr(client, "_make_request", lambda *args, **kwargs: (_ for _ in ()).throw(not_found))
+    monkeypatch.setattr(
+        client,
+        "request_json",
+        lambda *args, **kwargs: (_ for _ in ()).throw(not_found),
+    )
 
-    assert client._request_json("/event/9001/odds/1/all") is None
-    with pytest.raises(SofaScoreNotFoundException):
-        client.request_json("/event/9001/odds/1/all")
+    assert client.request_json_or_none("/event/9001/odds/1/all") is None
 
 
 def test_sofascore_fetcher_translates_404_to_expected_result():

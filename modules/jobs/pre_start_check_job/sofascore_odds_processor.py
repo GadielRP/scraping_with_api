@@ -80,7 +80,7 @@ def process_sofascore_pre_start_odds(
                 summary.missing_endpoints += 1
                 summary.events_skipped += 1
                 logger.info(
-                    "SofaScore odds endpoint missing for event_id=%s sofascore_event_id=%s",
+                    "🚫 SofaScore odds endpoint missing for event_id=%s sofascore_event_id=%s",
                     event_id,
                     sofascore_event_id,
                 )

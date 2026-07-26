@@ -70,7 +70,7 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
                 "sofascore",
             )
             logger.info(
-                "SofaScore odds endpoint missing for rescheduled event %s",
+                "🚫 SofaScore odds endpoint missing for rescheduled event %s",
                 event_id,
             )
             return

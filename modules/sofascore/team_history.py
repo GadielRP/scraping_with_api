@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_nearest_event_for_team(client, team_id: int) -> Optional[Dict]:
-    response = client._request_json(f"/team/{team_id}/events/next/0")
+    response = client.request_json_or_none(f"/team/{team_id}/events/next/0")
     if not response:
         return None
 
@@ -55,7 +55,7 @@ def get_team_last_results_response(
         endpoint = f"/team/{team_id}/events/last/{fetch_index}"
         logger.info("Fetching %s (attempt %s) last events for team %s", endpoint, fetch_number_display, team_id)
 
-    response = client._request_json(endpoint)
+    response = client.request_json_or_none(endpoint)
     if not response or "events" not in response:
         logger.error("No results found for team %s", team_id)
         return None
