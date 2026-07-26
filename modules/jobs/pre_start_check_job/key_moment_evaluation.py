@@ -158,6 +158,8 @@ def _hydrate_missing_tennis_metadata(
     key_moments: list[int],
 ) -> None:
     """Fetch metadata needed by tennis context only when the candidate lacks it."""
+    skipped_by_filters = 0
+
     for candidate in candidates:
         if candidate.get("metadata_snapshot") is not None:
             continue
@@ -171,6 +173,16 @@ def _hydrate_missing_tennis_metadata(
         event_id = candidate.get("event_id")
         event_obj = scheduler.event_repo.get_event_by_id(event_id)
         if not event_obj or not event_obj.round:
+            continue
+
+        # Mirror the _build_evaluation_payloads filters so we don't spend an
+        # API call on events that evaluation will drop anyway.
+        if (
+            event_obj.round != "regular_season"
+            or event_obj.sport in Config.EXCLUDED_SPORTS
+            or event_obj.id in scheduler.recently_rescheduled
+        ):
+            skipped_by_filters += 1
             continue
 
         sofascore_event_id = candidate.get("sofascore_event_id")
@@ -203,6 +215,13 @@ def _hydrate_missing_tennis_metadata(
                 event_id,
                 exc,
             )
+
+    if skipped_by_filters:
+        logger.info(
+            "Skipped tennis metadata hydration for %s event(s) that "
+            "evaluation would drop (round/sport/rescheduled filters)",
+            skipped_by_filters,
+        )
 
 
 def _load_trajectory_payloads(

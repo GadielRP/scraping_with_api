@@ -111,6 +111,10 @@ def _maintain_recently_started_events(
         _split_recently_started_events(started_events)
     )
 
+    logger.info(
+        "⏱️ Starting recently-started timestamp corrections (%s candidates)",
+        len(timestamp_candidates),
+    )
     modified_event_ids = check_recently_started_events_for_timestamp_corrections(
         timestamp_candidates
     )
@@ -132,6 +136,10 @@ def _maintain_recently_started_events(
         if event["id"] not in scheduler.recently_rescheduled
     ]
 
+    logger.info(
+        "🔄 Starting intraday result freshness (%s candidates)",
+        len(result_freshness_candidates),
+    )
     freshness_stats = process_intraday_result_freshness(
         result_freshness_candidates
     )
@@ -155,6 +163,10 @@ def _ingest_provider_odds(
     debug_mode: bool,
 ) -> None:
     """Execute independent provider phases using the same candidate plan."""
+    logger.info(
+        "💰 Starting provider odds ingestion (%s candidates)",
+        len(event_plan.candidates),
+    )
     process_sofascore_pre_start_odds(
         event_plan.candidates,
         source_states,
@@ -172,6 +184,10 @@ def _ingest_provider_odds(
 
 
 def _load_upcoming_events(scheduler, tracked_season_ids) -> list[dict]:
+    logger.info(
+        "📋 Starting upcoming-event load (window=%s minutes)",
+        Config.PRE_START_WINDOW_MINUTES,
+    )
     upcoming_events = scheduler.event_repo.get_events_starting_soon(
         Config.PRE_START_WINDOW_MINUTES,
         season_ids=tracked_season_ids,
@@ -184,10 +200,22 @@ def _load_upcoming_events(scheduler, tracked_season_ids) -> list[dict]:
     return upcoming_events
 
 
+def _count_key_moment_events(
+    upcoming_events: list[dict],
+    timings: dict[int, int],
+) -> int:
+    key_moments = Config.PRE_START_ODDS_MOMENTS
+    return sum(
+        1
+        for event in upcoming_events
+        if timings.get(event["id"]) in key_moments
+    )
+
+
 def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
     """Run maintenance, odds ingestion, and key-moment evaluation in order."""
     logger.info(
-        "PRE-START CHECK EXECUTED at %s",
+        "🚀 PRE-START CHECK EXECUTED at %s",
         datetime.now().strftime("%H:%M:%S"),
     )
     previous_evidence_mode = getattr(
@@ -211,6 +239,8 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             event["id"]: minutes_until_start(event["start_time_utc"])
             for event in upcoming_events
         }
+
+        logger.info("🌐 Starting OddsPortal scrape selection")
         oddsportal_context: OddsPortalScrapeContext = (
             start_oddsportal_scrape_for_events(
                 scheduler,
@@ -219,16 +249,31 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             )
         )
 
+        logger.info(
+            "🔧 Starting maintenance "
+            "(recently-started timestamp corrections + intraday freshness)"
+        )
         upcoming_events = _maintain_recently_started_events(
             scheduler,
             upcoming_events,
             tracked_season_ids,
         )
+
+        logger.info("🏀 Starting in-game checks (NBA 4th quarter)")
         run_in_game_checks()
 
         if not upcoming_events:
             logger.warning("No upcoming events found after maintenance checks")
             return
+
+        key_moment_count = _count_key_moment_events(upcoming_events, timings)
+        logger.info(
+            "🎯 Starting key-moment candidate build: %s/%s upcoming events "
+            "at key minutes_until_start %s",
+            key_moment_count,
+            len(upcoming_events),
+            Config.PRE_START_ODDS_MOMENTS,
+        )
 
         # Load once, after filtering rescheduled events, and share the result
         # between both provider processors.
@@ -245,10 +290,11 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             debug_mode=global_debug_mode,
         )
         logger.info(
-            "Pre-start candidate processing completed for %s events",
+            "✅ Provider odds ingestion completed for %s candidates",
             len(event_plan.candidates),
         )
 
+        logger.info("🔔 Starting key-moment alert/pillar evaluation")
         evaluate_pre_start_key_moments(
             scheduler,
             upcoming_events,
@@ -256,6 +302,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             oddsportal_context,
             debug_mode=global_debug_mode,
         )
+        logger.info("✅ Pre-start check phases completed")
     except Exception:
         logger.exception("Pre-start check job failed")
     finally:

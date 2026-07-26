@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 
-from infrastructure.settings import Config
-
 from .odds_source_state import (
     SOFASCORE_SOURCE,
     PreStartOddsSourceStates,
@@ -35,9 +33,6 @@ def build_pre_start_event_candidates(
     """Apply timing decisions and return the shared provider work payloads."""
     events_to_process: list[dict] = []
     event_meta_lookup: dict[int, dict] = {}
-    key_moments = Config.PRE_START_ODDS_MOMENTS
-    key_moment_count = 0
-    extract_odds_count = 0
 
     for event_data in upcoming_events:
         try:
@@ -77,11 +72,6 @@ def build_pre_start_event_candidates(
                     event_data["season_id"] = refreshed_event.season_id
                     event_data["start_time_utc"] = refreshed_event.start_time_utc
 
-            if minutes in key_moments:
-                key_moment_count += 1
-            if should_extract_odds:
-                extract_odds_count += 1
-
             candidate = {
                 "event_id": event_id,
                 "event_data": event_data,
@@ -100,13 +90,6 @@ def build_pre_start_event_candidates(
                 exc,
             )
 
-    logger.info(
-        "Found %s events at key minutes_until_start %s to process "
-        "(%s passed should_extract_odds)",
-        key_moment_count,
-        key_moments,
-        extract_odds_count,
-    )
     return PreStartEventPlan(
         candidates=events_to_process,
         by_event_id=event_meta_lookup,
