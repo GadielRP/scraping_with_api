@@ -21,6 +21,9 @@ logger = logging.getLogger("process_null_seasons")
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, refresh_materialized_views
 from modules.sofascore import api_client
+from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
+from infrastructure.persistence.repositories import EventSourceMappingRepository
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, MarketRepository
 from modules.observations import sport_observation_service
@@ -175,7 +178,16 @@ def process_event(event_id: int, slug: str):
         
         # 1. Update final odds (matches Job E logic)
         try:
-            final_odds_response = api_client.get_event_final_odds(event_id, slug)
+            fetch_result = SofaScoreOddsFetcher(api_client).fetch_odds(
+                resolve_sofascore_event_id(event_id),
+                slug,
+            )
+            if fetch_result.endpoint_missing:
+                EventSourceMappingRepository.mark_odds_unavailable(
+                    [event_id],
+                    "sofascore",
+                )
+            final_odds_response = fetch_result.payload
             if final_odds_response:
                 final_odds_data = extract_final_odds_from_response(final_odds_response, initial_odds_extraction=True)
                 if final_odds_data:

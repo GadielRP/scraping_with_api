@@ -16,22 +16,74 @@ from .results_parser import extract_results_from_response
 logger = logging.getLogger(__name__)
 
 
-def fetch_event_response(client, event_id: int, delete_event_on_404: bool = True) -> Optional[Dict]:
+def _remove_or_defer_canonical_event(
+    canonical_event_id: int | None,
+    sofascore_event_id: int,
+    reason: str,
+    deferred_deletion_event_ids: set[int] | None,
+) -> bool:
+    """Queue a deletion for batch processing or execute it immediately."""
+    if canonical_event_id is None:
+        canonical_event_id = EventSourceMappingRepository.get_event_id_by_source(
+            "sofascore",
+            str(sofascore_event_id),
+        )
+    if canonical_event_id is None:
+        logger.warning(
+            "Could not resolve canonical event_id for SofaScore event %s (%s)",
+            sofascore_event_id,
+            reason,
+        )
+        return False
+
+    if deferred_deletion_event_ids is not None:
+        deferred_deletion_event_ids.add(canonical_event_id)
+        logger.info(
+            "Queued canonical event %s for batch deletion "
+            "(SofaScore event %s, reason=%s)",
+            canonical_event_id,
+            sofascore_event_id,
+            reason,
+        )
+        return True
+
+    deleted = EventRepository.batch_delete_events([canonical_event_id])
+    if deleted:
+        logger.info(
+            "Deleted canonical event %s for SofaScore event %s (%s)",
+            canonical_event_id,
+            sofascore_event_id,
+            reason,
+        )
+        return True
+
+    logger.warning(
+        "Failed to delete canonical event %s for SofaScore event %s (%s)",
+        canonical_event_id,
+        sofascore_event_id,
+        reason,
+    )
+    return False
+
+
+def fetch_authoritative_event_response(
+    client,
+    event_id: int,
+    *,
+    canonical_event_id: int | None = None,
+    deferred_deletion_event_ids: set[int] | None = None,
+) -> Optional[Dict]:
+    """Fetch `/event/{id}` and handle a confirmed missing canonical event."""
     endpoint = f"/event/{event_id}"
     try:
         return client._make_request(endpoint)
     except SofaScoreNotFoundException:
-        if delete_event_on_404:
-            canonical_event_id = EventSourceMappingRepository.get_event_id_by_source("sofascore", str(event_id))
-            if canonical_event_id is None:
-                logger.warning("Could not resolve canonical event_id for SofaScore event %s after 404", event_id)
-                return None
-
-            deleted = EventRepository.batch_delete_events([canonical_event_id])
-            if deleted:
-                logger.info("Deleted canonical event %s after 404 response for SofaScore event %s", canonical_event_id, event_id)
-            else:
-                logger.warning("Failed to delete canonical event %s after 404 response", canonical_event_id)
+        _remove_or_defer_canonical_event(
+            canonical_event_id,
+            event_id,
+            "event_endpoint_not_found",
+            deferred_deletion_event_ids,
+        )
         return None
     except SofaScoreRateLimitException:
         logger.warning("Rate limited while fetching event %s", event_id)
@@ -39,7 +91,7 @@ def fetch_event_response(client, event_id: int, delete_event_on_404: bool = True
 
 
 def get_event_details(client, event_id: int) -> Optional[Dict]:
-    response = fetch_event_response(client, event_id, delete_event_on_404=True)
+    response = fetch_authoritative_event_response(client, event_id)
     if not response or "event" not in response:
         return None
     return response["event"]
@@ -144,6 +196,7 @@ def get_event_results(
     return_snapshot: bool = False,
     current_start_time=None,
     canonical_event_id: int | None = None,
+    deferred_deletion_event_ids: set[int] | None = None,
 ) -> Optional[Dict]:
     try:
         if update_court_type:
@@ -155,7 +208,12 @@ def get_event_results(
         else:
             logger.info("✈️ Fetching event results for event %s", event_id)
 
-        response = fetch_event_response(client, event_id, delete_event_on_404=True)
+        response = fetch_authoritative_event_response(
+            client,
+            event_id,
+            canonical_event_id=canonical_event_id,
+            deferred_deletion_event_ids=deferred_deletion_event_ids,
+        )
         if not response:
             logger.warning("No response received for event %s", event_id)
             return None
@@ -239,16 +297,12 @@ def get_event_results(
 
         result = extract_results_from_response(response)
         if isinstance(result, dict) and result.get("_canceled"):
-            canonical_event_id = EventSourceMappingRepository.get_event_id_by_source("sofascore", str(event_id))
-            if canonical_event_id is None:
-                logger.warning("Could not resolve canonical event_id for canceled SofaScore event %s", event_id)
-                return None
-
-            deleted = EventRepository.batch_delete_events([canonical_event_id])
-            if deleted:
-                logger.info("Deleted canceled canonical event %s for SofaScore event %s", canonical_event_id, event_id)
-            else:
-                logger.warning("Failed to delete canceled canonical event %s", canonical_event_id)
+            _remove_or_defer_canonical_event(
+                canonical_event_id,
+                event_id,
+                "canceled_or_postponed",
+                deferred_deletion_event_ids,
+            )
             return None
 
         return result

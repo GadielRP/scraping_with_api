@@ -16,8 +16,14 @@ The script fetches all events for a given season and:
 
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 from modules.competition.league_config import get_included_season_ids
-from infrastructure.persistence.repositories import EventRepository, ResultRepository, MarketRepository
+from infrastructure.persistence.repositories import (
+    EventRepository,
+    EventSourceMappingRepository,
+    MarketRepository,
+    ResultRepository,
+)
 from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.database import db_manager
 from shared.timezone_utils import get_local_now
@@ -229,7 +235,7 @@ def reconcile_existing_season_events(
                 logger.info("Reconciling season event %s not returned by current season endpoint", event_id)
 
             sofascore_event_id = resolve_sofascore_event_id(event_id)
-            response = api_client._request_json(f"/event/{sofascore_event_id}", no_retry_on_404=True)
+            response = api_client._request_json(f"/event/{sofascore_event_id}")
             if not response or "event" not in response:
                 failed_direct_fetch_count += 1
                 logger.warning("Could not fetch direct event response for reconciliation event %s", event_id)
@@ -308,7 +314,7 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
         
         
         # Use the safe request facade so 404s still end the fetch loop cleanly.
-        response = api_client._request_json(endpoint, no_retry_on_404=True)
+        response = api_client._request_json(endpoint)
         
         if not response:
             logger.info(f"No more events found (received 404 or error). Total batches fetched: {fetch_number}")
@@ -422,6 +428,8 @@ def process_season(tournament_id: int, season_id: int):
     markets_skipped_count = 0
     results_processed_count = 0
     canceled_event_ids_to_delete = set()
+    missing_odds_event_ids = set()
+    odds_fetcher = SofaScoreOddsFetcher(api_client)
 
     for event_data in events:
         try:
@@ -447,7 +455,19 @@ def process_season(tournament_id: int, season_id: int):
                 else:
                     # Fetch and save ALL markets using MarketRepository (new flow)
                     try:
-                        final_odds_response = api_client.get_event_final_odds(sofascore_event_id, event_payload.get('slug'))
+                        fetch_result = odds_fetcher.fetch_odds(
+                            sofascore_event_id,
+                            event_payload.get('slug'),
+                        )
+                        if fetch_result.endpoint_missing:
+                            missing_odds_event_ids.add(event_id)
+                            logger.info(
+                                "SofaScore odds endpoint missing for event %s",
+                                event_id,
+                            )
+                            final_odds_response = None
+                        else:
+                            final_odds_response = fetch_result.payload
 
                         if final_odds_response:
                             # Save all markets using the new market-based flow
@@ -513,6 +533,10 @@ def process_season(tournament_id: int, season_id: int):
             continue
 
     reconciliation_cutoff_time = get_local_now()
+    EventSourceMappingRepository.mark_odds_unavailable(
+        missing_odds_event_ids,
+        "sofascore",
+    )
     reconciliation_stats = reconcile_existing_season_events(
         season_ids=processing_season_ids,
         fetched_event_ids=fetched_event_ids,

@@ -2,12 +2,10 @@ from .event_filters import filter_upcoming_events
 from .discovery_optimization import (
     batch_process_odds,
     batch_upsert_events,
-    parallel_odds_checking,
+    fetch_event_odds_in_parallel,
     parallel_team_event_fetching,
     process_events_only,
     process_odds_first,
-    process_with_aggressive_parallel,
-    process_with_batch_cleanup,
     process_with_parallel_db_ops,
 )
 from .optimization_recommendations import (

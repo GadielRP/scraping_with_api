@@ -4,6 +4,8 @@ from app.logging_setup import setup_logging
 import sys
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
+from infrastructure.persistence.repositories import EventSourceMappingRepository
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Get event odds by event ID")
@@ -16,7 +18,21 @@ if __name__ == "__main__":
 
     try:
         sofascore_event_id = args.event_id if args.source == "sofascore" else resolve_sofascore_event_id(args.event_id)
-        odds_response = api_client.get_event_final_odds(sofascore_event_id)
+        fetch_result = SofaScoreOddsFetcher(api_client).fetch_odds(sofascore_event_id)
+        if fetch_result.endpoint_missing:
+            if args.source == "canonical":
+                EventSourceMappingRepository.mark_odds_unavailable(
+                    [args.event_id],
+                    "sofascore",
+                )
+            logger.info(
+                "SofaScore odds endpoint not found for event %s (source=%s)",
+                args.event_id,
+                args.source,
+            )
+            sys.exit(0)
+
+        odds_response = fetch_result.payload
         logger.info(f"Odds for event {args.event_id} (source={args.source}):\n")
         # pretty print dictionary with indentation
         import json

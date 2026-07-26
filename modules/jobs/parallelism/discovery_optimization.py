@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.persistence.repositories import EventSourceMappingRepository
 from modules.odds_ingestion import MarketOddsIngestionService
+from modules.odds_ingestion.fetch_result import OddsFetchStatus
 from modules.sofascore import api_client
+from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -54,38 +57,72 @@ def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> L
     return team_events
 
 
-def parallel_odds_checking(
+@dataclass
+class ParallelOddsFetchSummary:
+    """Typed outcomes from fetching SofaScore odds concurrently."""
+
+    odds_by_source_event_id: Dict[str, Dict] = field(default_factory=dict)
+    endpoint_missing_source_event_ids: set[int] = field(default_factory=set)
+    empty_source_event_ids: set[int] = field(default_factory=set)
+    failed_source_event_ids: set[int] = field(default_factory=set)
+
+
+def fetch_event_odds_in_parallel(
     events: List[Dict],
     max_workers: int = 5,
-) -> Tuple[Dict[str, Dict], List[int]]:
-    """Check odds availability for multiple events in parallel."""
+    *,
+    odds_fetcher: SofaScoreOddsFetcher | None = None,
+) -> ParallelOddsFetchSummary:
+    """Fetch odds without treating temporary failures as missing endpoints."""
+    fetcher = odds_fetcher or SofaScoreOddsFetcher(api_client)
 
-    def check_event_odds(event_data: Dict) -> Tuple[str, Optional[Dict]]:
+    def fetch_event_odds(event_data: Dict):
         sofascore_event_id = str(_event_id(event_data))
-        odds_data = api_client.get_event_final_odds(sofascore_event_id)
-        if not odds_data:
-            return sofascore_event_id, None
+        return sofascore_event_id, fetcher.fetch_odds(int(sofascore_event_id))
 
-        return sofascore_event_id, odds_data
-
-    events_with_odds = {}
-    events_to_delete = []
-
+    summary = ParallelOddsFetchSummary()
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_event = {executor.submit(check_event_odds, event_data): event_data for event_data in events}
+        future_to_event = {
+            executor.submit(fetch_event_odds, event_data): event_data
+            for event_data in events
+        }
         for future in as_completed(future_to_event):
             try:
-                event_id, odds_data = future.result()
-                if odds_data is None:
-                    events_to_delete.append(int(event_id))
+                source_event_id, fetch_result = future.result()
+                numeric_source_event_id = int(source_event_id)
+                if fetch_result.status is OddsFetchStatus.SUCCESS:
+                    summary.odds_by_source_event_id[source_event_id] = fetch_result.payload
+                elif fetch_result.status is OddsFetchStatus.ENDPOINT_NOT_FOUND:
+                    summary.endpoint_missing_source_event_ids.add(numeric_source_event_id)
                 else:
-                    events_with_odds[event_id] = odds_data
+                    summary.empty_source_event_ids.add(numeric_source_event_id)
             except Exception as exc:
                 event_data = future_to_event[future]
-                logger.debug("Error checking odds for event %s: %s", _event_payload(event_data).get("id"), exc)
-                events_to_delete.append(int(_event_id(event_data)))
+                source_event_id = int(_event_id(event_data))
+                summary.failed_source_event_ids.add(source_event_id)
+                logger.warning(
+                    "Temporary failure fetching SofaScore odds for source_event_id=%s: %s",
+                    source_event_id,
+                    exc,
+                )
 
-    return events_with_odds, events_to_delete
+    return summary
+
+
+def _mark_missing_sofascore_odds(
+    source_event_ids: set[int],
+) -> int:
+    """Resolve existing canonical mappings and persist confirmed odds 404s in bulk."""
+    if not source_event_ids:
+        return 0
+
+    canonical_ids_by_source_id = EventSourceMappingRepository.get_event_ids_by_sofascore_ids(
+        [str(event_id) for event_id in source_event_ids]
+    )
+    return EventSourceMappingRepository.mark_odds_unavailable(
+        canonical_ids_by_source_id.values(),
+        "sofascore",
+    )
 
 
 def batch_upsert_events(events: List[Dict]) -> int:
@@ -122,7 +159,7 @@ def batch_process_odds(events_with_odds: Dict[str, Dict], events: List[Dict]) ->
             ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
                 db_event.id,
                 odds_response,
-                source="parallel_odds_checking",
+                source="secondary_discovery",
             )
             if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
                 logger.debug("Failed to save market odds for event %s: %s", sofascore_event_id, ingestion_result.reason)
@@ -134,38 +171,6 @@ def batch_process_odds(events_with_odds: Dict[str, Dict], events: List[Dict]) ->
             logger.debug("Error processing event %s: %s", sofascore_event_id, exc)
             skipped_count += 1
 
-    return processed_count, skipped_count
-
-
-def process_with_batch_cleanup(
-    events: List[Dict],
-    discovery_source: str = None,
-    max_workers: int = 5,
-) -> Tuple[int, int]:
-    """Complete pipeline for processing events with batch deletion optimization."""
-    if not events:
-        return 0, 0
-
-    batch_upsert_events(events)
-    events_with_odds, events_to_delete = parallel_odds_checking(events, max_workers=max_workers)
-
-    if events_to_delete:
-        canonical_event_ids = []
-        for external_event_id in events_to_delete:
-            canonical_event_id = EventSourceMappingRepository.get_event_id_by_source(
-                "sofascore",
-                str(external_event_id),
-            )
-            if canonical_event_id is not None:
-                canonical_event_ids.append(canonical_event_id)
-            else:
-                logger.debug("Could not resolve canonical event_id for external SofaScore event %s", external_event_id)
-
-        deleted_count = EventRepository.batch_delete_events(canonical_event_ids)
-        logger.info("Batch deleted %s %s events without odds", deleted_count, discovery_source)
-
-    processed_count, skipped_count = batch_process_odds(events_with_odds, events)
-    skipped_count += len(events_to_delete)
     return processed_count, skipped_count
 
 
@@ -182,24 +187,35 @@ def process_odds_first(
     if not events:
         return 0, 0
 
-    # Step 1: Check odds in parallel (no DB writes yet)
-    events_with_odds, events_without_odds_ids = parallel_odds_checking(events, max_workers=max_workers)
+    fetch_summary = fetch_event_odds_in_parallel(events, max_workers=max_workers)
+    _mark_missing_sofascore_odds(fetch_summary.endpoint_missing_source_event_ids)
 
-    if events_without_odds_ids:
+    skipped_before_persistence = (
+        len(fetch_summary.endpoint_missing_source_event_ids)
+        + len(fetch_summary.empty_source_event_ids)
+        + len(fetch_summary.failed_source_event_ids)
+    )
+    if skipped_before_persistence:
         logger.info(
-            "Skipped %s %s events without odds (never persisted to DB)",
-            len(events_without_odds_ids),
+            "Skipped %s %s events before persistence "
+            "(missing_endpoint=%s empty=%s temporary_failure=%s)",
+            skipped_before_persistence,
             discovery_source,
+            len(fetch_summary.endpoint_missing_source_event_ids),
+            len(fetch_summary.empty_source_event_ids),
+            len(fetch_summary.failed_source_event_ids),
         )
 
-    # Step 2: Filter to only events that have odds
-    valid_events = [e for e in events if str(_event_id(e)) in events_with_odds]
+    valid_events = [
+        event
+        for event in events
+        if str(_event_id(event)) in fetch_summary.odds_by_source_event_id
+    ]
 
     if not valid_events:
         logger.info("No %s events had valid odds, nothing to persist", discovery_source)
         return 0, len(events)
 
-    # Step 3: Upsert only valid events (the ones with odds)
     upserted = batch_upsert_events(valid_events)
     logger.info(
         "Upserted %s/%s %s events (pre-filtered by odds availability)",
@@ -208,9 +224,11 @@ def process_odds_first(
         discovery_source,
     )
 
-    # Step 4: Process odds for those events
-    processed_count, skipped_count = batch_process_odds(events_with_odds, valid_events)
-    skipped_count += len(events_without_odds_ids)
+    processed_count, skipped_count = batch_process_odds(
+        fetch_summary.odds_by_source_event_id,
+        valid_events,
+    )
+    skipped_count += skipped_before_persistence
 
     return processed_count, skipped_count
 
@@ -280,14 +298,4 @@ def process_events_only(
     upserted_count = batch_upsert_events(events)
     logger.info("%s events processed: %s/%s events upserted", discovery_source, upserted_count, len(events))
     return upserted_count, len(events) - upserted_count
-
-
-def process_with_aggressive_parallel(
-    events: List[Dict],
-    discovery_source: str = None,
-    max_workers: int = 10,
-) -> Tuple[int, int]:
-    """Aggressive optimization mode with more workers."""
-    logger.warning("AGGRESSIVE MODE: Using %s workers for %s", max_workers, discovery_source)
-    return process_with_batch_cleanup(events, discovery_source, max_workers)
 

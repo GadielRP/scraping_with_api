@@ -27,7 +27,7 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
     
     Args:
         event_data: Event information dictionary
-        odds_response: Raw API odds response from get_event_final_odds()
+        odds_response: Raw provider odds payload.
         minutes_until_start: Minutes until event starts (optional)
         op_data: Optional MatchOddsData object
         

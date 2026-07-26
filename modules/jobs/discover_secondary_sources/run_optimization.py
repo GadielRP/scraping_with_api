@@ -7,7 +7,6 @@ import logging
 from modules.jobs.parallelism import (
     process_events_only,
     process_odds_first,
-    process_with_batch_cleanup,
     process_with_parallel_db_ops,
 )
 

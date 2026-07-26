@@ -6,9 +6,11 @@ import logging
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
+from infrastructure.persistence.repositories import EventSourceMappingRepository
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +42,40 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
         if minutes_until_start not in [30, 0] and minutes_until_start >= 0:
             return
 
+        source_states = EventSourceMappingRepository.get_odds_source_states(
+            [event_id],
+            ["sofascore"],
+        )
+        source_state = source_states.get(event_id, {}).get("sofascore")
+        if source_state is not None and not source_state.has_odds:
+            logger.info(
+                "Skipping rescheduled event %s odds: endpoint marked unavailable",
+                event_id,
+            )
+            return
+
         if sofascore_event_id is None:
-            sofascore_event_id = resolve_sofascore_event_id(event_id)
-        final_odds_response = api_client.get_event_final_odds(sofascore_event_id, event.slug)
+            if source_state is not None:
+                sofascore_event_id = int(source_state.source_event_id)
+            else:
+                sofascore_event_id = resolve_sofascore_event_id(event_id)
+
+        fetch_result = SofaScoreOddsFetcher(api_client).fetch_odds(
+            sofascore_event_id,
+            event.slug,
+        )
+        if fetch_result.endpoint_missing:
+            EventSourceMappingRepository.mark_odds_unavailable(
+                [event_id],
+                "sofascore",
+            )
+            logger.info(
+                "SofaScore odds endpoint missing for rescheduled event %s",
+                event_id,
+            )
+            return
+
+        final_odds_response = fetch_result.payload
         if not final_odds_response:
             logger.warning("Failed to fetch odds for rescheduled event %s", event_id)
             return

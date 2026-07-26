@@ -68,6 +68,9 @@ from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.repositories import ResultRepository, EventRepository
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 from modules.sofascore import api_client
+from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
+from infrastructure.persistence.repositories import EventSourceMappingRepository
 try:
     from modules.sofascore import SofaScoreRateLimitException
 except ImportError:
@@ -693,7 +696,16 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
             odds_updated = False
             if update_odds:
                 try:
-                    final_odds_response = api_client.get_event_final_odds(event.id, event.slug)
+                    fetch_result = SofaScoreOddsFetcher(api_client).fetch_odds(
+                        resolve_sofascore_event_id(event.id),
+                        event.slug,
+                    )
+                    if fetch_result.endpoint_missing:
+                        EventSourceMappingRepository.mark_odds_unavailable(
+                            [event.id],
+                            "sofascore",
+                        )
+                    final_odds_response = fetch_result.payload
                     
                     # Check if we got rate limited (403)
                     if final_odds_response is None:
