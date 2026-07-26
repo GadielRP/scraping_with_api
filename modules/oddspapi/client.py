@@ -10,12 +10,9 @@ from typing import Any
 import requests
 
 from infrastructure.settings import Config
+from modules.oddspapi.exceptions import OddsPapiError, OddsPapiHttpError
 
 logger = logging.getLogger(__name__)
-
-
-class OddsPapiError(RuntimeError):
-    """Raised when OddsPapi returns an unusable response."""
 
 
 class OddsPapiClient:
@@ -103,6 +100,20 @@ class OddsPapiClient:
             pass
         return None
 
+    @staticmethod
+    def _error_code(response) -> str | None:
+        try:
+            body = response.json()
+        except (ValueError, TypeError, AttributeError):
+            return None
+        if not isinstance(body, dict):
+            return None
+        error = body.get("error") if isinstance(body.get("error"), dict) else body
+        if not isinstance(error, dict):
+            return None
+        code = error.get("code") or error.get("errorCode")
+        return str(code).strip().upper() if code else None
+
     def _request(self, endpoint: str, params: dict | None = None) -> dict | list:
         if not str(self.api_key or "").strip():
             raise ValueError("ODDSPAPI_KEY is required to make an OddsPapi request")
@@ -167,9 +178,11 @@ class OddsPapiClient:
             if status_code < 200 or status_code >= 300:
                 response_text = str(getattr(response, "text", "") or "").replace("\n", " ")[:500]
                 response_text = response_text.replace(str(self.api_key), "***")
-                raise OddsPapiError(
-                    f"OddsPapi HTTP error status_code={status_code} "
-                    f"endpoint=/v4/{normalized_endpoint} response={response_text!r}"
+                raise OddsPapiHttpError(
+                    status_code=status_code,
+                    endpoint=f"/v4/{normalized_endpoint}",
+                    response_text=response_text,
+                    error_code=self._error_code(response),
                 )
 
             try:

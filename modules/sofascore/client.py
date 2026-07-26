@@ -192,8 +192,6 @@ class SofaScoreAPI:
         self,
         endpoint: str,
         params: Optional[Dict] = None,
-        no_retry_on_404: bool = False,
-        delete_event_on_404: bool = False,
     ) -> Optional[Dict]:
         url = f"{self.base_url}{endpoint}"
         headers = self._build_headers()
@@ -306,13 +304,14 @@ class SofaScoreAPI:
                     if attempt < Config.MAX_RETRIES - 1:
                         time.sleep(wait_time)
                         continue
-                    raise SofaScoreRateLimitException(self._extract_endpoint_event_id(endpoint), endpoint=endpoint)
+                    raise SofaScoreRateLimitException(
+                        self._extract_endpoint_event_id(endpoint),
+                        endpoint=endpoint,
+                        status_code=response.status_code,
+                    )
 
                 if response.status_code == 404:
-                    if no_retry_on_404:
-                        logger.debug("HTTP 404 for %s - skipping retry as requested", endpoint)
-                    else:
-                        logger.warning("HTTP 404 for %s - skipping retries", endpoint)
+                    logger.debug("HTTP 404 for %s - skipping retries", endpoint)
                     raise SofaScoreNotFoundException(self._extract_endpoint_event_id(endpoint), endpoint=endpoint)
 
                 if response.status_code == 403:
@@ -330,7 +329,11 @@ class SofaScoreAPI:
                     if attempt < Config.MAX_RETRIES - 1:
                         time.sleep(wait_time)
                         continue
-                    raise SofaScoreRateLimitException(self._extract_endpoint_event_id(endpoint), endpoint=endpoint)
+                    raise SofaScoreRateLimitException(
+                        self._extract_endpoint_event_id(endpoint),
+                        endpoint=endpoint,
+                        status_code=response.status_code,
+                    )
 
                 if response.status_code in [500, 502, 503, 504, 522, 525]:
                     wait_time = min(5 * (2**attempt), 60)
@@ -366,13 +369,28 @@ class SofaScoreAPI:
 
         return None
 
-    def _request_json(self, endpoint: str, params: Optional[Dict] = None, no_retry_on_404: bool = False) -> Optional[Dict]:
+    def request_json(
+        self,
+        endpoint: str,
+        params: Optional[Dict] = None,
+    ) -> Optional[Dict]:
+        """Make a JSON request while preserving structured transport exceptions."""
+        return self._make_request(endpoint, params=params)
+
+    def _request_json(
+        self,
+        endpoint: str,
+        params: Optional[Dict] = None,
+    ) -> Optional[Dict]:
         try:
-            return self._make_request(endpoint, params=params, no_retry_on_404=no_retry_on_404)
+            return self.request_json(endpoint, params=params)
         except SofaScoreChallengeException as exc:
             logger.error("%s", exc)
             return None
-        except (SofaScoreNotFoundException, SofaScoreRateLimitException) as exc:
+        except SofaScoreNotFoundException as exc:
+            logger.warning("%s", exc)
+            return None
+        except SofaScoreRateLimitException as exc:
             logger.warning("%s", exc)
             return None
 
@@ -465,10 +483,14 @@ class SofaScoreAPI:
     def get_today_sport_events_odds_response(self, date: str, sport: str):
         return get_today_sport_events_odds_response(self, date, sport)
 
-    def get_event_final_odds(self, id: int, slug: str = None, no_retry_on_404: bool = False) -> Optional[Dict]:
+    def get_event_final_odds(
+        self,
+        id: int,
+        slug: str = None,
+    ) -> Optional[Dict]:
         if slug:
             logger.info("✈️ Fetching final odds for event %s - %s using dedicated endpoint", id, slug)
-        return self._request_json(f"/event/{id}/odds/1/all", no_retry_on_404=no_retry_on_404)
+        return self._request_json(f"/event/{id}/odds/1/all")
 
     def update_event_information_from_response(self, response: Dict) -> bool:
         return update_event_information_from_response(response)

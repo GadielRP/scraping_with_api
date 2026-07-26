@@ -4,15 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from infrastructure.persistence.repositories import EventOddsSourceState
 
-@dataclass
+from .constants import ODDSPAPI_SOURCE
+
+
+@dataclass(frozen=True)
 class OddspapiPreStartCandidate:
+    """Minimum data required to request one Oddspapi odds endpoint."""
+
     event_id: int
     fixture_id: str | None
-    event_data: dict
     minutes_until_start: int | float | None
-    should_extract_odds: bool
-    metadata_snapshot: dict | None = None
+    has_odds: bool = True
 
 
 def _canonical_event_id(event_info: dict) -> int | None:
@@ -30,6 +34,7 @@ def _canonical_event_id(event_info: dict) -> int | None:
 
 def select_oddspapi_pre_start_candidates(
     events_to_process: list[dict],
+    source_states: dict[int, dict[str, EventOddsSourceState]] | None = None,
 ) -> list[OddspapiPreStartCandidate]:
     """Select events using the timing decision made by the main orchestrator."""
     candidates: list[OddspapiPreStartCandidate] = []
@@ -39,15 +44,13 @@ def select_oddspapi_pre_start_candidates(
         event_id = _canonical_event_id(event_info)
         if event_id is None:
             continue
-        event_data = event_info.get("event_data") or {}
+        source_state = (source_states or {}).get(event_id, {}).get(ODDSPAPI_SOURCE)
         candidates.append(
             OddspapiPreStartCandidate(
                 event_id=event_id,
-                fixture_id=None,
-                event_data=event_data,
+                fixture_id=source_state.source_event_id if source_state else None,
                 minutes_until_start=event_info.get("minutes_until_start"),
-                should_extract_odds=True,
-                metadata_snapshot=event_info.get("metadata_snapshot"),
+                has_odds=source_state.has_odds if source_state else True,
             )
         )
     return candidates

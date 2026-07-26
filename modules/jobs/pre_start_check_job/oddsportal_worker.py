@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import threading
 import time
@@ -14,6 +15,40 @@ from modules.oddsportal import scrape_multiple_matches_parallel_sync
 from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP, get_current_date
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class OddsPortalScrapeContext:
+    """Shared state between the background scraper and evaluation pipelines."""
+
+    event_states: Dict[int, Dict[str, Any]]
+    event_ids: set[int]
+    data_cache: Dict[int, Any]
+
+
+def start_oddsportal_scrape_for_events(
+    scheduler,
+    upcoming_events: List[Dict],
+    pre_calculated_timings: Dict[int, int],
+) -> OddsPortalScrapeContext:
+    """Prepare and start one OddsPortal cycle for the upcoming event batch."""
+    candidates = build_oddsportal_scrape_candidates(
+        upcoming_events,
+        pre_calculated_timings,
+    )
+    event_states = create_oddsportal_scrape_state(candidates) if candidates else {}
+    context = OddsPortalScrapeContext(
+        event_states=event_states,
+        event_ids=set(event_states),
+        data_cache={},
+    )
+    start_oddsportal_scrape_thread(
+        scheduler,
+        candidates,
+        context.event_states,
+        context.data_cache,
+    )
+    return context
 
 
 def build_oddsportal_scrape_candidates(
@@ -232,6 +267,8 @@ run_oddsportal_scrape_batch = scrape_oddsportal_batch
 
 
 __all__ = [
+    "OddsPortalScrapeContext",
+    "start_oddsportal_scrape_for_events",
     "build_oddsportal_scrape_candidates",
     "create_oddsportal_scrape_state",
     "start_oddsportal_scrape_thread",

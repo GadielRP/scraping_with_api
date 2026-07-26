@@ -57,13 +57,12 @@ def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> L
 def parallel_odds_checking(
     events: List[Dict],
     max_workers: int = 5,
-    no_retry_on_404: bool = True,
 ) -> Tuple[Dict[str, Dict], List[int]]:
     """Check odds availability for multiple events in parallel."""
 
     def check_event_odds(event_data: Dict) -> Tuple[str, Optional[Dict]]:
         sofascore_event_id = str(_event_id(event_data))
-        odds_data = api_client.get_event_final_odds(sofascore_event_id, no_retry_on_404=no_retry_on_404)
+        odds_data = api_client.get_event_final_odds(sofascore_event_id)
         if not odds_data:
             return sofascore_event_id, None
 

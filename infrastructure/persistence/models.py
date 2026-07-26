@@ -118,6 +118,7 @@ class EventSourceMapping(Base):
     source_sport_id = Column(Text)
     source_tournament_id = Column(Text)
     source_season_id = Column(Text)
+    has_odds = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     match_method = Column(Text, nullable=False, default='direct')
     confidence = Column(Numeric(5, 3))
     raw_external_providers = Column(JSONB().with_variant(JSON(), 'sqlite'))

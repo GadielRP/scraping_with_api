@@ -282,9 +282,21 @@ of the pre-start job, use the manual integration harness. It prompts for an
 `--dry-run` still requests and parses odds but writes no market data:
 
 ```bash
-python -m tests.test_oddspapi_pre_start_odds_job 12345
-python -m tests.test_oddspapi_pre_start_odds_job 12345 --dry-run
+python -m scripts.development.simulate_oddspapi_pre_start_odds 12345
+python -m scripts.development.simulate_oddspapi_pre_start_odds 12345 --dry-run
 ```
+
+To exercise the broader pre-start flow for one event at a forced key moment,
+use the development simulator:
+
+```bash
+python -m scripts.development.simulate_pre_start_check 12345 30
+```
+
+Both development simulators initialize the standard application logging
+system. Their full output is appended to the weekly
+`logs/<month>/week_<n>/sofascore_odds.log` file as well as printed to the
+terminal.
 
 ### Oddspapi Fixture Discovery
 

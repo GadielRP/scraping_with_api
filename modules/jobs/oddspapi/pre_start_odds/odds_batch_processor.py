@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import logging
 
-from infrastructure.persistence.repositories import MarketMappingRepository
+from infrastructure.persistence.repositories import (
+    EventSourceMappingRepository,
+    MarketMappingRepository,
+)
 from modules.odds_ingestion import MarketOddsIngestionService
 
 from .constants import ODDSPAPI_INGESTION_SOURCE, ODDSPAPI_SOURCE
@@ -106,21 +109,30 @@ class OddspapiPreStartOddsBatchProcessor:
         summary = OddspapiPreStartOddsSummary(candidates_seen=len(candidates or []))
         mapped_candidates = [candidate for candidate in candidates or [] if candidate.fixture_id]
         summary.candidates_with_mapping = len(mapped_candidates)
+        requestable_candidates = [
+            candidate for candidate in mapped_candidates if candidate.has_odds
+        ]
         requested_limit = max_events if max_events and max_events > 0 else None
 
         # This index is intentionally created once.  The ingestion service accepts it
         # directly, avoiding a database lookup per external response.
         market_mapping_index = (
             MarketMappingRepository.build_index(source=ODDSPAPI_SOURCE, enabled_only=True)
-            if mapped_candidates else None
+            if requestable_candidates else None
         )
         requested_count = 0
+        odds_not_found_event_ids: set[int] = set()
         for candidate in candidates or []:
             event_result = self._event_result(candidate)
             summary.results.append(event_result)
             if not candidate.fixture_id:
                 event_result.skipped = True
                 event_result.skip_reason = "missing_oddspapi_mapping"
+                summary.events_skipped += 1
+                continue
+            if not candidate.has_odds:
+                event_result.skipped = True
+                event_result.skip_reason = "oddspapi_odds_unavailable"
                 summary.events_skipped += 1
                 continue
             if requested_limit is not None and requested_count >= requested_limit:
@@ -133,10 +145,22 @@ class OddspapiPreStartOddsBatchProcessor:
             requested_count += 1
             summary.requests_attempted += 1
             try:
-                odds_response = self.fetcher.fetch_odds(
+                fetch_result = self.fetcher.fetch_odds(
                     candidate.fixture_id,
                     bookmakers=bookmakers,
                 )
+                if fetch_result.endpoint_missing:
+                    odds_not_found_event_ids.add(candidate.event_id)
+                    event_result.skipped = True
+                    event_result.skip_reason = "oddspapi_odds_endpoint_not_found"
+                    summary.events_skipped += 1
+                    logger.info(
+                        "Oddspapi odds endpoint missing event_id=%s fixture_id=%s",
+                        candidate.event_id,
+                        candidate.fixture_id,
+                    )
+                    continue
+                odds_response = fetch_result.payload
                 if not odds_response:
                     event_result.skipped = True
                     event_result.skip_reason = "no_oddspapi_odds"
@@ -168,4 +192,9 @@ class OddspapiPreStartOddsBatchProcessor:
                     candidate.fixture_id,
                     exc,
                 )
+        if odds_not_found_event_ids and not dry_run:
+            EventSourceMappingRepository.mark_odds_unavailable(
+                odds_not_found_event_ids,
+                ODDSPAPI_SOURCE,
+            )
         return summary

@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from modules.oddspapi.client import OddsPapiClient, OddsPapiError
+from modules.odds_ingestion.fetch_result import OddsFetchResult
+from modules.oddspapi.client import OddsPapiClient
+from modules.oddspapi.exceptions import OddsPapiHttpError
 
 
 class OddspapiOddsFetcher:
+    EMPTY_ODDS_ERROR_CODES = {"NO_ODDS", "ODDS_NOT_FOUND"}
+
     def __init__(self, client: OddsPapiClient | None = None):
         self.client = client or OddsPapiClient()
-
-    @staticmethod
-    def _is_no_odds_error(error: OddsPapiError) -> bool:
-        message = str(error).lower()
-        return "status_code=404" in message or "not found" in message or "no odds" in message
 
     def fetch_odds(
         self,
@@ -21,7 +20,7 @@ class OddspapiOddsFetcher:
         odds_format: str | None = None,
         language: str | None = None,
         verbosity: int | None = None,
-    ) -> dict | None:
+    ) -> OddsFetchResult:
         try:
             payload = self.client.get_odds(
                 fixture_id=fixture_id,
@@ -30,8 +29,10 @@ class OddspapiOddsFetcher:
                 language=language,
                 verbosity=verbosity,
             )
-        except OddsPapiError as exc:
-            if self._is_no_odds_error(exc):
-                return None
+        except OddsPapiHttpError as exc:
+            if exc.status_code == 404:
+                return OddsFetchResult.endpoint_not_found()
+            if exc.error_code in self.EMPTY_ODDS_ERROR_CODES:
+                return OddsFetchResult.from_payload(None)
             raise
-        return payload if isinstance(payload, dict) else None
+        return OddsFetchResult.from_payload(payload)

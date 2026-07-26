@@ -81,7 +81,7 @@ def get_standings_response(
     endpoint = f"/unique-tournament/{unique_tournament_id}/season/{season_id}/standings/total"
     logger.info("✈️ Fetching SofaScore standings endpoint %s", endpoint)
     try:
-        response = client._make_request(endpoint, no_retry_on_404=True)
+        response = client._make_request(endpoint)
     except SofaScoreNotFoundException:
         competition_id = getattr(competition_context, "competition_id", None)
         logger.warning(

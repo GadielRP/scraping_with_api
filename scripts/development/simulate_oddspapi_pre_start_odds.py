@@ -5,9 +5,9 @@ request, market mapping, bookmaker resolution, and market/snapshot ingestion.
 It does not call SofaScore, refresh materialized views, or run alerts/pillars.
 
 Usage:
-    python -m tests.test_oddspapi_pre_start_odds_job 12345
-    python -m tests.test_oddspapi_pre_start_odds_job 12345 --dry-run
-    python -m tests.test_oddspapi_pre_start_odds_job
+    python -m scripts.development.simulate_oddspapi_pre_start_odds 12345
+    python -m scripts.development.simulate_oddspapi_pre_start_odds 12345 --dry-run
+    python -m scripts.development.simulate_oddspapi_pre_start_odds
 """
 
 from __future__ import annotations
@@ -30,8 +30,15 @@ from modules.jobs.pre_start_check_job.timing import minutes_until_start
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-setup_logging()
-logger = logging.getLogger("tests.test_oddspapi_pre_start_odds_job")
+logger = logging.getLogger(__name__)
+
+
+def _ensure_logging_configured() -> None:
+    if not any(
+        isinstance(handler, logging.FileHandler)
+        for handler in logging.getLogger().handlers
+    ):
+        setup_logging()
 
 
 def _snapshot_count(event_id: int) -> int:
@@ -62,7 +69,7 @@ def _event_payload(event) -> dict:
             "start_time_utc": event.start_time_utc,
         },
         # The production orchestrator computes this flag through its shared
-        # timing logic. This focused harness forces eligibility so it can test
+        # timing logic. This focused harness forces eligibility so it can exercise
         # one event's Oddspapi fetch and ingestion independent of wall-clock time.
         "should_extract_odds": True,
         "minutes_until_start": minutes_until_start(event.start_time_utc),
@@ -72,6 +79,7 @@ def _event_payload(event) -> dict:
 
 def run_for_event(event_id: int, *, dry_run: bool = False) -> int:
     """Run the real Oddspapi pre-start flow for one canonical ``events.id``."""
+    _ensure_logging_configured()
     if not initialize_system():
         logger.error("System initialization failed.")
         return 1
@@ -83,7 +91,7 @@ def run_for_event(event_id: int, *, dry_run: bool = False) -> int:
 
     fixture_id = EventSourceMappingRepository.get_source_event_id(event_id, "oddspapi")
     logger.info("=" * 90)
-    logger.info("Oddspapi pre-start odds integration test")
+    logger.info("Oddspapi pre-start odds development simulation")
     logger.info("events.id=%s | event=%s vs %s | start=%s | minutes_until_start=%s", event.id, event.home_team, event.away_team, event.start_time_utc, minutes_until_start(event.start_time_utc))
     logger.info("existing Oddspapi fixture mapping=%s", fixture_id or "<missing>")
     logger.info(
@@ -94,7 +102,9 @@ def run_for_event(event_id: int, *, dry_run: bool = False) -> int:
     )
 
     if not getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", True):
-        logger.error("ENABLE_ODDSPAPI_PRE_START_ODDS=false; enable it to run this integration test.")
+        logger.error(
+            "ENABLE_ODDSPAPI_PRE_START_ODDS=false; enable it to run this simulation."
+        )
         return 1
     if not str(Config.ODDSPAPI_KEY or "").strip():
         logger.error("ODDSPAPI_KEY is not configured; no HTTP request will be made.")
@@ -150,14 +160,16 @@ def run_for_event(event_id: int, *, dry_run: bool = False) -> int:
     )
 
     if summary.events_failed or summary.events_ingested != 1:
-        logger.error("Oddspapi pre-start odds integration test did not ingest the event successfully.")
+        logger.error(
+            "Oddspapi pre-start odds simulation did not ingest the event successfully."
+        )
         return 1
     return 0
 
 
 def _parse_event_id(value: str | None) -> int:
     if value is None:
-        value = input("Canonical events.id to test: ").strip()
+        value = input("Canonical events.id to simulate: ").strip()
     try:
         event_id = int(value)
     except (TypeError, ValueError) as exc:

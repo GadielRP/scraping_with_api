@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import logging
 
-from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.repositories import (
+    EventOddsSourceState,
+    EventSourceMappingRepository,
+)
 from infrastructure.settings import Config
 
 from .event_selector import select_oddspapi_pre_start_candidates
@@ -13,15 +16,17 @@ from .odds_batch_processor import (
     OddspapiPreStartOddsEventResult,
     OddspapiPreStartOddsSummary,
 )
-from .source_mapping_loader import attach_oddspapi_fixture_ids
+from .constants import ODDSPAPI_SOURCE
 
 logger = logging.getLogger(__name__)
 
 
-def _skipped_summary(candidates, reason: str, *, disabled: bool = False) -> OddspapiPreStartOddsSummary:
+def _skipped_summary(
+    candidates,
+    reason: str,
+) -> OddspapiPreStartOddsSummary:
     summary = OddspapiPreStartOddsSummary(
         candidates_seen=len(candidates),
-        disabled=disabled,
         skip_reason=reason,
     )
     for candidate in candidates:
@@ -64,6 +69,7 @@ def run_oddspapi_pre_start_odds_ingestion(
     *,
     debug_mode: bool = False,
     dry_run: bool = False,
+    source_states: dict[int, dict[str, EventOddsSourceState]] | None = None,
 ) -> OddspapiPreStartOddsSummary:
     """Ingest mapped Oddspapi odds without affecting the main pre-start job."""
     if not getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", True):
@@ -71,31 +77,44 @@ def run_oddspapi_pre_start_odds_ingestion(
         _log_summary(summary)
         return summary
 
-    candidates = select_oddspapi_pre_start_candidates(events_to_process)
+    candidates = select_oddspapi_pre_start_candidates(
+        events_to_process,
+        source_states=source_states,
+    )
     if not candidates:
         summary = OddspapiPreStartOddsSummary()
         _log_summary(summary)
         return summary
     if not str(getattr(Config, "ODDSPAPI_KEY", "") or "").strip():
-        logger.warning("Oddspapi pre-start odds ingestion skipped because ODDSPAPI_KEY is not configured")
+        logger.warning(
+            "Oddspapi pre-start odds ingestion skipped because ODDSPAPI_KEY "
+            "is not configured"
+        )
         summary = _skipped_summary(candidates, "missing_oddspapi_api_key")
         _log_summary(summary)
         return summary
 
-    try:
-        with db_manager.get_session() as session:
-            attach_oddspapi_fixture_ids(candidates, session)
-    except Exception as exc:
-        logger.exception("Oddspapi pre-start fixture mapping lookup failed")
-        summary = _skipped_summary(candidates, "oddspapi_mapping_lookup_failed")
-        summary.events_skipped = 0
-        summary.events_failed = len(candidates)
-        for result in summary.results:
-            result.skipped = False
-            result.skip_reason = None
-            result.error = str(exc)
-        _log_summary(summary)
-        return summary
+    if source_states is None:
+        try:
+            source_states = EventSourceMappingRepository.get_odds_source_states(
+                event_ids=[candidate.event_id for candidate in candidates],
+                sources=[ODDSPAPI_SOURCE],
+            )
+        except Exception as exc:
+            logger.exception("Oddspapi pre-start fixture mapping lookup failed")
+            summary = _skipped_summary(candidates, "oddspapi_mapping_lookup_failed")
+            summary.events_skipped = 0
+            summary.events_failed = len(candidates)
+            for result in summary.results:
+                result.skipped = False
+                result.skip_reason = None
+                result.error = str(exc)
+            _log_summary(summary)
+            return summary
+        candidates = select_oddspapi_pre_start_candidates(
+            events_to_process,
+            source_states=source_states,
+        )
 
     summary = OddspapiPreStartOddsBatchProcessor().process(
         candidates,

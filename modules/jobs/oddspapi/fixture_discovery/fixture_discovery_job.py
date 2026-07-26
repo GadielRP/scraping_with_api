@@ -8,7 +8,8 @@ import logging
 from time import monotonic
 
 from infrastructure.persistence.database import db_manager
-from modules.oddspapi.client import OddsPapiClient, OddsPapiError
+from modules.oddspapi.client import OddsPapiClient
+from modules.oddspapi.exceptions import OddsPapiError, OddsPapiHttpError
 
 from .constants import (
     DEFAULT_HAS_ODDS,
@@ -137,10 +138,10 @@ class OddspapiFixtureDiscoveryJob:
 
     @staticmethod
     def _is_fixture_not_found_error(error: OddsPapiError) -> bool:
-        message = str(error)
         return (
-            "status_code=404" in message
-            and "FIXTURE_NOT_FOUND" in message
+            isinstance(error, OddsPapiHttpError)
+            and error.status_code == 404
+            and error.error_code == "FIXTURE_NOT_FOUND"
         )
 
     def run(self, from_date: datetime, to_date: datetime) -> OddspapiFixtureDiscoverySummary:

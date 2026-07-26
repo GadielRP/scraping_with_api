@@ -2,7 +2,10 @@ from .event_repository import (
     EventRepository, 
     NBA_SEASONS
 )
-from .event_source_mapping_repository import EventSourceMappingRepository
+from .event_source_mapping_repository import (
+    EventSourceMappingRepository,
+    EventOddsSourceState,
+)
 from .season_repository import SeasonRepository
 from .participant_repository import ParticipantRepository
 from .competition_repository import CompetitionRepository
@@ -32,6 +35,7 @@ __all__ = [
     'EventRepository',
     'NBA_SEASONS',
     'EventSourceMappingRepository',
+    'EventOddsSourceState',
     'SeasonRepository',
     'ParticipantRepository',
     'CompetitionRepository',

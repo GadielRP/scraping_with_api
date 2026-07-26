@@ -1,12 +1,23 @@
 import logging
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Iterable, List, Optional
 
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, EventSourceMapping
+from shared.timezone_utils import get_local_now
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class EventOddsSourceState:
+    """Source identity and odds availability for one canonical event."""
+    event_id: int
+    source: str
+    source_event_id: str
+    has_odds: bool
 
 
 class EventSourceMappingRepository:
@@ -26,6 +37,20 @@ class EventSourceMappingRepository:
             return None
         normalized = str(value).strip()
         return normalized or None
+
+    @staticmethod
+    def _normalize_event_ids(values: Iterable[int]) -> set[int]:
+        event_ids: set[int] = set()
+        for value in values or []:
+            if isinstance(value, bool):
+                continue
+            try:
+                event_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if event_id > 0:
+                event_ids.add(event_id)
+        return event_ids
 
     @staticmethod
     def get_event_id_by_source(
@@ -72,11 +97,7 @@ class EventSourceMappingRepository:
         source_event_ids: list[str],
         session: Optional[Session] = None,
     ) -> dict[str, int]:
-        """Return canonical event IDs for a batch of source event IDs.
-
-        Missing or blank IDs are ignored.  The supplied session is deliberately
-        reused so callers can perform all lookups in the same transaction.
-        """
+        """Return canonical IDs in one query, reusing the supplied transaction."""
         normalized_source = EventSourceMappingRepository._normalize_source(source)
         normalized_ids = {
             EventSourceMappingRepository._normalize_source_event_id(value)
@@ -179,6 +200,97 @@ class EventSourceMappingRepository:
                 exc,
             )
             raise
+
+    @classmethod
+    def get_odds_source_states(
+        cls,
+        event_ids: Iterable[int],
+        sources: Iterable[str],
+        *,
+        session: Session | None = None,
+    ) -> dict[int, dict[str, EventOddsSourceState]]:
+        """Load provider IDs and odds availability in one query."""
+        normalized_event_ids = cls._normalize_event_ids(event_ids)
+        normalized_sources: set[str] = set()
+        for source in sources or []:
+            normalized_source = cls._normalize_source(source)
+            if normalized_source:
+                normalized_sources.add(normalized_source)
+        if not normalized_event_ids or not normalized_sources:
+            return {}
+
+        def _load(scoped_session: Session) -> dict[int, dict[str, EventOddsSourceState]]:
+            rows = (
+                scoped_session.query(
+                    EventSourceMapping.event_id,
+                    EventSourceMapping.source,
+                    EventSourceMapping.source_event_id,
+                    EventSourceMapping.has_odds,
+                )
+                .filter(
+                    EventSourceMapping.event_id.in_(normalized_event_ids),
+                    EventSourceMapping.source.in_(normalized_sources),
+                )
+                .all()
+            )
+            states: dict[int, dict[str, EventOddsSourceState]] = {}
+            for event_id, source, source_event_id, has_odds in rows:
+                normalized_source = cls._normalize_source(source)
+                states.setdefault(int(event_id), {})[normalized_source] = EventOddsSourceState(
+                    event_id=int(event_id),
+                    source=normalized_source,
+                    source_event_id=str(source_event_id),
+                    has_odds=bool(has_odds),
+                )
+            return states
+
+        if session is not None:
+            return _load(session)
+        with db_manager.get_session() as scoped_session:
+            return _load(scoped_session)
+
+    @classmethod
+    def mark_odds_unavailable(
+        cls,
+        event_ids: Iterable[int],
+        source: str,
+        *,
+        session: Session | None = None,
+    ) -> int:
+        """Persist confirmed missing odds endpoints in one idempotent update."""
+        normalized_event_ids = cls._normalize_event_ids(event_ids)
+        normalized_source = cls._normalize_source(source)
+        if not normalized_event_ids or not normalized_source:
+            return 0
+
+        def _update(scoped_session: Session) -> int:
+            updated_count = (
+                scoped_session.query(EventSourceMapping)
+                .filter(
+                    EventSourceMapping.event_id.in_(normalized_event_ids),
+                    EventSourceMapping.source == normalized_source,
+                    EventSourceMapping.has_odds.is_(True),
+                )
+                .update(
+                    {
+                        EventSourceMapping.has_odds: False,
+                        EventSourceMapping.updated_at: get_local_now(),
+                    },
+                    synchronize_session=False,
+                )
+            )
+            logger.info(
+                "Marked odds unavailable source=%s requested_events=%s updated_mappings=%s",
+                normalized_source,
+                len(normalized_event_ids),
+                updated_count,
+            )
+            return int(updated_count or 0)
+
+        if session is not None:
+            return _update(session)
+        with db_manager.get_session() as scoped_session:
+            return _update(scoped_session)
 
     @staticmethod
     def get_source_event_id(event_id: int, source: str, session: Optional[Session] = None) -> Optional[str]:

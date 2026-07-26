@@ -85,11 +85,10 @@ unclean state file on restart plus `memory.events`/`oom_kill` and Docker's
   - optimized: identical calls, 94.2 MB peak RSS, 43.4 s;
   - process peak reduction: 18.8%.
 
-Running the entire historical `tests/` directory is not a valid gate today:
-`tests/test_pre_start_check_job.py` performs PostgreSQL-only initialization at
-collection time while the test command uses SQLite, causing collection to
-terminate before the suite runs. This predates this change. The production
-PostgreSQL smoke test above covers the initialization path relevant here.
+The PostgreSQL-only pre-start harness is a developer tool, not an automated
+test. It now lives at
+`scripts/development/simulate_pre_start_check.py`, so pytest collection no
+longer initializes the application database through that entrypoint.
 
 ## Production deployment
 
