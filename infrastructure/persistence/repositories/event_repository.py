@@ -149,12 +149,12 @@ class EventRepository:
 
             source_event_id = event_payload.get('id')
             if not source_event_id:
-                logger.warning("Skipping event upsert because source_event_id is missing for source=%s", source)
+                logger.warning("🚫 Skipping event upsert because source_event_id is missing for source=%s", source)
                 return None
 
             if event_payload.get('startTimestamp') is None:
                 logger.warning(
-                    "Skipping event upsert because startTimestamp is missing for source=%s source_event_id=%s",
+                    "🚫 Skipping event upsert because startTimestamp is missing for source=%s source_event_id=%s",
                     source,
                     source_event_id,
                 )
@@ -163,7 +163,7 @@ class EventRepository:
             source_event_id = str(source_event_id).strip()
             if not source_event_id:
                 logger.warning(
-                    "Skipping event upsert because source_event_id is empty after normalization for source=%s",
+                    "🚫 Skipping event upsert because source_event_id is empty after normalization for source=%s",
                     source,
                 )
                 return None
@@ -516,29 +516,74 @@ class EventRepository:
     
     @staticmethod
     def batch_delete_events(event_ids: List[int]) -> int:
-        """Batch delete multiple events"""
+        """Delete events in one transaction and log the exact affected IDs."""
         if not event_ids:
             return 0
         
+        requested_event_ids = sorted(set(event_ids))
+
         try:
             with db_manager.get_session() as session:
-                session.query(Result).filter(Result.event_id.in_(event_ids)).delete(synchronize_session=False)
-                session.query(EventObservation).filter(EventObservation.event_id.in_(event_ids)).delete(synchronize_session=False)
-                deleted_count = session.query(Event).filter(Event.id.in_(event_ids)).delete(synchronize_session=False)
+                event_rows = (
+                    session.query(Event.id, Event.season_id)
+                    .filter(Event.id.in_(requested_event_ids))
+                    .with_for_update()
+                    .all()
+                )
+                deleted_event_ids = sorted(row.id for row in event_rows)
+                affected_season_ids = {
+                    row.season_id
+                    for row in event_rows
+                    if row.season_id is not None
+                }
+
+                session.query(Result).filter(
+                    Result.event_id.in_(deleted_event_ids)
+                ).delete(synchronize_session=False)
+                session.query(EventObservation).filter(
+                    EventObservation.event_id.in_(deleted_event_ids)
+                ).delete(synchronize_session=False)
+                deleted_count = session.query(Event).filter(
+                    Event.id.in_(deleted_event_ids)
+                ).delete(synchronize_session=False)
                 
-                all_seasons = session.query(Season).all()
-                orphaned_season_ids = []
-                for season in all_seasons:
-                    event_count = session.query(Event).filter(Event.season_id == season.id).count()
-                    if event_count == 0:
-                        orphaned_season_ids.append(season.id)
-                
+                remaining_season_ids = set()
+                if affected_season_ids:
+                    remaining_season_ids = {
+                        season_id
+                        for (season_id,) in (
+                            session.query(Event.season_id)
+                            .filter(Event.season_id.in_(affected_season_ids))
+                            .distinct()
+                            .all()
+                        )
+                    }
+                orphaned_season_ids = sorted(
+                    affected_season_ids - remaining_season_ids
+                )
+
                 if orphaned_season_ids:
                     deleted_seasons_count = session.query(Season).filter(Season.id.in_(orphaned_season_ids)).delete(synchronize_session=False)
                     logger.info(f"🧹 Cleaned up {deleted_seasons_count} orphaned season(s) with 0 events after batch deletion")
                 
-                logger.info(f"✅ Batch deleted {deleted_count} events and all related data")
-                return deleted_count
+            missing_event_ids = sorted(
+                set(requested_event_ids) - set(deleted_event_ids)
+            )
+            logger.info(
+                "✅🧹 Batch deletion recap: requested=%s deleted=%s missing=%s "
+                "deleted_event_ids=%s",
+                len(requested_event_ids),
+                deleted_count,
+                len(missing_event_ids),
+                deleted_event_ids,
+            )
+            if missing_event_ids:
+                logger.warning(
+                    "Batch deletion skipped missing event_ids=%s",
+                    missing_event_ids,
+                )
+
+            return deleted_count
                 
         except Exception as e:
             logger.error(f"Error batch deleting events: {e}")

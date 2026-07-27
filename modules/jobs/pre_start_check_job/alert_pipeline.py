@@ -80,13 +80,23 @@ class EventAlertProcessor:
         is_tracked_season = season_id in SEASON_ODDSPORTAL_MAP
         is_selected_source = discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
 
+        if Config.FILTER_ALERTS_BY_OP_SEASON and not is_tracked_season:
+            logger.info(
+                "[SKIP] Skipping alert processing for event %s due to early OP season filter check.",
+                event_obj.id,
+            )
+            return
+
         # 1. Synchronization (Wait for external data providers if necessary)
         op_data = self._sync_oddsportal_data(event_obj, odds_response)
 
         # 2. Evaluation (Perform analysis and generate prediction reports)
-        streak_analysis, should_send_streak = self._ensure_matchup_streak_analysis(
-            event_payload, event_obj, event_context, season_id, minutes_until_start
-        )
+        streak_analysis = None
+        should_send_streak = False
+        if is_selected_source:
+            streak_analysis, should_send_streak = self._ensure_matchup_streak_analysis(
+                event_payload, event_obj, event_context, season_id, minutes_until_start
+            )
 
        
         if streak_analysis and self.debug_mode == True:

@@ -277,13 +277,13 @@ def _build_evaluation_payloads(
         )
         if event_context is None:
             logger.warning(
-                "Skipping event %s because normalized EventContext could not be built",
+                "🚫 Skipping event %s because normalized EventContext could not be built",
                 event_obj.id,
             )
             continue
         if event_obj.round != "regular_season":
             logger.info(
-                "Skipping event %s because round=%s",
+                "🚫 Skipping event %s because round=%s",
                 event_obj.id,
                 event_obj.round,
             )

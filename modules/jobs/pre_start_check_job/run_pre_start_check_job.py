@@ -163,9 +163,12 @@ def _ingest_provider_odds(
     debug_mode: bool,
 ) -> None:
     """Execute independent provider phases using the same candidate plan."""
+    active_count = sum(
+        1 for c in event_plan.candidates if c.get("should_extract_odds")
+    )
     logger.info(
         "💰 Starting provider odds ingestion (%s candidates)",
-        len(event_plan.candidates),
+        active_count,
     )
     process_sofascore_pre_start_odds(
         event_plan.candidates,
@@ -289,9 +292,12 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             source_states,
             debug_mode=global_debug_mode,
         )
+        active_count = sum(
+            1 for c in event_plan.candidates if c.get("should_extract_odds")
+        )
         logger.info(
             "✅ Provider odds ingestion completed for %s candidates",
-            len(event_plan.candidates),
+            active_count,
         )
 
         logger.info("🔔 Starting key-moment alert/pillar evaluation")
