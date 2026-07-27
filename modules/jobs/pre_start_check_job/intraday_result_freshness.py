@@ -18,16 +18,16 @@ from modules.sofascore.results_parser import extract_results_from_response
 logger = logging.getLogger(__name__)
 
 RESULT_FRESHNESS_WINDOWS_BY_SPORT = {
-    "Football": [(110, 125), (145, 160)],
-    "Futsal": [(110, 125), (145, 160)],
-    "Basketball": [(125, 145), (170, 200)],
-    "Baseball": [(180, 200), (240, 260), (300, 330), (360, 390)],
-    "American Football": [(180, 220), (240, 300)],
-    "Ice Hockey": [(125, 145), (170, 210)],
-    "Hockey": [(125, 145), (170, 210)],
+    "Football": [(115, 125), (150, 160)],
+    "Futsal": [(115, 125), (150, 160)],
+    "Basketball": [(130, 140), (175, 190)],
+    "Baseball": [(185, 195), (245, 255), (310, 320), (370, 380)],
+    "American Football": [(190, 210), (250, 280)],
+    "Ice Hockey": [(130, 140), (180, 200)],
+    "Hockey": [(130, 140), (180, 200)],
 }
 
-DEFAULT_RESULT_FRESHNESS_WINDOWS = [(150, 170), (210, 240)]
+DEFAULT_RESULT_FRESHNESS_WINDOWS = [(155, 165), (215, 230)]
 
 
 def _get_minutes_ago(event_data: Dict) -> int:
