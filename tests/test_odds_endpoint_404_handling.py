@@ -14,14 +14,20 @@ from modules.jobs.oddspapi.pre_start_odds.odds_fetcher import (
 )
 from modules.jobs.oddspapi.pre_start_odds import pre_start_odds_job
 from modules.jobs.pre_start_check_job import event_candidate_builder
+from modules.jobs.pre_start_check_job import intraday_result_freshness
 from modules.jobs.pre_start_check_job import run_pre_start_check_job as pre_start_job_runner
 from modules.jobs.pre_start_check_job import sofascore_odds_processor
 from modules.odds_ingestion.fetch_result import OddsFetchResult, OddsFetchStatus
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.exceptions import OddsPapiHttpError
 from modules.sofascore.client import SofaScoreAPI
+from modules.sofascore import event_details
 from modules.sofascore.exceptions import SofaScoreNotFoundException
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
+from modules.sofascore.results_parser import (
+    extract_results_from_response,
+    is_event_status_deletable,
+)
 from scripts.development import pre_start_odds_simulation
 
 
@@ -123,6 +129,44 @@ def test_candidate_builder_reuses_bulk_mapping_without_event_requery(monkeypatch
 
     assert len(plan.candidates) == 1
     assert plan.by_event_id[101] is plan.candidates[0]
+
+
+def test_candidate_builder_skips_key_moment_after_timing_api_failure(monkeypatch):
+    scheduler = SimpleNamespace(
+        recently_rescheduled=set(),
+        event_repo=SimpleNamespace(),
+    )
+    event = {
+        "id": 101,
+        "slug": "home-away",
+        "sport": "Football",
+        "start_time_utc": None,
+    }
+    state = _state(101, "sofascore", "9001", True)
+
+    monkeypatch.setattr(
+        event_candidate_builder,
+        "Config",
+        SimpleNamespace(
+            ENABLE_ODDS_EXTRACTION=True,
+            PRE_START_ODDS_MOMENTS=[30],
+        ),
+    )
+    monkeypatch.setattr(
+        event_candidate_builder,
+        "should_extract_odds_for_event",
+        lambda *_args, **_kwargs: (False, None, False, 9001),
+    )
+
+    plan = event_candidate_builder.build_pre_start_event_candidates(
+        scheduler,
+        [event],
+        {101: 30},
+        {101: {"sofascore": state}},
+    )
+
+    assert plan.candidates == []
+    assert plan.by_event_id == {}
 
 
 def test_orchestrator_loads_odds_state_after_event_filtering(monkeypatch):
@@ -241,6 +285,238 @@ def test_sofascore_client_separates_strict_and_tolerant_requests(monkeypatch):
     )
 
     assert client.request_json_or_none("/event/9001/odds/1/all") is None
+
+
+def test_event_404_does_not_delete_without_batch_collector(monkeypatch):
+    delete_calls = []
+    client = SimpleNamespace(
+        request_json=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            SofaScoreNotFoundException(9001, "/event/9001")
+        )
+    )
+    monkeypatch.setattr(
+        event_details.EventRepository,
+        "batch_delete_events",
+        lambda event_ids: delete_calls.append(event_ids),
+    )
+
+    result = event_details.get_event_results(
+        client,
+        9001,
+        canonical_event_id=101,
+        update_time=True,
+        return_snapshot=True,
+    )
+
+    assert result == (None, None)
+    assert delete_calls == []
+
+
+def test_event_404_is_queued_when_batch_collector_is_provided():
+    deferred_deletion_event_ids = set()
+    client = SimpleNamespace(
+        request_json=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            SofaScoreNotFoundException(9001, "/event/9001")
+        )
+    )
+
+    result = event_details.get_event_results(
+        client,
+        9001,
+        canonical_event_id=101,
+        deferred_deletion_event_ids=deferred_deletion_event_ids,
+    )
+
+    assert result is None
+    assert deferred_deletion_event_ids == {101}
+
+
+def test_canceled_event_is_queued_for_batch_deletion():
+    deferred_deletion_event_ids = set()
+    client = SimpleNamespace(
+        request_json=lambda *_args, **_kwargs: {
+            "event": {
+                "id": 9001,
+                "status": {
+                    "code": 60,
+                    "type": "postponed",
+                    "description": "postponed",
+                },
+            }
+        }
+    )
+
+    result = event_details.get_event_results(
+        client,
+        9001,
+        canonical_event_id=101,
+        deferred_deletion_event_ids=deferred_deletion_event_ids,
+    )
+
+    assert result is None
+    assert deferred_deletion_event_ids == {101}
+
+
+def test_canceled_event_does_not_delete_without_batch_collector(monkeypatch):
+    delete_calls = []
+    client = SimpleNamespace(
+        request_json=lambda *_args, **_kwargs: {
+            "event": {
+                "id": 9001,
+                "status": {
+                    "code": 60,
+                    "type": "canceled",
+                    "description": "canceled",
+                },
+            }
+        }
+    )
+    monkeypatch.setattr(
+        event_details.EventRepository,
+        "batch_delete_events",
+        lambda event_ids: delete_calls.append(event_ids),
+    )
+
+    result = event_details.get_event_results(
+        client,
+        9001,
+        canonical_event_id=101,
+    )
+
+    assert result is None
+    assert delete_calls == []
+
+
+@pytest.mark.parametrize(
+    ("status_type", "status_description"),
+    [
+        ("finished", "postponed"),
+        ("ended", "postponed"),
+        ("postponed", "finished"),
+        ("postponed", "ended"),
+    ],
+)
+def test_deletable_status_code_is_rejected_for_finished_or_ended_text(
+    status_type,
+    status_description,
+):
+    raw_event = {
+        "id": 9001,
+        "status": {
+            "code": 60,
+            "type": status_type,
+            "description": status_description,
+        },
+    }
+
+    assert is_event_status_deletable(raw_event) is False
+    assert extract_results_from_response({"event": raw_event}) is None
+
+
+def test_postponed_status_requires_a_deletable_status_code():
+    postponed_event = {
+        "id": 9001,
+        "status": {
+            "code": 60,
+            "type": "postponed",
+            "description": "postponed",
+        },
+    }
+    non_deletable_code_event = {
+        "id": 9002,
+        "status": {
+            "code": 100,
+            "type": "postponed",
+            "description": "postponed",
+        },
+    }
+
+    assert is_event_status_deletable(postponed_event) is True
+    assert is_event_status_deletable(non_deletable_code_event) is False
+
+
+def test_intraday_batches_postponed_event_using_shared_status_parser(monkeypatch):
+    response = {
+        "event": {
+            "id": 9001,
+            "status": {
+                "code": 60,
+                "type": "postponed",
+                "description": "postponed",
+            },
+        }
+    }
+    deleted_batches = []
+
+    monkeypatch.setattr(
+        intraday_result_freshness,
+        "_should_check_result_now",
+        lambda _event: True,
+    )
+    monkeypatch.setattr(
+        intraday_result_freshness,
+        "resolve_sofascore_event_id",
+        lambda _event_id: 9001,
+    )
+    monkeypatch.setattr(
+        intraday_result_freshness.api_client,
+        "request_json",
+        lambda *_args, **_kwargs: response,
+    )
+    monkeypatch.setattr(
+        intraday_result_freshness,
+        "update_event_information_from_response",
+        lambda _response: True,
+    )
+    monkeypatch.setattr(
+        intraday_result_freshness.EventRepository,
+        "batch_delete_events",
+        lambda event_ids: deleted_batches.append(event_ids) or len(event_ids),
+    )
+
+    stats = intraday_result_freshness.process_intraday_result_freshness(
+        [{"id": 101, "sport": "Football", "start_time_utc": None}]
+    )
+
+    assert stats["queued_for_deletion"] == 1
+    assert stats["deleted_events"] == 1
+    assert deleted_batches == [[101]]
+
+
+def test_intraday_batches_event_endpoint_404(monkeypatch):
+    deleted_batches = []
+
+    monkeypatch.setattr(
+        intraday_result_freshness,
+        "_should_check_result_now",
+        lambda _event: True,
+    )
+    monkeypatch.setattr(
+        intraday_result_freshness,
+        "resolve_sofascore_event_id",
+        lambda _event_id: 9001,
+    )
+    monkeypatch.setattr(
+        intraday_result_freshness.api_client,
+        "request_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            SofaScoreNotFoundException(9001, "/event/9001")
+        ),
+    )
+    monkeypatch.setattr(
+        intraday_result_freshness.EventRepository,
+        "batch_delete_events",
+        lambda event_ids: deleted_batches.append(event_ids) or len(event_ids),
+    )
+
+    stats = intraday_result_freshness.process_intraday_result_freshness(
+        [{"id": 101, "sport": "Football", "start_time_utc": None}]
+    )
+
+    assert stats["queued_for_deletion"] == 1
+    assert stats["deleted_events"] == 1
+    assert stats["failed"] == 0
+    assert deleted_batches == [[101]]
 
 
 def test_sofascore_fetcher_translates_404_to_expected_result():

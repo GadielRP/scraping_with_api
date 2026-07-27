@@ -123,7 +123,7 @@ class Basketball4QMonitor:
             )
 
             if not all_nba_events:
-                logger.debug("No NBA events found in 0-140 minute window")
+                logger.info("No NBA events found in 0-140 minute window")
                 return
 
             logger.info(f"📋 Found {len(all_nba_events)} NBA event(s) that started within last 140 minutes:")

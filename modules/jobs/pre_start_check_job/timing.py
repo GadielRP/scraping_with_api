@@ -71,6 +71,9 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
                 current_start_time=event_start_time,
                 minutes_until_start=minutes_until,
             )
+            if is_timing_consistent is None:
+                logger.warning(f"â­ï¸ API error for event {event_id} - skipping odds extraction")
+                return False, None, False, sofascore_event_id
             return True, metadata_snapshot, False, sofascore_event_id
         else:
             logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - WILL EXTRACT ODDS")

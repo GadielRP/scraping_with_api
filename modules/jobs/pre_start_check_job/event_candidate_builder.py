@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 
+from infrastructure.settings import Config
+
 from .odds_source_state import (
     SOFASCORE_SOURCE,
     PreStartOddsSourceStates,
@@ -56,6 +58,21 @@ def build_pre_start_event_candidates(
                 event_data.get("start_time_utc"),
                 sofascore_event_id=preloaded_sofascore_event_id,
             )
+
+            if (
+                Config.ENABLE_ODDS_EXTRACTION
+                and minutes in Config.PRE_START_ODDS_MOMENTS
+                and not should_extract_odds
+                and not timing_changed
+                and metadata_snapshot is None
+            ):
+                logger.warning(
+                    "Skipping event %s after unsuccessful SofaScore timing/event "
+                    "validation at key moment %s",
+                    event_id,
+                    minutes,
+                )
+                continue
 
             if timing_changed:
                 scheduler.recently_rescheduled.add(event_id)

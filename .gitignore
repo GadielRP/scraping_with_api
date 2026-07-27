@@ -14,6 +14,7 @@ profile.yaml
 detect_unsupported_markets.py
 scratch/
 modulo*.txt
+slow_pre_start_check_job_run.logs
 
 # test files
 Bets-Hoja24.csv

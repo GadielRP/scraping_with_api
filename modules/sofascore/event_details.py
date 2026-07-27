@@ -15,14 +15,31 @@ from .results_parser import extract_results_from_response
 
 logger = logging.getLogger(__name__)
 
+EventResultsResponse = (
+    Dict
+    | List[Dict]
+    | tuple[Optional[bool], Optional[Dict]]
+    | bool
+    | None
+)
 
-def _remove_or_defer_canonical_event(
+
+def _queue_canonical_event_for_deletion(
     canonical_event_id: int | None,
     sofascore_event_id: int,
     reason: str,
     deferred_deletion_event_ids: set[int] | None,
 ) -> bool:
-    """Queue a deletion for batch processing or execute it immediately."""
+    """Queue a deletion for a caller-owned batch; never delete inline."""
+    if deferred_deletion_event_ids is None:
+        logger.warning(
+            "SofaScore event %s marked for deletion (%s), but no batch deletion "
+            "collector was provided; leaving canonical event in place",
+            sofascore_event_id,
+            reason,
+        )
+        return False
+
     if canonical_event_id is None:
         canonical_event_id = EventSourceMappingRepository.get_event_id_by_source(
             "sofascore",
@@ -36,34 +53,15 @@ def _remove_or_defer_canonical_event(
         )
         return False
 
-    if deferred_deletion_event_ids is not None:
-        deferred_deletion_event_ids.add(canonical_event_id)
-        logger.info(
-            "Queued canonical event %s for batch deletion "
-            "(SofaScore event %s, reason=%s)",
-            canonical_event_id,
-            sofascore_event_id,
-            reason,
-        )
-        return True
-
-    deleted = EventRepository.batch_delete_events([canonical_event_id])
-    if deleted:
-        logger.info(
-            "Deleted canonical event %s for SofaScore event %s (%s)",
-            canonical_event_id,
-            sofascore_event_id,
-            reason,
-        )
-        return True
-
-    logger.warning(
-        "Failed to delete canonical event %s for SofaScore event %s (%s)",
+    deferred_deletion_event_ids.add(canonical_event_id)
+    logger.info(
+        "Queued canonical event %s for batch deletion "
+        "(SofaScore event %s, reason=%s)",
         canonical_event_id,
         sofascore_event_id,
         reason,
     )
-    return False
+    return True
 
 
 def fetch_authoritative_event_response(
@@ -73,12 +71,12 @@ def fetch_authoritative_event_response(
     canonical_event_id: int | None = None,
     deferred_deletion_event_ids: set[int] | None = None,
 ) -> Optional[Dict]:
-    """Fetch `/event/{id}` and handle a confirmed missing canonical event."""
+    """Fetch `/event/{id}` and optionally queue a missing event for batch deletion."""
     endpoint = f"/event/{event_id}"
     try:
         return client.request_json(endpoint)
     except SofaScoreNotFoundException:
-        _remove_or_defer_canonical_event(
+        _queue_canonical_event_for_deletion(
             canonical_event_id,
             event_id,
             "event_endpoint_not_found",
@@ -197,7 +195,10 @@ def get_event_results(
     current_start_time=None,
     canonical_event_id: int | None = None,
     deferred_deletion_event_ids: set[int] | None = None,
-) -> Optional[Dict]:
+) -> EventResultsResponse:
+    def _empty_response() -> EventResultsResponse:
+        return (None, None) if return_snapshot else None
+
     try:
         if update_court_type:
             logger.info("✈️ Fetching /event/%s endpoint to update court type", event_id)
@@ -216,7 +217,7 @@ def get_event_results(
         )
         if not response:
             logger.warning("No response received for event %s", event_id)
-            return None
+            return _empty_response()
 
         if update_event_info and not update_court_type:
             update_event_information_from_response(response)
@@ -297,15 +298,15 @@ def get_event_results(
 
         result = extract_results_from_response(response)
         if isinstance(result, dict) and result.get("_canceled"):
-            _remove_or_defer_canonical_event(
+            _queue_canonical_event_for_deletion(
                 canonical_event_id,
                 event_id,
                 "canceled_or_postponed",
                 deferred_deletion_event_ids,
             )
-            return None
+            return _empty_response()
 
         return result
     except Exception as exc:
         logger.error("Error fetching event results for %s: %s", event_id, exc)
-        return None
+        return _empty_response()

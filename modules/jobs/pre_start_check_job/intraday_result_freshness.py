@@ -12,6 +12,7 @@ from modules.jobs.pre_start_check_job.timing import minutes_since_start
 from modules.sofascore import api_client
 from modules.sofascore.event_details import update_event_information_from_response
 from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.exceptions import SofaScoreNotFoundException
 from modules.sofascore.results_parser import extract_results_from_response
 
 logger = logging.getLogger(__name__)
@@ -53,17 +54,6 @@ def _describe_status(raw_event: Dict) -> str:
     )
 
 
-def _is_real_canceled_status(raw_event: Dict) -> bool:
-    status = raw_event.get("status") or {}
-    status_type = str(status.get("type") or "").lower().strip()
-    status_description = str(status.get("description") or "").lower().strip()
-
-    return (
-        status_type in {"canceled", "cancelled"}
-        or status_description in {"canceled", "cancelled"}
-    )
-
-
 def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
     stats = {
         "candidates_received": len(events),
@@ -71,7 +61,6 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
         "api_checked": 0,
         "results_upserted": 0,
         "not_finished": 0,
-        "postponed_or_non_deleted_canceled_group": 0,
         "queued_for_deletion": 0,
         "deleted_events": 0,
         "failed": 0,
@@ -117,7 +106,20 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
 
         try:
             sofascore_event_id = resolve_sofascore_event_id(event_id)
-            response = api_client.request_json_or_none(f"/event/{sofascore_event_id}")
+            try:
+                response = api_client.request_json(f"/event/{sofascore_event_id}")
+            except SofaScoreNotFoundException:
+                logger.info(
+                    "Intraday result freshness: event %s queued for batch deletion "
+                    "after SofaScore event endpoint 404",
+                    event_id,
+                )
+                return {
+                    "api_checked": 1,
+                    "queued_for_deletion": 1,
+                    "delete_event_id": event_id,
+                }
+
             if not response or "event" not in response:
                 logger.info(
                     "Intraday result freshness: event %s has no response payload yet",
@@ -138,25 +140,16 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             result_data = extract_results_from_response(response)
 
             if isinstance(result_data, dict) and result_data.get("_canceled"):
-                if _is_real_canceled_status(raw_event):
-                    logger.info(
-                        "Intraday result freshness: event %s queued for deletion as real canceled",
-                        event_id,
-                    )
-                    return {
-                        "api_checked": 1,
-                        "queued_for_deletion": 1,
-                        "delete_event_id": event_id,
-                    }
-
                 logger.info(
-                    "Intraday result freshness: event %s not deleted because status is not real canceled. status=%s",
+                    "Intraday result freshness: event %s queued for deletion as "
+                    "canceled/postponed. status=%s",
                     event_id,
                     _describe_status(raw_event),
                 )
                 return {
                     "api_checked": 1,
-                    "postponed_or_non_deleted_canceled_group": 1,
+                    "queued_for_deletion": 1,
+                    "delete_event_id": event_id,
                 }
 
             if result_data is None:
@@ -201,10 +194,6 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             stats["api_checked"] += outcome.get("api_checked", 0)
             stats["results_upserted"] += outcome.get("results_upserted", 0)
             stats["not_finished"] += outcome.get("not_finished", 0)
-            stats["postponed_or_non_deleted_canceled_group"] += outcome.get(
-                "postponed_or_non_deleted_canceled_group",
-                0,
-            )
             stats["queued_for_deletion"] += outcome.get("queued_for_deletion", 0)
             stats["failed"] += outcome.get("failed", 0)
 

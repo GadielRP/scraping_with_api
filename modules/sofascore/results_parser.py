@@ -7,6 +7,26 @@ from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+FINISHED_EVENT_STATUS_CODES = frozenset({100, 110, 92, 120, 130, 140})
+DELETABLE_EVENT_STATUS_CODES = frozenset({60, 70, 80, 90, 91})
+NON_DELETABLE_TERMINAL_STATUS_TEXT = frozenset({"finished", "ended"})
+
+
+def is_event_status_deletable(event_data: Dict) -> bool:
+    """Return whether an event status represents a removable canceled/postponed event."""
+    status = event_data.get("status") or {}
+    status_code = status.get("code")
+    status_type = str(status.get("type") or "").lower().strip()
+    status_description = str(status.get("description") or "").lower().strip()
+
+    if status_code not in DELETABLE_EVENT_STATUS_CODES:
+        return False
+
+    return not (
+        status_type in NON_DELETABLE_TERMINAL_STATUS_TEXT
+        or status_description in NON_DELETABLE_TERMINAL_STATUS_TEXT
+    )
+
 
 def _build_sets_string(score_data: Dict, sport: str) -> Optional[str]:
     if not score_data:
@@ -76,14 +96,11 @@ def extract_results_from_response(
         status_type = status.get("type", "").lower()
         status_description = status.get("description", "")
 
-        finished_status_codes = {100, 110, 92, 120, 130, 140}
-        canceled_status_codes = {60, 70, 80, 90, 91}
-
         if extract_tennis_points and status_code == 92:
             logger.info("Tennis player retired - status: %s, event_id: %s", status_description, event_id)
             return None
 
-        if status_code in canceled_status_codes:
+        if is_event_status_deletable(event_data):
             logger.info("Event canceled/postponed - status: %s, event_id: %s", status_description, event_id)
             return {
                 "_canceled": True,
@@ -91,7 +108,7 @@ def extract_results_from_response(
                 "status_description": status_description,
             }
 
-        if status_code not in finished_status_codes or status_type != "finished":
+        if status_code not in FINISHED_EVENT_STATUS_CODES or status_type != "finished":
             logger.info("Event not finished yet - status: %s, event_id: %s", status_description, event_id)
             return None
 

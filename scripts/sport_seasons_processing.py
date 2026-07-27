@@ -142,14 +142,6 @@ def describe_event_status(raw_event: Dict) -> str:
     return f"code={code}, type={status_type}, description={description}"
 
 
-def should_delete_canceled_event(raw_event: Dict) -> bool:
-    status = raw_event.get("status") or {}
-    status_type = str(status.get("type") or "").lower().strip()
-    status_description = str(status.get("description") or "").lower().strip()
-
-    return status_type in {"canceled", "cancelled"} or status_description in {"canceled", "cancelled"}
-
-
 def get_processing_season_ids(source_unique_tournament_id: int, season_id: int) -> tuple[int, ...]:
     included_season_ids = get_included_season_ids(
         source_unique_tournament_id=source_unique_tournament_id,
@@ -252,20 +244,12 @@ def reconcile_existing_season_events(
             result_data = api_client.extract_results_from_response({"event": raw_event})
 
             if result_data and result_data.get("_canceled"):
-                if should_delete_canceled_event(raw_event):
-                    canceled_event_ids_to_delete.add(event_id)
-                    logger.info(
-                        "Queued canceled reconciliation event %s for batch deletion. status=%s",
-                        event_id,
-                        describe_event_status(raw_event),
-                    )
-                else:
-                    still_pending += 1
-                    logger.info(
-                        "Reconciliation event %s has no result but is not canceled. status=%s",
-                        event_id,
-                        describe_event_status(raw_event),
-                    )
+                canceled_event_ids_to_delete.add(event_id)
+                logger.info(
+                    "Queued canceled/postponed reconciliation event %s for batch deletion. status=%s",
+                    event_id,
+                    describe_event_status(raw_event),
+                )
                 continue
 
             if result_data:
@@ -489,19 +473,12 @@ def process_season(tournament_id: int, season_id: int):
                         result_data = api_client.extract_results_from_response({'event': raw_event})
 
                         if result_data and result_data.get('_canceled'):
-                            if should_delete_canceled_event(raw_event):
-                                canceled_event_ids_to_delete.add(event_id)
-                                logger.info(
-                                    "Queued canceled event %s for batch deletion. status=%s",
-                                    event_id,
-                                    describe_event_status(raw_event),
-                                )
-                            else:
-                                logger.info(
-                                    "Event %s has no result but will NOT be deleted because it is not canceled. status=%s",
-                                    event_id,
-                                    describe_event_status(raw_event),
-                                )
+                            canceled_event_ids_to_delete.add(event_id)
+                            logger.info(
+                                "Queued canceled/postponed event %s for batch deletion. status=%s",
+                                event_id,
+                                describe_event_status(raw_event),
+                            )
                             continue
 
                         if result_data:
