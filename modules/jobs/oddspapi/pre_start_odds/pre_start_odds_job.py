@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 
 from infrastructure.persistence.repositories import (
     EventOddsSourceState,
@@ -16,7 +17,7 @@ from .odds_batch_processor import (
     OddspapiPreStartOddsEventResult,
     OddspapiPreStartOddsSummary,
 )
-from .constants import ODDSPAPI_SOURCE
+from .constants import ODDSPAPI_CURRENT_ODDS_ENDPOINT, ODDSPAPI_SOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +45,16 @@ def _skipped_summary(
 
 
 def _log_summary(summary: OddspapiPreStartOddsSummary) -> None:
+    skip_reasons = Counter(
+        result.skip_reason
+        for result in summary.results
+        if result.skipped and result.skip_reason
+    )
     logger.info(
         "Oddspapi pre-start odds summary: candidates_seen=%s candidates_with_mapping=%s "
         "requests_attempted=%s responses_received=%s events_ingested=%s events_skipped=%s "
         "events_failed=%s markets_saved=%s choices_saved=%s snapshots_saved=%s "
-        "unmapped_markets_detected=%s unmapped_outcomes_detected=%s",
+        "unmapped_markets_detected=%s unmapped_outcomes_detected=%s skip_reasons=%s",
         summary.candidates_seen,
         summary.candidates_with_mapping,
         summary.requests_attempted,
@@ -61,6 +67,7 @@ def _log_summary(summary: OddspapiPreStartOddsSummary) -> None:
         summary.snapshots_saved,
         summary.unmapped_markets_detected,
         summary.unmapped_outcomes_detected,
+        dict(skip_reasons),
     )
 
 
@@ -118,6 +125,11 @@ def run_oddspapi_pre_start_odds_ingestion(
 
     summary = OddspapiPreStartOddsBatchProcessor().process(
         candidates,
+        endpoint=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_ODDS_ENDPOINT",
+            ODDSPAPI_CURRENT_ODDS_ENDPOINT,
+        ),
         bookmakers=(
             getattr(Config, "ODDSPAPI_PRE_START_BOOKMAKERS", None)
             or Config.ODDSPAPI_DEFAULT_BOOKMAKERS

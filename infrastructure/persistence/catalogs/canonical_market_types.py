@@ -202,6 +202,8 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_name": {
                 "winner (incl. overtime)",
                 "full time (including overtime)",
+                # Baseball / cricket-style extras use the same "incl. extras" bucket as OT.
+                "winner (incl. extra innings)",
             },
             "period_lock": "Full Time",
         },
@@ -302,6 +304,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_name": {
                 "over under (incl. overtime)",
                 "total (incl. overtime)",
+                "over under (incl. extra innings)",
             },
             "period_lock": "Full Time",
         },
@@ -441,6 +444,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"teamtotals-team1"},
             "market_name": {
                 "over under team 1 (incl. overtime)",
+                "over under team 1 (incl. extra innings)",
             },
             "period_lock": "Full Time",
         },
@@ -457,6 +461,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"teamtotals-team2"},
             "market_name": {
                 "over under team 2 (incl. overtime)",
+                "over under team 2 (incl. extra innings)",
             },
             "period_lock": "Full Time",
         },
@@ -511,6 +516,8 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"spreads"},
             "market_name": {
                 "asian handicap (incl. overtime)",
+                # Baseball run line uses "Handicap (incl. extra innings)".
+                "handicap (incl. extra innings)",
             },
             "period_lock": "Full Time",
         },

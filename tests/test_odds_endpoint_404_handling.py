@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+import modules.oddspapi.client as oddspapi_client_module
 
 from infrastructure.persistence.repositories import EventOddsSourceState
 from modules.jobs.oddspapi.pre_start_odds.event_selector import (
@@ -545,6 +546,136 @@ def test_oddspapi_fetcher_uses_structured_404():
     assert result.payload is None
 
 
+def test_oddspapi_fetcher_uses_only_configured_historical_endpoint():
+    calls = []
+    historical_payload = {
+        "fixtureId": "fixture-1",
+        "bookmakers": {
+            "pinnacle": {
+                "markets": {
+                    "101": {
+                        "outcomes": {
+                            "101": {
+                                "players": {
+                                    "0": [
+                                        {
+                                            "createdAt": "2026-06-19T00:00:00Z",
+                                            "price": 1.9,
+                                            "active": True,
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+    client = SimpleNamespace(
+        get_historical_odds=lambda **kwargs: calls.append(("historical", kwargs))
+        or historical_payload,
+        get_odds=lambda **kwargs: calls.append(("odds", kwargs)) or {},
+    )
+
+    result = OddspapiOddsFetcher(client=client).fetch_odds(
+        "fixture-1",
+        bookmakers=["pinnacle"],
+        endpoint="historical-odds",
+        source_sport_id="10",
+    )
+
+    assert result.status is OddsFetchStatus.SUCCESS
+    assert [name for name, _ in calls] == ["historical"]
+    assert result.payload["sportId"] == "10"
+
+
+def test_oddspapi_client_builds_historical_request_and_enforces_bookmaker_limit():
+    captured = {}
+    response = SimpleNamespace(
+        status_code=200,
+        text="",
+        headers={},
+        json=lambda: {"fixtureId": "fixture-1"},
+    )
+    client = OddsPapiClient(
+        base_url="https://example.test",
+        api_key="test-key",
+        max_retries=1,
+        request_delay_seconds=0,
+        endpoint_cooldowns={},
+    )
+    client.session.get = lambda *_args, **kwargs: captured.update(kwargs) or response
+
+    client.get_historical_odds(
+        "fixture-1",
+        bookmakers=["pinnacle", "bet365"],
+        historical_id=12,
+        player_id=3,
+        outcome_id=101,
+        active=True,
+    )
+
+    assert captured["params"] == {
+        "fixtureId": "fixture-1",
+        "bookmakers": "pinnacle,bet365",
+        "id": 12,
+        "playerId": 3,
+        "outcomeId": 101,
+        "active": True,
+        "apiKey": "test-key",
+    }
+    with pytest.raises(ValueError, match="at most 3 bookmakers"):
+        client.get_historical_odds(
+            "fixture-1",
+            bookmakers=["one", "two", "three", "four"],
+        )
+
+
+def test_oddspapi_historical_endpoint_observes_five_second_cooldown(monkeypatch):
+    responses = iter(
+        [
+            SimpleNamespace(
+                status_code=200,
+                text="",
+                headers={},
+                json=lambda: {"fixtureId": "fixture-1"},
+            ),
+            SimpleNamespace(
+                status_code=200,
+                text="",
+                headers={},
+                json=lambda: {"fixtureId": "fixture-2"},
+            ),
+        ]
+    )
+    client = OddsPapiClient(
+        base_url="https://example.test",
+        api_key="test-key",
+        max_retries=1,
+        request_delay_seconds=0,
+        endpoint_cooldowns={"historical-odds": 5.0},
+    )
+    client.session.get = lambda *_args, **_kwargs: next(responses)
+    clock = iter([0.0, 2.0, 2.0])
+    sleeps = []
+    monkeypatch.setattr(
+        oddspapi_client_module.time,
+        "monotonic",
+        lambda: next(clock),
+    )
+    monkeypatch.setattr(
+        oddspapi_client_module.time,
+        "sleep",
+        lambda seconds: sleeps.append(seconds),
+    )
+
+    client.get_historical_odds("fixture-1", bookmakers=["pinnacle"])
+    client.get_historical_odds("fixture-2", bookmakers=["pinnacle"])
+
+    assert sleeps == [3.0]
+
+
 def test_oddspapi_client_exposes_http_status_for_404():
     response = SimpleNamespace(
         status_code=404,
@@ -594,6 +725,44 @@ def test_oddspapi_false_state_skips_request_and_mapping_index(monkeypatch):
     assert summary.requests_attempted == 0
     assert summary.events_skipped == 1
     assert summary.results[0].skip_reason == "oddspapi_odds_unavailable"
+
+
+def test_historical_mode_ignores_current_endpoint_availability_flag(monkeypatch):
+    requested = []
+    marked = []
+    processor = OddspapiPreStartOddsBatchProcessor(
+        fetcher=SimpleNamespace(
+            fetch_odds=lambda *_args, **kwargs: requested.append(kwargs)
+            or OddsFetchResult.endpoint_not_found()
+        )
+    )
+    monkeypatch.setattr(
+        "modules.jobs.oddspapi.pre_start_odds.odds_batch_processor."
+        "MarketMappingRepository.build_index",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "modules.jobs.oddspapi.pre_start_odds.odds_batch_processor."
+        "EventSourceMappingRepository.mark_odds_unavailable",
+        lambda event_ids, source: marked.append((set(event_ids), source)),
+    )
+    candidate = OddspapiPreStartCandidate(
+        event_id=101,
+        fixture_id="fixture-1",
+        minutes_until_start=-5,
+        has_odds=False,
+        source_sport_id="10",
+    )
+
+    summary = processor.process(
+        [candidate],
+        bookmakers=["pinnacle"],
+        endpoint="historical-odds",
+    )
+
+    assert summary.requests_attempted == 1
+    assert requested[0]["endpoint"] == "historical-odds"
+    assert marked == []
 
 
 def test_oddspapi_missing_api_key_skips_mapping_query(monkeypatch):

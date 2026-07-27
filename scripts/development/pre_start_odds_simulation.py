@@ -138,7 +138,7 @@ def run_production_odds_phase(
             key_moments,
         )
 
-    logger.info("  Running production Oddspapi odds processor...")
+    logger.info("💰 Running production Oddspapi odds processor...")
     oddspapi_summary = run_oddspapi_pre_start_odds_ingestion(
         [event_info],
         debug_mode=debug_mode,

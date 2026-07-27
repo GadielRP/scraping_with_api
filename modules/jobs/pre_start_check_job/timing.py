@@ -72,7 +72,7 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
                 minutes_until_start=minutes_until,
             )
             if is_timing_consistent is None:
-                logger.warning(f"â­ï¸ API error for event {event_id} - skipping odds extraction")
+                logger.warning(f"🗑️⏭️ API error for event {event_id} - skipping odds extraction")
                 return False, None, False, sofascore_event_id
             return True, metadata_snapshot, False, sofascore_event_id
         else:
@@ -92,7 +92,7 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
     logger.debug(f"Timing consistency check for event {event_id}: is_timing_consistent={is_timing_consistent}, metadata_snapshot={metadata_snapshot}")
 
     if is_timing_consistent is None:
-        logger.warning(f"⏭️ API error for event {event_id} - skipping odds extraction")
+        logger.warning(f"🗑️⏭️ API error for event {event_id} - skipping odds extraction")
         return False, None, False, sofascore_event_id
 
     if is_timing_consistent:

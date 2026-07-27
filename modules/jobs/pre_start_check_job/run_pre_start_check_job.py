@@ -143,7 +143,7 @@ def _maintain_recently_started_events(
     freshness_stats = process_intraday_result_freshness(
         result_freshness_candidates
     )
-    logger.info("Intraday result freshness completed: %s", freshness_stats)
+    logger.info("🔄✅ Intraday result freshness completed: %s", freshness_stats)
     if (
         freshness_stats.get("results_upserted", 0) > 0
         or freshness_stats.get("deleted_events", 0) > 0

@@ -70,6 +70,37 @@ def _parse_env_bool(env_name, default_value=False):
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def _parse_env_float_map(env_name, default_value=None):
+    """Parse a comma-separated ``endpoint=seconds`` configuration map."""
+    parsed = {
+        str(key).strip().strip('/').lower(): float(value)
+        for key, value in (default_value or {}).items()
+    }
+    value = os.getenv(env_name)
+    if value is None or not value.strip():
+        return parsed
+
+    for item in value.split(','):
+        endpoint, separator, seconds = item.partition('=')
+        endpoint = endpoint.strip().strip('/').lower()
+        seconds = seconds.strip()
+        if not separator or not endpoint:
+            logging.getLogger(__name__).warning(
+                "Ignoring invalid %s entry; expected endpoint=seconds",
+                env_name,
+            )
+            continue
+        try:
+            parsed[endpoint] = max(0.0, float(seconds))
+        except (TypeError, ValueError):
+            logging.getLogger(__name__).warning(
+                "Ignoring invalid %s cooldown for endpoint=%s",
+                env_name,
+                endpoint,
+            )
+    return parsed
+
+
 _X_REQUESTED_WITH_SAFE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
@@ -255,6 +286,17 @@ class Config:
     ODDSPAPI_FIXTURES_COOLDOWN_SECONDS = float(
         os.getenv('ODDSPAPI_FIXTURES_COOLDOWN_SECONDS', '2.0')
     )
+    # Comma-separated endpoint=seconds values. The generic map allows new
+    # OddsPapi endpoints to opt into their documented cooldown without adding
+    # another client-specific conditional.
+    ODDSPAPI_ENDPOINT_COOLDOWNS = _parse_env_float_map(
+        'ODDSPAPI_ENDPOINT_COOLDOWNS',
+        {
+            'fixtures': ODDSPAPI_FIXTURES_COOLDOWN_SECONDS,
+            'odds': 0.5,
+            'historical-odds': 5.0,
+        },
+    )
     ODDSPAPI_DEFAULT_BOOKMAKERS = _parse_optional_env_list(
         'ODDSPAPI_DEFAULT_BOOKMAKERS',
         ['pinnacle'],
@@ -271,6 +313,10 @@ class Config:
         'ENABLE_ODDSPAPI_PRE_START_ODDS',
         True,
     )
+    ODDSPAPI_PRE_START_ODDS_ENDPOINT = os.getenv(
+        'ODDSPAPI_PRE_START_ODDS_ENDPOINT',
+        'odds',
+    ).strip().lower()
     ODDSPAPI_PRE_START_BOOKMAKERS = _parse_optional_env_list(
         'ODDSPAPI_PRE_START_BOOKMAKERS',
         ODDSPAPI_DEFAULT_BOOKMAKERS,

@@ -3,6 +3,7 @@ from .exceptions import OddsPapiError, OddsPapiHttpError
 from .event_candidate_matcher import EventCandidateScore, MatchDecision, OddspapiEventCandidateMatcher
 from .event_resolver import OddspapiEventResolution, OddspapiEventResolver
 from .fixture_normalizer import OddspapiFixtureIdentity
+from .historical_odds_normalizer import OddspapiHistoricalOddsNormalizer
 
 __all__ = [
     "OddsPapiClient",
@@ -11,6 +12,7 @@ __all__ = [
     "OddspapiEventResolver",
     "OddspapiEventResolution",
     "OddspapiFixtureIdentity",
+    "OddspapiHistoricalOddsNormalizer",
     "OddspapiEventCandidateMatcher",
     "EventCandidateScore",
     "MatchDecision",

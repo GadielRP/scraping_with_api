@@ -18,6 +18,7 @@ class EventOddsSourceState:
     source: str
     source_event_id: str
     has_odds: bool
+    source_sport_id: str | None = None
 
 
 class EventSourceMappingRepository:
@@ -226,6 +227,7 @@ class EventSourceMappingRepository:
                     EventSourceMapping.source,
                     EventSourceMapping.source_event_id,
                     EventSourceMapping.has_odds,
+                    EventSourceMapping.source_sport_id,
                 )
                 .filter(
                     EventSourceMapping.event_id.in_(normalized_event_ids),
@@ -234,13 +236,14 @@ class EventSourceMappingRepository:
                 .all()
             )
             states: dict[int, dict[str, EventOddsSourceState]] = {}
-            for event_id, source, source_event_id, has_odds in rows:
+            for event_id, source, source_event_id, has_odds, source_sport_id in rows:
                 normalized_source = cls._normalize_source(source)
                 states.setdefault(int(event_id), {})[normalized_source] = EventOddsSourceState(
                     event_id=int(event_id),
                     source=normalized_source,
                     source_event_id=str(source_event_id),
                     has_odds=bool(has_odds),
+                    source_sport_id=cls._normalize_optional_text(source_sport_id),
                 )
             return states
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from contextlib import contextmanager
 from typing import Any
 
 import requests
@@ -26,6 +27,7 @@ class OddsPapiClient:
         max_retries: int | None = None,
         request_delay_seconds: float | None = None,
         fixtures_cooldown_seconds: float | None = None,
+        endpoint_cooldowns: dict[str, float] | None = None,
     ) -> None:
         self.base_url = (base_url or Config.ODDSPAPI_BASE_URL).rstrip("/")
         self.api_key = Config.ODDSPAPI_KEY if api_key is None else api_key
@@ -36,13 +38,24 @@ class OddsPapiClient:
             if request_delay_seconds is None
             else request_delay_seconds
         )
-        self.fixtures_cooldown_seconds = (
-            getattr(Config, "ODDSPAPI_FIXTURES_COOLDOWN_SECONDS", 2.0)
-            if fixtures_cooldown_seconds is None
-            else fixtures_cooldown_seconds
+        configured_cooldowns = getattr(Config, "ODDSPAPI_ENDPOINT_COOLDOWNS", {})
+        self.endpoint_cooldowns = self._normalize_endpoint_cooldowns(
+            configured_cooldowns
         )
-        self._last_request_at: dict[str, float] = {}
-        self._cooldown_lock = threading.Lock()
+        # Keep the old constructor argument working for callers/tests that
+        # configured only the fixtures endpoint before the generic map existed.
+        if fixtures_cooldown_seconds is not None:
+            self.endpoint_cooldowns["fixtures"] = max(
+                0.0,
+                float(fixtures_cooldown_seconds),
+            )
+        if endpoint_cooldowns is not None:
+            self.endpoint_cooldowns.update(
+                self._normalize_endpoint_cooldowns(endpoint_cooldowns)
+            )
+        self._last_request_completed_at: dict[str, float] = {}
+        self._endpoint_locks: dict[str, threading.Lock] = {}
+        self._endpoint_locks_guard = threading.Lock()
         self.session = requests.Session()
         # OddsPapi must never inherit HTTP(S)_PROXY or other request settings from env.
         self.session.trust_env = False
@@ -56,24 +69,57 @@ class OddsPapiClient:
         cleaned = [str(value).strip() for value in values if str(value).strip()]
         return ",".join(cleaned) or None
 
-    def _wait_for_endpoint_cooldown(self, endpoint: str) -> None:
-        """Enforce documented endpoint cooldowns across all client requests."""
-        cooldown_seconds = (
-            self.fixtures_cooldown_seconds
-            if endpoint == "fixtures"
-            else 0.0
-        )
+    @staticmethod
+    def _normalize_endpoint(endpoint: str) -> str:
+        normalized = str(endpoint or "").strip().lstrip("/")
+        if normalized.startswith("v4/"):
+            normalized = normalized[3:]
+        return normalized.rstrip("/").lower()
+
+    @staticmethod
+    def _normalize_endpoint_cooldowns(
+        cooldowns: dict[str, float] | None,
+    ) -> dict[str, float]:
+        normalized: dict[str, float] = {}
+        for endpoint, seconds in (cooldowns or {}).items():
+            key = OddsPapiClient._normalize_endpoint(endpoint)
+            if not key:
+                continue
+            try:
+                normalized[key] = max(0.0, float(seconds))
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Ignoring invalid OddsPapi cooldown for endpoint=%s",
+                    endpoint,
+                )
+        return normalized
+
+    def _endpoint_lock(self, endpoint: str) -> threading.Lock:
+        with self._endpoint_locks_guard:
+            return self._endpoint_locks.setdefault(endpoint, threading.Lock())
+
+    @contextmanager
+    def _endpoint_request_slot(self, endpoint: str):
+        """Serialize requests per endpoint and enforce completion-to-start spacing."""
+        cooldown_seconds = self.endpoint_cooldowns.get(endpoint, 0.0)
         if cooldown_seconds <= 0:
+            yield
             return
 
-        with self._cooldown_lock:
-            now = time.monotonic()
-            last_request_at = self._last_request_at.get(endpoint)
-            if last_request_at is not None:
-                remaining = cooldown_seconds - (now - last_request_at)
+        with self._endpoint_lock(endpoint):
+            last_completed_at = self._last_request_completed_at.get(endpoint)
+            if last_completed_at is not None:
+                remaining = cooldown_seconds - (
+                    time.monotonic() - last_completed_at
+                )
                 if remaining > 0:
                     time.sleep(remaining)
-            self._last_request_at[endpoint] = time.monotonic()
+            try:
+                yield
+            finally:
+                # OddsPapi's documented cooldown is effectively response-to-next
+                # request for sequential calls, so record completion, not start.
+                self._last_request_completed_at[endpoint] = time.monotonic()
 
     @staticmethod
     def _retry_after_seconds(response) -> float | None:
@@ -118,9 +164,7 @@ class OddsPapiClient:
         if not str(self.api_key or "").strip():
             raise ValueError("ODDSPAPI_KEY is required to make an OddsPapi request")
 
-        normalized_endpoint = str(endpoint or "").strip().lstrip("/")
-        if normalized_endpoint.startswith("v4/"):
-            normalized_endpoint = normalized_endpoint[3:]
+        normalized_endpoint = self._normalize_endpoint(endpoint)
         if not normalized_endpoint:
             raise ValueError("OddsPapi endpoint is required")
 
@@ -142,8 +186,12 @@ class OddsPapiClient:
 
             try:
                 # Do not add a proxies argument: trust_env=False is the single source of truth.
-                self._wait_for_endpoint_cooldown(normalized_endpoint)
-                response = self.session.get(url, params=request_params, timeout=self.timeout)
+                with self._endpoint_request_slot(normalized_endpoint):
+                    response = self.session.get(
+                        url,
+                        params=request_params,
+                        timeout=self.timeout,
+                    )
             except requests.RequestException as exc:
                 if attempt < attempts - 1:
                     logger.warning(
@@ -247,7 +295,54 @@ class OddsPapiClient:
             "language": language or Config.ODDSPAPI_DEFAULT_LANGUAGE,
             "verbosity": Config.ODDSPAPI_DEFAULT_VERBOSITY if verbosity is None else verbosity,
         }
+        logger.info("✈️ Fetching oddspapi odds for fixture_id: %s", fixture_id)
         return self._request("odds", params)
+
+    def get_historical_odds(
+        self,
+        fixture_id: str,
+        bookmakers: list[str] | None = None,
+        *,
+        historical_id: int | None = None,
+        player_id: int | None = None,
+        outcome_id: int | None = None,
+        active: bool | None = None,
+    ) -> dict:
+        selected_bookmakers = (
+            Config.ODDSPAPI_DEFAULT_BOOKMAKERS
+            if bookmakers is None
+            else bookmakers
+        )
+        cleaned_bookmakers = [
+            str(bookmaker).strip()
+            for bookmaker in (selected_bookmakers or [])
+            if str(bookmaker).strip()
+        ]
+        if not cleaned_bookmakers:
+            raise ValueError(
+                "At least one bookmaker is required for OddsPapi historical odds"
+            )
+        if len(cleaned_bookmakers) > 3:
+            raise ValueError(
+                "OddsPapi historical odds supports at most 3 bookmakers"
+            )
+
+        payload = self._request(
+            "historical-odds",
+            {
+                "fixtureId": fixture_id,
+                "bookmakers": self._comma_separated(cleaned_bookmakers),
+                "id": historical_id,
+                "playerId": player_id,
+                "outcomeId": outcome_id,
+                "active": active,
+            },
+        )
+        if not isinstance(payload, dict):
+            raise OddsPapiError(
+                "OddsPapi /v4/historical-odds response must be an object"
+            )
+        return payload
 
     def get_odds_by_tournaments(
         self,

@@ -202,6 +202,12 @@ class MarketOddsIngestionService:
                 enabled_only=True,
             )
         if not market_mapping_index.market_mappings:
+            logger.info(
+                "Skipping OddsPapi ingestion fixture_id=%s event_id=%s: "
+                "market mapping index is empty",
+                odds_response.get("fixtureId"),
+                resolution.canonical_event_id,
+            )
             return MarketIngestionResult(
                 event_id=resolution.canonical_event_id,
                 source=source,
@@ -241,6 +247,21 @@ class MarketOddsIngestionService:
         bookies_detected = len(bookmakers)
 
         if not bookmakers or markets_detected == 0:
+            logger.info(
+                "Skipping OddsPapi ingestion fixture_id=%s event_id=%s: "
+                "no normalized markets raw_bookmakers=%s normalized_bookmakers=%s "
+                "markets_detected=%s diagnostics=%s",
+                odds_response.get("fixtureId"),
+                resolution.canonical_event_id,
+                len(odds_response.get("bookmakerOdds") or {}),
+                len(bookmakers),
+                markets_detected,
+                {
+                    key: len(value or [])
+                    for key, value in diagnostics.items()
+                    if value
+                },
+            )
             return MarketIngestionResult(
                 event_id=resolution.canonical_event_id,
                 source=source,
@@ -314,6 +335,13 @@ class MarketOddsIngestionService:
                 snapshots_saved += save_result.snapshots_saved
 
             if bookies_processed == 0:
+                logger.info(
+                    "Skipping OddsPapi ingestion fixture_id=%s event_id=%s: "
+                    "no canonical bookmakers resolved normalized_bookmakers=%s",
+                    odds_response.get("fixtureId"),
+                    resolution.canonical_event_id,
+                    len(bookmakers),
+                )
                 dual_process_available = DualProcessOddsRepository.event_has_dual_process_odds(
                     resolution.canonical_event_id
                 )

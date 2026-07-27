@@ -59,6 +59,7 @@ def test_bulk_load_returns_provider_specific_states_in_one_select():
                 source="oddspapi",
                 source_event_id="fixture-1",
                 has_odds=True,
+                source_sport_id="10",
             ),
         ]
     )
@@ -82,6 +83,7 @@ def test_bulk_load_returns_provider_specific_states_in_one_select():
     assert states[101]["sofascore"].has_odds is False
     assert states[101]["oddspapi"].source_event_id == "fixture-1"
     assert states[101]["oddspapi"].has_odds is True
+    assert states[101]["oddspapi"].source_sport_id == "10"
 
 
 def test_mark_odds_unavailable_updates_only_requested_provider():

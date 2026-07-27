@@ -316,6 +316,35 @@ def test_repository_sportsbook_choice_keeps_single_null_exchange_snapshot(tmp_pa
     assert snapshot.exchange_size is None
 
 
+def test_repository_persists_historical_opening_and_final_odds(tmp_path):
+    manager = _repository_manager(tmp_path)
+    event_id, bookie_id = _seed_repository_entities(manager)
+    response_data = _repository_response(
+        {
+            "name": "1",
+            "initialDecimalValue": 1.7,
+            "decimalValue": 1.9,
+            "changedAt": "2026-06-19T12:34:56Z",
+        }
+    )
+
+    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
+        result = MarketRepository.save_markets_from_response_with_stats(
+            event_id=event_id,
+            odds_response=response_data,
+            bookie_id=bookie_id,
+            source="oddspapi",
+        )
+
+    assert result.snapshots_saved == 1
+    with manager.get_session() as session:
+        choice = session.query(MarketChoice).one()
+        snapshot = session.query(MarketChoiceSnapshot).one()
+    assert float(choice.initial_odds) == 1.7
+    assert float(choice.current_odds) == 1.9
+    assert snapshot.source_collected_at.isoformat() == "2026-06-19T12:34:56"
+
+
 def test_repository_exchange_choice_persists_ladder_and_best_back_current_odds(tmp_path):
     manager = _repository_manager(tmp_path)
     event_id, bookie_id = _seed_repository_entities(manager)

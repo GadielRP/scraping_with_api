@@ -201,6 +201,16 @@ class OddspapiMarketAdapter:
                             decimal_value = round(float(price), 3)
                         except (TypeError, ValueError):
                             continue
+                        initial_decimal_value = None
+                        initial_price = player.get("initialPrice")
+                        if initial_price not in (None, ""):
+                            try:
+                                initial_decimal_value = round(
+                                    float(initial_price),
+                                    3,
+                                )
+                            except (TypeError, ValueError):
+                                initial_decimal_value = None
 
                         choice_name = outcome_resolution.canonical_choice_name
                         if any(choice["name"] == choice_name for choice in normalized_market["choices"]):
@@ -209,6 +219,7 @@ class OddspapiMarketAdapter:
                         choice = {
                             "name": choice_name,
                             "decimalValue": decimal_value,
+                            "initialDecimalValue": initial_decimal_value,
                             "sourceMarketId": normalized_market_id,
                             "sourceOutcomeId": normalized_outcome_id,
                             "bookmakerOutcomeId": player.get("bookmakerOutcomeId"),

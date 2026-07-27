@@ -11,7 +11,12 @@ from infrastructure.persistence.repositories import (
 )
 from modules.odds_ingestion import MarketOddsIngestionService
 
-from .constants import ODDSPAPI_INGESTION_SOURCE, ODDSPAPI_SOURCE
+from .constants import (
+    ODDSPAPI_CURRENT_ODDS_ENDPOINT,
+    ODDSPAPI_INGESTION_SOURCE,
+    ODDSPAPI_PRE_START_ODDS_ENDPOINTS,
+    ODDSPAPI_SOURCE,
+)
 from .event_selector import OddspapiPreStartCandidate
 from .odds_fetcher import OddspapiOddsFetcher
 
@@ -105,12 +110,26 @@ class OddspapiPreStartOddsBatchProcessor:
         allowed_market_groups: list[str] | None = None,
         allowed_market_periods: list[str] | None = None,
         max_events: int | None = None,
+        endpoint: str = ODDSPAPI_CURRENT_ODDS_ENDPOINT,
     ) -> OddspapiPreStartOddsSummary:
+        selected_endpoint = str(endpoint or "").strip().lower()
+        if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
+            supported = ", ".join(sorted(ODDSPAPI_PRE_START_ODDS_ENDPOINTS))
+            raise ValueError(
+                f"Unsupported Oddspapi odds endpoint '{endpoint}'. "
+                f"Expected one of: {supported}"
+            )
+
         summary = OddspapiPreStartOddsSummary(candidates_seen=len(candidates or []))
         mapped_candidates = [candidate for candidate in candidates or [] if candidate.fixture_id]
         summary.candidates_with_mapping = len(mapped_candidates)
+        respects_stored_availability = (
+            selected_endpoint == ODDSPAPI_CURRENT_ODDS_ENDPOINT
+        )
         requestable_candidates = [
-            candidate for candidate in mapped_candidates if candidate.has_odds
+            candidate
+            for candidate in mapped_candidates
+            if candidate.has_odds or not respects_stored_availability
         ]
         requested_limit = max_events if max_events and max_events > 0 else None
 
@@ -130,7 +149,7 @@ class OddspapiPreStartOddsBatchProcessor:
                 event_result.skip_reason = "missing_oddspapi_mapping"
                 summary.events_skipped += 1
                 continue
-            if not candidate.has_odds:
+            if not candidate.has_odds and respects_stored_availability:
                 event_result.skipped = True
                 event_result.skip_reason = "oddspapi_odds_unavailable"
                 summary.events_skipped += 1
@@ -148,14 +167,18 @@ class OddspapiPreStartOddsBatchProcessor:
                 fetch_result = self.fetcher.fetch_odds(
                     candidate.fixture_id,
                     bookmakers=bookmakers,
+                    endpoint=selected_endpoint,
+                    source_sport_id=candidate.source_sport_id,
                 )
                 if fetch_result.endpoint_missing:
-                    odds_not_found_event_ids.add(candidate.event_id)
+                    if respects_stored_availability:
+                        odds_not_found_event_ids.add(candidate.event_id)
                     event_result.skipped = True
                     event_result.skip_reason = "oddspapi_odds_endpoint_not_found"
                     summary.events_skipped += 1
                     logger.info(
-                        "Oddspapi odds endpoint missing event_id=%s fixture_id=%s",
+                        "Oddspapi odds endpoint missing endpoint=%s event_id=%s fixture_id=%s",
+                        selected_endpoint,
                         candidate.event_id,
                         candidate.fixture_id,
                     )
@@ -177,6 +200,25 @@ class OddspapiPreStartOddsBatchProcessor:
                 )
                 self._copy_ingestion_stats(event_result, ingestion_result)
                 self._accumulate(summary, event_result)
+                logger.info(
+                    "Oddspapi pre-start response processed endpoint=%s event_id=%s fixture_id=%s "
+                    "markets_detected=%s choices_detected=%s bookies_detected=%s "
+                    "markets_saved=%s choices_saved=%s snapshots_saved=%s "
+                    "unmapped_markets=%s unmapped_outcomes=%s skipped=%s reason=%s",
+                    selected_endpoint,
+                    candidate.event_id,
+                    candidate.fixture_id,
+                    event_result.markets_detected,
+                    event_result.choices_detected,
+                    event_result.bookies_detected,
+                    event_result.markets_saved,
+                    event_result.choices_saved,
+                    event_result.snapshots_saved,
+                    event_result.unmapped_markets_detected,
+                    event_result.unmapped_outcomes_detected,
+                    getattr(ingestion_result, "skipped", False),
+                    getattr(ingestion_result, "reason", None),
+                )
                 if getattr(ingestion_result, "skipped", False):
                     event_result.skipped = True
                     event_result.skip_reason = getattr(ingestion_result, "reason", None) or "ingestion_skipped"
