@@ -60,6 +60,10 @@ class OddsPapiClient:
         # OddsPapi must never inherit HTTP(S)_PROXY or other request settings from env.
         self.session.trust_env = False
 
+    def close(self) -> None:
+        """Release the connection pool owned by this client."""
+        self.session.close()
+
     @staticmethod
     def _comma_separated(values: list[str] | tuple[str, ...] | str | None) -> str | None:
         if isinstance(values, str):

@@ -17,7 +17,7 @@ from .odds_batch_processor import (
     OddspapiPreStartOddsEventResult,
     OddspapiPreStartOddsSummary,
 )
-from .constants import ODDSPAPI_CURRENT_ODDS_ENDPOINT, ODDSPAPI_SOURCE
+from .constants import ODDSPAPI_HISTORICAL_ODDS_ENDPOINT, ODDSPAPI_SOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,7 @@ def _log_summary(summary: OddspapiPreStartOddsSummary) -> None:
         "requests_attempted=%s responses_received=%s events_ingested=%s events_skipped=%s "
         "events_failed=%s markets_saved=%s choices_saved=%s snapshots_saved=%s "
         "unmapped_markets_detected=%s unmapped_outcomes_detected=%s "
+        "skipped_incomplete_markets_detected=%s "
         "http_requests_attempted=%s exchange_outcomes_selected=%s "
         "exchange_historical_requests_attempted=%s "
         "exchange_historical_requests_failed=%s "
@@ -71,6 +72,7 @@ def _log_summary(summary: OddspapiPreStartOddsSummary) -> None:
         summary.snapshots_saved,
         summary.unmapped_markets_detected,
         summary.unmapped_outcomes_detected,
+        summary.skipped_incomplete_markets_detected,
         summary.http_requests_attempted,
         summary.exchange_outcomes_selected,
         summary.exchange_historical_requests_attempted,
@@ -101,7 +103,15 @@ def run_oddspapi_pre_start_odds_ingestion(
         summary = OddspapiPreStartOddsSummary()
         _log_summary(summary)
         return summary
-    if not str(getattr(Config, "ODDSPAPI_KEY", "") or "").strip():
+    api_keys = [
+        str(value).strip()
+        for value in (
+            getattr(Config, "ODDSPAPI_KEYS", None)
+            or [getattr(Config, "ODDSPAPI_KEY", "")]
+        )
+        if str(value or "").strip()
+    ]
+    if not api_keys:
         logger.warning(
             "Oddspapi pre-start odds ingestion skipped because ODDSPAPI_KEY "
             "is not configured"
@@ -137,7 +147,7 @@ def run_oddspapi_pre_start_odds_ingestion(
         endpoint=getattr(
             Config,
             "ODDSPAPI_PRE_START_ODDS_ENDPOINT",
-            ODDSPAPI_CURRENT_ODDS_ENDPOINT,
+            ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
         ),
         bookmakers=(
             getattr(Config, "ODDSPAPI_PRE_START_BOOKMAKERS", None)
@@ -184,6 +194,11 @@ def run_oddspapi_pre_start_odds_ingestion(
             60.0,
         ),
         dry_run=dry_run,
+        allowed_market_keys=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_MARKET_KEYS",
+            None,
+        ),
         allowed_market_groups=getattr(
             Config,
             "ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS",
@@ -195,6 +210,8 @@ def run_oddspapi_pre_start_odds_ingestion(
             None,
         ),
         max_events=getattr(Config, "ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN", 0),
+        api_keys=api_keys,
+        max_workers=getattr(Config, "ODDSPAPI_PRE_START_WORKERS", 1),
     )
     _log_summary(summary)
     if debug_mode:

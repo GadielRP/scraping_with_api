@@ -1,20 +1,18 @@
 import requests
 import json
 import os
-from dotenv import load_dotenv
 import argparse
-from datetime import datetime
 
-load_dotenv()
-
-base_url = 'https://api.oddspapi.io/'
-api_key = os.getenv('ODDSpapi_KEY')
+try:
+    from ._runtime import get_api_key, oddspapi_url
+except ImportError:
+    from _runtime import get_api_key, oddspapi_url
 
 def get_odds(fixture_id, folder, bookmakers=None, odds_format=None, language=None, verbosity=None, market_ids=None):
     """Fetches full odds with optional filters"""
     params = {
         "fixtureId": fixture_id,
-        "apiKey": api_key
+        "apiKey": get_api_key()
     }
 
     if bookmakers: params["bookmakers"] = bookmakers
@@ -26,7 +24,7 @@ def get_odds(fixture_id, folder, bookmakers=None, odds_format=None, language=Non
     filename = f"{folder}/odds_{fixture_id}.json"
     
     print(f"🚀 Fetching full odds for fixture {fixture_id}...")
-    response = requests.get(f"{base_url}v4/odds", params=params)
+    response = requests.get(oddspapi_url("v4/odds"), params=params)
     
     if response.status_code == 200:
         with open(filename, "w") as file:

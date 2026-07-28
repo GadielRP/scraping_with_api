@@ -1,21 +1,20 @@
 import requests
 import json
 import os
-from dotenv import load_dotenv
 import argparse
 
-load_dotenv()
-
-base_url = 'https://api.oddspapi.io/'
-api_key = os.getenv('ODDSpapi_KEY')
+try:
+    from ._runtime import get_api_key, oddspapi_url
+except ImportError:
+    from _runtime import get_api_key, oddspapi_url
 
 def fetch_bookmakers(folder):
     """Retrieves all available bookmakers and their unique slugs"""
-    params = {"apiKey": api_key}
+    params = {"apiKey": get_api_key()}
     filename = f"{folder}/bookmakers_list.json"
     
     print("🚀 Fetching available bookmakers...")
-    response = requests.get(f"{base_url}v4/bookmakers", params=params)
+    response = requests.get(oddspapi_url("v4/bookmakers"), params=params)
     
     if response.status_code == 200:
         bookmakers = response.json()

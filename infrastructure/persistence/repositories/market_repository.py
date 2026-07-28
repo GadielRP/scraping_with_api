@@ -10,7 +10,7 @@ from sqlalchemy import and_, or_
 from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceSnapshot
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories.bookie_repository import BookieRepository
-from shared.timezone_utils import get_local_now
+from shared.timezone_utils import convert_utc_to_local, get_local_now
 
 logger = logging.getLogger(__name__)
 
@@ -57,20 +57,32 @@ class MarketRepository:
         return val_stripped if val_stripped else None
 
     @staticmethod
-    def _parse_source_datetime(value) -> Optional[datetime]:
+    def _parse_source_datetime(
+        value,
+        *,
+        convert_to_project_timezone: bool = False,
+    ) -> Optional[datetime]:
         if value in (None, ""):
             return None
         if isinstance(value, datetime):
-            return value
-        normalized = str(value).strip()
-        if not normalized:
-            return None
-        if normalized.endswith("Z"):
-            normalized = normalized[:-1] + "+00:00"
-        try:
-            return datetime.fromisoformat(normalized)
-        except ValueError:
-            return None
+            parsed = value
+        else:
+            normalized = str(value).strip()
+            if not normalized:
+                return None
+            if normalized.endswith("Z"):
+                normalized = normalized[:-1] + "+00:00"
+            try:
+                parsed = datetime.fromisoformat(normalized)
+            except ValueError:
+                return None
+        if convert_to_project_timezone:
+            return convert_utc_to_local(parsed)
+        return parsed
+
+    @staticmethod
+    def _uses_utc_source_timestamps(source: str | None) -> bool:
+        return str(source or "").strip().lower().startswith("oddspapi")
 
     @staticmethod
     def _numeric_or_none(value):
@@ -223,6 +235,11 @@ class MarketRepository:
                                 session.flush()
 
                             choices_data = market_data.get('choices', [])
+                            uses_oddspapi_source_time = (
+                                MarketRepository._uses_utc_source_timestamps(
+                                    source
+                                )
+                            )
                             seen_choice_names = {}
                             for choice_data in choices_data:
                                 choice_name = MarketRepository._normalize_string_or_none(choice_data.get('name'))
@@ -288,7 +305,8 @@ class MarketRepository:
                                     initial_was_set = initial_odds is not None
 
                                 source_collected_at = MarketRepository._parse_source_datetime(
-                                    choice_data.get("changedAt") or choice_data.get("sourceCollectedAt")
+                                    choice_data.get("changedAt") or choice_data.get("sourceCollectedAt"),
+                                    convert_to_project_timezone=uses_oddspapi_source_time,
                                 )
                                 snapshot_fields = {
                                     "choice_id": choice.choice_id,
@@ -305,7 +323,8 @@ class MarketRepository:
                                 exchange_quotes = choice_data.get("exchangeQuotes")
                                 initial_source_collected_at = (
                                     MarketRepository._parse_source_datetime(
-                                        choice_data.get("initialChangedAt")
+                                        choice_data.get("initialChangedAt"),
+                                        convert_to_project_timezone=uses_oddspapi_source_time,
                                     )
                                 )
                                 if (

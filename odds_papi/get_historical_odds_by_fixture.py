@@ -1,21 +1,19 @@
 import requests
 import json
 import os
-from dotenv import load_dotenv
 import argparse
-from datetime import datetime
 
-load_dotenv()
-
-base_url = 'https://api.oddspapi.io/'
-api_key = os.getenv('ODDSpapi_KEY')
+try:
+    from ._runtime import get_api_key, oddspapi_url
+except ImportError:
+    from _runtime import get_api_key, oddspapi_url
 
 def get_historical_odds(fixture_id, bookmakers, folder, odd_id=None, player_id=None, outcome_id=None, active=None, if_none_match=None):
     """Fetches historical odds for a specific fixture and bookmakers"""
     params = {
         "fixtureId": fixture_id,
         "bookmakers": bookmakers,
-        "apiKey": api_key
+        "apiKey": get_api_key()
     }
 
     if odd_id: params["id"] = odd_id
@@ -27,10 +25,17 @@ def get_historical_odds(fixture_id, bookmakers, folder, odd_id=None, player_id=N
     if if_none_match: headers["If-None-Match"] = if_none_match
 
     safe_bookmakers = bookmakers.replace(",", "_")
-    filename = f"{folder}/historical_odds_{fixture_id}_{safe_bookmakers}.json"
+    filename = f"{folder}/historical_odds_{fixture_id}_{safe_bookmakers}"
+    if outcome_id:
+        filename += f"_outcome{outcome_id}"
+    filename += ".json"
     
     print(f"🚀 Fetching historical odds for fixture {fixture_id}...")
-    response = requests.get(f"{base_url}v4/historical-odds", params=params, headers=headers)
+    response = requests.get(
+        oddspapi_url("v4/historical-odds"),
+        params=params,
+        headers=headers,
+    )
     
     if response.status_code == 200:
         with open(filename, "w") as file:

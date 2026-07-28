@@ -1,9 +1,13 @@
 import requests
 import json
 import os
-from dotenv import load_dotenv
 import argparse
 import sys
+
+try:
+    from ._runtime import get_api_key, oddspapi_url
+except ImportError:
+    from _runtime import get_api_key, oddspapi_url
 
 # Ensure UTF-8 output encoding for emojis on Windows
 if hasattr(sys.stdout, 'reconfigure'):
@@ -11,16 +15,11 @@ if hasattr(sys.stdout, 'reconfigure'):
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')
 
-load_dotenv()
-
-base_url = 'https://api.oddspapi.io/'
-api_key = os.getenv('ODDSpapi_KEY')
-
 def get_fixture(fixture_id, folder, language=None):
     """Retrieves a single fixture based on its fixture ID"""
     params = {
         "fixtureId": fixture_id,
-        "apiKey": api_key
+        "apiKey": get_api_key()
     }
     if language:
         params["language"] = language
@@ -28,7 +27,7 @@ def get_fixture(fixture_id, folder, language=None):
     filename = f"{folder}/fixture_{fixture_id}.json"
     
     print(f"🚀 Fetching fixture details for ID: {fixture_id}...")
-    response = requests.get(f"{base_url}v4/fixture", params=params)
+    response = requests.get(oddspapi_url("v4/fixture"), params=params)
     
     if response.status_code == 200:
         with open(filename, "w") as file:

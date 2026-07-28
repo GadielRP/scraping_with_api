@@ -1,3 +1,6 @@
+from threading import Barrier, Lock
+from types import SimpleNamespace
+
 from infrastructure.persistence.repositories.market_mapping_repository import (
     CanonicalMarketResolution,
     CanonicalOutcomeResolution,
@@ -8,6 +11,12 @@ from modules.jobs.oddspapi.pre_start_odds.exchange_outcome_selector import (
 )
 from modules.jobs.oddspapi.pre_start_odds.odds_acquisition_service import (
     OddspapiPreStartOddsAcquisitionService,
+)
+from modules.jobs.oddspapi.pre_start_odds.odds_batch_processor import (
+    OddspapiPreStartOddsBatchProcessor,
+)
+from modules.jobs.oddspapi.pre_start_odds.event_selector import (
+    OddspapiPreStartCandidate,
 )
 from modules.odds_ingestion.fetch_result import OddsFetchResult
 
@@ -271,6 +280,186 @@ def test_historical_mode_enriches_regular_opening_and_preserves_current_price():
     )
     assert player["price"] == 1.95
     assert player["initialPrice"] == 1.7
+
+
+def test_historical_mode_without_exchange_uses_only_historical_endpoint():
+    calls = []
+
+    class Fetcher:
+        def fetch_odds(self, fixture_id, **kwargs):
+            calls.append(kwargs)
+            return OddsFetchResult.from_payload(
+                _regular_historical_normalized()
+            )
+
+    result = OddspapiPreStartOddsAcquisitionService(
+        fetcher=Fetcher()
+    ).acquire(
+        "fixture-1",
+        source_sport_id="10",
+        minutes_until_start=120,
+        selected_endpoint="historical-odds",
+        regular_bookmakers=["pinnacle", "bet365"],
+        exchange_bookmakers=None,
+        market_mapping_index=_mapping_index(),
+        exchange_market_keys=None,
+        exchange_main_line_only=True,
+        exchange_include_player_props=False,
+        exchange_historical_moments=[120],
+        exchange_max_outcomes_per_event=8,
+        exchange_request_budget=40,
+        minimum_initial_span_minutes=60,
+        current_odds_available=True,
+    )
+
+    assert [
+        (call["endpoint"], call["bookmakers"])
+        for call in calls
+    ] == [
+        ("historical-odds", ["pinnacle", "bet365"]),
+    ]
+    assert result.http_requests_attempted == 1
+    player = (
+        result.payload["bookmakerOdds"]["pinnacle"]["markets"]["101"]
+        ["outcomes"]["101"]["players"]["0"]
+    )
+    assert player["price"] == 1.9
+    assert player["initialPrice"] == 1.7
+
+
+def test_historical_mode_skips_current_and_exchange_at_non_positive_moments():
+    calls = []
+
+    class Fetcher:
+        def fetch_odds(self, fixture_id, **kwargs):
+            calls.append(kwargs)
+            return OddsFetchResult.from_payload(
+                _regular_historical_normalized()
+            )
+
+    service = OddspapiPreStartOddsAcquisitionService(fetcher=Fetcher())
+    common = {
+        "fixture_id": "fixture-1",
+        "source_sport_id": "10",
+        "selected_endpoint": "historical-odds",
+        "regular_bookmakers": ["pinnacle"],
+        "exchange_bookmakers": ["betfair-ex"],
+        "market_mapping_index": _mapping_index(),
+        "exchange_market_keys": ["1x2_full_time"],
+        "exchange_main_line_only": True,
+        "exchange_include_player_props": False,
+        "exchange_historical_moments": [120],
+        "exchange_max_outcomes_per_event": 8,
+        "exchange_request_budget": 40,
+        "minimum_initial_span_minutes": 60,
+        "current_odds_available": True,
+    }
+
+    for minutes_until_start in (0, -5):
+        calls.clear()
+        result = service.acquire(
+            minutes_until_start=minutes_until_start,
+            **common,
+        )
+
+        assert [
+            (call["endpoint"], call["bookmakers"])
+            for call in calls
+        ] == [
+            ("historical-odds", ["pinnacle"]),
+        ]
+        assert result.http_requests_attempted == 1
+        assert result.exchange_historical_requests_attempted == 0
+
+
+def test_two_api_keys_process_two_events_concurrently_with_bounded_clients():
+    barrier = Barrier(2)
+    lock = Lock()
+    calls = []
+    clients = []
+    active_requests = 0
+    maximum_active_requests = 0
+
+    class Client:
+        def __init__(self, api_key):
+            self.api_key = api_key
+            self.closed = False
+            clients.append(self)
+
+        def get_historical_odds(self, fixture_id, **_kwargs):
+            nonlocal active_requests, maximum_active_requests
+            with lock:
+                active_requests += 1
+                maximum_active_requests = max(
+                    maximum_active_requests,
+                    active_requests,
+                )
+                calls.append((self.api_key, fixture_id))
+            try:
+                barrier.wait(timeout=2)
+                return {
+                    "fixtureId": fixture_id,
+                    "bookmakers": {},
+                }
+            finally:
+                with lock:
+                    active_requests -= 1
+
+        def close(self):
+            self.closed = True
+
+    class IngestionService:
+        @staticmethod
+        def save_from_oddspapi_response(*_args, **_kwargs):
+            return SimpleNamespace(skipped=False)
+
+    candidates = [
+        OddspapiPreStartCandidate(
+            event_id=1,
+            fixture_id="fixture-1",
+            minutes_until_start=120,
+            has_odds=True,
+            source_sport_id="10",
+        ),
+        OddspapiPreStartCandidate(
+            event_id=99,
+            fixture_id=None,
+            minutes_until_start=120,
+        ),
+        OddspapiPreStartCandidate(
+            event_id=2,
+            fixture_id="fixture-2",
+            minutes_until_start=120,
+            has_odds=True,
+            source_sport_id="10",
+        ),
+    ]
+    processor = OddspapiPreStartOddsBatchProcessor(
+        ingestion_service=IngestionService,
+        client_factory=Client,
+    )
+
+    summary = processor.process(
+        candidates,
+        bookmakers=["pinnacle", "bet365"],
+        endpoint="historical-odds",
+        api_keys=["key-1", "key-2"],
+        max_workers=2,
+        market_mapping_index=_mapping_index(),
+    )
+
+    assert maximum_active_requests == 2
+    assert sorted(calls) == [
+        ("key-1", "fixture-1"),
+        ("key-2", "fixture-2"),
+    ]
+    assert summary.responses_received == 2
+    assert summary.events_ingested == 2
+    assert summary.events_skipped == 1
+    assert [result.event_id for result in summary.results] == [1, 99, 2]
+    assert summary.results[1].skip_reason == "missing_oddspapi_mapping"
+    assert len(clients) == 2
+    assert all(client.closed for client in clients)
 
 
 def test_exchange_request_budget_truncates_outcomes():

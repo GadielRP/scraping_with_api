@@ -1,21 +1,19 @@
 import requests
 import json
 import os
-from dotenv import load_dotenv
 import argparse
 from datetime import datetime
-import time
 
-load_dotenv()
-
-base_url = 'https://api.oddspapi.io/'
-api_key = os.getenv('ODDSpapi_KEY')
+try:
+    from ._runtime import get_api_key, oddspapi_url
+except ImportError:
+    from _runtime import get_api_key, oddspapi_url
 
 def get_fixtures(folder, **kwargs):
     """Fetches fixtures based on API parameters"""
     # Filter out None values
     params = {k: v for k, v in kwargs.items() if v is not None}
-    params["apiKey"] = api_key
+    params["apiKey"] = get_api_key()
 
     # Create a unique filename based on the provided IDs and dates
     parts = []
@@ -31,7 +29,7 @@ def get_fixtures(folder, **kwargs):
     filename = f"{folder}/fixtures_{'_'.join(parts)}.json"
     
     print(f"🚀 Fetching fixtures with params: { {k:v for k,v in params.items() if k != 'apiKey'} }...")
-    response = requests.get(f"{base_url}v4/fixtures", params=params)
+    response = requests.get(oddspapi_url("v4/fixtures"), params=params)
     
     if response.status_code == 200:
         with open(filename, "w") as file:

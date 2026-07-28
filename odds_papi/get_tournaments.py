@@ -1,15 +1,14 @@
 import requests
 import json
 import os
-from dotenv import load_dotenv
 import argparse
 from datetime import datetime
 import time
 
-load_dotenv()
-
-base_url = 'https://api.oddspapi.io/'
-api_key = os.getenv('ODDSpapi_KEY')
+try:
+    from ._runtime import get_api_key, oddspapi_url
+except ImportError:
+    from _runtime import get_api_key, oddspapi_url
 
 # 🌟 FULL SPORTS LIST
 sports_map = {
@@ -46,13 +45,13 @@ def fetch_tournaments(sport_name, folder, date):
         return
     params = {
         "sportId": sports_map[sport_name],
-        "apiKey": api_key
+        "apiKey": get_api_key()
         }
 
     filename = f"{folder}/{sport_name}_{date}.json"
     
     print(f"🚀 Fetching {sport_name} tournaments...")
-    response = requests.get(f"{base_url}v4/tournaments", params=params)
+    response = requests.get(oddspapi_url("v4/tournaments"), params=params)
     
     save_to_file(response, filename)
 

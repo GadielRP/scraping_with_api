@@ -63,6 +63,25 @@ class OddspapiPreStartOddsAcquisitionService:
                 f"and exchange: {', '.join(sorted(overlap))}"
             )
 
+    @staticmethod
+    def _should_fetch_current_odds(
+        *,
+        selected_endpoint: str,
+        exchange_bookmakers: list[str],
+        minutes_until_start: int | float | None,
+        current_odds_available: bool,
+    ) -> bool:
+        """Use /odds only when the selected flow or an exchange requires it."""
+        if not current_odds_available:
+            return False
+        if minutes_until_start is not None and minutes_until_start <= 0:
+            return False
+        return (
+            str(selected_endpoint or "").strip().lower()
+            == ODDSPAPI_CURRENT_ODDS_ENDPOINT
+            or bool(exchange_bookmakers)
+        )
+
     def _fetch(
         self,
         fixture_id: str,
@@ -109,7 +128,13 @@ class OddspapiPreStartOddsAcquisitionService:
 
         current_payload: dict | None = None
         current_missing = False
-        if combined and current_odds_available:
+        should_fetch_current = self._should_fetch_current_odds(
+            selected_endpoint=selected_endpoint,
+            exchange_bookmakers=exchange,
+            minutes_until_start=minutes_until_start,
+            current_odds_available=current_odds_available,
+        )
+        if combined and should_fetch_current:
             result.http_requests_attempted += 1
             current_result = self._fetch(
                 fixture_id,

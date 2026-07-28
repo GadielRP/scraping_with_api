@@ -179,7 +179,7 @@ Set up environment variables. Copy .env.example to .env and populate the require
 *   `ODDSPAPI_FIXTURE_DISCOVERY_TIMES` - comma-separated scheduler times for automatic fixture discovery.
 *   `ODDSPAPI_FIXTURES_COOLDOWN_SECONDS` - minimum delay between `/v4/fixtures` requests; default `2.0` seconds.
 *   `ENABLE_ODDSPAPI_PRE_START_ODDS` - enables Oddspapi odds ingestion inside the normal pre-start run.
-*   `ODDSPAPI_PRE_START_BOOKMAKERS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` and `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` - scope the provider's pre-start requests and persisted markets.
+*   `ODDSPAPI_PRE_START_BOOKMAKERS`, `ODDSPAPI_PRE_START_MARKET_KEYS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` and `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` - scope the provider's pre-start requests and persisted markets.
 *   Proxy toggles and credentials (if scraping behind a proxy).
 *   Optional toggles like `ENABLE_TIMESTAMP_CORRECTION`, `ENABLE_ODDS_EXTRACTION`, `EXCLUDED_SPORTS`, `STREAK_ALERT_MIN_RESULTS`.
 
@@ -236,8 +236,8 @@ creates events, or calls `/v4/fixtures`.
 Add the following to `.env` (the same defaults are present in `.env.example`):
 
 ```dotenv
-# Required for any Oddspapi request. Leave empty only to disable requests safely.
-ODDSPAPI_KEY=replace_with_your_oddspapi_key
+# One key keeps serial behavior. Two keys enable two bounded event workers.
+ODDSPAPI_KEY=replace_with_key_1,replace_with_key_2
 
 # The pre-start scheduler cadence and its shared timing moments.
 POLL_INTERVAL_MINUTES=5
@@ -247,42 +247,69 @@ PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES=3
 # Oddspapi pre-start ingestion.
 ENABLE_ODDSPAPI_PRE_START_ODDS=true
 ODDSPAPI_PRE_START_ODDS_ENDPOINT=historical-odds
+ODDSPAPI_PRE_START_WORKERS=2
 ODDSPAPI_PRE_START_BOOKMAKERS=pinnacle,bet365
-ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS=betfair-ex
+ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS=
 ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS=1x2_full_time,over_under_full_time,asian_handicap_full_time
 ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS=120
 ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT=8
 ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN=40
 ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES=60
+ODDSPAPI_PRE_START_MARKET_KEYS=
 ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS=
 ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS=
 ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN=0
 ```
 
-`ODDSPAPI_KEY` is the only Oddspapi pre-start value that must contain a secret;
-without it the flow logs one warning and skips eligible events. The remaining
-values are optional because `infrastructure/settings/config.py` supplies the
-shown defaults:
+`ODDSPAPI_KEY` is the only Oddspapi pre-start value that must contain secrets.
+It accepts one key or two comma-separated keys; without a key the flow logs one
+warning and skips eligible events. The remaining values are optional because
+`infrastructure/settings/config.py` supplies the shown defaults:
 
 | Setting | Default | Effect |
 | :--- | :--- | :--- |
 | `ENABLE_ODDSPAPI_PRE_START_ODDS` | `true` | Set to `false` to disable only the Oddspapi subflow; SofaScore pre-start ingestion, views, alerts and pillars continue normally. |
-| `ODDSPAPI_PRE_START_ODDS_ENDPOINT` | `odds` | Selects whether regular bookmakers use only current odds or are enriched from `historical-odds`. `/v4/odds` remains the current-price source and exchange-outcome discovery request. |
-| `ODDSPAPI_PRE_START_BOOKMAKERS` | `ODDSPAPI_DEFAULT_BOOKMAKERS` (normally `pinnacle`) | Regular sportsbook slugs. They are sent to `/v4/odds` and may be requested together from Historical Odds. |
-| `ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS` | none | Exchange slugs such as `betfair-ex`. They are included in `/v4/odds`; Historical Odds is called separately once per selected outcome. A slug cannot belong to both bookmaker lists. |
+| `ODDSPAPI_PRE_START_ODDS_ENDPOINT` | `historical-odds` | Selects the regular-bookmaker source. Historical mode uses the latest historical observation as current odds and the earliest credible observation as initial odds, without calling `/v4/odds` unless an exchange bookmaker is enabled. |
+| `ODDSPAPI_PRE_START_WORKERS` | `2` | Maximum concurrent pre-start event workers. It is hard-capped at two and also limited by the number of configured API keys. One key always means serial execution. |
+| `ODDSPAPI_PRE_START_BOOKMAKERS` | `ODDSPAPI_DEFAULT_BOOKMAKERS` (normally `pinnacle`) | Regular sportsbook slugs requested together from the selected endpoint. The recommended Historical configuration uses `pinnacle,bet365`. |
+| `ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS` | none | Optional exchange slugs such as `betfair-ex`. Enabling one also enables the pre-start `/v4/odds` discovery request; Historical Odds is then called separately once per selected exchange outcome. A slug cannot belong to both bookmaker lists. |
 | `ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS` | `ODDSPAPI_DEFAULT_MARKET_KEYS` | Canonical market keys eligible for exchange historical requests. Filtering happens after resolving the fixture-specific `marketId`. |
 | `ODDSPAPI_PRE_START_EXCHANGE_MAIN_LINE_ONLY` | `true` | For line/handicap markets, request Historical Odds only for outcomes whose current `/odds` player is marked `mainLine=true`. Non-line markets are unaffected. |
 | `ODDSPAPI_PRE_START_EXCHANGE_INCLUDE_PLAYER_PROPS` | `false` | Enables exchange player-prop discovery. It is disabled by default to avoid multiplying outcome/player requests. |
 | `ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS` | `120` | Key moments at which exchange Historical Odds may run. The default performs opening enrichment only two hours before start. |
 | `ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT` | `8` | Hard cap on outcome-scoped historical exchange requests for one fixture. |
 | `ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN` | `40` | Cross-event request budget for exchange Historical Odds in one scheduler run. `0` means unlimited. |
-| `ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES` | `60` | Minimum elapsed time between the earliest and latest active historical quote before the earliest price is accepted as an initial odd. |
+| `ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES` | `60` | Minimum elapsed time between the earliest active and latest current historical quote before the earliest price is accepted as an initial odd. |
+| `ODDSPAPI_PRE_START_MARKET_KEYS` | no filter | Optional comma-separated canonical market keys to persist. Blank means every mapped key whose canonical type has `enabled_for_ingestion=true`. |
 | `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS` | no filter | Optional comma-separated market groups to persist, e.g. `1X2,Home/Away,Over/Under,Asian handicap`. Blank means all mapped groups. |
 | `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` | no filter | Optional comma-separated periods to persist, e.g. `Full Time`. Blank means all mapped periods. |
 | `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` | `0` | Maximum mapped events to request in one pre-start pass. `0` means unlimited; extra candidates are skipped for that pass. |
 | `POLL_INTERVAL_MINUTES` | `5` | Frequency of the existing pre-start cycle. The job checks exact rounded minute values, so choose a cadence that lands on the configured key moments. |
 | `PRE_START_ODDS_MOMENTS` | `120,30,5,0,-5` | Exact rounded minutes before/after kickoff at which **both** SofaScore and Oddspapi are eligible to capture odds. |
 | `PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES` | `3` | Allowed distance from a configured moment when loading the downstream trajectory. |
+
+`/v4/odds` is never requested when `minutes_until_start <= 0`, even if an
+exchange bookmaker or the current-odds mode is enabled. When Historical mode
+is selected, regular bookmakers remain available at the configured `0` and
+`-5` moments.
+
+Parallel pre-start ingestion is enabled only when at least two distinct API
+keys are configured and exchange bookmakers are disabled. Each worker owns one
+HTTP client, one connection pool and one endpoint cooldown. Events are ingested
+immediately after each response, so the batch retains at most two large odds
+payloads at once. Exchange mode deliberately falls back to the existing serial
+path to preserve its shared request budget and outcome-scoped behavior.
+
+Oddspapi `createdAt` values are interpreted as UTC and converted through
+`shared.timezone_utils.convert_utc_to_local` before being stored as the naive
+project-local `market_choice_snapshots.source_collected_at`. This applies to
+both the opening (`initialChangedAt`) and latest (`changedAt`) observations.
+
+The standalone utilities in `odds_papi/` use the same comma-separated
+`ODDSPAPI_KEY` setting. They select the first key by default; set
+`ODDSPAPI_SCRIPT_KEY_INDEX=2` temporarily to diagnose the second configured
+key without placing it directly in the command line. Both direct script
+execution and `python -m odds_papi.<script>` remain supported.
 
 These shared Oddspapi client settings normally need no change, but can be
 overridden if required: `ODDSPAPI_BASE_URL=https://api.oddspapi.io`,

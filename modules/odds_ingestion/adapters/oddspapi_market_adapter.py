@@ -72,6 +72,24 @@ class OddspapiMarketAdapter:
         diagnostics.setdefault(key, []).append(payload)
 
     @staticmethod
+    def _expected_choice_names(
+        market_mapping_index: MarketMappingIndex,
+        mapping_id: int | None,
+    ) -> set[str]:
+        if mapping_id is None:
+            return set()
+
+        expected_choice_names = set()
+        for outcome_key, resolution in market_mapping_index.outcome_mappings.items():
+            candidate_mapping_id = outcome_key[0]
+            if candidate_mapping_id != mapping_id or not resolution.resolved:
+                continue
+            if resolution.canonical_choice_name in (None, ""):
+                continue
+            expected_choice_names.add(str(resolution.canonical_choice_name))
+        return expected_choice_names
+
+    @staticmethod
     def from_odds_response(
         odds_response: dict,
         bookmaker_catalog: dict | list | None = None,
@@ -88,6 +106,7 @@ class OddspapiMarketAdapter:
             "unmapped_markets": [],
             "unmapped_outcomes": [],
             "skipped_missing_handicap": [],
+            "skipped_incomplete_markets": [],
         }
 
         bookmaker_items = OddspapiMarketAdapter._catalog_items(bookmaker_catalog, "bookmakers")
@@ -154,17 +173,7 @@ class OddspapiMarketAdapter:
                     choice_group,
                     bool(market_data.get("isLive", payload.get("isLive", False))),
                 )
-                normalized_market = grouped_markets.setdefault(
-                    market_key,
-                    {
-                        "marketName": market_resolution.canonical_market_name,
-                        "marketGroup": market_resolution.canonical_market_group,
-                        "marketPeriod": market_resolution.canonical_market_period,
-                        "choiceGroup": choice_group,
-                        "isLive": market_key[-1],
-                        "choices": [],
-                    },
-                )
+                source_market_choices = []
 
                 for source_outcome_id, outcome_data in OddspapiMarketAdapter._entries(
                     market_data.get("outcomes", {})
@@ -213,7 +222,10 @@ class OddspapiMarketAdapter:
                                 initial_decimal_value = None
 
                         choice_name = outcome_resolution.canonical_choice_name
-                        if any(choice["name"] == choice_name for choice in normalized_market["choices"]):
+                        if any(
+                            choice["name"] == choice_name
+                            for choice in source_market_choices
+                        ):
                             continue
 
                         choice = {
@@ -239,10 +251,61 @@ class OddspapiMarketAdapter:
                                 back_size=player.get("limit"),
                                 exchange_meta=exchange_meta,
                             )
-                        normalized_market["choices"].append(choice)
+                        source_market_choices.append(choice)
 
-                if not normalized_market["choices"]:
-                    grouped_markets.pop(market_key, None)
+                expected_choice_names = OddspapiMarketAdapter._expected_choice_names(
+                    market_mapping_index,
+                    market_resolution.mapping_id,
+                )
+                detected_choice_names = {
+                    str(choice["name"])
+                    for choice in source_market_choices
+                }
+                missing_choice_names = sorted(
+                    expected_choice_names - detected_choice_names
+                )
+                if missing_choice_names:
+                    OddspapiMarketAdapter._append_diagnostic(
+                        diagnostics,
+                        "skipped_incomplete_markets",
+                        {
+                            "sourceMarketId": normalized_market_id,
+                            "canonicalMarketKey": (
+                                market_resolution.canonical_market_key
+                            ),
+                            "expectedChoices": sorted(expected_choice_names),
+                            "detectedChoices": sorted(detected_choice_names),
+                            "missingChoices": missing_choice_names,
+                            "reason": "missing_active_mapped_choices",
+                        },
+                    )
+                    continue
+                if not source_market_choices:
+                    continue
+
+                normalized_market = grouped_markets.setdefault(
+                    market_key,
+                    {
+                        "canonicalMarketKey": (
+                            market_resolution.canonical_market_key
+                        ),
+                        "marketName": market_resolution.canonical_market_name,
+                        "marketGroup": market_resolution.canonical_market_group,
+                        "marketPeriod": market_resolution.canonical_market_period,
+                        "choiceGroup": choice_group,
+                        "isLive": market_key[-1],
+                        "choices": [],
+                    },
+                )
+                existing_choice_names = {
+                    str(choice["name"])
+                    for choice in normalized_market["choices"]
+                }
+                normalized_market["choices"].extend(
+                    choice
+                    for choice in source_market_choices
+                    if str(choice["name"]) not in existing_choice_names
+                )
 
             markets = [market for market in grouped_markets.values() if market["choices"]]
             if markets:

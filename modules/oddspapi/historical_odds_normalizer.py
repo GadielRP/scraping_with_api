@@ -70,6 +70,16 @@ class OddspapiHistoricalOddsNormalizer:
                 and cls._parse_timestamp(quote.get("createdAt")) is not None
             )
         ]
+        if not quotes:
+            return None
+
+        # The newest quote represents the provider's current state. An inactive
+        # newest quote is a tombstone; filtering it first would revive an older
+        # price that is no longer offered.
+        latest = quotes[-1]
+        if latest.get("active") is False:
+            return None
+
         active_quotes = [
             quote for quote in quotes if quote.get("active") is not False
         ]
@@ -77,12 +87,11 @@ class OddspapiHistoricalOddsNormalizer:
             return None
 
         opening = active_quotes[0]
-        final = active_quotes[-1]
-        normalized = dict(final)
+        normalized = dict(latest)
         normalized["active"] = True
-        normalized["changedAt"] = final.get("createdAt")
+        normalized["changedAt"] = latest.get("createdAt")
         opening_at = cls._parse_timestamp(opening.get("createdAt"))
-        final_at = cls._parse_timestamp(final.get("createdAt"))
+        latest_at = cls._parse_timestamp(latest.get("createdAt"))
         minimum_span_seconds = max(
             0.0,
             float(minimum_initial_span_minutes or 0.0),
@@ -90,8 +99,8 @@ class OddspapiHistoricalOddsNormalizer:
         has_credible_opening = (
             len(active_quotes) >= 2
             and opening_at is not None
-            and final_at is not None
-            and (final_at - opening_at).total_seconds() >= minimum_span_seconds
+            and latest_at is not None
+            and (latest_at - opening_at).total_seconds() >= minimum_span_seconds
         )
         if has_credible_opening:
             normalized["initialPrice"] = opening.get("price")

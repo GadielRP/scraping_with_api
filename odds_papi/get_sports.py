@@ -1,14 +1,13 @@
 import requests
 import json
 import os
-from dotenv import load_dotenv
 import argparse
 from datetime import datetime
 
-load_dotenv()
-
-base_url = 'https://api.oddspapi.io/'
-api_key = os.getenv('ODDSpapi_KEY')
+try:
+    from ._runtime import get_api_key, oddspapi_url
+except ImportError:
+    from _runtime import get_api_key, oddspapi_url
 
 def save_to_file(response, filename):
     if response.status_code == 200:
@@ -19,10 +18,10 @@ def save_to_file(response, filename):
         print(f"❌ API Error {response.status_code}: {response.text}")
 
 def fetch_sports(folder, date):
-    params = {"apiKey": api_key}
+    params = {"apiKey": get_api_key()}
     filename = f"{folder}/all_sports_{date}.json"
     print("🚀 Fetching all available sports...")
-    response = requests.get(f"{base_url}v4/sports", params=params)
+    response = requests.get(oddspapi_url("v4/sports"), params=params)
     save_to_file(response, filename)
 
 def main():

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -14,6 +14,7 @@ from infrastructure.persistence.repositories.market_repository import MarketRepo
 from modules.oddspapi import OddspapiEventResolution
 from modules.odds_ingestion.market_odds_ingestion_service import MarketOddsIngestionService
 from infrastructure.persistence.repositories.bookie_repository import BookieResolution
+from shared.timezone_utils import TIMEZONE, convert_utc_to_local
 
 
 SERVICE = "modules.odds_ingestion.market_odds_ingestion_service"
@@ -36,6 +37,26 @@ ADAPTED = {
         }
     ],
 }
+
+
+def test_oddspapi_source_timestamp_is_converted_to_project_timezone():
+    parsed = MarketRepository._parse_source_datetime(
+        "2026-07-28T21:57:00.122Z",
+        convert_to_project_timezone=True,
+    )
+    expected = (
+        datetime(2026, 7, 28, 21, 57, 0, 122000, tzinfo=timezone.utc)
+        .astimezone(TIMEZONE)
+        .replace(tzinfo=None)
+    )
+
+    assert parsed == expected
+    assert parsed.tzinfo is None
+    assert MarketRepository._uses_utc_source_timestamps("oddspapi")
+    assert MarketRepository._uses_utc_source_timestamps(
+        "oddspapi_pre_start"
+    )
+    assert not MarketRepository._uses_utc_source_timestamps("sofascore")
 
 
 def resolution(resolved=True, reason=None, created_mappings=None):
@@ -62,7 +83,11 @@ def test_dry_run_performs_no_writes():
     ) as save:
         result = MarketOddsIngestionService.save_from_oddspapi_response({}, dry_run=True)
 
-    resolve.assert_called_once_with({}, create_mappings=False)
+    resolve.assert_called_once_with(
+        {},
+        create_mappings=False,
+        persist_queue=False,
+    )
     build_index.assert_called_once_with(source="oddspapi", enabled_only=True)
     assert adapt.call_args.kwargs["market_mapping_index"] is not None
     resolve_bookie.assert_not_called()
@@ -98,6 +123,7 @@ def test_filter_normalized_oddspapi_response_applies_cli_aliases():
                 "name": "Pinnacle Sports",
                 "markets": [
                     {
+                        "canonicalMarketKey": "1x2_full_time",
                         "marketName": "1X2 Full Time",
                         "marketGroup": "1X2",
                         "marketPeriod": "Full Time",
@@ -106,6 +132,7 @@ def test_filter_normalized_oddspapi_response_applies_cli_aliases():
                         "choices": [{"name": "1", "decimalValue": 1.9}],
                     },
                     {
+                        "canonicalMarketKey": "home_away_full_time",
                         "marketName": "Full time",
                         "marketGroup": "Home/Away",
                         "marketPeriod": "Full Time",
@@ -120,6 +147,7 @@ def test_filter_normalized_oddspapi_response_applies_cli_aliases():
 
     filtered = MarketOddsIngestionService.filter_normalized_oddspapi_response(
         adapted,
+        allowed_market_keys={"home_away_full_time"},
         allowed_market_groups={"ml"},
         allowed_market_periods={"Match"},
     )
@@ -127,6 +155,39 @@ def test_filter_normalized_oddspapi_response_applies_cli_aliases():
     assert [bookmaker["slug"] for bookmaker in filtered["bookmakers"]] == ["pinnacle"]
     assert [market["marketGroup"] for market in filtered["bookmakers"][0]["markets"]] == ["Home/Away"]
     assert [market["marketPeriod"] for market in filtered["bookmakers"][0]["markets"]] == ["Full Time"]
+
+
+def test_filter_normalized_oddspapi_response_uses_canonical_market_keys():
+    adapted = {
+        "fixtureId": "fixture-1",
+        "bookmakers": [
+            {
+                "slug": "pinnacle",
+                "markets": [
+                    {
+                        "canonicalMarketKey": "1x2_full_time",
+                        "marketGroup": "1X2",
+                        "marketPeriod": "Full Time",
+                    },
+                    {
+                        "canonicalMarketKey": "over_under_full_time",
+                        "marketGroup": "Over/Under",
+                        "marketPeriod": "Full Time",
+                    },
+                ],
+            }
+        ],
+    }
+
+    filtered = MarketOddsIngestionService.filter_normalized_oddspapi_response(
+        adapted,
+        allowed_market_keys={"OVER_UNDER_FULL_TIME"},
+    )
+
+    assert [
+        market["canonicalMarketKey"]
+        for market in filtered["bookmakers"][0]["markets"]
+    ] == ["over_under_full_time"]
 
 
 def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
@@ -344,7 +405,9 @@ def test_repository_persists_historical_opening_and_final_odds(tmp_path):
         snapshot = session.query(MarketChoiceSnapshot).one()
     assert float(choice.initial_odds) == 1.7
     assert float(choice.current_odds) == 1.9
-    assert snapshot.source_collected_at.isoformat() == "2026-06-19T12:34:56"
+    assert snapshot.source_collected_at == convert_utc_to_local(
+        datetime.fromisoformat("2026-06-19T12:34:56+00:00")
+    )
 
 
 @pytest.mark.parametrize(
@@ -510,8 +573,8 @@ def test_repository_persists_exchange_opening_as_back_without_initial_lay(
         ("lay", 0, 2.0),
     ]
     assert float(snapshots[0].exchange_size) == 25
-    assert snapshots[0].source_collected_at.isoformat() == (
-        "2026-06-19T10:00:00"
+    assert snapshots[0].source_collected_at == convert_utc_to_local(
+        datetime.fromisoformat("2026-06-19T10:00:00+00:00")
     )
 
 

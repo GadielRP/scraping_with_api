@@ -41,6 +41,24 @@ def _parse_optional_env_list(env_name, default_value=None):
         return cleaned or None
 
 
+def _parse_env_secret_list(primary_name, alias_name=None):
+    """Parse comma-separated secrets without logging or otherwise exposing them."""
+    value = os.getenv(primary_name)
+    if value is None and alias_name:
+        value = os.getenv(alias_name)
+    if value is None:
+        return []
+
+    secrets = []
+    seen = set()
+    for item in value.split(','):
+        secret = item.strip()
+        if secret and secret not in seen:
+            seen.add(secret)
+            secrets.append(secret)
+    return secrets
+
+
 def _parse_env_int_list(env_name, default_value):
     value = os.getenv(env_name)
     if not value:
@@ -277,7 +295,9 @@ class Config:
 
     # OddsPapi API Configuration
     ODDSPAPI_BASE_URL = os.getenv('ODDSPAPI_BASE_URL', 'https://api.oddspapi.io').rstrip('/')
-    ODDSPAPI_KEY = os.getenv('ODDSPAPI_KEY') or os.getenv('ODDSpapi_KEY', '')
+    ODDSPAPI_KEYS = _parse_env_secret_list('ODDSPAPI_KEY', 'ODDSpapi_KEY')
+    # Backward compatibility for discovery scripts and single-client callers.
+    ODDSPAPI_KEY = ODDSPAPI_KEYS[0] if ODDSPAPI_KEYS else ''
     ODDSPAPI_TIMEOUT_SECONDS = float(os.getenv('ODDSPAPI_TIMEOUT_SECONDS', '15'))
     ODDSPAPI_MAX_RETRIES = int(os.getenv('ODDSPAPI_MAX_RETRIES', str(MAX_RETRIES)))
     ODDSPAPI_REQUEST_DELAY_SECONDS = float(
@@ -315,8 +335,12 @@ class Config:
     )
     ODDSPAPI_PRE_START_ODDS_ENDPOINT = os.getenv(
         'ODDSPAPI_PRE_START_ODDS_ENDPOINT',
-        'odds',
+        'historical-odds',
     ).strip().lower()
+    ODDSPAPI_PRE_START_WORKERS = max(
+        1,
+        min(2, int(os.getenv('ODDSPAPI_PRE_START_WORKERS', '2'))),
+    )
     ODDSPAPI_PRE_START_BOOKMAKERS = _parse_optional_env_list(
         'ODDSPAPI_PRE_START_BOOKMAKERS',
         ODDSPAPI_DEFAULT_BOOKMAKERS,
@@ -355,6 +379,10 @@ class Config:
     )
     ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES = float(
         os.getenv('ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES', '60')
+    )
+    ODDSPAPI_PRE_START_MARKET_KEYS = _parse_optional_env_list(
+        'ODDSPAPI_PRE_START_MARKET_KEYS',
+        None,
     )
     ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS = _parse_optional_env_list(
         'ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS',

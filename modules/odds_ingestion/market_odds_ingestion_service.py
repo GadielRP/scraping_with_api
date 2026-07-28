@@ -48,6 +48,7 @@ class MarketIngestionResult:
     unmapped_markets_detected: int = 0
     unmapped_outcomes_detected: int = 0
     skipped_missing_handicap_detected: int = 0
+    skipped_incomplete_markets_detected: int = 0
     skipped_missing_choice_group_detected: int = 0
 
     dual_process_market_available: bool = False
@@ -69,27 +70,50 @@ class MarketOddsIngestionService:
         return str(source or default).strip().lower()
 
     @staticmethod
-    def filter_normalized_oddspapi_response_by_groups_and_periods(
+    def filter_normalized_oddspapi_response(
         normalized_response: Dict,
+        allowed_market_keys: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
     ) -> Dict:
         if not normalized_response or not normalized_response.get("bookmakers"):
             return normalized_response
 
-        normalized_groups = MarketOddsIngestionService._normalize_market_group_filters(allowed_market_groups)
-        normalized_periods = MarketOddsIngestionService._normalize_market_period_filters(allowed_market_periods)
+        normalized_keys = (
+            MarketOddsIngestionService._normalize_market_key_filters(
+                allowed_market_keys
+            )
+        )
+        normalized_groups = (
+            MarketOddsIngestionService._normalize_market_group_filters(
+                allowed_market_groups
+            )
+        )
+        normalized_periods = (
+            MarketOddsIngestionService._normalize_market_period_filters(
+                allowed_market_periods
+            )
+        )
 
-        if normalized_groups is None and normalized_periods is None:
+        if (
+            normalized_keys is None
+            and normalized_groups is None
+            and normalized_periods is None
+        ):
             return normalized_response
 
         filtered_bookmakers = []
         for bookmaker in normalized_response.get("bookmakers", []):
             filtered_markets = []
             for market in bookmaker.get("markets", []):
+                market_key = str(
+                    market.get("canonicalMarketKey") or ""
+                ).strip().lower()
                 market_group = str(market.get("marketGroup") or "").strip()
                 market_period = str(market.get("marketPeriod") or "").strip()
 
+                if normalized_keys is not None and market_key not in normalized_keys:
+                    continue
                 if normalized_groups is not None and market_group not in normalized_groups:
                     continue
                 if normalized_periods is not None and market_period not in normalized_periods:
@@ -110,16 +134,30 @@ class MarketOddsIngestionService:
         return filtered
 
     @staticmethod
-    def filter_normalized_oddspapi_response(
+    def filter_normalized_oddspapi_response_by_groups_and_periods(
         normalized_response: Dict,
         allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
     ) -> Dict:
-        return MarketOddsIngestionService.filter_normalized_oddspapi_response_by_groups_and_periods(
+        """Backward-compatible wrapper for callers using the old filter name."""
+        return MarketOddsIngestionService.filter_normalized_oddspapi_response(
             normalized_response,
             allowed_market_groups=allowed_market_groups,
             allowed_market_periods=allowed_market_periods,
         )
+
+    @staticmethod
+    def _normalize_market_key_filters(
+        allowed_market_keys: Optional[list[str] | set[str] | tuple[str, ...]],
+    ) -> Optional[set[str]]:
+        if not allowed_market_keys:
+            return None
+        normalized = {
+            str(item).strip().lower()
+            for item in allowed_market_keys
+            if item is not None and str(item).strip()
+        }
+        return normalized or None
 
     @staticmethod
     def _normalize_market_group_filters(
@@ -175,6 +213,7 @@ class MarketOddsIngestionService:
         bookmaker_catalog: dict | list | None = None,
         source: str = "oddspapi_odds",
         dry_run: bool = False,
+        allowed_market_keys: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         market_mapping_index: MarketMappingIndex | None = None,
@@ -222,8 +261,9 @@ class MarketOddsIngestionService:
             market_mapping_index=market_mapping_index,
             source="oddspapi",
         )
-        adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response_by_groups_and_periods(
+        adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response(
             adapted,
+            allowed_market_keys=allowed_market_keys,
             allowed_market_groups=allowed_market_groups,
             allowed_market_periods=allowed_market_periods,
         )
@@ -232,6 +272,9 @@ class MarketOddsIngestionService:
         unmapped_outcomes_detected = len(diagnostics.get("unmapped_outcomes") or [])
         skipped_missing_handicap_detected = len(
             diagnostics.get("skipped_missing_handicap") or []
+        )
+        skipped_incomplete_markets_detected = len(
+            diagnostics.get("skipped_incomplete_markets") or []
         )
         if diagnostics:
             logger.info("OddsPapi market mapping diagnostics: %s", diagnostics)
@@ -271,6 +314,9 @@ class MarketOddsIngestionService:
                 unmapped_markets_detected=unmapped_markets_detected,
                 unmapped_outcomes_detected=unmapped_outcomes_detected,
                 skipped_missing_handicap_detected=skipped_missing_handicap_detected,
+                skipped_incomplete_markets_detected=(
+                    skipped_incomplete_markets_detected
+                ),
                 event_mappings_created=event_mappings_created,
                 skipped=True,
                 reason="no normalized markets found",
@@ -287,6 +333,9 @@ class MarketOddsIngestionService:
                 unmapped_markets_detected=unmapped_markets_detected,
                 unmapped_outcomes_detected=unmapped_outcomes_detected,
                 skipped_missing_handicap_detected=skipped_missing_handicap_detected,
+                skipped_incomplete_markets_detected=(
+                    skipped_incomplete_markets_detected
+                ),
                 event_mappings_created=event_mappings_created,
             )
 
@@ -356,6 +405,9 @@ class MarketOddsIngestionService:
                     unmapped_markets_detected=unmapped_markets_detected,
                     unmapped_outcomes_detected=unmapped_outcomes_detected,
                     skipped_missing_handicap_detected=skipped_missing_handicap_detected,
+                    skipped_incomplete_markets_detected=(
+                        skipped_incomplete_markets_detected
+                    ),
                     dual_process_market_available=dual_process_available,
                     skipped=True,
                     reason="no resolved canonical bookies",
@@ -383,6 +435,9 @@ class MarketOddsIngestionService:
                 unmapped_markets_detected=unmapped_markets_detected,
                 unmapped_outcomes_detected=unmapped_outcomes_detected,
                 skipped_missing_handicap_detected=skipped_missing_handicap_detected,
+                skipped_incomplete_markets_detected=(
+                    skipped_incomplete_markets_detected
+                ),
                 dual_process_market_available=dual_process_available,
                 skipped=markets_saved <= 0,
                 reason=None if markets_saved > 0 else "no markets saved",
@@ -412,6 +467,9 @@ class MarketOddsIngestionService:
                 unmapped_markets_detected=unmapped_markets_detected,
                 unmapped_outcomes_detected=unmapped_outcomes_detected,
                 skipped_missing_handicap_detected=skipped_missing_handicap_detected,
+                skipped_incomplete_markets_detected=(
+                    skipped_incomplete_markets_detected
+                ),
                 skipped=True,
                 reason=str(exc),
             )

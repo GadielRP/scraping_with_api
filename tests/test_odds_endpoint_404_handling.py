@@ -783,6 +783,7 @@ def test_oddspapi_missing_api_key_skips_mapping_query(monkeypatch):
         True,
     )
     monkeypatch.setattr(pre_start_odds_job.Config, "ODDSPAPI_KEY", "")
+    monkeypatch.setattr(pre_start_odds_job.Config, "ODDSPAPI_KEYS", [])
     monkeypatch.setattr(
         pre_start_odds_job.EventSourceMappingRepository,
         "get_odds_source_states",
