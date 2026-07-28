@@ -91,6 +91,34 @@ class MarketRepository:
             return None
 
     @staticmethod
+    def _choice_change(
+        *,
+        explicit_change,
+        initial_odds,
+        current_odds,
+    ) -> Optional[int]:
+        if explicit_change not in (None, ""):
+            normalized_change = MarketRepository._numeric_or_none(
+                explicit_change
+            )
+            if normalized_change in {
+                Decimal("-1"),
+                Decimal("0"),
+                Decimal("1"),
+            }:
+                return int(normalized_change)
+
+        initial = MarketRepository._numeric_or_none(initial_odds)
+        current = MarketRepository._numeric_or_none(current_odds)
+        if initial is None or current is None:
+            return None
+        if current > initial:
+            return 1
+        if current < initial:
+            return -1
+        return 0
+
+    @staticmethod
     def _slugify_source_bookie_name(name: str) -> str:
         normalized = str(name or "").strip().lower()
         if not normalized:
@@ -217,7 +245,6 @@ class MarketRepository:
                                     "current_odds",
                                     "odds",
                                 )
-                                change = choice_data.get('change', 0)
 
                                 existing_choice = session.query(MarketChoice).filter(
                                     and_(
@@ -226,12 +253,27 @@ class MarketRepository:
                                     )
                                 ).first()
 
+                                effective_initial_odds = initial_odds
+                                if (
+                                    existing_choice
+                                    and existing_choice.initial_odds is not None
+                                ):
+                                    effective_initial_odds = existing_choice.initial_odds
+                                change = MarketRepository._choice_change(
+                                    explicit_change=choice_data.get('change'),
+                                    initial_odds=effective_initial_odds,
+                                    current_odds=current_odds,
+                                )
+
+                                initial_was_set = False
                                 if existing_choice:
                                     if current_odds is not None:
                                         existing_choice.current_odds = current_odds
-                                    existing_choice.change = change
+                                    if change is not None:
+                                        existing_choice.change = change
                                     if existing_choice.initial_odds is None and initial_odds is not None:
                                         existing_choice.initial_odds = initial_odds
+                                        initial_was_set = True
                                     choice = existing_choice
                                 else:
                                     choice = MarketChoice(
@@ -239,10 +281,11 @@ class MarketRepository:
                                         choice_name=choice_name,
                                         initial_odds=initial_odds,
                                         current_odds=current_odds,
-                                        change=change
+                                        change=change if change is not None else 0
                                     )
                                     session.add(choice)
                                     session.flush()
+                                    initial_was_set = initial_odds is not None
 
                                 source_collected_at = MarketRepository._parse_source_datetime(
                                     choice_data.get("changedAt") or choice_data.get("sourceCollectedAt")
@@ -260,6 +303,69 @@ class MarketRepository:
                                 }
 
                                 exchange_quotes = choice_data.get("exchangeQuotes")
+                                initial_source_collected_at = (
+                                    MarketRepository._parse_source_datetime(
+                                        choice_data.get("initialChangedAt")
+                                    )
+                                )
+                                if (
+                                    initial_was_set
+                                    and initial_odds is not None
+                                    and initial_source_collected_at is not None
+                                ):
+                                    is_exchange_opening = isinstance(
+                                        exchange_quotes,
+                                        list,
+                                    )
+                                    session.add(
+                                        MarketChoiceSnapshot(
+                                            choice_id=choice.choice_id,
+                                            odds_value=initial_odds,
+                                            collected_at=market.collected_at,
+                                            source=source,
+                                            source_collected_at=(
+                                                initial_source_collected_at
+                                            ),
+                                            source_market_id=choice_data.get(
+                                                'sourceMarketId'
+                                            ),
+                                            source_outcome_id=choice_data.get(
+                                                'sourceOutcomeId'
+                                            ),
+                                            bookmaker_outcome_id=choice_data.get(
+                                                'bookmakerOutcomeId'
+                                            ),
+                                            main_line=choice_data.get('mainLine'),
+                                            source_limit=(
+                                                MarketRepository._numeric_or_none(
+                                                    choice_data.get(
+                                                        "initialLimit"
+                                                    )
+                                                )
+                                            ),
+                                            exchange_side=(
+                                                "back"
+                                                if is_exchange_opening
+                                                else None
+                                            ),
+                                            exchange_level=(
+                                                0
+                                                if is_exchange_opening
+                                                else None
+                                            ),
+                                            exchange_size=(
+                                                MarketRepository._numeric_or_none(
+                                                    choice_data.get(
+                                                        "initialLimit"
+                                                    )
+                                                )
+                                                if is_exchange_opening
+                                                else None
+                                            ),
+                                        )
+                                    )
+                                    result.snapshots_saved += 1
+
                                 if isinstance(exchange_quotes, list):
                                     for quote in exchange_quotes:
                                         if not isinstance(quote, dict):

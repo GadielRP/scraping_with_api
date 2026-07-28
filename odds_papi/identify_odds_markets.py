@@ -329,8 +329,8 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples (from repo root):\n"
-            "  python -m odds_papi.identify_odds_markets odds_papi/odds_data "
-            "--file odds_id1300010963302195.json\n"
+            "  python -m odds_papi.identify_odds_markets "
+            "--file odds_papi/odds_data/odds_id1300010963302195.json\n"
             "  python -m odds_papi.identify_odds_markets "
             "odds_papi/odds_data/odds_id1300010963302195.json\n"
             "  python -m odds_papi.identify_odds_markets odds_data "
@@ -367,7 +367,10 @@ def main() -> int:
         "--file",
         dest="odds_file",
         default=None,
-        help="Only process a single filename inside an odds directory",
+        help=(
+            "Single odds JSON file path, or a filename inside odds_path "
+            "(e.g. odds_id1300010963302195.json)"
+        ),
     )
     parser.add_argument(
         "--json",
@@ -381,7 +384,20 @@ def main() -> int:
     )
 
     args = parser.parse_args()
-    odds_path = resolve_user_path(args.odds_path, prefer_dirs=[PACKAGE_DIR])
+
+    # --file may be a full/relative path to one odds JSON, or just a basename filter.
+    odds_file_filter: str | None = args.odds_file
+    odds_path_arg = args.odds_path
+    if args.odds_file:
+        candidate = resolve_user_path(
+            Path(args.odds_file),
+            prefer_dirs=[PACKAGE_DIR, PACKAGE_DIR / "odds_data", DEFAULT_ODDS_DIR],
+        )
+        if candidate.is_file():
+            odds_path_arg = candidate
+            odds_file_filter = None
+
+    odds_path = resolve_user_path(odds_path_arg, prefer_dirs=[PACKAGE_DIR])
 
     markets_dir = resolve_user_path(args.markets_dir, prefer_dirs=[PACKAGE_DIR])
     if args.markets_file is None:
@@ -402,7 +418,7 @@ def main() -> int:
     print(f"Loaded {len(catalog)} markets from catalog", file=sys.stderr)
 
     try:
-        odds_files = collect_odds_files(odds_path, odds_file_name=args.odds_file)
+        odds_files = collect_odds_files(odds_path, odds_file_name=odds_file_filter)
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

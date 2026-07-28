@@ -246,7 +246,14 @@ PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES=3
 
 # Oddspapi pre-start ingestion.
 ENABLE_ODDSPAPI_PRE_START_ODDS=true
-ODDSPAPI_PRE_START_BOOKMAKERS=pinnacle
+ODDSPAPI_PRE_START_ODDS_ENDPOINT=historical-odds
+ODDSPAPI_PRE_START_BOOKMAKERS=pinnacle,bet365
+ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS=betfair-ex
+ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS=1x2_full_time,over_under_full_time,asian_handicap_full_time
+ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS=120
+ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT=8
+ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN=40
+ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES=60
 ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS=
 ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS=
 ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN=0
@@ -260,7 +267,16 @@ shown defaults:
 | Setting | Default | Effect |
 | :--- | :--- | :--- |
 | `ENABLE_ODDSPAPI_PRE_START_ODDS` | `true` | Set to `false` to disable only the Oddspapi subflow; SofaScore pre-start ingestion, views, alerts and pillars continue normally. |
-| `ODDSPAPI_PRE_START_BOOKMAKERS` | `ODDSPAPI_DEFAULT_BOOKMAKERS` (normally `pinnacle`) | Comma-separated or Python-list-style bookmaker slugs sent to `/v4/odds`. It does not request every bookmaker by default. |
+| `ODDSPAPI_PRE_START_ODDS_ENDPOINT` | `odds` | Selects whether regular bookmakers use only current odds or are enriched from `historical-odds`. `/v4/odds` remains the current-price source and exchange-outcome discovery request. |
+| `ODDSPAPI_PRE_START_BOOKMAKERS` | `ODDSPAPI_DEFAULT_BOOKMAKERS` (normally `pinnacle`) | Regular sportsbook slugs. They are sent to `/v4/odds` and may be requested together from Historical Odds. |
+| `ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS` | none | Exchange slugs such as `betfair-ex`. They are included in `/v4/odds`; Historical Odds is called separately once per selected outcome. A slug cannot belong to both bookmaker lists. |
+| `ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS` | `ODDSPAPI_DEFAULT_MARKET_KEYS` | Canonical market keys eligible for exchange historical requests. Filtering happens after resolving the fixture-specific `marketId`. |
+| `ODDSPAPI_PRE_START_EXCHANGE_MAIN_LINE_ONLY` | `true` | For line/handicap markets, request Historical Odds only for outcomes whose current `/odds` player is marked `mainLine=true`. Non-line markets are unaffected. |
+| `ODDSPAPI_PRE_START_EXCHANGE_INCLUDE_PLAYER_PROPS` | `false` | Enables exchange player-prop discovery. It is disabled by default to avoid multiplying outcome/player requests. |
+| `ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS` | `120` | Key moments at which exchange Historical Odds may run. The default performs opening enrichment only two hours before start. |
+| `ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT` | `8` | Hard cap on outcome-scoped historical exchange requests for one fixture. |
+| `ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN` | `40` | Cross-event request budget for exchange Historical Odds in one scheduler run. `0` means unlimited. |
+| `ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES` | `60` | Minimum elapsed time between the earliest and latest active historical quote before the earliest price is accepted as an initial odd. |
 | `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS` | no filter | Optional comma-separated market groups to persist, e.g. `1X2,Home/Away,Over/Under,Asian handicap`. Blank means all mapped groups. |
 | `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` | no filter | Optional comma-separated periods to persist, e.g. `Full Time`. Blank means all mapped periods. |
 | `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` | `0` | Maximum mapped events to request in one pre-start pass. `0` means unlimited; extra candidates are skipped for that pass. |
@@ -272,9 +288,10 @@ These shared Oddspapi client settings normally need no change, but can be
 overridden if required: `ODDSPAPI_BASE_URL=https://api.oddspapi.io`,
 `ODDSPAPI_TIMEOUT_SECONDS=15`, `ODDSPAPI_DEFAULT_ODDS_FORMAT=decimal`,
 `ODDSPAPI_DEFAULT_LANGUAGE=en`, and `ODDSPAPI_DEFAULT_VERBOSITY=3`.
-`ODDSPAPI_FIXTURE_DISCOVERY_TIMES` and
-`ODDSPAPI_FIXTURES_COOLDOWN_SECONDS` configure the separate mapping-discovery
-job only; they do not schedule or throttle this pre-start subflow.
+`ODDSPAPI_ENDPOINT_COOLDOWNS` controls the serialized per-endpoint cooldowns,
+including the five-second Historical Odds delay. `ODDSPAPI_FIXTURE_DISCOVERY_TIMES`
+configures the separate mapping-discovery job and does not schedule this
+pre-start subflow.
 
 To validate only this path for one canonical event, without running the rest
 of the pre-start job, use the manual integration harness. It prompts for an

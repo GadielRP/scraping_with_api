@@ -19,6 +19,7 @@ from .constants import (
 )
 from .event_selector import OddspapiPreStartCandidate
 from .odds_fetcher import OddspapiOddsFetcher
+from .odds_acquisition_service import OddspapiPreStartOddsAcquisitionService
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,11 @@ class OddspapiPreStartOddsEventResult:
     unmapped_markets_detected: int = 0
     unmapped_outcomes_detected: int = 0
     skipped_missing_handicap_detected: int = 0
+    http_requests_attempted: int = 0
+    exchange_outcomes_selected: int = 0
+    exchange_historical_requests_attempted: int = 0
+    exchange_historical_requests_failed: int = 0
+    exchange_outcomes_skipped_budget: int = 0
     error: str | None = None
 
 
@@ -60,6 +66,11 @@ class OddspapiPreStartOddsSummary:
     unmapped_markets_detected: int = 0
     unmapped_outcomes_detected: int = 0
     skipped_missing_handicap_detected: int = 0
+    http_requests_attempted: int = 0
+    exchange_outcomes_selected: int = 0
+    exchange_historical_requests_attempted: int = 0
+    exchange_historical_requests_failed: int = 0
+    exchange_outcomes_skipped_budget: int = 0
     disabled: bool = False
     skip_reason: str | None = None
     results: list[OddspapiPreStartOddsEventResult] = field(default_factory=list)
@@ -70,8 +81,13 @@ class OddspapiPreStartOddsBatchProcessor:
         self,
         fetcher: OddspapiOddsFetcher | None = None,
         ingestion_service: type[MarketOddsIngestionService] = MarketOddsIngestionService,
+        acquisition_service: OddspapiPreStartOddsAcquisitionService | None = None,
     ):
         self.fetcher = fetcher or OddspapiOddsFetcher()
+        self.acquisition_service = (
+            acquisition_service
+            or OddspapiPreStartOddsAcquisitionService(fetcher=self.fetcher)
+        )
         self.ingestion_service = ingestion_service
 
     @staticmethod
@@ -101,6 +117,34 @@ class OddspapiPreStartOddsBatchProcessor:
         ):
             setattr(summary, field_name, getattr(summary, field_name) + getattr(result, field_name))
 
+    @staticmethod
+    def _accumulate_acquisition(
+        summary: OddspapiPreStartOddsSummary,
+        result: OddspapiPreStartOddsEventResult,
+    ) -> None:
+        for field_name in (
+            "http_requests_attempted", "exchange_outcomes_selected",
+            "exchange_historical_requests_attempted",
+            "exchange_historical_requests_failed",
+            "exchange_outcomes_skipped_budget",
+        ):
+            setattr(summary, field_name, getattr(summary, field_name) + getattr(result, field_name))
+
+    @staticmethod
+    def _copy_acquisition_stats(result, acquisition_result) -> None:
+        for field_name in (
+            "http_requests_attempted",
+            "exchange_outcomes_selected",
+            "exchange_historical_requests_attempted",
+            "exchange_historical_requests_failed",
+            "exchange_outcomes_skipped_budget",
+        ):
+            setattr(
+                result,
+                field_name,
+                getattr(acquisition_result, field_name, 0) or 0,
+            )
+
     def process(
         self,
         candidates: list[OddspapiPreStartCandidate],
@@ -111,6 +155,14 @@ class OddspapiPreStartOddsBatchProcessor:
         allowed_market_periods: list[str] | None = None,
         max_events: int | None = None,
         endpoint: str = ODDSPAPI_CURRENT_ODDS_ENDPOINT,
+        exchange_bookmakers: list[str] | None = None,
+        exchange_market_keys: list[str] | None = None,
+        exchange_main_line_only: bool = True,
+        exchange_include_player_props: bool = False,
+        exchange_historical_moments: list[int] | None = None,
+        exchange_max_outcomes_per_event: int = 8,
+        exchange_max_requests_per_run: int = 40,
+        minimum_initial_span_minutes: float = 60.0,
     ) -> OddspapiPreStartOddsSummary:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -140,6 +192,12 @@ class OddspapiPreStartOddsBatchProcessor:
             if requestable_candidates else None
         )
         requested_count = 0
+        exchange_requests_remaining = (
+            int(exchange_max_requests_per_run)
+            if exchange_max_requests_per_run
+            and int(exchange_max_requests_per_run) > 0
+            else None
+        )
         odds_not_found_event_ids: set[int] = set()
         for candidate in candidates or []:
             event_result = self._event_result(candidate)
@@ -164,13 +222,45 @@ class OddspapiPreStartOddsBatchProcessor:
             requested_count += 1
             summary.requests_attempted += 1
             try:
-                fetch_result = self.fetcher.fetch_odds(
+                acquisition_result = self.acquisition_service.acquire(
                     candidate.fixture_id,
-                    bookmakers=bookmakers,
-                    endpoint=selected_endpoint,
                     source_sport_id=candidate.source_sport_id,
+                    minutes_until_start=candidate.minutes_until_start,
+                    selected_endpoint=selected_endpoint,
+                    regular_bookmakers=bookmakers,
+                    exchange_bookmakers=exchange_bookmakers,
+                    market_mapping_index=market_mapping_index,
+                    exchange_market_keys=exchange_market_keys,
+                    exchange_main_line_only=exchange_main_line_only,
+                    exchange_include_player_props=(
+                        exchange_include_player_props
+                    ),
+                    exchange_historical_moments=(
+                        exchange_historical_moments
+                        if exchange_historical_moments is not None
+                        else [120]
+                    ),
+                    exchange_max_outcomes_per_event=(
+                        exchange_max_outcomes_per_event
+                    ),
+                    exchange_request_budget=exchange_requests_remaining,
+                    minimum_initial_span_minutes=(
+                        minimum_initial_span_minutes
+                    ),
+                    current_odds_available=candidate.has_odds,
                 )
-                if fetch_result.endpoint_missing:
+                self._copy_acquisition_stats(
+                    event_result,
+                    acquisition_result,
+                )
+                self._accumulate_acquisition(summary, event_result)
+                if exchange_requests_remaining is not None:
+                    exchange_requests_remaining = max(
+                        0,
+                        exchange_requests_remaining
+                        - event_result.exchange_historical_requests_attempted,
+                    )
+                if acquisition_result.endpoint_missing:
                     if respects_stored_availability:
                         odds_not_found_event_ids.add(candidate.event_id)
                     event_result.skipped = True
@@ -183,7 +273,7 @@ class OddspapiPreStartOddsBatchProcessor:
                         candidate.fixture_id,
                     )
                     continue
-                odds_response = fetch_result.payload
+                odds_response = acquisition_result.payload
                 if not odds_response:
                     event_result.skipped = True
                     event_result.skip_reason = "no_oddspapi_odds"

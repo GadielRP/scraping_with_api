@@ -220,6 +220,8 @@ class OddspapiMarketAdapter:
                             "name": choice_name,
                             "decimalValue": decimal_value,
                             "initialDecimalValue": initial_decimal_value,
+                            "initialChangedAt": player.get("initialChangedAt"),
+                            "initialLimit": player.get("initialLimit"),
                             "sourceMarketId": normalized_market_id,
                             "sourceOutcomeId": normalized_outcome_id,
                             "bookmakerOutcomeId": player.get("bookmakerOutcomeId"),

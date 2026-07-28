@@ -474,6 +474,8 @@ def test_inactive_and_missing_price_players_are_ignored_and_bookmaker_outcome_id
 def test_historical_initial_price_is_forwarded_to_repository_contract():
     historical_player = player("home", 1.9)
     historical_player["initialPrice"] = 1.7
+    historical_player["initialChangedAt"] = "2026-06-18T20:00:00Z"
+    historical_player["initialLimit"] = 25
     adapted = OddspapiMarketAdapter.from_odds_response(
         response({"100": market([historical_player])}),
         market_mapping_index=mapped_index(
@@ -484,6 +486,8 @@ def test_historical_initial_price_is_forwarded_to_repository_contract():
 
     choice = adapted["bookmakers"][0]["markets"][0]["choices"][0]
     assert choice["initialDecimalValue"] == 1.7
+    assert choice["initialChangedAt"] == "2026-06-18T20:00:00Z"
+    assert choice["initialLimit"] == 25
     assert choice["decimalValue"] == 1.9
 
 
@@ -570,6 +574,104 @@ def test_historical_normalizer_does_not_emit_never_active_players():
     )
 
     assert normalized["bookmakerOdds"] == {}
+
+
+def test_historical_normalizer_requires_configured_span_for_initial_price():
+    historical = {
+        "fixtureId": "fixture-1",
+        "bookmakers": {
+            "pinnacle": {
+                "markets": {
+                    "100": {
+                        "outcomes": {
+                            "1": {
+                                "players": {
+                                    "0": [
+                                        {
+                                            "createdAt": "2026-06-19T00:00:00Z",
+                                            "price": 1.7,
+                                            "limit": 20,
+                                            "active": True,
+                                        },
+                                        {
+                                            "createdAt": "2026-06-19T00:30:00Z",
+                                            "price": 1.9,
+                                            "limit": 10,
+                                            "active": True,
+                                        },
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+
+    normalized = OddspapiHistoricalOddsNormalizer.normalize(
+        historical,
+        source_sport_id="10",
+        minimum_initial_span_minutes=60,
+    )
+    normalized_player = (
+        normalized["bookmakerOdds"]["pinnacle"]["markets"]["100"]
+        ["outcomes"]["1"]["players"]["0"]
+    )
+
+    assert normalized_player["price"] == 1.9
+    assert "initialPrice" not in normalized_player
+
+
+def test_historical_normalizer_preserves_opening_timestamp_and_limit():
+    historical = {
+        "fixtureId": "fixture-1",
+        "bookmakers": {
+            "betfair-ex": {
+                "markets": {
+                    "100": {
+                        "outcomes": {
+                            "1": {
+                                "players": {
+                                    "0": [
+                                        {
+                                            "createdAt": "2026-06-19T00:00:00Z",
+                                            "price": 1.7,
+                                            "limit": 25,
+                                            "active": True,
+                                            "exchangeMeta": None,
+                                        },
+                                        {
+                                            "createdAt": "2026-06-19T02:00:00Z",
+                                            "price": 1.9,
+                                            "limit": 10,
+                                            "active": True,
+                                            "exchangeMeta": None,
+                                        },
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+
+    normalized = OddspapiHistoricalOddsNormalizer.normalize(
+        historical,
+        source_sport_id="10",
+        minimum_initial_span_minutes=60,
+    )
+    player_data = (
+        normalized["bookmakerOdds"]["betfair-ex"]["markets"]["100"]
+        ["outcomes"]["1"]["players"]["0"]
+    )
+
+    assert player_data["initialPrice"] == 1.7
+    assert player_data["initialChangedAt"] == "2026-06-19T00:00:00Z"
+    assert player_data["initialLimit"] == 25
+    assert player_data["exchangeMeta"] is None
 
 
 def test_groups_markets_under_each_bookmaker():

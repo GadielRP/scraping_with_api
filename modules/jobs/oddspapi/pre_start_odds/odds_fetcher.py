@@ -31,6 +31,8 @@ class OddspapiOddsFetcher:
         verbosity: int | None = None,
         endpoint: str = ODDSPAPI_CURRENT_ODDS_ENDPOINT,
         source_sport_id: str | int | None = None,
+        outcome_id: int | None = None,
+        minimum_initial_span_minutes: float = 0.0,
     ) -> OddsFetchResult:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -45,10 +47,12 @@ class OddspapiOddsFetcher:
                 historical_payload = self.client.get_historical_odds(
                     fixture_id=fixture_id,
                     bookmakers=bookmakers,
+                    outcome_id=outcome_id,
                 )
                 payload = OddspapiHistoricalOddsNormalizer.normalize(
                     historical_payload,
                     source_sport_id=source_sport_id,
+                    minimum_initial_span_minutes=minimum_initial_span_minutes,
                 )
             else:
                 payload = self.client.get_odds(

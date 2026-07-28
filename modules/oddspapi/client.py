@@ -107,10 +107,11 @@ class OddsPapiClient:
             return
 
         with self._endpoint_lock(endpoint):
+            now = time.monotonic()
             last_completed_at = self._last_request_completed_at.get(endpoint)
             if last_completed_at is not None:
                 remaining = cooldown_seconds - (
-                    time.monotonic() - last_completed_at
+                    now - last_completed_at
                 )
                 if remaining > 0:
                     time.sleep(remaining)
@@ -326,6 +327,16 @@ class OddsPapiClient:
             raise ValueError(
                 "OddsPapi historical odds supports at most 3 bookmakers"
             )
+        normalized_bookmakers = {
+            bookmaker.lower()
+            for bookmaker in cleaned_bookmakers
+        }
+        if "betfair-ex" in normalized_bookmakers:
+            if len(cleaned_bookmakers) != 1 or outcome_id is None:
+                raise ValueError(
+                    "OddsPapi historical odds requires betfair-ex to be the "
+                    "only bookmaker and exactly one outcome_id"
+                )
 
         payload = self._request(
             "historical-odds",

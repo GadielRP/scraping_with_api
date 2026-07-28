@@ -56,7 +56,12 @@ class OddspapiHistoricalOddsNormalizer:
         return [item for _, item in indexed]
 
     @classmethod
-    def _normalize_player_history(cls, value: Any) -> dict | None:
+    def _normalize_player_history(
+        cls,
+        value: Any,
+        *,
+        minimum_initial_span_minutes: float = 0.0,
+    ) -> dict | None:
         quotes = [
             quote
             for quote in cls._ordered_quotes(value)
@@ -76,8 +81,22 @@ class OddspapiHistoricalOddsNormalizer:
         normalized = dict(final)
         normalized["active"] = True
         normalized["changedAt"] = final.get("createdAt")
-        normalized["initialPrice"] = opening.get("price")
-        normalized["initialChangedAt"] = opening.get("createdAt")
+        opening_at = cls._parse_timestamp(opening.get("createdAt"))
+        final_at = cls._parse_timestamp(final.get("createdAt"))
+        minimum_span_seconds = max(
+            0.0,
+            float(minimum_initial_span_minutes or 0.0),
+        ) * 60.0
+        has_credible_opening = (
+            len(active_quotes) >= 2
+            and opening_at is not None
+            and final_at is not None
+            and (final_at - opening_at).total_seconds() >= minimum_span_seconds
+        )
+        if has_credible_opening:
+            normalized["initialPrice"] = opening.get("price")
+            normalized["initialChangedAt"] = opening.get("createdAt")
+            normalized["initialLimit"] = opening.get("limit")
         return normalized
 
     @classmethod
@@ -86,6 +105,7 @@ class OddspapiHistoricalOddsNormalizer:
         historical_response: dict,
         *,
         source_sport_id: str | int | None,
+        minimum_initial_span_minutes: float = 0.0,
     ) -> dict:
         payload = historical_response if isinstance(historical_response, dict) else {}
         normalized_bookmakers: dict[str, dict] = {}
@@ -119,7 +139,12 @@ class OddspapiHistoricalOddsNormalizer:
                         str(player_id): normalized
                         for player_id, history in players.items()
                         if (
-                            normalized := cls._normalize_player_history(history)
+                            normalized := cls._normalize_player_history(
+                                history,
+                                minimum_initial_span_minutes=(
+                                    minimum_initial_span_minutes
+                                ),
+                            )
                         )
                         is not None
                     }

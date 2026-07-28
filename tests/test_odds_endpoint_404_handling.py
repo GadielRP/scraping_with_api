@@ -630,6 +630,17 @@ def test_oddspapi_client_builds_historical_request_and_enforces_bookmaker_limit(
             "fixture-1",
             bookmakers=["one", "two", "three", "four"],
         )
+    with pytest.raises(ValueError, match="only bookmaker"):
+        client.get_historical_odds(
+            "fixture-1",
+            bookmakers=["pinnacle", "betfair-ex"],
+            outcome_id=101,
+        )
+    with pytest.raises(ValueError, match="exactly one outcome_id"):
+        client.get_historical_odds(
+            "fixture-1",
+            bookmakers=["betfair-ex"],
+        )
 
 
 def test_oddspapi_historical_endpoint_observes_five_second_cooldown(monkeypatch):
@@ -657,7 +668,7 @@ def test_oddspapi_historical_endpoint_observes_five_second_cooldown(monkeypatch)
         endpoint_cooldowns={"historical-odds": 5.0},
     )
     client.session.get = lambda *_args, **_kwargs: next(responses)
-    clock = iter([0.0, 2.0, 2.0])
+    clock = iter([0.0, 0.0, 2.0, 2.0])
     sleeps = []
     monkeypatch.setattr(
         oddspapi_client_module.time,

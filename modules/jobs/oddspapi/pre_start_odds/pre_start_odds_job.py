@@ -54,7 +54,11 @@ def _log_summary(summary: OddspapiPreStartOddsSummary) -> None:
         "Oddspapi pre-start odds summary: candidates_seen=%s candidates_with_mapping=%s "
         "requests_attempted=%s responses_received=%s events_ingested=%s events_skipped=%s "
         "events_failed=%s markets_saved=%s choices_saved=%s snapshots_saved=%s "
-        "unmapped_markets_detected=%s unmapped_outcomes_detected=%s skip_reasons=%s",
+        "unmapped_markets_detected=%s unmapped_outcomes_detected=%s "
+        "http_requests_attempted=%s exchange_outcomes_selected=%s "
+        "exchange_historical_requests_attempted=%s "
+        "exchange_historical_requests_failed=%s "
+        "exchange_outcomes_skipped_budget=%s skip_reasons=%s",
         summary.candidates_seen,
         summary.candidates_with_mapping,
         summary.requests_attempted,
@@ -67,6 +71,11 @@ def _log_summary(summary: OddspapiPreStartOddsSummary) -> None:
         summary.snapshots_saved,
         summary.unmapped_markets_detected,
         summary.unmapped_outcomes_detected,
+        summary.http_requests_attempted,
+        summary.exchange_outcomes_selected,
+        summary.exchange_historical_requests_attempted,
+        summary.exchange_historical_requests_failed,
+        summary.exchange_outcomes_skipped_budget,
         dict(skip_reasons),
     )
 
@@ -133,6 +142,46 @@ def run_oddspapi_pre_start_odds_ingestion(
         bookmakers=(
             getattr(Config, "ODDSPAPI_PRE_START_BOOKMAKERS", None)
             or Config.ODDSPAPI_DEFAULT_BOOKMAKERS
+        ),
+        exchange_bookmakers=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS",
+            None,
+        ),
+        exchange_market_keys=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS",
+            Config.ODDSPAPI_DEFAULT_MARKET_KEYS,
+        ),
+        exchange_main_line_only=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_EXCHANGE_MAIN_LINE_ONLY",
+            True,
+        ),
+        exchange_include_player_props=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_EXCHANGE_INCLUDE_PLAYER_PROPS",
+            False,
+        ),
+        exchange_historical_moments=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS",
+            [120],
+        ),
+        exchange_max_outcomes_per_event=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT",
+            8,
+        ),
+        exchange_max_requests_per_run=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN",
+            40,
+        ),
+        minimum_initial_span_minutes=getattr(
+            Config,
+            "ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES",
+            60.0,
         ),
         dry_run=dry_run,
         allowed_market_groups=getattr(

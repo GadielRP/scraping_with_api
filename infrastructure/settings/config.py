@@ -311,7 +311,7 @@ class Config:
     # Runs inside the existing pre-start lifecycle after SofaScore ingestion.
     ENABLE_ODDSPAPI_PRE_START_ODDS = _parse_env_bool(
         'ENABLE_ODDSPAPI_PRE_START_ODDS',
-        True,
+        False,
     )
     ODDSPAPI_PRE_START_ODDS_ENDPOINT = os.getenv(
         'ODDSPAPI_PRE_START_ODDS_ENDPOINT',
@@ -320,6 +320,41 @@ class Config:
     ODDSPAPI_PRE_START_BOOKMAKERS = _parse_optional_env_list(
         'ODDSPAPI_PRE_START_BOOKMAKERS',
         ODDSPAPI_DEFAULT_BOOKMAKERS,
+    )
+    ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS = _parse_optional_env_list(
+        'ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS',
+        None,
+    )
+    ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS = _parse_optional_env_list(
+        'ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS',
+        ODDSPAPI_DEFAULT_MARKET_KEYS,
+    )
+    ODDSPAPI_PRE_START_EXCHANGE_MAIN_LINE_ONLY = _parse_env_bool(
+        'ODDSPAPI_PRE_START_EXCHANGE_MAIN_LINE_ONLY',
+        True,
+    )
+    ODDSPAPI_PRE_START_EXCHANGE_INCLUDE_PLAYER_PROPS = _parse_env_bool(
+        'ODDSPAPI_PRE_START_EXCHANGE_INCLUDE_PLAYER_PROPS',
+        False,
+    )
+    ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS = _parse_env_int_list(
+        'ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS',
+        [120],
+    )
+    ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT = int(
+        os.getenv(
+            'ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT',
+            '8',
+        )
+    )
+    ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN = int(
+        os.getenv(
+            'ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN',
+            '40',
+        )
+    )
+    ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES = float(
+        os.getenv('ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES', '60')
     )
     ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS = _parse_optional_env_list(
         'ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS',
