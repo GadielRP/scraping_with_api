@@ -82,7 +82,7 @@ class EventAlertProcessor:
 
         if Config.FILTER_ALERTS_BY_OP_SEASON and not is_tracked_season:
             logger.info(
-                "[SKIP] Skipping alert processing for event %s due to early OP season filter check.",
+                "🚫 Skipping alert processing for event %s due to early OP season filter check.",
                 event_obj.id,
             )
             return

@@ -181,7 +181,7 @@ class OddsPapiClient:
         }
         safe_params = dict(request_params)
         request_params["apiKey"] = self.api_key
-        logger.info("OddsPapi GET /v4/%s params=%s", normalized_endpoint, safe_params)
+        logger.info("✈️ OddsPapi GET /v4/%s params=%s", normalized_endpoint, safe_params)
 
         attempts = max(1, int(self.max_retries))
         retry_delay_seconds = self.request_delay_seconds

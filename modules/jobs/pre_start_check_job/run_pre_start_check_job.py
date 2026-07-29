@@ -296,14 +296,13 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             1 for c in event_plan.candidates if c.get("should_extract_odds")
         )
         logger.info(
-            "✅ Provider odds ingestion completed for %s candidates",
+            "💰✅ Provider odds ingestion completed for %s candidates",
             active_count,
         )
 
         logger.info("🔔 Starting key-moment alert/pillar evaluation")
         evaluate_pre_start_key_moments(
             scheduler,
-            upcoming_events,
             event_plan,
             oddsportal_context,
             debug_mode=global_debug_mode,

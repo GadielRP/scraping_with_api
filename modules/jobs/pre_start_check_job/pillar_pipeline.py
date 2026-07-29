@@ -440,7 +440,16 @@ class EventPillarProcessor:
         if getattr(event_context.competition, "standings_grouping", None) is None:
             missing_fields.append("standings_grouping")
         
-        if missing_fields:
+        if missing_fields and event_payload.get("competition_metadata_resolved"):
+            # The pre-start payload builder already ran the resolver for this
+            # exact context; a second run would hit the already-attempted guard
+            # and return the same values, so skip the redundant work.
+            logger.info(
+                "Pillar pipeline metadata enrichment skipped for event %s; resolver already ran during payload build (missing fields: %s)",
+                event_id,
+                ", ".join(missing_fields),
+            )
+        elif missing_fields:
             logger.info(
                 "Pillar pipeline metadata enrichment needed for event %s; missing fields: %s; calling competition metadata resolver",
                 event_id,

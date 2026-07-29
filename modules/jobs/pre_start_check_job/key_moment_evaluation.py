@@ -157,11 +157,28 @@ def _hydrate_missing_tennis_metadata(
     candidates: list[dict],
     key_moments: list[int],
 ) -> None:
-    """Fetch metadata needed by tennis context only when the candidate lacks it."""
+    """Prefetch SofaScore /event snapshots for tennis candidates missing them.
+
+    This is NOT EventContext construction. It only fills
+    ``candidate["metadata_snapshot"]`` so ``build_event_context`` can later
+    resolve tennis participant/competition IDs when DB relations are incomplete.
+    """
+    logger.info(
+        "🎾 START tennis event-snapshot prefetch "
+        "(candidates=%s key_moments=%s)",
+        len(candidates),
+        key_moments,
+    )
     skipped_by_filters = 0
+    already_had_snapshot = 0
+    fetch_attempted = 0
+    fetch_succeeded = 0
+    fetch_failed = 0
+    missing_sofascore_id = 0
 
     for candidate in candidates:
         if candidate.get("metadata_snapshot") is not None:
+            already_had_snapshot += 1
             continue
         if candidate.get("minutes_until_start") not in key_moments:
             continue
@@ -172,6 +189,10 @@ def _hydrate_missing_tennis_metadata(
 
         event_id = candidate.get("event_id")
         event_obj = scheduler.event_repo.get_event_by_id(event_id)
+        if event_obj is not None:
+            # Cache the loaded event so _build_evaluation_payloads can reuse
+            # it instead of repeating the same joined query.
+            candidate["event_obj"] = event_obj
         if not event_obj or not event_obj.round:
             continue
 
@@ -187,6 +208,7 @@ def _hydrate_missing_tennis_metadata(
 
         sofascore_event_id = candidate.get("sofascore_event_id")
         if sofascore_event_id is None:
+            missing_sofascore_id += 1
             logger.warning(
                 "No sofascore_event_id for event %s, skipping metadata snapshot",
                 event_id,
@@ -195,10 +217,11 @@ def _hydrate_missing_tennis_metadata(
 
         try:
             logger.info(
-                "Fetching metadata snapshot for tennis event %s during "
-                "pre-start context enrichment",
+                "Fetching SofaScore /event snapshot for tennis event %s "
+                "(used later by EventContext build)",
                 event_id,
             )
+            fetch_attempted += 1
             _, metadata_snapshot = api_client.get_event_results(
                 sofascore_event_id,
                 update_time=False,
@@ -208,27 +231,40 @@ def _hydrate_missing_tennis_metadata(
             )
             if metadata_snapshot:
                 candidate["metadata_snapshot"] = metadata_snapshot
+                fetch_succeeded += 1
+            else:
+                fetch_failed += 1
         except Exception as exc:
+            fetch_failed += 1
             logger.warning(
                 "Failed to fetch metadata snapshot for event %s during "
-                "pre-start enrichment: %s",
+                "tennis event-snapshot prefetch: %s",
                 event_id,
                 exc,
             )
 
-    if skipped_by_filters:
-        logger.info(
-            "Skipped tennis metadata hydration for %s event(s) that "
-            "evaluation would drop (round/sport/rescheduled filters)",
-            skipped_by_filters,
-        )
+    logger.info(
+        "🎾 END tennis event-snapshot prefetch "
+        "(already_had_snapshot=%s skipped_by_filters=%s missing_sofascore_id=%s "
+        "fetch_attempted=%s fetch_succeeded=%s fetch_failed=%s)",
+        already_had_snapshot,
+        skipped_by_filters,
+        missing_sofascore_id,
+        fetch_attempted,
+        fetch_succeeded,
+        fetch_failed,
+    )
 
 
 def _load_trajectory_payloads(
     event_ids: set[int],
     key_moments: list[int],
 ) -> dict[int, list[dict]]:
-    refresh_materialized_views(db_manager.engine)
+    # NOTE: mv_alert_events is intentionally NOT refreshed here; the trajectory
+    # query reads the live view v_pre_start_odds_trajectory. The refresh happens
+    # in evaluate_pre_start_key_moments right before the pipelines that consume
+    # mv_alert_events (dual-process and pillar 5), and only when there are
+    # payloads to evaluate.
     trajectory_by_event_id = OddsTrajectoryRepository.get_pre_start_trajectory_map(
         event_ids=list(event_ids),
         target_minutes=key_moments,
@@ -247,26 +283,46 @@ def _load_trajectory_payloads(
 
 def _build_evaluation_payloads(
     scheduler,
-    upcoming_events: list[dict],
     event_plan: PreStartEventPlan,
     key_event_ids: set[int],
     trajectory_payloads: dict[int, list[dict]],
     missing_competition_ids: set[int],
 ) -> list[dict]:
-    payloads: list[dict] = []
+    """Build EventContext, enrich competition metadata, then assemble payloads.
 
-    for event_data in upcoming_events:
-        event_id = event_data["id"]
+    Two explicit phases (logged separately):
+    1. EventContext construction from DB event + optional tennis snapshot
+    2. Competition metadata enrichment on each built context
+    """
+    # --- Phase 1: EventContext construction ---
+    logger.info(
+        "🧩 START EventContext construction "
+        "(key_moment_events=%s candidates=%s)",
+        len(key_event_ids),
+        len(event_plan.candidates),
+    )
+    prepared: list[dict] = []
+    skipped_excluded_or_rescheduled = 0
+    skipped_context_build = 0
+    skipped_non_regular = 0
+
+    for candidate in event_plan.candidates:
+        event_id = candidate["event_id"]
         if event_id not in key_event_ids:
             continue
 
-        event_obj = scheduler.event_repo.get_event_by_id(event_id)
+        # Reuse the event loaded during tennis snapshot prefetch when
+        # available; otherwise load it once here.
+        event_obj = candidate.get("event_obj")
+        if event_obj is None:
+            event_obj = scheduler.event_repo.get_event_by_id(event_id)
         if not event_obj or event_obj.sport in Config.EXCLUDED_SPORTS:
+            skipped_excluded_or_rescheduled += 1
             continue
         if event_obj.id in scheduler.recently_rescheduled:
+            skipped_excluded_or_rescheduled += 1
             continue
 
-        candidate = event_plan.by_event_id.get(event_id, {})
         initial_minutes = candidate.get("minutes_until_start")
         if initial_minutes is None:
             initial_minutes = minutes_until_start(event_obj.start_time_utc)
@@ -276,18 +332,53 @@ def _build_evaluation_payloads(
             metadata_snapshot=candidate.get("metadata_snapshot"),
         )
         if event_context is None:
+            skipped_context_build += 1
             logger.warning(
                 "🚫 Skipping event %s because normalized EventContext could not be built",
                 event_obj.id,
             )
             continue
         if event_obj.round != "regular_season":
+            skipped_non_regular += 1
             logger.info(
                 "🚫 Skipping event %s because round=%s",
                 event_obj.id,
                 event_obj.round,
             )
             continue
+
+        prepared.append(
+            {
+                "candidate": candidate,
+                "event_obj": event_obj,
+                "event_context": event_context,
+                "initial_minutes": initial_minutes,
+            }
+        )
+
+    logger.info(
+        "🧩 END EventContext construction "
+        "(contexts_built=%s skipped_excluded_or_rescheduled=%s "
+        "skipped_context_build=%s skipped_non_regular=%s)",
+        len(prepared),
+        skipped_excluded_or_rescheduled,
+        skipped_context_build,
+        skipped_non_regular,
+    )
+
+    # --- Phase 2: Competition metadata enrichment ---
+    logger.info(
+        "🏟️ START competition metadata enrichment "
+        "(contexts=%s)",
+        len(prepared),
+    )
+    payloads: list[dict] = []
+    for item in prepared:
+        candidate = item["candidate"]
+        event_obj = item["event_obj"]
+        event_context = item["event_context"]
+        initial_minutes = item["initial_minutes"]
+        event_id = candidate["event_id"]
 
         enrich_event_context_competition_metadata(
             event_context,
@@ -309,8 +400,19 @@ def _build_evaluation_payloads(
                 "dual_report": None,
                 "minutes_until_start": initial_minutes,
                 "success": True,
+                # Competition metadata was already resolved above; downstream
+                # pipelines can skip re-running the resolver for this payload.
+                "competition_metadata_resolved": True,
             }
         )
+
+    logger.info(
+        "🏟️ END competition metadata enrichment "
+        "(enriched=%s payloads=%s missing_standings_competitions=%s)",
+        len(payloads),
+        len(payloads),
+        len(missing_competition_ids),
+    )
     return payloads
 
 
@@ -342,7 +444,6 @@ def _log_debug_payloads(payloads: list[dict]) -> None:
 
 def evaluate_pre_start_key_moments(
     scheduler,
-    upcoming_events: list[dict],
     event_plan: PreStartEventPlan,
     oddsportal_context: OddsPortalScrapeContext,
     *,
@@ -379,7 +480,6 @@ def evaluate_pre_start_key_moments(
     missing_competition_ids: set[int] = set()
     payloads = _build_evaluation_payloads(
         scheduler,
-        upcoming_events,
         event_plan,
         key_event_ids,
         trajectory_payloads,
@@ -387,6 +487,11 @@ def evaluate_pre_start_key_moments(
     )
     if not payloads:
         return
+
+    # Refresh mv_alert_events only when there are payloads to evaluate: it is
+    # consumed by the dual-process (alert pipeline) and pillar 5 historical
+    # samples, not by the trajectory query above.
+    refresh_materialized_views(db_manager.engine)
 
     if Config.ENABLE_LEGACY_ALERT_PIPELINE:
         evaluate_and_dispatch_alerts_batch(

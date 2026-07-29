@@ -411,7 +411,7 @@ def resolve_competition_metadata(
 
     if not standings_called:
         logger.info(
-            "Competition metadata resolver did not call standings for competition_id=%s season_id=%s skip_reason=%s",
+            "🚫 Competition metadata resolver did not call standings for competition_id=%s season_id=%s skip_reason=%s",
             competition_id,
             event_context.season_id,
             raw.get("skip_reason"),
