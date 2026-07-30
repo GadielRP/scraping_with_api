@@ -230,7 +230,7 @@ class OddspapiPreStartOddsBatchProcessor:
         market_mapping_index,
         process_kwargs: dict,
     ) -> OddspapiPreStartOddsSummary:
-        worker_count = min(2, max_workers, len(api_keys), len(candidates))
+        worker_count = min(max_workers, len(api_keys), len(candidates))
         chunks = [
             candidates[index::worker_count]
             for index in range(worker_count)
@@ -397,7 +397,7 @@ class OddspapiPreStartOddsBatchProcessor:
             )
 
         unique_api_keys = self._unique_api_keys(api_keys)
-        bounded_workers = max(1, min(2, int(max_workers or 1)))
+        bounded_workers = max(1, int(max_workers or 1))
         can_run_parallel = (
             not self._custom_pipeline
             and not exchange_bookmakers

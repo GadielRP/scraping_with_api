@@ -344,9 +344,11 @@ class Config:
         'ODDSPAPI_PRE_START_ODDS_ENDPOINT',
         'historical-odds',
     ).strip().lower()
+    # Desired parallelism. The effective count is bounded at runtime by the
+    # number of unique API keys and requestable candidates.
     ODDSPAPI_PRE_START_WORKERS = max(
         1,
-        min(2, int(os.getenv('ODDSPAPI_PRE_START_WORKERS', '2'))),
+        int(os.getenv('ODDSPAPI_PRE_START_WORKERS', '3')),
     )
     ODDSPAPI_PRE_START_BOOKMAKERS = _parse_optional_env_list(
         'ODDSPAPI_PRE_START_BOOKMAKERS',
