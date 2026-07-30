@@ -499,7 +499,13 @@ class MarketRepository:
             return []
 
     @staticmethod
-    def get_oddsportal_markets_for_event(event_id: int) -> List[Dict]:
+    def get_external_markets_for_event(event_id: int) -> List[Dict]:
+        """
+        Fetch external bookmaker markets for a specific event (bookie_id != 1).
+        
+        Extracts market choices, odds movement, and snapshot source information
+        for all non-primary bookies.
+        """
         try:
             from sqlalchemy.orm import joinedload
             with db_manager.get_session() as session:
@@ -539,6 +545,19 @@ class MarketRepository:
                             'movement': movement
                         })
 
+                    # Determine source from snapshots of choices
+                    source = "oddsportal"
+                    if market.choices:
+                        first_choice = market.choices[0]
+                        snapshot = (
+                            session.query(MarketChoiceSnapshot)
+                            .filter(MarketChoiceSnapshot.choice_id == first_choice.choice_id)
+                            .order_by(MarketChoiceSnapshot.collected_at.desc())
+                            .first()
+                        )
+                        if snapshot and snapshot.source:
+                            source = snapshot.source
+
                     result.append({
                         'bookie_name': bookie_name,
                         'choice_group': market.choice_group,
@@ -546,7 +565,8 @@ class MarketRepository:
                         'market_group': market.market_group,
                         'market_period': market.market_period,
                         'is_live': market.is_live,
-                        'choices': choices_data
+                        'choices': choices_data,
+                        'source': source
                     })
 
                 def sort_key(m):
@@ -561,8 +581,11 @@ class MarketRepository:
                 result.sort(key=sort_key)
                 return result
         except Exception as e:
-            logger.error(f"Error getting OddsPortal markets for event {event_id}: {e}")
+            logger.error(f"Error getting external markets for event {event_id}: {e}")
             return []
+
+    # Backwards compatibility alias
+    get_oddsportal_markets_for_event = get_external_markets_for_event
 
     @staticmethod
     def get_market_count(event_id: int) -> int:

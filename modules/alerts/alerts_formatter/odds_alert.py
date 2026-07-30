@@ -83,17 +83,17 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
         # Create the formatted message
         message = create_odds_alert_message(event_data, markets, minutes_until_start)
         
-        # --- ODDSPORTAL INTEGRATION ---
+        # --- EXTERNAL BOOKIES INTEGRATION ---
         try:
             season_id = event_data.get('season_id')
             if season_id and season_id in SEASON_ODDSPORTAL_MAP:
-                op_markets = MarketRepository.get_oddsportal_markets_for_event(event_data.get('id'))
-                if op_markets:
-                    op_section = _format_oddsportal_section(op_markets, event_data, op_data=op_data)
-                    message += op_section
-                    logger.info(f"📊 Added OddsPortal section to alert for event {event_data.get('id')}")
+                external_markets = MarketRepository.get_external_markets_for_event(event_data.get('id'))
+                if external_markets:
+                    external_section = _format_external_markets_section(external_markets, event_data, op_data=op_data)
+                    message += external_section
+                    logger.info(f"📊 Added external markets section to alert for event {event_data.get('id')}")
         except Exception as op_err:
-            logger.error(f"Error adding OddsPortal section to alert: {op_err}")
+            logger.error(f"Error adding external markets section to alert: {op_err}")
 
         # Send via Telegram
         if not pre_start_notifier.telegram_enabled:
@@ -194,89 +194,102 @@ def _format_market_choices(market: Dict, indent: str = "  ") -> str:
     
     return result
 
-def _format_oddsportal_section(op_markets: List[Dict], event_data: Dict = None, op_data=None) -> str:
-    """Format the OddsPortal section of the alert message."""
-    if not op_markets:
+def _format_external_markets_section(external_markets: List[Dict], event_data: Dict = None, op_data=None) -> str:
+    """Format external bookmakers odds section of the alert message."""
+    if not external_markets:
         return ""
         
-    result = "\n🟡 <b>ODDSPORTAL ODDS</b>\n\n"
+    result = ""
     
     home_team = event_data.get('home_team', 'Home') if event_data else 'Home'
     away_team = event_data.get('away_team', 'Away') if event_data else 'Away'
     
     from collections import defaultdict
-    grouped_markets = defaultdict(list)
     
-    for m in op_markets:
-        market_group = m.get('market_group', 'Unknown')
-        market_period = m.get('market_period', 'Unknown')
-        grouped_markets[(market_group, market_period)].append(m)
+    # Group markets by source
+    markets_by_source = defaultdict(list)
+    for m in external_markets:
+        source = m.get('source', 'oddsportal')
+        markets_by_source[source].append(m)
         
-    for (market_group, market_period), markets in sorted(grouped_markets.items()):
-        if market_group == '1X2':
-            display_group = "Full Time" if market_period == 'Full Time' else market_period
-        else:
-            display_group = f"{market_group} - {market_period}"
-            
-        result += f"📊 <b>{display_group}</b>\n"
+    for source in sorted(markets_by_source.keys()):
+        source_display = source.upper().replace('_', ' ')
+        result += f"\n🟡 <b>{source_display} ODDS</b>\n\n"
         
-        # Sort markets by bookie name: numbers first, then alphabetical (case-insensitive)
-        markets = sorted(markets, key=lambda x: x['bookie_name'].lower())
-        
-        for m in markets:
-            bookie_name = m['bookie_name']
-            choice_group = m.get('choice_group')
-            is_live = m.get('is_live', False)
-            choices = m['choices']
+        grouped_markets = defaultdict(list)
+        for m in markets_by_source[source]:
+            market_group = m.get('market_group', 'Unknown')
+            market_period = m.get('market_period', 'Unknown')
+            grouped_markets[(market_group, market_period)].append(m)
             
-            order_map = {'1': 1, '1X': 2, 'X': 3, 'X2': 4, '2': 5, '12': 6, 'Over': 7, 'Under': 8, 'Yes': 9, 'No': 10}
-            choices = sorted(choices, key=lambda c: order_map.get(c.get('name', ''), 99))
-            
-            bookie_time = None
-            if op_data and hasattr(op_data, 'extractions'):
-                for ext in op_data.extractions:
-                    if ext.market_group == market_group and ext.market_period == market_period:
-                        for bo in ext.bookie_odds:
-                            if bo.name == bookie_name and getattr(bo, 'movement_odds_time', None):
-                                bookie_time = bo.movement_odds_time
-                                break
-                        
-                        if not bookie_time and ext.betfair and 'betfair' in bookie_name.lower():
-                            if getattr(ext.betfair, 'movement_odds_time', None):
-                                bookie_time = ext.betfair.movement_odds_time
-                        break
-                    
-            time_str = f" 🕒 {bookie_time}" if bookie_time else ""
-            live_label = " (LIVE)" if is_live else ""
-            
-            if 'betfair' in bookie_name.lower() and choice_group:
-                bookie_display = f"{bookie_name} ({choice_group}){live_label}{time_str}"
-            elif market_group in ['Asian Handicap', 'Over/Under'] and choice_group:
-                bookie_display = f"{bookie_name} [{choice_group}]{live_label}{time_str}"
+        for (market_group, market_period), markets in sorted(grouped_markets.items()):
+            if market_group == '1X2':
+                display_group = "Full Time" if market_period == 'Full Time' else market_period
             else:
-                bookie_display = f"{bookie_name}{live_label}{time_str}"
-
-            choice_strs = []
-            for c in choices:
-                name = c.get('name', '?')
-                initial = c.get('initial')
-                current = c.get('current')
-                movement = c.get('movement', '=')
+                display_group = f"{market_group} - {market_period}"
                 
-                if market_group == 'Asian Handicap':
-                    if name == '1': name = home_team
-                    elif name == '2': name = away_team
+            result += f"📊 <b>{display_group}</b>\n"
+            
+            # Sort markets by bookie name: numbers first, then alphabetical (case-insensitive)
+            markets = sorted(markets, key=lambda x: x['bookie_name'].lower())
+            
+            for m in markets:
+                bookie_name = m['bookie_name']
+                choice_group = m.get('choice_group')
+                is_live = m.get('is_live', False)
+                choices = m['choices']
+                
+                order_map = {'1': 1, '1X': 2, 'X': 3, 'X2': 4, '2': 5, '12': 6, 'Over': 7, 'Under': 8, 'Yes': 9, 'No': 10}
+                choices = sorted(choices, key=lambda c: order_map.get(c.get('name', ''), 99))
+                
+                bookie_time = None
+                if op_data and hasattr(op_data, 'extractions'):
+                    for ext in op_data.extractions:
+                        if ext.market_group == market_group and ext.market_period == market_period:
+                            for bo in ext.bookie_odds:
+                                if bo.name == bookie_name and getattr(bo, 'movement_odds_time', None):
+                                    bookie_time = bo.movement_odds_time
+                                    break
+                            
+                            if not bookie_time and ext.betfair and 'betfair' in bookie_name.lower():
+                                if getattr(ext.betfair, 'movement_odds_time', None):
+                                    bookie_time = ext.betfair.movement_odds_time
+                            break
                         
-                if initial is not None and current is not None:
-                    choice_strs.append(f"{initial:.2f}→{current:.2f}{movement}")
-                elif current is not None:
-                    choice_strs.append(f"{current:.2f}")
+                time_str = f" 🕒 {bookie_time}" if bookie_time else ""
+                live_label = " (LIVE)" if is_live else ""
+                
+                if 'betfair' in bookie_name.lower() and choice_group:
+                    bookie_display = f"{bookie_name} ({choice_group}){live_label}{time_str}"
+                elif market_group in ['Asian Handicap', 'Over/Under'] and choice_group:
+                    bookie_display = f"{bookie_name} [{choice_group}]{live_label}{time_str}"
                 else:
-                    choice_strs.append("N/A")
+                    bookie_display = f"{bookie_name}{live_label}{time_str}"
+
+                choice_strs = []
+                for c in choices:
+                    name = c.get('name', '?')
+                    initial = c.get('initial')
+                    current = c.get('current')
+                    movement = c.get('movement', '=')
+                    
+                    if market_group == 'Asian Handicap':
+                        if name == '1': name = home_team
+                        elif name == '2': name = away_team
+                            
+                    if initial is not None and current is not None:
+                        choice_strs.append(f"{initial:.2f}→{current:.2f}{movement}")
+                    elif current is not None:
+                        choice_strs.append(f"{current:.2f}")
+                    else:
+                        choice_strs.append("N/A")
+                
+                line_body = " | ".join(choice_strs)
+                result += f"  {bookie_display}: {line_body}\n"
+                
+            result += "\n"
             
-            line_body = " | ".join(choice_strs)
-            result += f"  {bookie_display}: {line_body}\n"
-            
-        result += "\n"
-        
     return result
+
+# Backwards compatibility alias
+_format_oddsportal_section = _format_external_markets_section

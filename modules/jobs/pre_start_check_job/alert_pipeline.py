@@ -179,13 +179,13 @@ class EventAlertProcessor:
 
         # Verify DB availability
         try:
-            op_markets = MarketRepository.get_oddsportal_markets_for_event(event_obj.id)
-            if op_markets:
-                logger.info(f"[OP] OddsPortal data available for {event_obj.id} ({len(op_markets)} rows).")
+            external_markets = MarketRepository.get_external_markets_for_event(event_obj.id)
+            if external_markets:
+                logger.info(f"[OP] External markets data available for {event_obj.id} ({len(external_markets)} rows).")
             else:
-                logger.info(f"[OP] OddsPortal data NOT available for {event_obj.id}.")
+                logger.info(f"[OP] External markets data NOT available for {event_obj.id}.")
         except Exception as exc:
-            logger.warning(f"[OP] Could not verify OddsPortal availability for {event_obj.id}: {exc}")
+            logger.warning(f"[OP] Could not verify external markets availability for {event_obj.id}: {exc}")
 
         return self.op_data_cache.get(event_obj.id) if self.op_data_cache else None
 
