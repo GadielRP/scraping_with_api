@@ -54,7 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Import OddsPapi canonical market mappings from a local markets catalog JSON."
     )
-    parser.add_argument("--markets-file", required=True, help="Local markets catalog JSON")
+    parser.add_argument(
+        "--markets-file",
+        default="odds_papi/markets_data/markets_20260623_141927.json",
+        help="Local markets catalog JSON (default: odds_papi/markets_data/markets_20260623_141927.json)",
+    )
     parser.add_argument("--bookmakers-file", help="Optional local bookmakers catalog JSON")
     parser.add_argument("--language", default="en", help="Catalog language metadata")
     parser.add_argument("--source", default="oddspapi", help="Source identifier to persist")
