@@ -11,8 +11,9 @@ from decimal import Decimal
 
 from infrastructure.persistence.repositories import EventRepository, MarketRepository
 from infrastructure.settings import Config
-from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.alerts import pre_start_notifier
+from modules.competition.tracked_competitions import is_tracked_competition
+from modules.oddsportal.oddsportal_config import ODDSPORTAL_COMPETITION_ROUTES
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +44,17 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
             return False
         # --- END: PRECISION ALERT GATE ---
 
-        # Check OP Season filter
-        if Config.FILTER_ALERTS_BY_OP_SEASON and event_data.get('season_id') not in SEASON_ODDSPORTAL_MAP:
-            logger.info(f"🚫 Skipping odds alert for event {event_data.get('id')} due to OP season filter.")
+        competition_id = event_data.get("competition_id")
+        if (
+            Config.FILTER_ALERTS_BY_TRACKED_COMPETITION
+            and not is_tracked_competition(competition_id)
+        ):
+            logger.info(
+                "🚫 Skipping odds alert for event %s: competition_id=%s "
+                "is not tracked.",
+                event_data.get("id"),
+                competition_id,
+            )
             return False
 
         if not ODDS_ALERT_ENABLED:
@@ -69,10 +78,13 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
         if len(markets) == 1:
             market = markets[0]
             market_name = market.get('market_name', '')
-            season_id = event_data.get('season_id')
-            
-            if season_id and season_id in SEASON_ODDSPORTAL_MAP:
-                logger.info(f"📊 Event {event_data.get('id')} has 1 market but season {season_id} is tracked in OP - forcing alert send")
+            if is_tracked_competition(competition_id):
+                logger.info(
+                    "📊 Event %s has 1 market but competition_id=%s is "
+                    "tracked - forcing alert send",
+                    event_data.get("id"),
+                    competition_id,
+                )
             elif market_name == 'Full time':
                 logger.info(f"⏭️ LOW-VALUE EVENT: Event {event_data.get('id')} has only 1 market (Full time) - marking alert_sent=True and skipping odds alert")
                 EventRepository.mark_event_as_alerted(event_data.get('id'))
@@ -85,8 +97,7 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
         
         # --- EXTERNAL BOOKIES INTEGRATION ---
         try:
-            season_id = event_data.get('season_id')
-            if season_id and season_id in SEASON_ODDSPORTAL_MAP:
+            if competition_id in ODDSPORTAL_COMPETITION_ROUTES:
                 external_markets = MarketRepository.get_external_markets_for_event(event_data.get('id'))
                 if external_markets:
                     external_section = _format_external_markets_section(external_markets, event_data, op_data=op_data)
@@ -173,6 +184,19 @@ def create_odds_alert_message(event_data: Dict, markets: List[Dict], minutes_unt
         logger.error(f"Error creating odds alert message: {e}")
         return f"❌ Error creating odds alert message: {str(e)}"
 
+def _format_odds_value(val) -> str:
+    """Format an odds value showing 2 or 3 decimals depending on significance."""
+    if val is None:
+        return "N/A"
+    try:
+        fval = float(val)
+        s3 = f"{fval:.3f}"
+        if s3.endswith('0'):
+            return f"{fval:.2f}"
+        return s3
+    except (TypeError, ValueError):
+        return str(val)
+
 def _format_market_choices(market: Dict, indent: str = "  ") -> str:
     """Format choices for a single market."""
     result = ""
@@ -183,11 +207,11 @@ def _format_market_choices(market: Dict, indent: str = "  ") -> str:
         movement = choice.get('movement', '=')
         
         if initial and current:
-            initial_str = f"{initial:.2f}" if isinstance(initial, (Decimal, float)) else str(initial)
-            current_str = f"{current:.2f}" if isinstance(current, (Decimal, float)) else str(current)
+            initial_str = _format_odds_value(initial)
+            current_str = _format_odds_value(current)
             result += f"{indent}{name}: {initial_str} → {current_str} {movement}\n"
         elif current:
-            current_str = f"{current:.2f}" if isinstance(current, (Decimal, float)) else str(current)
+            current_str = _format_odds_value(current)
             result += f"{indent}{name}: {current_str}\n"
         else:
             result += f"{indent}{name}: N/A\n"
@@ -278,9 +302,9 @@ def _format_external_markets_section(external_markets: List[Dict], event_data: D
                         elif name == '2': name = away_team
                             
                     if initial is not None and current is not None:
-                        choice_strs.append(f"{initial:.2f}→{current:.2f}{movement}")
+                        choice_strs.append(f"{_format_odds_value(initial)}→{_format_odds_value(current)}{movement}")
                     elif current is not None:
-                        choice_strs.append(f"{current:.2f}")
+                        choice_strs.append(f"{_format_odds_value(current)}")
                     else:
                         choice_strs.append("N/A")
                 

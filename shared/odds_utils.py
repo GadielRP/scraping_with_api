@@ -14,7 +14,7 @@ def fractional_to_decimal(fractional_value: str) -> Optional[Decimal]:
         fractional_value: String in format "a/b" (e.g., "3/5", "7/2")
     
     Returns:
-        Decimal value rounded to 2 decimal places, or None if invalid
+        Decimal value rounded to 3 decimal places, or None if invalid
     """
     try:
         if not fractional_value or '/' not in fractional_value:
@@ -42,9 +42,9 @@ def fractional_to_decimal(fractional_value: str) -> Optional[Decimal]:
         # Calculate decimal odds
         decimal_value = 1 + (numerator / denominator)
         
-        # Round to 2 decimal places
+        # Round to 3 decimal places to preserve full precision
         decimal_decimal = Decimal(str(decimal_value)).quantize(
-            Decimal('0.01'), rounding=ROUND_HALF_UP
+            Decimal('0.001'), rounding=ROUND_HALF_UP
         )
         
         return decimal_decimal
@@ -52,5 +52,3 @@ def fractional_to_decimal(fractional_value: str) -> Optional[Decimal]:
     except (ValueError, TypeError) as e:
         logger.error(f"Error converting fractional {fractional_value}: {e}")
         return None
-
-

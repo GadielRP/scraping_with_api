@@ -12,8 +12,8 @@ from infrastructure.settings import Config
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
 from modules.alerts.alerts_formatter.odds_alert import send_odds_alert
-from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
 from modules.alerts.dual_process.run_dual_process import prediction_engine
+from modules.competition.tracked_competitions import is_tracked_competition
 from modules.pillars.context import build_event_context
 
 logger = logging.getLogger(__name__)
@@ -70,6 +70,7 @@ class EventAlertProcessor:
             return
 
         season_id = event_context.season_id
+        competition_id = event_context.competition.competition_id
         discovery_source = getattr(event_obj, "discovery_source", None)
 
         #debugging prints:
@@ -77,13 +78,19 @@ class EventAlertProcessor:
         # print(metadata)
 
         # Centralized 'Gating' Logic (Calculate once, reuse everywhere)
-        is_tracked_season = season_id in SEASON_ODDSPORTAL_MAP
+        tracked_competition = is_tracked_competition(competition_id)
         is_selected_source = discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
 
-        if Config.FILTER_ALERTS_BY_OP_SEASON and not is_tracked_season:
+        if (
+            Config.FILTER_ALERTS_BY_TRACKED_COMPETITION
+            and not tracked_competition
+        ):
             logger.info(
-                "🚫 Skipping alert processing for event %s due to early OP season filter check.",
+                "🚫 Skipping alert processing for event %s: "
+                "competition_id=%s is not tracked and "
+                "FILTER_ALERTS_BY_TRACKED_COMPETITION=True.",
                 event_obj.id,
+                competition_id,
             )
             return
 
@@ -123,7 +130,7 @@ class EventAlertProcessor:
             event_payload,
             event_obj,
             event_context,
-            is_tracked_season,
+            tracked_competition,
             is_selected_source,
             minutes_until_start,
         )
@@ -133,7 +140,6 @@ class EventAlertProcessor:
             event_obj=event_obj,
             event_context=event_context,
             season_id=season_id,
-            is_tracked_season=is_tracked_season,
             minutes_until_start=minutes_until_start,
             odds_response=odds_response,
             op_data=op_data,
@@ -215,7 +221,7 @@ class EventAlertProcessor:
         event_payload: dict,
         event_obj,
         event_context,
-        is_tracked_season: bool,
+        tracked_competition: bool,
         is_selected_source: bool,
         minutes_until_start: int,
     ):
@@ -224,7 +230,9 @@ class EventAlertProcessor:
         if dual_report is not None:
             return dual_report
 
-        if (is_selected_source or is_tracked_season) and minutes_until_start in {30, 0}:
+        if (
+            is_selected_source or tracked_competition
+        ) and minutes_until_start in {30, 0}:
             try:
                 return prediction_engine.evaluate_dual_process(
                     event_obj,
@@ -241,7 +249,6 @@ class EventAlertProcessor:
         event_obj,
         event_context,
         season_id,
-        is_tracked_season: bool,
         minutes_until_start: int,
         odds_response: Optional[dict],
         op_data: Optional[dict],
@@ -261,6 +268,7 @@ class EventAlertProcessor:
                 "slug": event_obj.slug,
                 "discovery_source": getattr(event_obj, "discovery_source", ""),
                 "season_id": season_id,
+                "competition_id": event_context.competition.competition_id,
             }
             send_odds_alert(event_data_for_odds, odds_response, minutes_until_start, op_data=op_data)
 
