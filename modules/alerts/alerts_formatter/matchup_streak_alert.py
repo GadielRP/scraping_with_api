@@ -481,21 +481,7 @@ def send_matchup_streak_alerts(notifier: Any, streak_reports: List) -> bool:
 
     success_count = 0
 
-    try:
-        from infrastructure.settings import Config
-        from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
-    except ImportError:
-        Config = None
-
     for streak in streak_reports:
-        if Config and Config.FILTER_ALERTS_BY_OP_SEASON:
-            if streak.season_id not in SEASON_ODDSPORTAL_MAP:
-                logger.info(
-                    "🚫 Skipping Matchup streak alert for event %s (season %s) due to OP season filter.",
-                    streak.event_id, streak.season_id
-                )
-                continue
-
         try:
             message = create_matchup_streak_message(streak)
             sent = notifier.send_telegram_message(message)

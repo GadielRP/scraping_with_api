@@ -11,6 +11,7 @@ from infrastructure.persistence.repositories import (
     OddsTrajectoryRepository,
 )
 from infrastructure.settings import Config
+from modules.competition.tracked_competitions import is_tracked_competition
 from modules.jobs.pre_start_check_job.alert_pipeline import (
     evaluate_and_dispatch_alerts_batch,
 )
@@ -439,6 +440,36 @@ def _log_debug_payloads(payloads: list[dict]) -> None:
         )
 
 
+def _select_pipeline_candidates(
+    candidates: list[dict],
+    key_moments: list[int],
+) -> list[dict]:
+    """Select key-moment candidates shared by alert and pillar pipelines."""
+    key_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate["minutes_until_start"] in key_moments
+    ]
+    if not Config.FILTER_PIPELINES_BY_TRACKED_COMPETITIONS:
+        return key_candidates
+
+    tracked_candidates = [
+        candidate
+        for candidate in key_candidates
+        if is_tracked_competition(
+            candidate.get("event_data", {}).get("competition_id")
+        )
+    ]
+    skipped_count = len(key_candidates) - len(tracked_candidates)
+    if skipped_count:
+        logger.info(
+            "🚫 Pipeline competition ID filter skipped %s/%s key-moment events",
+            skipped_count,
+            len(key_candidates),
+        )
+    return tracked_candidates
+
+
 def evaluate_pre_start_key_moments(
     scheduler,
     event_plan: PreStartEventPlan,
@@ -455,22 +486,28 @@ def evaluate_pre_start_key_moments(
         return
 
     key_moments = Config.PRE_START_ODDS_MOMENTS
+    pipeline_candidates = _select_pipeline_candidates(
+        event_plan.candidates,
+        key_moments,
+    )
+    if not pipeline_candidates:
+        logger.debug(
+            "No events eligible for alert or pillar evaluation at key moments"
+        )
+        return
+
     _hydrate_missing_tennis_metadata(
         scheduler,
-        event_plan.candidates,
+        pipeline_candidates,
         key_moments,
     )
     key_event_ids = {
         candidate["event_id"]
-        for candidate in event_plan.candidates
-        if candidate["minutes_until_start"] in key_moments
+        for candidate in pipeline_candidates
     }
-    if not key_event_ids:
-        logger.debug("No events captured at key moments for alert evaluation")
-        return
 
     logger.info(
-        "Evaluating %s events at key moments for alerts",
+        "Evaluating %s events at key moments for alert and pillar pipelines",
         len(key_event_ids),
     )
     trajectory_payloads = _load_trajectory_payloads(key_event_ids, key_moments)

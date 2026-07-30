@@ -43,22 +43,22 @@ from modules.jobs.pre_start_check_job.timing import (
     minutes_since_start,
     minutes_until_start,
 )
-from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
+from modules.competition.tracked_competitions import tracked_competition_ids
 from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)
 
 
-def _tracked_season_ids() -> list[int] | None:
-    if not Config.TRACKED_SEASONS_ONLY:
+def _tracked_competition_ids() -> list[int] | None:
+    if not Config.PRE_START_TRACKED_COMPETITIONS_ONLY:
         return None
 
-    season_ids = list(SEASON_ODDSPORTAL_MAP)
+    competition_ids = list(tracked_competition_ids())
     logger.info(
-        "Pre-start check restricted to %s tracked seasons",
-        len(season_ids),
+        "Pre-start check restricted to %s tracked competitions",
+        len(competition_ids),
     )
-    return season_ids
+    return competition_ids
 
 
 def _split_recently_started_events(
@@ -95,12 +95,12 @@ def _split_recently_started_events(
 def _maintain_recently_started_events(
     scheduler,
     upcoming_events: list[dict],
-    tracked_season_ids: list[int] | None,
+    tracked_competition_ids: list[int] | None,
 ) -> list[dict]:
     """Run timestamp/result maintenance and remove newly rescheduled events."""
     started_events = scheduler.event_repo.get_events_started_recently(
         window_minutes=Config.INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES,
-        season_ids=tracked_season_ids,
+        competition_ids=tracked_competition_ids,
     )
     logger.info(
         "Found %s started events without results within the last %s minutes",
@@ -186,14 +186,14 @@ def _ingest_provider_odds(
         logger.exception("Oddspapi pre-start odds ingestion failed")
 
 
-def _load_upcoming_events(scheduler, tracked_season_ids) -> list[dict]:
+def _load_upcoming_events(scheduler, tracked_competition_ids) -> list[dict]:
     logger.info(
         "📋 Starting upcoming-event load (window=%s minutes)",
         Config.PRE_START_WINDOW_MINUTES,
     )
     upcoming_events = scheduler.event_repo.get_events_starting_soon(
         Config.PRE_START_WINDOW_MINUTES,
-        season_ids=tracked_season_ids,
+        competition_ids=tracked_competition_ids,
     )
     logger.info(
         "Found %s events starting within %s minutes",
@@ -233,10 +233,10 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
     )
 
     try:
-        tracked_season_ids = _tracked_season_ids()
+        tracked_competition_ids = _tracked_competition_ids()
         upcoming_events = _load_upcoming_events(
             scheduler,
-            tracked_season_ids,
+            tracked_competition_ids,
         )
         timings = {
             event["id"]: minutes_until_start(event["start_time_utc"])
@@ -259,7 +259,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
         upcoming_events = _maintain_recently_started_events(
             scheduler,
             upcoming_events,
-            tracked_season_ids,
+            tracked_competition_ids,
         )
 
         logger.info("🏀 Starting in-game checks (NBA 4th quarter)")

@@ -275,21 +275,7 @@ def send_dual_process_alerts(notifier: Any, dual_reports: List) -> bool:
 
     success_count = 0
 
-    try:
-        from infrastructure.settings import Config
-        from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
-    except ImportError:
-        Config = None
-
     for dual_report in dual_reports:
-        if Config and Config.FILTER_ALERTS_BY_OP_SEASON:
-            if dual_report.season_id not in SEASON_ODDSPORTAL_MAP:
-                logger.info(
-                    "🚫 Skipping dual process alert for event %s due to OP season filter.",
-                    dual_report.event_id,
-                )
-                continue
-
         if dual_report.process1_status != "success":
             logger.info(
                 "Skipping dual process alert for event %s because Process 1 status is not success (%s)",

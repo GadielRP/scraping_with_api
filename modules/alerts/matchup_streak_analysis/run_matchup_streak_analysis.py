@@ -161,6 +161,7 @@ class MatchupStreakContext:
     home_current_win_streak: int = 0
     away_current_win_streak: int = 0
     standings_response: Optional[List[Dict]] = None
+    competition_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -620,6 +621,7 @@ def build_matchup_streak_context(
         # -----------------------------------------------------------------
         return MatchupStreakContext(
             event_id=event_id,
+            competition_id=getattr(competition_context, "competition_id", None),
             custom_id=event_custom_id,
             participants=participants,
             discovery_source=discovery_source,

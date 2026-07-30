@@ -42,6 +42,7 @@ class DualProcessReport:
     timestamp: str
     season_id: Optional[int] = None
     court_type: Optional[str] = None
+    competition_id: Optional[int] = None
 
 
 class DualProcessRunner:
@@ -114,6 +115,7 @@ class DualProcessRunner:
                 discovery_source=event.discovery_source,
                 season_id=getattr(event, "season_id", None),
                 court_type=getattr(event, "court_type", None),
+                competition_id=getattr(event, "competition_id", None),
                 process1_report=process1_report,
                 process1_prediction=process1_prediction,
                 process1_status=process1_status,
@@ -316,6 +318,7 @@ class DualProcessRunner:
             discovery_source=getattr(event, "discovery_source", "unknown"),
             season_id=getattr(event, "season_id", None),
             court_type=getattr(event, "court_type", None),
+            competition_id=getattr(event, "competition_id", None),
             process1_report=None,
             process1_prediction=None,
             process1_status="error",

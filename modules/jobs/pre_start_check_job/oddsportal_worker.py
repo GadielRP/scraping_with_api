@@ -12,7 +12,10 @@ from typing import Any, Dict, List, Optional
 from infrastructure.persistence.repositories import MarketRepository
 from infrastructure.settings import Config
 from modules.oddsportal import scrape_multiple_matches_parallel_sync
-from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP, get_current_date
+from modules.oddsportal.oddsportal_config import (
+    ODDSPORTAL_COMPETITION_ROUTES,
+    get_current_date,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +66,13 @@ def build_oddsportal_scrape_candidates(
     candidates: List[Dict] = []
 
     for event_dict in upcoming_events or []:
-        season_id = event_dict.get("season_id")
+        competition_id = event_dict.get("competition_id")
         minutes_until_start = pre_calculated_timings.get(event_dict["id"])
 
-        if season_id and season_id in SEASON_ODDSPORTAL_MAP and minutes_until_start == -5:
+        if (
+            competition_id in ODDSPORTAL_COMPETITION_ROUTES
+            and minutes_until_start == -5
+        ):
             candidates.append(
                 {
                     "event_id": event_dict["id"],
@@ -77,7 +83,10 @@ def build_oddsportal_scrape_candidates(
             )
 
     if candidates:
-        logger.info(f"OddsPortal candidate selection produced {len(candidates)} tracked events.")
+        logger.info(
+            "OddsPortal candidate selection produced %s routable events.",
+            len(candidates),
+        )
     else:
         logger.info("No OddsPortal candidates matched the current pre-start window.")
 
@@ -183,7 +192,8 @@ def scrape_oddsportal_batch(
     for event_info in events_to_process:
         event_data = event_info["event_data"]
         season_id = event_data.get("season_id")
-        op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
+        competition_id = event_data.get("competition_id")
+        op_info = ODDSPORTAL_COMPETITION_ROUTES.get(competition_id)
 
         if op_info and event_info.get("should_extract_odds"):
             league_url = f"https://www.{Config.ODDSPORTAL_DOMAIN}/{op_info['sport']}/{op_info['country']}/{op_info['league']}/"
@@ -194,6 +204,7 @@ def scrape_oddsportal_batch(
                     "home_team": event_data["home_team"],
                     "away_team": event_data["away_team"],
                     "season_id": season_id,
+                    "competition_id": competition_id,
                     "sport": op_info["sport"],
                     "_oddsportal_resume_state": None,
                     "_oddsportal_partial_match_data": None,

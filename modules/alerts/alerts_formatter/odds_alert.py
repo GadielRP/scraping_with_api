@@ -10,7 +10,6 @@ from typing import Dict, List, Optional
 from decimal import Decimal
 
 from infrastructure.persistence.repositories import EventRepository, MarketRepository
-from infrastructure.settings import Config
 from modules.alerts import pre_start_notifier
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.oddsportal.oddsportal_config import ODDSPORTAL_COMPETITION_ROUTES
@@ -45,17 +44,6 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
         # --- END: PRECISION ALERT GATE ---
 
         competition_id = event_data.get("competition_id")
-        if (
-            Config.FILTER_ALERTS_BY_TRACKED_COMPETITION
-            and not is_tracked_competition(competition_id)
-        ):
-            logger.info(
-                "🚫 Skipping odds alert for event %s: competition_id=%s "
-                "is not tracked.",
-                event_data.get("id"),
-                competition_id,
-            )
-            return False
 
         if not ODDS_ALERT_ENABLED:
             logger.debug("Odds alert processor is disabled")

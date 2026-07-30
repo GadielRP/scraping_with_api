@@ -88,6 +88,13 @@ def _parse_env_bool(env_name, default_value=False):
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def _parse_env_bool_alias(primary_name, alias_name, default_value=False):
+    """Read a renamed boolean setting while supporting one legacy alias."""
+    if os.getenv(primary_name) is not None:
+        return _parse_env_bool(primary_name, default_value)
+    return _parse_env_bool(alias_name, default_value)
+
+
 def _parse_env_float_map(env_name, default_value=None):
     """Parse a comma-separated ``endpoint=seconds`` configuration map."""
     parsed = {
@@ -422,11 +429,18 @@ class Config:
     else:
         ODDSPORTAL_DOMAIN = 'cuotasahora.com'
     
-    # Filter by tracked seasons only (OddsPortal leagues)
-    TRACKED_SEASONS_ONLY = os.getenv('TRACKED_SEASONS_TOGGLE', 'true').lower() == 'true'
-
-    # Filter alerts by OP Season ID
-    FILTER_ALERTS_BY_OP_SEASON = os.getenv('FILTER_ALERTS_BY_OP_SEASON', 'false').lower() == 'true'
+    # Scope pre-start work by canonical competition, independent of providers.
+    # Legacy aliases are temporary deployment compatibility fallbacks.
+    PRE_START_TRACKED_COMPETITIONS_ONLY = _parse_env_bool_alias(
+        'PRE_START_TRACKED_COMPETITIONS_ONLY',
+        'TRACKED_SEASONS_TOGGLE',
+        True,
+    )
+    FILTER_PIPELINES_BY_TRACKED_COMPETITIONS = _parse_env_bool_alias(
+        'FILTER_PIPELINES_BY_TRACKED_COMPETITIONS',
+        'FILTER_ALERTS_BY_TRACKED_COMPETITION',
+        False,
+    )
     
     # Telegram Settings
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')

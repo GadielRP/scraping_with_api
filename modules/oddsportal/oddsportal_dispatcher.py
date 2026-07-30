@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .scraper_impl import OddsPortalScraper
 from .dataclasses import MatchOddsData, ScrapeAttemptResult, GroupSeedResult
-from .oddsportal_config import SEASON_ODDSPORTAL_MAP
+from .oddsportal_config import ODDSPORTAL_COMPETITION_ROUTES
 from .cache_utils import _coerce_current_date, _build_league_group_key, _format_group_key
 from .logging_context import _log_prefix
 
@@ -174,7 +174,9 @@ def scrape_multiple_matches_sync(
     page (which also populates the cache for subsequent events).
     
     Args:
-        tasks: List of dicts with keys: event_id, league_url, home_team, away_team, season_id
+        tasks: List of dicts with keys: event_id, league_url, home_team,
+            away_team, season_id, and competition_id. ``season_id`` scopes the
+            cache; ``competition_id`` resolves provider routing.
         debug_dir: Optional directory to save screenshots/HTML on failure
     
     Returns:
@@ -201,8 +203,10 @@ def scrape_multiple_matches_sync(
                         if not match_url:
                             match_url = await scraper.find_match_url(task['league_url'], task['home_team'], task['away_team'], season_id=season_id, current_date=current_date)
                         task_sport = task.get('sport')
-                        if not task_sport and season_id:
-                            op_info = SEASON_ODDSPORTAL_MAP.get(season_id)
+                        if not task_sport:
+                            op_info = ODDSPORTAL_COMPETITION_ROUTES.get(
+                                task.get("competition_id")
+                            )
                             if op_info:
                                 task_sport = op_info.get('sport')
                         data = None

@@ -592,12 +592,15 @@ class EventRepository:
     @staticmethod
     def get_events_starting_soon(
         window_minutes: int = 30,
-        season_ids: Optional[List[int]] = None,
+        competition_ids: Optional[List[int]] = None,
     ) -> List[Dict]:
         """Get events starting soon.
         
         Modern pre_start_check_job flow should use this method as it returns 
         the event payloads without querying latest odds.
+
+        When ``competition_ids`` is provided, filtering is pushed into the
+        database so unrelated events are never materialized in Python.
         """
         try:
             with db_manager.get_session() as session:
@@ -613,8 +616,8 @@ class EventRepository:
                     and_(Event.start_time_utc >= window_start, Event.start_time_utc <= window_end)
                 )
                 
-                if season_ids:
-                    query = query.filter(Event.season_id.in_(season_ids))
+                if competition_ids:
+                    query = query.filter(Event.competition_id.in_(competition_ids))
                 
                 events = query.all()
                 result = []
@@ -685,8 +688,11 @@ class EventRepository:
             return []
     
     @staticmethod
-    def get_events_started_recently(window_minutes: int = 15, season_ids: Optional[List[int]] = None) -> List[Dict]:
-        """Get recently started events without associated results."""
+    def get_events_started_recently(
+        window_minutes: int = 15,
+        competition_ids: Optional[List[int]] = None,
+    ) -> List[Dict]:
+        """Get recently started events without results in selected competitions."""
         try:     
             with db_manager.get_session() as session:
                 now = get_local_now()
@@ -710,8 +716,8 @@ class EventRepository:
                     )
                 )
                 
-                if season_ids:
-                    query = query.filter(Event.season_id.in_(season_ids))
+                if competition_ids:
+                    query = query.filter(Event.competition_id.in_(competition_ids))
 
                 events_started_recently = query.all()
                 result = []

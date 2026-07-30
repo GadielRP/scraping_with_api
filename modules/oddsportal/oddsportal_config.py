@@ -1,6 +1,6 @@
 """
 Configuration for OddsPortal scraping.
-Maps internal season IDs to OddsPortal URL slugs.
+Maps canonical competitions to OddsPortal URL slugs.
 """
 
 from datetime import date
@@ -13,36 +13,21 @@ def get_current_date() -> date:
 
     return get_local_now().date()
 
-# Maps season_id -> OddsPortal URL slug
-# Based on sport_league_constants.py from OddsHarvester
-SEASON_ODDSPORTAL_MAP = {
-    # Premier League
-    76986: {"sport": "football", "country": "england", "league": "premier-league"},
-    # La Liga
-    77559: {"sport": "football", "country": "spain", "league": "laliga"},
-    # Serie A
-    76457: {"sport": "football", "country": "italy", "league": "serie-a"},
-    # Bundesliga
-    77333: {"sport": "football", "country": "germany", "league": "bundesliga"},
-    # NBA
-    80229: {"sport": "basketball", "country": "usa", "league": "nba"},
-    # NFL
-    75522: {"sport": "american-football", "country": "usa", "league": "nfl"},
-    # MLB
-    84695: {"sport": "baseball", "country": "usa", "league": "mlb"},
-    # NHL
-    78476: {"sport": "hockey", "country": "usa", "league": "nhl"},
-    # League 1
-    77356: {"sport": "football", "country": "france", "league": "ligue-1"},
-    # Saudi Pro League
-    80443: {"sport": "football", "country": "saudi-arabia", "league": "saudi-professional-league"},
-    # Swedish Hockey League
-    75679: {"sport": "hockey", "country": "sweden", "league": "shl"},
-    # Philippines Football League
-    81520: {"sport": "football", "country": "philippines", "league": "pfl"},
-    # Chinese Basketball Association
-    85375: {"sport": "basketball", "country": "china", "league": "cba"},
-
+# Provider routing only. This is deliberately separate from the business
+# allowlist in modules.competition.tracked_competitions.
+ODDSPORTAL_COMPETITION_ROUTES = {
+    176: {"sport": "basketball", "country": "usa", "league": "nba"},
+    318: {"sport": "football", "country": "brazil", "league": "serie-a"},
+    129: {"sport": "baseball", "country": "usa", "league": "mlb"},
+    167: {"sport": "football", "country": "spain", "league": "laliga"},
+    88: {"sport": "football", "country": "italy", "league": "serie-a"},
+    168: {"sport": "football", "country": "england", "league": "premier-league"},
+    50: {
+        "sport": "football",
+        "country": "saudi-arabia",
+        "league": "saudi-professional-league",
+    },
+    171: {"sport": "football", "country": "germany", "league": "bundesliga"},
 }
 
 # Normalize bookie names to match DB exact names

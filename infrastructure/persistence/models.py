@@ -35,10 +35,15 @@ class Competition(Base):
     source = Column(Text, nullable=False)
     source_tournament_id = Column(BigInteger, nullable=False)
     source_unique_tournament_id = Column(BigInteger)
+    # canonical name is unique tournament name
     canonical_name = Column(Text, nullable=False)
+    # display name is tournament name
     display_name = Column(Text, nullable=False)
+    # slug is tournament slug
     slug = Column(Text)
+    # unique slug is tournament unique slug
     unique_slug = Column(Text)
+    
     category_id = Column(BigInteger)
     category_name = Column(Text)
     number_of_teams = Column(Integer)

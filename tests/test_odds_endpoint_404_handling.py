@@ -30,6 +30,7 @@ from modules.sofascore.results_parser import (
     is_event_status_deletable,
 )
 from scripts.development import pre_start_odds_simulation
+from scripts.development import simulate_pre_start_check
 
 
 def _event_info(event_id=101):
@@ -190,7 +191,11 @@ def test_orchestrator_loads_odds_state_after_event_filtering(monkeypatch):
             set_challenge_evidence_enabled=lambda _enabled: None,
         ),
     )
-    monkeypatch.setattr(pre_start_job_runner, "_tracked_season_ids", lambda: None)
+    monkeypatch.setattr(
+        pre_start_job_runner,
+        "_tracked_competition_ids",
+        lambda: None,
+    )
     monkeypatch.setattr(
         pre_start_job_runner,
         "_load_upcoming_events",
@@ -835,6 +840,7 @@ def test_oddspapi_404_is_persisted_once_for_provider(monkeypatch):
 
 def test_manual_simulator_uses_production_provider_processors(monkeypatch):
     calls = []
+    event_info = _event_info()
     states = {
         101: {
             "sofascore": _state(101, "sofascore", "9001", True),
@@ -848,13 +854,19 @@ def test_manual_simulator_uses_production_provider_processors(monkeypatch):
     )
     monkeypatch.setattr(
         pre_start_odds_simulation,
-        "get_numeric_source_event_id",
-        lambda *_args: 9001,
+        "build_pre_start_event_candidates",
+        lambda scheduler, events, timings, source_states: (
+            calls.append(("candidate_builder", events, source_states))
+            or SimpleNamespace(
+                candidates=[event_info],
+                by_event_id={101: event_info},
+            )
+        ),
     )
     monkeypatch.setattr(
-        pre_start_odds_simulation,
-        "should_extract_odds_for_event",
-        lambda *_args, **_kwargs: (True, None, False, 9001),
+        pre_start_odds_simulation.EventRepository,
+        "_build_event_data_with_legacy_fallback",
+        lambda _event: event_info["event_data"],
     )
     monkeypatch.setattr(
         pre_start_odds_simulation,
@@ -895,6 +907,132 @@ def test_manual_simulator_uses_production_provider_processors(monkeypatch):
         log_persisted_market_odds=lambda *_args: None,
     )
 
-    assert [call[0] for call in calls] == ["sofascore", "oddspapi"]
-    assert calls[0][2] is states
+    assert [call[0] for call in calls] == [
+        "candidate_builder",
+        "sofascore",
+        "oddspapi",
+    ]
     assert calls[1][2] is states
+    assert calls[2][2] is states
+
+
+def test_untracked_pipeline_gate_explains_ingestion_without_evaluation(
+    monkeypatch,
+    caplog,
+):
+    event = SimpleNamespace(competition_id=999999)
+    monkeypatch.setattr(
+        simulate_pre_start_check.Config,
+        "PRE_START_TRACKED_COMPETITIONS_ONLY",
+        False,
+    )
+    monkeypatch.setattr(
+        simulate_pre_start_check.Config,
+        "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS",
+        True,
+    )
+
+    should_continue = simulate_pre_start_check._log_pipeline_eligibility(event)
+
+    assert should_continue is True
+    assert "ALERT AND PILLAR PIPELINES WILL SKIP" in caplog.text
+    assert "Provider odds can still be ingested" in caplog.text
+
+
+def test_single_event_simulator_uses_production_op_and_evaluation_flow(
+    monkeypatch,
+):
+    event = SimpleNamespace(
+        id=101,
+        home_team="Home",
+        away_team="Away",
+        sport="Football",
+        season_id=999999,
+        competition_id=999999,
+        start_time_utc=None,
+    )
+    scheduler = SimpleNamespace(
+        event_repo=SimpleNamespace(get_event_by_id=lambda _event_id: event),
+        recently_rescheduled=set(),
+        _active_op_thread=None,
+    )
+    event_data = {
+        "id": event.id,
+        "home_team": event.home_team,
+        "away_team": event.away_team,
+        "sport": event.sport,
+        "season_id": event.season_id,
+        "competition_id": event.competition_id,
+        "start_time_utc": event.start_time_utc,
+    }
+    event_plan = SimpleNamespace(
+        candidates=[{"event_id": event.id}],
+        by_event_id={event.id: {"event_id": event.id}},
+    )
+    op_context = SimpleNamespace(
+        event_states={},
+        event_ids=set(),
+        data_cache={},
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        simulate_pre_start_check,
+        "_SingleEventSimulationScheduler",
+        lambda: scheduler,
+    )
+    monkeypatch.setattr(
+        simulate_pre_start_check,
+        "_log_pipeline_eligibility",
+        lambda _event: True,
+    )
+    monkeypatch.setattr(
+        simulate_pre_start_check.EventRepository,
+        "_build_event_data_with_legacy_fallback",
+        lambda _event: event_data,
+    )
+    monkeypatch.setattr(
+        simulate_pre_start_check,
+        "start_oddsportal_scrape_for_events",
+        lambda actual_scheduler, events, timings: (
+            calls.append(("oddsportal", actual_scheduler, events, timings))
+            or op_context
+        ),
+    )
+    monkeypatch.setattr(
+        simulate_pre_start_check,
+        "run_production_odds_phase",
+        lambda *args, **kwargs: (
+            calls.append(("providers", args, kwargs))
+            or SimpleNamespace(event_plan=event_plan)
+        ),
+    )
+    monkeypatch.setattr(
+        simulate_pre_start_check,
+        "evaluate_pre_start_key_moments",
+        lambda actual_scheduler, actual_plan, actual_context, **kwargs: (
+            calls.append(
+                (
+                    "evaluation",
+                    actual_scheduler,
+                    actual_plan,
+                    actual_context,
+                    kwargs,
+                )
+            )
+        ),
+    )
+
+    result = simulate_pre_start_check._run_pre_start_check_simulation(101, 0)
+
+    assert result is True
+    assert [call[0] for call in calls] == [
+        "oddsportal",
+        "providers",
+        "evaluation",
+    ]
+    assert calls[0][3] == {101: 0}
+    assert calls[1][2]["scheduler"] is scheduler
+    assert calls[2][2] is event_plan
+    assert calls[2][3] is op_context
+    assert calls[2][4] == {"debug_mode": True}

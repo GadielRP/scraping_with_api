@@ -39,7 +39,6 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
         timing_changed (bool)
         sofascore_event_id (int or None)
     """
-    from modules.oddsportal.oddsportal_config import SEASON_ODDSPORTAL_MAP
     from modules.sofascore import api_client
 
     if not Config.ENABLE_ODDS_EXTRACTION:

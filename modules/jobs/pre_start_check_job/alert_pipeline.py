@@ -81,19 +81,6 @@ class EventAlertProcessor:
         tracked_competition = is_tracked_competition(competition_id)
         is_selected_source = discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
 
-        if (
-            Config.FILTER_ALERTS_BY_TRACKED_COMPETITION
-            and not tracked_competition
-        ):
-            logger.info(
-                "🚫 Skipping alert processing for event %s: "
-                "competition_id=%s is not tracked and "
-                "FILTER_ALERTS_BY_TRACKED_COMPETITION=True.",
-                event_obj.id,
-                competition_id,
-            )
-            return
-
         # 1. Synchronization (Wait for external data providers if necessary)
         op_data = self._sync_oddsportal_data(event_obj, odds_response)
 
