@@ -442,7 +442,7 @@ class MatchDecision:
 
 
 class OddspapiEventCandidateMatcher:
-    AUTO_LINK_THRESHOLD = 0.93
+    AUTO_LINK_THRESHOLD = 0.91
     MIN_SCORE_GAP = 0.08
     MAX_AUTO_LINK_TIME_DELTA_MINUTES = 30
     NEAR_EXACT_TIME_DELTA_MINUTES = 5
