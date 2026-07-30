@@ -276,7 +276,7 @@ def resolve_competition_metadata(
     if not regular_scope:
         raw["skip_reason"] = "non_regular_competition_scope"
         logger.info(
-            "Competition metadata resolver skipping standings for event_id=%s competition_id=%s source_unique_tournament_id=%s season_id=%s skip_reason=%s",
+            "🚫 Competition metadata resolver skipping standings for event_id=%s competition_id=%s source_unique_tournament_id=%s season_id=%s skip_reason=%s",
             event_context.event_id,
             competition.competition_id,
             competition.source_unique_tournament_id,
@@ -335,7 +335,7 @@ def resolve_competition_metadata(
 
     if should_call_standings:
         logger.info(
-            "Competition metadata resolver calling standings for event_id=%s competition_id=%s season_id=%s source_unique_tournament_id=%s force_refresh=%s standings_needed=%s already_attempted=%s",
+            "🏆✈️ Competition metadata resolver calling standings for event_id=%s competition_id=%s season_id=%s source_unique_tournament_id=%s force_refresh=%s standings_needed=%s already_attempted=%s",
             event_context.event_id,
             competition_id,
             event_context.season_id,

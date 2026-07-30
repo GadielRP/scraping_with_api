@@ -6,7 +6,6 @@ import logging
 import pprint
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import refresh_materialized_views
 from infrastructure.persistence.repositories import (
     CompetitionRepository,
     OddsTrajectoryRepository,
@@ -260,11 +259,9 @@ def _load_trajectory_payloads(
     event_ids: set[int],
     key_moments: list[int],
 ) -> dict[int, list[dict]]:
-    # NOTE: mv_alert_events is intentionally NOT refreshed here; the trajectory
-    # query reads the live view v_pre_start_odds_trajectory. The refresh happens
-    # in evaluate_pre_start_key_moments right before the pipelines that consume
-    # mv_alert_events (dual-process and pillar 5), and only when there are
-    # payloads to evaluate.
+    # Trajectory reads the live view v_pre_start_odds_trajectory (no MV refresh
+    # needed here). mv_alert_events is refreshed after daily discovery in the
+    # scheduler, not on every pre-start check.
     trajectory_by_event_id = OddsTrajectoryRepository.get_pre_start_trajectory_map(
         event_ids=list(event_ids),
         target_minutes=key_moments,
@@ -487,11 +484,6 @@ def evaluate_pre_start_key_moments(
     )
     if not payloads:
         return
-
-    # Refresh mv_alert_events only when there are payloads to evaluate: it is
-    # consumed by the dual-process (alert pipeline) and pillar 5 historical
-    # samples, not by the trajectory query above.
-    refresh_materialized_views(db_manager.engine)
 
     if Config.ENABLE_LEGACY_ALERT_PIPELINE:
         evaluate_and_dispatch_alerts_batch(

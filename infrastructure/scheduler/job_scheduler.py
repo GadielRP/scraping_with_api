@@ -10,6 +10,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
+from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.models import refresh_materialized_views
 from infrastructure.persistence.repositories import (
     EventRepository,
     OddspapiFixtureDiscoveryRunRepository,
@@ -87,7 +89,8 @@ class JobScheduler:
         )
         logger.info("  - Midnight sync: daily at 04:00")
         logger.info(
-            "  - Daily discovery: fixed trigger(s) at %s; retry heartbeat every %s minutes; AM opens at %s:00, PM opens at %s:00",
+            "  - Daily discovery: fixed trigger(s) at %s; retry heartbeat every %s minutes; "
+            "AM opens at %s:00, PM opens at %s:00; refreshes mv_alert_events after each run",
             ", ".join(daily_discovery_fixed_times),
             daily_discovery_interval,
             Config.DAILY_DISCOVERY_AM_OPEN_HOUR,
@@ -236,6 +239,29 @@ class JobScheduler:
             run_daily_discovery_job()
         except Exception as exc:
             logger.error(f"Error in Job E (Daily Discovery): {exc}")
+            return
+
+        # Keep discovery and MV refresh as separate scheduler steps: discovery
+        # remains focused on ingestion, while this follow-up refreshes the
+        # historical-match pool used by dual-process / Pillar 5.
+        self.job_refresh_alert_materialized_views()
+
+    def job_refresh_alert_materialized_views(self):
+        """Refresh mv_alert_events after discovery so historical matching stays current."""
+        logger.info("🔄 Starting Job E-follow-up: refresh mv_alert_events")
+        started = time.monotonic()
+        try:
+            refresh_materialized_views(db_manager.engine)
+            logger.info(
+                "✅ mv_alert_events refresh completed duration_s=%.1f",
+                time.monotonic() - started,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Error refreshing mv_alert_events after daily discovery duration_s=%.1f: %s",
+                time.monotonic() - started,
+                exc,
+            )
 
     def job_oddspapi_fixture_discovery(self, **kwargs):
         trigger = kwargs.pop("_trigger", "scheduled")
@@ -485,6 +511,9 @@ class JobScheduler:
             run_daily_discovery_retry_job()
         except Exception as exc:
             logger.error(f"Error in Job E_Retry: {exc}")
+            return
+
+        self.job_refresh_alert_materialized_views()
 
     def run_job_discovery_now(self):
         logger.info("Running Job A immediately")
