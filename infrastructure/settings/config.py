@@ -421,16 +421,7 @@ class Config:
 
     # OddsPortal scraping activation toggle for the pre-start flow
     ODDSPORTAL_SCRAPING_ENABLED = _parse_env_bool('ODDSPORTAL_SCRAPING_ENABLED', True)
-    
-    # ODDSPORTAL LANGUAGE (REGIONAL DOMAIN)
-    ODDSPORTAL_UI_LANGUAGE = os.getenv('ODDSPORTAL_UI_LANGUAGE', 'es')
-    if ODDSPORTAL_UI_LANGUAGE == 'es':
-        ODDSPORTAL_DOMAIN = 'cuotasahora.com'
-    elif ODDSPORTAL_UI_LANGUAGE == 'en':
-        ODDSPORTAL_DOMAIN = 'oddsportal.com'
-    else:
-        ODDSPORTAL_DOMAIN = 'cuotasahora.com'
-    
+
     # Scope pre-start work by canonical competition, independent of providers.
     # Legacy aliases are temporary deployment compatibility fallbacks.
     PRE_START_TRACKED_COMPETITIONS_ONLY = _parse_env_bool_alias(
@@ -470,26 +461,8 @@ class Config:
     PROXY_MAX_RETRIES = int(os.getenv('PROXY_MAX_RETRIES', '3'))
     _ODDSPORTAL_PROXY_ALIGNMENT_WARNED = False
     
-    # OddsPortal resource blocking toggle (disable if it causes scraping instability)
-    ODDSPORTAL_BLOCK_RESOURCES = os.getenv('ODDSPORTAL_BLOCK_RESOURCES', 'true').lower() == 'true'
-    ODDSPORTAL_BLOCK_SERVICE_WORKERS = _parse_env_bool('ODDSPORTAL_BLOCK_SERVICE_WORKERS', True)
-    ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE = _parse_env_bool('ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE', True)
-    
     # OddsPortal parallel scraping (requires 2GB+ RAM)
     ODDSPORTAL_PARALLEL_BROWSERS = int(os.getenv('ODDSPORTAL_PARALLEL_BROWSERS', '1'))
-    
-    # OddsPortal Fast-Fail & Diagnostics
-    ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS = int(os.getenv('ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS', '30000'))
-    ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS = int(os.getenv('ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS', '15000'))
-    ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS = int(os.getenv('ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', '60000'))
-    ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS = int(os.getenv('ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS', '8000'))
-    ODDSPORTAL_TAB_WAIT_TIMEOUT = int(os.getenv('ODDSPORTAL_TAB_WAIT_TIMEOUT', '20'))
-    ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT = os.getenv('ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT', 'true').lower() == 'true'
-    ODDSPORTAL_ENABLE_SHELL_GRACE = os.getenv('ODDSPORTAL_ENABLE_SHELL_GRACE', 'true').lower() == 'true'
-    
-    # OddsPortal Context Lifecycle
-    ODDSPORTAL_IGNORE_HTTPS_ERRORS = os.getenv('ODDSPORTAL_IGNORE_HTTPS_ERRORS', 'true').lower() == 'true'
-    ODDSPORTAL_FRESH_CONTEXT_PER_EVENT = os.getenv('ODDSPORTAL_FRESH_CONTEXT_PER_EVENT', 'true').lower() == 'true'
     
     # Max seconds to wait for a previous OP cycle to finish before proceeding
     ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT = int(os.getenv('ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT', '120'))

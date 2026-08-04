@@ -10,9 +10,11 @@ from sqlalchemy import and_, or_
 from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceSnapshot
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories.bookie_repository import BookieRepository
+from shared.odds_utils import fractional_to_decimal, normalize_odds_value
 from shared.timezone_utils import convert_utc_to_local, get_local_now
 
 logger = logging.getLogger(__name__)
+oddsportal_logger = logging.LoggerAdapter(logger, {"oddsportal": True})
 
 
 @dataclass
@@ -40,14 +42,8 @@ class MarketRepository:
             "27/10" -> 3.7
             "17/4" -> 5.25
         """
-        try:
-            if not fractional or '/' not in fractional:
-                return None
-
-            numerator, denominator = fractional.split('/')
-            return round(float(numerator) / float(denominator) + 1, 3)
-        except (ValueError, ZeroDivisionError):
-            return None
+        decimal_value = fractional_to_decimal(fractional)
+        return float(decimal_value) if decimal_value is not None else None
 
     @staticmethod
     def _normalize_string_or_none(val: str) -> Optional[str]:
@@ -95,12 +91,8 @@ class MarketRepository:
 
     @staticmethod
     def _float_or_none(value):
-        if value in (None, "", "-"):
-            return None
-        try:
-            return round(float(value), 3)
-        except (TypeError, ValueError):
-            return None
+        normalized = normalize_odds_value(value)
+        return float(normalized) if normalized is not None else None
 
     @staticmethod
     def _choice_change(
@@ -177,14 +169,22 @@ class MarketRepository:
         bookie_id: int,
         source: Optional[str] = None,
     ) -> MarketSaveResult:
+        operation_logger = (
+            oddsportal_logger if source == "oddsportal" else logger
+        )
         try:
             if bookie_id is None:
-                logger.error("Cannot save markets for event %s without an explicit bookie_id", event_id)
+                operation_logger.error(
+                    "Cannot save markets for event %s without an explicit bookie_id",
+                    event_id,
+                )
                 return MarketSaveResult()
 
             markets_data = odds_response.get('markets', [])
             if not markets_data:
-                logger.debug(f"No markets in odds response for event {event_id}")
+                operation_logger.debug(
+                    f"No markets in odds response for event {event_id}"
+                )
                 return MarketSaveResult()
 
             result = MarketSaveResult()
@@ -200,7 +200,10 @@ class MarketRepository:
                             is_live = market_data.get('isLive', False)
 
                             if not market_name:
-                                logger.info("Skipping market for event %s because marketName is missing", event_id)
+                                operation_logger.info(
+                                    "Skipping market for event %s because marketName is missing",
+                                    event_id,
+                                )
                                 continue
 
                             market_collected_at = get_local_now()
@@ -426,12 +429,14 @@ class MarketRepository:
 
                             result.markets_saved += 1
                     except Exception as e:
-                        logger.warning(f"Error processing market for event {event_id}: {e}")
+                        operation_logger.warning(
+                            f"Error processing market for event {event_id}: {e}"
+                        )
                         continue
 
                 session.commit()
                 if source:
-                    logger.info(
+                    operation_logger.info(
                         "Saved %s markets, %s choices and %s snapshots for event %s (source=%s)",
                         result.markets_saved,
                         result.choices_saved,
@@ -440,7 +445,7 @@ class MarketRepository:
                         source,
                     )
                 else:
-                    logger.info(
+                    operation_logger.info(
                         "Saved %s markets, %s choices and %s snapshots for event %s",
                         result.markets_saved,
                         result.choices_saved,
@@ -450,7 +455,9 @@ class MarketRepository:
                 return result
 
         except Exception as e:
-            logger.error(f"Error saving markets for event {event_id}: {e}")
+            operation_logger.error(
+                f"Error saving markets for event {event_id}: {e}"
+            )
             return MarketSaveResult()
 
     @staticmethod
@@ -629,7 +636,7 @@ class MarketRepository:
             allow_create=False,
         )
         if not resolution.resolved or resolution.bookie is None:
-            logger.warning(
+            oddsportal_logger.warning(
                 "Skipping unresolved OddsPortal bookie slug=%s name=%s",
                 source_bookie_slug,
                 source_bookie_name,
@@ -688,13 +695,19 @@ class MarketRepository:
                 ))
 
             if not extraction_tuples:
-                logger.warning(f"⚠️ save_markets_from_oddsportal called with EMPTY data for event {event_id}")
+                oddsportal_logger.warning(
+                    f"⚠️ save_markets_from_oddsportal called with EMPTY data for event {event_id}"
+                )
                 return 0
 
             saved_count = 0
             total_bookies = sum(len(t[3]) for t in extraction_tuples)
             total_betfair = sum(1 for t in extraction_tuples if t[4])
-            logger.debug(f"💾 Saving OddsPortal data for event {event_id}: {len(extraction_tuples)} period(s), {total_bookies} bookies, {total_betfair} Betfair sections")
+            oddsportal_logger.debug(
+                f"💾 Saving OddsPortal data for event {event_id}: "
+                f"{len(extraction_tuples)} period(s), {total_bookies} bookies, "
+                f"{total_betfair} Betfair sections"
+            )
             for market_group, market_period, market_name, bookie_odds_list, betfair_data in extraction_tuples:
                 market_period_normalized = MarketRepository._normalize_market_period(market_period)
                 is_ou = market_group == "Over/Under"
@@ -705,7 +718,7 @@ class MarketRepository:
                     source_bookie_name = MarketRepository._normalize_string_or_none(b_odds.name)
                     source_bookie_slug = MarketRepository._slugify_source_bookie_name(source_bookie_name)
                     if not source_bookie_name or not source_bookie_slug:
-                        logger.warning(
+                        oddsportal_logger.warning(
                             "Skipping OddsPortal bookie with missing name/slug for event %s (%s)",
                             event_id,
                             market_name,
@@ -816,7 +829,9 @@ class MarketRepository:
             return saved_count
 
         except Exception as e:
-            logger.error(f"Error saving OddsPortal markets for event {event_id}: {e}")
+            oddsportal_logger.error(
+                f"Error saving OddsPortal markets for event {event_id}: {e}"
+            )
             return 0
 
     @staticmethod

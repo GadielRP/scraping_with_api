@@ -16,6 +16,8 @@ from threading import Condition, local
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from shared.odds_utils import normalize_odds_value
+
 try:
     from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 except ImportError:
@@ -46,15 +48,6 @@ except ImportError:
         PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART = True
         PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR = True
         PROXY_LOG_SAFE = True
-        ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS = 30000
-        ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS = 15000
-        ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS = 60000
-        ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS = 8000
-        ODDSPORTAL_TAB_WAIT_TIMEOUT = 20
-        ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT = True
-        ODDSPORTAL_ENABLE_SHELL_GRACE = True
-        ODDSPORTAL_BLOCK_SERVICE_WORKERS = True
-        ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE = True
         POLL_INTERVAL_MINUTES = 5
 
         @staticmethod
@@ -64,10 +57,10 @@ except ImportError:
     Config = MockConfig()
 
 from .oddsportal_config import (
-    BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
+    BOOKIE_ALIASES, TEAM_ALIASES,
     OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
-    INSTITUTIONAL_NOISE, get_current_date,
+    INSTITUTIONAL_NOISE, get_current_date, build_bookie_identity_groups,
 )
 from .team_matcher import TeamMatcher
 from .dataclasses import (
@@ -84,22 +77,32 @@ from .cache_utils import (
     _calculate_cache_homogeneity, _evaluate_cache_quality, _format_group_key,
 )
 from .logging_context import _LOG_CONTEXT, _OddsPortalLogPrefixFilter, _log_prefix
+from .scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
 
 logger = logging.getLogger(__name__)
 
 
 class OddsPortalDataMixin:
     async def _extract_data(self, page: Page, match_url: str) -> MatchOddsData:
-        """Execute JS to extract structured data."""
+        """Extract only configured regular rows plus the Betfair exchange."""
+        bookmaker_policy = ODDSPORTAL_SCRAPING_SETTINGS.bookmakers
+        selection_config = {
+            "bookmakerIdentityGroups": build_bookie_identity_groups(
+                bookmaker_policy.hover_names
+            ),
+            "bookmakerLimit": bookmaker_policy.hover_limit,
+        }
         raw_data = await page.evaluate("""
-        () => {
+        (config) => {
             const result = {
                 homeTeam: '',
                 awayTeam: '',
                 bookies: [],
                 betfairBack: null,
                 betfairLay: null,
-                betfairPayout: null
+                betfairPayout: null,
+                betfairStatus: 'section_not_found',
+                betfairContainerCount: 0
             };
 
             // --- Team Names ---
@@ -121,12 +124,15 @@ class OddsPortalDataMixin:
 
             // --- Bookmakers ---
             const allDivs = document.querySelectorAll('div.flex.h-9');
+            const normalizeIdentity = (value) => (value || '')
+                .normalize('NFKD')
+                .replace(/[\\u0300-\\u036f]/g, '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '');
+            const candidateRows = [];
 
             for (const row of allDivs) {
                 if (!row.className.includes('border-black-borders')) continue;
-
-                const oddsCells = row.querySelectorAll('div.odds-cell');
-                if (oddsCells.length < 2) continue;
 
                 let bookieName = null;
 
@@ -139,6 +145,34 @@ class OddsPortalDataMixin:
                 }
 
                 if (!bookieName || ['Oddsportal', 'Search'].includes(bookieName)) continue;
+
+                candidateRows.push({
+                    row,
+                    bookieName,
+                    identity: normalizeIdentity(bookieName),
+                });
+            }
+
+            const identityGroups = config.bookmakerIdentityGroups || [];
+            const bookmakerLimit = Math.max(0, Number(config.bookmakerLimit) || 0);
+            const selectedRows = [];
+            const selectedIndexes = new Set();
+
+            for (const identityGroup of identityGroups) {
+                if (selectedRows.length >= bookmakerLimit) break;
+                const matchIndex = candidateRows.findIndex((candidate, index) => (
+                    !selectedIndexes.has(index)
+                    && identityGroup.includes(candidate.identity)
+                ));
+                if (matchIndex === -1) continue;
+                selectedIndexes.add(matchIndex);
+                selectedRows.push(candidateRows[matchIndex]);
+            }
+
+            // Read prices only for rows that will be hovered and persisted.
+            for (const {row, bookieName} of selectedRows) {
+                const oddsCells = row.querySelectorAll('div.odds-cell');
+                if (oddsCells.length < 2) continue;
 
                 const odds = Array.from(oddsCells).map(c => c.textContent.trim());
 
@@ -167,6 +201,10 @@ class OddsPortalDataMixin:
 
             if (exchangeSection) {
                 const allOddContainers = exchangeSection.querySelectorAll('div[data-testid="odd-container"]');
+                result.betfairContainerCount = allOddContainers.length;
+                result.betfairStatus = allOddContainers.length >= 4
+                    ? 'containers_found'
+                    : 'insufficient_containers';
 
                 const extractOddFromContainer = (container) => {
                     const ps = container.querySelectorAll('p');
@@ -175,7 +213,7 @@ class OddsPortalDataMixin:
                         const txt = p.textContent.trim();
 
                         if (!txt || txt === '-') continue;
-                        if (/^\\d+(\\.\\d+)?$/.test(txt)) return txt;
+                        if (/^(?:\\d+(?:[.,]\\d+)?|\\d+\\s*\\/\\s*\\d+)$/.test(txt)) return txt;
                     }
 
                     return null;
@@ -240,20 +278,53 @@ class OddsPortalDataMixin:
                 const payMatch = sectionText.match(/(\\d{2,3}\\.\\d)%/);
 
                 if (payMatch) result.betfairPayout = payMatch[0];
+
+                if (result.betfairBack) {
+                    result.betfairStatus = 'current_odds_extracted';
+                } else if (allOddContainers.length >= 4) {
+                    result.betfairStatus = 'no_parseable_back_odds';
+                }
             }
 
             return result;
         }
-        """)
+        """, selection_config)
+        logger.info(
+            "Betfair current extraction: status=%s containers=%s back=%s lay=%s",
+            raw_data.get("betfairStatus", "unknown"),
+            raw_data.get("betfairContainerCount", 0),
+            bool(raw_data.get("betfairBack")),
+            bool(raw_data.get("betfairLay")),
+        )
         match_data = MatchOddsData(match_url=match_url)
         match_data.home_team = raw_data.get('homeTeam', 'Unknown')
         match_data.away_team = raw_data.get('awayTeam', 'Unknown')
         for b in raw_data.get('bookies', []):
-            match_data.bookie_odds.append(BookieOdds(name=b['name'], odds_1=b['odds1'], odds_x=b['oddsX'], odds_2=b['odds2'], payout=b['payout']))
+            match_data.bookie_odds.append(BookieOdds(
+                name=b['name'],
+                odds_1=normalize_odds_value(b['odds1']) or '-',
+                odds_x=normalize_odds_value(b['oddsX']) or '-',
+                odds_2=normalize_odds_value(b['odds2']) or '-',
+                payout=b['payout'],
+            ))
         bf_back = raw_data.get('betfairBack')
         if bf_back:
             bf_lay = raw_data.get('betfairLay') or {}
-            match_data.betfair = BetfairExchangeOdds(back_1=bf_back.get('odds1'), back_1_vol=bf_back.get('vol1'), back_x=bf_back.get('oddsX'), back_x_vol=bf_back.get('volX'), back_2=bf_back.get('odds2'), back_2_vol=bf_back.get('vol2'), lay_1=bf_lay.get('odds1'), lay_1_vol=bf_lay.get('vol1'), lay_x=bf_lay.get('oddsX'), lay_x_vol=bf_lay.get('volX'), lay_2=bf_lay.get('odds2'), lay_2_vol=bf_lay.get('vol2'), payout=raw_data.get('betfairPayout', '-'))
+            match_data.betfair = BetfairExchangeOdds(
+                back_1=normalize_odds_value(bf_back.get('odds1')) or '-',
+                back_1_vol=bf_back.get('vol1'),
+                back_x=normalize_odds_value(bf_back.get('oddsX')) or '-',
+                back_x_vol=bf_back.get('volX'),
+                back_2=normalize_odds_value(bf_back.get('odds2')) or '-',
+                back_2_vol=bf_back.get('vol2'),
+                lay_1=normalize_odds_value(bf_lay.get('odds1')) or '-',
+                lay_1_vol=bf_lay.get('vol1'),
+                lay_x=normalize_odds_value(bf_lay.get('oddsX')) or '-',
+                lay_x_vol=bf_lay.get('volX'),
+                lay_2=normalize_odds_value(bf_lay.get('odds2')) or '-',
+                lay_2_vol=bf_lay.get('vol2'),
+                payout=raw_data.get('betfairPayout', '-'),
+            )
         return match_data
 
     async def _extract_data_over_under(self, page: Page, match_url: str) -> Optional[MatchOddsData]:
@@ -262,7 +333,7 @@ class OddsPortalDataMixin:
             Identifies the handicap value, Home (Over), and Away (Under) odds for each bookmaker.
             """
         logger.info('  🔄 Finding main Over/Under line (closest odds)...')
-        rows_data = await page.evaluate('\n            () => {\n                const rows = Array.from(document.querySelectorAll(\'div[data-testid="over-under-collapsed-row"]\'));\n                return rows.map((row, index) => {\n                    let over = null;\n                    let under = null;\n                    let handicapText = "";\n                    \n                    const optionBox = row.querySelector(\'div[data-testid="over-under-collapsed-option-box"] p\');\n                    if (optionBox) {\n                        handicapText = optionBox.innerText.trim();\n                    }\n\n                    const containers = row.querySelectorAll(\'.flex-center.border-black-main\');\n                    if (containers.length >= 2) {\n                        over = parseFloat(containers[0].innerText.trim());\n                        under = parseFloat(containers[1].innerText.trim());\n                    }\n                    return { index, handicapText, over, under };\n                });\n            }\n        ')
+        rows_data = await page.evaluate('\n            () => {\n                const rows = Array.from(document.querySelectorAll(\'div[data-testid="over-under-collapsed-row"]\'));\n                return rows.map((row, index) => {\n                    let over = null;\n                    let under = null;\n                    let handicapText = "";\n                    \n                    const optionBox = row.querySelector(\'div[data-testid="over-under-collapsed-option-box"] p\');\n                    if (optionBox) {\n                        handicapText = optionBox.innerText.trim();\n                    }\n\n                    const containers = row.querySelectorAll(\'.flex-center.border-black-main\');\n                    if (containers.length >= 2) {\n                        over = containers[0].innerText.trim();\n                        under = containers[1].innerText.trim();\n                    }\n                    return { index, handicapText, over, under };\n                });\n            }\n        ')
         min_diff = float('inf')
         target_index = -1
         target_handicap = None
@@ -270,10 +341,10 @@ class OddsPortalDataMixin:
         for row in rows_data:
             idx = row.get('index')
             hc = row.get('handicapText', 'Unknown')
-            over = row.get('over')
-            under = row.get('under')
-            if isinstance(over, (int, float)) and isinstance(under, (int, float)):
-                diff = abs(over - under)
+            over = normalize_odds_value(row.get('over'))
+            under = normalize_odds_value(row.get('under'))
+            if over is not None and under is not None:
+                diff = abs(float(over) - float(under))
                 if diff < min_diff:
                     min_diff = diff
                     target_index = idx
@@ -295,7 +366,14 @@ class OddsPortalDataMixin:
         if clean_hc:
             clean_hc = clean_hc.replace('Over/Under', '').replace('O/U', '').replace('+', '').strip()
         for b in raw_data.get('bookies', []):
-            match_data.bookie_odds.append(BookieOdds(name=b['name'], odds_1=b['odds1'], odds_x=b['oddsX'], odds_2=b['odds2'], payout=b['payout'], handicap=clean_hc))
+            match_data.bookie_odds.append(BookieOdds(
+                name=b['name'],
+                odds_1=normalize_odds_value(b['odds1']) or '-',
+                odds_x=normalize_odds_value(b['oddsX']) or '-',
+                odds_2=normalize_odds_value(b['odds2']) or '-',
+                payout=b['payout'],
+                handicap=clean_hc,
+            ))
         return match_data
 
     async def _extract_data_asian_handicap(self, page: Page, match_url: str) -> Optional[MatchOddsData]:
@@ -304,7 +382,7 @@ class OddsPortalDataMixin:
             Identifies the handicap value, Home (1) and Away (2) odds for each bookmaker.
             """
         logger.info('  🔄 Finding main Asian Handicap line (closest odds)...')
-        rows_data = await page.evaluate('\n            () => {\n                const rows = Array.from(document.querySelectorAll(\'div[data-testid="over-under-collapsed-row"]\'));\n                return rows.map((row, index) => {\n                    let odd1 = null;\n                    let odd2 = null;\n                    let handicapText = "";\n                    \n                    const optionBox = row.querySelector(\'div[data-testid="over-under-collapsed-option-box"] p\');\n                    if (optionBox) {\n                        handicapText = optionBox.innerText.trim();\n                    }\n\n                    const containers = row.querySelectorAll(\'.flex-center.border-black-main\');\n                    if (containers.length >= 2) {\n                        odd1 = parseFloat(containers[0].innerText.trim());\n                        odd2 = parseFloat(containers[1].innerText.trim());\n                    }\n                    return { index, handicapText, odd1, odd2 };\n                });\n            }\n        ')
+        rows_data = await page.evaluate('\n            () => {\n                const rows = Array.from(document.querySelectorAll(\'div[data-testid="over-under-collapsed-row"]\'));\n                return rows.map((row, index) => {\n                    let odd1 = null;\n                    let odd2 = null;\n                    let handicapText = "";\n                    \n                    const optionBox = row.querySelector(\'div[data-testid="over-under-collapsed-option-box"] p\');\n                    if (optionBox) {\n                        handicapText = optionBox.innerText.trim();\n                    }\n\n                    const containers = row.querySelectorAll(\'.flex-center.border-black-main\');\n                    if (containers.length >= 2) {\n                        odd1 = containers[0].innerText.trim();\n                        odd2 = containers[1].innerText.trim();\n                    }\n                    return { index, handicapText, odd1, odd2 };\n                });\n            }\n        ')
         min_diff = float('inf')
         target_index = -1
         target_handicap = None
@@ -312,10 +390,10 @@ class OddsPortalDataMixin:
         for row in rows_data:
             idx = row.get('index')
             hc = row.get('handicapText', 'Unknown')
-            odd1 = row.get('odd1')
-            odd2 = row.get('odd2')
-            if isinstance(odd1, (int, float)) and isinstance(odd2, (int, float)):
-                diff = abs(odd1 - odd2)
+            odd1 = normalize_odds_value(row.get('odd1'))
+            odd2 = normalize_odds_value(row.get('odd2'))
+            if odd1 is not None and odd2 is not None:
+                diff = abs(float(odd1) - float(odd2))
                 if diff < min_diff:
                     min_diff = diff
                     target_index = idx
@@ -337,5 +415,12 @@ class OddsPortalDataMixin:
         if clean_hc:
             clean_hc = clean_hc.replace('Asian Handicap', '').replace('AH', '').strip()
         for b in raw_data.get('bookies', []):
-            match_data.bookie_odds.append(BookieOdds(name=b['name'], odds_1=b['odds1'], odds_x=b['oddsX'], odds_2=b['odds2'], payout=b['payout'], handicap=clean_hc))
+            match_data.bookie_odds.append(BookieOdds(
+                name=b['name'],
+                odds_1=normalize_odds_value(b['odds1']) or '-',
+                odds_x=normalize_odds_value(b['oddsX']) or '-',
+                odds_2=normalize_odds_value(b['odds2']) or '-',
+                payout=b['payout'],
+                handicap=clean_hc,
+            ))
         return match_data

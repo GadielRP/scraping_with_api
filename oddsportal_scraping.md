@@ -1,788 +1,794 @@
-# OddsPortal Scraping — Complete Technical Guide
+# OddsPortal scraping: verified end-to-end flow
 
-> **Purpose**: This is the canonical reference for the OddsPortal scraping subsystem. It explains *why* the system exists, *when* it is triggered, *how* it works end-to-end, and *what* to do when things go wrong.
+> Canonical implementation guide for the OddsPortal path started by the pre-start job.
+>
+> Last verified against the repository: **2026-08-04**.
+>
+> Scope: the production path beginning at `modules/jobs/pre_start_check_job/run_pre_start_check_job.py`, through Playwright extraction, persistence, and alert synchronization. Statements below describe the code as it exists; they do not describe an intended or older architecture.
 
----
+## 1. Runtime summary
 
-## Table of Contents
-1. [Why OddsPortal?](#1-why-oddsportal)
-2. [Files Involved](#2-files-involved)
-3. [Data Structures](#3-data-structures)
-4. [What Triggers the Scraper](#4-what-triggers-the-scraper)
-5. [Full Operational Flow](#5-full-operational-flow)
-6. [League URL Cache](#6-league-url-cache)
-7. [Match Page Extraction](#7-match-page-extraction)
-8. [Sport-Specific Scraping Routes](#8-sport-specific-scraping-routes)
-9. [Fragment Navigation](#9-fragment-navigation)
-10. [Opening Odds via Hover](#10-opening-odds-via-hover)
-11. [Concurrency & Parallelism](#11-concurrency--parallelism)
-12. [Dedicated Logging](#12-dedicated-logging)
-13. [Configuration Reference](#13-configuration-reference)
-14. [Libraries Used](#14-libraries-used)
-15. [Testing](#15-testing)
-16. [Edge Cases & Troubleshooting](#16-edge-cases--troubleshooting)
-17. [Performance Summary](#17-performance-summary)
+OddsPortal is a supplemental provider. The pre-start job starts it in parallel with maintenance and the SofaScore/Oddspapi ingestion phases. It is not the component that decides the normal provider key moments.
 
----
+An event is selected for OddsPortal only when all of these conditions are true:
 
-## 1. Why OddsPortal?
+1. `Config.ODDSPORTAL_SCRAPING_ENABLED` is true.
+2. The event is returned by `EventRepository.get_events_starting_soon()`.
+3. Its canonical `competition_id` exists in `ODDSPORTAL_COMPETITION_ROUTES`.
+4. Its pre-calculated `minutes_until_start` is exactly `-5`.
 
-Our main data source (SofaScore API) provides opening and final odds, but we need odds from **more bookies**. OddsPortal tracks odds changes over time and exposes them through a hover tooltip on their frontend. This allows us to extract the **opening odds** for key bookmakers, which is critical for detecting odds movements and generating high-quality alerts. We store the **final odds for all available bookmakers** on the page, but only perform hovers for the top-priority ones to conserve time.
+`-5` means approximately five minutes after the stored start time. The value is calculated with Python `round()`, so it is a rounded minute bucket, not a precise elapsed-time comparison.
 
-We only scrape OddsPortal for **tracked leagues** (configured in `oddsportal_config.py`). It triggers **5 minutes after the event has started** (-5 minutes until start).
+The current local/template environments differ:
 
----
+- `.env`: `ODDSPORTAL_SCRAPING_ENABLED=true` (local, ignored by Git)
+- `.env.prod`: `ODDSPORTAL_SCRAPING_ENABLED=false`
+- `.env.example`: `ODDSPORTAL_SCRAPING_ENABLED=false`
 
-## 2. Files Involved
+The fallback in `Config` is `true` only when the variable is absent. Therefore, verify the effective environment instead of assuming the code default is active.
 
-| File | Role |
+## 2. Source map
+
+| File | Current responsibility |
 |---|---|
-| `scheduler.py` | Triggers the scraper via `_run_oddsportal_batch` and `_oddsportal_worker_wrapper` |
-| `oddsportal_scraper.py` | Core browser automation and odds extraction logic |
-| `team_matcher.py` | **Entity Resolution Engine**: Robust normalization and scoring (Jaccard, Aliases, etc.) |
-| `oddsportal_config.py` | Maps `season_id` → OddsPortal URL, team aliases, bookie priority, **sport scraping routes** |
-| `models.py` | Defines `OddsPortalLeagueCache` DB table |
-| `repository.py` | `MarketRepository.save_markets_from_oddsportal()` — saves per-period data with correct metadata |
-| `tests/test_oddsportal_scheduler_sim.py` | **Scheduler Simulation & Parallel Test**: Replicates the full scheduler flow, including parallel scraping and caching |
-| `.env` | Must have `PROXY_ENABLED=true` and concurrency toggles (`ODDSPORTAL_PARALLEL_BROWSERS`) |
-| `logs/oddsportal/` | Dedicated directory for OddsPortal-only logs, mirrored by month/week |
+| `infrastructure/scheduler/job_scheduler.py` | Registers the pre-start schedule, runs it once at startup, exposes the manual run, and owns `_active_op_thread`. |
+| `modules/jobs/pre_start_check_job/run_pre_start_check_job.py` | Top-level pre-start orchestration. Starts OddsPortal selection before maintenance and provider ingestion. |
+| `modules/jobs/pre_start_check_job/oddsportal_worker.py` | Selects OddsPortal candidates, creates per-event synchronization state, launches the background thread, builds scraper tasks, persists callback results, and signals completion. |
+| `modules/jobs/pre_start_check_job/alert_pipeline.py` | Legacy alert-side synchronization with the per-event OddsPortal state. |
+| `modules/jobs/pre_start_check_job/key_moment_evaluation.py` | Passes the shared OddsPortal context into the legacy alert and pillar entry points. |
+| `modules/oddsportal/oddsportal_config.py` | Canonical competition-to-provider routes, aliases, bookmaker identity matching, and route exports. |
+| `modules/oddsportal/oddsportal_routes.py` | Market/period fragments and sport-specific extraction steps. |
+| `modules/oddsportal/scraping_settings.py` | Versioned package policy for language/domain, bookmakers, hover, Betfair, Playwright behavior, timeouts, and diagnostics. |
+| `modules/oddsportal/oddsportal_dispatcher.py` | Synchronous wrappers, per-browser sequential batches, multi-browser distribution, and attempt recovery. |
+| `modules/oddsportal/scraper_impl.py` | Composes `OddsPortalScraper` from the browser, lookup, render, data, hover, resume, attempt, and page-state mixins. |
+| `modules/oddsportal/scraper_browser.py` | Chromium lifecycle, proxy launch options, contexts, request interception, anti-detection setup, and cache-busting navigation. |
+| `modules/oddsportal/scraper_lookup.py` | DB-cache lookup, live league-page discovery, date filtering, team matching, and cache replacement. |
+| `modules/oddsportal/scraper_attempt.py` | One resumable match extraction attempt across all configured route steps. |
+| `modules/oddsportal/scraper_render.py` | Market-group/period tab switching and strict stale-content checks. |
+| `modules/oddsportal/scraper_data.py` | Current-odds extraction for standard, Over/Under, Asian Handicap, and Betfair layouts. |
+| `modules/oddsportal/scraper_hover.py` | Unified regular/Betfair hover interaction and opening-odds block parser. |
+| `shared/odds_utils.py` | Automatic decimal/fractional detection and canonical decimal normalization. |
+| `modules/oddsportal/scraper_resume.py` | Resume-state normalization and partial `MatchOddsData` recovery. |
+| `modules/oddsportal/scraper_page_state.py` | Failure classification and debug artifacts. |
+| `modules/oddsportal/dataclasses.py` | Scraper result and recovery data structures. `models.py` only re-exports most of them. |
+| `modules/oddsportal/team_matcher.py` | Normalization, aliases, fuzzy scoring, direct/reversed matching, and ambiguity rejection. |
+| `infrastructure/persistence/repositories/oddsportal_cache_repository.py` | One league-cache row per `season_id`. |
+| `infrastructure/persistence/repositories/market_repository.py` | Resolves bookies and saves OddsPortal markets/choices/snapshots. |
+| `infrastructure/persistence/models.py` | Defines `OddsPortalLeagueCache` and the normal market tables. |
 
----
+There is no active root `scheduler.py` or root `oddsportal_scraper.py` in this repository. References to those files are legacy references.
 
-## 3. Data Structures
+## 3. Scheduler and pre-start entry point
 
-All structures are defined as Python `@dataclass` in `oddsportal_scraper.py`:
+### 3.1 Scheduled service
+
+`JobScheduler._setup_pre_start_jobs()` registers `job_pre_start_check` at every exact minute mark implied by `POLL_INTERVAL_MINUTES`. With the usual value `5`, those marks are `:00`, `:05`, `:10`, and so on.
+
+`JobScheduler.start()` also runs one immediate pre-start check before starting the scheduler thread. That ordering avoids an immediate startup run overlapping the first scheduled run in the same scheduler instance.
+
+The scheduler loop itself calls due jobs serially. The OddsPortal browser work is parallel only because the pre-start job launches its own background thread.
+
+### 3.2 Manual command
+
+```bash
+python main.py pre-start
+```
+
+The manual path calls `run_job_pre_start_check_now()`. After the synchronous pre-start phases return, it joins the current `_active_op_thread` without a timeout so the process does not exit while the non-daemon OddsPortal worker is still running.
+
+### 3.3 Event query and timing bucket
+
+`run_pre_start_check_job()` first optionally restricts all pre-start work to the canonical tracked-competition allowlist when `PRE_START_TRACKED_COMPETITIONS_ONLY=true`.
+
+It then calls:
 
 ```python
-# Per-bookmaker odds
-BookieOdds:
-  name: str
-  odds_1, odds_x, odds_2: str           # Final odds (e.g. "1.85")
-  initial_odds_1, initial_odds_x, initial_odds_2: Optional[str]  # Opening odds via hover
-  movement_odds_time: Optional[str]     # Timestamp of the odds movement (extracted from hover)
-
-# Betfair Exchange (Back and Lay)
-BetfairExchangeOdds:
-  back_1, back_x, back_2: str           # Final Back odds
-  lay_1, lay_x, lay_2: str             # Final Lay odds
-  initial_back_1 ... initial_lay_2: Optional[str]  # Opening odds via hover
-  movement_odds_time: Optional[str]     # Timestamp of the odds movement (extracted from hover)
-
-# One period's extraction (e.g. Full-time 1X2, or 1st Half 1X2)
-MarketExtraction:
-  market_group: str    # DB value, e.g. "1X2", "Home/Away"
-  market_period: str   # DB value, e.g. "Full-time", "1st half"
-  market_name: str     # DB value, e.g. "Full time", "1st half"
-  bookie_odds: List[BookieOdds]
-  betfair: Optional[BetfairExchangeOdds]
-
-# Full match output — wraps multiple period extractions
-MatchOddsData:
-  home_team, away_team: str
-  sport: str
-  extractions: List[MarketExtraction]   # One per scraped period
-  extraction_time_ms: float
-  bookie_odds: List[BookieOdds]          # Legacy compat: = extractions[0].bookie_odds
-  betfair: Optional[BetfairExchangeOdds] # Legacy compat: = extractions[0].betfair
+scheduler.event_repo.get_events_starting_soon(
+    Config.PRE_START_WINDOW_MINUTES,
+    competition_ids=tracked_competition_ids,
+)
 ```
 
----
+The SQL time interval is:
 
-## 4. What Triggers the Scraper
-
-The scraper is **not always running**. It only fires when all of the following are true:
-
-1. `job_pre_start_check` runs (every 5 minutes, at exact minute marks).
-2. An event is found **within 30 minutes of kickoff**.
-3. The event's `season_id` is present in `SEASON_ODDSPORTAL_MAP` (i.e. it's a tracked league).
-4. `_should_extract_odds_for_event` returns `True` — this happens at **-5 minutes until start** (5 minutes after kickoff).
-
-```mermaid
-flowchart TD
-    A["Scheduler: every 5min"] --> B["Find events within 30min"]
-    B --> C{"season_id in\nSEASON_ODDSPORTAL_MAP?"}
-    C -- No --> D["Skip OP scraping"]
-    C -- Yes --> E{"At 5min AFTER start?\n(-5 min until start)"}
-    E -- No --> D
-    E -- Yes --> F["Launch OP Worker Thread"]
+```text
+[current local naive minute - 5 minutes, current time + PRE_START_WINDOW_MINUTES]
 ```
 
-> [!IMPORTANT]
-> OddsPortal scraping is now performed **5 minutes after the event starts** (-5 minutes until start) to ensure final/closing odds are fully settled on the page while conserving resources. SofaScore odds are still extracted at 120, 30, 5, 0, and -5 minutes.
-> The OddsPortal batch also shares one `current_date` value across all workers so cache lookups and cache replacement decisions are consistent within the same run.
+The lower boundary is built from `datetime.now().replace(second=0, microsecond=0) - 5 minutes`. Consequently, the query includes recently started events only near the five-minute boundary; it is not an unrestricted post-start query.
 
----
+For every returned event, the job calculates once:
 
-## 5. Full Operational Flow
+```python
+round((start_time - get_local_now_aware()).total_seconds() / 60)
+```
+
+That same timing dictionary is passed to OddsPortal selection and later reused by the provider/evaluation planning.
+
+## 4. Exact orchestration from `run_pre_start_check_job.py`
 
 ```mermaid
 sequenceDiagram
-    participant S as Scheduler (Main Thread)
-    participant W as OP Worker Thread
-    participant DB as PostgreSQL
-    participant OP as OddsPortal.com
+    participant JS as JobScheduler
+    participant PS as Pre-start main thread
+    participant OP as OddsPortal launcher thread
+    participant BR as Playwright browser workers
+    participant DB as Database
+    participant AL as Legacy alert workers
 
-    S->>S: job_pre_start_check fires
-    S->>S: Partition: OP vs non-OP events
-    S->>W: Thread.start(_oddsportal_worker_wrapper)
-    S->>S: Continue: SofaScore odds extraction + H2H alerts (parallel)
-
-    W->>W: start() -> launch Playwright
-    W->>W: find_match_url(home, away, season_id)
-    W->>W: find_match_url_from_cache(season_id, home, away)
-    alt Cache Hit
-        W->>W: return URL (skip navigation)
-    else Cache Miss or Cache Exists But No Usable Match
-        W->>W: filter cached entries by current_date
-        W->>W: if no eligible candidate matches the teams, fall back to live navigation
-        W->>OP: Navigate league page (30s timeout)
-        W->>W: Extract match date from [data-testid="date-header"]
-        W->>W: Extract scoped match text from [data-testid="game-row"]
-        W->>W: team_matcher.find_best_match(candidates)
-        W->>DB: save_league_cache(season_id, structured_results)
+    JS->>PS: run_pre_start_check_job()
+    PS->>DB: load upcoming canonical events
+    PS->>PS: calculate rounded minutes_until_start
+    PS->>OP: start_oddsportal_scrape_for_events()
+    par Background OddsPortal path
+        OP->>BR: scrape_multiple_matches_parallel_sync()
+        BR->>DB: resolve/cache match URL
+        BR->>BR: extract route steps and hover openings
+        BR->>DB: on_result saves markets
+        BR->>AL: done_event.set()
+    and Main pre-start path
+        PS->>PS: timestamp/result maintenance
+        PS->>PS: NBA in-game checks
+        PS->>DB: load source states
+        PS->>PS: build provider candidates
+        PS->>PS: SofaScore ingestion
+        PS->>PS: Oddspapi ingestion
+        PS->>AL: evaluate key-moment pipelines
+        AL->>AL: eligible legacy alerts wait for their OP event
     end
-
-    W->>W: Resolve SPORT_SCRAPING_ROUTES for this sport
-    W->>OP: Navigate match page with fragment (#group;period)
-    OP-->>W: domcontentloaded
-    W->>W: wait_for_selector("div.border-black-borders.flex.h-9", 60s)
-
-    loop For each event in batch
-        loop For each period in route
-            W->>W: _extract_data() → Final odds for ALL bookies
-            W->>W: _extract_opening_odds_for_bookie() → Hover
-            W->>W: _extract_opening_odds_betfair() → Hover
-            W->>W: Wrap into MarketExtraction
-            W->>OP: Navigate to next fragment (if more periods)
-        end
-        W->>DB: on_result callback → MarketRepository.save() inline
-        W->>S: op_done_event[event_id].set() inline
-    end
-
-    note over S: MEANWHILE (Parallel Thread Pool per Event)
-    S->>S: Alert Thread 1 waits for op_done_event[event_A]
-    S->>S: Alert Thread 2 waits for op_done_event[event_B]
-    S->>S: Alert Thread 1 sends Event A alert (immediately when A completes)
-    S->>S: Alert Thread 2 sends Event B alert (immediately when B completes)
 ```
 
-### Key Design Decisions (Redesigned Parallel Dispatcher)
+The real order is:
 
-- **Worker runs in a background thread**. `scrape_multiple_matches_parallel_sync` spins up its own `asyncio` event loops across multiple workers.
-- **Decoupled Cache Seeding**: The dispatcher identifies events without a cached `match_url` and groups them by league. Instead of having one "main" event scrape the match AND seed the cache, it now creates a lightweight `resolver_seed` task.
-- **Immediate Sibling Release**: As soon as the `resolver_seed` task finishes navigating to the league page and "warming" the cache, ALL pending siblings in that group are immediately moved to the `ready_event_queue` to be scraped in parallel by any available worker.
-- **Improved Concurrency**: The original event that triggered the seed is also re-enqueued as a normal event once the cache is warm. This avoids bottlenecks where siblings waited for a full match extraction before starting.
-- **Shared Batch Date**: The scheduler computes one `current_date` per OddsPortal batch and passes it into the scraper. Cache filtering and cache replacement use that same date across all workers so a batch never mixes "today" decisions with a later timestamp.
-- **Immediate Inline Saving (Callback)**: The scraper accepts an `on_result` callback. As soon as a single match finishes scraping, it is persisted to the DB and its specific `threading.Event` is signalled.
-- **One browser instance per worker** is reused for multiple matches/seeds, but each real event gets its own fresh `BrowserContext` to prevent state contamination.
+1. Resolve the optional canonical competition filter.
+2. Load upcoming events.
+3. Calculate `minutes_until_start` once per event.
+4. Call `start_oddsportal_scrape_for_events()` immediately.
+5. Run recently-started timestamp correction and result-freshness maintenance.
+6. Run in-game checks.
+7. If events remain, load provider source states and build the normal pre-start candidate plan.
+8. Ingest SofaScore and Oddspapi odds.
+9. Evaluate the enabled legacy-alert and pillar pipelines.
 
----
+OddsPortal is therefore launched before timestamp maintenance. If maintenance later removes or reschedules an event, an already-selected OddsPortal task is not cancelled.
 
-## 6. League URL Cache & Entity Resolution
+If no upcoming events remain after maintenance, the main pre-start function returns, but an already-launched OddsPortal worker continues independently.
 
-Navigating to a league page costs ~9–14 seconds (even with `domcontentloaded`). To avoid this for every event in the same league, we cache all visible match URLs after the first navigation.
+## 5. Candidate selection and shared synchronization state
 
-### DB Table: `oddsportal_league_cache`
+`build_oddsportal_scrape_candidates()` does not reuse `should_extract_odds_for_event()`. It applies its own narrow rule:
 
-| Column | Type | Notes |
-|---|---|---|
-| `season_id` | `INTEGER` (PK) | One row per tracked league |
-| `cached_date` | `TIMESTAMP` | Set to midnight of the current day |
-| `match_urls` | `JSONB` | Structured payload of matches found |
-| `created_at` | `TIMESTAMP` | Last write time |
-
-### Cache Hit vs Miss
-
-```mermaid
-flowchart LR
-    A["scrape_batch"] --> B["find_match_url_from_cache(season_id)"]
-    B --> C{"Cache row exists?"}
-    C -- No --> F["Cache miss:\nNavigate league page"]
-    C -- Yes --> D{"Any entry with\nstored date >= current_date?"}
-    D -- No --> F
-    D -- Yes --> E{"Match name in filtered JSONB?"}
-    E -- Yes --> G["⚡ Return full URL\n~0s — skip browser nav"]
-    E -- No --> F
-    F --> H["Extract CANDIDATES\nfrom current page"]
-    H --> I["save_league_cache()\nupsert structured JSONB"]
-    I --> G
+```python
+Config.ODDSPORTAL_SCRAPING_ENABLED
+and competition_id in ODDSPORTAL_COMPETITION_ROUTES
+and pre_calculated_timings[event_id] == -5
 ```
 
-### 6.1 Entity Resolution Pipeline (find_match_url)
+Important consequences:
 
-Finding a match URL on a league page is not a simple string search. It is an **Entity Resolution** problem.
+- Eligibility is based on canonical `competition_id`, not `season_id`.
+- A missing `season_id` does not prevent selection. It disables the DB-cache shortcut for that task, but live league discovery can still run.
+- `ENABLE_ODDS_EXTRACTION` does not gate OddsPortal candidate selection.
+- `PRE_START_ODDS_MOMENTS` does not directly gate selection; `-5` is hard-coded in the OddsPortal worker. In normal operation `-5` should also remain in `PRE_START_ODDS_MOMENTS` so downstream key-moment evaluation and provider odds remain aligned.
+- `PRE_START_TRACKED_COMPETITIONS_ONLY` can filter the event out earlier at the SQL query, even if it has an OddsPortal route.
 
-1.  **Extraction (Candidate Generation)**:
-    -   The scraper identifies the main league container (`div[class*="empty:min-h-[80vh]"]`).
-    -   It iterates through each `div.eventRow` to maintain a **Date-Aware State**.
-    -   **Date Detection**: Captures text from `[data-testid="date-header"]` and associates it with all following matches.
-    -   **Scoped Extraction**: Extracts match data exclusively from `[data-testid="game-row"]`. This prevents "noise" like sport, country, or league breadcrumbs from polluting the team names.
-    -   Result: A list of `Candidate` dicts: `[ {home: "...", away: "...", href: "...", raw_text: "...", date: "..."}, ... ]`.
+For each selected event, `create_oddsportal_scrape_state()` creates:
 
-2.  **Scoring (TeamMatcher)**:
-    -   The `TeamMatcher` class (in `team_matcher.py`) receives the SofaScore names and the list of candidates.
-    -   It computes a score (0.0 to 100.0) for every candidate using:
-        -   **Normalization**: Strips accents, lowers case, removes institutional noise (FC, SC, etc.).
-        -   **Alias Lookup**: Checks `TEAM_ALIASES` in `oddsportal_config.py` (supports list aliases).
-        -   **Jaccard Token Similarity**: Intersection vs. Union of name tokens.
-        -   **Containment Bonus**: Boosts scores if one name is a subset (e.g., "Lulea" in "Lulea Hockey").
-        -   **Fuzzy Fallback**: Uses `SequenceMatcher` for character-level similarity.
+```python
+{
+    "started_event": threading.Event(),
+    "done_event": threading.Event(),
+    "started_at_monotonic": None,
+    "done_at_monotonic": None,
+}
+```
 
-3.  **Selection**:
-    -   The candidate with the highest score is selected if it meets the **threshold (>= 150)**, which represents a 75% average match across both teams.
+`OddsPortalScrapeContext` carries three shared objects into evaluation:
 
-### 6.2 Structured Caching (The Rationale)
+- `event_states`: synchronization state keyed by canonical event ID.
+- `event_ids`: the selected IDs.
+- `data_cache`: in-memory `MatchOddsData` keyed by event ID.
 
-Previously, the system stored cache entries as simple strings: `"Team A vs Team B"`. This caused **information degradation**. Upon reading the cache later, the system had to try and re-parse those names using regex, which was fragile if team names contained hyphens or "vs".
+## 6. Cycle-level thread behavior
 
-**Now**, we store a structured dictionary:
+`start_oddsportal_scrape_thread()` starts one non-daemon thread named `oddsportal_worker_launcher` when candidates exist.
+
+Before starting browser work, the new launcher checks the previous `scheduler._active_op_thread`:
+
+1. If no previous thread is alive, start the new scrape cycle.
+2. If it is alive, join it for at most `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` seconds.
+3. If it finishes, start the new cycle.
+4. If it is still alive, abort the new cycle and set every new candidate's `done_event` so alert workers are not left blocked by that aborted cycle.
+
+This guard prevents two OddsPortal cycles from being intentionally activated by the same scheduler instance. It does not terminate the old thread.
+
+The worker's outer `finally` also sets `done_event` for every event that did not receive a normal callback. This covers dispatcher crashes and chunk-level failures.
+
+When the toggle is false or there are no candidates, no new thread is launched and `_active_op_thread` is set to `None`.
+
+That assignment also clears the scheduler's reference when an older worker is still alive. A later cycle can therefore lose the previous-cycle guard and start another worker. The guard is reliable only while `_active_op_thread` still points to the older thread; it is not a global process lock.
+
+## 7. Task construction and browser distribution
+
+`scrape_oddsportal_batch()` converts candidates to tasks containing:
+
+```text
+event_id
+league_url
+home_team
+away_team
+season_id
+competition_id
+sport
+_oddsportal_resume_state
+_oddsportal_partial_match_data
+```
+
+The league URL is built as:
+
+```text
+https://www.{Config.ODDSPORTAL_DOMAIN}/{sport}/{country}/{league}/
+```
+
+One local calendar date from `get_current_date()` is calculated for the batch and passed to every browser worker so all cache date decisions in that batch use the same reference date.
+
+### 7.1 Current parallel dispatcher
+
+`scrape_multiple_matches_parallel_sync()` has two modes:
+
+- If `num_browsers <= 1` or there is only one task, it calls one sequential `scrape_multiple_matches_sync()` batch.
+- Otherwise it distributes tasks into at most `ODDSPORTAL_PARALLEL_BROWSERS` chunks and runs one `scrape_multiple_matches_sync()` per non-empty chunk in a `ThreadPoolExecutor`.
+
+The distribution is “season-aware” only in this specific sense:
+
+1. Tasks are grouped by `season_id`.
+2. The first task from each season, plus tasks without a season, are assigned to the currently smallest chunks.
+3. All remaining tasks are then assigned to the currently smallest chunks.
+
+Each chunk owns one Chromium browser and processes its tasks sequentially, with a one-second pause between tasks. Different chunks run concurrently.
+
+There is **no active resolver-seed queue, condition-based sibling release, or dedicated cache-warming phase** in the current dispatcher. Sibling tasks from the same season can be assigned to different chunks and can independently miss the cache while another browser is still warming it.
+
+### 7.2 Per-browser and per-event lifecycle
+
+For each chunk, `scrape_multiple_matches_sync()`:
+
+1. Creates one `OddsPortalScraper` using the package-configured `browser.debug_dir`.
+2. Starts one headless Chromium browser.
+3. Processes assigned events sequentially.
+4. Stops Playwright and Chromium in `finally`.
+
+For each extraction attempt, `scrape_match_attempt()` normally creates and later closes a fresh `BrowserContext` when `scraping_settings.py` sets `browser.fresh_context_per_event=True`. Because recovery can call `scrape_match_attempt()` multiple times, “fresh per event” is effectively fresh per attempt in the current implementation.
+
+`on_task_started` is invoked immediately before the first `scrape_match_attempt()`, after match-URL resolution. Time spent waiting for or navigating the league page is therefore still represented as “queued” to the alert pipeline.
+
+## 8. Chromium, proxy, and network behavior
+
+`OddsPortalScraper.start()` launches Playwright Chromium headlessly with anti-automation-related arguments. A browser context uses:
+
+- a randomized desktop user agent;
+- viewport `1920 x 1080`;
+- locale `en-US`;
+- timezone `America/Mexico_City`;
+- JavaScript enabled;
+- optional HTTPS-error ignoring;
+- optional service-worker blocking;
+- an init script that masks `navigator.webdriver` and supplies common browser properties.
+
+If package setting `browser.block_resources=True`, request interception:
+
+- blocks image and media requests;
+- blocks several analytics, consent, ad, and survey domains;
+- adds cache-busting parameters/headers to selected OddsPortal `xhr`/`fetch` requests.
+
+Match-page navigation additionally appends `_t=<timestamp>` before the URL fragment and temporarily sets no-cache headers.
+
+If package setting `browser.clear_state_before_navigation=True`, each attempt clears cookies and makes best-effort attempts to clear local/session storage, Cache Storage, and service-worker registrations before opening the match page.
+
+### Proxy facts
+
+- `PROXY_ENABLED=true` is optional, not an eligibility requirement.
+- When enabled and fully configured, the proxy is attached at Chromium launch through `ProxyIdentityManager`.
+- OddsPortal defaults to sticky proxy mode; Decodo rotating mode is coerced to sticky.
+- `PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART` is read by the manager, but current dispatcher restart calls use `scraper.start()` without `rotate_proxy_session=True`. Do not assume those restarts explicitly mint a new proxy session from this flag alone.
+
+## 9. Competition routing
+
+`ODDSPORTAL_COMPETITION_ROUTES` is provider routing, separate from the business tracked-competition allowlist.
+
+| `competition_id` | Sport | Country | League slug |
+|---:|---|---|---|
+| 176 | basketball | usa | nba |
+| 318 | football | brazil | serie-a |
+| 129 | baseball | usa | mlb |
+| 167 | football | spain | laliga |
+| 88 | football | italy | serie-a |
+| 168 | football | england | premier-league |
+| 50 | football | saudi-arabia | saudi-professional-league |
+| 171 | football | germany | bundesliga |
+
+Adding a sport route to `SPORT_SCRAPING_ROUTES` does not make events eligible by itself. A canonical competition route is also required.
+
+`scraping_settings.py` field `ui_language` selects the regional domain:
+
+- `es` -> `cuotasahora.com`
+- `en` -> `oddsportal.com`
+- any other value is rejected at import time.
+
+The language also selects candidate labels used to recognize group and period tabs. It does not change the browser context locale, which remains `en-US`.
+
+## 10. Match URL resolution and league cache
+
+### 10.1 Cache schema
+
+`oddsportal_league_cache` stores one row per `season_id`:
+
+| Column | Meaning |
+|---|---|
+| `season_id` | Primary key and cache scope. |
+| `cached_date` | Local midnight when the row was last written. |
+| `match_urls` | JSON object keyed by relative match URL. |
+| `created_at` | Last write time. |
+
+A structured entry is:
+
 ```json
 {
-  "/football/mexico/liga-mx/puebla-queretaro/abcdef/": {
-    "home": "Puebla",
-    "away": "Queretaro",
-    "raw_text": "22:00 Puebla - Queretaro 2.10 3.20 3.50",
-    "date": "27 Mar 2026"
+  "/football/h2h/team-a/team-b/abc123/#row-id": {
+    "home": "Team A",
+    "away": "Team B",
+    "raw_text": "...",
+    "date": "31 Jul 2026"
   }
 }
 ```
-**Benefits:**
--   **No Redundant Parsing**: We preserve the perfect extraction we had in memory.
--   **Date-Based Validation**: Use the `"date"` field to anchor match relevance.
--   **TeamMatcher Consistency**: The cache reader can feed the `home/away` fields directly into the `TeamMatcher`, ensuring identical scoring logic for both live-scraped and cached events.
--   **Robustness**: Handles names with special characters or complex layouts.
 
-### 6.3 Cache Backward Compatibility
+The repository accepts cache rows written in the last three calendar days, but `_load_cached_candidates()` only uses structured entries whose embedded match date parses as the batch date or a future date. Undated, stale, and legacy string entries are not returned as candidates.
 
-The `find_match_url_from_cache` method is designed to handle both formats:
--   **Dict**: (New) Uses `home`/`away` fields directly.
--   **String**: (Legacy) Attempts a robust multi-separator regex split to recover names.
+The DB cache key is only `season_id`. Although lookup methods accept `league_url`, the active cache loader does not use it to further scope the row.
 
-It also now applies a **date gate** before matching:
--   A cache entry is only considered if its stored `"date"` is today or later relative to the shared batch `current_date`.
--   If the cache row exists but no eligible stored match meets the team threshold, the scraper logs that the cache was found but no usable match was resolved and then falls back to live league navigation.
+### 10.2 Resolution order
 
-Every day at **05:01**, `job_daily_discovery` calls `cleanup_old_caches()` to reset the cache.
+For each event, the sequential browser batch does:
 
-### 6.4 Quality-Aware Cache Replacement (Smart Overwrite)
+1. If `season_id` exists, call `find_match_url_from_cache()`.
+2. On miss, call `find_match_url()`. That function checks the cache again unless forced live.
+3. On another miss, navigate the league page and extract live candidates.
+4. Run `TeamMatcher.find_best_match(home, away, candidates)`.
+5. Return the absolute match URL or `None`.
 
-To prevent "bad" or incomplete scraping sessions from corrupting the database, every cache write now undergoes a **Quality Evaluation**:
+### 10.3 Live candidate extraction
 
-1.  **Scoring**: The new cache dictionary is evaluated with `_evaluate_cache_quality(cache_dict, current_date)`:
-    -   `total_count`: Total cache entries in the JSON payload.
-    -   `fresh_count`: Entries whose stored `"date"` is today or later.
-    -   `stale_count`: Entries whose stored `"date"` is older than `current_date` or cannot be parsed.
-    -   `freshness_ratio`: `fresh_count / total_count`.
-    -   `homogeneity`: Percentage of URLs that follow the expected `/sport/country/league/` pattern.
-    -   `score`: `fresh_count * homogeneity`.
-2.  **Comparison**: Before `save_league_cache`, the system loads the current DB cache and evaluates both the old and new cache with the same shared `current_date`.
-3.  **Threshold**: The new cache is only saved if its comparison key wins:
-    -   More fresh entries wins first.
-    -   Then higher freshness ratio.
-    -   Then higher homogeneity.
-    -   Then higher total entry count.
+The live league lookup:
 
-This logic is especially critical during **404 Recovery** and normal league refreshes, where the scraper performs a live league navigation to find the correct match URL. A cache row can exist for a season but still be unusable if all matching rows are stale or the participants only match an old date. In that case the scraper falls back to live navigation, then lets the freshness-aware cache replacement decide whether the new live snapshot should replace the stored one.
+- waits for `div[class*="empty:min-h-[80vh]"] div.eventRow`;
+- tracks date headers from `[data-testid="date-header"]`;
+- reads match links from `div.group.flex[data-testid="game-row"] > a[href]`;
+- reads participant names from `div[data-testid="event-participants"] a[title]`;
+- repairs missing row fragments with the `eventRow` ID when possible;
+- removes `/inplay-odds` from match paths;
+- accepts both modern `/{sport}/h2h/...` and legacy `/{sport}/{country}/...` paths;
+- rejects wrong-sport, malformed, league-self, missing-team, stale, and undated candidates.
 
----
+### 10.4 Team matching
 
-## 7. Match Page Extraction
+`TeamMatcher`:
 
-After navigating to the match page, `scrape_match()` runs these steps in order:
+1. strips diacritics, punctuation, casing, and repeated spaces;
+2. removes configured institutional tokens;
+3. checks explicit aliases;
+4. combines token Jaccard, containment, and `SequenceMatcher` scores;
+5. scores direct and reversed home/away ordering;
+6. requires a best combined score of at least `150/200`;
+7. rejects direct/reversed ambiguity when the winning orientation is less than 20 points better.
 
-1. **Immediate Network Failure Check** — Detects catastrophic navigation failures (e.g., `net::ERR_TIMED_OUT`, `net::ERR_CONNECTION_REFUSED`) during the initial `page.goto()`. If the network connection fails completely, the scraper returns `None` immediately without waiting for a browser-side timeout.
-2. **Fast Fail Check #1 (Title)** — Quickly checks the page title for known Cloudflare blocks (`"Access Denied"`, `"Just a moment..."`, `"Cloudflare"`). If blocked, returns `None` instantly.
-3. **Fast Fail Check #2 (MutationObserver)** — An event-driven listener (browser-side `MutationObserver` with a 15s timer) is injected to watch the `event-container` div. If the container remains empty (`<!---->`) for 15s, it signals Python to fail fast. If real content appears, the timer is cancelled.
-4. **Smart Wait Race** — The scraper races a 60s `wait_for_selector("div.border-black-borders.flex.h-9")` against the Fast Fail event. This ensures we either succeed as soon as data appears or fail as soon as we know it won't (usually within 15-18s total).
-5. **Cookie/Consent banner dismissal** — tries multiple selectors (`#onetrust-accept-btn-handler`, `button:has-text('I Accept')`, etc.).
-6. **`window.scrollTo(0, 500)`** — triggers any lazy-loaded elements.
-7. **Multi-period extraction loop** — iterates through configured periods via fragment navigation.
+The extra `>= 80` check in `find_match_url_from_cache()` is redundant after the matcher's `150` combined-score threshold; the matcher is the effective gate.
 
-> [!NOTE]
-> If a timeout occurs during `wait_for_selector`, the scraper automatically captures a screenshot and the HTML source to the specified `debug_dir` for investigation.
+### 10.5 Quality-aware replacement
 
----
-
-## 8. Sport-Specific Scraping Routes
-
-Each sport has a configured **scraping route** in `SPORT_SCRAPING_ROUTES` (`oddsportal_config.py`). The route defines a **`groups`** list, where each group specifies:
-
-- **`group_key`**: Which OP_GROUPS key to use, mapping to the tab text (e.g. `"1X2"` for football, `"OVER_UNDER"`)
-- **`periods`**: A list of `(period_key, db_market_period, db_market_name)` tuples to scrape *within* this group
-- **`db_market_group`**: The DB column value (e.g. `"1X2"`, `"Home/Away"`, `"Over/Under"`)
-- **`has_draw`**: Whether the group features a draw/X column
-- **`betfair_period_index`**: Which period index gets Betfair hover extraction (usually `0` for the first period of the main group, `None` otherwise)
-- **`extract_fn`**: Which extraction function string identifier to dispatch to (e.g. `"standard"`, `"over_under"`)
-
-### Example Routes
-
-| Sport | Groups | Periods | Draw? | Extract Fn |
-|---|---|---|---|---|
-| Football | 1X2 <br> Over/Under <br> Asian Handicap | • Full Time, 1st Half <br> • Full Time, 1st Half <br> • Full Time, 1st Half | ✅ <br> ❌ <br> ❌ | standard <br> over_under <br> asian_handicap |
-| Basketball | Home/Away <br> Over/Under <br> Asian Handicap | • Full Time (inc. OT), 1st Half <br> • Full Time (inc. OT), 1st Half <br> • Full Time (inc. OT), 1st Half | ❌ <br> ❌ <br> ❌ | standard <br> over_under <br> asian_handicap |
-| Hockey | Home/Away <br> Over/Under <br> Asian Handicap | • Full Time (inc. OT), 1st Half <br> • Full Time (inc. OT), 1st Half <br> • Full Time (inc. OT), 1st Half | ❌ <br> ❌ <br> ❌ | standard <br> over_under <br> asian_handicap |
-| American Football | Home/Away | • Full Time (inc. OT), 1st Half | ❌ | standard |
-
-### Route Fallback
-
-If `sport` is `None` or not found in `SPORT_SCRAPING_ROUTES`, the scraper falls back to **legacy mode**: a single extraction with no fragment navigation, hardcoded to `1X2 / Full-time`.
-
----
-
-## 9. Fragment Navigation
-
-OddsPortal uses **URL fragment identifiers** to switch between market groups and periods on a match page without a full page reload.
-
-### URL Format
-
-Modern OddsPortal SPAs often combine specific event tokens (row IDs) with market routing segments within the fragment:
-
-```
-https://www.oddsportal.com/football/.../match-slug/#YP0Mlprg:1X2;2
-                                                    ^^^^^^^^ ^^^^^
-                                                     token   market
-```
-
-### Fragment Handling
-
-The scraper handles URL fragments by preserving any existing event token (e.g., `#YP0Mlprg`) while appending the desired market group and period identifier (e.g., `:1X2;2`). 
-
-- **If a token exists**: The market segment is appended directly to it (e.g., `#TOKEN:MARKET`).
-- **If no token exists**: The market segment is simply prefixed with `#` (e.g., `#:MARKET`).
-
-This ensures that OddsPortal can correctly focus on the specific match row while also navigating to the correct market tab, avoiding 404 errors or missing data.
-
-### Fragment Constants
-
-Defined in `oddsportal_config.py`:
-
-```python
-OP_GROUPS = {
-    "1X2": "1X2",
-    "HOME_AWAY": "home-away",
-    "OVER_UNDER": "over-under",
-    "ASIAN_HANDICAP": "ah"
-}
-
-OP_PERIODS = {
-    "FT_INC_OT": 1,    # Full Time including Overtime
-    "FULL_TIME": 2,     # Full Time (regulation only)
-    "1ST_HALF": 3,      # 1st Half
-    "2ND_HALF": 4,      # 2nd Half
-    "1ST_PERIOD": 5,    # 1st Period (hockey)
-    "2ND_PERIOD": 6,    # 2nd Period (hockey)
-    "3RD_PERIOD": 7,    # 3rd Period (hockey)
-    "1ST_QUARTER": 8,   # 1st Quarter (NBA)
-    "2ND_QUARTER": 9,   # 2nd Quarter (NBA)
-    "3RD_QUARTER": 10,  # 3rd Quarter (NBA)
-    "4TH_QUARTER": 11,  # 4rd Quarter (NBA)
-}
-```
-
-### Navigation Flow
-
-```mermaid
-flowchart TD
-    A["scrape_match() starts"] --> B["Build initial URL with fragment\n#group;period_1"]
-    B --> C["page.goto(initial_url)"]
-    C --> D["Wait for bookie rows"]
-    D --> E["Extract Period 1 odds"]
-    E --> F{"More periods?"}
-    F -- Yes --> G["Click period sub-tab\n(e.g. '1st Half')"]
-    G --> H["Wait for odds values\nto actually change"]
-    H --> I["Extract Period N odds"]
-    I --> F
-    F -- No --> J["Build MatchOddsData\nwith all MarketExtractions"]
-```
-
-The first period is loaded with the initial `page.goto()`. Subsequent groups and periods are loaded by **clicking the tabs directly in the UI**:
-- **Market Groups** (`"1X2"`, `"Over/Under"`): Clicked via the `ul.visible-links.odds-tabs li` tabs.
-- **Periods** (`"1st Half"`, `"Full Time"`): Clicked via the sub-tabs within `data-testid="kickoff-events-nav"`.
-
-### Smart Wait for Render (Race Condition Fix)
-
-OddsPortal is a complex SPA. Sometimes a tab click may be "received" but the table rendering is delayed, or a fragment fallback makes a tab appear "already active" before the previous data has cleared. To prevent extracting stale or empty data, the scraper implements a **Smart Wait**:
-
-1.  **Reference Snapshot**: Before clicking, it captures a `ref_value` (the text of the first odds cell).
-2.  **State Verification**: Even if the tab is detected as `active-odds` (already active), the scraper verifies that the table contains actual rows (e.g., `div.odds-cell` or `data-testid="over-under-collapsed-row"`).
-3.  **Dynamic Change Detection**: It polls the table (up to `ODDSPORTAL_TAB_WAIT_TIMEOUT`, default 20s) until:
-    - The value changes from `ref_value` to something new.
-    - If `ref_value` was `None` (e.g. switching from Asian Handicap), it waits for the *first* visible data to render.
-    - **Structural Fallback**: If odds values don't change across periods, it checks if the underlying DOM structures (`div.odds-cell`, `over-under-collapsed-row`) are fully present.
-4.  **Page Reload Recovery**: If the click fails to trigger an update after the timeout, it initiates a full `page.goto()` to the target URL fragment as a last resort, clearing any poisoned SPA state.
-
-> [!IMPORTANT]
-> This "Smart Wait" ensures near 100% reliability for Over/Under and Asian Handicap extractions, which are highly sensitive to SPA rendering states.
-
----
-
-## 9b. Match Page HTML Structure (event-container)
-
-The main container on a match page is `event-container`. It does **not** change when the fragment changes — only its child elements update.
-
-### Structure Overview
+After live discovery, a new structured cache is compared with the existing row. Replacement uses the lexicographic key:
 
 ```text
-event-container (stable parent)
-├── flex flex-col (tabs section — does NOT change between fragments)
-│   ├── div.mt-3.flex.gap-2.bg-gray-light (Pre-match vs In-Play selector ⬅ ONLY APPEARS IF EVENT STARTED)
-│   │   └── div[data-testid="kickoff-events-nav"]
-│   │       ├── a (e.g. "Pre-match Odds")
-│   │       └── a (e.g. "In-Play Odds")
-│   │
-│   ├── hide-menu (mobile market group tabs, e.g. "1X2", "Over/Under")
-│   ├── tabs (desktop market group tabs)
-│   │   └── ul.visible-links.odds-tabs (clickable market group tabs)
-│   │       ├── li[data-testid="navigation-active-tab"] (e.g. "1X2")
-│   │       └── li[data-testid="navigation-inactive-tab"] (e.g. "Over/Under")
-│   │
-│   ├── div[data-testid="bookies-filter-nav"] (All/Classic/Crypto filter)
-│   │
-│   └── div.mt-2.flex.w-auto.gap-2 (period sub-tabs ⬅ KEY FOR PERIOD NAVIGATION)
-│       └── div[data-testid="kickoff-events-nav"]
-│           ├── div[data-testid="sub-nav-active-tab"] (e.g. "Full Time")
-│           └── div[data-testid="sub-nav-inactive-tab"] (e.g. "1st Half")
-│
-├── min-md:px-[10px] (odds table + betfair section)
-│
-│   =============================================================================
-│   [SUPPORTED MARKET GROUPS: 1X2, Home/Away]
-│   These have the standard row/column structure for match winner outcomes.
-│   -----------------------------------------------------------------------------
-│   ├── <unnamed div> (odds table)
-│   │   ├── div[data-testid="bookmaker-table-header-line"] (column headers)
-│   │   └── div.border-black-borders.flex.h-9 × N (one row per bookie)
-│   │       ├── bookie info (logo img[alt], name a[title])
-│   │       ├── div.odds-cell[data-testid="odd-container"] × [2 or 3] (odds values)
-│   │       └── div[data-testid="payout-container"] (payout %)
-│   │
-│   └── div[data-testid="betting-exchanges-section"] (Betfair — not always present)
-│       └── div[data-testid="odd-container"] (Back/Lay odds containers)
-│
-│   =============================================================================
-│   [SUPPORTED MARKET GROUPS: Over/Under]
-│   These have a different HTML structure with collapsed rows containing accordion data
-│   for various lines (e.g. 2.5, 3.5). The scraper identifies the "Main Line" (closest to even odds) and clicks the **collapsed row element** (e.g., `div[data-testid="over-under-collapsed-row"]`) to reveal the full bookmaker table.
-│   │
-│   ├── div[data-testid="over-under-collapsed-row"] (clickable line row e.g. "Total +2.5")
-│   │   ├── p (Over odds)
-│   │   └── p (Under odds)
-│   │
-│   └── div[data-testid="bookmaker-table-header-line"] (revealed upon click)
-│       └── div.border-black-borders.flex.h-9 × N (one row per bookie)
-│           ├── bookie info
-│           ├── div.odds-cell (Over)
-│           ├── div.odds-cell (Under)
-│           └── payout %
-│
-│   =============================================================================
-│   [SUPPORTED MARKET GROUPS: Asian Handicap]
-│   Follows the same accordion expansion logic and HTML test IDs as Over/Under.
-│   The main difference is the text labels (AH / Asian Handicap) and the columns (1, 2).
-│   =============================================================================
+(fresh_count, freshness_ratio, homogeneity, total_count)
 ```
 
-### Key Selectors Reference (found in every market group and period)
+The displayed score `fresh_count * homogeneity` is diagnostic; it is not the direct comparison key. A lower-quality new cache is rejected. An equal-or-better cache replaces the whole JSON object through an upsert.
 
-| Element | Selector | Notes |
-|---|---|---|
-| **Market group tabs** | `ul.visible-links.odds-tabs li` | "1X2", "Over/Under", etc. |
-| **Active market group** | `li[data-testid="navigation-active-tab"]` | Has `active-odds` class |
-| **Period sub-tabs wrapper** | `div[data-testid="kickoff-events-nav"]` | Multiple can exist! (e.g., Pre-match/In-play vs periods). Scraper must iterate through all to find the period. |
-| **Active period tab** | `div[data-testid="sub-nav-active-tab"]` | Currently selected period |
-| **Inactive period tab** | `div[data-testid="sub-nav-inactive-tab"]` | Clickable to switch period |
+The cleanup job runs every three days at `05:00` and removes rows older than the configured three-day retention boundary.
 
-### Odds table values and structure change between market groups, market periods only change odds values.
-> Scraper must change scraping method to handle the changing structure between market_groups when dealing with bookie rows, bookie names, odds cells, odds value links and pay out
+## 11. Sport routes and fragments
 
-| Element | Selector | Notes |
-|---|---|---|
-| **Bookie row** | `div.border-black-borders.flex.h-9` | One row per bookmaker |
-| **Bookie name** | `a[title]` or `img[alt]` inside bookie row | Used for identification |
-| **Odds cell** | `div.odds-cell[data-testid="odd-container"]` | Contains the odds value |
-| **Odds value link** | `a.odds-link` inside odds cell | The numeric odds text |
-| **Payout** | `div[data-testid="payout-container"]` | e.g. "94.7%" |
+OddsPortal match URLs use a normalized fragment:
 
-### Betfair section ###
-> Betfair Section appears just once per match. It usually is avaiable in the primary route set in the scraping routes
-
-| Element | Selector | Notes |
-|---|---|---|
-| **Betfair section** | `div[data-testid="betting-exchanges-section"]` | Exchange odds |
-| **Table header** | `div[data-testid="bookmaker-table-header-line"]` | Column labels |
-
-### Behavior When Switching
-
-| Action | Table Structure | Odds Values | Selectors |
-|---|---|---|---|
-| **Switch period** (same group) | ❌ No change | ✅ Values change | ❌ Same selectors |
-| **Switch market group** | ✅ Structure changes | ✅ Values change | ⚠️ May change |
-
-### Reference HTML Files
-
-These files contain isolated sections of the match page for reference:
-- `event-container.html` — full event-container parent
-- `market_groups_and_periods_section.html` — tabs section (groups + periods)
-- `odds_betfair_and_extra.html` — odds table + betfair section
-
----
-
-## 10. Opening Odds via Hover
-
-OddsPortal does not expose opening odds in the DOM directly. They appear in a **Vue.js tooltip** triggered by mouse hover. We simulate this with Playwright.
-
-> [!IMPORTANT]
-> To maintain performance, we **store all bookies' final odds** directly from the DOM, but we only **hover over a single bookie** (the highest priority available) and **Betfair Exchange** (if available) per period. Opening odds for all other bookies remain `null`.
-
-### Hover Mechanics & Optimizations
-
-Because OddsPortal relies on Vue.js to dynamically attach the tooltip to the DOM, naïve hover attempts can fail due to race conditions or UI overlaps. We mitigate this through four specific mechanisms:
-
-1. **Resource Blocking (Critical)**: By setting `ODDSPORTAL_BLOCK_RESOURCES=true`, the scraper intercepts and blocks heavy ad networks and tracking scripts. This prevents ad overlays from stealing Playwright's pointer events, ensuring near 100% hover success rates while significantly reducing bandwidth.
-2. **Scroll-and-Bump**: Playwright's `scroll_into_view_if_needed()` often aligns cells beneath OddsPortal's sticky top header. We immediately follow it with `window.scrollBy(0, -150)` to bump the page down and guarantee visibility.
-3. **Humanized Mouse Wiggle**: Rather than instantly teleporting the cursor to the dead-center of the element, the cursor is moved slightly outside (**15px offset**) and then pulled inside. This reliably triggers DOM `mouseenter` repaints.
-4. **Dynamic Wait Polling with Escalating Retry**: Instead of hard-sleeping for 3-4 seconds per cell, the scraper dynamically polls for `h3:has-text('Odds movement')` with `state="visible"`. If the tooltip fails to appear, the scraper resets the mouse to `(0, 0)` and retries up to 3 times with escalating timeouts (3s → 4s → 5s).
-5. **Tooltip Detach Wait**: Between sequential hovers, the scraper waits for the previous tooltip to fully `detach` from the DOM. This prevented a common bug where Playwright would sometimes "see" the previous modal's HTML for the current cell.
-
-### Bookie Opening Odds Flow
-
-```mermaid
-flowchart TD
-    A["Find highest-priority\nbookie in scraped data"] --> B["Find bookie row:\ndiv.border-black-borders.flex.h-9"]
-    B --> C["Get odds cells:\ndiv.flex-center.flex-col.font-bold"]
-    C --> D["For each cell (1, X, 2 or Over, Under):"]
-    D --> E["Remove overlays (popups, cookie banners) via JS\nScroll up to dodge sticky header"]
-    E --> F["Humanised mouse move ('wiggle' 15px) over box"]
-    F --> G["hover(force=True, timeout=1.5s)\n+ JS mouseenter/mouseover dispatch"]
-    G --> H{"page.wait_for_selector(\nh3:has-text('Odds movement'), state='visible')\n(Dynamic wait 3-5s)"}
-    H -- Timeouted --> I["Retry (up to 3x)"]
-    H -- Found --> J["Get parent modal HTML"]
-    J --> K["_parse_opening_odds_from_modal_html()"]
-    K --> L["Store in BookieOdds.initial_odds_* & movement_odds_time"]
+```text
+{base_match_url}/#{optional_event_row_id}:{group};{period_code}
 ```
 
-### Over/Under Specifics
+Active examples:
 
-Over/Under market groups require a separate extraction method (`_extract_data_over_under`) due to their unique HTML structure.
+```text
+.../#row-id:1X2;2
+.../#row-id:home-away;1
+```
 
-1. **Calculate the closest margin**: The DOM lists all available lines (e.g. +1.5, +2.5, +3). The script parses all `data-testid="over-under-collapsed-row"` elements, extracting the `Over` and `Under` probabilities for each.
-2. **Click to Expand**: The row with the minimum absolute difference `abs(Over - Under)` is selected (closest to 50/50) and clicked.
-3. **Wait for DOM**: The scraper waits for `div[data-testid="bookmaker-table-header-line"]` to appear under the clicked row.
-4. **Extract & Save**: Only the visible bookmaker rows within that expanded block are extracted. The handicap (e.g. "2.5") is saved in the database as the `choice_group`, and the odds are categorized as "Over" and "Under" in `choice_name`.
+Configured group fragments:
 
-### Betfair Hover Flow
-
-Betfair extraction follows the same high-reliability pattern as standard bookies but with additional logic for exchange liquidity cells.
-
-1. **Stabilization Pre-Wait**: Immediately after finding the `betting-exchanges-section`, the scraper waits **500ms**. This ensures the Vue.js components (especially the `X` / Draw column) have fully rendered before the scraper counts containers to determine if the market is 2-way or 3-way.
-2. **Back & Lay Extraction**: Processes up to **6 cells** in 3-way markets (Back 1, Back X, Back 2, Lay 1, Lay X, Lay 2) or **4 cells** in 2-way markets.
-3. **Unified Retry Pattern**: Each Betfair cell implements a 3-attempt retry loop with mouse resetting. If the "Odds movement" modal isn't found or isn't visible within the escalating timeout (3s/4s/5s), the mouse moves to `(0, 0)` to "reset" the hover state before the next attempt.
-4. **Designated Period Limitation**: To conserve time and proxy bandwidth, Betfair hover only runs on the specific period designated by `betfair_period_index` in the route config (usually Full Time).
-
----
-
-## 11. Concurrency & Parallelism
-
-To handle multiple simultaneous events (e.g., Saturday at 18:00) without delaying alerts or exhausting resources, the system implements a hybrid concurrency solution.
-
-### 11.1 Guard Lock (Timed Wait)
-In `scheduler.py`, before launching a new OddsPortal worker, the system checks if a thread from the *previous* 5-minute cycle is still alive.
-- **Wait**: It waits up to `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` (default 120s) for the old thread to `.join()`.
-- **Success**: If it finishes, the new cycle starts cleanly.
-- **Overlap**: If it times out, the new cycle proceeds anyway. This allows two cycles to briefly coexist rather than skipping a full cycle.
-
-### 11.2 Parallel Browsers & Worker Roles
-The worker can split a batch of matches across multiple independent browser instances using `scrape_multiple_matches_parallel_sync`.
-- **Distribution**: Tasks are assigned to browsers using a **role-based priority** queue. 
-- **Roles**:
-    - `resolver_seed`: Lightweight tasks that only navigate to a league page to warm the cache. These are prioritized to unlock pending siblings.
-    - `ready_event`: Standard scraping tasks for events that already have a resolved `match_url`.
-- **Isolation**: Each worker runs in its own `ThreadPoolExecutor` thread with a dedicated `asyncio` loop and Playwright instance.
-- **Context Handling**: Each real event scrape uses a **fresh `BrowserContext`** within the worker's browser instance to ensure zero state/cookie leakage between events. Seed tasks use the default context for speed.
-- **Shared Date Input**: The scheduler passes a single `current_date` value into the batch, and every worker uses that same date for cache filtering, cache misses, and cache replacement decisions.
-
-### 11.3 Parallel Dispatcher Logic (Seeding Decoupled)
-The dispatcher implements a "barrier" pattern for events with unknown URLs:
-1. All events for the same league without a cached URL are grouped into `pending_tasks`.
-2. A single `resolver_seed` task is dispatched to one worker.
-3. While seeding is in progress, other workers process already-resolved `ready_event` tasks.
-4. Once `resolver_seed` completes, it calls `_release_group_after_seed()` which clears the barrier, moving all `pending_tasks` to the `ready_event_queue`.
-5. This ensures that a 10-event league doesn't wait for the first event to finish a 60s scrape before the other 9 start.
-
----
-
-## 12. Dedicated Logging
-
-Since OddsPortal logs are verbose, they are routed to a dedicated directory for cleaner debugging while still appearing in the main log.
-
-- **Path**: `logs/oddsportal/{MM_MonthName}/week_{N}/oddsportal.log`
-- **Structure**: Mirrors the main application's monthly/weekly rotating structure.
-- **Routing**: Handled in `main.py` via a second `_WeeklyRotatingFileHandler` attached to the `oddsportal_scraper` logger.
-- **Console**: All OddsPortal logs still print to stdout/console in real-time.
-
----
-
-## 13. Configuration Reference
-
-### `SEASON_ODDSPORTAL_MAP` (oddsportal_config.py)
-
-Maps SofaScore `season_id` to the OddsPortal URL components. Each entry now includes a `sport` key used to resolve the scraping route.
-
-### `get_oddsportal_current_date()` (oddsportal_config.py)
-
-Returns the local calendar date used by the OddsPortal batch. The scheduler grabs it once and passes it through the scraper so cache checks and live fallback decisions stay consistent across a single run.
-
-### `SPORT_SCRAPING_ROUTES` (oddsportal_config.py)
-
-Maps each sport string to its scraping configuration (group, periods, draw flag, Betfair index). See [Section 8](#8-sport-specific-scraping-routes).
-
-### `OP_GROUPS` / `OP_PERIODS` (oddsportal_config.py)
-
-Fragment identifier constants used in URL construction for navigating between market groups and periods.
-
-### `TEAM_ALIASES` (oddsportal_config.py)
-
-Corrects naming mismatches between SofaScore and OddsPortal.
-
-### `PRIORITY_BOOKIES` (oddsportal_config.py)
-
-The scraper iterates this list and uses the **first bookie found** for opening odds extraction.
-
-### Environment Variables (.env)
-
-| Variable | Default | Description |
-|---|---|---|
-| `ODDSPORTAL_PARALLEL_BROWSERS` | `1` | Number of concurrent browser instances to use. |
-| `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` | `120` | Max seconds to wait for a lagging previous cycle. |
-| `ODDSPORTAL_TAB_WAIT_TIMEOUT` | `20` | Max seconds to poll for table changes after clicking a tab. |
-| `ODDSPORTAL_BLOCK_RESOURCES` | `true` | Set to `false` if page rendering fails. |
-
----
-
-## 14. Libraries Used
-
-| Library | Purpose |
+| Key | Fragment |
 |---|---|
-| `playwright` (async) | Headless Chromium browser automation |
-| `asyncio` | Async/await framework for browser operations |
-| `threading` | OP worker runs in a background thread |
-| `SQLAlchemy` | ORM for database operations |
-| `python-dotenv` | Load `.env` variables |
+| `1X2` | `1X2` |
+| `HOME_AWAY` | `home-away` |
+| `OVER_UNDER` | `over-under` |
+| `ASIAN_HANDICAP` | `ah` |
 
-### Browser & Anti-Detection
+The active period codes are `1` for full time including overtime and `2` for regulation full time. Other fragment constants remain available for future route edits but are not active.
 
-The scraper implement several measures to avoid detection, especially when running in **headless mode** (standard for scheduler jobs):
-- **User-Agent Rotation**: Randomized choosing from modern, legitimate browser strings.
-- **Deep Property Mocking**: Overwrites `navigator.webdriver` and mocks `navigator.platform` (set to `Win32`) and `window.chrome` to mimic a real visitor.
-- **Stealth Scripts**: Injects standard evasions for permissions, languages, and plugins.
+### 11.1 Active extraction plans
 
----
+| Sport | Steps | Active group | Active period | Fragment |
+|---|---:|---|---|---|
+| football | 1 | 1X2 | regulation Full Time | `#1X2;2` |
+| basketball | 1 | Home/Away | Full Time including OT | `#home-away;1` |
+| baseball | 1 | Home/Away | Full Time including OT | `#home-away;1` |
+| american-football | 1 | Home/Away | Full Time including OT | `#home-away;1` |
+| hockey | 1 | Home/Away | Full Time including OT | `#home-away;1` |
 
-## Technical Extraction Details
+No current competition mapping selects `american-football` or `hockey`, although their extraction plans exist.
 
-### DOM Selectors & Elements
+The sole route step is loaded directly through its URL fragment. Tab-switching code remains available for future multi-step routes but is not exercised by the current plans.
 
-The scraper targets specific elements within the OddsPortal React/Vue-based frontend. Since selectors can change, we use a mix of semantic classes and data attributes:
+## 12. Match-page readiness and extraction
 
-- **League Page**:
-  - `div.eventRow`: The container for a single match row.
-  - `a[href]`: Links within the row, used to extract match slugs.
-- **Match Page (Bookies)**:
-  - `div.border-black-borders.flex.h-9`: The standard desktop row for bookmakers.
-  - `img[alt]`: The bookmaker's logo (used to identify the bookie).
-  - `a[title]`: The bookmaker's link title (fallback for identification).
-- **Match Page (Odds Cells)**:
-  - `div.flex-center.flex-col.font-bold`: The inner container of an odds cell that triggers the tooltip.
-  - `div[data-testid='odd-container']`: The standard test ID for odds containers.
-- **Betfair Exchange**:
-  - `div[data-testid='betting-exchanges-section']`: The specific section for exchange markets.
-- **Tooltips (Hover)**:
-  - `h3:has-text('Odds movement')`: The header identifying the active tooltip modal.
-  - `div.font-bold`: Within the modal, we look for this tag to extract the "Opening odds" value.
+### 12.1 Navigation and fast failure
 
-### Data Points Extracted
+The initial match navigation races two checks:
 
-1.  **Current Odds**: Scraped directly from the text content of the odds cells for **all available bookmakers** on page load.
-2.  **Opening Odds**: Extracted by simulating a hover event on the cells of the **top-priority bookie** (and Betfair), waiting for the "Odds movement" tooltip, and parsing the historical start price. All other bookies have this value set to `null`.
-3.  **Odds Movement Time**: While hovering for opening odds, the system also extracts the top timestamp (`movement_odds_time`) which indicates the time of the final/current odds value update. This is passed strictly **in-memory** through a cache dict in `scheduler.py`, completely bypassing the database schema to avoid migrations.
-4.  **Trend**: Calculated by comparing the opening odds vs. current odds.
-5.  **Betfair Depth**: Extracts both **Back** and **Lay** prices to visualize the exchange gap.
+- a render wait using market-specific selectors;
+- a JavaScript observer that reports empty shell, persistent skeleton, missing event container, or other partial states after `browser.fast_fail_empty_timeout_ms` from `scraping_settings.py`.
 
-### Database Integration
+The scraper also detects:
 
-Data is mapped from the `MatchOddsData` (via its `extractions` list) dataclass into the SQLAlchemy models via `MarketRepository.save_markets_from_oddsportal()`:
+- Playwright/network/TLS navigation failures;
+- HTTP responses `>= 400`;
+- common Cloudflare/access-denied titles;
+- shell-without-data states, optionally followed by a shorter shell grace wait;
+- missing or stale market content after group/period changes.
 
-- **`Market` table**: 
-  - `market_name`: From `MarketExtraction.market_name` (e.g. "Full time", "1st half")
-  - `market_group`: From `MarketExtraction.market_group` (e.g. "1X2", "Home/Away")
-  - `market_period`: From `MarketExtraction.market_period` (e.g. "Full-time", "1st half")
-  - `choice_group`: `None` (Standard), "Back" or "Lay" (Betfair).
-- **`MarketChoice` table**:
-  - `choice_name`: "1", "X", or "2".
-  - `initial_odds`: Populated with the **Opening Odds** from the tooltip.
-  - `current_odds`: Populated with the **Current Odds** visible on the row.
-  - `change`: Integer flag (`1` for rise, `-1` for drop).
+Failures create a structured `ScrapeAttemptResult` rather than silently returning a partial success.
 
-### Usage in Alerts
+### 12.2 Current odds
 
-The extracted data is consumed by `odds_alert.py` to enrich Telegram notifications:
+For standard tables, `_extract_data()` reads:
 
-- **Logic**: When an event alert is generated, the system checks if OddsPortal data exists in the DB for that `event_id` and references the memory cache `op_data_cache` in the scheduler to retrieve the `movement_odds_time`.
-- **Display**: A dedicated `📊 ODDSPORTAL ODDS` section is appended to the message.
-- **Format**: `Bookie: Opening → Current [Trend]` alongside an inline `🕒 HH:MM` extracted from the memory structure timestamp.
-- **Purpose**: Provides immediate visual context on how the market has moved since opening, helping users spot value or dropping odds before kickoff.
+- teams from the match-page `h1`;
+- bookmaker rows from `div.flex.h-9` containing `border-black-borders`;
+- odds from `div.odds-cell`;
+- bookie names from `a[title]` or `img[alt]`;
+- payout text from the final row child;
+- Betfair Back/Lay values from `[data-testid="betting-exchanges-section"]`.
 
----
+Two-way and three-way layouts are handled separately.
 
-## 15. Testing
+The current routes do not invoke Over/Under or Asian Handicap extraction. Those implementations remain available; if re-enabled, the scraper:
 
-### 15.1 Scheduler Simulation: `tests/test_oddsportal_scheduler_sim.py`
+1. examines collapsed line rows;
+2. chooses the line whose two displayed prices have the smallest absolute difference;
+3. expands that line;
+4. reads bookies and the two prices from expanded rows;
+5. stores the selected line as `handicap`/`choice_group` metadata.
 
-This is the primary test file for verifying the OddsPortal scraping subsystem. Unlike simple isolation tests, it simulates the **exact flow** of the `scheduler.py` job, including:
-- **Parallel Dispatching**: Launches multiple browser instances if multiple `event_id`s are passed.
-- **URL Caching**: Leverages and seeds the `OddsPortalLeagueCache`.
-- **Detailed Timing Logs**: Captures precise timestamps for every scraper action (navigating, waiting, hovering, extracting).
-- **Execution Flow**: Mimics the pre-start check logic (event selection, sport route resolution).
+This is a “closest prices” main-line heuristic, not a hard-coded totals or handicap value.
 
-```bash
-# Run simulation for multiple events in headless mode
-python tests/test_oddsportal_scheduler_sim.py 14198633 14198634 --headless
+Every selected price is normalized at the Python extraction boundary by `normalize_odds_value()`. Decimal tokens remain decimal odds and fractional tokens such as `57/50` are converted with `1 + numerator / denominator`. The same normalization is used while comparing collapsed Over/Under and Asian Handicap rows, so fractional display mode does not corrupt main-line selection. No provider display-format configuration is required.
+
+### 12.3 Opening odds via hover
+
+Package fields `hover_names` and `hover_limit` are the single regular-bookmaker selection policy for extraction, hover, in-memory results, and persistence. Browser-side JavaScript scans row identities, resolves normalized exact aliases in configured priority order, and reads price cells only for the selected rows. Unlisted bookmaker prices never cross the browser boundary or enter `MatchOddsData`.
+
+The current package policy selects, hovers, and persists at most one matching regular bookmaker from this tuple:
+
+```text
+bet365
 ```
 
-### 15.2 Enhanced Debugging Artifacts
+It then hovers each two-way or three-way odds cell, re-resolving DOM handles between attempts. Each cell receives up to three hover attempts.
 
-When `debug_dir` is active (always enabled in the simulation test), the scraper generates structured artifacts for troubleshooting:
+The tooltip parser recognizes both `Odds movement` and `Movimiento de cuotas`, but it deliberately ignores every movement-history row. The authoritative value for `initialOdds` is read exclusively from the dedicated lower block labeled `Opening odds`, `Cuotas de apertura`, or `Cuotas iniciales`. Its date is detected by content rather than CSS class and returned with the price. Decimal and fractional opening prices are normalized to decimal.
 
-1.  **Per-Event Folders**: Instead of a shared root, each event is isolated in its own directory named `debug_[home-team]-vs-[away-team]/`.
-2.  **Modal HTML Captures**: During hover extraction, the scraper saves the raw HTML of the "Odds movement" tooltip for both standard bookmakers and Betfair:
-    -   `modal_[BookieName]_[OddKey].html` (e.g., `modal_bet365_1.html`)
-    -   `modal_Betfair_[OddKey].html` (e.g., `modal_Betfair_back_1.html`)
-3.  **Full Page State**: Includes the standard `.png` screenshot and `.html` source on terminal failures.
-4.  **JSON Payload**: The final extracted `MatchOddsData` is saved as a JSON file for data validation.
+Each selected regular bookmaker is hovered independently. Betfair Exchange remains structurally separate: package fields `persist_betfair` and `hover_betfair` control current Back/Lay persistence and tooltip opening-block extraction. Betfair hover additionally requires a route step whose `betfair_enabled` is true and successfully extracted current exchange data; the sole current step enables it. Every standard extraction logs a Betfair status (`section_not_found`, `insufficient_containers`, `no_parseable_back_odds`, or `current_odds_extracted`) before the hover decision.
 
----
+The parsed opening values are stored in `initial_odds_*` / `initial_back_*` / `initial_lay_*` and persisted through the `initialOdds` path. An opening date, when supplied, remains in the compatibility field `movement_odds_time`; no movement-history timestamp is substituted when the opening block omits one.
 
-## 16. Edge Cases & Troubleshooting
+## 13. Result structures
 
-- **Proxy not active**: Ensure `.env` is correct.
-- **Network Navigation Failure**: Handled by **Immediate Network Failure Check**. If the browser returns `ERR_TIMED_OUT` or similar, the scraper fails fast instantly to avoid wasting time on a dead connection.
-- **Proxy Blocked / Cloudflare Banned**: Handled by **Fast Fail Check #1**. Detects blocks via page title, kills the browser, and triggers a **Session-Aware Retry**.
-- **SPA Render Failure (Empty Container)**: Handled by **Fast Fail Check #2**. Sometimes the page loads but the Vue.js app fails to hydrate/render the odds table. A `MutationObserver` detects this state and triggers a fast fail after 15s of empty content, avoiding the full 60s timeout.
-- **Cross-Day Match Collision**: Prevented by the **Date-Aware League Cache**. By storing the match date alongside the URL, we can distinguish between recurring match pairings on different days in the same league.
-- **Same-Participants, Wrong-Day Cache Hit**: Prevented by the current-date gate. Even if the participants match, a cached row is ignored when its stored date is older than the batch `current_date`, forcing live league navigation when needed.
-- **Tab Switching Failure**: If the SPA router hangs and the odds table doesn't update after clicking a tab within the timeout, the scraper triggers a **Page Reload Recovery** by performing a full navigation to the specific fragment URL (e.g. `#over-under;2`). This breaks cascading failures where one timed-out tab prevents all subsequent tabs from loading.
-- **Already Active" Race Condition**: Fixed by the **Smart Wait** mechanism. Prevents extraction from starting immediately after a fragment change if the table rows haven't rendered yet, even if the tab UI shows as "active".
-- **Session-Aware Retry**: Implemented in `scrape_multiple_matches_sync`. When a scrape fails, the scraper calls `await self.stop()` and `await self.start()`. This generates a fresh `_session_id` and restarts the Playwright process, which forces a new TCP connection and a clean proxy IP from the rotation endpoint (e.g., Webshare).
-- **Headless Timeout**: If the scraper times out waiting for rows without hitting Fast Fail, it still triggers the Session-Aware Retry to seamlessly attempt the extraction once more with a new IP.
-- **Legacy Duplication Cleanup**: The scraper module was refactored from ~8,000 lines down to **2,523 lines**, removing three complete copies of the class that were causing maintenance overhead and regex bugs.
-- **Universal Logging**: The entire subsystem (Scraper and Matcher) has been migrated to use the standard Python `logging` library (`logging.getLogger(__name__)`) for better integration with the system-wide weekly rotating loggers.
-- **SPA Error Page Rendering Wait**: To fix blank/empty artifacts on 404 errors, the scraper implements a **2.5s wait** after detecting an `HTTP 400+` status but *before* capturing the snapshot. This allows the Oddsportal SPA to finish rendering its "Page Not Found" UI.
-- **Artifact Cleanup (CSS/JS Separation)**: Debugging `.html` files no longer contain inline CSS/JS blobs. These are automatically extracted and saved to separate `.css` and `.js` sibling files, keeping the raw HTML readable.
+The main dataclasses are defined in `modules/oddsportal/dataclasses.py`.
 
----
+```text
+BookieOdds
+  name
+  odds_1 / odds_x / odds_2
+  payout
+  initial_odds_1 / initial_odds_x / initial_odds_2 (Opening odds block values)
+  movement_odds_time (compatibility name; Opening odds date when available)
+  handicap
 
-## 17. Performance Summary
+BetfairExchangeOdds
+  current Back/Lay 1/X/2 values and volumes
+  payout
+  hovered Back/Lay 1/X/2 Opening odds block values (field names use `initial_*`)
+  movement_odds_time (compatibility name; Opening odds date when available)
+  handicap
 
-- **Cache hit, single period**: ~50s total (skips ~14s league nav).
-- **Cache miss, single period**: ~65s total.
-- **Multi-period (e.g. 3 periods)**: Add ~15–25s per additional period (fragment nav + extraction + hover).
+MarketExtraction
+  market_group
+  market_period
+  market_name
+  bookie_odds[]
+  betfair
+
+MatchOddsData
+  match_url
+  home_team / away_team
+  sport
+  extractions[]
+  extraction_time_ms
+  bookie_odds / betfair legacy projections of the first extraction
+
+ScrapeAttemptResult
+  data
+  resume_state
+  partial_match_data
+  failed_reason
+  failed_step_idx
+```
+
+## 14. Recovery and retry semantics
+
+### 14.1 Step-level resume
+
+`_scrape_task_with_recovery()` allows at most three `scrape_match_attempt()` calls for one resolved match URL. On a failed group/period step it carries forward:
+
+- completed step keys;
+- the next step index;
+- failed group/period/reason;
+- the fragment to resume;
+- the partial `MatchOddsData` and already completed extractions.
+
+If sport or route-step count changes, partial state is discarded as inconsistent.
+
+If a failure produces no resume state, the loop stops early.
+
+The helper contains an exact comparison for `failed_reason == "MATCH_RENDER_TIMEOUT"`. Most render-timeout reasons generated by the current attempt code include a classification suffix, such as `MATCH_RENDER_TIMEOUT_<classification>`, so those values do not satisfy that exact inner restart condition.
+
+### 14.2 Full outer retry
+
+If the first recovered task still returns no data, the sequential batch:
+
+1. stops and starts the browser once;
+2. resolves the match URL again;
+3. runs another `_scrape_task_with_recovery()` sequence;
+4. starts that outer retry with empty resume and partial-data fields.
+
+Thus the outer retry can make up to three more attempts, but it does not preserve partial extractions from the first sequence.
+
+The outer restart currently does not pass `rotate_proxy_session=True`.
+
+### 14.3 Callback guarantees
+
+For every event processed normally or caught by the per-event exception handler, `on_result(event_id, data_or_none)` is called. If a whole browser future crashes before its per-event callbacks, the cycle-level `finally` force-signals remaining event states.
+
+## 15. Persistence
+
+`_on_event_scraped()` performs persistence inline in the browser worker thread, before signaling `done_event`:
+
+1. Put non-empty `MatchOddsData` in the shared in-memory `data_cache`.
+2. Call `MarketRepository.save_markets_from_oddsportal(event_id, op_data)`.
+3. Record the returned market count or `None` on callback-level failure.
+4. Set `done_at_monotonic` and `done_event`.
+
+`save_markets_from_oddsportal()` iterates every `MarketExtraction`. It falls back to the legacy match-level fields only when `extractions` is empty.
+
+For normal bookmaker rows:
+
+- Over/Under choices become `over` and `under`; other groups use `1`, optional `x`, and `2`.
+- The selected handicap/total line becomes `choice_group`.
+- Bookies are resolved through `BookieRepository.resolve_bookie_from_source(source="oddsportal", allow_create=False)`.
+- A configured regular bookmaker is still skipped when it cannot be resolved to an existing DB bookie; persistence never auto-creates one.
+- Market writes use the normal repository flow and create snapshots with source `oddsportal`.
+
+Betfair Exchange is resolved using source name `Betfair Exchange` and slug `betfair-ex`. Back and Lay are saved as separate `choice_group` values, optionally suffixed by a handicap.
+
+The returned `saved_count` counts saved market records, not raw bookmaker rows or individual choices.
+
+## 16. Alert and pillar integration
+
+### 16.1 Legacy alert synchronization
+
+Only `EventAlertProcessor._sync_oddsportal_data()` waits for this scraper. The wait is attempted only when all of the following are true:
+
+- the event evaluation payload is successful;
+- a normalized event context was built;
+- `odds_response` is truthy;
+- the event ID was selected for OddsPortal;
+- an OddsPortal state exists for it.
+
+The wait has two phases:
+
+1. While neither `started_event` nor `done_event` is set, poll every 250 ms for the browser worker to claim the event. This queue/URL-resolution phase has no configured timeout.
+2. After `started_event`, wait only for the remainder of `ODDSPORTAL_ALERT_WAIT_TIMEOUT`, measured from `started_at_monotonic`.
+
+After completion or timeout, the alert path queries `MarketRepository.get_external_markets_for_event()` to verify/read persisted external markets. It also returns the in-memory `MatchOddsData`, when present, so the formatter can add movement timestamps that are not read from the DB query.
+
+`send_odds_alert()` itself only sends odds alerts at minutes `30` and `-5`. It appends the external-markets section when the event's `competition_id` has an OddsPortal route and external DB rows exist.
+
+External rows are not guaranteed to be exclusively from OddsPortal: `get_external_markets_for_event()` returns all non-primary bookies and derives the displayed source from the latest choice snapshot.
+
+### 16.2 Pillar pipeline
+
+`key_moment_evaluation.py` passes the OddsPortal state/cache arguments to `evaluate_and_calculate_pillars_batch()`, but the current pillar implementation does not consume them. The pillar pipeline neither waits for OddsPortal nor reads `op_data_cache` through those parameters.
+
+## 17. Configuration reference
+
+### 17.1 Package-owned scraping policy
+
+`modules/oddsportal/scraping_settings.py` is the single versioned source for provider behavior. It contains frozen dataclasses that validate invalid languages, negative limits, non-positive timeouts, and empty debug paths at import time.
+
+| Package field | Default | Meaning |
+|---|---:|---|
+| `ui_language` | `en` | Selects `oddsportal.com` and English tab candidates; `es` selects `cuotasahora.com`. |
+| `bookmakers.hover_names` | `("bet365",)` | Ordered allowlist shared by browser extraction, hover, memory, and persistence. |
+| `bookmakers.hover_limit` | `1` | Per-step shared regular-bookmaker cap; `0` disables regular extraction, hover, and persistence. |
+| `bookmakers.persist_betfair` | `true` | Include current Betfair Exchange Back/Lay data. |
+| `bookmakers.hover_betfair` | `true` | Hover Betfair and parse its Opening odds block. |
+| `browser.block_resources` | `true` | Enable image/media/tracker blocking and selected cache busting. |
+| `browser.block_service_workers` | `true` | Block service workers in Playwright contexts. |
+| `browser.clear_state_before_navigation` | `true` | Clear cookies/storage/cache state before match navigation. |
+| `browser.ignore_https_errors` | `true` | Playwright context option. |
+| `browser.fresh_context_per_event` | `true` | Create a fresh context for each extraction attempt. |
+| `browser.match_goto_timeout_ms` | `30000` | Match navigation timeout. |
+| `browser.fast_fail_empty_timeout_ms` | `15000` | Empty/skeleton observer threshold. |
+| `browser.market_render_timeout_ms` | `60000` | Market render wait. |
+| `browser.shell_grace_timeout_ms` | `8000` | Optional shell-without-data grace wait. |
+| `browser.tab_wait_timeout_s` | `20` | Group/period tab validation loop. |
+| `browser.league_goto_timeout_ms` | `21000` | League-page navigation timeout. |
+| `browser.league_rows_timeout_ms` | `18000` | Scoped league-row wait. |
+| `browser.session_restart_attempts` | `2` | Maximum session-aware attempts for a match batch item. |
+| `browser.save_debug_on_goto_timeout` | `true` | Save qualifying navigation artifacts. |
+| `browser.enable_shell_grace` | `true` | Enable the shell grace path. |
+| `browser.debug_timing` | `false` | Print direct timing diagnostics. |
+| `browser.debug_dir` | `oddsportal_debug` | Batch diagnostic artifact directory. |
+
+Market groups and periods intentionally remain in `oddsportal_routes.py`, next to their fragment identifiers.
+
+### 17.2 Environment-owned deployment controls
+
+These remain environment-backed because they vary by machine, deployment, or integration SLA rather than changing scraper business behavior:
+
+| Variable | Default | Meaning |
+|---|---:|---|
+| `ODDSPORTAL_SCRAPING_ENABLED` | `true` | Master deployment feature flag; templates set it to false. |
+| `ODDSPORTAL_PARALLEL_BROWSERS` | `1` | Browser concurrency constrained by host RAM and task count. |
+| `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` | `120` s | Cross-cycle worker coordination timeout. |
+| `ODDSPORTAL_ALERT_WAIT_TIMEOUT` | `180` s | Alert-pipeline coordination SLA. |
+
+### 17.3 Related pre-start variables
+
+| Variable | Relationship |
+|---|---|
+| `POLL_INTERVAL_MINUTES` | Determines exact scheduler minute marks. Values should align with the hard-coded `-5` selection bucket. |
+| `PRE_START_WINDOW_MINUTES` | Upper boundary of the event query. The repository independently includes approximately five minutes of recently started events. |
+| `PRE_START_ODDS_MOMENTS` | Controls normal provider/evaluation key moments, not OddsPortal selection itself. |
+| `PRE_START_TRACKED_COMPETITIONS_ONLY` | Can remove non-business-tracked events before OddsPortal selection. |
+| `FILTER_PIPELINES_BY_TRACKED_COMPETITIONS` | Filters alert/pillar evaluation, not OddsPortal scraping. |
+| `ENABLE_ODDS_EXTRACTION` | Controls normal provider extraction, not the OddsPortal worker. |
+| `ENABLE_LEGACY_ALERT_PIPELINE` | Enables the only current consumer that waits for OddsPortal. |
+| `ENABLE_PILLAR_PIPELINE` | Pillars currently do not synchronize with OddsPortal. |
+
+### 17.4 Related proxy variables
+
+The scraper uses the shared proxy configuration: `PROXY_ENABLED`, endpoint/credentials/provider/protocol, country/city, `PROXY_SESSION_DURATION_MINUTES`, `PROXY_MODE_ODDSPORTAL`, and safe-logging settings. Credentials must never be written to debug documentation or logs.
+
+## 18. Logging and debug artifacts
+
+Normal current OddsPortal modules use loggers such as `modules.oddsportal.scraper_attempt` and propagate to the root logger. The worker uses `modules.jobs.pre_start_check_job.oddsportal_worker`. These messages therefore appear in the normal application console and weekly `sofascore_odds.log` path.
+
+`app/logging_setup.py` also attaches an OddsPortal-only filtered handler to the root logger. It accepts the real scraper package, worker, cache, and cleanup namespaces plus explicitly tagged selection, alert-synchronization, CLI-configuration, and OddsPortal persistence records. It rejects unrelated root, SofaScore, timing, repository, and alert records. The resulting weekly file is `logs/oddsportal/<month>/week_<n>/oddsportal.log`; records still also reach the main log and console.
+
+The filter applies to records emitted after the process restarts with this logging configuration. Existing historical lines in an already-created weekly file are not rewritten or deleted.
+
+Production batch calls pass the package-configured `browser.debug_dir` (default `oddsportal_debug`). On classified match-page failures, `_save_debug_artifacts()` writes an event subdirectory containing:
+
+- full-page PNG;
+- HTML with inline scripts/styles removed;
+- extracted inline CSS and JavaScript when present;
+- JSON manifest with URL, page state, classification, timeouts, proxy session label, and resume metadata.
+
+The artifacts are diagnostic and may contain provider page content. Treat them as operational data.
+
+## 19. Validation and tests
+
+| Check | What it validates | Caveat |
+|---|---|---|
+| `pytest -q tests/test_oddsportal_tab_normalizer.py` | Spanish/English group and period tab normalization. | Pure unit test; no browser or DB. In this checkout, 7 of 8 test functions pass when invoked directly; the accent-normalization case fails because its source literal is mojibake (`prÃ³rroga`) while its expected value assumes correctly decoded `prórroga`. |
+| `pytest -q tests/test_oddsportal_hover_parser.py` | Multi-entry regular/Betfair histories, localized title handling, fractional normalization, and movement-delta rejection. | Pure fixture-based unit tests; no browser or DB. |
+| `pytest -q tests/test_oddsportal_logging.py` | Dedicated-log namespace filtering, rejection of unrelated application logs, and explicit tagging for mixed modules. | Pure logging unit tests; no browser or DB. |
+| `pytest -q test_oddsportal_resume_recovery.py` | Resume semantics with scripted scraper attempts. | The final test references a legacy root `oddsportal_scraper` module that is absent, so the file is not currently a clean end-to-end suite without adjustment. |
+| `python tests/test_oddsportal_scheduler_sim.py <event_id> [<event_id> ...] --headless` | Manual DB-backed multi-event scraper simulation and persistence. | It is an executable integration script, not pytest assertions; it hard-codes `cuotasahora.com` when building league URLs. |
+| `python tests/test_oddsportal_process.py <event_id> --headless` | Legacy manual isolation/debug report. | It imports obsolete root `database` and `repository` modules and should not be considered runnable evidence for the current package without repair. |
+
+For a faithful production-path check, prefer `python main.py pre-start` with a safe test database/event set and verify all of the following:
+
+1. Effective toggle is true.
+2. The event's canonical competition has an OddsPortal route.
+3. Stored start time produces the rounded `-5` bucket.
+4. Candidate log appears.
+5. URL resolution reports cache hit or live league discovery.
+6. `on_task_started` is logged.
+7. Every route step completes or emits a classified failure artifact.
+8. Persistence reports resolved/skipped bookies accurately.
+9. `done_event` is signaled.
+10. The legacy alert either receives the data or logs its timeout path.
+
+## 20. Troubleshooting by stage
+
+### No candidate selected
+
+Check, in order:
+
+1. effective `ODDSPORTAL_SCRAPING_ENABLED`;
+2. whether the event is inside the repository query window;
+3. canonical `competition_id`, not `season_id`;
+4. presence in `ODDSPORTAL_COMPETITION_ROUTES`;
+5. logged rounded `minutes_until_start` equals exactly `-5`;
+6. earlier filtering by `PRE_START_TRACKED_COMPETITIONS_ONLY`.
+
+### Candidate selected but never “started”
+
+“Started” is signaled only after URL resolution. Inspect cache lookup and league-page logs. The alert queue phase has no timeout, so a stalled lookup is different from an extraction that exceeded `ODDSPORTAL_ALERT_WAIT_TIMEOUT`.
+
+### Cache exists but misses
+
+Inspect:
+
+- embedded candidate date, not only row `cached_date`;
+- structured `{home, away, date}` payload shape;
+- team matcher score and direct/reversed ambiguity;
+- whether the wrong `season_id` owns the row;
+- provider domain/path changes.
+
+### Match page opens but extraction fails
+
+Use the JSON manifest classification first, then the screenshot and stripped HTML. Typical stages are navigation, shell/render race, group switch, period switch, empty period data, or hover-only failure.
+
+A hover failure does not by itself fail the route step: visible current odds can still be persisted without opening odds. A group/period switch or empty period extraction does fail the attempt and activates resume recovery.
+
+### Data scraped but absent from DB
+
+Check bookie source resolution. Persistence uses `allow_create=False`; unrecognized bookies are intentionally skipped. Also distinguish zero saved markets from a callback exception: the worker log text historically says “markets/bookies,” but the returned number is markets saved.
+
+### Alert lacks OddsPortal data
+
+Check:
+
+1. legacy alert pipeline is enabled;
+2. the event payload has a truthy normal-provider `odds_response`;
+3. the event was selected for OddsPortal in this cycle;
+4. URL resolution/queue phase completed;
+5. the per-event extraction completed within the post-claim wait budget;
+6. at least one external bookie resolved and persisted;
+7. the alert is at minute `-5` (or the independent allowed minute `30`).
+
+## 21. Reliability boundaries and non-obvious facts
+
+- OddsPortal selection is hard-coded at `-5`; changing `PRE_START_ODDS_MOMENTS` alone does not move it.
+- `competition_id` controls provider routing; `season_id` controls only league-cache scope.
+- Visible rows are read from the page, then the persistence allowlist/limit is applied. Hover has its own allowlist/limit but can only select from that retained set.
+- Decimal and fractional display tokens are auto-detected and normalized to decimal; there is no runtime format toggle.
+- Browser chunks are concurrent; events inside one chunk are sequential.
+- Current dispatcher code does not implement the previously documented resolver-seed architecture.
+- A no-candidate run clears `_active_op_thread`; it can lose the reference to an older worker that is still running.
+- The main pre-start job does not join the scraper in scheduled mode; alert workers synchronize per event, and the scraper thread continues independently.
+- Queue/URL-resolution waiting in the legacy alert pipeline is unbounded; the configured alert timeout starts only after `on_task_started`.
+- The pillar pipeline currently ignores the OddsPortal synchronization arguments it receives.
+- The dedicated OddsPortal file is a filtered projection of scraper-owned and explicitly tagged records; shared dependency logs are excluded unless their OddsPortal call site tags them.
+- A browser restart does not currently request explicit proxy-session rotation.
+- Debug artifacts and actual DB rows are stronger evidence of success than a non-empty scraper return alone.

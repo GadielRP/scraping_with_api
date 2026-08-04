@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 
 from infrastructure.settings import Config
+from modules.oddsportal.scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
 from shared.shutdown import clear_shutdown_request, request_shutdown, is_shutdown_requested
 from shared.runtime_observability import (
     mark_clean_shutdown,
@@ -294,8 +295,20 @@ def main():
 
     logger = logging.getLogger(__name__)
     logger.info(
-        f"OddsPortal config: parallel_browsers={Config.ODDSPORTAL_PARALLEL_BROWSERS} block_resources={Config.ODDSPORTAL_BLOCK_RESOURCES} previous_cycle_timeout_s={Config.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT} "
-        f"alert_wait_timeout_s={getattr(Config, 'ODDSPORTAL_ALERT_WAIT_TIMEOUT', 180)} proxy_enabled={Config.PROXY_ENABLED} proxy_endpoint_set={bool(getattr(Config, 'PROXY_ENDPOINT', ''))}"
+        "OddsPortal config: enabled=%s parallel_browsers=%s "
+        "block_resources=%s language=%s domain=%s "
+        "previous_cycle_timeout_s=%s alert_wait_timeout_s=%s "
+        "proxy_enabled=%s proxy_endpoint_set=%s",
+        Config.ODDSPORTAL_SCRAPING_ENABLED,
+        Config.ODDSPORTAL_PARALLEL_BROWSERS,
+        ODDSPORTAL_SCRAPING_SETTINGS.browser.block_resources,
+        ODDSPORTAL_SCRAPING_SETTINGS.ui_language,
+        ODDSPORTAL_SCRAPING_SETTINGS.domain,
+        Config.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT,
+        Config.ODDSPORTAL_ALERT_WAIT_TIMEOUT,
+        Config.PROXY_ENABLED,
+        bool(getattr(Config, "PROXY_ENDPOINT", "")),
+        extra={"oddsportal": True},
     )
     logger.info(f"Time corrections config: enabled={Config.ENABLE_TIMESTAMP_CORRECTION}")
 

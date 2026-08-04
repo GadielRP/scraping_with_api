@@ -46,15 +46,6 @@ except ImportError:
         PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART = True
         PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR = True
         PROXY_LOG_SAFE = True
-        ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS = 30000
-        ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS = 15000
-        ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS = 60000
-        ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS = 8000
-        ODDSPORTAL_TAB_WAIT_TIMEOUT = 20
-        ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT = True
-        ODDSPORTAL_ENABLE_SHELL_GRACE = True
-        ODDSPORTAL_BLOCK_SERVICE_WORKERS = True
-        ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE = True
         POLL_INTERVAL_MINUTES = 5
 
         @staticmethod
@@ -64,10 +55,10 @@ except ImportError:
     Config = MockConfig()
 
 from .oddsportal_config import (
-    BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
+    BOOKIE_ALIASES, TEAM_ALIASES,
     OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
-    INSTITUTIONAL_NOISE, get_current_date,
+    INSTITUTIONAL_NOISE, get_current_date, select_configured_bookies,
 )
 from .team_matcher import TeamMatcher
 from .dataclasses import (
@@ -84,6 +75,7 @@ from .cache_utils import (
     _calculate_cache_homogeneity, _evaluate_cache_quality, _format_group_key,
 )
 from .logging_context import _LOG_CONTEXT, _OddsPortalLogPrefixFilter, _log_prefix
+from .scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +131,13 @@ class OddsPortalAttemptMixin:
                 self.context = fresh_context
             elif not self.context:
                 self.context = await self._create_fresh_context()
-            should_clear_state = bool(self.context and (clear_state or getattr(Config, 'ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE', True)))
+            should_clear_state = bool(
+                self.context
+                and (
+                    clear_state
+                    or ODDSPORTAL_SCRAPING_SETTINGS.browser.clear_state_before_navigation
+                )
+            )
             if should_clear_state:
                 if clear_state:
                     logger.info('🧹 Running pre-navigation browser-state cleanup before OddsPortal navigation (clear_state=True)')
@@ -171,7 +169,7 @@ class OddsPortalAttemptMixin:
             e_goto = None
             goto_error_code = None
             goto_error_summary = None
-            goto_timeout_ms = Config.ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS
+            goto_timeout_ms = ODDSPORTAL_SCRAPING_SETTINGS.browser.match_goto_timeout_ms
             try:
                 response = await asyncio.wait_for(self._goto_fresh(page, initial_url, wait_until='domcontentloaded', timeout=goto_timeout_ms), timeout=goto_timeout_ms / 1000.0 + 5.0)
             except Exception as e:
@@ -190,7 +188,7 @@ class OddsPortalAttemptMixin:
                     reason_prefix = goto_error_code or 'GOTO_FAILED'
                     reason = f'{reason_prefix}_{classification}'
                     logger.error(f'FAST FAIL: {reason}. {state_summary}')
-                    if getattr(Config, 'ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT', True):
+                    if ODDSPORTAL_SCRAPING_SETTINGS.browser.save_debug_on_goto_timeout:
                         await self._save_debug_artifacts(page, reason, {'error': str(e_goto), **self._resume_state_for_debug(normalized_resume_state)})
                     return ScrapeAttemptResult(data=None, resume_state=normalized_resume_state, partial_match_data=match_data, failed_reason=reason, failed_step_idx=start_step_idx)
                 elif classification == 'DATA_RENDERED':
@@ -216,7 +214,7 @@ class OddsPortalAttemptMixin:
                 await self._save_debug_artifacts(page, reason, self._resume_state_for_debug(normalized_resume_state))
                 return ScrapeAttemptResult(data=None, resume_state=normalized_resume_state, partial_match_data=match_data, failed_reason=reason, failed_step_idx=start_step_idx)
             first_extract_fn = start_step.get('extract_fn', 'standard')
-            js_timeout = getattr(Config, 'ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS', 15000)
+            js_timeout = ODDSPORTAL_SCRAPING_SETTINGS.browser.fast_fail_empty_timeout_ms
             js_observer = f"""
                 () => new Promise(resolve => {{
                     setTimeout(() => {{
@@ -252,7 +250,7 @@ class OddsPortalAttemptMixin:
                 }})
             """
             fast_fail_task = asyncio.create_task(page.evaluate(js_observer))
-            render_timeout_ms = getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000)
+            render_timeout_ms = ODDSPORTAL_SCRAPING_SETTINGS.browser.market_render_timeout_ms
             render_task = asyncio.create_task(self._wait_for_market_render(page, first_extract_fn, timeout_ms=render_timeout_ms))
             race_timeout_s = max(js_timeout, render_timeout_ms) / 1000.0 + 5.0
             try:
@@ -271,8 +269,12 @@ class OddsPortalAttemptMixin:
                 if ff_reason is not None:
                     if ff_reason in ['Shell loaded, skeleton persisted, no data rows', 'Shell loaded, no data rows']:
                         logger.info(f"⏳ JS Observer detected '{ff_reason}'. Routing to shell-grace logic.")
-                        if getattr(Config, 'ODDSPORTAL_ENABLE_SHELL_GRACE', True):
-                            rendered = await self._wait_for_market_render(page, first_extract_fn, timeout_ms=getattr(Config, 'ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS', 8000))
+                        if ODDSPORTAL_SCRAPING_SETTINGS.browser.enable_shell_grace:
+                            rendered = await self._wait_for_market_render(
+                                page,
+                                first_extract_fn,
+                                timeout_ms=ODDSPORTAL_SCRAPING_SETTINGS.browser.shell_grace_timeout_ms,
+                            )
                             if not rendered:
                                 reason_code = 'SHELL_WITH_SKELETON_NO_DATA' if 'skeleton persisted' in ff_reason else 'SHELL_WITH_NAV_NO_DATA'
                                 logger.error(f'FAST FAIL: {reason_code} (after shell grace).')
@@ -399,19 +401,27 @@ class OddsPortalAttemptMixin:
                         logger.info(f'📂 Event debug directory: {self.debug_dir}')
                     except Exception as e:
                         logger.warning(f'⚠️ Failed to create event debug directory: {e}')
-                logger.info(f'✅ Extracted {len(period_data.bookie_odds)} bookies for {db_market_period}')
-                target_bookie_obj = None
-                for priority_name in PRIORITY_BOOKIES:
-                    for b in period_data.bookie_odds:
-                        if priority_name.lower() in b.name.lower() or b.name.lower() in priority_name.lower():
-                            target_bookie_obj = b
-                            break
-                    if target_bookie_obj:
-                        break
-                if target_bookie_obj:
+                extracted_bookie_count = len(period_data.bookie_odds)
+                period_data.bookie_odds = select_configured_bookies(
+                    period_data.bookie_odds,
+                    ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.hover_names,
+                    ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.hover_limit,
+                )
+                logger.info(
+                    '✅ Extracted %s configured regular bookie rows; retained %s for hover and persistence (%s)',
+                    extracted_bookie_count,
+                    len(period_data.bookie_odds),
+                    db_market_period,
+                )
+                hover_bookies = period_data.bookie_odds
+                for target_bookie_obj in hover_bookies:
                     logger.info(f'🎯 Extracting opening odds via hover for: {target_bookie_obj.name} ({db_market_period})')
                     t_hover = time.perf_counter()
-                    opening = await self._extract_opening_odds_for_bookie(page, target_bookie_obj.name)
+                    opening = await self._extract_opening_odds_by_hover(
+                        page,
+                        source="bookmaker",
+                        bookie_name=target_bookie_obj.name,
+                    )
                     log_timing(f'Hover extraction for {target_bookie_obj.name} ({db_market_period}) took {time.perf_counter() - t_hover:.2f}s')
                     is_ou = db_market_group == 'Over/Under'
                     lbl_1 = 'Over' if is_ou else '1'
@@ -442,14 +452,25 @@ class OddsPortalAttemptMixin:
                             lbl_x_part = f' X={target_bookie_obj.initial_odds_x}' if 'X' in expected_keys else ''
                             logger.warning(f'⚠️ PARTIAL_SUCCESS Opening odds ({db_market_period}): {lbl_1}={target_bookie_obj.initial_odds_1}{lbl_x_part} {lbl_2}={target_bookie_obj.initial_odds_2} (missing: {missing_keys})')
                     else:
-                        logger.warning(f'⚠️ TOTAL_FAIL Opening odds ({db_market_period}): could not extract any opening odds for {target_bookie_obj.name}')
-                else:
-                    logger.info(f'ℹ️ No priority bookie found for {db_market_period}, skipping opening odds hover')
+                        logger.warning(f'⚠️ TOTAL_FAIL Opening odds ({db_market_period}): could not extract opening odds for {target_bookie_obj.name}')
+                if not hover_bookies:
+                    logger.info(
+                        'ℹ️ No persisted regular bookie matched the configured hover scope for %s',
+                        db_market_period,
+                    )
                 extraction_betfair = None
-                if step.get('betfair_enabled') and period_data.betfair:
+                if (
+                    step.get('betfair_enabled')
+                    and period_data.betfair
+                    and ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.persist_betfair
+                    and ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.hover_betfair
+                ):
                     logger.info(f'🎯 Extracting Betfair Exchange opening odds via hover ({db_market_period})')
                     t_bf = time.perf_counter()
-                    bf_opening = await self._extract_opening_odds_betfair(page)
+                    bf_opening = await self._extract_opening_odds_by_hover(
+                        page,
+                        source="betfair",
+                    )
                     log_timing(f'Betfair hover extraction ({db_market_period}) took {time.perf_counter() - t_bf:.2f}s')
                     if bf_opening:
                         if bf_opening.get('back_1'):
@@ -457,14 +478,24 @@ class OddsPortalAttemptMixin:
                             period_data.betfair.movement_odds_time = bf_opening['back_1'][1]
                         if bf_opening.get('back_x'):
                             period_data.betfair.initial_back_x = bf_opening['back_x'][0]
+                            if not period_data.betfair.movement_odds_time and bf_opening['back_x'][1]:
+                                period_data.betfair.movement_odds_time = bf_opening['back_x'][1]
                         if bf_opening.get('back_2'):
                             period_data.betfair.initial_back_2 = bf_opening['back_2'][0]
+                            if not period_data.betfair.movement_odds_time and bf_opening['back_2'][1]:
+                                period_data.betfair.movement_odds_time = bf_opening['back_2'][1]
                         if bf_opening.get('lay_1'):
                             period_data.betfair.initial_lay_1 = bf_opening['lay_1'][0]
+                            if not period_data.betfair.movement_odds_time and bf_opening['lay_1'][1]:
+                                period_data.betfair.movement_odds_time = bf_opening['lay_1'][1]
                         if bf_opening.get('lay_x'):
                             period_data.betfair.initial_lay_x = bf_opening['lay_x'][0]
+                            if not period_data.betfair.movement_odds_time and bf_opening['lay_x'][1]:
+                                period_data.betfair.movement_odds_time = bf_opening['lay_x'][1]
                         if bf_opening.get('lay_2'):
                             period_data.betfair.initial_lay_2 = bf_opening['lay_2'][0]
+                            if not period_data.betfair.movement_odds_time and bf_opening['lay_2'][1]:
+                                period_data.betfair.movement_odds_time = bf_opening['lay_2'][1]
                         _bf_three_way = any((k in bf_opening for k in ('back_x', 'lay_x'))) or period_data.betfair.back_x not in (None, '-', '')
                         if _bf_three_way:
                             bf_expected_back = ['back_1', 'back_x', 'back_2']
@@ -480,8 +511,28 @@ class OddsPortalAttemptMixin:
                         else:
                             logger.warning(f'⚠️ PARTIAL_SUCCESS Betfair opening odds ({db_market_period}): Back 1={period_data.betfair.initial_back_1} X={period_data.betfair.initial_back_x} 2={period_data.betfair.initial_back_2} | Lay 1={period_data.betfair.initial_lay_1} X={period_data.betfair.initial_lay_x} 2={period_data.betfair.initial_lay_2} (missing: {bf_missing})')
                     else:
-                        logger.warning(f'⚠️ TOTAL_FAIL Betfair opening odds ({db_market_period}): could not extract any opening odds from Betfair Exchange')
+                        logger.warning(f'⚠️ TOTAL_FAIL Betfair opening odds ({db_market_period}): could not extract opening odds from Betfair Exchange')
                     extraction_betfair = period_data.betfair
+                elif (
+                    step.get('betfair_enabled')
+                    and period_data.betfair
+                    and ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.persist_betfair
+                ):
+                    extraction_betfair = period_data.betfair
+                    logger.info(
+                        'ℹ️ Persisting current Betfair Exchange odds without hover (%s)',
+                        db_market_period,
+                    )
+                elif step.get('betfair_enabled') and period_data.betfair:
+                    logger.info(
+                        'ℹ️ Betfair Exchange persistence disabled by config (%s)',
+                        db_market_period,
+                    )
+                elif step.get('betfair_enabled'):
+                    logger.warning(
+                        '⚠️ Betfair Exchange unavailable for %s: current extraction returned no exchange data',
+                        db_market_period,
+                    )
                 extraction = MarketExtraction(market_group=db_market_group, market_period=db_market_period, market_name=db_market_name, bookie_odds=period_data.bookie_odds, betfair=extraction_betfair)
                 match_data.extractions.append(extraction)
                 self._mark_step_completed(normalized_resume_state, step, match_data)

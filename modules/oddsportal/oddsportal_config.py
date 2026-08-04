@@ -3,8 +3,10 @@ Configuration for OddsPortal scraping.
 Maps canonical competitions to OddsPortal URL slugs.
 """
 
+import re
+import unicodedata
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 
 def get_current_date() -> date:
@@ -282,9 +284,86 @@ TEAM_ALIASES = {
     "HV71": ["HV 71"],
 }
 
-# Priority order for single-bookie initial odds extraction
-# Also used to filter which bookies are stored in the database
-PRIORITY_BOOKIES = ["bet365", "Pinnacle", "BetInAsia", "Megapari", "1xBet"]
+def _normalize_bookie_identity(value: Any) -> str:
+    """Normalize a source or configured bookmaker name for exact matching."""
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    ascii_text = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", "", ascii_text.casefold())
+
+
+def bookie_name_matches(actual_name: Any, configured_name: Any) -> bool:
+    """Match OddsPortal/DB aliases without permissive substring matching."""
+    actual_key = _normalize_bookie_identity(actual_name)
+    configured_key = _normalize_bookie_identity(configured_name)
+    if not actual_key or not configured_key:
+        return False
+    if actual_key == configured_key:
+        return True
+
+    for source_name, canonical_name in BOOKIE_ALIASES.items():
+        alias_keys = {
+            _normalize_bookie_identity(source_name),
+            _normalize_bookie_identity(canonical_name),
+        }
+        if actual_key in alias_keys and configured_key in alias_keys:
+            return True
+    return False
+
+
+def build_bookie_identity_groups(
+    configured_names: Sequence[str],
+) -> List[List[str]]:
+    """Build normalized alias groups for browser-side exact row selection."""
+    groups: List[List[str]] = []
+    for configured_name in configured_names or ():
+        configured_key = _normalize_bookie_identity(configured_name)
+        if not configured_key:
+            continue
+
+        identity_keys = {configured_key}
+        for source_name, canonical_name in BOOKIE_ALIASES.items():
+            alias_keys = {
+                _normalize_bookie_identity(source_name),
+                _normalize_bookie_identity(canonical_name),
+            }
+            if configured_key in alias_keys:
+                identity_keys.update(alias_keys)
+        groups.append(sorted(identity_keys))
+    return groups
+
+
+def select_configured_bookies(
+    bookies: List[Any],
+    configured_names: Optional[Sequence[str]],
+    limit: Optional[int],
+) -> List[Any]:
+    """Select bookies deterministically by allowlist order and optional limit.
+
+    ``configured_names=None`` keeps provider page order and means no allowlist.
+    An empty list or a zero limit selects nothing. Each provider row can be
+    selected at most once.
+    """
+    available = list(bookies or [])
+    if limit == 0 or (configured_names is not None and not configured_names):
+        return []
+
+    if configured_names is None:
+        selected = available
+    else:
+        selected = []
+        selected_indexes = set()
+        for configured_name in configured_names:
+            for index, bookie in enumerate(available):
+                if index in selected_indexes:
+                    continue
+                actual_name = getattr(bookie, "name", bookie)
+                if bookie_name_matches(actual_name, configured_name):
+                    selected.append(bookie)
+                    selected_indexes.add(index)
+                    break
+
+    return selected if limit is None else selected[:limit]
+
 
 from .oddsportal_routes import (
     OP_GROUPS,

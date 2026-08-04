@@ -46,15 +46,6 @@ except ImportError:
         PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART = True
         PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR = True
         PROXY_LOG_SAFE = True
-        ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS = 30000
-        ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS = 15000
-        ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS = 60000
-        ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS = 8000
-        ODDSPORTAL_TAB_WAIT_TIMEOUT = 20
-        ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT = True
-        ODDSPORTAL_ENABLE_SHELL_GRACE = True
-        ODDSPORTAL_BLOCK_SERVICE_WORKERS = True
-        ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE = True
         POLL_INTERVAL_MINUTES = 5
 
         @staticmethod
@@ -64,7 +55,7 @@ except ImportError:
     Config = MockConfig()
 
 from .oddsportal_config import (
-    BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
+    BOOKIE_ALIASES, TEAM_ALIASES,
     OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
     INSTITUTIONAL_NOISE, get_current_date,
@@ -84,6 +75,7 @@ from .cache_utils import (
     _calculate_cache_homogeneity, _evaluate_cache_quality, _format_group_key,
 )
 from .logging_context import _LOG_CONTEXT, _OddsPortalLogPrefixFilter, _log_prefix
+from .scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +256,7 @@ class OddsPortalLookupMixin:
             skipped_stale = 0
             skipped_league_self = 0
             skipped_missing_teams = 0
-            league_relative_path = navigation_league_url.replace(f'https://www.{Config.ODDSPORTAL_DOMAIN}', '').rstrip('/')
+            league_relative_path = navigation_league_url.replace(f'https://www.{ODDSPORTAL_SCRAPING_SETTINGS.domain}', '').rstrip('/')
             path_parts = [p for p in league_relative_path.split('/') if p]
             sport_slug = path_parts[0] if len(path_parts) >= 1 else None
             country_slug = path_parts[1] if len(path_parts) >= 2 else None
@@ -383,7 +375,7 @@ class OddsPortalLookupMixin:
             best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
             if best_match:
                 logger.info(f"Match found: {best_match['home']} vs {best_match['away']} (Score: {best_match['max_score']:.1f}, Reversed: {best_match['is_reversed']})")
-                return f"https://www.{Config.ODDSPORTAL_DOMAIN}{best_match['href']}"
+                return f"https://www.{ODDSPORTAL_SCRAPING_SETTINGS.domain}{best_match['href']}"
             logger.warning(f'Match not found: {home_team} vs {away_team}')
             return None
         except Exception as e:
@@ -401,7 +393,7 @@ class OddsPortalLookupMixin:
             best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
             if best_match and best_match['max_score'] >= 80:
                 logger.info(f"Cache hit: {best_match['home']} vs {best_match['away']} (Score: {best_match['max_score']:.1f})")
-                return f"https://www.{Config.ODDSPORTAL_DOMAIN}{best_match['href']}"
+                return f"https://www.{ODDSPORTAL_SCRAPING_SETTINGS.domain}{best_match['href']}"
             logger.info(f'Cache found for season {season_id}, but no stored match matched {home_team} vs {away_team} with threshold >= 80 (candidate_count={len(candidates)})')
             return None
         except Exception as e:

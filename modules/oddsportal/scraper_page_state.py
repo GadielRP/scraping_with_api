@@ -46,15 +46,6 @@ except ImportError:
         PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART = True
         PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR = True
         PROXY_LOG_SAFE = True
-        ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS = 30000
-        ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS = 15000
-        ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS = 60000
-        ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS = 8000
-        ODDSPORTAL_TAB_WAIT_TIMEOUT = 20
-        ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT = True
-        ODDSPORTAL_ENABLE_SHELL_GRACE = True
-        ODDSPORTAL_BLOCK_SERVICE_WORKERS = True
-        ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE = True
         POLL_INTERVAL_MINUTES = 5
 
         @staticmethod
@@ -64,7 +55,7 @@ except ImportError:
     Config = MockConfig()
 
 from .oddsportal_config import (
-    BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
+    BOOKIE_ALIASES, TEAM_ALIASES,
     OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
     INSTITUTIONAL_NOISE, get_current_date,
@@ -89,6 +80,7 @@ from .cache_utils import (
     _calculate_cache_homogeneity, _evaluate_cache_quality, _format_group_key,
 )
 from .logging_context import _LOG_CONTEXT, _OddsPortalLogPrefixFilter, _log_prefix
+from .scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +125,7 @@ class OddsPortalPageStateMixin:
         period_display_name: str,
         period_key: Optional[str] = None,
     ) -> bool:
-        tab_language = getattr(Config, "ODDSPORTAL_UI_LANGUAGE", "en")
+        tab_language = ODDSPORTAL_SCRAPING_SETTINGS.ui_language
 
         candidates = get_period_tab_candidates(
             period_key=period_key,
@@ -163,7 +155,7 @@ class OddsPortalPageStateMixin:
         group_display_name: str,
         group_key: Optional[str] = None,
     ) -> bool:
-        tab_language = getattr(Config, "ODDSPORTAL_UI_LANGUAGE", "en")
+        tab_language = ODDSPORTAL_SCRAPING_SETTINGS.ui_language
 
         candidates = get_group_tab_candidates(
             group_key=group_key,
@@ -282,7 +274,7 @@ class OddsPortalPageStateMixin:
                 for key in ['completed_step_keys', 'next_step_idx', 'failed_step_key', 'failed_reason', 'resume_fragment', 'partial_extraction_count']:
                     if key in nested_resume:
                         resume_manifest[key] = nested_resume.get(key)
-            manifest = {'timestamp': timestamp, 'reason': reason, 'url': page.url, 'title': await page.title(), 'session_id': getattr(self, '_session_id', 'unknown'), 'state': state, 'classification': classification, 'config': {'goto_timeout': getattr(Config, 'ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS', 30000), 'empty_timeout': getattr(Config, 'ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS', 15000), 'render_timeout': getattr(Config, 'ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS', 60000), 'shell_grace': getattr(Config, 'ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS', 8000)}, 'extras': extras_payload, **resume_manifest}
+            manifest = {'timestamp': timestamp, 'reason': reason, 'url': page.url, 'title': await page.title(), 'session_id': getattr(self, '_session_id', 'unknown'), 'state': state, 'classification': classification, 'config': {'goto_timeout': ODDSPORTAL_SCRAPING_SETTINGS.browser.match_goto_timeout_ms, 'empty_timeout': ODDSPORTAL_SCRAPING_SETTINGS.browser.fast_fail_empty_timeout_ms, 'render_timeout': ODDSPORTAL_SCRAPING_SETTINGS.browser.market_render_timeout_ms, 'shell_grace': ODDSPORTAL_SCRAPING_SETTINGS.browser.shell_grace_timeout_ms}, 'extras': extras_payload, **resume_manifest}
             json_path = os.path.join(self.debug_dir, f'{base_name}.json')
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(manifest, f, indent=4)

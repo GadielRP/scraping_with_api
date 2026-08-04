@@ -1,5 +1,5 @@
 import logging
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -27,8 +27,8 @@ def fractional_to_decimal(fractional_value: str) -> Optional[Decimal]:
             logger.warning(f"Invalid fractional format: {fractional_value}")
             return None
         
-        numerator = float(parts[0])
-        denominator = float(parts[1])
+        numerator = Decimal(parts[0].strip())
+        denominator = Decimal(parts[1].strip())
         
         # Validate inputs
         if denominator == 0:
@@ -40,15 +40,50 @@ def fractional_to_decimal(fractional_value: str) -> Optional[Decimal]:
             return None
         
         # Calculate decimal odds
-        decimal_value = 1 + (numerator / denominator)
+        decimal_value = Decimal("1") + (numerator / denominator)
         
         # Round to 3 decimal places to preserve full precision
-        decimal_decimal = Decimal(str(decimal_value)).quantize(
+        decimal_decimal = decimal_value.quantize(
             Decimal('0.001'), rounding=ROUND_HALF_UP
         )
         
         return decimal_decimal
         
-    except (ValueError, TypeError) as e:
+    except (InvalidOperation, ValueError, TypeError) as e:
         logger.error(f"Error converting fractional {fractional_value}: {e}")
         return None
+
+
+def normalize_odds_value(value) -> Optional[str]:
+    """Return decimal odds as a canonical string from decimal or fractional input.
+
+    Provider display preferences are intentionally not configured. The token
+    itself is authoritative: values containing one slash are interpreted as
+    fractional odds; all other numeric tokens are interpreted as decimal odds.
+    Invalid values, signed movement deltas, and odds outside the supported
+    decimal range return ``None``.
+    """
+    if value in (None, "", "-"):
+        return None
+
+    raw_value = str(value).strip()
+    if not raw_value or raw_value.startswith(("+", "-")):
+        return None
+
+    if "/" in raw_value:
+        decimal_value = fractional_to_decimal(raw_value)
+    else:
+        try:
+            decimal_value = Decimal(raw_value.replace(",", "."))
+        except (InvalidOperation, ValueError):
+            return None
+
+    if (
+        decimal_value is None
+        or not decimal_value.is_finite()
+        or not Decimal("1") <= decimal_value <= Decimal("1001")
+    ):
+        return None
+
+    normalized = format(decimal_value.normalize(), "f")
+    return normalized.rstrip("0").rstrip(".") if "." in normalized else normalized

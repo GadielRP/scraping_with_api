@@ -46,15 +46,6 @@ except ImportError:
         PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART = True
         PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR = True
         PROXY_LOG_SAFE = True
-        ODDSPORTAL_MATCH_GOTO_TIMEOUT_MS = 30000
-        ODDSPORTAL_FAST_FAIL_EMPTY_TIMEOUT_MS = 15000
-        ODDSPORTAL_MARKET_RENDER_TIMEOUT_MS = 60000
-        ODDSPORTAL_SHELL_GRACE_TIMEOUT_MS = 8000
-        ODDSPORTAL_TAB_WAIT_TIMEOUT = 20
-        ODDSPORTAL_SAVE_DEBUG_ON_GOTO_TIMEOUT = True
-        ODDSPORTAL_ENABLE_SHELL_GRACE = True
-        ODDSPORTAL_BLOCK_SERVICE_WORKERS = True
-        ODDSPORTAL_PRE_NAVIGATION_CLEAR_STATE = True
         POLL_INTERVAL_MINUTES = 5
 
         @staticmethod
@@ -64,7 +55,7 @@ except ImportError:
     Config = MockConfig()
 
 from .oddsportal_config import (
-    BOOKIE_ALIASES, TEAM_ALIASES, PRIORITY_BOOKIES,
+    BOOKIE_ALIASES, TEAM_ALIASES,
     OP_GROUPS, OP_GROUPS_DISPLAY, OP_PERIODS, SPORT_SCRAPING_ROUTES,
     build_op_fragment, build_match_url_with_fragment, flatten_sport_scraping_route,
     INSTITUTIONAL_NOISE, get_current_date,
@@ -84,6 +75,7 @@ from .cache_utils import (
     _calculate_cache_homogeneity, _evaluate_cache_quality, _format_group_key,
 )
 from .logging_context import _LOG_CONTEXT, _OddsPortalLogPrefixFilter, _log_prefix
+from .scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +91,8 @@ class OddsPortalBrowserMixin:
         self._session_id = 'no-proxy'
         self.proxy_manager = ProxyIdentityManager(Config, client_name='oddsportal')
         self._proxy_identity = None
-        self._ignore_https_errors = getattr(Config, 'ODDSPORTAL_IGNORE_HTTPS_ERRORS', True)
-        self._fresh_context_per_event = getattr(Config, 'ODDSPORTAL_FRESH_CONTEXT_PER_EVENT', True)
+        self._ignore_https_errors = ODDSPORTAL_SCRAPING_SETTINGS.browser.ignore_https_errors
+        self._fresh_context_per_event = ODDSPORTAL_SCRAPING_SETTINGS.browser.fresh_context_per_event
         self.team_matcher = TeamMatcher(team_aliases=TEAM_ALIASES, noise_list=INSTITUTIONAL_NOISE)
         if self.debug_dir:
             import os
@@ -163,7 +155,7 @@ class OddsPortalBrowserMixin:
         """Centralize all options for browser.new_context()."""
         user_agents = ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36']
         context_options = {'viewport': {'width': 1920, 'height': 1080}, 'user_agent': random.choice(user_agents), 'locale': 'en-US', 'timezone_id': 'America/Mexico_City', 'java_script_enabled': True, 'ignore_https_errors': self._ignore_https_errors}
-        if getattr(Config, 'ODDSPORTAL_BLOCK_SERVICE_WORKERS', True):
+        if ODDSPORTAL_SCRAPING_SETTINGS.browser.block_service_workers:
             context_options['service_workers'] = 'block'
         return context_options
 
@@ -174,7 +166,7 @@ class OddsPortalBrowserMixin:
     async def _install_context_features(self, context: BrowserContext) -> None:
         """Apply init script and resource-blocking route to a context."""
         await context.add_init_script(self._get_evasion_init_script())
-        if getattr(Config, 'ODDSPORTAL_BLOCK_RESOURCES', True):
+        if ODDSPORTAL_SCRAPING_SETTINGS.browser.block_resources:
             await context.route('**/*', self._intercept_route)
 
     async def _create_fresh_context(self) -> BrowserContext:

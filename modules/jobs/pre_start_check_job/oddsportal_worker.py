@@ -16,6 +16,7 @@ from modules.oddsportal.oddsportal_config import (
     ODDSPORTAL_COMPETITION_ROUTES,
     get_current_date,
 )
+from modules.oddsportal.scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,7 @@ def scrape_oddsportal_batch(
         op_info = ODDSPORTAL_COMPETITION_ROUTES.get(competition_id)
 
         if op_info and event_info.get("should_extract_odds"):
-            league_url = f"https://www.{Config.ODDSPORTAL_DOMAIN}/{op_info['sport']}/{op_info['country']}/{op_info['league']}/"
+            league_url = f"https://www.{ODDSPORTAL_SCRAPING_SETTINGS.domain}/{op_info['sport']}/{op_info['country']}/{op_info['league']}/"
             op_tasks.append(
                 {
                     "event_id": event_data["id"],
@@ -253,13 +254,21 @@ def scrape_oddsportal_batch(
 
     num_browsers = Config.ODDSPORTAL_PARALLEL_BROWSERS
     logger.info(
+        "OddsPortal bookmaker policy: regular hover+persistence=%s limit=%s; "
+        "betfair persist=%s hover=%s",
+        ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.hover_names or "disabled",
+        ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.hover_limit,
+        ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.persist_betfair,
+        ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.hover_betfair,
+    )
+    logger.info(
         f"🌐 OddsPortal: Dispatching {len(op_tasks)} tasks with {num_browsers} browser(s) "
         f"(browser-per-worker, fresh-context-per-event)"
     )
     op_results = scrape_multiple_matches_parallel_sync(
         op_tasks,
         num_browsers=num_browsers,
-        debug_dir="oddsportal_debug",
+        debug_dir=ODDSPORTAL_SCRAPING_SETTINGS.browser.debug_dir,
         on_task_started=_on_event_started,
         on_result=_on_event_scraped,
         current_date=op_current_date,

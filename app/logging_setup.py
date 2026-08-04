@@ -22,6 +22,14 @@ _MONTH_NAMES = [
     "12_December",
 ]
 
+_ODDSPORTAL_LOGGER_PREFIXES = (
+    "oddsportal_scraper",  # Legacy compatibility.
+    "modules.oddsportal",
+    "modules.jobs.pre_start_check_job.oddsportal_worker",
+    "modules.jobs.clean_league_cache",
+    "infrastructure.persistence.repositories.oddsportal_cache_repository",
+)
+
 
 def _get_log_path() -> str:
     """Build the dynamic log file path based on current local date."""
@@ -63,6 +71,18 @@ class _WeeklyRotatingFileHandler(logging.FileHandler):
         super().emit(record)
 
 
+class _OddsPortalOnlyFilter(logging.Filter):
+    """Accept only records owned by, or explicitly tagged for, OddsPortal."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if getattr(record, "oddsportal", False):
+            return True
+        return any(
+            record.name == prefix or record.name.startswith(f"{prefix}.")
+            for prefix in _ODDSPORTAL_LOGGER_PREFIXES
+        )
+
+
 def setup_logging():
     """Setup logging configuration with weekly-rotated log files."""
     root_logger = logging.getLogger()
@@ -88,14 +108,14 @@ def setup_logging():
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
 
-    op_logger = logging.getLogger("oddsportal_scraper")
-    for handler in op_logger.handlers[:]:
-        op_logger.removeHandler(handler)
+    legacy_op_logger = logging.getLogger("oddsportal_scraper")
+    for handler in legacy_op_logger.handlers[:]:
+        legacy_op_logger.removeHandler(handler)
         try:
             handler.close()
         except Exception:
             pass
-    op_logger.propagate = True
+    legacy_op_logger.propagate = True
 
     op_file_handler = _WeeklyRotatingFileHandler(
         path_fn=_get_oddsportal_log_path,
@@ -104,12 +124,18 @@ def setup_logging():
     )
     op_file_handler.setLevel(level)
     op_file_handler.setFormatter(formatter)
-    op_logger.addHandler(op_file_handler)
+    op_file_handler.addFilter(_OddsPortalOnlyFilter())
+    root_logger.addHandler(op_file_handler)
 
     console_handler.flush()
     file_handler.flush()
+    op_file_handler.flush()
 
     logging.info("Logging system initialized successfully")
+    logging.getLogger(__name__).info(
+        "OddsPortal dedicated logging initialized with namespace filtering",
+        extra={"oddsportal": True},
+    )
 
 
 __all__ = ["setup_logging"]

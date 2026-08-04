@@ -247,7 +247,10 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             for event in upcoming_events
         }
 
-        logger.info("🌐 Starting OddsPortal scrape selection")
+        logger.info(
+            "🌐 Starting OddsPortal scrape selection",
+            extra={"oddsportal": True},
+        )
         oddsportal_context: OddsPortalScrapeContext = (
             start_oddsportal_scrape_for_events(
                 scheduler,

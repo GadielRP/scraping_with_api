@@ -149,7 +149,10 @@ class EventAlertProcessor:
             logged_queue = False
             while not state["started_event"].is_set() and not state["done_event"].is_set():
                 if not logged_queue:
-                    logger.info(f"[OP] Event {event_obj.id} queued; waiting for worker claim...")
+                    logger.info(
+                        f"[OP] Event {event_obj.id} queued; waiting for worker claim...",
+                        extra={"oddsportal": True},
+                    )
                     logged_queue = True
                 time.sleep(0.25)
 
@@ -162,23 +165,44 @@ class EventAlertProcessor:
                     remaining = max(0.0, float(timeout_s) - elapsed)
 
                     if remaining > 0:
-                        logger.info(f"[OP] Event {event_obj.id} started {elapsed:.1f}s ago; waiting up to {remaining:.1f}s...")
+                        logger.info(
+                            f"[OP] Event {event_obj.id} started {elapsed:.1f}s ago; waiting up to {remaining:.1f}s...",
+                            extra={"oddsportal": True},
+                        )
                         if state["done_event"].wait(timeout=remaining):
-                            logger.info(f"[OP] Worker signaled completion for event {event_obj.id}.")
+                            logger.info(
+                                f"[OP] Worker signaled completion for event {event_obj.id}.",
+                                extra={"oddsportal": True},
+                            )
                         else:
-                            logger.warning(f"[OP] Timed out waiting for OddsPortal for event {event_obj.id}.")
+                            logger.warning(
+                                f"[OP] Timed out waiting for OddsPortal for event {event_obj.id}.",
+                                extra={"oddsportal": True},
+                            )
                     else:
-                        logger.warning(f"[OP] Event {event_obj.id} exceeded timeout ({elapsed:.1f}s).")
+                        logger.warning(
+                            f"[OP] Event {event_obj.id} exceeded timeout ({elapsed:.1f}s).",
+                            extra={"oddsportal": True},
+                        )
 
         # Verify DB availability
         try:
             external_markets = MarketRepository.get_external_markets_for_event(event_obj.id)
             if external_markets:
-                logger.info(f"[OP] External markets data available for {event_obj.id} ({len(external_markets)} rows).")
+                logger.info(
+                    f"[OP] External markets data available for {event_obj.id} ({len(external_markets)} rows).",
+                    extra={"oddsportal": True},
+                )
             else:
-                logger.info(f"[OP] External markets data NOT available for {event_obj.id}.")
+                logger.info(
+                    f"[OP] External markets data NOT available for {event_obj.id}.",
+                    extra={"oddsportal": True},
+                )
         except Exception as exc:
-            logger.warning(f"[OP] Could not verify external markets availability for {event_obj.id}: {exc}")
+            logger.warning(
+                f"[OP] Could not verify external markets availability for {event_obj.id}: {exc}",
+                extra={"oddsportal": True},
+            )
 
         return self.op_data_cache.get(event_obj.id) if self.op_data_cache else None
 

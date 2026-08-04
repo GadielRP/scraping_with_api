@@ -1,4 +1,3 @@
-import os
 import re
 import logging
 from datetime import date, datetime, timedelta
@@ -6,15 +5,22 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .dataclasses import CacheQualityMetrics
 from .oddsportal_config import get_current_date
+from .scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
 
 
 
 logger = logging.getLogger(__name__)
 
-DEBUG_TIMING = os.getenv("DEBUG_TIMING", "false").lower() == "true"
-ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS", "21000"))
-ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS = int(os.getenv("ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS", "18000"))
-ODDSPORTAL_SESSION_RESTART_ATTEMPTS = int(os.getenv("ODDSPORTAL_SESSION_RESTART_ATTEMPTS", "2"))
+DEBUG_TIMING = ODDSPORTAL_SCRAPING_SETTINGS.browser.debug_timing
+ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS = (
+    ODDSPORTAL_SCRAPING_SETTINGS.browser.league_goto_timeout_ms
+)
+ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS = (
+    ODDSPORTAL_SCRAPING_SETTINGS.browser.league_rows_timeout_ms
+)
+ODDSPORTAL_SESSION_RESTART_ATTEMPTS = (
+    ODDSPORTAL_SCRAPING_SETTINGS.browser.session_restart_attempts
+)
 EN_DASH = "\u2013"
 TEAM_SEPARATOR_PATTERN = rf"\s+(?:vs|[{EN_DASH}-])\s+"
 LEGACY_CACHE_MATCH_PATTERN = rf"([^\n{EN_DASH}\-]+)[\s\n]+(?:vs|[{EN_DASH}v\-])[\s\n]+([^\n\d]+)"
