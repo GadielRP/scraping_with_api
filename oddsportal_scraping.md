@@ -10,6 +10,8 @@
 
 OddsPortal is a supplemental provider. The pre-start job starts it in parallel with maintenance and the SofaScore/Oddspapi ingestion phases. It is not the component that decides the normal provider key moments.
 
+The normal SofaScore + OddspAPI odds path (shared candidate plan, provider registry, and per-provider acquisition) is documented in [`pre_start_odds_ingestion.md`](pre_start_odds_ingestion.md).
+
 An event is selected for OddsPortal only when all of these conditions are true:
 
 1. `Config.ODDSPORTAL_SCRAPING_ENABLED` is true.
@@ -131,8 +133,8 @@ sequenceDiagram
         PS->>PS: NBA in-game checks
         PS->>DB: load source states
         PS->>PS: build provider candidates
-        PS->>PS: SofaScore ingestion
-        PS->>PS: Oddspapi ingestion
+        PS->>PS: _ingest_provider_odds via _PROVIDER_ODDS_PHASES
+        Note over PS: run_sofascore_pre_start_odds<br/>run_oddspapi_pre_start_odds
         PS->>AL: evaluate key-moment pipelines
         AL->>AL: eligible legacy alerts wait for their OP event
     end
@@ -147,7 +149,7 @@ The real order is:
 5. Run recently-started timestamp correction and result-freshness maintenance.
 6. Run in-game checks.
 7. If events remain, load provider source states and build the normal pre-start candidate plan.
-8. Ingest SofaScore and Oddspapi odds.
+8. Ingest SofaScore and Oddspapi odds through `_PROVIDER_ODDS_PHASES` (`run_sofascore_pre_start_odds`, `run_oddspapi_pre_start_odds` under `providers/`). See [`pre_start_odds_ingestion.md`](pre_start_odds_ingestion.md).
 9. Evaluate the enabled legacy-alert and pillar pipelines.
 
 OddsPortal is therefore launched before timestamp maintenance. If maintenance later removes or reschedules an event, an already-selected OddsPortal task is not cancelled.

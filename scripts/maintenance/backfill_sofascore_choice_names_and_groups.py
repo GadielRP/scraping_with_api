@@ -24,6 +24,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
+from infrastructure.persistence.catalogs.canonical_market_types import (  # noqa: E402
+    CANONICAL_MARKET_TYPE_SEEDS,
+)
 from infrastructure.persistence.database import db_manager  # noqa: E402
 from infrastructure.persistence.models import Market  # noqa: E402
 from app.logging_setup import setup_logging  # noqa: E402
@@ -656,190 +659,146 @@ class MergeAction:
     target_market_id: int | None = None
 
 
+def _shape_definition(
+    kind: str,
+    source_shapes: set[tuple[str, str, str]] | frozenset[tuple[str, str, str]],
+    *,
+    canonical_target_key: str,
+    line_based: bool = False,
+    allows_draw: bool = False,
+) -> MarketShapeDefinition:
+    """Build a shape definition whose target fields always come from the catalog."""
+    seed = CANONICAL_MARKET_TYPE_SEEDS.get(canonical_target_key)
+    if seed is None:
+        raise KeyError(
+            f"Shape {kind!r} references unknown canonical_target_key="
+            f"{canonical_target_key!r}"
+        )
+    return MarketShapeDefinition(
+        kind=kind,
+        source_shapes=frozenset(source_shapes),
+        canonical_target_key=canonical_target_key,
+        canonical_target_name=seed["canonical_market_name"],
+        canonical_target_group=seed["canonical_market_group"],
+        canonical_target_period=seed["canonical_market_period"],
+        market_family=seed["market_family"],
+        line_based=line_based,
+        allows_draw=allows_draw,
+    )
+
+
 MARKET_SHAPE_DEFINITIONS: tuple[MarketShapeDefinition, ...] = (
-    MarketShapeDefinition(
-        kind="moneyline_full_time_2way",
-        source_shapes=frozenset(
-            {
-                ("full time", "home/away", "match"),
-                ("full time", "home/away", "full-time"),
-                ("full time", "home/away", "full time"),
-                ("home/away full time", "home/away", "full time"),
-            }
-        ),
+    _shape_definition(
+        "moneyline_full_time_2way",
+        {
+            ("full time", "home/away", "match"),
+            ("full time", "home/away", "full-time"),
+            ("full time", "home/away", "full time"),
+            ("home/away full time", "home/away", "full time"),
+        },
         canonical_target_key="home_away_full_time",
-        canonical_target_name="Home/Away Full Time",
-        canonical_target_group="Home/Away",
-        canonical_target_period="Full Time",
-        market_family="side",
     ),
-    MarketShapeDefinition(
-        kind="moneyline_1st_half_2way",
-        source_shapes=frozenset(
-            {
-                ("1st half", "home/away", "1st half"),
-                ("1st half", "home/away", "1st Half"),
-                ("home/away 1st half", "home/away", "1st half"),
-            }
-        ),
+    _shape_definition(
+        "moneyline_1st_half_2way",
+        {
+            ("1st half", "home/away", "1st half"),
+            ("1st half", "home/away", "1st Half"),
+            ("home/away 1st half", "home/away", "1st half"),
+        },
         canonical_target_key="home_away_1st_half",
-        canonical_target_name="Home/Away 1st Half",
-        canonical_target_group="Home/Away",
-        canonical_target_period="1st Half",
-        market_family="side",
     ),
-    MarketShapeDefinition(
-        kind="1x2_full_time",
-        source_shapes=frozenset(
-            {
-                ("full time", "1x2", "full-time"),
-                ("full-time", "1x2", "full-time"),
-                ("full-time", "1x2", "full time"),
-                ("1x2 full time", "1x2", "full time"),
-            }
-        ),
+    _shape_definition(
+        "1x2_full_time",
+        {
+            ("full time", "1x2", "full-time"),
+            ("full-time", "1x2", "full-time"),
+            ("full-time", "1x2", "full time"),
+            ("1x2 full time", "1x2", "full time"),
+        },
         canonical_target_key="1x2_full_time",
-        canonical_target_name="1X2 Full Time",
-        canonical_target_group="1X2",
-        canonical_target_period="Full Time",
-        market_family="side",
         allows_draw=True,
     ),
-    MarketShapeDefinition(
-        kind="1x2_1st_half",
-        source_shapes=frozenset(
-            {
-                ("1st half", "1x2", "1st half"),
-                ("1st half", "1x2", "1st Half"),
-                ("1x2 1st half", "1x2", "1st half"),
-            }
-        ),
+    _shape_definition(
+        "1x2_1st_half",
+        {
+            ("1st half", "1x2", "1st half"),
+            ("1st half", "1x2", "1st Half"),
+            ("1x2 1st half", "1x2", "1st half"),
+        },
         canonical_target_key="1x2_1st_half",
-        canonical_target_name="1X2 1st Half",
-        canonical_target_group="1X2",
-        canonical_target_period="1st Half",
-        market_family="side",
         allows_draw=True,
     ),
-    MarketShapeDefinition(
-        kind="draw_no_bet_full_time",
-        source_shapes=frozenset(
-            {
-                ("draw no bet", "draw no bet", "full-time"),
-                ("draw no bet full time", "draw no bet", "full time"),
-            }
-        ),
+    _shape_definition(
+        "draw_no_bet_full_time",
+        {
+            ("draw no bet", "draw no bet", "full-time"),
+            ("draw no bet full time", "draw no bet", "full time"),
+        },
         canonical_target_key="draw_no_bet_full_time",
-        canonical_target_name="Draw No Bet Full Time",
-        canonical_target_group="Draw No Bet",
-        canonical_target_period="Full Time",
-        market_family="draw_no_bet",
     ),
-    MarketShapeDefinition(
-        kind="total_full_time",
-        source_shapes=frozenset(
-            {
-                ("total", "over/under", "full-time"),
-                ("game total", "over/under", "match"),
-                ("total points", "over/under", "match"),
-                ("match goals", "match goals", "match"),
-                ("match goals", "match goals", "full-time"),
-                ("over/under full time", "over/under", "full time"),
-            }
-        ),
+    _shape_definition(
+        "total_full_time",
+        {
+            ("total", "over/under", "full-time"),
+            ("game total", "over/under", "match"),
+            ("total points", "over/under", "match"),
+            ("match goals", "match goals", "match"),
+            ("match goals", "match goals", "full-time"),
+            ("over/under full time", "over/under", "full time"),
+        },
         canonical_target_key="over_under_full_time",
-        canonical_target_name="Over/Under Full Time",
-        canonical_target_group="Over/Under",
-        canonical_target_period="Full Time",
-        market_family="total",
         line_based=True,
     ),
-    MarketShapeDefinition(
-        kind="asian_handicap_full_time",
-        source_shapes=frozenset(
-            {
-                ("point spread", "point spread", "match"),
-                ("asian handicap", "asian handicap", "full-time"),
-                ("asian handicap", "asian handicap", "full time"),
-                ("asian handicap full time", "asian handicap", "full time"),
-            }
-        ),
+    _shape_definition(
+        "asian_handicap_full_time",
+        {
+            ("point spread", "point spread", "match"),
+            ("asian handicap", "asian handicap", "full-time"),
+            ("asian handicap", "asian handicap", "full time"),
+            ("asian handicap full time", "asian handicap", "full time"),
+        },
         canonical_target_key="asian_handicap_full_time",
-        canonical_target_name="Asian Handicap Full Time",
-        canonical_target_group="Asian Handicap",
-        canonical_target_period="Full Time",
-        market_family="handicap",
         line_based=True,
     ),
-    MarketShapeDefinition(
-        kind="both_teams_to_score_full_time",
-        source_shapes=frozenset(
-            {
-                ("both teams to score", "both teams to score", "full-time"),
-                ("both teams to score full time", "both teams to score", "full time"),
-            }
-        ),
+    _shape_definition(
+        "both_teams_to_score_full_time",
+        {
+            ("both teams to score", "both teams to score", "full-time"),
+            ("both teams to score full time", "both teams to score", "full time"),
+        },
         canonical_target_key="both_teams_to_score_full_time",
-        canonical_target_name="Both Teams To Score Full Time",
-        canonical_target_group="Both Teams To Score",
-        canonical_target_period="Full Time",
-        market_family="btts",
     ),
-    MarketShapeDefinition(
-        kind="first_team_to_score_full_time",
-        source_shapes=frozenset(
-            {
-                ("first team to score", "first team to score", "full-time"),
-                ("first team to score full time", "first team to score", "full time"),
-            }
-        ),
+    _shape_definition(
+        "first_team_to_score_full_time",
+        {
+            ("first team to score", "first team to score", "full-time"),
+            ("first team to score full time", "first team to score", "full time"),
+        },
         canonical_target_key="first_team_to_score_full_time",
-        canonical_target_name="First Team To Score Full Time",
-        canonical_target_group="First Team To Score",
-        canonical_target_period="Full Time",
-        market_family="first_team_to_score",
     ),
-    MarketShapeDefinition(
-        kind="double_chance_full_time",
-        source_shapes=frozenset(
-            {
-                ("double chance", "double chance", "full-time"),
-                ("double chance full time", "double chance", "full time"),
-            }
-        ),
+    _shape_definition(
+        "double_chance_full_time",
+        {
+            ("double chance", "double chance", "full-time"),
+            ("double chance full time", "double chance", "full time"),
+        },
         canonical_target_key="double_chance_full_time",
-        canonical_target_name="Double Chance Full Time",
-        canonical_target_group="Double Chance",
-        canonical_target_period="Full Time",
-        market_family="side",
     ),
-    MarketShapeDefinition(
-        kind="home_away_full_time_including_overtime",
-        source_shapes=frozenset(
-            {
-                ("full time (including overtime)", "full time (including overtime)", "full-time"),
-                ("home/away full time including overtime", "home/away", "full time including overtime"),
-            }
-        ),
+    _shape_definition(
+        "home_away_full_time_including_overtime",
+        {
+            ("full time (including overtime)", "full time (including overtime)", "full-time"),
+            ("home/away full time including overtime", "home/away", "full time including overtime"),
+        },
         canonical_target_key="home_away_full_time_including_overtime",
-        canonical_target_name="Home/Away Full Time Including Overtime",
-        canonical_target_group="Home/Away",
-        canonical_target_period="Full Time Including Overtime",
-        market_family="side",
     ),
-    MarketShapeDefinition(
-        kind="next_goal_full_time",
-        source_shapes=frozenset(
-            {
-                ("next goal", "next goal", "full-time"),
-                ("next goal full time", "next goal", "full time"),
-            }
-        ),
+    _shape_definition(
+        "next_goal_full_time",
+        {
+            ("next goal", "next goal", "full-time"),
+            ("next goal full time", "next goal", "full time"),
+        },
         canonical_target_key="next_goal_full_time",
-        canonical_target_name="Next Goal Full Time",
-        canonical_target_group="Next Goal",
-        canonical_target_period="Full Time",
-        market_family="first_team_to_score",
     ),
 )
 
@@ -849,18 +808,7 @@ for definition in MARKET_SHAPE_DEFINITIONS:
         SHAPE_BY_KEY[shape] = definition
 
 CANONICAL_TARGET_KEYS = {
-    "home_away_full_time",
-    "home_away_1st_half",
-    "home_away_full_time_including_overtime",
-    "1x2_full_time",
-    "1x2_1st_half",
-    "over_under_full_time",
-    "asian_handicap_full_time",
-    "draw_no_bet_full_time",
-    "double_chance_full_time",
-    "both_teams_to_score_full_time",
-    "first_team_to_score_full_time",
-    "next_goal_full_time",
+    definition.canonical_target_key for definition in MARKET_SHAPE_DEFINITIONS
 }
 
 
@@ -1332,7 +1280,14 @@ def validate_required_schema(connection) -> dict[str, Any]:
         "markets": {"market_id", "event_id", "bookie_id", "market_name", "market_group", "market_period", "choice_group", "is_live", "collected_at"},
         "market_choices": {"choice_id", "market_id", "choice_name", "initial_odds", "current_odds", "change"},
         "market_choice_snapshots": {"snapshot_id", "choice_id", "odds_value", "collected_at"},
-        "canonical_market_types": {"canonical_market_key", "canonical_market_name", "canonical_market_group", "canonical_market_period", "requires_choice_group"},
+        "canonical_market_types": {
+            "canonical_market_key",
+            "canonical_market_name",
+            "canonical_market_group",
+            "canonical_market_period",
+            "market_family",
+            "requires_choice_group",
+        },
     }
     errors: list[str] = []
     for table_name, column_names in required.items():
@@ -1356,7 +1311,7 @@ def validate_canonical_targets(connection) -> dict[str, dict[str, Any]]:
         text(
             """
             SELECT canonical_market_key, canonical_market_name, canonical_market_group,
-                   canonical_market_period, requires_choice_group
+                   canonical_market_period, requires_choice_group, market_family
             FROM canonical_market_types
             WHERE canonical_market_key IN ({target_placeholders})
             """.format(target_placeholders=target_placeholders)
@@ -1364,22 +1319,19 @@ def validate_canonical_targets(connection) -> dict[str, dict[str, Any]]:
         target_params,
     ).mappings().all()
     by_key = {row["canonical_market_key"]: dict(row) for row in rows}
-    expected = {
-        "home_away_full_time": ("Home/Away Full Time", "Home/Away", "Full Time", False),
-        "home_away_1st_half": ("Home/Away 1st Half", "Home/Away", "1st Half", False),
-        "home_away_full_time_including_overtime": ("Home/Away Full Time Including Overtime", "Home/Away", "Full Time Including Overtime", False),
-        "1x2_full_time": ("1X2 Full Time", "1X2", "Full Time", False),
-        "1x2_1st_half": ("1X2 1st Half", "1X2", "1st Half", False),
-        "over_under_full_time": ("Over/Under Full Time", "Over/Under", "Full Time", True),
-        "asian_handicap_full_time": ("Asian Handicap Full Time", "Asian Handicap", "Full Time", True),
-        "draw_no_bet_full_time": ("Draw No Bet Full Time", "Draw No Bet", "Full Time", False),
-        "double_chance_full_time": ("Double Chance Full Time", "Double Chance", "Full Time", False),
-        "both_teams_to_score_full_time": ("Both Teams To Score Full Time", "Both Teams To Score", "Full Time", False),
-        "first_team_to_score_full_time": ("First Team To Score Full Time", "First Team To Score", "Full Time", False),
-        "next_goal_full_time": ("Next Goal Full Time", "Next Goal", "Full Time", False),
-    }
     errors = []
-    for key, expected_shape in expected.items():
+    for key in target_keys:
+        seed = CANONICAL_MARKET_TYPE_SEEDS.get(key)
+        if seed is None:
+            errors.append(f"unknown canonical target key outside catalog: {key}")
+            continue
+        expected_shape = (
+            seed["canonical_market_name"],
+            seed["canonical_market_group"],
+            seed["canonical_market_period"],
+            bool(seed["requires_choice_group"]),
+            seed["market_family"],
+        )
         row = by_key.get(key)
         if row is None:
             errors.append(f"missing canonical target: {key}")
@@ -1389,6 +1341,7 @@ def validate_canonical_targets(connection) -> dict[str, dict[str, Any]]:
             row["canonical_market_group"],
             row["canonical_market_period"],
             bool(row["requires_choice_group"]),
+            row.get("market_family") or seed["market_family"],
         )
         if actual_shape != expected_shape:
             errors.append(f"{key} shape mismatch: expected={expected_shape!r} actual={actual_shape!r}")
@@ -1401,11 +1354,20 @@ def _candidate_shape_sql(args: argparse.Namespace) -> tuple[str, dict[str, Any]]
     pieces = []
     params: dict[str, Any] = {}
     for idx, definition in enumerate(MARKET_SHAPE_DEFINITIONS):
-        if definition.market_family == "draw_no_bet" and not args.include_draw_no_bet:
+        if (
+            definition.canonical_target_key == "draw_no_bet_full_time"
+            and not args.include_draw_no_bet
+        ):
             continue
-        if definition.market_family == "btts" and not args.include_btts:
+        if (
+            definition.canonical_target_key == "both_teams_to_score_full_time"
+            and not args.include_btts
+        ):
             continue
-        if definition.market_family == "handicap" and not args.include_handicap_split:
+        if (
+            definition.canonical_target_key == "asian_handicap_full_time"
+            and not args.include_handicap_split
+        ):
             continue
         shape_parts = []
         for sidx, (name, group, period) in enumerate(sorted(definition.source_shapes)):

@@ -25,6 +25,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
+from infrastructure.persistence.catalogs.canonical_market_types import (  # noqa: E402
+    CANONICAL_MARKET_TYPE_SEEDS,
+)
 from infrastructure.persistence.database import db_manager  # noqa: E402
 
 
@@ -57,6 +60,7 @@ class CanonicalizationRule:
     target_market_group: str
     target_market_period: str
     canonical_market_key: str
+    market_family: str
     requires_choice_group: bool
     expected_choice_pattern: str
     expected_choice_names: tuple[str, ...]
@@ -80,181 +84,326 @@ SIDE_2_WAY_PATTERN = r"^(1|2)$"
 SIDE_3_WAY_PATTERN = r"^(1|X|2)$"
 TOTAL_PATTERN = r"^(Over|Under)$"
 HANDICAP_PATTERN = r"^(1|2|\([+-]?[0-9]+(\.[0-9]+)?\)[[:space:]]+.+)$"
+DECISION_PATTERN = r"^(yes|no|Yes|No|YES|NO)$"
+GOAL_TEAM_PATTERN = r"^(1|2|no_goal|no goal|No goal|No Goal)$"
+DOUBLE_CHANCE_PATTERN = r"^(1X|12|X2)$"
 
 
+def _rule(
+    rule_id: str,
+    source_market_name: str,
+    source_market_group: str,
+    source_market_period: str,
+    *,
+    canonical_market_key: str,
+    expected_choice_pattern: str,
+    expected_choice_names: tuple[str, ...],
+    safe: bool = True,
+) -> CanonicalizationRule:
+    """Build a rule whose target triple always comes from the catalog seed."""
+    seed = CANONICAL_MARKET_TYPE_SEEDS.get(canonical_market_key)
+    if seed is None:
+        raise KeyError(
+            f"Rule {rule_id!r} references unknown canonical_market_key="
+            f"{canonical_market_key!r}"
+        )
+    return CanonicalizationRule(
+        rule_id=rule_id,
+        source_market_name=source_market_name,
+        source_market_group=source_market_group,
+        source_market_period=source_market_period,
+        target_market_name=seed["canonical_market_name"],
+        target_market_group=seed["canonical_market_group"],
+        target_market_period=seed["canonical_market_period"],
+        canonical_market_key=canonical_market_key,
+        market_family=seed["market_family"],
+        requires_choice_group=bool(seed["requires_choice_group"]),
+        expected_choice_pattern=expected_choice_pattern,
+        expected_choice_names=expected_choice_names,
+        safe=safe,
+        trajectory_required=bool(seed["enabled_for_trajectory"]),
+    )
+
+
+# Source shapes are exact DB matches (case/spacing sensitive).
+# Target key/name/group/period/family always come from
+# CANONICAL_MARKET_TYPE_SEEDS via canonical_market_key.
 RULES: tuple[CanonicalizationRule, ...] = (
-    CanonicalizationRule(
-        "full_time_home_away_match",
-        "Full time", "Home/Away", "Match",
-        "Home/Away Full Time", "Home/Away", "Full Time",
-        "home_away_full_time", False, SIDE_2_WAY_PATTERN, ("1", "2"),
-    ),
-    CanonicalizationRule(
-        "full_time_1x2_full_time",
-        "Full time", "1X2", "Full-time",
-        "1X2 Full Time", "1X2", "Full Time",
-        "1x2_full_time", False, SIDE_3_WAY_PATTERN, ("1", "X", "2"),
-    ),
-    CanonicalizationRule(
-        "first_half_home_away",
-        "1st half", "Home/Away", "1st half",
-        "Home/Away 1st Half", "Home/Away", "1st Half",
-        "home_away_1st_half", False, SIDE_2_WAY_PATTERN, ("1", "2"),
-    ),
-    CanonicalizationRule(
-        "first_half_1x2",
-        "1st half", "1X2", "1st half",
-        "1X2 1st Half", "1X2", "1st Half",
-        "1x2_1st_half", False, SIDE_3_WAY_PATTERN, ("1", "X", "2"),
-    ),
-    CanonicalizationRule(
-        "game_total_match",
-        "Game total", "Over/Under", "Match",
-        "Over/Under Full Time", "Over/Under", "Full Time",
-        "over_under_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
-    ),
-    CanonicalizationRule(
-        "total_points_match",
-        "Total points", "Over/Under", "Match",
-        "Over/Under Full Time", "Over/Under", "Full Time",
-        "over_under_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
-    ),
-    CanonicalizationRule(
-        "match_goals_match",
-        "Match goals", "Match goals", "Match",
-        "Over/Under Full Time", "Over/Under", "Full Time",
-        "over_under_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
-    ),
-    CanonicalizationRule(
-        "match_goals_full_time",
-        "Match goals", "Match goals", "Full-time",
-        "Over/Under Full Time", "Over/Under", "Full Time",
-        "over_under_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
-    ),
-    CanonicalizationRule(
-        "point_spread_match",
-        "Point spread", "Point spread", "Match",
-        "Asian Handicap Full Time", "Asian Handicap", "Full Time",
-        "asian_handicap_full_time", True, HANDICAP_PATTERN, ("1", "2"),
-    ),
-    CanonicalizationRule(
-        "asian_handicap_group_case",
-        "Asian handicap", "Asian Handicap", "Full-time",
-        "Asian Handicap Full Time", "Asian Handicap", "Full Time",
-        "asian_handicap_full_time", True, HANDICAP_PATTERN, ("1", "2"),
-    ),
-    CanonicalizationRule(
-        "double_chance_full_time",
-        "Double chance", "Double chance", "Full-time",
-        "Double Chance Full Time", "Double Chance", "Full Time",
-        "double_chance_full_time", False, r"^(1X|12|X2)$", ("12", "1X", "X2"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "full_time_including_overtime",
-        "Full time (including overtime)", "Full time (including overtime)", "Full-time",
-        "Home/Away Full Time Including Overtime", "Home/Away", "Full Time Including Overtime",
-        "home_away_full_time_including_overtime", False, SIDE_2_WAY_PATTERN, ("1", "2"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "home_away_1st_quarter",
-        "1st quarter winner", "Home/Away", "1st quarter",
-        "Home/Away 1st Quarter", "Home/Away", "1st Quarter",
-        "home_away_1st_quarter", False, SIDE_3_WAY_PATTERN, ("1", "X", "2"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "first_set_winner_1st_set",
-        "First set winner", "Home/Away", "1st set",
-        "First Set Winner 1st Set", "First Set Winner", "1st Set",
-        "first_set_winner_1st_set", False, SIDE_2_WAY_PATTERN, ("1", "2"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "current_set_winner_current_set",
-        "Current set winner", "Current set winner", "Current set",
-        "Current Set Winner Current Set", "Current Set Winner", "Current Set",
-        "current_set_winner_current_set", False, SIDE_2_WAY_PATTERN, ("1", "2"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "over_under_1st_period",
-        "1st period goals", "Over/Under", "1st period",
-        "Over/Under 1st Period", "Over/Under", "1st Period",
-        "over_under_1st_period", True, TOTAL_PATTERN, ("Over", "Under"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "total_cards_full_time",
-        "Cards in match", "Total Cards", "Full-time",
-        "Total Cards Full Time", "Total Cards", "Full Time",
-        "total_cards_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "total_corners_full_time",
-        "Corners 2-Way", "Corners 2-Way", "Full-time",
-        "Total Corners Full Time", "Total Corners", "Full Time",
-        "total_corners_full_time", True, TOTAL_PATTERN, ("Over", "Under"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "total_sets_games_extra_time",
-        "Total games won", "Total sets/games", "Extra time",
-        "Total Sets/Games Extra Time", "Total Sets/Games", "Extra Time",
-        "total_sets_games_extra_time", True, TOTAL_PATTERN, ("Over", "Under"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "draw_no_bet_full_time",
-        "Draw no bet", "Draw no bet", "Full-time",
-        "Draw No Bet Full Time", "Draw No Bet", "Full Time",
-        "draw_no_bet_full_time", False, SIDE_2_WAY_PATTERN, ("1", "2"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "both_teams_to_score_full_time",
-        "Both teams to score", "Both teams to score", "Full-time",
-        "Both Teams To Score Full Time", "Both Teams To Score", "Full Time",
-        "both_teams_to_score_full_time", False, r"^(yes|no|Yes|No|YES|NO)$", ("yes", "no"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "first_goal_full_time",
-        "First goal", "First goal", "Full-time",
-        "First Goal Full Time", "First Goal", "Full Time",
-        "first_goal_full_time", False, r"^(1|2|no_goal|no goal|No goal|No Goal)$", ("1", "2", "no_goal"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "last_goal_full_time",
-        "Last goal", "Last goal", "Full-time",
-        "Last Goal Full Time", "Last Goal", "Full Time",
-        "last_goal_full_time", False, r"^(1|2|no_goal|no goal|No goal|No Goal)$", ("1", "2", "no_goal"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "first_team_to_score_full_time",
-        "First team to score", "First team to score", "Full-time",
-        "First Team To Score Full Time", "First Team To Score", "Full Time",
-        "first_team_to_score_full_time", False, r"^(1|2|no_goal|no goal|No goal|No Goal)$", ("1", "2", "no_goal"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "next_goal_full_time",
-        "Next goal", "Next goal", "Full-time",
-        "Next Goal Full Time", "Next Goal", "Full Time",
-        "next_goal_full_time", False, r"^(1|2|no_goal|no goal|No goal|No Goal)$", ("1", "2", "no_goal"),
-        trajectory_required=False,
-    ),
-    CanonicalizationRule(
-        "tie_break_in_match_extra_time",
-        "Tie break in match", "Tie break in match", "Extra time",
-        "Tie Break In Match Extra Time", "Tie Break In Match", "Extra Time",
-        "tie_break_in_match_extra_time", False, r"^(yes|no|Yes|No|YES|NO)$", ("yes", "no"),
-        trajectory_required=False,
-    ),
+    # --- 1X2 Full Time ---
+    _rule("full_time_1x2_full_time", "Full time", "1X2", "Full-time",
+          canonical_market_key="1x2_full_time",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    _rule("full_time_1x2_full_time_spaced", "Full time", "1X2", "Full Time",
+          canonical_market_key="1x2_full_time",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    _rule("full_time_title_1x2_full_time", "Full Time", "1X2", "Full Time",
+          canonical_market_key="1x2_full_time",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    # --- 1X2 1st Half ---
+    _rule("first_half_1x2", "1st half", "1X2", "1st half",
+          canonical_market_key="1x2_1st_half",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    _rule("first_half_1x2_canonical_period", "1st half", "1X2", "1st Half",
+          canonical_market_key="1x2_1st_half",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    _rule("first_half_title_1x2", "1st Half", "1X2", "1st Half",
+          canonical_market_key="1x2_1st_half",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    # --- 1X2 1st Quarter ---
+    _rule("first_quarter_1x2", "1st quarter winner", "1X2", "1st quarter",
+          canonical_market_key="1x2_1st_quarter",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    _rule("first_quarter_title_1x2", "1st Quarter", "1X2", "1st Quarter",
+          canonical_market_key="1x2_1st_quarter",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    # --- Home/Away Full Time ---
+    _rule("full_time_home_away_match", "Full time", "Home/Away", "Match",
+          canonical_market_key="home_away_full_time",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    _rule("full_time_home_away_full_time", "Full time", "Home/Away", "Full Time",
+          canonical_market_key="home_away_full_time",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    _rule("full_time_home_away_hyphen", "Full time", "Home/Away", "Full-time",
+          canonical_market_key="home_away_full_time",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    _rule("full_time_title_home_away", "Full Time", "Home/Away", "Full Time",
+          canonical_market_key="home_away_full_time",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    # --- Home/Away 1st Half ---
+    _rule("first_half_home_away", "1st half", "Home/Away", "1st half",
+          canonical_market_key="home_away_1st_half",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    _rule("first_half_home_away_canonical_period", "1st half", "Home/Away", "1st Half",
+          canonical_market_key="home_away_1st_half",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    _rule("first_half_title_home_away", "1st Half", "Home/Away", "1st Half",
+          canonical_market_key="home_away_1st_half",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    # --- Home/Away 1st Quarter ---
+    _rule("home_away_1st_quarter", "1st quarter winner", "Home/Away", "1st quarter",
+          canonical_market_key="home_away_1st_quarter",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    _rule("home_away_1st_quarter_title", "1st Quarter", "Home/Away", "1st Quarter",
+          canonical_market_key="home_away_1st_quarter",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    # --- Home/Away Full Time Including Overtime ---
+    _rule("full_time_including_overtime",
+          "Full time (including overtime)", "Full time (including overtime)", "Full-time",
+          canonical_market_key="home_away_full_time_including_overtime",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    _rule("full_time_including_overtime_full_time_period",
+          "Full time (including overtime)", "Full time (including overtime)", "Full Time",
+          canonical_market_key="home_away_full_time_including_overtime",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    # --- First / Current Set Winner ---
+    _rule("first_set_winner_1st_set", "First set winner", "Home/Away", "1st set",
+          canonical_market_key="first_set_winner_1st_set",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    _rule("current_set_winner_current_set", "Current set winner", "Current set winner", "Current set",
+          canonical_market_key="current_set_winner_current_set",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    # --- Over/Under Full Time ---
+    _rule("game_total_match", "Game total", "Over/Under", "Match",
+          canonical_market_key="over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("total_points_match", "Total points", "Over/Under", "Match",
+          canonical_market_key="over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("match_goals_match", "Match goals", "Match goals", "Match",
+          canonical_market_key="over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("match_goals_full_time", "Match goals", "Match goals", "Full-time",
+          canonical_market_key="over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("over_under_bare_full_time", "Over/Under", "Over/Under", "Full Time",
+          canonical_market_key="over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("over_under_bare_full_time_hyphen", "Over/Under", "Over/Under", "Full-time",
+          canonical_market_key="over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("over_under_bare_match", "Over/Under", "Over/Under", "Match",
+          canonical_market_key="over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    # --- Sets Over/Under Full Time ---
+    _rule("total_sets_over_under_full_time", "Total sets", "Over/Under", "Full-time",
+          canonical_market_key="sets_over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("total_sets_over_under_full_time_spaced", "Total sets", "Over/Under", "Full Time",
+          canonical_market_key="sets_over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("match_sets_over_under_full_time", "Match sets", "Over/Under", "Full-time",
+          canonical_market_key="sets_over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("sets_total_over_under_full_time", "Sets total", "Total sets", "Full Time",
+          canonical_market_key="sets_over_under_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    # --- Over/Under Full Time Including Overtime ---
+    _rule("over_under_including_overtime_period", "Over/Under", "Over/Under", "Full Time Including Overtime",
+          canonical_market_key="over_under_full_time_including_overtime",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("over_under_incl_overtime_name", "Over under (incl. overtime)", "Over/Under", "Full-time",
+          canonical_market_key="over_under_full_time_including_overtime",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("total_incl_overtime_name", "Total (incl. overtime)", "Over/Under", "Full Time",
+          canonical_market_key="over_under_full_time_including_overtime",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    # --- Over/Under 1st Half ---
+    _rule("first_half_over_under_compound", "1st half Over/Under", "Over/Under", "1st Half",
+          canonical_market_key="over_under_1st_half",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("over_under_1st_half_lower", "Over/Under 1st half", "Over/Under", "1st Half",
+          canonical_market_key="over_under_1st_half",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("over_under_1st_half_trailing_space", "Over/Under 1st half ", "Over/Under", "1st Half",
+          canonical_market_key="over_under_1st_half",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("over_under_bare_1st_half", "Over/Under", "Over/Under", "1st Half",
+          canonical_market_key="over_under_1st_half",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("first_half_name_over_under", "1st half", "Over/Under", "1st Half",
+          canonical_market_key="over_under_1st_half",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    # --- Over/Under 1st Quarter ---
+    _rule("over_under_bare_1st_quarter", "Over/Under", "Over/Under", "1st Quarter",
+          canonical_market_key="over_under_1st_quarter",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("first_quarter_over_under", "1st quarter", "Over/Under", "1st Quarter",
+          canonical_market_key="over_under_1st_quarter",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    # --- Over/Under 1st Period ---
+    _rule("over_under_1st_period", "1st period goals", "Over/Under", "1st period",
+          canonical_market_key="over_under_1st_period",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    # --- Total Cards / Corners / Sets-Games ---
+    _rule("total_cards_full_time", "Cards in match", "Total Cards", "Full-time",
+          canonical_market_key="total_cards_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("total_corners_full_time_hyphen", "Corners 2-Way", "Corners 2-Way", "Full-time",
+          canonical_market_key="total_corners_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("total_corners_full_time_spaced", "Corners 2-Way", "Corners 2-Way", "Full Time",
+          canonical_market_key="total_corners_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("total_corners_full_time_compound_name", "Corners 2-Way Full Time", "Corners 2-Way", "Full Time",
+          canonical_market_key="total_corners_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("total_sets_games_extra_time", "Total games won", "Total sets/games", "Extra time",
+          canonical_market_key="total_sets_games_extra_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    # --- Team totals ---
+    _rule("team_total_home_full_time", "Over under team 1", "Over/Under Team 1", "Full-time",
+          canonical_market_key="team_total_home_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("team_total_home_full_time_spaced", "Over under team 1", "Over/Under Team 1", "Full Time",
+          canonical_market_key="team_total_home_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("team_total_home_bare_group", "Over/Under Team 1", "Over/Under Team 1", "Full Time",
+          canonical_market_key="team_total_home_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("team_total_away_full_time", "Over under team 2", "Over/Under Team 2", "Full-time",
+          canonical_market_key="team_total_away_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("team_total_away_full_time_spaced", "Over under team 2", "Over/Under Team 2", "Full Time",
+          canonical_market_key="team_total_away_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("team_total_away_bare_group", "Over/Under Team 2", "Over/Under Team 2", "Full Time",
+          canonical_market_key="team_total_away_full_time",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("team_total_home_including_overtime",
+          "Over under team 1 (incl. overtime)", "Over/Under Team 1", "Full-time",
+          canonical_market_key="team_total_home_full_time_including_overtime",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("team_total_home_including_overtime_period",
+          "Over/Under Team 1", "Over/Under Team 1", "Full Time Including Overtime",
+          canonical_market_key="team_total_home_full_time_including_overtime",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("team_total_away_including_overtime",
+          "Over under team 2 (incl. overtime)", "Over/Under Team 2", "Full-time",
+          canonical_market_key="team_total_away_full_time_including_overtime",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    _rule("team_total_away_including_overtime_period",
+          "Over/Under Team 2", "Over/Under Team 2", "Full Time Including Overtime",
+          canonical_market_key="team_total_away_full_time_including_overtime",
+          expected_choice_pattern=TOTAL_PATTERN, expected_choice_names=("Over", "Under")),
+    # --- Asian Handicap Full Time ---
+    _rule("point_spread_match", "Point spread", "Point spread", "Match",
+          canonical_market_key="asian_handicap_full_time",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    _rule("asian_handicap_group_case", "Asian handicap", "Asian Handicap", "Full-time",
+          canonical_market_key="asian_handicap_full_time",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    _rule("asian_handicap_title_full_time", "Asian Handicap", "Asian Handicap", "Full Time",
+          canonical_market_key="asian_handicap_full_time",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    _rule("asian_handicap_title_full_time_hyphen", "Asian Handicap", "Asian Handicap", "Full-time",
+          canonical_market_key="asian_handicap_full_time",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    _rule("asian_handicap_lower_full_time_spaced", "Asian handicap", "Asian Handicap", "Full Time",
+          canonical_market_key="asian_handicap_full_time",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    # --- Asian Handicap 1st Half ---
+    _rule("asian_handicap_1st_half_compound", "Asian Handicap 1st half", "Asian Handicap", "1st Half",
+          canonical_market_key="asian_handicap_1st_half",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    _rule("first_half_asian_handicap_compound", "1st half Asian Handicap", "Asian Handicap", "1st Half",
+          canonical_market_key="asian_handicap_1st_half",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    _rule("asian_handicap_bare_1st_half", "Asian Handicap", "Asian Handicap", "1st Half",
+          canonical_market_key="asian_handicap_1st_half",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    _rule("asian_handicap_lower_1st_half", "Asian handicap", "Asian Handicap", "1st Half",
+          canonical_market_key="asian_handicap_1st_half",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    # --- Asian Handicap Full Time Including Overtime ---
+    _rule("asian_handicap_including_overtime_period",
+          "Asian Handicap", "Asian Handicap", "Full Time Including Overtime",
+          canonical_market_key="asian_handicap_full_time_including_overtime",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    _rule("asian_handicap_incl_overtime_name",
+          "Asian handicap (incl. overtime)", "Asian Handicap", "Full-time",
+          canonical_market_key="asian_handicap_full_time_including_overtime",
+          expected_choice_pattern=HANDICAP_PATTERN, expected_choice_names=("1", "2")),
+    # --- European Handicap Full Time ---
+    _rule("european_handicap_full_time", "European handicap", "European Handicap", "Full-time",
+          canonical_market_key="european_handicap_full_time",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    _rule("european_handicap_title_full_time", "European Handicap", "European Handicap", "Full Time",
+          canonical_market_key="european_handicap_full_time",
+          expected_choice_pattern=SIDE_3_WAY_PATTERN, expected_choice_names=("1", "X", "2")),
+    # --- Draw No Bet / Double Chance / BTTS ---
+    _rule("draw_no_bet_full_time", "Draw no bet", "Draw no bet", "Full-time",
+          canonical_market_key="draw_no_bet_full_time",
+          expected_choice_pattern=SIDE_2_WAY_PATTERN, expected_choice_names=("1", "2")),
+    _rule("double_chance_full_time", "Double chance", "Double chance", "Full-time",
+          canonical_market_key="double_chance_full_time",
+          expected_choice_pattern=DOUBLE_CHANCE_PATTERN, expected_choice_names=("12", "1X", "X2")),
+    _rule("both_teams_to_score_full_time", "Both teams to score", "Both teams to score", "Full-time",
+          canonical_market_key="both_teams_to_score_full_time",
+          expected_choice_pattern=DECISION_PATTERN, expected_choice_names=("yes", "no")),
+    _rule("both_teams_to_score_including_overtime",
+          "Both teams to score (incl. overtime and penalties)", "Both teams to score", "Full-time",
+          canonical_market_key="both_teams_to_score_full_time_including_overtime",
+          expected_choice_pattern=DECISION_PATTERN, expected_choice_names=("yes", "no")),
+    _rule("both_teams_to_score_including_overtime_full_time_period",
+          "Both teams to score (incl. overtime and penalties)", "Both Teams To Score", "Full Time",
+          canonical_market_key="both_teams_to_score_full_time_including_overtime",
+          expected_choice_pattern=DECISION_PATTERN, expected_choice_names=("yes", "no")),
+    # --- Goal-team markets ---
+    _rule("first_goal_full_time", "First goal", "First goal", "Full-time",
+          canonical_market_key="first_goal_full_time",
+          expected_choice_pattern=GOAL_TEAM_PATTERN, expected_choice_names=("1", "2", "no_goal")),
+    _rule("last_goal_full_time", "Last goal", "Last goal", "Full-time",
+          canonical_market_key="last_goal_full_time",
+          expected_choice_pattern=GOAL_TEAM_PATTERN, expected_choice_names=("1", "2", "no_goal")),
+    _rule("first_team_to_score_full_time", "First team to score", "First team to score", "Full-time",
+          canonical_market_key="first_team_to_score_full_time",
+          expected_choice_pattern=GOAL_TEAM_PATTERN, expected_choice_names=("1", "2", "no_goal")),
+    _rule("next_goal_full_time", "Next goal", "Next goal", "Full-time",
+          canonical_market_key="next_goal_full_time",
+          expected_choice_pattern=GOAL_TEAM_PATTERN, expected_choice_names=("1", "2", "no_goal")),
+    _rule("tie_break_in_match_extra_time", "Tie break in match", "Tie break in match", "Extra time",
+          canonical_market_key="tie_break_in_match_extra_time",
+          expected_choice_pattern=DECISION_PATTERN, expected_choice_names=("yes", "no")),
 )
 
 
@@ -268,6 +417,7 @@ def validate_rule_definitions(
 
     ids: set[str] = set()
     sources: set[tuple[str, str, str]] = set()
+    target_keys: set[str] = set()
     for rule in normalized:
         values = asdict(rule)
         blank_fields = [
@@ -287,8 +437,57 @@ def validate_rule_definitions(
             raise ValueError(f"Duplicate source market shape: {rule.source_shape}")
         if not rule.expected_choice_names:
             raise ValueError(f"Rule {rule.rule_id!r} is missing expected_choice_names")
+
+        seed = CANONICAL_MARKET_TYPE_SEEDS.get(rule.canonical_market_key)
+        if seed is None:
+            raise ValueError(
+                f"Rule {rule.rule_id!r} has unknown canonical_market_key="
+                f"{rule.canonical_market_key!r}"
+            )
+        expected_target = (
+            seed["canonical_market_name"],
+            seed["canonical_market_group"],
+            seed["canonical_market_period"],
+        )
+        actual_target = (
+            rule.target_market_name,
+            rule.target_market_group,
+            rule.target_market_period,
+        )
+        if actual_target != expected_target:
+            raise ValueError(
+                f"Rule {rule.rule_id!r} target {actual_target} does not match "
+                f"CANONICAL_MARKET_TYPE_SEEDS[{rule.canonical_market_key!r}]="
+                f"{expected_target}"
+            )
+        if bool(rule.requires_choice_group) != bool(seed["requires_choice_group"]):
+            raise ValueError(
+                f"Rule {rule.rule_id!r} requires_choice_group="
+                f"{rule.requires_choice_group} does not match catalog "
+                f"{seed['requires_choice_group']}"
+            )
+        if rule.market_family != seed["market_family"]:
+            raise ValueError(
+                f"Rule {rule.rule_id!r} market_family={rule.market_family!r} "
+                f"does not match catalog {seed['market_family']!r}"
+            )
+        if bool(rule.trajectory_required) != bool(seed["enabled_for_trajectory"]):
+            raise ValueError(
+                f"Rule {rule.rule_id!r} trajectory_required="
+                f"{rule.trajectory_required} does not match catalog "
+                f"enabled_for_trajectory={seed['enabled_for_trajectory']}"
+            )
+
         ids.add(rule.rule_id)
         sources.add(source)
+        target_keys.add(rule.canonical_market_key)
+
+    missing_keys = sorted(set(CANONICAL_MARKET_TYPE_SEEDS) - target_keys)
+    if missing_keys:
+        raise ValueError(
+            "RULES are missing target coverage for canonical keys: "
+            + ", ".join(missing_keys)
+        )
     return normalized
 
 
@@ -331,7 +530,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Canonicalize historical SofaScore market metadata (dry-run by default)."
     )
-    parser.add_argument("--bookie-id", type=int, default=1)
+    bookie = parser.add_mutually_exclusive_group()
+    bookie.add_argument(
+        "--bookie-id",
+        type=int,
+        default=None,
+        help="Only markets for this bookie_id (default: 1)",
+    )
+    bookie.add_argument(
+        "--exclude-bookie-id",
+        type=int,
+        default=None,
+        help="All markets except this bookie_id (e.g. --exclude-bookie-id 1 for non-SofaScore)",
+    )
     parser.add_argument("--sport", help="Limit candidates to an exact events.sport value")
     parser.add_argument("--event-id", type=int, help="Limit candidates to one event")
     parser.add_argument(
@@ -339,6 +550,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1000,
         help="Canonical event_id range processed per batch (default: 1000)",
+    )
+    parser.add_argument(
+        "--max-batches",
+        type=int,
+        default=None,
+        help="Maximum number of active event_id batches to process per run (default: all)",
     )
     parser.add_argument(
         "--run-migrations",
@@ -375,7 +592,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    return build_parser().parse_args(argv)
+    args = build_parser().parse_args(argv)
+    if args.exclude_bookie_id is not None:
+        args.bookie_id = args.exclude_bookie_id
+        args.exclude_bookie = True
+    else:
+        if args.bookie_id is None:
+            args.bookie_id = 1
+        args.exclude_bookie = False
+    return args
 
 
 def build_rules_values_sql(rules: Sequence[CanonicalizationRule]) -> tuple[str, dict]:
@@ -414,7 +639,16 @@ _rule_values_sql = build_rules_values_sql
 
 def _scope_sql() -> str:
     return """
-        m.bookie_id = :bookie_id
+        (
+            (
+                NOT CAST(:exclude_bookie AS BOOLEAN)
+                AND m.bookie_id = CAST(:bookie_id AS BIGINT)
+            )
+            OR (
+                CAST(:exclude_bookie AS BOOLEAN)
+                AND m.bookie_id <> CAST(:bookie_id AS BIGINT)
+            )
+        )
         AND (CAST(:sport AS TEXT) IS NULL OR e.sport = CAST(:sport AS TEXT))
         AND (CAST(:event_id AS BIGINT) IS NULL OR m.event_id = CAST(:event_id AS BIGINT))
         AND (CAST(:batch_start AS BIGINT) IS NULL OR m.event_id >= CAST(:batch_start AS BIGINT))
@@ -477,6 +711,7 @@ def _query_params(args: argparse.Namespace, rule_params: dict) -> dict:
     return {
         **rule_params,
         "bookie_id": args.bookie_id,
+        "exclude_bookie": bool(args.exclude_bookie),
         "sport": args.sport,
         "event_id": args.event_id,
         "include_risky": args.include_risky,
@@ -484,6 +719,12 @@ def _query_params(args: argparse.Namespace, rule_params: dict) -> dict:
         "batch_start": None,
         "batch_end": None,
     }
+
+
+def _bookie_scope_label(args: argparse.Namespace) -> str:
+    if args.exclude_bookie:
+        return f"!={args.bookie_id}"
+    return str(args.bookie_id)
 
 
 def _load_csv_summary(path: Path | None, label: str) -> dict | None:
@@ -760,24 +1001,23 @@ def _analyze(connection, rules: Sequence[CanonicalizationRule], params: dict) ->
     }
 
 
-def _candidate_event_bounds(connection, rules, params: dict) -> dict:
-    """Find the canonical event-id span once before indexed batch processing."""
+def _fetch_active_event_ids(
+    connection, rules: Sequence[CanonicalizationRule], params: dict
+) -> list[int]:
+    """Fetch distinct event_ids for candidate markets that actually require metadata updates."""
     ctes, _ = build_candidate_ctes(rules)
-    row = connection.execute(
+    rows = connection.execute(
         text(
             ctes
             + """
-            SELECT
-                MIN(event_id) AS min_event_id,
-                MAX(event_id) AS max_event_id,
-                COUNT(DISTINCT event_id) AS candidate_events,
-                COUNT(*) AS candidate_markets
-            FROM candidates
+            SELECT DISTINCT event_id
+            FROM candidate_updates
+            ORDER BY event_id
             """
         ),
         params,
-    ).mappings().one()
-    return dict(row)
+    ).scalars().all()
+    return [int(row) for row in rows]
 
 
 def _target_counts(connection, rules, params: dict) -> dict[str, int]:
@@ -797,11 +1037,20 @@ def _target_counts(connection, rules, params: dict) -> dict[str, int]:
     return {row["rule_id"]: row["markets"] for row in rows}
 
 
-def _merge_batch_analyses(batch_analyses: Sequence[dict]) -> dict:
-    """Merge disjoint event-range analyses without losing distinct sport counts."""
-    rules_by_id: dict[str, dict] = {}
-    sport_names_by_rule: dict[str, set[str]] = defaultdict(set)
-    unexpected_by_rule: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+def _create_analysis_accumulator() -> dict:
+    return {
+        "rules_by_id": {},
+        "sport_names_by_rule": defaultdict(set),
+        "unexpected_by_rule": defaultdict(lambda: defaultdict(int)),
+        "sports": {},
+    }
+
+
+def _accumulate_batch_analysis(state: dict, batch_analysis: dict) -> None:
+    rules_by_id = state["rules_by_id"]
+    sport_names_by_rule = state["sport_names_by_rule"]
+    unexpected_by_rule = state["unexpected_by_rule"]
+    sports = state["sports"]
     additive_rule_fields = (
         "candidate_markets",
         "events",
@@ -812,44 +1061,50 @@ def _merge_batch_analyses(batch_analyses: Sequence[dict]) -> dict:
         "skipped_missing_choice_group",
         "markets_with_unexpected_choice_names",
     )
-    sports: dict[str, dict] = {}
 
-    for analysis in batch_analyses:
-        for row in analysis["rules"]:
-            rule_id = row["rule_id"]
-            if rule_id not in rules_by_id:
-                rules_by_id[rule_id] = {
-                    **row,
-                    **{field: 0 for field in additive_rule_fields},
-                    "already_in_target": 0,
-                    "sample_unexpected_choice_names": [],
-                }
-            merged = rules_by_id[rule_id]
-            for field in additive_rule_fields:
-                merged[field] += row[field]
-            sport_names_by_rule[rule_id].update(row.get("sport_names") or [])
-            for sample in row.get("sample_unexpected_choice_names") or []:
-                unexpected_by_rule[rule_id][sample["choice_name"]] += sample["markets"]
+    for row in batch_analysis["rules"]:
+        rule_id = row["rule_id"]
+        if rule_id not in rules_by_id:
+            rules_by_id[rule_id] = {
+                **row,
+                **{field: 0 for field in additive_rule_fields},
+                "already_in_target": 0,
+                "sample_unexpected_choice_names": [],
+            }
+        merged = rules_by_id[rule_id]
+        for field in additive_rule_fields:
+            merged[field] += row[field]
+        sport_names_by_rule[rule_id].update(row.get("sport_names") or [])
+        for sample in row.get("sample_unexpected_choice_names") or []:
+            unexpected_by_rule[rule_id][sample["choice_name"]] += sample["markets"]
 
-        for row in analysis["by_sport"]:
-            sport = row["sport"]
-            merged_sport = sports.setdefault(
-                sport,
-                {
-                    "sport": sport,
-                    "candidate_markets": 0,
-                    "events": 0,
-                    "eligible_markets": 0,
-                    "skipped_missing_choice_group": 0,
-                },
-            )
-            for field in (
-                "candidate_markets", "events", "eligible_markets",
-                "skipped_missing_choice_group",
-            ):
-                merged_sport[field] += row[field]
+    for row in batch_analysis["by_sport"]:
+        sport = row["sport"]
+        merged_sport = sports.setdefault(
+            sport,
+            {
+                "sport": sport,
+                "candidate_markets": 0,
+                "events": 0,
+                "eligible_markets": 0,
+                "skipped_missing_choice_group": 0,
+            },
+        )
+        for field in (
+            "candidate_markets", "events", "eligible_markets",
+            "skipped_missing_choice_group",
+        ):
+            merged_sport[field] += row[field]
+
+
+def _finalize_accumulated_analysis(state: dict, target_counts: dict[str, int]) -> dict:
+    rules_by_id = state["rules_by_id"]
+    sport_names_by_rule = state["sport_names_by_rule"]
+    unexpected_by_rule = state["unexpected_by_rule"]
+    sports = state["sports"]
 
     for rule_id, row in rules_by_id.items():
+        row["already_in_target"] = target_counts.get(rule_id, 0)
         row["sport_names"] = sorted(sport_names_by_rule[rule_id])
         row["sports"] = len(sport_names_by_rule[rule_id])
         row["markets_missing_choice_group_for_required_line"] = (
@@ -871,43 +1126,72 @@ def _merge_batch_analyses(batch_analyses: Sequence[dict]) -> dict:
     }
 
 
+def _merge_batch_analyses(batch_analyses: Sequence[dict]) -> dict:
+    """Merge disjoint event-range analyses without losing distinct sport counts."""
+    state = _create_analysis_accumulator()
+    for batch_analysis in batch_analyses:
+        _accumulate_batch_analysis(state, batch_analysis)
+    return _finalize_accumulated_analysis(state, target_counts={})
+
+
 def _analyze_in_event_batches(
     connection,
     rules: Sequence[CanonicalizationRule],
     params: dict,
     batch_size: int,
+    max_batches: int | None = None,
 ) -> tuple[dict, dict, list[tuple[int, int]], dict]:
-    """Analyze and conflict-check disjoint canonical event-id ranges."""
+    """Analyze and conflict-check disjoint active event-id ranges."""
     bounds_params = {**params, "batch_start": None, "batch_end": None}
-    bounds = _candidate_event_bounds(connection, rules, bounds_params)
+    active_event_ids = _fetch_active_event_ids(connection, rules, bounds_params)
     target_counts = _target_counts(connection, rules, bounds_params)
 
-    min_event_id = bounds["min_event_id"]
-    max_event_id = bounds["max_event_id"]
-    total_candidate_events = bounds["candidate_events"]
+    if not active_event_ids:
+        empty_params = {**params, "batch_start": 1, "batch_end": 0}
+        state = _create_analysis_accumulator()
+        _accumulate_batch_analysis(state, _analyze(connection, rules, empty_params))
+        merged = _finalize_accumulated_analysis(state, target_counts)
+        bounds = {
+            "min_event_id": None,
+            "max_event_id": None,
+            "candidate_events": 0,
+            "active_events_needing_update": 0,
+        }
+        print(
+            "Candidate scan: active_events=0 batch_size="
+            f"{batch_size}",
+            flush=True,
+        )
+        return merged, {"total_conflicts": 0, "rows": []}, [], bounds
+
+    min_event_id = active_event_ids[0]
+    max_event_id = active_event_ids[-1]
+    total_active_events = len(active_event_ids)
+
+    chunks = [
+        active_event_ids[i : i + batch_size]
+        for i in range(0, total_active_events, batch_size)
+    ]
+    if max_batches is not None and max_batches > 0:
+        chunks = chunks[:max_batches]
+
+    ranges = [(chunk[0], chunk[-1]) for chunk in chunks]
+
     print(
         "Candidate scan: "
-        f"markets={bounds['candidate_markets']} events={total_candidate_events} "
-        f"event_id_range={min_event_id}..{max_event_id} batch_size={batch_size}",
+        f"active_events_needing_update={total_active_events} "
+        f"active_event_id_range={min_event_id}..{max_event_id} "
+        f"batch_size={batch_size} batches_to_run={len(ranges)}",
         flush=True,
     )
 
-    if min_event_id is None or max_event_id is None:
-        empty_params = {**params, "batch_start": 1, "batch_end": 0}
-        merged = _merge_batch_analyses([_analyze(connection, rules, empty_params)])
-        for row in merged["rules"]:
-            row["already_in_target"] = target_counts.get(row["rule_id"], 0)
-        return merged, {"total_conflicts": 0, "rows": []}, [], bounds
-
-    ranges = [
-        (start, min(start + batch_size - 1, max_event_id))
-        for start in range(min_event_id, max_event_id + 1, batch_size)
-    ]
-    batch_analyses = []
+    acc_state = _create_analysis_accumulator()
     conflicts = []
     total_conflicts = 0
     processed_events = 0
     processed_markets = 0
+    conflict_limit = params.get("conflict_limit", 100)
+
     for batch_number, (batch_start, batch_end) in enumerate(ranges, start=1):
         batch_params = {**params, "batch_start": batch_start, "batch_end": batch_end}
         logger.info(
@@ -919,8 +1203,12 @@ def _analyze_in_event_batches(
         )
         batch_analysis = _analyze(connection, rules, batch_params)
         batch_conflicts = _find_conflicts(connection, rules, batch_params)
-        batch_analyses.append(batch_analysis)
-        conflicts.extend(batch_conflicts["rows"])
+
+        _accumulate_batch_analysis(acc_state, batch_analysis)
+
+        if len(conflicts) < conflict_limit:
+            remaining_slots = conflict_limit - len(conflicts)
+            conflicts.extend(batch_conflicts["rows"][:remaining_slots])
         total_conflicts += batch_conflicts["total_conflicts"]
 
         # Every event has one sport, so summing distinct events by sport stays exact.
@@ -936,13 +1224,17 @@ def _analyze_in_event_batches(
             batch_event_count,
             batch_market_count,
             processed_events,
-            max(total_candidate_events - processed_events, 0),
+            max(total_active_events - processed_events, 0),
             processed_markets,
         )
 
-    merged = _merge_batch_analyses(batch_analyses)
-    for row in merged["rules"]:
-        row["already_in_target"] = target_counts.get(row["rule_id"], 0)
+    merged = _finalize_accumulated_analysis(acc_state, target_counts)
+    bounds = {
+        "min_event_id": min_event_id,
+        "max_event_id": max_event_id,
+        "candidate_events": total_active_events,
+        "active_events_needing_update": total_active_events,
+    }
     return merged, {"total_conflicts": total_conflicts, "rows": conflicts}, ranges, bounds
 
 
@@ -1169,17 +1461,20 @@ def _print_rules(rules: Sequence[CanonicalizationRule]) -> None:
         expected_choices = ", ".join(rule.expected_choice_names) if rule.expected_choice_names else "n/a"
         print(
             f"  - {rule.rule_id}: {rule.source_shape} -> {rule.target_shape} "
-            f"[{rule.canonical_market_key}; {risk}; expected={expected_choices}]"
+            f"[{rule.canonical_market_key}; family={rule.market_family}; "
+            f"{risk}; expected={expected_choices}]"
         )
 
 
 def _print_summary(summary: dict) -> None:
     print("\nSofaScore canonical market backfill")
     print(f"  mode: {summary['mode']}")
-    print(f"  bookie_id: {summary['bookie_id']}")
+    print(f"  bookie_id: {summary['bookie_scope']}")
     print(f"  sport: {summary['sport'] or '(all)'}")
     print(f"  event_id: {summary['event_id'] or '(all)'}")
     print(f"  batch_size: {summary['batch_size']} event IDs")
+    if summary.get("max_batches") is not None:
+        print(f"  max_batches: {summary['max_batches']}")
     print(f"  run_migrations: {summary['run_migrations']}")
     print(f"  include_risky: {summary['include_risky']}")
     print(f"  conflict_limit: {summary['conflict_limit']}")
@@ -1324,7 +1619,7 @@ def run(args: argparse.Namespace) -> tuple[int, dict | None]:
                     if db_manager.engine.dialect.name == "postgresql":
                         logger.info(
                             "Commit transaction opened for bookie_id=%s event_id=%s sport=%s",
-                            args.bookie_id,
+                            _bookie_scope_label(args),
                             args.event_id,
                             args.sport or "(all)",
                         )
@@ -1342,7 +1637,11 @@ def run(args: argparse.Namespace) -> tuple[int, dict | None]:
                     ):
                         analysis, conflicts_report, batch_ranges, candidate_bounds = (
                             _analyze_in_event_batches(
-                                connection, rules, params, batch_size=args.batch_size
+                                connection,
+                                rules,
+                                params,
+                                batch_size=args.batch_size,
+                                max_batches=args.max_batches,
                             )
                         )
 
@@ -1410,7 +1709,11 @@ def run(args: argparse.Namespace) -> tuple[int, dict | None]:
                     ):
                         analysis, conflicts_report, batch_ranges, candidate_bounds = (
                             _analyze_in_event_batches(
-                                connection, rules, params, batch_size=args.batch_size
+                                connection,
+                                rules,
+                                params,
+                                batch_size=args.batch_size,
+                                max_batches=args.max_batches,
                             )
                         )
     except Exception as exc:
@@ -1422,9 +1725,12 @@ def run(args: argparse.Namespace) -> tuple[int, dict | None]:
     summary = {
         "mode": mode,
         "bookie_id": args.bookie_id,
+        "exclude_bookie": args.exclude_bookie,
+        "bookie_scope": _bookie_scope_label(args),
         "sport": args.sport,
         "event_id": args.event_id,
         "batch_size": args.batch_size,
+        "max_batches": args.max_batches,
         "run_migrations": args.run_migrations,
         "candidate_event_bounds": candidate_bounds,
         "include_risky": args.include_risky,

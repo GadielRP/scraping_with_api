@@ -15,6 +15,8 @@
 !modules/**
 !shared/
 !shared/**
+!scripts/
+!scripts/**
 
 **/__pycache__/
 **/*.py[cod]
