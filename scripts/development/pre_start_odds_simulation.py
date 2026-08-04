@@ -14,9 +14,6 @@ from infrastructure.persistence.models import (
     MarketChoiceSnapshot,
 )
 from infrastructure.persistence.repositories import EventRepository
-from modules.jobs.oddspapi.pre_start_odds.pre_start_odds_job import (
-    run_oddspapi_pre_start_odds_ingestion,
-)
 from modules.jobs.pre_start_check_job.event_candidate_builder import (
     PreStartEventPlan,
     build_pre_start_event_candidates,
@@ -26,8 +23,11 @@ from modules.jobs.pre_start_check_job.odds_source_state import (
     SOFASCORE_SOURCE,
     load_pre_start_odds_source_states,
 )
-from modules.jobs.pre_start_check_job.sofascore_odds_processor import (
-    process_sofascore_pre_start_odds,
+from modules.jobs.pre_start_check_job.providers.oddspapi.odds_phase import (
+    run_oddspapi_pre_start_odds,
+)
+from modules.jobs.pre_start_check_job.providers.sofascore.odds_phase import (
+    run_sofascore_pre_start_odds,
 )
 from modules.odds_ingestion.adapters.sofascore_market_adapter import (
     SofaScoreMarketAdapter,
@@ -108,7 +108,7 @@ def run_production_odds_phase(
             }
 
     logger.info("  Running production SofaScore odds processor...")
-    process_sofascore_pre_start_odds(
+    run_sofascore_pre_start_odds(
         event_plan.candidates,
         source_states,
         debug_mode=show_persistence_report,
@@ -149,7 +149,7 @@ def run_production_odds_phase(
         )
 
     logger.info("  Running production Oddspapi odds processor...")
-    oddspapi_summary = run_oddspapi_pre_start_odds_ingestion(
+    oddspapi_summary = run_oddspapi_pre_start_odds(
         event_plan.candidates,
         debug_mode=debug_mode,
         source_states=source_states,

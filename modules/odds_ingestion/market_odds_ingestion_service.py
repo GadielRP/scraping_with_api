@@ -475,7 +475,7 @@ class MarketOddsIngestionService:
             )
 
     @staticmethod
-    def save_from_event_odds_response(
+    def save_from_sofascore_response(
         event_id: int,
         odds_response: Dict,
         source: str = "sofascore",

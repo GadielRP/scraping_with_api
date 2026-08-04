@@ -156,7 +156,7 @@ def batch_process_odds(events_with_odds: Dict[str, Dict], events: List[Dict]) ->
                 skipped_count += 1
                 continue
 
-            ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
+            ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
                 db_event.id,
                 odds_response,
                 source="secondary_discovery",

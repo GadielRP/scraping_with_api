@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Callable
 
 from infrastructure.settings import Config
 from modules.alerts.matchup_streak_analysis.standings_engine import (
     standings_calculator,
-)
-from modules.jobs.oddspapi.pre_start_odds.pre_start_odds_job import (
-    run_oddspapi_pre_start_odds_ingestion,
 )
 from modules.jobs.pre_start_check_job.event_candidate_builder import (
     PreStartEventPlan,
@@ -33,8 +31,11 @@ from modules.jobs.pre_start_check_job.oddsportal_worker import (
     OddsPortalScrapeContext,
     start_oddsportal_scrape_for_events,
 )
-from modules.jobs.pre_start_check_job.sofascore_odds_processor import (
-    process_sofascore_pre_start_odds,
+from modules.jobs.pre_start_check_job.providers.oddspapi.odds_phase import (
+    run_oddspapi_pre_start_odds,
+)
+from modules.jobs.pre_start_check_job.providers.sofascore.odds_phase import (
+    run_sofascore_pre_start_odds,
 )
 from modules.jobs.pre_start_check_job.timestamp_corrections import (
     check_recently_started_events_for_timestamp_corrections,
@@ -44,6 +45,7 @@ from modules.jobs.pre_start_check_job.timing import (
     minutes_until_start,
 )
 from modules.competition.tracked_competitions import tracked_competition_ids
+from modules.odds_ingestion import ProviderOddsSummary
 from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)
@@ -156,6 +158,16 @@ def _maintain_recently_started_events(
     return upcoming_events
 
 
+# Every provider phase shares the same call shape - (candidates, source_states,
+# *, debug_mode) -> ProviderOddsSummary - so adding a provider is one entry
+# here plus its own fetch/ingest implementation, not a new orchestration path.
+ProviderOddsPhase = Callable[..., ProviderOddsSummary]
+_PROVIDER_ODDS_PHASES: tuple[ProviderOddsPhase, ...] = (
+    run_sofascore_pre_start_odds,
+    run_oddspapi_pre_start_odds,
+)
+
+
 def _ingest_provider_odds(
     event_plan: PreStartEventPlan,
     source_states: PreStartOddsSourceStates,
@@ -170,20 +182,12 @@ def _ingest_provider_odds(
         "💰 Starting provider odds ingestion (%s candidates)",
         active_count,
     )
-    process_sofascore_pre_start_odds(
-        event_plan.candidates,
-        source_states,
-        debug_mode=debug_mode,
-    )
-
-    try:
-        run_oddspapi_pre_start_odds_ingestion(
-            event_plan.candidates,
-            debug_mode=debug_mode,
-            source_states=source_states,
-        )
-    except Exception:
-        logger.exception("Oddspapi pre-start odds ingestion failed")
+    for phase in _PROVIDER_ODDS_PHASES:
+        phase_name = getattr(phase, "__name__", repr(phase))
+        try:
+            phase(event_plan.candidates, source_states, debug_mode=debug_mode)
+        except Exception:
+            logger.exception("%s odds ingestion failed", phase_name)
 
 
 def _load_upcoming_events(scheduler, tracked_competition_ids) -> list[dict]:

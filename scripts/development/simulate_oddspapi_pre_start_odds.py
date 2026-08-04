@@ -22,8 +22,8 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceSnapshot
 from infrastructure.persistence.repositories import EventRepository, EventSourceMappingRepository
 from infrastructure.settings import Config
-from modules.jobs.oddspapi.pre_start_odds.pre_start_odds_job import (
-    run_oddspapi_pre_start_odds_ingestion,
+from modules.jobs.pre_start_check_job.providers.oddspapi.odds_phase import (
+    run_oddspapi_pre_start_odds,
 )
 from modules.jobs.pre_start_check_job.timing import minutes_until_start
 
@@ -118,7 +118,7 @@ def run_for_event(event_id: int, *, dry_run: bool = False) -> int:
         return 1
 
     snapshots_before = _snapshot_count(event_id)
-    summary = run_oddspapi_pre_start_odds_ingestion(
+    summary = run_oddspapi_pre_start_odds(
         [_event_payload(event)],
         debug_mode=True,
         dry_run=dry_run,

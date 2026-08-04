@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from infrastructure.persistence.repositories import EventOddsSourceState
+from modules.odds_ingestion import should_extract_odds
 
 from .constants import ODDSPAPI_SOURCE
 
@@ -40,7 +41,7 @@ def select_oddspapi_pre_start_candidates(
     """Select events using the timing decision made by the main orchestrator."""
     candidates: list[OddspapiPreStartCandidate] = []
     for event_info in events_to_process or []:
-        if event_info.get("should_extract_odds") is not True:
+        if not should_extract_odds(event_info):
             continue
         event_id = _canonical_event_id(event_info)
         if event_id is None:

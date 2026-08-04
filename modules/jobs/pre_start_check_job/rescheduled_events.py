@@ -80,7 +80,7 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
             logger.warning("Failed to fetch odds for rescheduled event %s", event_id)
             return
 
-        ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
+        ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
             event_id,
             final_odds_response,
             source="sofascore",

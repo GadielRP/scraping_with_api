@@ -7,14 +7,15 @@ from dataclasses import dataclass, field
 import logging
 from typing import Callable
 
-from infrastructure.persistence.repositories import (
-    EventSourceMappingRepository,
-    MarketMappingRepository,
-)
+from infrastructure.persistence.repositories import MarketMappingRepository
 from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingIndex,
 )
-from modules.odds_ingestion import MarketOddsIngestionService
+from modules.odds_ingestion import (
+    MarketOddsIngestionService,
+    ProviderOddsSummary,
+    mark_missing_endpoints_unavailable,
+)
 from modules.oddspapi.client import OddsPapiClient
 
 from .constants import (
@@ -59,15 +60,11 @@ class OddspapiPreStartOddsEventResult:
 
 
 @dataclass
-class OddspapiPreStartOddsSummary:
-    candidates_seen: int = 0
+class OddspapiPreStartOddsSummary(ProviderOddsSummary):
+    """Oddspapi-specific counters on top of the shared provider phase summary."""
+
     candidates_with_mapping: int = 0
-    requests_attempted: int = 0
     responses_received: int = 0
-    events_ingested: int = 0
-    events_skipped: int = 0
-    events_failed: int = 0
-    markets_saved: int = 0
     choices_saved: int = 0
     snapshots_saved: int = 0
     unmapped_markets_detected: int = 0
@@ -93,6 +90,7 @@ class OddspapiPreStartOddsBatchProcessor:
         "events_ingested",
         "events_skipped",
         "events_failed",
+        "missing_endpoints",
         "markets_saved",
         "choices_saved",
         "snapshots_saved",
@@ -539,6 +537,7 @@ class OddspapiPreStartOddsBatchProcessor:
                 if acquisition_result.endpoint_missing:
                     if respects_stored_availability:
                         odds_not_found_event_ids.add(candidate.event_id)
+                        summary.missing_endpoints += 1
                     event_result.skipped = True
                     event_result.skip_reason = "oddspapi_odds_endpoint_not_found"
                     summary.events_skipped += 1
@@ -603,9 +602,6 @@ class OddspapiPreStartOddsBatchProcessor:
                     candidate.fixture_id,
                     exc,
                 )
-        if odds_not_found_event_ids and not dry_run:
-            EventSourceMappingRepository.mark_odds_unavailable(
-                odds_not_found_event_ids,
-                ODDSPAPI_SOURCE,
-            )
+        if not dry_run:
+            mark_missing_endpoints_unavailable(odds_not_found_event_ids, ODDSPAPI_SOURCE)
         return summary

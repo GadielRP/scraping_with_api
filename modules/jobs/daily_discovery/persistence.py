@@ -31,7 +31,7 @@ def persist_event_and_optional_odds(api_client, event: Dict, odds_data: Dict | N
             return False
 
         if odds_data:
-            ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
+            ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
                 db_event.id,
                 odds_data,
                 source="daily_discovery",

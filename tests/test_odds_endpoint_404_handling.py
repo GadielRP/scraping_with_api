@@ -4,20 +4,20 @@ import pytest
 import modules.oddspapi.client as oddspapi_client_module
 
 from infrastructure.persistence.repositories import EventOddsSourceState
-from modules.jobs.oddspapi.pre_start_odds.event_selector import (
-    OddspapiPreStartCandidate,
-)
-from modules.jobs.oddspapi.pre_start_odds.odds_batch_processor import (
-    OddspapiPreStartOddsBatchProcessor,
-)
-from modules.jobs.oddspapi.pre_start_odds.odds_fetcher import (
-    OddspapiOddsFetcher,
-)
-from modules.jobs.oddspapi.pre_start_odds import pre_start_odds_job
 from modules.jobs.pre_start_check_job import event_candidate_builder
 from modules.jobs.pre_start_check_job import intraday_result_freshness
 from modules.jobs.pre_start_check_job import run_pre_start_check_job as pre_start_job_runner
-from modules.jobs.pre_start_check_job import sofascore_odds_processor
+from modules.jobs.pre_start_check_job.providers.oddspapi import odds_phase as oddspapi_odds_phase
+from modules.jobs.pre_start_check_job.providers.oddspapi.event_selector import (
+    OddspapiPreStartCandidate,
+)
+from modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor import (
+    OddspapiPreStartOddsBatchProcessor,
+)
+from modules.jobs.pre_start_check_job.providers.oddspapi.odds_fetcher import (
+    OddspapiOddsFetcher,
+)
+from modules.jobs.pre_start_check_job.providers.sofascore import odds_phase as sofascore_odds_phase
 from modules.odds_ingestion.fetch_result import OddsFetchResult, OddsFetchStatus
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.exceptions import OddsPapiHttpError
@@ -67,14 +67,14 @@ def test_sofascore_false_state_skips_entire_odds_flow(monkeypatch):
         )
     )
     monkeypatch.setattr(
-        sofascore_odds_processor.MarketOddsIngestionService,
-        "save_from_event_odds_response",
+        sofascore_odds_phase.MarketOddsIngestionService,
+        "save_from_sofascore_response",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("ingestion must be skipped")
         ),
     )
 
-    result = sofascore_odds_processor.process_sofascore_pre_start_odds(
+    result = sofascore_odds_phase.run_sofascore_pre_start_odds(
         [_event_info()],
         {101: {"sofascore": _state(101, "sofascore", "9001", False)}},
         odds_fetcher=fetcher,
@@ -267,12 +267,16 @@ def test_sofascore_404_is_batched_and_empty_response_is_not(monkeypatch):
     )
     fetcher = SimpleNamespace(fetch_odds=lambda *_args, **_kwargs: next(responses))
     monkeypatch.setattr(
-        sofascore_odds_processor.EventSourceMappingRepository,
-        "mark_odds_unavailable",
-        lambda event_ids, source: calls.append((set(event_ids), source)) or len(event_ids),
+        "modules.odds_ingestion.provider_odds_phase.EventSourceMappingRepository",
+        SimpleNamespace(
+            mark_odds_unavailable=(
+                lambda event_ids, source: calls.append((set(event_ids), source))
+                or len(event_ids)
+            )
+        ),
     )
 
-    sofascore_odds_processor.process_sofascore_pre_start_odds(
+    sofascore_odds_phase.run_sofascore_pre_start_odds(
         [_event_info(101), _event_info(102)],
         {},
         odds_fetcher=fetcher,
@@ -723,7 +727,7 @@ def test_oddspapi_false_state_skips_request_and_mapping_index(monkeypatch):
         )
     )
     monkeypatch.setattr(
-        "modules.jobs.oddspapi.pre_start_odds.odds_batch_processor."
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
         "MarketMappingRepository.build_index",
         lambda **_kwargs: (_ for _ in ()).throw(
             AssertionError("mapping index must not be loaded")
@@ -753,13 +757,13 @@ def test_historical_mode_ignores_current_endpoint_availability_flag(monkeypatch)
         )
     )
     monkeypatch.setattr(
-        "modules.jobs.oddspapi.pre_start_odds.odds_batch_processor."
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
         "MarketMappingRepository.build_index",
         lambda **_kwargs: {},
     )
     monkeypatch.setattr(
-        "modules.jobs.oddspapi.pre_start_odds.odds_batch_processor."
-        "EventSourceMappingRepository.mark_odds_unavailable",
+        "modules.odds_ingestion.provider_odds_phase.EventSourceMappingRepository."
+        "mark_odds_unavailable",
         lambda event_ids, source: marked.append((set(event_ids), source)),
     )
     candidate = OddspapiPreStartCandidate(
@@ -783,21 +787,21 @@ def test_historical_mode_ignores_current_endpoint_availability_flag(monkeypatch)
 
 def test_oddspapi_missing_api_key_skips_mapping_query(monkeypatch):
     monkeypatch.setattr(
-        pre_start_odds_job.Config,
+        oddspapi_odds_phase.Config,
         "ENABLE_ODDSPAPI_PRE_START_ODDS",
         True,
     )
-    monkeypatch.setattr(pre_start_odds_job.Config, "ODDSPAPI_KEY", "")
-    monkeypatch.setattr(pre_start_odds_job.Config, "ODDSPAPI_KEYS", [])
+    monkeypatch.setattr(oddspapi_odds_phase.Config, "ODDSPAPI_KEY", "")
+    monkeypatch.setattr(oddspapi_odds_phase.Config, "ODDSPAPI_KEYS", [])
     monkeypatch.setattr(
-        pre_start_odds_job.EventSourceMappingRepository,
+        oddspapi_odds_phase.EventSourceMappingRepository,
         "get_odds_source_states",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError("missing API credentials must skip the database lookup")
         ),
     )
 
-    summary = pre_start_odds_job.run_oddspapi_pre_start_odds_ingestion(
+    summary = oddspapi_odds_phase.run_oddspapi_pre_start_odds(
         [_event_info()]
     )
 
@@ -814,13 +818,13 @@ def test_oddspapi_404_is_persisted_once_for_provider(monkeypatch):
         )
     )
     monkeypatch.setattr(
-        "modules.jobs.oddspapi.pre_start_odds.odds_batch_processor."
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
         "MarketMappingRepository.build_index",
         lambda **_kwargs: {},
     )
     monkeypatch.setattr(
-        "modules.jobs.oddspapi.pre_start_odds.odds_batch_processor."
-        "EventSourceMappingRepository.mark_odds_unavailable",
+        "modules.odds_ingestion.provider_odds_phase.EventSourceMappingRepository."
+        "mark_odds_unavailable",
         lambda event_ids, source: marked.append((set(event_ids), source)) or len(event_ids),
     )
     candidate = OddspapiPreStartCandidate(
@@ -870,14 +874,14 @@ def test_manual_simulator_uses_production_provider_processors(monkeypatch):
     )
     monkeypatch.setattr(
         pre_start_odds_simulation,
-        "process_sofascore_pre_start_odds",
+        "run_sofascore_pre_start_odds",
         lambda event_infos, source_states, **_kwargs: calls.append(
             ("sofascore", event_infos, source_states)
         ),
     )
     monkeypatch.setattr(
         pre_start_odds_simulation,
-        "run_oddspapi_pre_start_odds_ingestion",
+        "run_oddspapi_pre_start_odds",
         lambda event_infos, source_states, **_kwargs: (
             calls.append(("oddspapi", event_infos, source_states))
             or SimpleNamespace(

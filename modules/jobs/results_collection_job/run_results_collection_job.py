@@ -170,7 +170,7 @@ def run_results_collection_for_date(target_date) -> None:
                     logger.debug("No final odds response for event %s", event_data.id)
                     continue
 
-                ingestion_result = MarketOddsIngestionService.save_from_event_odds_response(
+                ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
                     event_data.id,
                     final_odds_response,
                     source="results_collection_for_date",
