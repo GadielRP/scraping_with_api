@@ -261,3 +261,31 @@ def resolve_oddspapi_key(item: dict) -> tuple[str | None, str]:
     if outcome_failures:
         return None, "unsupported_market_outcomes"
     return None, "unsupported_market_type"
+
+
+def resolve_oddsportal_key(
+    source_group_key,
+    source_period_key,
+) -> tuple[str | None, str]:
+    """Resolve an OddsPortal route identity without guessing from display text."""
+    group_key = str(source_group_key or "").strip().upper()
+    period_key = str(source_period_key or "").strip().upper()
+    if not group_key or not period_key:
+        return None, "missing_oddsportal_route_identity"
+
+    matches = []
+    for canonical_key, seed in _seed_entries():
+        rule = seed.get("oddsportal_match")
+        if not isinstance(rule, dict):
+            continue
+        if (
+            str(rule.get("group_key") or "").strip().upper() == group_key
+            and str(rule.get("period_key") or "").strip().upper() == period_key
+        ):
+            matches.append(canonical_key)
+
+    if not matches:
+        return None, "unsupported_oddsportal_route"
+    if len(matches) > 1:
+        return None, "ambiguous_oddsportal_route"
+    return matches[0], f"matched_{matches[0]}"

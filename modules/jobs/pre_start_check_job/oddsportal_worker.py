@@ -9,8 +9,8 @@ import time
 import traceback
 from typing import Any, Dict, List, Optional
 
-from infrastructure.persistence.repositories import MarketRepository
 from infrastructure.settings import Config
+from modules.odds_ingestion import MarketOddsIngestionService
 from modules.oddsportal import scrape_multiple_matches_parallel_sync
 from modules.oddsportal.oddsportal_config import (
     ODDSPORTAL_COMPETITION_ROUTES,
@@ -218,6 +218,34 @@ def scrape_oddsportal_batch(
 
     logger.info(f"🔍 OddsPortal worker: {len(op_tasks)} events eligible for scraping")
     saved_counts: Dict[int, Optional[int]] = {}
+    reference_data = None
+    reference_data_lock = threading.Lock()
+
+    def _get_ingestion_reference_data():
+        nonlocal reference_data
+        if reference_data is not None:
+            return reference_data
+        with reference_data_lock:
+            if reference_data is None:
+                source_bookies = [
+                    (name, _source_bookie_slug(name))
+                    for name in (
+                        ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.hover_names or ()
+                    )
+                ]
+                if ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.persist_betfair:
+                    source_bookies.append(("Betfair Exchange", "betfair-ex"))
+                reference_data = (
+                    MarketOddsIngestionService.load_oddsportal_reference_data(
+                        source_bookies
+                    )
+                )
+                if reference_data.unresolved_bookie_slugs:
+                    logger.warning(
+                        "OddsPortal reference data has unresolved bookies: %s",
+                        reference_data.unresolved_bookie_slugs,
+                    )
+        return reference_data
 
     def _on_event_started(event_id, task=None):
         if op_event_states and event_id in op_event_states:
@@ -233,11 +261,25 @@ def scrape_oddsportal_batch(
     def _on_event_scraped(event_id, op_data):
         if op_data:
             try:
-                if op_data_cache is not None:
-                    op_data_cache[event_id] = op_data
-
-                saved = MarketRepository.save_markets_from_oddsportal(event_id, op_data)
+                ingestion_result = MarketOddsIngestionService.save_from_oddsportal_data(
+                    event_id,
+                    op_data,
+                    reference_data=_get_ingestion_reference_data(),
+                )
+                saved = ingestion_result.markets_saved
                 saved_counts[event_id] = saved
+                if saved > 0 and op_data_cache is not None:
+                    op_data_cache[event_id] = op_data
+                logger.info(
+                    "OddsPortal canonical ingestion event=%s markets=%s choices=%s "
+                    "snapshots=%s skipped=%s reason=%s",
+                    event_id,
+                    ingestion_result.markets_saved,
+                    ingestion_result.choices_saved,
+                    ingestion_result.snapshots_saved,
+                    ingestion_result.skipped,
+                    ingestion_result.reason,
+                )
                 logger.info(f"💾 OddsPortal: Saved {saved} markets/bookies for event {event_id}")
             except Exception as exc:
                 logger.error(f"❌ OddsPortal: Error saving data for event {event_id}: {exc}")
@@ -272,10 +314,19 @@ def scrape_oddsportal_batch(
         on_task_started=_on_event_started,
         on_result=_on_event_scraped,
         current_date=op_current_date,
+        collect_results=False,
     )
     logger.info(f"🌐 OddsPortal: Tiered Orchestrator returned {len(op_results)} results")
 
     return saved_counts
+
+
+def _source_bookie_slug(name: str) -> str:
+    """Build the stable source slug used by canonical bookie mappings."""
+    import re
+
+    normalized = str(name or "").strip().lower().replace("&", " and ")
+    return re.sub(r"[^a-z0-9]+", "-", normalized).strip("-")
 
 
 # Backward-compatible aliases for the earlier refactor names.

@@ -1,6 +1,11 @@
 from .adapters.oddspapi_market_adapter import OddspapiMarketAdapter
 from .adapters.sofascore_market_adapter import SofaScoreMarketAdapter
-from .market_odds_ingestion_service import MarketIngestionResult, MarketOddsIngestionService
+from .adapters.oddsportal_market_adapter import OddsPortalMarketAdapter, OddsPortalOddsResponse
+from .market_odds_ingestion_service import (
+    MarketIngestionResult,
+    MarketOddsIngestionService,
+    OddsPortalIngestionReferenceData,
+)
 from .canonical_market_normalizer import CanonicalMarketNormalizer, MarketNormalizationContext
 from .fetch_result import OddsFetchResult, OddsFetchStatus
 from .provider_odds_phase import (
@@ -15,10 +20,13 @@ from .provider_odds_phase import (
 __all__ = [
     "MarketIngestionResult",
     "MarketOddsIngestionService",
+    "OddsPortalIngestionReferenceData",
     "CanonicalMarketNormalizer",
     "MarketNormalizationContext",
     "OddspapiMarketAdapter",
     "SofaScoreMarketAdapter",
+    "OddsPortalMarketAdapter",
+    "OddsPortalOddsResponse",
     "OddsFetchResult",
     "OddsFetchStatus",
     "ProviderOddsSummary",

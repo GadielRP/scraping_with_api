@@ -533,7 +533,15 @@ class OddsPortalAttemptMixin:
                         '⚠️ Betfair Exchange unavailable for %s: current extraction returned no exchange data',
                         db_market_period,
                     )
-                extraction = MarketExtraction(market_group=db_market_group, market_period=db_market_period, market_name=db_market_name, bookie_odds=period_data.bookie_odds, betfair=extraction_betfair)
+                extraction = MarketExtraction(
+                    market_group=db_market_group,
+                    market_period=db_market_period,
+                    market_name=db_market_name,
+                    source_group_key=group_key or "",
+                    source_period_key=period_key or "",
+                    bookie_odds=period_data.bookie_odds,
+                    betfair=extraction_betfair,
+                )
                 match_data.extractions.append(extraction)
                 self._mark_step_completed(normalized_resume_state, step, match_data)
                 completed_step_keys.add(step_key)

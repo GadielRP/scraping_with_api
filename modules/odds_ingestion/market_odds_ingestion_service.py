@@ -5,10 +5,13 @@ from __future__ import annotations
 import logging
 import pprint
 from dataclasses import dataclass
-from typing import Dict, Optional
+from types import MappingProxyType
+from typing import Dict, Mapping, Optional
 
+from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories import (
     BookieRepository,
+    CanonicalMarketTypeRepository,
     DualProcessOddsRepository,
     MarketMappingRepository,
     MarketRepository,
@@ -17,6 +20,7 @@ from infrastructure.persistence.repositories.market_mapping_repository import Ma
 from modules.oddspapi import OddspapiEventResolver
 
 from .adapters.oddspapi_market_adapter import OddspapiMarketAdapter
+from .adapters.oddsportal_market_adapter import OddsPortalMarketAdapter
 from .adapters.sofascore_market_adapter import SofaScoreMarketAdapter
 from .canonical_market_normalizer import CanonicalMarketNormalizer
 
@@ -64,10 +68,155 @@ class MarketIngestionResult:
         return self.bookies_processed
 
 
+@dataclass(frozen=True, slots=True)
+class OddsPortalIngestionReferenceData:
+    """Small immutable lookup snapshot safe to share with browser workers."""
+
+    canonical_types: Mapping
+    bookie_ids_by_source_slug: Mapping[str, int]
+    unresolved_bookie_slugs: tuple[str, ...] = ()
+
+
 class MarketOddsIngestionService:
     @staticmethod
     def _normalize_source(source: str, default: str) -> str:
         return str(source or default).strip().lower()
+
+    @staticmethod
+    def load_oddsportal_reference_data(
+        source_bookies: list[tuple[str, str]],
+    ) -> OddsPortalIngestionReferenceData:
+        """Load canonical types and configured bookies in one short session."""
+        canonical_types = {}
+        bookie_ids = {}
+        unresolved = []
+        with db_manager.get_session() as session:
+            canonical_types = CanonicalMarketTypeRepository.build_index(
+                enabled_only=True,
+                session=session,
+            )
+            for source_name, source_slug in source_bookies:
+                normalized_slug = str(source_slug or "").strip().lower()
+                if not normalized_slug or normalized_slug in bookie_ids:
+                    continue
+                resolution = BookieRepository.resolve_bookie_from_source(
+                    source="oddsportal",
+                    source_bookie_name=source_name,
+                    source_bookie_slug=normalized_slug,
+                    allow_create=False,
+                    session=session,
+                )
+                if resolution.resolved and resolution.bookie is not None:
+                    bookie_ids[normalized_slug] = int(resolution.bookie.bookie_id)
+                else:
+                    unresolved.append(normalized_slug)
+
+        return OddsPortalIngestionReferenceData(
+            canonical_types=MappingProxyType(dict(canonical_types)),
+            bookie_ids_by_source_slug=MappingProxyType(dict(bookie_ids)),
+            unresolved_bookie_slugs=tuple(unresolved),
+        )
+
+    @staticmethod
+    def save_from_oddsportal_data(
+        event_id: int,
+        odds_data,
+        *,
+        reference_data: OddsPortalIngestionReferenceData,
+        source: str = "oddsportal",
+    ) -> MarketIngestionResult:
+        """Canonicalize and atomically persist one completed OddsPortal event."""
+        source = MarketOddsIngestionService._normalize_source(source, "oddsportal")
+        adapted = OddsPortalMarketAdapter.from_match_odds_data(
+            odds_data,
+            canonical_types=reference_data.canonical_types,
+        )
+        markets_detected = adapted.markets_detected
+        choices_detected = adapted.choices_detected
+        bookmaker_batches = []
+        unresolved_bookies = []
+        for bookmaker in adapted.bookmakers:
+            bookie_id = reference_data.bookie_ids_by_source_slug.get(
+                bookmaker.source_slug
+            )
+            if bookie_id is None:
+                unresolved_bookies.append(bookmaker.source_slug)
+                logger.warning(
+                    "Skipping unresolved OddsPortal bookmaker slug=%s name=%s",
+                    bookmaker.source_slug,
+                    bookmaker.source_name,
+                )
+                continue
+            bookmaker_batches.append(
+                {
+                    "bookie_id": bookie_id,
+                    "markets": [
+                        market.as_repository_dict()
+                        for market in bookmaker.markets
+                    ],
+                }
+            )
+
+        if not bookmaker_batches:
+            reason = (
+                "no resolved canonical bookies"
+                if adapted.bookmakers
+                else "no normalized markets found"
+            )
+            return MarketIngestionResult(
+                event_id=event_id,
+                source=source,
+                markets_detected=markets_detected,
+                choices_detected=choices_detected,
+                snapshots_detected=choices_detected,
+                bookies_detected=len(adapted.bookmakers),
+                unmapped_markets_detected=len(adapted.diagnostics),
+                skipped=True,
+                reason=reason,
+            )
+
+        try:
+            save_result = MarketRepository.save_canonical_bookmaker_batches(
+                event_id,
+                bookmaker_batches,
+                source=source,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Error ingesting OddsPortal markets for event %s",
+                event_id,
+            )
+            return MarketIngestionResult(
+                event_id=event_id,
+                source=source,
+                markets_detected=markets_detected,
+                choices_detected=choices_detected,
+                snapshots_detected=choices_detected,
+                bookies_detected=len(adapted.bookmakers),
+                bookies_processed=len(bookmaker_batches),
+                unmapped_markets_detected=len(adapted.diagnostics),
+                skipped=True,
+                reason=str(exc),
+            )
+
+        return MarketIngestionResult(
+            event_id=event_id,
+            source=source,
+            markets_detected=markets_detected,
+            choices_detected=choices_detected,
+            snapshots_detected=choices_detected,
+            markets_saved=save_result.markets_saved,
+            choices_saved=save_result.choices_saved,
+            snapshots_saved=save_result.snapshots_saved,
+            bookies_detected=len(adapted.bookmakers),
+            bookies_processed=len(bookmaker_batches),
+            bookies_reused=len(bookmaker_batches),
+            unmapped_markets_detected=(
+                len(adapted.diagnostics) + len(unresolved_bookies)
+            ),
+            skipped=save_result.markets_saved <= 0,
+            reason=None if save_result.markets_saved > 0 else "no markets saved",
+        )
 
     @staticmethod
     def filter_normalized_oddspapi_response(

@@ -146,24 +146,32 @@ class CanonicalMarketTypeRepository:
             return _seed(db_session)
 
     @staticmethod
-    def build_index(enabled_only: bool = True) -> dict[str, CanonicalMarketTypeResolution]:
+    def build_index(
+        enabled_only: bool = True,
+        session: Optional[Session] = None,
+    ) -> dict[str, CanonicalMarketTypeResolution]:
+        def _build(active_session: Session) -> dict[str, CanonicalMarketTypeResolution]:
+            query = active_session.query(CanonicalMarketType)
+            if enabled_only:
+                query = query.filter(CanonicalMarketType.enabled_for_ingestion.is_(True))
+            return {
+                row.canonical_market_key: CanonicalMarketTypeResolution(
+                    canonical_market_key=row.canonical_market_key,
+                    canonical_market_name=row.canonical_market_name,
+                    canonical_market_group=row.canonical_market_group,
+                    canonical_market_period=row.canonical_market_period,
+                    market_family=row.market_family,
+                    requires_choice_group=bool(row.requires_choice_group),
+                    enabled_for_ingestion=bool(row.enabled_for_ingestion),
+                )
+                for row in query.all()
+            }
+
         try:
-            with db_manager.get_session() as session:
-                query = session.query(CanonicalMarketType)
-                if enabled_only:
-                    query = query.filter(CanonicalMarketType.enabled_for_ingestion.is_(True))
-                return {
-                    row.canonical_market_key: CanonicalMarketTypeResolution(
-                        canonical_market_key=row.canonical_market_key,
-                        canonical_market_name=row.canonical_market_name,
-                        canonical_market_group=row.canonical_market_group,
-                        canonical_market_period=row.canonical_market_period,
-                        market_family=row.market_family,
-                        requires_choice_group=bool(row.requires_choice_group),
-                        enabled_for_ingestion=bool(row.enabled_for_ingestion),
-                    )
-                    for row in query.all()
-                }
+            if session is not None:
+                return _build(session)
+            with db_manager.get_session() as db_session:
+                return _build(db_session)
         except Exception as exc:
             logger.error("Unable to load canonical market types: %s", exc)
             return {}

@@ -71,6 +71,10 @@ class MarketExtraction:
     market_group: str = ""
     market_period: str = ""
     market_name: str = ""
+    # Provider route identity. These values preserve semantics such as
+    # FULL_TIME versus FT_INC_OT for canonicalization after scraping.
+    source_group_key: str = ""
+    source_period_key: str = ""
     bookie_odds: List[BookieOdds] = field(default_factory=list)
     betfair: Optional[BetfairExchangeOdds] = None
 

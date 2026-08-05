@@ -32,6 +32,7 @@ def _seed(
     order,
     sofascore_match=None,
     oddspapi_match=None,
+    oddsportal_match=None,
 ):
     return {
         "canonical_market_name": name,
@@ -44,6 +45,7 @@ def _seed(
         "display_order": order,
         "sofascore_match": sofascore_match,
         "oddspapi_match": oddspapi_match,
+        "oddsportal_match": oddsportal_match,
     }
 
 
@@ -77,6 +79,10 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             # moneyline is intentionally excluded: old resolver rejected 3-way moneylines.
             "market_type": {"1x2", "homeaway", "matchwinner", "winner"},
             "period_lock": "Full Time",
+        },
+        oddsportal_match={
+            "group_key": "1X2",
+            "period_key": "FULL_TIME",
         },
     ),
     "1x2_1st_half": _seed(
@@ -147,6 +153,10 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             },
             "period_lock": "Full Time",
         },
+        oddsportal_match={
+            "group_key": "HOME_AWAY",
+            "period_key": "FULL_TIME",
+        },
     ),
     "home_away_1st_half": _seed(
         name="Home/Away 1st Half",
@@ -206,6 +216,10 @@ CANONICAL_MARKET_TYPE_SEEDS = {
                 "winner (incl. extra innings)",
             },
             "period_lock": "Full Time",
+        },
+        oddsportal_match={
+            "group_key": "HOME_AWAY",
+            "period_key": "FT_INC_OT",
         },
     ),
     "first_set_winner_1st_set": _seed(
@@ -267,6 +281,10 @@ CANONICAL_MARKET_TYPE_SEEDS = {
                 "total sets",
             },
             "period_lock": "Full Time",
+        },
+        oddsportal_match={
+            "group_key": "OVER_UNDER",
+            "period_key": "FULL_TIME",
         },
     ),
     "sets_over_under_full_time": _seed(
@@ -486,6 +504,10 @@ CANONICAL_MARKET_TYPE_SEEDS = {
                 "point handicap",
             },
             "period_lock": "Full Time",
+        },
+        oddsportal_match={
+            "group_key": "ASIAN_HANDICAP",
+            "period_key": "FULL_TIME",
         },
     ),
     "asian_handicap_1st_half": _seed(

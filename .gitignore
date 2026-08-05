@@ -111,6 +111,7 @@ tests/*
 !tests/test_odds_endpoint_404_handling.py
 !tests/test_oddsportal_hover_parser.py
 !tests/test_oddsportal_logging.py
+!tests/test_oddsportal_canonical_ingestion.py
 !tests/pillars/
 tests/pillars/*.pyc
 !tests/pillars/test_odds_trajectory_context.py

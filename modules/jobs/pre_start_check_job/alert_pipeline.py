@@ -204,7 +204,9 @@ class EventAlertProcessor:
                 extra={"oddsportal": True},
             )
 
-        return self.op_data_cache.get(event_obj.id) if self.op_data_cache else None
+        # Transfer ownership to this evaluation so completed scrape trees do
+        # not remain retained by the cycle context.
+        return self.op_data_cache.pop(event_obj.id, None) if self.op_data_cache else None
 
     def _ensure_matchup_streak_analysis(
         self, event_payload: dict, event_obj, event_context, season_id, minutes_until_start: int

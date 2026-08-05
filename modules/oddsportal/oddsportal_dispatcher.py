@@ -165,6 +165,7 @@ def scrape_multiple_matches_sync(
     on_result=None,
     on_task_started=None,
     current_date=None,
+    collect_results: bool = True,
 ) -> Dict[int, Optional[MatchOddsData]]:
     """
     Scrape multiple matches using ONE browser session (browser reuse).
@@ -256,7 +257,7 @@ def scrape_multiple_matches_sync(
                                     logger.info(f'✅ OddsPortal [{i + 1}/{len(tasks)}]: RETRY SUCCEEDED with new session-{scraper._session_id}')
                                 else:
                                     logger.warning(f'⚠️ OddsPortal [{i + 1}/{len(tasks)}]: Retry also returned no data')
-                        results[event_id] = data
+                        results[event_id] = data if collect_results else None
                         if data:
                             logger.info(f'✅ OddsPortal [{i + 1}/{len(tasks)}]: Got {len(data.extractions)} period(s), {len(data.bookie_odds)} bookies')
                         else:
@@ -297,6 +298,7 @@ def scrape_multiple_matches_parallel_sync(
     on_result=None,
     on_task_started=None,
     current_date=None,
+    collect_results: bool = True,
 ) -> Dict[int, Optional[MatchOddsData]]:
     """
     Distribute scrape tasks across multiple concurrent Playwright browsers.
@@ -312,6 +314,7 @@ def scrape_multiple_matches_parallel_sync(
             on_result=on_result,
             on_task_started=on_task_started,
             current_date=current_date,
+            collect_results=collect_results,
         )
     logger.info(f'🚀 OddsPortal Parallel: Splitting {len(tasks)} tasks across {num_browsers} browsers')
     from collections import defaultdict
@@ -351,6 +354,7 @@ def scrape_multiple_matches_parallel_sync(
                 on_result,
                 on_task_started,
                 current_date,
+                collect_results,
             ): i
             for i, chunk in enumerate(chunks)
         }

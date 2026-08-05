@@ -6,6 +6,7 @@ from typing import List, Optional, Dict
 from datetime import datetime
 
 from sqlalchemy import and_, or_
+from sqlalchemy.orm import joinedload, selectinload
 
 from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceSnapshot
 from infrastructure.persistence.database import db_manager
@@ -461,6 +462,249 @@ class MarketRepository:
             return MarketSaveResult()
 
     @staticmethod
+    def save_canonical_bookmaker_batches(
+        event_id: int,
+        bookmaker_batches: List[Dict],
+        *,
+        source: str,
+    ) -> MarketSaveResult:
+        """Persist all canonical bookmaker markets for one event atomically.
+
+        Reference resolution happens before this boundary. This method owns one
+        short session/transaction and preloads existing markets plus choices,
+        avoiding a session and SELECT pair for every scraped market.
+        """
+        batches = [batch for batch in bookmaker_batches or [] if batch.get("markets")]
+        if not batches:
+            return MarketSaveResult()
+
+        bookie_ids = {
+            int(batch["bookie_id"])
+            for batch in batches
+            if batch.get("bookie_id") is not None
+        }
+        if not bookie_ids:
+            return MarketSaveResult()
+
+        result = MarketSaveResult()
+        collected_at = get_local_now()
+        with db_manager.get_session() as session:
+            existing_markets = (
+                session.query(Market)
+                .options(selectinload(Market.choices))
+                .filter(
+                    Market.event_id == event_id,
+                    Market.bookie_id.in_(bookie_ids),
+                )
+                .all()
+            )
+
+            def market_identity(bookie_id, name, period, choice_group, is_live):
+                return (
+                    int(bookie_id),
+                    MarketRepository._normalize_market_name(name),
+                    MarketRepository._normalize_market_period(period),
+                    MarketRepository._normalize_string_or_none(choice_group),
+                    bool(is_live),
+                )
+
+            market_index = {
+                market_identity(
+                    market.bookie_id,
+                    market.market_name,
+                    market.market_period,
+                    market.choice_group,
+                    market.is_live,
+                ): market
+                for market in existing_markets
+            }
+            legacy_full_time_index = {}
+            for market in existing_markets:
+                legacy_name = str(market.market_name or "").strip().casefold()
+                legacy_period = str(market.market_period or "").strip().casefold()
+                if legacy_name not in {"full time", "full-time"}:
+                    continue
+                if legacy_period not in {"full time", "full-time"}:
+                    continue
+                legacy_key = (
+                    int(market.bookie_id),
+                    MarketRepository._normalize_market_group(market.market_group),
+                    MarketRepository._normalize_string_or_none(market.choice_group),
+                    bool(market.is_live),
+                )
+                # Ambiguous legacy rows are never guessed. A unique candidate
+                # can be upgraded in place on its first canonical write.
+                if legacy_key in legacy_full_time_index:
+                    legacy_full_time_index[legacy_key] = None
+                else:
+                    legacy_full_time_index[legacy_key] = market
+            prepared_markets = []
+
+            for batch in batches:
+                bookie_id = int(batch["bookie_id"])
+                for market_data in batch.get("markets") or []:
+                    market_name = MarketRepository._normalize_market_name(
+                        market_data.get("marketName")
+                    )
+                    if not market_name:
+                        continue
+                    market_group = MarketRepository._normalize_market_group(
+                        market_data.get("marketGroup")
+                    )
+                    market_period = MarketRepository._normalize_market_period(
+                        market_data.get("marketPeriod")
+                    )
+                    choice_group = MarketRepository._normalize_string_or_none(
+                        market_data.get("choiceGroup")
+                    )
+                    is_live = bool(market_data.get("isLive", False))
+                    identity = market_identity(
+                        bookie_id,
+                        market_name,
+                        market_period,
+                        choice_group,
+                        is_live,
+                    )
+                    market = market_index.get(identity)
+                    if market is None:
+                        legacy_key = (
+                            bookie_id,
+                            market_group,
+                            choice_group,
+                            is_live,
+                        )
+                        market = legacy_full_time_index.pop(legacy_key, None)
+                    if market is None:
+                        market = Market(
+                            event_id=event_id,
+                            bookie_id=bookie_id,
+                            market_name=market_name,
+                            market_group=market_group,
+                            market_period=market_period,
+                            choice_group=choice_group,
+                            is_live=is_live,
+                            collected_at=collected_at,
+                        )
+                        session.add(market)
+                    else:
+                        market.market_name = market_name
+                        market.market_group = market_group
+                        market.market_period = market_period
+                        market.choice_group = choice_group
+                        market.collected_at = collected_at
+                    market_index[identity] = market
+                    prepared_markets.append((market, market_data))
+                    result.markets_saved += 1
+
+            # Assign IDs to all new markets in one flush.
+            session.flush()
+            prepared_choices = []
+            for market, market_data in prepared_markets:
+                existing_choices = {
+                    choice.choice_name: choice
+                    for choice in market.choices
+                }
+                seen_choice_names = set()
+                for choice_data in market_data.get("choices") or []:
+                    choice_name = MarketRepository._normalize_string_or_none(
+                        choice_data.get("name")
+                    )
+                    if not choice_name or choice_name in seen_choice_names:
+                        continue
+                    seen_choice_names.add(choice_name)
+                    initial_odds = MarketRepository._choice_odds_value(
+                        choice_data,
+                        "initialFractionalValue",
+                        "initialDecimalValue",
+                        "initialOdds",
+                        "initial_odds",
+                    )
+                    current_odds = MarketRepository._choice_odds_value(
+                        choice_data,
+                        "fractionalValue",
+                        "decimalValue",
+                        "currentOdds",
+                        "current_odds",
+                        "odds",
+                    )
+                    choice = existing_choices.get(choice_name)
+                    effective_initial = (
+                        choice.initial_odds
+                        if choice is not None and choice.initial_odds is not None
+                        else initial_odds
+                    )
+                    change = MarketRepository._choice_change(
+                        explicit_change=choice_data.get("change"),
+                        initial_odds=effective_initial,
+                        current_odds=current_odds,
+                    )
+                    initial_was_set = False
+                    if choice is None:
+                        choice = MarketChoice(
+                            market_id=market.market_id,
+                            choice_name=choice_name,
+                            initial_odds=initial_odds,
+                            current_odds=current_odds,
+                            change=change if change is not None else 0,
+                        )
+                        session.add(choice)
+                        existing_choices[choice_name] = choice
+                        initial_was_set = initial_odds is not None
+                    else:
+                        if current_odds is not None:
+                            choice.current_odds = current_odds
+                        if change is not None:
+                            choice.change = change
+                        if choice.initial_odds is None and initial_odds is not None:
+                            choice.initial_odds = initial_odds
+                            initial_was_set = True
+                    prepared_choices.append(
+                        (choice, choice_data, current_odds, initial_odds, initial_was_set)
+                    )
+                    result.choices_saved += 1
+
+            # Assign IDs to all new choices in one flush, then append snapshots.
+            session.flush()
+            for choice, choice_data, current_odds, initial_odds, initial_was_set in prepared_choices:
+                initial_source_collected_at = MarketRepository._parse_source_datetime(
+                    choice_data.get("initialChangedAt")
+                )
+                if initial_was_set and initial_odds is not None and initial_source_collected_at:
+                    session.add(
+                        MarketChoiceSnapshot(
+                            choice_id=choice.choice_id,
+                            odds_value=initial_odds,
+                            collected_at=collected_at,
+                            source=source,
+                            source_collected_at=initial_source_collected_at,
+                        )
+                    )
+                    result.snapshots_saved += 1
+                if current_odds is not None:
+                    session.add(
+                        MarketChoiceSnapshot(
+                            choice_id=choice.choice_id,
+                            odds_value=current_odds,
+                            collected_at=collected_at,
+                            source=source,
+                            source_collected_at=MarketRepository._parse_source_datetime(
+                                choice_data.get("sourceCollectedAt")
+                            ),
+                        )
+                    )
+                    result.snapshots_saved += 1
+
+        oddsportal_logger.info(
+            "Saved canonical event batch: event=%s bookies=%s markets=%s choices=%s snapshots=%s",
+            event_id,
+            len(bookie_ids),
+            result.markets_saved,
+            result.choices_saved,
+            result.snapshots_saved,
+        )
+        return result
+
+    @staticmethod
     def _choice_odds_value(choice_data: Dict, fractional_key: str, *decimal_keys):
         fractional = choice_data.get(fractional_key)
         if fractional:
@@ -496,7 +740,6 @@ class MarketRepository:
     def get_markets_for_event(event_id: int) -> List[Market]:
         try:
             with db_manager.get_session() as session:
-                from sqlalchemy.orm import joinedload
                 markets = session.query(Market).options(
                     joinedload(Market.choices)
                 ).filter(Market.event_id == event_id).all()
