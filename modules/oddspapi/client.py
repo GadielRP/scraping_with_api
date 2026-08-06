@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import threading
 import time
 from contextlib import contextmanager
@@ -30,7 +31,11 @@ class OddsPapiClient:
         endpoint_cooldowns: dict[str, float] | None = None,
     ) -> None:
         self.base_url = (base_url or Config.ODDSPAPI_BASE_URL).rstrip("/")
-        self.api_key = Config.ODDSPAPI_KEY if api_key is None else api_key
+        if api_key is None:
+            keys = getattr(Config, "ODDSPAPI_KEYS", [])
+            self.api_key = random.choice(keys) if keys else Config.ODDSPAPI_KEY
+        else:
+            self.api_key = api_key
         self.timeout = Config.ODDSPAPI_TIMEOUT_SECONDS if timeout is None else timeout
         self.max_retries = Config.ODDSPAPI_MAX_RETRIES if max_retries is None else max_retries
         self.request_delay_seconds = (

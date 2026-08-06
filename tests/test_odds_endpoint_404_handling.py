@@ -847,6 +847,23 @@ def test_oddspapi_404_is_persisted_once_for_provider(monkeypatch):
     assert marked == [({101}, "oddspapi")]
 
 
+def test_oddspapi_client_random_api_key(monkeypatch):
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEYS", ["key1", "key2", "key3"])
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEY", "key1")
+
+    keys_used = set()
+    for _ in range(100):
+        client = OddsPapiClient()
+        keys_used.add(client.api_key)
+        client.close()
+
+    assert keys_used == {"key1", "key2", "key3"}
+
+    client_explicit = OddsPapiClient(api_key="explicit_key")
+    assert client_explicit.api_key == "explicit_key"
+    client_explicit.close()
+
+
 def test_manual_simulator_uses_production_provider_processors(monkeypatch):
     calls = []
     event_info = _event_info()
