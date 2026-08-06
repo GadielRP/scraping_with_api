@@ -1278,6 +1278,15 @@ class DatabaseManager:
             logger.debug("Could not cleanup orphan event source mappings: %s", exc)
             return 0
 
+    def cleanup_orphan_event_source_mappings(self) -> int:
+        """Expose cleanup of orphan event source mappings publicly, managing its own session."""
+        try:
+            with self.get_session() as session:
+                return self._cleanup_orphan_event_source_mappings(session)
+        except Exception as exc:
+            logger.error("Failed to run public cleanup of orphan event source mappings: %s", exc)
+            return 0
+
     def _drop_event_identity_foreign_keys(self, session, inspector) -> None:
         """Drop foreign keys that still point at events.id so the PK rewrite can happen safely."""
         tables = [
