@@ -44,6 +44,19 @@ GENERIC_TEAM_SUFFIXES = {
     "sc",
     "fk",
     "ac",
+    "cd",
+    "ud",
+    "sd",
+    "ca",
+    "rcd",
+    "deportivo",
+    "esporte",
+    "sport",
+    "sv",
+    "tsv",
+    "spvgg",
+    "vfb",
+    "as",
 }
 # Youth/national category markers omitted by some providers when the
 # tournament already encodes the age band (e.g. "Albania" vs "Albania U20").
@@ -449,7 +462,7 @@ class OddspapiEventCandidateMatcher:
     STRONG_TEAM_THRESHOLD = 0.82
     # Contextual team relaxation: one near-perfect anchor + strong tournament/time
     # may absorb colloquial/nickname variance on the weaker side.
-    RELAXED_TEAM_THRESHOLD = 0.70
+    RELAXED_TEAM_THRESHOLD = 0.55
     ANCHOR_TEAM_THRESHOLD = 0.95
     STRONG_TOURNAMENT_FOR_TEAM_RELAXATION = 0.90
     IDENTITY_PARTICIPANT_THRESHOLD = 0.98
@@ -458,6 +471,7 @@ class OddspapiEventCandidateMatcher:
     # primary-name gap before auto-linking instead of marking ambiguous.
     MIN_PRIMARY_SCORE_GAP = 0.08
     RETAINED_CANDIDATE_SCORES = 2
+    SINGLE_CANDIDATE_THRESHOLD = 0.94
 
     @contextmanager
     def _session_scope(self, session: Session | None):
@@ -972,7 +986,7 @@ class OddspapiEventCandidateMatcher:
         )
         if second_best_candidate is None:
             auto_link_allowed = auto_link_allowed and (
-                best_candidate.score >= 0.96
+                best_candidate.score >= self.SINGLE_CANDIDATE_THRESHOLD
                 or strong_identity_match
             )
         else:
