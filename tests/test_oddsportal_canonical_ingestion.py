@@ -452,6 +452,85 @@ def test_market_not_covered_by_oddsportal_keeps_oddspapi_initial(tmp_path):
     assert float(uncovered_choices["under"].current_odds) == 1.85
 
 
+@pytest.mark.parametrize(
+    ("oddsportal_enabled", "expected_initials"),
+    [
+        (True, {"1": 1.86, "x": 3.20, "2": 1.86}),
+        (False, {"1": 1.82, "x": 3.10, "2": 1.91}),
+    ],
+)
+def test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current(
+    tmp_path,
+    monkeypatch,
+    oddsportal_enabled,
+    expected_initials,
+):
+    """Keep OddsPAPI as the complete fallback when browser scraping is off.
+
+    The historical normalizer separately guarantees that the OddsPAPI opening
+    supplied here is the earliest active quote after the configured 60-minute
+    credibility span.
+    """
+
+    from modules.jobs.pre_start_check_job import oddsportal_worker
+
+    manager = DatabaseManager(
+        f"sqlite:///{tmp_path / f'oddsportal-{oddsportal_enabled}.db'}"
+    )
+    manager.create_tables()
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    competition_id = next(iter(oddsportal_worker.ODDSPORTAL_COMPETITION_ROUTES))
+    monkeypatch.setattr(
+        oddsportal_worker.Config,
+        "ODDSPORTAL_SCRAPING_ENABLED",
+        oddsportal_enabled,
+    )
+    monkeypatch.setattr(
+        oddsportal_worker.Config,
+        "ODDSPORTAL_OPENING_CAPTURE_MINUTES",
+        120,
+    )
+    candidates = oddsportal_worker.build_oddsportal_scrape_candidates(
+        [{"id": event_id, "competition_id": competition_id}],
+        {event_id: 120},
+    )
+
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager",
+        manager,
+    ):
+        MarketRepository.save_markets_from_response_with_stats(
+            event_id,
+            _oddspapi_market_response(),
+            bookie_id,
+            source="oddspapi",
+        )
+        if candidates:
+            MarketOddsIngestionService.save_from_oddsportal_data(
+                event_id,
+                _oddsportal_opening_data(),
+                reference_data=_oddsportal_references(bookie_id),
+            )
+
+    assert bool(candidates) is oddsportal_enabled
+    with manager.get_session() as session:
+        choices = {
+            choice.choice_name: choice
+            for choice in session.query(MarketChoice).all()
+        }
+        snapshots = session.query(MarketChoiceSnapshot).all()
+
+    assert {
+        name: float(choice.initial_odds)
+        for name, choice in choices.items()
+    } == expected_initials
+    assert float(choices["1"].current_odds) == 1.44
+    assert float(choices["x"].current_odds) == 3.25
+    assert float(choices["2"].current_odds) == 2.85
+    assert len(snapshots) == 3
+    assert {snapshot.source for snapshot in snapshots} == {"oddspapi"}
+
+
 def test_canonical_write_upgrades_unique_legacy_full_time_row(tmp_path):
     manager = _make_manager(tmp_path)
     event_id, bookie_id = _seed_event_and_bookie(manager)

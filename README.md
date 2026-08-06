@@ -136,6 +136,14 @@ with an OddsPAPI current. This is an intentional short-term compatibility rule,
 not the target data model. A future source-aware schema should replace it and
 store each provider's opening, current and timestamp independently.
 
+When `ODDSPORTAL_SCRAPING_ENABLED=false`, the OddsPortal phase is skipped and
+OddsPAPI remains the sole owner of both opening and current odds. Its historical
+normalizer uses the earliest quote marked `active=true` as the opening only when
+the active history spans at least `ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES`
+(60 minutes by default), and uses the latest active quote as the current value.
+Those values and the normal OddsPAPI snapshots are persisted through the
+standard repository policy.
+
 ### Prediction (modules/prediction)
 
 Prediction‑related utilities live in this small package. They include prediction_logging.py, which stores prediction attempts and their eventual outcomes. The alert engines call these helpers to record whether predicted events resulted in wins or losses.
