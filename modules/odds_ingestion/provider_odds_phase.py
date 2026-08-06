@@ -58,7 +58,14 @@ def is_eligible_for_source(candidate: dict, source_states: dict, source: str) ->
     if not should_extract_odds(candidate):
         return False
     source_state = source_states.get(candidate.get("event_id"), {}).get(source)
-    return source_state is None or source_state.has_odds
+    if source_state is not None and not source_state.has_odds:
+        logger.info(
+            "🚫 Skipping %s odds fetch for event_id=%s because recorded has_odds=False",
+            source,
+            candidate.get("event_id"),
+        )
+        return False
+    return True
 
 
 def select_candidates_for_source(
