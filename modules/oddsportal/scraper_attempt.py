@@ -76,11 +76,99 @@ from .cache_utils import (
 )
 from .logging_context import _LOG_CONTEXT, _OddsPortalLogPrefixFilter, _log_prefix
 from .scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
+from .timestamps import parse_oddsportal_tooltip_time
 
 logger = logging.getLogger(__name__)
 
 
 class OddsPortalAttemptMixin:
+    @staticmethod
+    def _log_tooltip_price_details(
+        *,
+        source_label: str,
+        market_period: str,
+        expected_keys: List[str],
+        tooltip_prices: Dict[str, Any],
+    ) -> None:
+        """Log the exact per-cell values returned by the tooltip parser."""
+
+        for choice in expected_keys:
+            snapshot = tooltip_prices.get(choice)
+            if snapshot is None:
+                logger.warning(
+                    "⚠️ Tooltip parse missing source=%s market=%s choice=%s",
+                    source_label,
+                    market_period,
+                    choice,
+                )
+                continue
+            logger.info(
+                "✅ Tooltip parsed source=%s market=%s choice=%s "
+                "opening=%s opening_time=%s current=%s current_time=%s",
+                source_label,
+                market_period,
+                choice,
+                snapshot.opening_odds,
+                snapshot.opening_time,
+                snapshot.current_odds,
+                snapshot.current_time,
+            )
+
+    @staticmethod
+    def _tooltip_field_map(*, exchange: bool) -> Dict[str, Tuple[str, str]]:
+        if exchange:
+            return {
+                key: (key, f"initial_{key}")
+                for key in (
+                    "back_1",
+                    "back_x",
+                    "back_2",
+                    "lay_1",
+                    "lay_x",
+                    "lay_2",
+                )
+            }
+        return {
+            "1": ("odds_1", "initial_odds_1"),
+            "X": ("odds_x", "initial_odds_x"),
+            "2": ("odds_2", "initial_odds_2"),
+        }
+
+    def _apply_tooltip_prices(
+        self,
+        target,
+        tooltip_prices: Optional[Dict[str, Any]],
+        *,
+        exchange: bool,
+    ) -> Tuple[List[str], List[str]]:
+        """Merge one-hover tooltip prices over legacy visible-cell values."""
+
+        opening_keys: List[str] = []
+        current_keys: List[str] = []
+        current_times: List[Tuple[datetime, str]] = []
+        for source_key, (current_field, opening_field) in self._tooltip_field_map(
+            exchange=exchange
+        ).items():
+            snapshot = (tooltip_prices or {}).get(source_key)
+            if snapshot is None:
+                continue
+            if snapshot.opening_odds is not None:
+                setattr(target, opening_field, snapshot.opening_odds)
+                setattr(target, f"{opening_field}_time", snapshot.opening_time)
+                opening_keys.append(source_key)
+            if snapshot.current_odds is not None:
+                # Visible-cell extraction is retained as a legacy fallback.
+                setattr(target, current_field, snapshot.current_odds)
+                setattr(target, f"{current_field}_time", snapshot.current_time)
+                current_keys.append(source_key)
+                parsed_time = parse_oddsportal_tooltip_time(snapshot.current_time)
+                if parsed_time is not None and snapshot.current_time:
+                    current_times.append((parsed_time, snapshot.current_time))
+
+        if current_times:
+            target.movement_odds_time = max(current_times, key=lambda item: item[0])[1]
+        return opening_keys, current_keys
+
     async def scrape_match(self, match_url: str, sport: str=None, clear_state: bool=False) -> Optional[MatchOddsData]:
         """Compatibility wrapper for callers expecting only MatchOddsData."""
         attempt = await self.scrape_match_attempt(match_url, sport=sport, clear_state=clear_state)
@@ -415,44 +503,60 @@ class OddsPortalAttemptMixin:
                 )
                 hover_bookies = period_data.bookie_odds
                 for target_bookie_obj in hover_bookies:
-                    logger.info(f'🎯 Extracting opening odds via hover for: {target_bookie_obj.name} ({db_market_period})')
+                    logger.info(f'🎯 Extracting tooltip odds via hover for: {target_bookie_obj.name} ({db_market_period})')
                     t_hover = time.perf_counter()
-                    opening = await self._extract_opening_odds_by_hover(
+                    tooltip_prices = await self._extract_tooltip_odds_by_hover(
                         page,
                         source="bookmaker",
                         bookie_name=target_bookie_obj.name,
                     )
                     log_timing(f'Hover extraction for {target_bookie_obj.name} ({db_market_period}) took {time.perf_counter() - t_hover:.2f}s')
                     is_ou = db_market_group == 'Over/Under'
-                    lbl_1 = 'Over' if is_ou else '1'
-                    lbl_2 = 'Under' if is_ou else '2'
                     _three_way_market = not is_ou and getattr(target_bookie_obj, 'odds_x', None) not in (None, '', '-')
                     if is_ou or not _three_way_market:
                         expected_keys = ['1', '2']
                     else:
                         expected_keys = ['1', 'X', '2']
-                    if opening:
-                        if opening.get('1'):
-                            target_bookie_obj.initial_odds_1 = opening['1'][0]
-                            target_bookie_obj.movement_odds_time = opening['1'][1]
-                        if opening.get('X'):
-                            target_bookie_obj.initial_odds_x = opening['X'][0]
-                            if not getattr(target_bookie_obj, 'movement_odds_time', None) and opening['X'][1]:
-                                target_bookie_obj.movement_odds_time = opening['X'][1]
-                        if opening.get('2'):
-                            target_bookie_obj.initial_odds_2 = opening['2'][0]
-                            if not getattr(target_bookie_obj, 'movement_odds_time', None) and opening['2'][1]:
-                                target_bookie_obj.movement_odds_time = opening['2'][1]
-                        extracted_keys = [k for k in expected_keys if opening.get(k)]
-                        missing_keys = [k for k in expected_keys if not opening.get(k)]
+                    if tooltip_prices:
+                        self._log_tooltip_price_details(
+                            source_label=target_bookie_obj.name,
+                            market_period=db_market_period,
+                            expected_keys=expected_keys,
+                            tooltip_prices=tooltip_prices,
+                        )
+                        opening_keys, current_keys = self._apply_tooltip_prices(
+                            target_bookie_obj,
+                            tooltip_prices,
+                            exchange=False,
+                        )
+                        missing_keys = [k for k in expected_keys if k not in opening_keys]
+                        current_missing = [k for k in expected_keys if k not in current_keys]
                         if not missing_keys:
-                            lbl_x_part = f' X={target_bookie_obj.initial_odds_x}' if 'X' in expected_keys else ''
-                            logger.info(f'✅ FULL_SUCCESS Opening odds ({db_market_period}): {lbl_1}={target_bookie_obj.initial_odds_1}{lbl_x_part} {lbl_2}={target_bookie_obj.initial_odds_2} (Time: {target_bookie_obj.movement_odds_time})')
+                            logger.info(
+                                '✅ FULL_SUCCESS Opening odds (%s): parsed choices=%s',
+                                db_market_period,
+                                expected_keys,
+                            )
                         else:
-                            lbl_x_part = f' X={target_bookie_obj.initial_odds_x}' if 'X' in expected_keys else ''
-                            logger.warning(f'⚠️ PARTIAL_SUCCESS Opening odds ({db_market_period}): {lbl_1}={target_bookie_obj.initial_odds_1}{lbl_x_part} {lbl_2}={target_bookie_obj.initial_odds_2} (missing: {missing_keys})')
+                            logger.warning(
+                                '⚠️ PARTIAL_SUCCESS Opening odds (%s): missing=%s',
+                                db_market_period,
+                                missing_keys,
+                            )
+                        if current_missing:
+                            logger.warning(
+                                '⚠️ Tooltip current odds incomplete (%s): retaining legacy visible values for %s',
+                                db_market_period,
+                                current_missing,
+                            )
+                        else:
+                            logger.info(
+                                '✅ FULL_SUCCESS Tooltip current odds (%s): parsed choices=%s',
+                                db_market_period,
+                                expected_keys,
+                            )
                     else:
-                        logger.warning(f'⚠️ TOTAL_FAIL Opening odds ({db_market_period}): could not extract opening odds for {target_bookie_obj.name}')
+                        logger.warning(f'⚠️ TOTAL_FAIL Tooltip odds ({db_market_period}): retaining legacy visible current odds for {target_bookie_obj.name}')
                 if not hover_bookies:
                     logger.info(
                         'ℹ️ No persisted regular bookie matched the configured hover scope for %s',
@@ -465,38 +569,20 @@ class OddsPortalAttemptMixin:
                     and ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.persist_betfair
                     and ODDSPORTAL_SCRAPING_SETTINGS.bookmakers.hover_betfair
                 ):
-                    logger.info(f'🎯 Extracting Betfair Exchange opening odds via hover ({db_market_period})')
+                    logger.info(f'🎯 Extracting Betfair Exchange tooltip odds via hover ({db_market_period})')
                     t_bf = time.perf_counter()
-                    bf_opening = await self._extract_opening_odds_by_hover(
+                    bf_tooltip_prices = await self._extract_tooltip_odds_by_hover(
                         page,
                         source="betfair",
                     )
                     log_timing(f'Betfair hover extraction ({db_market_period}) took {time.perf_counter() - t_bf:.2f}s')
-                    if bf_opening:
-                        if bf_opening.get('back_1'):
-                            period_data.betfair.initial_back_1 = bf_opening['back_1'][0]
-                            period_data.betfair.movement_odds_time = bf_opening['back_1'][1]
-                        if bf_opening.get('back_x'):
-                            period_data.betfair.initial_back_x = bf_opening['back_x'][0]
-                            if not period_data.betfair.movement_odds_time and bf_opening['back_x'][1]:
-                                period_data.betfair.movement_odds_time = bf_opening['back_x'][1]
-                        if bf_opening.get('back_2'):
-                            period_data.betfair.initial_back_2 = bf_opening['back_2'][0]
-                            if not period_data.betfair.movement_odds_time and bf_opening['back_2'][1]:
-                                period_data.betfair.movement_odds_time = bf_opening['back_2'][1]
-                        if bf_opening.get('lay_1'):
-                            period_data.betfair.initial_lay_1 = bf_opening['lay_1'][0]
-                            if not period_data.betfair.movement_odds_time and bf_opening['lay_1'][1]:
-                                period_data.betfair.movement_odds_time = bf_opening['lay_1'][1]
-                        if bf_opening.get('lay_x'):
-                            period_data.betfair.initial_lay_x = bf_opening['lay_x'][0]
-                            if not period_data.betfair.movement_odds_time and bf_opening['lay_x'][1]:
-                                period_data.betfair.movement_odds_time = bf_opening['lay_x'][1]
-                        if bf_opening.get('lay_2'):
-                            period_data.betfair.initial_lay_2 = bf_opening['lay_2'][0]
-                            if not period_data.betfair.movement_odds_time and bf_opening['lay_2'][1]:
-                                period_data.betfair.movement_odds_time = bf_opening['lay_2'][1]
-                        _bf_three_way = any((k in bf_opening for k in ('back_x', 'lay_x'))) or period_data.betfair.back_x not in (None, '-', '')
+                    if bf_tooltip_prices:
+                        bf_opening_keys, bf_current_keys = self._apply_tooltip_prices(
+                            period_data.betfair,
+                            bf_tooltip_prices,
+                            exchange=True,
+                        )
+                        _bf_three_way = any((k in bf_tooltip_prices for k in ('back_x', 'lay_x'))) or period_data.betfair.back_x not in (None, '-', '')
                         if _bf_three_way:
                             bf_expected_back = ['back_1', 'back_x', 'back_2']
                             bf_expected_lay = ['lay_1', 'lay_x', 'lay_2']
@@ -504,14 +590,40 @@ class OddsPortalAttemptMixin:
                             bf_expected_back = ['back_1', 'back_2']
                             bf_expected_lay = ['lay_1', 'lay_2']
                         bf_expected = bf_expected_back + bf_expected_lay
-                        bf_extracted = [k for k in bf_expected if bf_opening.get(k)]
-                        bf_missing = [k for k in bf_expected if not bf_opening.get(k)]
+                        self._log_tooltip_price_details(
+                            source_label="Betfair Exchange",
+                            market_period=db_market_period,
+                            expected_keys=bf_expected,
+                            tooltip_prices=bf_tooltip_prices,
+                        )
+                        bf_missing = [k for k in bf_expected if k not in bf_opening_keys]
+                        bf_current_missing = [k for k in bf_expected if k not in bf_current_keys]
                         if not bf_missing:
-                            logger.info(f'✅ FULL_SUCCESS Betfair opening odds ({db_market_period}): Back 1={period_data.betfair.initial_back_1} X={period_data.betfair.initial_back_x} 2={period_data.betfair.initial_back_2} | Lay 1={period_data.betfair.initial_lay_1} X={period_data.betfair.initial_lay_x} 2={period_data.betfair.initial_lay_2}')
+                            logger.info(
+                                '✅ FULL_SUCCESS Betfair opening odds (%s): parsed choices=%s',
+                                db_market_period,
+                                bf_expected,
+                            )
                         else:
-                            logger.warning(f'⚠️ PARTIAL_SUCCESS Betfair opening odds ({db_market_period}): Back 1={period_data.betfair.initial_back_1} X={period_data.betfair.initial_back_x} 2={period_data.betfair.initial_back_2} | Lay 1={period_data.betfair.initial_lay_1} X={period_data.betfair.initial_lay_x} 2={period_data.betfair.initial_lay_2} (missing: {bf_missing})')
+                            logger.warning(
+                                '⚠️ PARTIAL_SUCCESS Betfair opening odds (%s): missing=%s',
+                                db_market_period,
+                                bf_missing,
+                            )
+                        if bf_current_missing:
+                            logger.warning(
+                                '⚠️ Betfair tooltip current odds incomplete (%s): retaining legacy visible values for %s',
+                                db_market_period,
+                                bf_current_missing,
+                            )
+                        else:
+                            logger.info(
+                                '✅ FULL_SUCCESS Betfair tooltip current odds (%s): parsed choices=%s',
+                                db_market_period,
+                                bf_expected,
+                            )
                     else:
-                        logger.warning(f'⚠️ TOTAL_FAIL Betfair opening odds ({db_market_period}): could not extract opening odds from Betfair Exchange')
+                        logger.warning(f'⚠️ TOTAL_FAIL Betfair tooltip odds ({db_market_period}): retaining legacy visible current odds')
                     extraction_betfair = period_data.betfair
                 elif (
                     step.get('betfair_enabled')

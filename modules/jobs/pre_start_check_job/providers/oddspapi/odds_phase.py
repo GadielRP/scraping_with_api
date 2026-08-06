@@ -215,6 +215,7 @@ def run_oddspapi_pre_start_odds(
         max_events=getattr(Config, "ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN", 0),
         api_keys=api_keys,
         max_workers=getattr(Config, "ODDSPAPI_PRE_START_WORKERS", 1),
+        debug_mode=debug_mode,
     )
     _log_summary(summary)
     if debug_mode:

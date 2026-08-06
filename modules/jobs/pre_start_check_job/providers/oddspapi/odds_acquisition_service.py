@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OddspapiOddsAcquisitionResult:
     payload: dict | None = None
+    debug_raw_payload: dict | None = None
+    debug_bookmakers: list[str] = field(default_factory=list)
+    bookies_requested: int = 0
     endpoint_missing: bool = False
     http_requests_attempted: int = 0
     exchange_historical_requests_attempted: int = 0
@@ -91,6 +94,7 @@ class OddspapiPreStartOddsAcquisitionService:
         source_sport_id: str | int | None,
         outcome_id: int | None = None,
         minimum_initial_span_minutes: float = 0.0,
+        capture_raw_response: bool = False,
     ) -> OddsFetchResult:
         return self.fetcher.fetch_odds(
             fixture_id,
@@ -99,6 +103,7 @@ class OddspapiPreStartOddsAcquisitionService:
             source_sport_id=source_sport_id,
             outcome_id=outcome_id,
             minimum_initial_span_minutes=minimum_initial_span_minutes,
+            capture_raw_response=capture_raw_response,
         )
 
     def acquire(
@@ -119,12 +124,14 @@ class OddspapiPreStartOddsAcquisitionService:
         exchange_request_budget: int | None,
         minimum_initial_span_minutes: float,
         current_odds_available: bool,
+        debug_mode: bool = False,
     ) -> OddspapiOddsAcquisitionResult:
         regular = self._unique_bookmakers(regular_bookmakers)
         exchange = self._unique_bookmakers(exchange_bookmakers)
         self._validate_bookmaker_groups(regular, exchange)
         combined = self._unique_bookmakers(regular, exchange)
         result = OddspapiOddsAcquisitionResult()
+        requested_bookmakers: set[str] = set()
 
         current_payload: dict | None = None
         current_missing = False
@@ -135,19 +142,25 @@ class OddspapiPreStartOddsAcquisitionService:
             current_odds_available=current_odds_available,
         )
         if combined and should_fetch_current:
+            requested_bookmakers.update(combined)
             result.http_requests_attempted += 1
             current_result = self._fetch(
                 fixture_id,
                 bookmakers=combined,
                 endpoint=ODDSPAPI_CURRENT_ODDS_ENDPOINT,
                 source_sport_id=source_sport_id,
+                capture_raw_response=debug_mode,
             )
             current_missing = current_result.endpoint_missing
             current_payload = current_result.payload
+            if selected_endpoint == ODDSPAPI_CURRENT_ODDS_ENDPOINT:
+                result.debug_raw_payload = current_result.raw_payload
+                result.debug_bookmakers = list(combined)
 
         payload = current_payload
         historical_missing = False
         if selected_endpoint == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT and regular:
+            requested_bookmakers.update(regular)
             result.http_requests_attempted += 1
             historical_result = self._fetch(
                 fixture_id,
@@ -155,8 +168,11 @@ class OddspapiPreStartOddsAcquisitionService:
                 endpoint=ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
+                capture_raw_response=debug_mode,
             )
             historical_missing = historical_result.endpoint_missing
+            result.debug_raw_payload = historical_result.raw_payload
+            result.debug_bookmakers = list(regular)
             if current_payload:
                 payload = OddspapiHistoricalOddsEnricher.merge_initial_prices(
                     current_payload,
@@ -220,6 +236,7 @@ class OddspapiPreStartOddsAcquisitionService:
             )
 
             for selection in selection_result.selections:
+                requested_bookmakers.add(selection.bookmaker_slug)
                 result.http_requests_attempted += 1
                 result.exchange_historical_requests_attempted += 1
                 try:
@@ -256,6 +273,7 @@ class OddspapiPreStartOddsAcquisitionService:
                         exc,
                     )
 
+        result.bookies_requested = len(requested_bookmakers)
         result.payload = payload
         result.endpoint_missing = (
             current_missing

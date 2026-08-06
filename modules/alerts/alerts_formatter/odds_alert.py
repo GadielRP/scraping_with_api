@@ -291,6 +291,13 @@ def _format_external_markets_section(external_markets: List[Dict], event_data: D
                             
                     if initial is not None and current is not None:
                         choice_strs.append(f"{_format_odds_value(initial)}→{_format_odds_value(current)}{movement}")
+                    elif initial is not None:
+                        # OddsPortal is temporarily opening-only. Exchange
+                        # markets may therefore have a valid opening without a
+                        # current snapshot; retain that evidence in the alert.
+                        choice_strs.append(
+                            f"{_format_odds_value(initial)}→N/A"
+                        )
                     elif current is not None:
                         choice_strs.append(f"{_format_odds_value(current)}")
                     else:

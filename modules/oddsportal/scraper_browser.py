@@ -81,9 +81,22 @@ logger = logging.getLogger(__name__)
 
 
 class OddsPortalBrowserMixin:
-    def __init__(self, headless: bool=True, debug_dir: Optional[str]=None, testing_mode: bool=False):
+    def __init__(
+        self,
+        headless: bool = True,
+        debug_dir: Optional[str] = None,
+        testing_mode: bool = False,
+        debug_mode: bool = False,
+    ):
         self.headless = headless
         self.debug_dir = debug_dir
+        # Keep an immutable run-level root because ``debug_dir`` is temporarily
+        # redirected to match-specific failure-artifact folders during a scrape.
+        self._debug_root_dir = debug_dir
+        self._debug_event_id: Optional[int] = None
+        # ``testing_mode`` remains supported for development scripts. Runtime
+        # pre-start debugging is carried explicitly through ``debug_mode``.
+        self.debug_mode = bool(debug_mode or testing_mode)
         self.testing_mode = testing_mode
         self.browser: Optional[Browser] = None
         self.playwright = None
@@ -97,6 +110,23 @@ class OddsPortalBrowserMixin:
         if self.debug_dir:
             import os
             os.makedirs(self.debug_dir, exist_ok=True)
+
+    def set_debug_event_context(self, event_id) -> None:
+        """Associate subsequent debug artifacts with one canonical event ID."""
+
+        if event_id is None:
+            self._debug_event_id = None
+            return
+        try:
+            normalized_event_id = int(event_id)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Ignoring invalid OddsPortal debug event ID: %r",
+                event_id,
+            )
+            self._debug_event_id = None
+            return
+        self._debug_event_id = normalized_event_id
 
     def _should_rotate_proxy_on_browser_restart(self) -> bool:
         return self.proxy_manager.should_rotate_on_browser_restart()

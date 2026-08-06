@@ -421,6 +421,12 @@ class Config:
 
     # OddsPortal scraping activation toggle for the pre-start flow
     ODDSPORTAL_SCRAPING_ENABLED = _parse_env_bool('ODDSPORTAL_SCRAPING_ENABLED', True)
+    # TEMPORARY OPENING-ONLY FLOW: OddsPortal is captured once, early enough to
+    # supply authoritative opening prices before OddsPAPI owns later currents.
+    # Keep this configurable so the timing decision is not buried in a worker.
+    ODDSPORTAL_OPENING_CAPTURE_MINUTES = int(
+        os.getenv('ODDSPORTAL_OPENING_CAPTURE_MINUTES', '120')
+    )
 
     # Scope pre-start work by canonical competition, independent of providers.
     # Legacy aliases are temporary deployment compatibility fallbacks.

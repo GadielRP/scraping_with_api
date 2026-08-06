@@ -332,6 +332,7 @@ def _run_pre_start_check_simulation(
         scheduler,
         [event_data],
         {event_id: simulated_minutes},
+        debug_mode=debug_mode,
     )
 
     logger.info(

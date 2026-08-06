@@ -41,6 +41,9 @@ async def _scrape_task_with_recovery(
     on_task_started=None,
 ):
     """Retry a task with persisted resume state until it succeeds or stops making progress."""
+    set_debug_event = getattr(scraper, "set_debug_event_context", None)
+    if callable(set_debug_event):
+        set_debug_event(task.get("event_id"))
     match_url = task.get("match_url")
     sport = task.get("sport")
     clear_state = task.get("clear_state", False)
@@ -166,6 +169,7 @@ def scrape_multiple_matches_sync(
     on_task_started=None,
     current_date=None,
     collect_results: bool = True,
+    debug_mode: bool = False,
 ) -> Dict[int, Optional[MatchOddsData]]:
     """
     Scrape multiple matches using ONE browser session (browser reuse).
@@ -179,6 +183,7 @@ def scrape_multiple_matches_sync(
             away_team, season_id, and competition_id. ``season_id`` scopes the
             cache; ``competition_id`` resolves provider routing.
         debug_dir: Optional directory to save screenshots/HTML on failure
+        debug_mode: Save accepted per-choice tooltip HTML when enabled.
     
     Returns:
         Dict mapping event_id -> MatchOddsData (or None if scrape failed)
@@ -190,7 +195,13 @@ def scrape_multiple_matches_sync(
     try:
 
         async def _run():
-            scraper = _get_scraper_cls()(debug_dir=debug_dir)
+            effective_debug_dir = debug_dir or (
+                "debug" if debug_mode else None
+            )
+            scraper = _get_scraper_cls()(
+                debug_dir=effective_debug_dir,
+                debug_mode=debug_mode,
+            )
             await scraper.start()
             try:
                 for i, task in enumerate(tasks):
@@ -299,6 +310,7 @@ def scrape_multiple_matches_parallel_sync(
     on_task_started=None,
     current_date=None,
     collect_results: bool = True,
+    debug_mode: bool = False,
 ) -> Dict[int, Optional[MatchOddsData]]:
     """
     Distribute scrape tasks across multiple concurrent Playwright browsers.
@@ -315,6 +327,7 @@ def scrape_multiple_matches_parallel_sync(
             on_task_started=on_task_started,
             current_date=current_date,
             collect_results=collect_results,
+            debug_mode=debug_mode,
         )
     logger.info(f'🚀 OddsPortal Parallel: Splitting {len(tasks)} tasks across {num_browsers} browsers')
     from collections import defaultdict
@@ -355,6 +368,7 @@ def scrape_multiple_matches_parallel_sync(
                 on_task_started,
                 current_date,
                 collect_results,
+                debug_mode,
             ): i
             for i, chunk in enumerate(chunks)
         }

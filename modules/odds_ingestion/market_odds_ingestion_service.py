@@ -9,6 +9,9 @@ from types import MappingProxyType
 from typing import Dict, Mapping, Optional
 
 from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.market_write_policy import (
+    market_write_policy_for_source,
+)
 from infrastructure.persistence.repositories import (
     BookieRepository,
     CanonicalMarketTypeRepository,
@@ -127,12 +130,21 @@ class MarketOddsIngestionService:
     ) -> MarketIngestionResult:
         """Canonicalize and atomically persist one completed OddsPortal event."""
         source = MarketOddsIngestionService._normalize_source(source, "oddsportal")
+        write_policy = market_write_policy_for_source(source)
         adapted = OddsPortalMarketAdapter.from_match_odds_data(
             odds_data,
             canonical_types=reference_data.canonical_types,
         )
         markets_detected = adapted.markets_detected
         choices_detected = adapted.choices_detected
+        snapshots_detected = (
+            choices_detected
+            if (
+                write_policy.persist_opening_snapshots
+                or write_policy.persist_current_snapshots
+            )
+            else 0
+        )
         bookmaker_batches = []
         unresolved_bookies = []
         for bookmaker in adapted.bookmakers:
@@ -168,7 +180,7 @@ class MarketOddsIngestionService:
                 source=source,
                 markets_detected=markets_detected,
                 choices_detected=choices_detected,
-                snapshots_detected=choices_detected,
+                snapshots_detected=snapshots_detected,
                 bookies_detected=len(adapted.bookmakers),
                 unmapped_markets_detected=len(adapted.diagnostics),
                 skipped=True,
@@ -191,7 +203,7 @@ class MarketOddsIngestionService:
                 source=source,
                 markets_detected=markets_detected,
                 choices_detected=choices_detected,
-                snapshots_detected=choices_detected,
+                snapshots_detected=snapshots_detected,
                 bookies_detected=len(adapted.bookmakers),
                 bookies_processed=len(bookmaker_batches),
                 unmapped_markets_detected=len(adapted.diagnostics),
@@ -204,7 +216,7 @@ class MarketOddsIngestionService:
             source=source,
             markets_detected=markets_detected,
             choices_detected=choices_detected,
-            snapshots_detected=choices_detected,
+            snapshots_detected=snapshots_detected,
             markets_saved=save_result.markets_saved,
             choices_saved=save_result.choices_saved,
             snapshots_saved=save_result.snapshots_saved,

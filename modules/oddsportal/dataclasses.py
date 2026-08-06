@@ -33,6 +33,14 @@ class BookieOdds:
     initial_odds_1: Optional[str] = None
     initial_odds_x: Optional[str] = None
     initial_odds_2: Optional[str] = None
+    initial_odds_1_time: Optional[str] = None
+    initial_odds_x_time: Optional[str] = None
+    initial_odds_2_time: Optional[str] = None
+    odds_1_time: Optional[str] = None
+    odds_x_time: Optional[str] = None
+    odds_2_time: Optional[str] = None
+    # Legacy aggregate timestamp used by the alert formatter. It now points to
+    # the latest parsed current quote time instead of an opening timestamp.
     movement_odds_time: Optional[str] = None
     handicap: Optional[str] = None
 
@@ -60,6 +68,19 @@ class BetfairExchangeOdds:
     initial_lay_1: Optional[str] = None
     initial_lay_x: Optional[str] = None
     initial_lay_2: Optional[str] = None
+    initial_back_1_time: Optional[str] = None
+    initial_back_x_time: Optional[str] = None
+    initial_back_2_time: Optional[str] = None
+    initial_lay_1_time: Optional[str] = None
+    initial_lay_x_time: Optional[str] = None
+    initial_lay_2_time: Optional[str] = None
+    back_1_time: Optional[str] = None
+    back_x_time: Optional[str] = None
+    back_2_time: Optional[str] = None
+    lay_1_time: Optional[str] = None
+    lay_x_time: Optional[str] = None
+    lay_2_time: Optional[str] = None
+    # Legacy aggregate timestamp retained for alert compatibility.
     movement_odds_time: Optional[str] = None
     handicap: Optional[str] = None
 

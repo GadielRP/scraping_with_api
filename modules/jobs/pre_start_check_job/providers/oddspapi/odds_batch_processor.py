@@ -24,6 +24,7 @@ from .constants import (
     ODDSPAPI_PRE_START_ODDS_ENDPOINTS,
     ODDSPAPI_SOURCE,
 )
+from .debug_response_writer import OddspapiDebugResponseWriter
 from .event_selector import OddspapiPreStartCandidate
 from .odds_fetcher import OddspapiOddsFetcher
 from .odds_acquisition_service import OddspapiPreStartOddsAcquisitionService
@@ -45,6 +46,7 @@ class OddspapiPreStartOddsEventResult:
     markets_saved: int = 0
     choices_saved: int = 0
     snapshots_saved: int = 0
+    bookies_requested: int = 0
     bookies_detected: int = 0
     bookies_processed: int = 0
     unmapped_markets_detected: int = 0
@@ -330,6 +332,7 @@ class OddspapiPreStartOddsBatchProcessor:
     @staticmethod
     def _copy_acquisition_stats(result, acquisition_result) -> None:
         for field_name in (
+            "bookies_requested",
             "http_requests_attempted",
             "exchange_outcomes_selected",
             "exchange_historical_requests_attempted",
@@ -341,6 +344,26 @@ class OddspapiPreStartOddsBatchProcessor:
                 field_name,
                 getattr(acquisition_result, field_name, 0) or 0,
             )
+
+    @staticmethod
+    def _warn_if_bookmaker_count_mismatch(
+        result: OddspapiPreStartOddsEventResult,
+        *,
+        endpoint: str,
+    ) -> None:
+        """Report providers requested from OddsPAPI but absent after ingestion."""
+
+        if result.bookies_detected == result.bookies_requested:
+            return
+        logger.warning(
+            "Oddspapi bookmaker count mismatch endpoint=%s event_id=%s "
+            "fixture_id=%s bookies_requested=%s bookies_detected=%s",
+            endpoint,
+            result.event_id,
+            result.fixture_id,
+            result.bookies_requested,
+            result.bookies_detected,
+        )
 
     def process(
         self,
@@ -364,6 +387,7 @@ class OddspapiPreStartOddsBatchProcessor:
         api_keys: list[str] | None = None,
         max_workers: int = 1,
         market_mapping_index: MarketMappingIndex | None = None,
+        debug_mode: bool = False,
     ) -> OddspapiPreStartOddsSummary:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -438,6 +462,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     ),
                     "api_keys": None,
                     "max_workers": 1,
+                    "debug_mode": debug_mode,
                 },
             )
             non_requestable_candidates = [
@@ -522,7 +547,23 @@ class OddspapiPreStartOddsBatchProcessor:
                         minimum_initial_span_minutes
                     ),
                     current_odds_available=candidate.has_odds,
+                    debug_mode=debug_mode,
                 )
+                if debug_mode and getattr(
+                    acquisition_result,
+                    "debug_raw_payload",
+                    None,
+                ) is not None:
+                    OddspapiDebugResponseWriter.save(
+                        event_id=candidate.event_id,
+                        fixture_id=candidate.fixture_id,
+                        bookmakers=getattr(
+                            acquisition_result,
+                            "debug_bookmakers",
+                            None,
+                        ) or bookmakers,
+                        payload=acquisition_result.debug_raw_payload,
+                    )
                 self._copy_acquisition_stats(
                     event_result,
                     acquisition_result,
@@ -601,6 +642,11 @@ class OddspapiPreStartOddsBatchProcessor:
                     candidate.event_id,
                     candidate.fixture_id,
                     exc,
+                )
+            finally:
+                self._warn_if_bookmaker_count_mismatch(
+                    event_result,
+                    endpoint=selected_endpoint,
                 )
         if not dry_run:
             mark_missing_endpoints_unavailable(odds_not_found_event_ids, ODDSPAPI_SOURCE)

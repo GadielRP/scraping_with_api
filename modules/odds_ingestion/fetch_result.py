@@ -18,11 +18,24 @@ class OddsFetchResult:
 
     status: OddsFetchStatus
     payload: dict | None = None
+    # Provider adapters may expose the unmodified transport payload for an
+    # explicitly enabled debug capture. Keeping it separate prevents debug
+    # files from accidentally containing the normalized ingestion contract.
+    raw_payload: dict | None = None
 
     @classmethod
-    def from_payload(cls, payload: object) -> "OddsFetchResult":
+    def from_payload(
+        cls,
+        payload: object,
+        *,
+        raw_payload: object = None,
+    ) -> "OddsFetchResult":
         if isinstance(payload, dict) and payload:
-            return cls(OddsFetchStatus.SUCCESS, payload)
+            return cls(
+                OddsFetchStatus.SUCCESS,
+                payload,
+                raw_payload if isinstance(raw_payload, dict) else None,
+            )
         return cls(OddsFetchStatus.EMPTY)
 
     @classmethod

@@ -34,6 +34,8 @@ def start_oddsportal_scrape_for_events(
     scheduler,
     upcoming_events: List[Dict],
     pre_calculated_timings: Dict[int, int],
+    *,
+    debug_mode: bool = False,
 ) -> OddsPortalScrapeContext:
     """Prepare and start one OddsPortal cycle for the upcoming event batch."""
     candidates = build_oddsportal_scrape_candidates(
@@ -51,6 +53,7 @@ def start_oddsportal_scrape_for_events(
         candidates,
         context.event_states,
         context.data_cache,
+        debug_mode=debug_mode,
     )
     return context
 
@@ -59,7 +62,7 @@ def build_oddsportal_scrape_candidates(
     upcoming_events: List[Dict],
     pre_calculated_timings: Dict[int, int],
 ) -> List[Dict]:
-    """Collect the events that should be scraped by OddsPortal."""
+    """Collect events for the temporary OddsPortal opening-odds capture."""
     if not Config.ODDSPORTAL_SCRAPING_ENABLED:
         logger.info("OddsPortal scraping is disabled by config; skipping candidate selection.")
         return []
@@ -72,7 +75,10 @@ def build_oddsportal_scrape_candidates(
 
         if (
             competition_id in ODDSPORTAL_COMPETITION_ROUTES
-            and minutes_until_start == -5
+            # OddsPortal is intentionally scraped once at the configured early
+            # moment. Persistence treats it as an opening-only provider; later
+            # current timeframes remain exclusively owned by OddsPAPI.
+            and minutes_until_start == Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES
         ):
             candidates.append(
                 {
@@ -85,8 +91,9 @@ def build_oddsportal_scrape_candidates(
 
     if candidates:
         logger.info(
-            "OddsPortal candidate selection produced %s routable events.",
+            "OddsPortal opening capture produced %s routable events at %sm.",
             len(candidates),
+            Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES,
         )
     else:
         logger.info("No OddsPortal candidates matched the current pre-start window.")
@@ -112,13 +119,21 @@ def start_oddsportal_scrape_thread(
     op_candidates: List[Dict],
     op_event_states: Dict[int, Dict[str, threading.Event]],
     op_data_cache: Dict[int, Any],
+    *,
+    debug_mode: bool = False,
 ):
     """Start OddsPortal scraping in the background if there is work to do."""
     if not Config.ODDSPORTAL_SCRAPING_ENABLED or not op_candidates:
         scheduler._active_op_thread = None
         return None
 
-    def _orchestrate(previous_thread, candidates, event_states, data_cache):
+    def _orchestrate(
+        previous_thread,
+        candidates,
+        event_states,
+        data_cache,
+        oddsportal_debug_mode,
+    ):
         if previous_thread and previous_thread.is_alive():
             timeout = Config.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT
             logger.warning(f"⏳ Previous OP worker still running - waiting up to {timeout}s for it to finish...")
@@ -134,12 +149,23 @@ def start_oddsportal_scrape_thread(
             logger.info("✅ Previous OP worker finished - proceeding with new cycle")
 
         logger.info(f"🚀 Launching OddsPortal scraper for {len(candidates)} tracked-league events...")
-        run_oddsportal_scrape_cycle(candidates, event_states, data_cache)
+        run_oddsportal_scrape_cycle(
+            candidates,
+            event_states,
+            data_cache,
+            debug_mode=oddsportal_debug_mode,
+        )
 
     previous_thread = getattr(scheduler, "_active_op_thread", None)
     oddsportal_thread = threading.Thread(
         target=_orchestrate,
-        args=(previous_thread, op_candidates, op_event_states, op_data_cache),
+        args=(
+            previous_thread,
+            op_candidates,
+            op_event_states,
+            op_data_cache,
+            debug_mode,
+        ),
         name="oddsportal_worker_launcher",
         daemon=False,
     )
@@ -152,11 +178,18 @@ def run_oddsportal_scrape_cycle(
     op_candidates: List[Dict],
     op_event_states: Optional[Dict[int, Dict[str, threading.Event]]] = None,
     op_data_cache: Optional[Dict[int, Any]] = None,
+    *,
+    debug_mode: bool = False,
 ):
     """Run the OddsPortal scrape worker and guarantee event-state cleanup."""
     logger.info(f"🔥 OP Worker started: scraping {len(op_candidates)} tracked-league events.")
     try:
-        scrape_oddsportal_batch(op_candidates, op_event_states, op_data_cache)
+        scrape_oddsportal_batch(
+            op_candidates,
+            op_event_states,
+            op_data_cache,
+            debug_mode=debug_mode,
+        )
     except Exception as exc:
         logger.error(f"❌ OddsPortal Worker CRASHED: {exc}\n{traceback.format_exc()}")
     finally:
@@ -181,6 +214,8 @@ def scrape_oddsportal_batch(
     events_to_process: List[Dict],
     op_event_states: Optional[Dict[int, Dict[str, threading.Event]]] = None,
     op_data_cache: Optional[Dict[int, Any]] = None,
+    *,
+    debug_mode: bool = False,
 ) -> Dict[int, Optional[int]]:
     """
     Scrape all OddsPortal-eligible matches and persist them.
@@ -217,6 +252,11 @@ def scrape_oddsportal_batch(
         return {}
 
     logger.info(f"🔍 OddsPortal worker: {len(op_tasks)} events eligible for scraping")
+    if debug_mode:
+        logger.info(
+            "OddsPortal tooltip debug capture enabled: "
+            "./debug/oddsportal_{event_id}_tooltips/"
+        )
     saved_counts: Dict[int, Optional[int]] = {}
     reference_data = None
     reference_data_lock = threading.Lock()
@@ -310,7 +350,8 @@ def scrape_oddsportal_batch(
     op_results = scrape_multiple_matches_parallel_sync(
         op_tasks,
         num_browsers=num_browsers,
-        debug_dir=ODDSPORTAL_SCRAPING_SETTINGS.browser.debug_dir,
+        debug_dir="debug" if debug_mode else None,
+        debug_mode=debug_mode,
         on_task_started=_on_event_started,
         on_result=_on_event_scraped,
         current_date=op_current_date,

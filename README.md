@@ -99,7 +99,7 @@ The observations package extracts additional metadata about events. For example,
 
 ### OddsPortal Scraping (modules/oddsportal)
 
-This package encapsulates a Playwright‑based scraper to retrieve odds data from OddsPortal at the 0‑minute mark. Core modules include:
+This package encapsulates a Playwright‑based scraper that captures authoritative opening odds at a configurable pre-start minute. Core modules include:
 
 scraper_impl.py, scraper_browser.py and scraper_render.py – implement the asynchronous browser, page navigation and element extraction.
 scraper_lookup.py and team_matcher.py – resolve SofaScore events to OddsPortal URLs using league caches and fuzzy team matching.
@@ -108,6 +108,33 @@ oddsportal_dispatcher.py – orchestrates concurrent scraping using a dispatcher
 oddsportal_config.py – configuration and mapping for OddsPortal seasons, markets and scraping routes.
 
 Data scraped here is normalised into the same schema as SofaScore odds and persisted via the infrastructure layer.
+
+#### Temporary provider ownership policy
+
+OddsPortal captures authoritative opening odds at
+`ODDSPORTAL_OPENING_CAPTURE_MINUTES` (120 minutes before the event by default).
+
+> **Architecture debt notice:** canonical markets currently do not include the
+> provider source in their database identity. Matching OddsPortal and OddsPAPI
+> markets for the same bookmaker therefore resolve to the same market and
+> choice rows. Until the schema can represent provider-specific quotes, the
+> application enforces ownership per field instead of relying on execution
+> order.
+
+The temporary policy is:
+
+| Data | Temporary owner | Persistence behavior |
+| :--- | :--- | :--- |
+| Opening odds (`initial_odds`) | OddsPortal when that market is scraped | A valid OddsPortal opening overwrites an existing provider opening. |
+| Opening odds for markets not covered by OddsPortal | OddsPAPI | The approximate OddsPAPI opening is preserved, so partial OddsPortal coverage does not create data gaps. |
+| Current odds (`current_odds`) | OddsPAPI | OddsPortal never overwrites the current value. |
+| Pre-start trajectory snapshots | OddsPAPI | OddsPortal creates no snapshots, preventing opening quotes from being mistaken for current timeframe observations. |
+
+This makes concurrent completion order irrelevant: OddsPortal may finish before
+or after OddsPAPI and the stored result remains an OddsPortal opening paired
+with an OddsPAPI current. This is an intentional short-term compatibility rule,
+not the target data model. A future source-aware schema should replace it and
+store each provider's opening, current and timestamp independently.
 
 ### Prediction (modules/prediction)
 

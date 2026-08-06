@@ -169,6 +169,10 @@ class OddsPortalDataMixin:
                 selectedRows.push(candidateRows[matchIndex]);
             }
 
+            // LEGACY/FALLBACK CURRENT PRICES:
+            // OddsPortal's visible cells can lag behind the movement tooltip.
+            // Keep reading them for resilience; successful tooltip parsing
+            // overwrites these values later without performing another hover.
             // Read prices only for rows that will be hovered and persisted.
             for (const {row, bookieName} of selectedRows) {
                 const oddsCells = row.querySelectorAll('div.odds-cell');
@@ -196,6 +200,8 @@ class OddsPortalDataMixin:
             }
 
             // --- Extract Betfair Exchange ---
+            // These visible Back/Lay prices are also legacy fallbacks. The
+            // timestamped tooltip movement value is authoritative when found.
             // Search for the section directly
             const exchangeSection = document.querySelector('div[data-testid="betting-exchanges-section"]');
 

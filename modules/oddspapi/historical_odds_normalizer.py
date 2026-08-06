@@ -73,20 +73,18 @@ class OddspapiHistoricalOddsNormalizer:
         if not quotes:
             return None
 
-        # The newest quote represents the provider's current state. An inactive
-        # newest quote is a tombstone; filtering it first would revive an older
-        # price that is no longer offered.
-        latest = quotes[-1]
-        if latest.get("active") is False:
-            return None
-
         active_quotes = [
             quote for quote in quotes if quote.get("active") is not False
         ]
         if not active_quotes:
             return None
 
+        # The historical endpoint may append inactive availability observations
+        # after the last offered price.  For odds ingestion, "current" means the
+        # most recent quote that OddsPAPI explicitly marked active; later inactive
+        # observations must not hide that usable price.
         opening = active_quotes[0]
+        latest = active_quotes[-1]
         normalized = dict(latest)
         normalized["active"] = True
         normalized["changedAt"] = latest.get("createdAt")

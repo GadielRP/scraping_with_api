@@ -33,6 +33,7 @@ class OddspapiOddsFetcher:
         source_sport_id: str | int | None = None,
         outcome_id: int | None = None,
         minimum_initial_span_minutes: float = 0.0,
+        capture_raw_response: bool = False,
     ) -> OddsFetchResult:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -42,6 +43,7 @@ class OddspapiOddsFetcher:
                 f"Expected one of: {supported}"
             )
 
+        raw_payload = None
         try:
             if selected_endpoint == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT:
                 historical_payload = self.client.get_historical_odds(
@@ -49,6 +51,8 @@ class OddspapiOddsFetcher:
                     bookmakers=bookmakers,
                     outcome_id=outcome_id,
                 )
+                if capture_raw_response:
+                    raw_payload = historical_payload
                 payload = OddspapiHistoricalOddsNormalizer.normalize(
                     historical_payload,
                     source_sport_id=source_sport_id,
@@ -62,10 +66,15 @@ class OddspapiOddsFetcher:
                     language=language,
                     verbosity=verbosity,
                 )
+                if capture_raw_response:
+                    raw_payload = payload
         except OddsPapiHttpError as exc:
             if exc.status_code == 404:
                 return OddsFetchResult.endpoint_not_found()
             if exc.error_code in self.EMPTY_ODDS_ERROR_CODES:
                 return OddsFetchResult.from_payload(None)
             raise
-        return OddsFetchResult.from_payload(payload)
+        return OddsFetchResult.from_payload(
+            payload,
+            raw_payload=raw_payload,
+        )

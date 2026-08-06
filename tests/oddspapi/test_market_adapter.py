@@ -517,7 +517,7 @@ def test_historical_initial_price_is_forwarded_to_repository_contract():
     assert choice["decimalValue"] == 1.9
 
 
-def test_historical_normalizer_does_not_revive_older_active_quote():
+def test_historical_normalizer_uses_latest_active_quote_before_inactive_records():
     historical = {
         "fixtureId": "fixture-1",
         "bookmakers": {
@@ -529,18 +529,23 @@ def test_historical_normalizer_does_not_revive_older_active_quote():
                                 "players": {
                                     "0": [
                                         {
-                                            "createdAt": "2026-06-19T00:03:00Z",
-                                            "price": 2.0,
+                                            "createdAt": "2026-08-06T01:13:51.709Z",
+                                            "price": 1.67,
                                             "active": False,
                                         },
                                         {
-                                            "createdAt": "2026-06-19T00:02:00Z",
-                                            "price": 1.9,
+                                            "createdAt": "2026-08-06T00:29:34.413Z",
+                                            "price": 1.67,
+                                            "active": False,
+                                        },
+                                        {
+                                            "createdAt": "2026-08-05T23:04:21.640Z",
+                                            "price": 1.67,
                                             "active": True,
                                         },
                                         {
-                                            "createdAt": "2026-06-19T00:01:00Z",
-                                            "price": 1.7,
+                                            "createdAt": "2026-08-05T04:29:31.339Z",
+                                            "price": 1.62,
                                             "active": True,
                                         },
                                     ]
@@ -557,8 +562,15 @@ def test_historical_normalizer_does_not_revive_older_active_quote():
         historical,
         source_sport_id="10",
     )
+    normalized_player = (
+        normalized["bookmakerOdds"]["pinnacle"]["markets"]["100"]
+        ["outcomes"]["1"]["players"]["0"]
+    )
+
     assert normalized["sportId"] == "10"
-    assert normalized["bookmakerOdds"] == {}
+    assert normalized_player["initialPrice"] == 1.62
+    assert normalized_player["price"] == 1.67
+    assert normalized_player["changedAt"] == "2026-08-05T23:04:21.640Z"
 
 
 def test_historical_normalizer_selects_opening_and_latest_current_quote():

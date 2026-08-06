@@ -10,6 +10,9 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceSnapshot
 from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.market_write_policy import (
+    market_write_policy_for_source,
+)
 from infrastructure.persistence.repositories.bookie_repository import BookieRepository
 from shared.odds_utils import fractional_to_decimal, normalize_odds_value
 from shared.timezone_utils import convert_utc_to_local, get_local_now
@@ -170,6 +173,7 @@ class MarketRepository:
         bookie_id: int,
         source: Optional[str] = None,
     ) -> MarketSaveResult:
+        write_policy = market_write_policy_for_source(source)
         operation_logger = (
             oddsportal_logger if source == "oddsportal" else logger
         )
@@ -207,6 +211,36 @@ class MarketRepository:
                                 )
                                 continue
 
+                            choices_data = market_data.get('choices', [])
+                            seen_choice_names = {}
+                            for choice_data in choices_data:
+                                choice_name = MarketRepository._normalize_string_or_none(
+                                    choice_data.get('name')
+                                )
+                                if not choice_name or choice_name in seen_choice_names:
+                                    continue
+                                if (
+                                    write_policy.require_initial_odds
+                                    and MarketRepository._choice_odds_value(
+                                        choice_data,
+                                        "initialFractionalValue",
+                                        "initialDecimalValue",
+                                        "initialOdds",
+                                        "initial_odds",
+                                    )
+                                    is None
+                                ):
+                                    continue
+                                seen_choice_names[choice_name] = choice_data
+                            if not seen_choice_names:
+                                operation_logger.info(
+                                    "Skipping market for event %s because policy=%s "
+                                    "found no eligible choices",
+                                    event_id,
+                                    write_policy.name,
+                                )
+                                continue
+
                             market_collected_at = get_local_now()
                             existing_market = session.query(Market).filter(
                                 and_(
@@ -238,18 +272,11 @@ class MarketRepository:
                                 session.add(market)
                                 session.flush()
 
-                            choices_data = market_data.get('choices', [])
                             uses_oddspapi_source_time = (
                                 MarketRepository._uses_utc_source_timestamps(
                                     source
                                 )
                             )
-                            seen_choice_names = {}
-                            for choice_data in choices_data:
-                                choice_name = MarketRepository._normalize_string_or_none(choice_data.get('name'))
-                                if choice_name and choice_name not in seen_choice_names:
-                                    seen_choice_names[choice_name] = choice_data
-
                             for choice_name, choice_data in seen_choice_names.items():
                                 initial_odds = MarketRepository._choice_odds_value(
                                     choice_data,
@@ -274,25 +301,60 @@ class MarketRepository:
                                     )
                                 ).first()
 
-                                effective_initial_odds = initial_odds
                                 if (
+                                    write_policy.overwrite_initial_odds
+                                    and initial_odds is not None
+                                ):
+                                    effective_initial_odds = initial_odds
+                                elif (
                                     existing_choice
                                     and existing_choice.initial_odds is not None
                                 ):
                                     effective_initial_odds = existing_choice.initial_odds
+                                else:
+                                    effective_initial_odds = initial_odds
+                                effective_current_odds = (
+                                    current_odds
+                                    if write_policy.persist_current_odds
+                                    else (
+                                        existing_choice.current_odds
+                                        if existing_choice is not None
+                                        else None
+                                    )
+                                )
                                 change = MarketRepository._choice_change(
-                                    explicit_change=choice_data.get('change'),
+                                    explicit_change=(
+                                        choice_data.get('change')
+                                        if write_policy.persist_current_odds
+                                        else None
+                                    ),
                                     initial_odds=effective_initial_odds,
-                                    current_odds=current_odds,
+                                    current_odds=effective_current_odds,
                                 )
 
                                 initial_was_set = False
                                 if existing_choice:
-                                    if current_odds is not None:
+                                    if (
+                                        write_policy.persist_current_odds
+                                        and current_odds is not None
+                                    ):
                                         existing_choice.current_odds = current_odds
                                     if change is not None:
                                         existing_choice.change = change
-                                    if existing_choice.initial_odds is None and initial_odds is not None:
+                                    if (
+                                        write_policy.overwrite_initial_odds
+                                        and initial_odds is not None
+                                    ):
+                                        existing_initial = MarketRepository._numeric_or_none(
+                                            existing_choice.initial_odds
+                                        )
+                                        incoming_initial = MarketRepository._numeric_or_none(
+                                            initial_odds
+                                        )
+                                        if existing_initial != incoming_initial:
+                                            existing_choice.initial_odds = initial_odds
+                                            initial_was_set = True
+                                    elif existing_choice.initial_odds is None and initial_odds is not None:
                                         existing_choice.initial_odds = initial_odds
                                         initial_was_set = True
                                     choice = existing_choice
@@ -301,7 +363,7 @@ class MarketRepository:
                                         market_id=market.market_id,
                                         choice_name=choice_name,
                                         initial_odds=initial_odds,
-                                        current_odds=current_odds,
+                                        current_odds=effective_current_odds,
                                         change=change if change is not None else 0
                                     )
                                     session.add(choice)
@@ -332,7 +394,8 @@ class MarketRepository:
                                     )
                                 )
                                 if (
-                                    initial_was_set
+                                    write_policy.persist_opening_snapshots
+                                    and initial_was_set
                                     and initial_odds is not None
                                     and initial_source_collected_at is not None
                                 ):
@@ -389,7 +452,10 @@ class MarketRepository:
                                     )
                                     result.snapshots_saved += 1
 
-                                if isinstance(exchange_quotes, list):
+                                if (
+                                    write_policy.persist_current_snapshots
+                                    and isinstance(exchange_quotes, list)
+                                ):
                                     for quote in exchange_quotes:
                                         if not isinstance(quote, dict):
                                             continue
@@ -414,10 +480,13 @@ class MarketRepository:
                                             )
                                         )
                                         result.snapshots_saved += 1
-                                elif current_odds is not None:
+                                elif (
+                                    write_policy.persist_current_snapshots
+                                    and effective_current_odds is not None
+                                ):
                                     session.add(
                                         MarketChoiceSnapshot(
-                                            odds_value=current_odds,
+                                            odds_value=effective_current_odds,
                                             exchange_side=None,
                                             exchange_level=None,
                                             exchange_size=None,
@@ -438,12 +507,14 @@ class MarketRepository:
                 session.commit()
                 if source:
                     operation_logger.info(
-                        "Saved %s markets, %s choices and %s snapshots for event %s (source=%s)",
+                        "Saved %s markets, %s choices and %s snapshots for event %s "
+                        "(source=%s policy=%s)",
                         result.markets_saved,
                         result.choices_saved,
                         result.snapshots_saved,
                         event_id,
                         source,
+                        write_policy.name,
                     )
                 else:
                     operation_logger.info(
@@ -474,6 +545,7 @@ class MarketRepository:
         short session/transaction and preloads existing markets plus choices,
         avoiding a session and SELECT pair for every scraped market.
         """
+        write_policy = market_write_policy_for_source(source)
         batches = [batch for batch in bookmaker_batches or [] if batch.get("markets")]
         if not batches:
             return MarketSaveResult()
@@ -543,6 +615,31 @@ class MarketRepository:
             for batch in batches:
                 bookie_id = int(batch["bookie_id"])
                 for market_data in batch.get("markets") or []:
+                    eligible_choices = []
+                    seen_choice_names = set()
+                    for choice_data in market_data.get("choices") or []:
+                        choice_name = MarketRepository._normalize_string_or_none(
+                            choice_data.get("name")
+                        )
+                        if not choice_name or choice_name in seen_choice_names:
+                            continue
+                        seen_choice_names.add(choice_name)
+                        if (
+                            write_policy.require_initial_odds
+                            and MarketRepository._choice_odds_value(
+                                choice_data,
+                                "initialFractionalValue",
+                                "initialDecimalValue",
+                                "initialOdds",
+                                "initial_odds",
+                            )
+                            is None
+                        ):
+                            continue
+                        eligible_choices.append(choice_data)
+                    if not eligible_choices:
+                        continue
+
                     market_name = MarketRepository._normalize_market_name(
                         market_data.get("marketName")
                     )
@@ -593,25 +690,21 @@ class MarketRepository:
                         market.choice_group = choice_group
                         market.collected_at = collected_at
                     market_index[identity] = market
-                    prepared_markets.append((market, market_data))
+                    prepared_markets.append((market, eligible_choices))
                     result.markets_saved += 1
 
             # Assign IDs to all new markets in one flush.
             session.flush()
             prepared_choices = []
-            for market, market_data in prepared_markets:
+            for market, eligible_choices in prepared_markets:
                 existing_choices = {
                     choice.choice_name: choice
                     for choice in market.choices
                 }
-                seen_choice_names = set()
-                for choice_data in market_data.get("choices") or []:
+                for choice_data in eligible_choices:
                     choice_name = MarketRepository._normalize_string_or_none(
                         choice_data.get("name")
                     )
-                    if not choice_name or choice_name in seen_choice_names:
-                        continue
-                    seen_choice_names.add(choice_name)
                     initial_odds = MarketRepository._choice_odds_value(
                         choice_data,
                         "initialFractionalValue",
@@ -628,15 +721,32 @@ class MarketRepository:
                         "odds",
                     )
                     choice = existing_choices.get(choice_name)
-                    effective_initial = (
-                        choice.initial_odds
-                        if choice is not None and choice.initial_odds is not None
-                        else initial_odds
+                    if (
+                        write_policy.overwrite_initial_odds
+                        and initial_odds is not None
+                    ):
+                        effective_initial = initial_odds
+                    elif choice is not None and choice.initial_odds is not None:
+                        effective_initial = choice.initial_odds
+                    else:
+                        effective_initial = initial_odds
+                    effective_current = (
+                        current_odds
+                        if write_policy.persist_current_odds
+                        else (
+                            choice.current_odds
+                            if choice is not None
+                            else None
+                        )
                     )
                     change = MarketRepository._choice_change(
-                        explicit_change=choice_data.get("change"),
+                        explicit_change=(
+                            choice_data.get("change")
+                            if write_policy.persist_current_odds
+                            else None
+                        ),
                         initial_odds=effective_initial,
-                        current_odds=current_odds,
+                        current_odds=effective_current,
                     )
                     initial_was_set = False
                     if choice is None:
@@ -644,22 +754,44 @@ class MarketRepository:
                             market_id=market.market_id,
                             choice_name=choice_name,
                             initial_odds=initial_odds,
-                            current_odds=current_odds,
+                            current_odds=effective_current,
                             change=change if change is not None else 0,
                         )
                         session.add(choice)
                         existing_choices[choice_name] = choice
                         initial_was_set = initial_odds is not None
                     else:
-                        if current_odds is not None:
+                        if (
+                            write_policy.persist_current_odds
+                            and current_odds is not None
+                        ):
                             choice.current_odds = current_odds
                         if change is not None:
                             choice.change = change
-                        if choice.initial_odds is None and initial_odds is not None:
+                        if (
+                            write_policy.overwrite_initial_odds
+                            and initial_odds is not None
+                        ):
+                            existing_initial = MarketRepository._numeric_or_none(
+                                choice.initial_odds
+                            )
+                            incoming_initial = MarketRepository._numeric_or_none(
+                                initial_odds
+                            )
+                            if existing_initial != incoming_initial:
+                                choice.initial_odds = initial_odds
+                                initial_was_set = True
+                        elif choice.initial_odds is None and initial_odds is not None:
                             choice.initial_odds = initial_odds
                             initial_was_set = True
                     prepared_choices.append(
-                        (choice, choice_data, current_odds, initial_odds, initial_was_set)
+                        (
+                            choice,
+                            choice_data,
+                            effective_current,
+                            initial_odds,
+                            initial_was_set,
+                        )
                     )
                     result.choices_saved += 1
 
@@ -669,7 +801,12 @@ class MarketRepository:
                 initial_source_collected_at = MarketRepository._parse_source_datetime(
                     choice_data.get("initialChangedAt")
                 )
-                if initial_was_set and initial_odds is not None and initial_source_collected_at:
+                if (
+                    write_policy.persist_opening_snapshots
+                    and initial_was_set
+                    and initial_odds is not None
+                    and initial_source_collected_at
+                ):
                     session.add(
                         MarketChoiceSnapshot(
                             choice_id=choice.choice_id,
@@ -680,7 +817,10 @@ class MarketRepository:
                         )
                     )
                     result.snapshots_saved += 1
-                if current_odds is not None:
+                if (
+                    write_policy.persist_current_snapshots
+                    and current_odds is not None
+                ):
                     session.add(
                         MarketChoiceSnapshot(
                             choice_id=choice.choice_id,
@@ -695,12 +835,14 @@ class MarketRepository:
                     result.snapshots_saved += 1
 
         oddsportal_logger.info(
-            "Saved canonical event batch: event=%s bookies=%s markets=%s choices=%s snapshots=%s",
+            "Saved canonical event batch: event=%s bookies=%s markets=%s "
+            "choices=%s snapshots=%s policy=%s",
             event_id,
             len(bookie_ids),
             result.markets_saved,
             result.choices_saved,
             result.snapshots_saved,
+            write_policy.name,
         )
         return result
 

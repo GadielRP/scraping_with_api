@@ -1,9 +1,14 @@
+import json
+import logging
 from types import SimpleNamespace
 
 import pytest
 import modules.oddspapi.client as oddspapi_client_module
 
 from infrastructure.persistence.repositories import EventOddsSourceState
+from modules.alerts.alerts_formatter.odds_alert import (
+    _format_external_markets_section,
+)
 from modules.jobs.pre_start_check_job import event_candidate_builder
 from modules.jobs.pre_start_check_job import intraday_result_freshness
 from modules.jobs.pre_start_check_job import run_pre_start_check_job as pre_start_job_runner
@@ -209,7 +214,7 @@ def test_orchestrator_loads_odds_state_after_event_filtering(monkeypatch):
     monkeypatch.setattr(
         pre_start_job_runner,
         "start_oddsportal_scrape_for_events",
-        lambda *_args: SimpleNamespace(
+        lambda *_args, **_kwargs: SimpleNamespace(
             event_states={},
             event_ids=set(),
             data_cache={},
@@ -998,8 +1003,10 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
     monkeypatch.setattr(
         simulate_pre_start_check,
         "start_oddsportal_scrape_for_events",
-        lambda actual_scheduler, events, timings: (
-            calls.append(("oddsportal", actual_scheduler, events, timings))
+        lambda actual_scheduler, events, timings, **kwargs: (
+            calls.append(
+                ("oddsportal", actual_scheduler, events, timings, kwargs)
+            )
             or op_context
         ),
     )
@@ -1036,7 +1043,206 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
         "evaluation",
     ]
     assert calls[0][3] == {101: 0}
+    assert calls[0][4] == {"debug_mode": True}
     assert calls[1][2]["scheduler"] is scheduler
     assert calls[2][2] is event_plan
     assert calls[2][3] is op_context
     assert calls[2][4] == {"debug_mode": True}
+
+
+def test_oddsportal_initial_only_choices_are_not_rendered_as_fully_missing():
+    external_markets = [
+        {
+            "source": "oddsportal",
+            "bookie_name": "Betfair Exchange",
+            "choice_group": "Back",
+            "market_name": "Home/Away Full Time Including Overtime",
+            "market_group": "Home/Away",
+            "market_period": "Full Time Including Overtime",
+            "is_live": False,
+            "choices": [
+                {"name": "1", "initial": 1.89, "current": None, "movement": "="},
+                {"name": "2", "initial": 1.72, "current": None, "movement": "="},
+            ],
+        }
+    ]
+
+    message = _format_external_markets_section(external_markets)
+
+    assert "Betfair Exchange (Back): 1.89→N/A | 1.72→N/A" in message
+
+
+class _NoOpOddspapiIngestionService:
+    @staticmethod
+    def save_from_oddspapi_response(*_args, **_kwargs):
+        return SimpleNamespace(skipped=False, reason=None)
+
+
+class _OneBookmakerOddspapiIngestionService:
+    @staticmethod
+    def save_from_oddspapi_response(*_args, **_kwargs):
+        return SimpleNamespace(
+            skipped=False,
+            reason=None,
+            bookies_detected=1,
+        )
+
+
+def _raw_oddspapi_historical_payload():
+    return {
+        "fixtureId": "fixture-raw-1",
+        "bookmakers": {
+            "pinnacle": {
+                "markets": {
+                    "101": {
+                        "outcomes": {
+                            "101": {
+                                "players": {
+                                    "0": [
+                                        {
+                                            "createdAt": "2026-08-05T18:00:00Z",
+                                            "price": 1.9,
+                                            "active": True,
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+
+
+def test_debug_mode_saves_raw_oddspapi_response(tmp_path, monkeypatch):
+    raw_payload = _raw_oddspapi_historical_payload()
+    client = SimpleNamespace(
+        get_historical_odds=lambda **_kwargs: raw_payload,
+        get_odds=lambda **_kwargs: {},
+    )
+    processor = OddspapiPreStartOddsBatchProcessor(
+        fetcher=OddspapiOddsFetcher(client=client),
+        ingestion_service=_NoOpOddspapiIngestionService,
+    )
+    candidate = OddspapiPreStartCandidate(
+        event_id=156608,
+        fixture_id="fixture-raw-1",
+        minutes_until_start=-5,
+        has_odds=True,
+        source_sport_id="13",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    summary = processor.process(
+        [candidate],
+        bookmakers=["pinnacle", "bet365"],
+        endpoint="historical-odds",
+        market_mapping_index={},
+        debug_mode=True,
+    )
+
+    output_path = (
+        tmp_path
+        / "debug"
+        / "oddspapi_odds_responses"
+        / "156608_fixture-raw-1_pinnacle_bet365.json"
+    )
+    stored_payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert summary.events_ingested == 1
+    assert stored_payload == raw_payload
+    # The raw endpoint uses `bookmakers`; normalized ingestion uses
+    # `bookmakerOdds`. This prevents saving the wrong representation.
+    assert "bookmakers" in stored_payload
+
+
+def test_fetcher_does_not_retain_raw_response_when_debug_capture_is_disabled():
+    raw_payload = _raw_oddspapi_historical_payload()
+    client = SimpleNamespace(
+        get_historical_odds=lambda **_kwargs: raw_payload,
+        get_odds=lambda **_kwargs: {},
+    )
+
+    result = OddspapiOddsFetcher(client=client).fetch_odds(
+        "fixture-raw-1",
+        bookmakers=["pinnacle"],
+        endpoint="historical-odds",
+        source_sport_id="13",
+    )
+
+    assert result.raw_payload is None
+
+
+def test_oddspapi_warns_when_requested_and_detected_bookie_counts_differ(caplog):
+    raw_payload = _raw_oddspapi_historical_payload()
+    client = SimpleNamespace(
+        get_historical_odds=lambda **_kwargs: raw_payload,
+        get_odds=lambda **_kwargs: {},
+    )
+    processor = OddspapiPreStartOddsBatchProcessor(
+        fetcher=OddspapiOddsFetcher(client=client),
+        ingestion_service=_OneBookmakerOddspapiIngestionService,
+    )
+    candidate = OddspapiPreStartCandidate(
+        event_id=156608,
+        fixture_id="fixture-raw-1",
+        minutes_until_start=120,
+        has_odds=True,
+        source_sport_id="13",
+    )
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger=(
+            "modules.jobs.pre_start_check_job.providers.oddspapi."
+            "odds_batch_processor"
+        ),
+    ):
+        summary = processor.process(
+            [candidate],
+            bookmakers=["pinnacle", "bet365"],
+            endpoint="historical-odds",
+            market_mapping_index={},
+        )
+
+    assert summary.results[0].bookies_requested == 2
+    assert summary.results[0].bookies_detected == 1
+    assert "Oddspapi bookmaker count mismatch" in caplog.text
+    assert "bookies_requested=2 bookies_detected=1" in caplog.text
+
+
+def test_oddspapi_does_not_warn_when_requested_and_detected_counts_match(caplog):
+    raw_payload = _raw_oddspapi_historical_payload()
+    client = SimpleNamespace(
+        get_historical_odds=lambda **_kwargs: raw_payload,
+        get_odds=lambda **_kwargs: {},
+    )
+    processor = OddspapiPreStartOddsBatchProcessor(
+        fetcher=OddspapiOddsFetcher(client=client),
+        ingestion_service=_OneBookmakerOddspapiIngestionService,
+    )
+    candidate = OddspapiPreStartCandidate(
+        event_id=156608,
+        fixture_id="fixture-raw-1",
+        minutes_until_start=120,
+        has_odds=True,
+        source_sport_id="13",
+    )
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger=(
+            "modules.jobs.pre_start_check_job.providers.oddspapi."
+            "odds_batch_processor"
+        ),
+    ):
+        summary = processor.process(
+            [candidate],
+            bookmakers=["pinnacle"],
+            endpoint="historical-odds",
+            market_mapping_index={},
+        )
+
+    assert summary.results[0].bookies_requested == 1
+    assert summary.results[0].bookies_detected == 1
+    assert "Oddspapi bookmaker count mismatch" not in caplog.text

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Mapping
 
 from modules.odds_ingestion.canonical_market_resolver import resolve_oddsportal_key
 from modules.oddsportal.oddsportal_routes import flatten_sport_scraping_route
+from modules.oddsportal.timestamps import oddsportal_tooltip_time_to_iso
 from shared.odds_utils import normalize_odds_value
 
 
@@ -17,6 +19,7 @@ class CanonicalChoicePayload:
     current_odds: str
     initial_odds: str | None = None
     initial_changed_at: str | None = None
+    source_collected_at: str | None = None
 
     def as_repository_dict(self) -> dict:
         payload = {
@@ -27,6 +30,8 @@ class CanonicalChoicePayload:
             payload["initialOdds"] = self.initial_odds
         if self.initial_changed_at:
             payload["initialChangedAt"] = self.initial_changed_at
+        if self.source_collected_at:
+            payload["sourceCollectedAt"] = self.source_collected_at
         return payload
 
 
@@ -118,7 +123,9 @@ class OddsPortalMarketAdapter:
         family: str,
         current: Mapping[str, Any],
         initial: Mapping[str, Any],
-        initial_changed_at: str | None,
+        initial_changed_at: Mapping[str, Any],
+        source_collected_at: Mapping[str, Any],
+        reference_time: datetime,
     ) -> tuple[CanonicalChoicePayload, ...]:
         expected = cls._EXPECTED_ROLES.get(family)
         if not expected:
@@ -134,7 +141,14 @@ class OddsPortalMarketAdapter:
                     name=role,
                     current_odds=current_odds,
                     initial_odds=cls._odds(initial.get(role)),
-                    initial_changed_at=initial_changed_at,
+                    initial_changed_at=oddsportal_tooltip_time_to_iso(
+                        initial_changed_at.get(role),
+                        reference_time=reference_time,
+                    ),
+                    source_collected_at=oddsportal_tooltip_time_to_iso(
+                        source_collected_at.get(role),
+                        reference_time=reference_time,
+                    ),
                 )
             )
         return tuple(choices)
@@ -176,6 +190,7 @@ class OddsPortalMarketAdapter:
     ) -> OddsPortalOddsResponse:
         markets_by_bookie: dict[tuple[str, str], list[CanonicalMarketPayload]] = {}
         diagnostics: list[dict] = []
+        reference_time = datetime.now()
 
         for extraction in cls._extractions(odds_data):
             canonical_key, reason = resolve_oddsportal_key(
@@ -222,7 +237,17 @@ class OddsPortalMarketAdapter:
                         "x": getattr(source_bookie, "initial_odds_x", None),
                         role_2: getattr(source_bookie, "initial_odds_2", None),
                     },
-                    initial_changed_at=getattr(source_bookie, "movement_odds_time", None),
+                    initial_changed_at={
+                        role_1: getattr(source_bookie, "initial_odds_1_time", None),
+                        "x": getattr(source_bookie, "initial_odds_x_time", None),
+                        role_2: getattr(source_bookie, "initial_odds_2_time", None),
+                    },
+                    source_collected_at={
+                        role_1: getattr(source_bookie, "odds_1_time", None),
+                        "x": getattr(source_bookie, "odds_x_time", None),
+                        role_2: getattr(source_bookie, "odds_2_time", None),
+                    },
+                    reference_time=reference_time,
                 )
                 if not choices:
                     diagnostics.append(
@@ -273,7 +298,17 @@ class OddsPortalMarketAdapter:
                         "x": getattr(betfair, f"initial_{side}_x", None),
                         role_2: getattr(betfair, f"initial_{side}_2", None),
                     },
-                    initial_changed_at=getattr(betfair, "movement_odds_time", None),
+                    initial_changed_at={
+                        role_1: getattr(betfair, f"initial_{side}_1_time", None),
+                        "x": getattr(betfair, f"initial_{side}_x_time", None),
+                        role_2: getattr(betfair, f"initial_{side}_2_time", None),
+                    },
+                    source_collected_at={
+                        role_1: getattr(betfair, f"{side}_1_time", None),
+                        "x": getattr(betfair, f"{side}_x_time", None),
+                        role_2: getattr(betfair, f"{side}_2_time", None),
+                    },
+                    reference_time=reference_time,
                 )
                 if not choices:
                     continue

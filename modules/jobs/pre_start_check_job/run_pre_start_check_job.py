@@ -256,6 +256,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
                 scheduler,
                 upcoming_events,
                 timings,
+                debug_mode=global_debug_mode,
             )
         )
 
