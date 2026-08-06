@@ -106,6 +106,7 @@ def extract_odds_markets(
         for market_id, market_data in markets.items():
             outcomes_raw = (market_data or {}).get("outcomes") or {}
             outcomes: dict[str, Any] = {}
+            market_is_mainline = False
 
             for outcome_id, outcome_data in outcomes_raw.items():
                 players = (outcome_data or {}).get("players") or {}
@@ -124,6 +125,8 @@ def extract_odds_markets(
                     name = player.get("playerName")
                     if name:
                         player_names.append(name)
+                    if player.get("mainLine") is True:
+                        market_is_mainline = True
 
                 outcomes[str(outcome_id)] = {
                     "prices": prices,
@@ -134,6 +137,7 @@ def extract_odds_markets(
             parsed_markets[str(market_id)] = {
                 "market_active": (market_data or {}).get("marketActive"),
                 "outcomes": outcomes,
+                "is_mainline": market_is_mainline,
             }
 
         if parsed_markets:
@@ -194,6 +198,7 @@ def enrich_with_catalog(
                     "market_active": market_data["market_active"],
                     "matched": catalog_market is not None,
                     "outcomes": resolved_outcomes,
+                    "is_mainline": market_data.get("is_mainline", False),
                 }
             )
 
@@ -320,6 +325,59 @@ def build_summary(all_rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def build_mainline_summary(all_rows: list[dict[str, Any]]) -> str:
+    by_bookmaker_markets: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for row in all_rows:
+        if row.get("is_mainline"):
+            bm = row["bookmaker"]
+            mid = row["market_id"]
+            by_bookmaker_markets[bm][mid] = row
+
+    lines = [
+        "",
+        "=" * 80,
+        "MAINLINE MARKETS (unique market IDs across all files)",
+        "=" * 80,
+    ]
+
+    for bm in sorted(by_bookmaker_markets.keys()):
+        bm_markets = by_bookmaker_markets[bm]
+        
+        by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        unmatched_ids: list[str] = []
+        for market_id, row in sorted(
+            bm_markets.items(),
+            key=lambda item: int(item[0]) if item[0].isdigit() else item[0],
+        ):
+            if row["matched"]:
+                label = row["market_name"] or "<unnamed>"
+                by_name[label].append(row)
+            else:
+                unmatched_ids.append(market_id)
+
+        lines.append("")
+        lines.append(f"[{bm}] {len(bm_markets)} mainline markets | unmatched IDs: {len(unmatched_ids)}")
+        lines.append("-" * 80)
+
+        for name, rows_for_name in sorted(by_name.items(), key=lambda item: item[0].lower()):
+            lines.append(f"  {name}")
+            id_strs = []
+            for r in rows_for_name:
+                hc = r.get("handicap")
+                if hc not in (None, 0):
+                    id_strs.append(f"{r['market_id']} (handicap={hc})")
+                else:
+                    id_strs.append(r['market_id'])
+            lines.append(f"    marketIds: {', '.join(id_strs)}")
+
+        if unmatched_ids:
+            lines.append("")
+            lines.append("  Unmatched market IDs:")
+            lines.append(f"    {', '.join(unmatched_ids)}")
+
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -381,6 +439,11 @@ def main() -> int:
         "--summary-only",
         action="store_true",
         help="Only print the unique-markets summary across files",
+    )
+    parser.add_argument(
+        "--mainline",
+        action="store_true",
+        help="Include a section with mainline markets by market name in the text report",
     )
 
     args = parser.parse_args()
@@ -453,6 +516,8 @@ def main() -> int:
         if reports:
             print("\n\n".join(reports))
         print(build_summary(all_rows))
+        if args.mainline:
+            print(build_mainline_summary(all_rows))
 
     return 0
 

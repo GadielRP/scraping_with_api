@@ -352,6 +352,8 @@ class OddspapiPreStartOddsBatchProcessor:
         endpoint: str,
     ) -> None:
         """Report providers requested from OddsPAPI but absent after ingestion."""
+        if result.skipped or result.error is not None:
+            return
 
         if result.bookies_detected == result.bookies_requested:
             return
