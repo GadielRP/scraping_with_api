@@ -121,6 +121,12 @@ def run_oddspapi_fixture_discovery(args):
         persist_queue=bool(args.persist_queue and args.commit and not args.dry_run),
         max_fixtures_per_sport=args.max_fixtures_per_sport,
     )
+    if summary is None:
+        logger.info(
+            "Oddspapi fixture discovery skipped because the target UTC day "
+            "already has a successful or currently running durable run"
+        )
+        return
     if args.log_json:
         print(json.dumps(summary.to_dict(), default=lambda value: value.isoformat()))
     else:

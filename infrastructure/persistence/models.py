@@ -23,7 +23,6 @@ class Participant(Base):
 
     __table_args__ = (
         UniqueConstraint('source', 'source_participant_id', name='unique_participant_source_external_id'),
-        Index('idx_participants_source_external_id', 'source', 'source_participant_id'),
         Index('idx_participants_name', 'name'),
     )
 
@@ -123,6 +122,22 @@ class EventSourceMapping(Base):
     source_sport_id = Column(Text)
     source_tournament_id = Column(Text)
     source_season_id = Column(Text)
+    participant_home_id = Column(
+        Integer,
+        ForeignKey(
+            'participants.participant_id',
+            ondelete='SET NULL',
+            name='fk_event_source_mappings_participant_home_id',
+        ),
+    )
+    participant_away_id = Column(
+        Integer,
+        ForeignKey(
+            'participants.participant_id',
+            ondelete='SET NULL',
+            name='fk_event_source_mappings_participant_away_id',
+        ),
+    )
     has_odds = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     match_method = Column(Text, nullable=False, default='direct')
     confidence = Column(Numeric(5, 3))
@@ -131,12 +146,15 @@ class EventSourceMapping(Base):
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
 
     event = relationship("Event", back_populates="source_mappings")
+    participant_home = relationship("Participant", foreign_keys=[participant_home_id])
+    participant_away = relationship("Participant", foreign_keys=[participant_away_id])
 
     __table_args__ = (
         UniqueConstraint('source', 'source_event_id', name='unique_event_source_mapping'),
         Index('idx_event_source_mappings_event_id', 'event_id'),
-        Index('idx_event_source_mappings_source_event_id', 'source', 'source_event_id'),
         Index('idx_event_source_mappings_source', 'source'),
+        Index('idx_event_source_mappings_participant_home_id', 'participant_home_id'),
+        Index('idx_event_source_mappings_participant_away_id', 'participant_away_id'),
     )
 
 
@@ -631,8 +649,9 @@ class OddspapiFixtureDiscoveryRun(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     target_date = Column(String(10), nullable=False)
-    scheduled_local_date = Column(String(10))
-    scheduled_time = Column(String(5))
+    sport_scope = Column(String(255), nullable=False, default='all', server_default='all')
+    scheduled_local_date = Column(String(10), nullable=False)
+    scheduled_time = Column(String(5), nullable=False)
     trigger = Column(String(20), nullable=False, default='scheduled')
     status = Column(String(20), nullable=False, default='running')
     process_id = Column(Integer)
@@ -645,12 +664,14 @@ class OddspapiFixtureDiscoveryRun(Base):
     __table_args__ = (
         UniqueConstraint(
             'target_date',
-            name='unique_oddspapi_fixture_discovery_target_date',
+            'sport_scope',
+            name='unique_oddspapi_fixture_discovery_target_scope',
         ),
         Index(
-            'idx_oddspapi_fixture_discovery_runs_status_target',
+            'idx_oddspapi_fixture_discovery_runs_status_target_scope',
             'status',
             'target_date',
+            'sport_scope',
         ),
     )
 

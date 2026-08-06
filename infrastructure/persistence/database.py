@@ -132,6 +132,15 @@ class DatabaseManager:
             self._migrate_events_to_participants_competitions()
             self._migrate_daily_discovery_log_run_slots()
             self._migrate_events_to_canonical_identity()
+            from infrastructure.persistence.repositories.event_source_mapping_repository import (
+                EventSourceMappingRepository,
+            )
+            from infrastructure.persistence.repositories.oddspapi_fixture_discovery_run_repository import (
+                OddspapiFixtureDiscoveryRunRepository,
+            )
+
+            EventSourceMappingRepository.ensure_participant_link_schema()
+            OddspapiFixtureDiscoveryRunRepository.ensure_run_scope_schema()
             
             # Re-create inspector after manual migrations may have changed schema
             inspector = inspect(self.engine)

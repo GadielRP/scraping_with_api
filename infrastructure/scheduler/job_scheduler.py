@@ -23,6 +23,7 @@ from modules.jobs.daily_discovery import run_daily_discovery_job, run_daily_disc
 from modules.jobs.discover_dropping_odds import run_discover_dropping_odds
 from modules.jobs.discover_secondary_sources import run_discover_secondary_sources
 from modules.jobs.midnight_sync_job import run_midnight_sync_job
+from modules.jobs.oddspapi.fixture_discovery.constants import DISCOVERY_SPORT_IDS
 from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import run_fixture_discovery_job
 from modules.jobs.pre_start_check_job.run_pre_start_check_job import run_pre_start_check_job
 from modules.jobs.results_collection_job import (
@@ -79,7 +80,11 @@ class JobScheduler:
             ["17:47"],
         )
         for time_str in oddspapi_fixture_discovery_times:
-            schedule.every().day.at(time_str).do(self.job_oddspapi_fixture_discovery)
+            schedule.every().day.at(time_str).do(
+                self.job_oddspapi_fixture_discovery,
+                _trigger="scheduled",
+                _scheduled_time=time_str,
+            )
 
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
@@ -267,11 +272,19 @@ class JobScheduler:
         trigger = kwargs.pop("_trigger", "scheduled")
         scheduled_local_date = kwargs.pop("_scheduled_local_date", None)
         scheduled_time = kwargs.pop("_scheduled_time", None)
+        create_mappings = bool(kwargs.get("create_mappings", True))
+        local_now = get_local_now()
+        scheduled_local_date = scheduled_local_date or local_now.strftime("%Y-%m-%d")
+        scheduled_time = scheduled_time or local_now.strftime("%H:%M")
+        sport_scope = OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
+            kwargs.get("sports") or DISCOVERY_SPORT_IDS
+        )
 
-        # If target_date is not explicitly passed, compute it dynamically.
+        # If target_date is not explicitly passed (or is forwarded as None by
+        # the CLI), compute it dynamically.
         # Since this job runs late in the MX evening (23:45 UTC), we target the upcoming UTC day
         # (tomorrow UTC) to avoid trying to resolve matches that have already started.
-        if "target_date" not in kwargs:
+        if kwargs.get("target_date") is None:
             utc_now = datetime.now(timezone.utc)
             # If running after 12:00 UTC, target tomorrow's UTC calendar day
             if utc_now.hour >= 12:
@@ -282,41 +295,53 @@ class JobScheduler:
 
         target_date_str = kwargs.get("target_date")
         tracked_run = False
-        try:
-            tracked_run = OddspapiFixtureDiscoveryRunRepository.begin(
-                target_date_str,
-                trigger=trigger,
-                scheduled_local_date=scheduled_local_date,
-                scheduled_time=scheduled_time,
-            )
-            if not tracked_run:
-                logger.info(
-                    "Skipping Oddspapi fixture discovery for UTC day %s: "
-                    "a successful or currently running durable run already exists",
+        if create_mappings:
+            try:
+                tracked_run = OddspapiFixtureDiscoveryRunRepository.begin(
                     target_date_str,
+                    trigger=trigger,
+                    sport_scope=sport_scope,
+                    create_mappings=create_mappings,
+                    scheduled_local_date=scheduled_local_date,
+                    scheduled_time=scheduled_time,
                 )
-                return None
-        except Exception as exc:
-            # Discovery is more important than observability. Run fail-open if
-            # the marker cannot be written, while making the durability loss loud.
-            logger.exception(
-                "Could not claim durable Oddspapi fixture-discovery run for %s; "
-                "continuing without a marker: %s",
+                if not tracked_run:
+                    logger.info(
+                        "Skipping Oddspapi fixture discovery for UTC day %s "
+                        "sport_scope=%s: "
+                        "a successful or currently running durable run already exists",
+                        target_date_str,
+                        sport_scope,
+                    )
+                    return None
+            except Exception as exc:
+                # Discovery is more important than observability. Run fail-open if
+                # the marker cannot be written, while making the durability loss loud.
+                logger.exception(
+                    "Could not claim durable Oddspapi fixture-discovery run for %s; "
+                    "continuing without a marker: %s",
+                    target_date_str,
+                    exc,
+                )
+        else:
+            logger.info(
+                "Running Oddspapi fixture discovery for UTC day %s without a "
+                "durable success marker because create_mappings=False",
                 target_date_str,
-                exc,
             )
 
         logger.info(
-            "Starting Oddspapi fixture discovery for UTC day: %s trigger=%s "
+            "Starting Oddspapi fixture discovery for UTC day: %s sport_scope=%s trigger=%s "
             "scheduled_local_date=%s scheduled_time=%s",
             target_date_str,
+            sport_scope,
             trigger,
             scheduled_local_date,
             scheduled_time,
         )
         try:
             with observe_operation(
-                f"oddspapi_fixture_discovery:{target_date_str}:{trigger}"
+                f"oddspapi_fixture_discovery:{target_date_str}:{sport_scope}:{trigger}"
             ):
                 summary = run_fixture_discovery_job(**kwargs)
             errors = sum(sport.errors for sport in summary.sports)
@@ -336,11 +361,13 @@ class JobScheduler:
                 OddspapiFixtureDiscoveryRunRepository.finish_success(
                     target_date_str,
                     summary_payload,
+                    sport_scope=sport_scope,
                 )
             elif tracked_run:
                 OddspapiFixtureDiscoveryRunRepository.finish_failed(
                     target_date_str,
                     f"Discovery completed with {errors} sport error(s)",
+                    sport_scope=sport_scope,
                 )
                 logger.warning(
                     "Oddspapi fixture discovery target %s was not marked successful "
@@ -360,6 +387,7 @@ class JobScheduler:
                     OddspapiFixtureDiscoveryRunRepository.finish_failed(
                         target_date_str,
                         repr(exc),
+                        sport_scope=sport_scope,
                     )
                 except Exception:
                     logger.exception(
@@ -469,7 +497,12 @@ class JobScheduler:
 
         for occurrence, configured_time, target_date in self._missed_fixture_discovery_slots():
             try:
-                if OddspapiFixtureDiscoveryRunRepository.has_success(target_date):
+                if OddspapiFixtureDiscoveryRunRepository.has_success(
+                    target_date,
+                    sport_scope=OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
+                        DISCOVERY_SPORT_IDS
+                    ),
+                ):
                     continue
             except Exception:
                 logger.exception(
@@ -554,6 +587,10 @@ class JobScheduler:
 
     def run_job_oddspapi_fixture_discovery_now(self, **kwargs):
         logger.info("Running Oddspapi fixture discovery immediately")
+        local_now = get_local_now()
+        kwargs.setdefault("_trigger", "manual")
+        kwargs.setdefault("_scheduled_local_date", local_now.strftime("%Y-%m-%d"))
+        kwargs.setdefault("_scheduled_time", local_now.strftime("%H:%M"))
         return self.job_oddspapi_fixture_discovery(**kwargs)
 
     def get_scheduled_jobs(self) -> List[Dict]:

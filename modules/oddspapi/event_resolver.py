@@ -15,6 +15,11 @@ from infrastructure.persistence.repositories.event_source_resolution_queue_repos
 
 from .event_candidate_matcher import MatchDecision, OddspapiEventCandidateMatcher
 from .fixture_normalizer import OddspapiFixtureIdentity
+from .format_utils import normalize_source_id
+from .fixture_persistence import (
+    ResolvedFixtureWrite,
+    persist_resolved_fixtures,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,26 +50,29 @@ class OddspapiEventResolution:
 
 
 class OddspapiEventResolver:
-    SECONDARY_PROVIDER_SOURCES = {
-        "pinnacleId": "pinnacle",
-        "betradarId": "betradar",
-        "flashscoreId": "flashscore",
-        "opticoddsId": "opticodds",
-        "lsportsId": "lsports",
-        "mollybetId": "mollybet",
-        "txoddsId": "txodds",
-        "betgeniusId": "betgenius",
-        "oddinId": "oddin",
-    }
-
     _candidate_matcher = OddspapiEventCandidateMatcher()
 
-    @staticmethod
-    def _external_id(value) -> str | None:
-        if value is None:
-            return None
-        normalized = str(value).strip()
-        return normalized or None
+    @classmethod
+    def _persist_oddspapi_mapping(
+        cls,
+        *,
+        canonical_event_id: int,
+        fixture: OddspapiFixtureIdentity,
+        match_method: str | None,
+        confidence: float | None,
+        session,
+    ) -> None:
+        persist_resolved_fixtures(
+            session,
+            [
+                ResolvedFixtureWrite(
+                    fixture=fixture,
+                    canonical_event_id=canonical_event_id,
+                    match_method=match_method,
+                    confidence=confidence,
+                )
+            ],
+        )
 
     @staticmethod
     def _fixture_summary(fixture: OddspapiFixtureIdentity) -> str:
@@ -131,37 +139,19 @@ class OddspapiEventResolver:
         fixture: OddspapiFixtureIdentity,
         session,
     ) -> list[str]:
-        created_mappings: list[str] = []
-        EventSourceMappingRepository.upsert_mapping(
-            event_id=canonical_event_id,
-            source="oddspapi",
-            source_event_id=fixture.fixture_id,
-            source_sport_id=fixture.sport_id,
-            source_tournament_id=fixture.tournament_id,
-            source_season_id=fixture.season_id,
-            match_method="external_provider_sofascore_id",
-            confidence=1.0,
-            raw_external_providers=fixture.external_providers,
-            session=session,
+        persisted = persist_resolved_fixtures(
+            session,
+            [
+                ResolvedFixtureWrite(
+                    fixture=fixture,
+                    canonical_event_id=canonical_event_id,
+                    match_method="external_provider_sofascore_id",
+                    confidence=1.0,
+                    include_secondary_mappings=True,
+                )
+            ],
         )
-        created_mappings.append("oddspapi")
-
-        for provider_key, source in cls.SECONDARY_PROVIDER_SOURCES.items():
-            provider_id = cls._external_id(fixture.external_providers.get(provider_key))
-            if provider_id is None:
-                continue
-            EventSourceMappingRepository.upsert_mapping(
-                event_id=canonical_event_id,
-                source=source,
-                source_event_id=provider_id,
-                match_method="external_provider_oddspapi_cross_reference",
-                confidence=1.0,
-                raw_external_providers=fixture.external_providers,
-                session=session,
-            )
-            created_mappings.append(source)
-
-        return created_mappings
+        return persisted.get(fixture.fixture_id, [])
 
     @classmethod
     def _resolve_via_existing_mappings(
@@ -183,6 +173,14 @@ class OddspapiEventResolver:
                 fixture.fixture_id,
                 canonical_event_id,
             )
+            if create_mappings and (fixture.participant1_id or fixture.participant2_id):
+                cls._persist_oddspapi_mapping(
+                    canonical_event_id=canonical_event_id,
+                    fixture=fixture,
+                    match_method=None,
+                    confidence=None,
+                    session=session,
+                )
             if create_mappings and persist_queue:
                 EventSourceResolutionQueueRepository.clear_resolved(
                     "oddspapi",
@@ -200,7 +198,7 @@ class OddspapiEventResolver:
             )
 
         external_providers = fixture.external_providers if isinstance(fixture.external_providers, dict) else {}
-        sofascore_id = cls._external_id(external_providers.get("sofascoreId"))
+        sofascore_id = normalize_source_id(external_providers.get("sofascoreId"))
 
         if sofascore_id is not None:
             logger.info(
@@ -309,7 +307,7 @@ class OddspapiEventResolver:
         create_mappings: bool = True,
         persist_queue: bool = True,
     ) -> OddspapiEventResolution:
-        """Resolve one fixture while retaining the legacy session-owning API."""
+        """Resolve one fixture through a convenience API that owns its session."""
         try:
             fixture = OddspapiFixtureIdentity.from_payload(
                 fixture_response if isinstance(fixture_response, dict) else {},
@@ -364,6 +362,14 @@ class OddspapiEventResolver:
         else:
             canonical_event_id = (existing_oddspapi or {}).get(fixture.fixture_id)
             if canonical_event_id is not None:
+                if create_mappings and (fixture.participant1_id or fixture.participant2_id):
+                    cls._persist_oddspapi_mapping(
+                        canonical_event_id=canonical_event_id,
+                        fixture=fixture,
+                        match_method=None,
+                        confidence=None,
+                        session=session,
+                    )
                 direct_resolution = cls._build_resolution(
                     fixture_id=fixture.fixture_id,
                     resolved=True,
@@ -373,7 +379,7 @@ class OddspapiEventResolver:
                     layer1_resolved=True,
                 )
             else:
-                sofascore_id = cls._external_id(fixture.external_providers.get("sofascoreId"))
+                sofascore_id = normalize_source_id(fixture.external_providers.get("sofascoreId"))
                 canonical_event_id = (existing_sofascore or {}).get(sofascore_id) if sofascore_id else None
                 direct_resolution = None
                 if canonical_event_id is not None:
@@ -433,16 +439,11 @@ class OddspapiEventResolver:
             )
             created_mappings = []
             if create_mappings:
-                EventSourceMappingRepository.upsert_mapping(
-                    event_id=decision.canonical_event_id,
-                    source="oddspapi",
-                    source_event_id=fixture.fixture_id,
-                    source_sport_id=fixture.sport_id,
-                    source_tournament_id=fixture.tournament_id,
-                    source_season_id=fixture.season_id,
+                cls._persist_oddspapi_mapping(
+                    canonical_event_id=decision.canonical_event_id,
+                    fixture=fixture,
                     match_method="deterministic_candidate_match",
                     confidence=decision.confidence,
-                    raw_external_providers=fixture.external_providers,
                     session=session,
                 )
                 created_mappings.append("oddspapi")

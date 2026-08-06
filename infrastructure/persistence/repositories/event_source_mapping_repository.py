@@ -1,7 +1,9 @@
 import logging
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Iterable, List, Optional
 
+from sqlalchemy import inspect, text, tuple_
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.database import db_manager
@@ -23,6 +25,103 @@ class EventOddsSourceState:
 
 class EventSourceMappingRepository:
     """Repository for canonical event to external source ID mappings."""
+
+    PARTICIPANT_LINK_COLUMNS = ("participant_home_id", "participant_away_id")
+    PARTICIPANT_LINK_FOREIGN_KEYS = (
+        (
+            "fk_event_source_mappings_participant_home_id",
+            ("participant_home_id",),
+            "ALTER TABLE event_source_mappings ADD CONSTRAINT "
+            "fk_event_source_mappings_participant_home_id "
+            "FOREIGN KEY (participant_home_id) "
+            "REFERENCES participants(participant_id) ON DELETE SET NULL",
+        ),
+        (
+            "fk_event_source_mappings_participant_away_id",
+            ("participant_away_id",),
+            "ALTER TABLE event_source_mappings ADD CONSTRAINT "
+            "fk_event_source_mappings_participant_away_id "
+            "FOREIGN KEY (participant_away_id) "
+            "REFERENCES participants(participant_id) ON DELETE SET NULL",
+        ),
+    )
+    PARTICIPANT_LINK_INDEXES = (
+        "CREATE INDEX IF NOT EXISTS "
+        "idx_event_source_mappings_participant_home_id "
+        "ON event_source_mappings (participant_home_id)",
+        "CREATE INDEX IF NOT EXISTS "
+        "idx_event_source_mappings_participant_away_id "
+        "ON event_source_mappings (participant_away_id)",
+    )
+
+    @staticmethod
+    def ensure_participant_link_schema() -> None:
+        """Ensure participant foreign keys and indexes exist on source mappings."""
+        try:
+            inspector = inspect(db_manager.engine)
+            if "event_source_mappings" not in set(inspector.get_table_names()):
+                return
+
+            EventSourceMappingRepository._ensure_participant_link_columns(inspector)
+            inspector = inspect(db_manager.engine)
+            EventSourceMappingRepository._ensure_participant_link_foreign_keys(inspector)
+            EventSourceMappingRepository._ensure_participant_link_indexes()
+            logger.info("Event source mapping participant schema is ready")
+        except Exception:
+            logger.exception("Event source mapping participant schema migration failed")
+
+    @staticmethod
+    def _ensure_participant_link_columns(inspector) -> None:
+        existing_columns = {
+            column["name"]
+            for column in inspector.get_columns("event_source_mappings")
+        }
+        with db_manager.get_session() as session:
+            for column_name in EventSourceMappingRepository.PARTICIPANT_LINK_COLUMNS:
+                if column_name in existing_columns:
+                    continue
+                session.execute(
+                    text(
+                        "ALTER TABLE event_source_mappings "
+                        f"ADD COLUMN {column_name} INTEGER"
+                    )
+                )
+                logger.info("Added event_source_mappings.%s", column_name)
+            session.commit()
+
+    @staticmethod
+    def _ensure_participant_link_foreign_keys(inspector) -> None:
+        if db_manager.engine.dialect.name != "postgresql":
+            return
+
+        existing_fk_columns = {
+            tuple(constraint.get("constrained_columns") or [])
+            for constraint in inspector.get_foreign_keys("event_source_mappings")
+        }
+        with db_manager.get_session() as session:
+            for constraint_name, constrained_columns, statement in (
+                EventSourceMappingRepository.PARTICIPANT_LINK_FOREIGN_KEYS
+            ):
+                if constrained_columns in existing_fk_columns:
+                    continue
+                try:
+                    with session.begin_nested():
+                        session.execute(text(statement))
+                    logger.info("Added FK constraint %s", constraint_name)
+                except Exception as exc:
+                    logger.debug(
+                        "FK constraint %s may already exist or be equivalent: %s",
+                        constraint_name,
+                        exc,
+                    )
+            session.commit()
+
+    @staticmethod
+    def _ensure_participant_link_indexes() -> None:
+        with db_manager.get_session() as session:
+            for statement in EventSourceMappingRepository.PARTICIPANT_LINK_INDEXES:
+                session.execute(text(statement))
+            session.commit()
 
     @staticmethod
     def _normalize_source(source: str) -> str:
@@ -346,94 +445,231 @@ class EventSourceMappingRepository:
         source_sport_id: Optional[str] = None,
         source_tournament_id: Optional[str] = None,
         source_season_id: Optional[str] = None,
-        match_method: str = "direct",
+        participant_home_id: Optional[int] = None,
+        participant_away_id: Optional[int] = None,
+        match_method: Optional[str] = "direct",
         confidence: Optional[float] = None,
         raw_external_providers: Optional[dict] = None,
     ) -> EventSourceMapping:
-        normalized_source = EventSourceMappingRepository._normalize_source(source)
-        normalized_source_event_id = EventSourceMappingRepository._normalize_source_event_id(source_event_id)
+        key = (
+            EventSourceMappingRepository._normalize_source(source),
+            EventSourceMappingRepository._normalize_source_event_id(source_event_id),
+        )
+        return EventSourceMappingRepository.upsert_mappings(
+            session=session,
+            mappings_data=[
+                {
+                    "event_id": event_id,
+                    "source": source,
+                    "source_event_id": source_event_id,
+                    "source_sport_id": source_sport_id,
+                    "source_tournament_id": source_tournament_id,
+                    "source_season_id": source_season_id,
+                    "participant_home_id": participant_home_id,
+                    "participant_away_id": participant_away_id,
+                    "match_method": match_method,
+                    "confidence": confidence,
+                    "raw_external_providers": raw_external_providers,
+                }
+            ],
+        )[key]
 
-        if not normalized_source:
+    @staticmethod
+    def _normalize_mapping_data(mapping_data: dict) -> tuple[tuple[str, str], dict]:
+        source = EventSourceMappingRepository._normalize_source(mapping_data.get("source"))
+        source_event_id = EventSourceMappingRepository._normalize_source_event_id(
+            mapping_data.get("source_event_id")
+        )
+        if not source:
             raise ValueError("source is required for EventSourceMappingRepository.upsert_mapping")
-        if not normalized_source_event_id:
+        if not source_event_id:
             raise ValueError("source_event_id is required for EventSourceMappingRepository.upsert_mapping")
 
-        event_exists = session.query(Event.id).filter(Event.id == event_id).first()
-        if not event_exists:
-            raise ValueError(f"Cannot create mapping for missing event_id={event_id}")
+        try:
+            event_id = int(mapping_data.get("event_id"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("event_id is required for EventSourceMappingRepository.upsert_mapping") from exc
 
-        mapping = (
-            session.query(EventSourceMapping)
-            .filter(
-                EventSourceMapping.source == normalized_source,
-                EventSourceMapping.source_event_id == normalized_source_event_id,
-            )
-            .first()
-        )
+        confidence = mapping_data.get("confidence")
+        if confidence is not None:
+            try:
+                confidence = Decimal(str(confidence))
+            except InvalidOperation as exc:
+                raise ValueError(f"Invalid mapping confidence={confidence}") from exc
 
-        if mapping:
-            if mapping.event_id != event_id:
+        normalized = {
+            "event_id": event_id,
+            "source": source,
+            "source_event_id": source_event_id,
+            "source_sport_id": EventSourceMappingRepository._normalize_optional_text(
+                mapping_data.get("source_sport_id")
+            ),
+            "source_tournament_id": EventSourceMappingRepository._normalize_optional_text(
+                mapping_data.get("source_tournament_id")
+            ),
+            "source_season_id": EventSourceMappingRepository._normalize_optional_text(
+                mapping_data.get("source_season_id")
+            ),
+            "participant_home_id": mapping_data.get("participant_home_id"),
+            "participant_away_id": mapping_data.get("participant_away_id"),
+            "match_method": mapping_data.get("match_method"),
+            "confidence": confidence,
+            "raw_external_providers": mapping_data.get("raw_external_providers"),
+        }
+        return (source, source_event_id), normalized
+
+    @staticmethod
+    def _apply_mapping_updates(mapping: EventSourceMapping, mapping_data: dict) -> bool:
+        changed = False
+        for attr in (
+            "source_sport_id",
+            "source_tournament_id",
+            "source_season_id",
+            "participant_home_id",
+            "participant_away_id",
+            "match_method",
+            "confidence",
+            "raw_external_providers",
+        ):
+            value = mapping_data.get(attr)
+            if value is not None and getattr(mapping, attr) != value:
+                setattr(mapping, attr, value)
+                changed = True
+        if changed:
+            mapping.updated_at = get_local_now()
+        return changed
+
+    @staticmethod
+    def upsert_mappings(
+        session: Session,
+        mappings_data: Iterable[dict],
+    ) -> dict[tuple[str, str], EventSourceMapping]:
+        """Insert or update source mappings with two preload queries per batch."""
+        normalized_by_key: dict[tuple[str, str], dict] = {}
+        for mapping_data in mappings_data or ():
+            key, normalized = EventSourceMappingRepository._normalize_mapping_data(mapping_data)
+            previous = normalized_by_key.get(key)
+            if previous is not None and previous["event_id"] != normalized["event_id"]:
                 logger.warning(
-                    "Existing mapping for source=%s source_event_id=%s points to event_id=%s; requested event_id=%s. Keeping existing canonical event.",
-                    normalized_source,
-                    normalized_source_event_id,
-                    mapping.event_id,
-                    event_id,
+                    "Batch contains conflicting canonical events for source=%s source_event_id=%s; "
+                    "keeping event_id=%s and ignoring event_id=%s",
+                    key[0],
+                    key[1],
+                    previous["event_id"],
+                    normalized["event_id"],
                 )
+                continue
+            normalized_by_key[key] = normalized
 
-            if source_sport_id is not None:
-                mapping.source_sport_id = str(source_sport_id).strip() or None
-            if source_tournament_id is not None:
-                mapping.source_tournament_id = str(source_tournament_id).strip() or None
-            if source_season_id is not None:
-                mapping.source_season_id = str(source_season_id).strip() or None
-            if match_method is not None:
-                mapping.match_method = match_method
-            if confidence is not None:
-                mapping.confidence = confidence
-            if raw_external_providers is not None:
-                mapping.raw_external_providers = raw_external_providers
+        if not normalized_by_key:
+            return {}
 
-            logger.info(
-                "Updated event source mapping source=%s source_event_id=%s -> event_id=%s",
-                normalized_source,
-                normalized_source_event_id,
-                mapping.event_id,
-            )
-            logger.debug(
-                "Updated mapping for event_id=%s source=%s source_event_id=%s",
-                mapping.event_id,
-                normalized_source,
-                normalized_source_event_id,
-            )
-            return mapping
+        requested_event_ids = {values["event_id"] for values in normalized_by_key.values()}
+        existing_event_ids = {
+            int(row[0])
+            for row in session.query(Event.id).filter(Event.id.in_(requested_event_ids)).all()
+        }
+        missing_event_ids = requested_event_ids - existing_event_ids
+        if missing_event_ids:
+            missing = ", ".join(str(event_id) for event_id in sorted(missing_event_ids))
+            raise ValueError(f"Cannot create mappings for missing event_id(s)={missing}")
 
-        mapping = EventSourceMapping(
-            event_id=event_id,
-            source=normalized_source,
-            source_event_id=normalized_source_event_id,
-            source_sport_id=EventSourceMappingRepository._normalize_optional_text(source_sport_id),
-            source_tournament_id=EventSourceMappingRepository._normalize_optional_text(source_tournament_id),
-            source_season_id=EventSourceMappingRepository._normalize_optional_text(source_season_id),
-            match_method=match_method or "direct",
-            confidence=confidence,
-            raw_external_providers=raw_external_providers,
+        keys = list(normalized_by_key)
+        existing_mappings = (
+            session.query(EventSourceMapping)
+            .filter(tuple_(EventSourceMapping.source, EventSourceMapping.source_event_id).in_(keys))
+            .all()
         )
-        session.add(mapping)
+        mappings_by_key = {
+            (mapping.source, mapping.source_event_id): mapping
+            for mapping in existing_mappings
+        }
+
+        new_mapping_rows: list[dict] = []
+        for key, mapping_data in normalized_by_key.items():
+            mapping = mappings_by_key.get(key)
+            if mapping is not None:
+                if mapping.event_id != mapping_data["event_id"]:
+                    logger.warning(
+                        "Existing mapping for source=%s source_event_id=%s points to event_id=%s; "
+                        "requested event_id=%s. Keeping existing canonical event.",
+                        key[0],
+                        key[1],
+                        mapping.event_id,
+                        mapping_data["event_id"],
+                    )
+                changed = EventSourceMappingRepository._apply_mapping_updates(mapping, mapping_data)
+                logger.debug(
+                    "%s event source mapping source=%s source_event_id=%s -> event_id=%s",
+                    "Updated" if changed else "Unchanged",
+                    key[0],
+                    key[1],
+                    mapping.event_id,
+                )
+                continue
+
+            new_mapping_rows.append(
+                {
+                    **mapping_data,
+                    "match_method": mapping_data.get("match_method") or "direct",
+                }
+            )
+
+        if new_mapping_rows:
+            dialect_name = session.get_bind().dialect.name
+            if dialect_name in {"postgresql", "sqlite"}:
+                session.flush()
+                if dialect_name == "postgresql":
+                    from sqlalchemy.dialects.postgresql import insert
+                else:
+                    from sqlalchemy.dialects.sqlite import insert
+
+                statement = insert(EventSourceMapping).values(new_mapping_rows)
+                statement = statement.on_conflict_do_nothing(
+                    index_elements=["source", "source_event_id"],
+                )
+                session.execute(statement)
+                new_keys = [
+                    (row["source"], row["source_event_id"])
+                    for row in new_mapping_rows
+                ]
+                persisted = (
+                    session.query(EventSourceMapping)
+                    .filter(
+                        tuple_(
+                            EventSourceMapping.source,
+                            EventSourceMapping.source_event_id,
+                        ).in_(new_keys)
+                    )
+                    .all()
+                )
+                mappings_by_key.update(
+                    {
+                        (mapping.source, mapping.source_event_id): mapping
+                        for mapping in persisted
+                    }
+                )
+            else:
+                new_mappings = [
+                    EventSourceMapping(**mapping_data)
+                    for mapping_data in new_mapping_rows
+                ]
+                session.add_all(new_mappings)
+                mappings_by_key.update(
+                    {
+                        (mapping.source, mapping.source_event_id): mapping
+                        for mapping in new_mappings
+                    }
+                )
         session.flush()
-        logger.info(
-            "Created event source mapping source=%s source_event_id=%s -> event_id=%s",
-            normalized_source,
-            normalized_source_event_id,
-            event_id,
-        )
-        logger.debug(
-            "Created mapping for event_id=%s source=%s source_event_id=%s",
-            event_id,
-            normalized_source,
-            normalized_source_event_id,
-        )
-        return mapping
+        for mapping_data in new_mapping_rows:
+            logger.info(
+                "Persisted event source mapping source=%s source_event_id=%s -> event_id=%s",
+                mapping_data["source"],
+                mapping_data["source_event_id"],
+                mapping_data["event_id"],
+            )
+        return mappings_by_key
 
     @staticmethod
     def upsert_mapping(
@@ -443,7 +679,9 @@ class EventSourceMappingRepository:
         source_sport_id: Optional[str] = None,
         source_tournament_id: Optional[str] = None,
         source_season_id: Optional[str] = None,
-        match_method: str = "direct",
+        participant_home_id: Optional[int] = None,
+        participant_away_id: Optional[int] = None,
+        match_method: Optional[str] = "direct",
         confidence: Optional[float] = None,
         raw_external_providers: Optional[dict] = None,
         session: Optional[Session] = None,
@@ -459,6 +697,8 @@ class EventSourceMappingRepository:
                     source_sport_id=source_sport_id,
                     source_tournament_id=source_tournament_id,
                     source_season_id=source_season_id,
+                    participant_home_id=participant_home_id,
+                    participant_away_id=participant_away_id,
                     match_method=match_method,
                     confidence=confidence,
                     raw_external_providers=raw_external_providers,
@@ -473,6 +713,8 @@ class EventSourceMappingRepository:
                     source_sport_id=source_sport_id,
                     source_tournament_id=source_tournament_id,
                     source_season_id=source_season_id,
+                    participant_home_id=participant_home_id,
+                    participant_away_id=participant_away_id,
                     match_method=match_method,
                     confidence=confidence,
                     raw_external_providers=raw_external_providers,

@@ -15,6 +15,7 @@ from .constants import (
     DEFAULT_HAS_ODDS,
     DEFAULT_LANGUAGE,
     DEFAULT_MAX_REQUEST_WINDOW_HOURS,
+    DEFAULT_PERSISTENCE_CHUNK_SIZE,
     DEFAULT_PERSIST_QUEUE,
     DEFAULT_STATUS_ID,
     DISCOVERY_SPORT_IDS,
@@ -110,6 +111,7 @@ class OddspapiFixtureDiscoveryJob:
         persist_queue: bool = DEFAULT_PERSIST_QUEUE,
         status_id: int = DEFAULT_STATUS_ID,
         max_fixtures_per_sport: int | None = None,
+        chunk_size: int = DEFAULT_PERSISTENCE_CHUNK_SIZE,
         batch_processor: OddspapiFixtureBatchProcessor | None = None,
     ) -> None:
         self.client = client or OddsPapiClient()
@@ -119,8 +121,12 @@ class OddspapiFixtureDiscoveryJob:
         self.status_id = int(status_id)
         if max_fixtures_per_sport is not None and max_fixtures_per_sport <= 0:
             raise ValueError("max_fixtures_per_sport must be positive")
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
         self.max_fixtures_per_sport = max_fixtures_per_sport
-        self.batch_processor = batch_processor or OddspapiFixtureBatchProcessor()
+        self.batch_processor = batch_processor or OddspapiFixtureBatchProcessor(
+            chunk_size=chunk_size,
+        )
 
     @staticmethod
     def _validate_window(from_date: datetime, to_date: datetime) -> tuple[datetime, datetime]:

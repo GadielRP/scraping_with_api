@@ -23,13 +23,16 @@ from infrastructure.persistence.repositories.event_source_resolution_queue_repos
 from modules.oddspapi.event_candidate_matcher import MatchDecision, OddspapiEventCandidateMatcher
 from modules.oddspapi.event_resolver import OddspapiEventResolution, OddspapiEventResolver
 from modules.oddspapi.fixture_normalizer import OddspapiFixtureIdentity
+from modules.oddspapi.format_utils import normalize_source_id
+from modules.oddspapi.fixture_persistence import (
+    ResolvedFixtureWrite,
+    persist_resolved_fixtures,
+)
 
 from .candidate_shortlist import shortlist_candidates
+from .constants import DEFAULT_PERSISTENCE_CHUNK_SIZE
 
 logger = logging.getLogger(__name__)
-
-COMMIT_EVERY = 50
-KEEP_RESOLUTIONS_DEFAULT = False
 
 # Maps matcher sport keys to canonical Event.sport values stored in DB.
 SPORT_KEY_TO_DB_NAME = {
@@ -242,12 +245,16 @@ class OddspapiFixtureBatchProcessor:
         resolver: type[OddspapiEventResolver] = OddspapiEventResolver,
         matcher: OddspapiEventCandidateMatcher | None = None,
         candidate_pool_loader: Callable | None = None,
-        commit_every: int = COMMIT_EVERY,
-        keep_resolutions: bool = KEEP_RESOLUTIONS_DEFAULT,
+        persistence_writer: Callable | None = None,
+        chunk_size: int = DEFAULT_PERSISTENCE_CHUNK_SIZE,
+        keep_resolutions: bool = False,
     ) -> None:
         self.resolver = resolver
         self.candidate_pool_loader = candidate_pool_loader or OddspapiCandidatePool.load
-        self.commit_every = max(int(commit_every), 1)
+        self.persistence_writer = persistence_writer or persist_resolved_fixtures
+        self.chunk_size = int(chunk_size)
+        if self.chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
         self.keep_resolutions = keep_resolutions
         if matcher is not None:
             self.resolver._candidate_matcher = matcher
@@ -279,8 +286,8 @@ class OddspapiFixtureBatchProcessor:
         if not identities:
             return result
 
-        for offset in range(0, len(identities), self.commit_every):
-            chunk = identities[offset: offset + self.commit_every]
+        for offset in range(0, len(identities), self.chunk_size):
+            chunk = identities[offset: offset + self.chunk_size]
             chunk_result = self._process_identity_chunk(
                 identities=chunk,
                 create_mappings=create_mappings,
@@ -292,7 +299,6 @@ class OddspapiFixtureBatchProcessor:
                 assert result.resolutions is not None
                 result.resolutions.extend(chunk_result.resolutions)
 
-            session.flush()
             if create_mappings:
                 session.commit()
                 session.expire_all()
@@ -317,7 +323,7 @@ class OddspapiFixtureBatchProcessor:
         sofascore_ids = [
             value
             for fixture in identities
-            if (value := OddspapiEventResolver._external_id(fixture.external_providers.get("sofascoreId")))
+            if (value := normalize_source_id(fixture.external_providers.get("sofascoreId")))
         ]
         existing_sofascore = EventSourceMappingRepository.get_event_ids_by_source_event_ids(
             source="sofascore",
@@ -330,7 +336,7 @@ class OddspapiFixtureBatchProcessor:
             fixture
             for fixture in unresolved
             if not (
-                (sofascore_id := OddspapiEventResolver._external_id(
+                (sofascore_id := normalize_source_id(
                     fixture.external_providers.get("sofascoreId"),
                 ))
                 and sofascore_id in existing_sofascore
@@ -338,6 +344,8 @@ class OddspapiFixtureBatchProcessor:
         ]
         unresolved_ids = {fixture.fixture_id for fixture in unresolved}
         candidate_pool = self.candidate_pool_loader(unresolved, session)
+        pending_writes: list[ResolvedFixtureWrite] = []
+        persisted_resolutions: list[tuple[OddspapiFixtureIdentity, OddspapiEventResolution]] = []
 
         for fixture in identities:
             pool_candidates = (
@@ -360,7 +368,9 @@ class OddspapiFixtureBatchProcessor:
             resolution = self.resolver.resolve_fixture_identity_in_session(
                 fixture=fixture,
                 session=session,
-                create_mappings=create_mappings,
+                # Matching remains read-only for the whole chunk. Successful
+                # resolutions are persisted together after every decision exists.
+                create_mappings=False,
                 persist_queue=False,
                 existing_oddspapi=existing_oddspapi,
                 existing_sofascore=existing_sofascore,
@@ -395,10 +405,18 @@ class OddspapiFixtureBatchProcessor:
                 else:
                     result.score_duration_ms_values.append(elapsed_ms)
 
-            if "oddspapi" in resolution.created_mappings:
-                result.mappings_created += 1
-
             if resolution.resolved:
+                if create_mappings and resolution.canonical_event_id is not None:
+                    pending_writes.append(
+                        ResolvedFixtureWrite(
+                            fixture=fixture,
+                            canonical_event_id=resolution.canonical_event_id,
+                            match_method=None if resolution.layer1_resolved else resolution.match_method,
+                            confidence=None if resolution.layer1_resolved else resolution.confidence,
+                            include_secondary_mappings=resolution.layer2_resolved,
+                        )
+                    )
+                    persisted_resolutions.append((fixture, resolution))
                 if create_mappings and persist_queue:
                     EventSourceResolutionQueueRepository.clear_resolved(
                         "oddspapi",
@@ -444,6 +462,17 @@ class OddspapiFixtureBatchProcessor:
                             resolution.second_candidate_event_id,
                             resolution.score_gap,
                         )
+
+        if pending_writes:
+            persisted_sources = self.persistence_writer(session, pending_writes)
+            for fixture, resolution in persisted_resolutions:
+                # Existing Oddspapi mappings are hydrated, not counted as newly
+                # created mappings. Layer 2/3 keep the historical metric meaning.
+                if resolution.layer1_resolved:
+                    continue
+                resolution.created_mappings = persisted_sources.get(fixture.fixture_id, [])
+                if "oddspapi" in resolution.created_mappings:
+                    result.mappings_created += 1
 
         return result
 

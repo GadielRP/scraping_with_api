@@ -11,6 +11,7 @@ from modules.oddspapi.client import OddsPapiClient
 
 from .constants import (
     DEFAULT_LOOKAHEAD_DAYS,
+    DEFAULT_PERSISTENCE_CHUNK_SIZE,
     DEFAULT_PERSIST_QUEUE,
     DEFAULT_STATUS_ID,
     DISCOVERY_SPORT_IDS,
@@ -39,6 +40,12 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--commit", action="store_true", help="Persist successful mappings")
     parser.add_argument("--persist-queue", action="store_true")
     parser.add_argument("--max-fixtures-per-sport", type=int)
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=DEFAULT_PERSISTENCE_CHUNK_SIZE,
+        help="Fixtures persisted per transaction",
+    )
     parser.add_argument("--log-json", action="store_true")
     return parser
 
@@ -109,6 +116,7 @@ def run_fixture_discovery_job(
     persist_queue: bool = DEFAULT_PERSIST_QUEUE,
     status_id: int = DEFAULT_STATUS_ID,
     max_fixtures_per_sport: int | None = None,
+    chunk_size: int = DEFAULT_PERSISTENCE_CHUNK_SIZE,
     client: OddsPapiClient | None = None,
     now: datetime | None = None,
 ):
@@ -133,6 +141,7 @@ def run_fixture_discovery_job(
         persist_queue=persist_queue,
         status_id=status_id,
         max_fixtures_per_sport=max_fixtures_per_sport,
+        chunk_size=chunk_size,
     ).run(from_date, to_date)
 
 
@@ -144,12 +153,15 @@ def main(argv: list[str] | None = None) -> int:
         sports = _resolve_sports(args.sports)
         if args.max_fixtures_per_sport is not None and args.max_fixtures_per_sport <= 0:
             raise ValueError("--max-fixtures-per-sport must be positive")
+        if args.chunk_size <= 0:
+            raise ValueError("--chunk-size must be positive")
         job = OddspapiFixtureDiscoveryJob(
             sports=sports,
             create_mappings=bool(args.commit and not args.dry_run),
             persist_queue=bool(args.persist_queue and args.commit and not args.dry_run),
             status_id=args.status_id,
             max_fixtures_per_sport=args.max_fixtures_per_sport,
+            chunk_size=args.chunk_size,
         )
         summary = job.run(from_date, to_date)
     except (TypeError, ValueError) as exc:
