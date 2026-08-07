@@ -30,6 +30,8 @@ ODDSPORTAL_COMPETITION_ROUTES = {
         "league": "saudi-professional-league",
     },
     171: {"sport": "football", "country": "germany", "league": "bundesliga"},
+    145: {"sport": "basketball", "country": "usa", "league": "wnba"},
+    
 }
 
 # Normalize bookie names to match DB exact names

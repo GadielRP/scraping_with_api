@@ -11,6 +11,7 @@ from infrastructure.persistence.repositories import MarketMappingRepository
 from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingIndex,
 )
+from modules.competition.tracked_competitions import is_tracked_competition
 from modules.odds_ingestion import (
     MarketOddsIngestionService,
     ProviderOddsSummary,
@@ -595,7 +596,12 @@ class OddspapiPreStartOddsBatchProcessor:
                     source_sport_id=candidate.source_sport_id,
                     minutes_until_start=candidate.minutes_until_start,
                     is_live=is_live,
-                    enable_exchange_historical=enable_exchange_historical,
+                    # Tracked leagues already get openings via OddsPortal; skip
+                    # the expensive per-outcome exchange historical fan-out.
+                    enable_exchange_historical=(
+                        enable_exchange_historical
+                        and not is_tracked_competition(candidate.competition_id)
+                    ),
                     regular_bookmakers=bookmakers,
                     exchange_bookmakers=exchange_bookmakers,
                     market_mapping_index=market_mapping_index,
