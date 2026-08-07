@@ -590,17 +590,26 @@ class OddspapiPreStartOddsBatchProcessor:
             requested_count += 1
             summary.requests_attempted += 1
             try:
+                # Tracked leagues get openings via OddsPortal at T-120; skip
+                # exchange historical only at that opening moment. Live still
+                # uses the mainline cache for exchange outcome fetches.
+                at_opening_moment = candidate.minutes_until_start in set(
+                    exchange_historical_moments
+                    if exchange_historical_moments is not None
+                    else [120]
+                )
                 acquisition_result = acquisition_service.acquire(
                     candidate.fixture_id,
                     event_id=candidate.event_id,
                     source_sport_id=candidate.source_sport_id,
                     minutes_until_start=candidate.minutes_until_start,
                     is_live=is_live,
-                    # Tracked leagues already get openings via OddsPortal; skip
-                    # the expensive per-outcome exchange historical fan-out.
                     enable_exchange_historical=(
                         enable_exchange_historical
-                        and not is_tracked_competition(candidate.competition_id)
+                        and not (
+                            at_opening_moment
+                            and is_tracked_competition(candidate.competition_id)
+                        )
                     ),
                     regular_bookmakers=bookmakers,
                     exchange_bookmakers=exchange_bookmakers,
