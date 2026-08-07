@@ -19,6 +19,7 @@ class OddspapiPreStartCandidate:
     minutes_until_start: int | float | None
     has_odds: bool = True
     source_sport_id: str | None = None
+    is_live: bool = False
 
 
 def _canonical_event_id(event_info: dict) -> int | None:
@@ -34,6 +35,12 @@ def _canonical_event_id(event_info: dict) -> int | None:
     return event_id if event_id > 0 else None
 
 
+def _is_live_moment(minutes_until_start: int | float | None) -> bool:
+    return bool(
+        minutes_until_start is not None and float(minutes_until_start) <= 0
+    )
+
+
 def select_oddspapi_pre_start_candidates(
     events_to_process: list[dict],
     source_states: dict[int, dict[str, EventOddsSourceState]] | None = None,
@@ -47,13 +54,15 @@ def select_oddspapi_pre_start_candidates(
         if event_id is None:
             continue
         source_state = (source_states or {}).get(event_id, {}).get(ODDSPAPI_SOURCE)
+        minutes_until_start = event_info.get("minutes_until_start")
         candidates.append(
             OddspapiPreStartCandidate(
                 event_id=event_id,
                 fixture_id=source_state.source_event_id if source_state else None,
-                minutes_until_start=event_info.get("minutes_until_start"),
+                minutes_until_start=minutes_until_start,
                 has_odds=source_state.has_odds if source_state else True,
                 source_sport_id=source_state.source_sport_id if source_state else None,
+                is_live=_is_live_moment(minutes_until_start),
             )
         )
     return candidates

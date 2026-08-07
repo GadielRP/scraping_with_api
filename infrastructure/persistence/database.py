@@ -141,6 +141,7 @@ class DatabaseManager:
 
             EventSourceMappingRepository.ensure_participant_link_schema()
             OddspapiFixtureDiscoveryRunRepository.ensure_run_scope_schema()
+            self._migrate_oddspapi_mainline_outcome_cache()
             
             # Re-create inspector after manual migrations may have changed schema
             inspector = inspect(self.engine)
@@ -611,6 +612,28 @@ class DatabaseManager:
                 logger.info("Event source resolution queue migration completed")
         except Exception as e:
             logger.error(f"Event source resolution queue migration failed: {e}")
+            logger.error(traceback.format_exc())
+
+    def _migrate_oddspapi_mainline_outcome_cache(self):
+        """Ensure the OddsPapi mainLine outcome cache table exists with indexes."""
+        try:
+            from infrastructure.persistence.models import OddspapiMainlineOutcomeCache
+
+            self._create_table_and_indexes(
+                OddspapiMainlineOutcomeCache,
+                [
+                    "CREATE UNIQUE INDEX IF NOT EXISTS unique_oddspapi_mainline_outcome_cache "
+                    "ON oddspapi_mainline_outcome_cache "
+                    "(event_id, bookmaker_slug, source_market_id, source_outcome_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_oddspapi_mainline_cache_event_id "
+                    "ON oddspapi_mainline_outcome_cache (event_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_oddspapi_mainline_cache_is_exchange "
+                    "ON oddspapi_mainline_outcome_cache (is_exchange)",
+                ],
+            )
+            logger.info("Oddspapi mainline outcome cache schema is ready")
+        except Exception as e:
+            logger.error(f"Oddspapi mainline outcome cache migration failed: {e}")
             logger.error(traceback.format_exc())
 
     def _migrate_market_period_not_null(self):

@@ -90,3 +90,92 @@ class OddspapiHistoricalOddsEnricher:
                                 current_player[field_name] = value
 
         return enriched
+
+    @classmethod
+    def merge_bookmaker_odds(
+        cls,
+        base_response: dict | None,
+        overlay_response: dict | None,
+    ) -> dict:
+        """Deep-merge overlay bookmakerOdds into base (live exchange attach)."""
+        enriched = deepcopy(base_response if isinstance(base_response, dict) else {})
+        overlay = overlay_response if isinstance(overlay_response, dict) else {}
+        overlay_bookmakers = overlay.get("bookmakerOdds")
+        if not isinstance(overlay_bookmakers, dict) or not overlay_bookmakers:
+            return enriched
+
+        if "fixtureId" not in enriched and overlay.get("fixtureId") is not None:
+            enriched["fixtureId"] = overlay.get("fixtureId")
+        if "sportId" not in enriched and overlay.get("sportId") is not None:
+            enriched["sportId"] = overlay.get("sportId")
+
+        base_bookmakers = enriched.setdefault("bookmakerOdds", {})
+        if not isinstance(base_bookmakers, dict):
+            enriched["bookmakerOdds"] = deepcopy(overlay_bookmakers)
+            return enriched
+
+        for bookmaker_slug, overlay_bookmaker in cls._entries(overlay_bookmakers):
+            if not isinstance(overlay_bookmaker, dict):
+                continue
+            base_bookmaker = base_bookmakers.setdefault(bookmaker_slug, {})
+            if not isinstance(base_bookmaker, dict):
+                base_bookmakers[bookmaker_slug] = deepcopy(overlay_bookmaker)
+                continue
+            if "slug" not in base_bookmaker and overlay_bookmaker.get("slug"):
+                base_bookmaker["slug"] = overlay_bookmaker.get("slug")
+
+            overlay_markets = overlay_bookmaker.get("markets")
+            if not isinstance(overlay_markets, dict):
+                continue
+            base_markets = base_bookmaker.setdefault("markets", {})
+            if not isinstance(base_markets, dict):
+                base_bookmaker["markets"] = deepcopy(overlay_markets)
+                continue
+
+            for market_id, overlay_market in cls._entries(overlay_markets):
+                if not isinstance(overlay_market, dict):
+                    continue
+                base_market = base_markets.setdefault(market_id, {})
+                if not isinstance(base_market, dict):
+                    base_markets[market_id] = deepcopy(overlay_market)
+                    continue
+                if "marketActive" not in base_market:
+                    base_market["marketActive"] = overlay_market.get(
+                        "marketActive",
+                        True,
+                    )
+
+                overlay_outcomes = overlay_market.get("outcomes")
+                if not isinstance(overlay_outcomes, dict):
+                    continue
+                base_outcomes = base_market.setdefault("outcomes", {})
+                if not isinstance(base_outcomes, dict):
+                    base_market["outcomes"] = deepcopy(overlay_outcomes)
+                    continue
+
+                for outcome_id, overlay_outcome in cls._entries(overlay_outcomes):
+                    if not isinstance(overlay_outcome, dict):
+                        continue
+                    base_outcome = base_outcomes.setdefault(outcome_id, {})
+                    if not isinstance(base_outcome, dict):
+                        base_outcomes[outcome_id] = deepcopy(overlay_outcome)
+                        continue
+
+                    overlay_players = overlay_outcome.get("players")
+                    if not isinstance(overlay_players, dict):
+                        continue
+                    base_players = base_outcome.setdefault("players", {})
+                    if not isinstance(base_players, dict):
+                        base_outcome["players"] = deepcopy(overlay_players)
+                        continue
+
+                    for player_id, overlay_player in cls._entries(overlay_players):
+                        if not isinstance(overlay_player, dict):
+                            continue
+                        base_player = base_players.get(player_id)
+                        if not isinstance(base_player, dict):
+                            base_players[player_id] = deepcopy(overlay_player)
+                            continue
+                        base_player.update(deepcopy(overlay_player))
+
+        return enriched

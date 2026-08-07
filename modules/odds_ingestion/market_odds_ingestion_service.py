@@ -20,6 +20,9 @@ from infrastructure.persistence.repositories import (
     MarketRepository,
 )
 from infrastructure.persistence.repositories.market_mapping_repository import MarketMappingIndex
+from infrastructure.persistence.repositories.oddspapi_mainline_cache_repository import (
+    OddspapiMainlineCacheRepository,
+)
 from modules.oddspapi import OddspapiEventResolver
 
 from .adapters.oddspapi_market_adapter import OddspapiMarketAdapter
@@ -49,6 +52,7 @@ class MarketIngestionResult:
     bookies_reused: int = 0
     bookie_mappings_created: int = 0
     bookie_mappings_updated: int = 0
+    bookmaker_slugs_detected: list[str] | None = None
 
     event_mappings_created: int = 0
 
@@ -369,6 +373,38 @@ class MarketOddsIngestionService:
         return normalized or None
 
     @staticmethod
+    def _payload_has_main_line_flags(odds_response: dict) -> bool:
+        bookmaker_odds = odds_response.get("bookmakerOdds")
+        if not isinstance(bookmaker_odds, dict):
+            return False
+        for bookmaker_data in bookmaker_odds.values():
+            if not isinstance(bookmaker_data, dict):
+                continue
+            markets = bookmaker_data.get("markets")
+            if not isinstance(markets, dict):
+                continue
+            for market_data in markets.values():
+                if not isinstance(market_data, dict):
+                    continue
+                outcomes = market_data.get("outcomes")
+                if not isinstance(outcomes, dict):
+                    continue
+                for outcome_data in outcomes.values():
+                    if not isinstance(outcome_data, dict):
+                        continue
+                    players = outcome_data.get("players")
+                    if isinstance(players, dict):
+                        player_items = players.values()
+                    elif not players and "price" in outcome_data:
+                        player_items = [outcome_data]
+                    else:
+                        continue
+                    for player in player_items:
+                        if isinstance(player, dict) and "mainLine" in player:
+                            return True
+        return False
+
+    @staticmethod
     def save_from_oddspapi_response(
         odds_response: dict,
         bookmaker_catalog: dict | list | None = None,
@@ -378,6 +414,10 @@ class MarketOddsIngestionService:
         allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
         market_mapping_index: MarketMappingIndex | None = None,
+        persist_main_line_only: bool = False,
+        require_active_quotes: bool = True,
+        use_mainline_cache: bool | None = None,
+        mainline_outcome_ids: set[str] | None = None,
     ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "oddspapi_odds")
         if dry_run:
@@ -416,11 +456,31 @@ class MarketOddsIngestionService:
                 event_mappings_created=len(resolution.created_mappings),
             )
 
+        resolved_mainline_ids = mainline_outcome_ids
+        should_use_cache = use_mainline_cache
+        if should_use_cache is None:
+            should_use_cache = not MarketOddsIngestionService._payload_has_main_line_flags(
+                odds_response if isinstance(odds_response, dict) else {}
+            )
+        if (
+            resolved_mainline_ids is None
+            and should_use_cache
+            and resolution.canonical_event_id is not None
+        ):
+            resolved_mainline_ids = (
+                OddspapiMainlineCacheRepository.get_mainline_outcome_ids(
+                    resolution.canonical_event_id
+                )
+            )
+
         adapted = OddspapiMarketAdapter.from_odds_response(
             odds_response,
             bookmaker_catalog=bookmaker_catalog,
             market_mapping_index=market_mapping_index,
             source="oddspapi",
+            mainline_outcome_ids=resolved_mainline_ids,
+            persist_main_line_only=persist_main_line_only,
+            require_active_quotes=require_active_quotes,
         )
         adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response(
             adapted,
@@ -449,6 +509,13 @@ class MarketOddsIngestionService:
         snapshots_detected = choices_detected
         event_mappings_created = len(resolution.created_mappings)
         bookies_detected = len(bookmakers)
+        bookmaker_slugs_detected = sorted(
+            {
+                str(bookmaker.get("slug") or "").strip().lower()
+                for bookmaker in bookmakers
+                if str(bookmaker.get("slug") or "").strip()
+            }
+        )
 
         if not bookmakers or markets_detected == 0:
             logger.info(
@@ -472,6 +539,8 @@ class MarketOddsIngestionService:
                 markets_detected=markets_detected,
                 choices_detected=choices_detected,
                 snapshots_detected=snapshots_detected,
+                bookies_detected=bookies_detected,
+                bookmaker_slugs_detected=bookmaker_slugs_detected,
                 unmapped_markets_detected=unmapped_markets_detected,
                 unmapped_outcomes_detected=unmapped_outcomes_detected,
                 skipped_missing_handicap_detected=skipped_missing_handicap_detected,
@@ -491,6 +560,7 @@ class MarketOddsIngestionService:
                 choices_detected=choices_detected,
                 snapshots_detected=snapshots_detected,
                 bookies_detected=bookies_detected,
+                bookmaker_slugs_detected=bookmaker_slugs_detected,
                 unmapped_markets_detected=unmapped_markets_detected,
                 unmapped_outcomes_detected=unmapped_outcomes_detected,
                 skipped_missing_handicap_detected=skipped_missing_handicap_detected,
@@ -562,6 +632,7 @@ class MarketOddsIngestionService:
                     choices_detected=choices_detected,
                     snapshots_detected=snapshots_detected,
                     bookies_detected=bookies_detected,
+                    bookmaker_slugs_detected=bookmaker_slugs_detected,
                     event_mappings_created=event_mappings_created,
                     unmapped_markets_detected=unmapped_markets_detected,
                     unmapped_outcomes_detected=unmapped_outcomes_detected,
@@ -587,6 +658,7 @@ class MarketOddsIngestionService:
                 choices_saved=choices_saved,
                 snapshots_saved=snapshots_saved,
                 bookies_detected=bookies_detected,
+                bookmaker_slugs_detected=bookmaker_slugs_detected,
                 bookies_processed=bookies_processed,
                 bookies_created=bookies_created,
                 bookies_reused=bookies_reused,
@@ -619,6 +691,7 @@ class MarketOddsIngestionService:
                 choices_saved=choices_saved,
                 snapshots_saved=snapshots_saved,
                 bookies_detected=bookies_detected,
+                bookmaker_slugs_detected=bookmaker_slugs_detected,
                 bookies_processed=bookies_processed,
                 bookies_created=bookies_created,
                 bookies_reused=bookies_reused,

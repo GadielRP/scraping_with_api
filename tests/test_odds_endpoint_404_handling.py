@@ -1102,6 +1102,7 @@ class _OneBookmakerOddspapiIngestionService:
             skipped=False,
             reason=None,
             bookies_detected=1,
+            bookmaker_slugs_detected=["pinnacle"],
         )
 
 
@@ -1203,9 +1204,10 @@ def test_oddspapi_warns_when_requested_and_detected_bookie_counts_differ(caplog)
     candidate = OddspapiPreStartCandidate(
         event_id=156608,
         fixture_id="fixture-raw-1",
-        minutes_until_start=120,
+        minutes_until_start=-5,
         has_odds=True,
         source_sport_id="13",
+        is_live=True,
     )
 
     with caplog.at_level(
@@ -1224,8 +1226,11 @@ def test_oddspapi_warns_when_requested_and_detected_bookie_counts_differ(caplog)
 
     assert summary.results[0].bookies_requested == 2
     assert summary.results[0].bookies_detected == 1
-    assert "Oddspapi bookmaker count mismatch" in caplog.text
-    assert "bookies_requested=2 bookies_detected=1" in caplog.text
+    assert "Oddspapi bookmaker coverage gap" in caplog.text
+    assert "missing_after_normalization=['bet365']" in caplog.text or (
+        "missing_after_normalization" in caplog.text
+        and "bet365" in caplog.text
+    )
 
 
 def test_oddspapi_does_not_warn_when_requested_and_detected_counts_match(caplog):
@@ -1241,9 +1246,10 @@ def test_oddspapi_does_not_warn_when_requested_and_detected_counts_match(caplog)
     candidate = OddspapiPreStartCandidate(
         event_id=156608,
         fixture_id="fixture-raw-1",
-        minutes_until_start=120,
+        minutes_until_start=-5,
         has_odds=True,
         source_sport_id="13",
+        is_live=True,
     )
 
     with caplog.at_level(
@@ -1262,4 +1268,5 @@ def test_oddspapi_does_not_warn_when_requested_and_detected_counts_match(caplog)
 
     assert summary.results[0].bookies_requested == 1
     assert summary.results[0].bookies_detected == 1
+    assert "Oddspapi bookmaker coverage gap" not in caplog.text
     assert "Oddspapi bookmaker count mismatch" not in caplog.text

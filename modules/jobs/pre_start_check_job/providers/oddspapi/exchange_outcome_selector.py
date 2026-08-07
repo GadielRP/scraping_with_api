@@ -52,7 +52,11 @@ class OddspapiExchangeOutcomeSelector:
                 yield str(key), item
 
     @staticmethod
-    def _active_players(outcome_data: dict) -> list[tuple[str, dict]]:
+    def _eligible_players(
+        outcome_data: dict,
+        *,
+        require_active_quotes: bool = True,
+    ) -> list[tuple[str, dict]]:
         players = outcome_data.get("players")
         if not players and "price" in outcome_data:
             players = {"0": outcome_data}
@@ -62,8 +66,11 @@ class OddspapiExchangeOutcomeSelector:
                 players or {}
             )
             if (
-                player.get("active") is not False
-                and player.get("price") not in (None, "")
+                player.get("price") not in (None, "")
+                and (
+                    not require_active_quotes
+                    or player.get("active") is not False
+                )
             )
         ]
 
@@ -86,6 +93,7 @@ class OddspapiExchangeOutcomeSelector:
         main_line_only: bool = True,
         include_player_props: bool = False,
         max_outcomes: int | None = None,
+        require_active_quotes: bool = True,
     ) -> ExchangeOutcomeSelectionResult:
         payload = odds_response if isinstance(odds_response, dict) else {}
         source_sport_id = payload.get("sportId")
@@ -149,7 +157,10 @@ class OddspapiExchangeOutcomeSelector:
                         result.skipped_unmapped_outcomes += 1
                         continue
 
-                    players = cls._active_players(outcome_data)
+                    players = cls._eligible_players(
+                        outcome_data,
+                        require_active_quotes=require_active_quotes,
+                    )
                     if not players:
                         continue
                     if not include_player_props and cls._is_player_prop(players):

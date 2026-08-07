@@ -30,6 +30,7 @@ from .daily_discovery_repository import DailyDiscoveryRepository
 from .oddspapi_fixture_discovery_run_repository import (
     OddspapiFixtureDiscoveryRunRepository,
 )
+from .oddspapi_mainline_cache_repository import OddspapiMainlineCacheRepository
 
 __all__ = [
     'EventRepository',
@@ -57,4 +58,5 @@ __all__ = [
     'OddsPortalCacheRepository',
     'DailyDiscoveryRepository',
     'OddspapiFixtureDiscoveryRunRepository',
+    'OddspapiMainlineCacheRepository',
 ]

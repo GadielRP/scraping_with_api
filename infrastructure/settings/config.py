@@ -335,17 +335,13 @@ class Config:
         'ODDSPAPI_DEFAULT_MARKET_KEYS',
         ['1x2_full_time', 'over_under_full_time', 'asian_handicap_full_time'],
     )
-    # Runs inside the existing pre-start lifecycle after SofaScore ingestion.
+    # Feature / capacity toggles for Oddspapi pre-start. Product defaults such as
+    # exchange market keys, opening moments, and quote filters live in
+    # modules/jobs/pre_start_check_job/providers/oddspapi/settings.py.
     ENABLE_ODDSPAPI_PRE_START_ODDS = _parse_env_bool(
         'ENABLE_ODDSPAPI_PRE_START_ODDS',
         False,
     )
-    ODDSPAPI_PRE_START_ODDS_ENDPOINT = os.getenv(
-        'ODDSPAPI_PRE_START_ODDS_ENDPOINT',
-        'historical-odds',
-    ).strip().lower()
-    # Desired parallelism. The effective count is bounded at runtime by the
-    # number of unique API keys and requestable candidates.
     ODDSPAPI_PRE_START_WORKERS = max(
         1,
         int(os.getenv('ODDSPAPI_PRE_START_WORKERS', '3')),
@@ -358,48 +354,18 @@ class Config:
         'ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS',
         None,
     )
-    ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS = _parse_optional_env_list(
-        'ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS',
-        ODDSPAPI_DEFAULT_MARKET_KEYS,
-    )
-    ODDSPAPI_PRE_START_EXCHANGE_MAIN_LINE_ONLY = _parse_env_bool(
-        'ODDSPAPI_PRE_START_EXCHANGE_MAIN_LINE_ONLY',
+    ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS = _parse_env_bool(
+        'ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS',
         True,
     )
-    ODDSPAPI_PRE_START_EXCHANGE_INCLUDE_PLAYER_PROPS = _parse_env_bool(
-        'ODDSPAPI_PRE_START_EXCHANGE_INCLUDE_PLAYER_PROPS',
+    ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY = _parse_env_bool(
+        'ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY',
         False,
     )
-    ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS = _parse_env_int_list(
-        'ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS',
-        [120],
-    )
-    ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT = int(
-        os.getenv(
-            'ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT',
-            '8',
-        )
-    )
-    ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN = int(
-        os.getenv(
-            'ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN',
-            '40',
-        )
-    )
-    ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES = float(
-        os.getenv('ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES', '60')
-    )
-    ODDSPAPI_PRE_START_MARKET_KEYS = _parse_optional_env_list(
-        'ODDSPAPI_PRE_START_MARKET_KEYS',
-        None,
-    )
-    ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS = _parse_optional_env_list(
-        'ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS',
-        None,
-    )
-    ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS = _parse_optional_env_list(
-        'ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS',
-        None,
+    # When false, inactive OddsPapi quotes may still be normalized/persisted.
+    ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES = _parse_env_bool(
+        'ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES',
+        True,
     )
     ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN = int(
         os.getenv('ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN', '0')

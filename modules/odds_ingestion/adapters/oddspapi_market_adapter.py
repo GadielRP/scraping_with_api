@@ -95,6 +95,9 @@ class OddspapiMarketAdapter:
         bookmaker_catalog: dict | list | None = None,
         market_mapping_index: MarketMappingIndex | None = None,
         source: str = "oddspapi",
+        mainline_outcome_ids: set[str] | None = None,
+        persist_main_line_only: bool = False,
+        require_active_quotes: bool = True,
     ) -> dict:
         if market_mapping_index is None:
             raise ValueError("market_mapping_index is required")
@@ -102,6 +105,11 @@ class OddspapiMarketAdapter:
         payload = odds_response if isinstance(odds_response, dict) else {}
         fixture_id = payload.get("fixtureId")
         source_sport_id = payload.get("sportId")
+        cached_mainline_ids = {
+            str(outcome_id).strip()
+            for outcome_id in (mainline_outcome_ids or set())
+            if str(outcome_id).strip()
+        }
         diagnostics = {
             "unmapped_markets": [],
             "unmapped_outcomes": [],
@@ -201,7 +209,7 @@ class OddspapiMarketAdapter:
                         players = [outcome_data]
 
                     for _, player in OddspapiMarketAdapter._entries(players or {}):
-                        if player.get("active") is False:
+                        if require_active_quotes and player.get("active") is False:
                             continue
                         price = player.get("price")
                         if price is None or price == "":
@@ -228,6 +236,15 @@ class OddspapiMarketAdapter:
                         ):
                             continue
 
+                        main_line = player.get("mainLine")
+                        if (
+                            main_line is None
+                            and normalized_outcome_id in cached_mainline_ids
+                        ):
+                            main_line = True
+                        if persist_main_line_only and main_line is not True:
+                            continue
+
                         choice = {
                             "name": choice_name,
                             "decimalValue": decimal_value,
@@ -238,7 +255,7 @@ class OddspapiMarketAdapter:
                             "sourceOutcomeId": normalized_outcome_id,
                             "bookmakerOutcomeId": player.get("bookmakerOutcomeId"),
                             "changedAt": player.get("changedAt"),
-                            "mainLine": player.get("mainLine"),
+                            "mainLine": main_line,
                             "limit": player.get("limit"),
                         }
                         exchange_meta = player.get("exchangeMeta")

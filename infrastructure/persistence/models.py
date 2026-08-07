@@ -676,6 +676,39 @@ class OddspapiFixtureDiscoveryRun(Base):
     )
 
 
+class OddspapiMainlineOutcomeCache(Base):
+    """Cached mainLine=true outcomes from OddsPapi /odds for live enrichment."""
+
+    __tablename__ = 'oddspapi_mainline_outcome_cache'
+
+    cache_id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(
+        Integer,
+        ForeignKey('events.id', ondelete='CASCADE', name='fk_oddspapi_mainline_cache_event_id'),
+        nullable=False,
+    )
+    fixture_id = Column(Text, nullable=False)
+    source_sport_id = Column(Text)
+    bookmaker_slug = Column(Text, nullable=False)
+    source_market_id = Column(Text, nullable=False)
+    source_outcome_id = Column(Text, nullable=False)
+    canonical_market_key = Column(Text)
+    is_exchange = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    captured_at = Column(DateTime, default=get_local_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'event_id',
+            'bookmaker_slug',
+            'source_market_id',
+            'source_outcome_id',
+            name='unique_oddspapi_mainline_outcome_cache',
+        ),
+        Index('idx_oddspapi_mainline_cache_event_id', 'event_id'),
+        Index('idx_oddspapi_mainline_cache_is_exchange', 'is_exchange'),
+    )
+
+
 # ---------------------------------------------------------------------------
 # SQL view helper – unified odds view (no filtering by var_one)
 # ---------------------------------------------------------------------------

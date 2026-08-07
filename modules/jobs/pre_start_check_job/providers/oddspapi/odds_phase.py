@@ -17,7 +17,8 @@ from .odds_batch_processor import (
     OddspapiPreStartOddsEventResult,
     OddspapiPreStartOddsSummary,
 )
-from .constants import ODDSPAPI_HISTORICAL_ODDS_ENDPOINT, ODDSPAPI_SOURCE
+from .constants import ODDSPAPI_SOURCE
+from .settings import ODDSPAPI_PRE_START_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -147,11 +148,7 @@ def run_oddspapi_pre_start_odds(
 
     summary = OddspapiPreStartOddsBatchProcessor().process(
         candidates,
-        endpoint=getattr(
-            Config,
-            "ODDSPAPI_PRE_START_ODDS_ENDPOINT",
-            ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
-        ),
+        endpoint=ODDSPAPI_PRE_START_SETTINGS.default_endpoint,
         bookmakers=(
             getattr(Config, "ODDSPAPI_PRE_START_BOOKMAKERS", None)
             or Config.ODDSPAPI_DEFAULT_BOOKMAKERS
@@ -161,56 +158,51 @@ def run_oddspapi_pre_start_odds(
             "ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS",
             None,
         ),
-        exchange_market_keys=getattr(
-            Config,
-            "ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS",
-            Config.ODDSPAPI_DEFAULT_MARKET_KEYS,
+        exchange_market_keys=list(
+            ODDSPAPI_PRE_START_SETTINGS.exchange_market_keys
         ),
-        exchange_main_line_only=getattr(
+        exchange_main_line_only=(
+            ODDSPAPI_PRE_START_SETTINGS.exchange_main_line_only
+        ),
+        exchange_include_player_props=(
+            ODDSPAPI_PRE_START_SETTINGS.exchange_include_player_props
+        ),
+        exchange_historical_moments=list(
+            ODDSPAPI_PRE_START_SETTINGS.opening_historical_moments
+        ),
+        exchange_max_outcomes_per_event=(
+            ODDSPAPI_PRE_START_SETTINGS.exchange_max_outcomes_per_event
+        ),
+        exchange_max_requests_per_run=(
+            ODDSPAPI_PRE_START_SETTINGS.exchange_max_requests_per_run
+        ),
+        enable_exchange_historical=getattr(
             Config,
-            "ODDSPAPI_PRE_START_EXCHANGE_MAIN_LINE_ONLY",
+            "ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS",
             True,
         ),
-        exchange_include_player_props=getattr(
+        persist_main_line_only=getattr(
             Config,
-            "ODDSPAPI_PRE_START_EXCHANGE_INCLUDE_PLAYER_PROPS",
-            False,
+            "ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY",
+            ODDSPAPI_PRE_START_SETTINGS.persist_main_line_only,
         ),
-        exchange_historical_moments=getattr(
+        require_active_quotes=getattr(
             Config,
-            "ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS",
-            [120],
+            "ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES",
+            ODDSPAPI_PRE_START_SETTINGS.require_active_quotes,
         ),
-        exchange_max_outcomes_per_event=getattr(
-            Config,
-            "ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT",
-            8,
-        ),
-        exchange_max_requests_per_run=getattr(
-            Config,
-            "ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN",
-            40,
-        ),
-        minimum_initial_span_minutes=getattr(
-            Config,
-            "ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES",
-            60.0,
+        minimum_initial_span_minutes=(
+            ODDSPAPI_PRE_START_SETTINGS.initial_odds_min_span_minutes
         ),
         dry_run=dry_run,
-        allowed_market_keys=getattr(
-            Config,
-            "ODDSPAPI_PRE_START_MARKET_KEYS",
-            None,
+        allowed_market_keys=ODDSPAPI_PRE_START_SETTINGS.as_list(
+            ODDSPAPI_PRE_START_SETTINGS.allowed_market_keys
         ),
-        allowed_market_groups=getattr(
-            Config,
-            "ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS",
-            None,
+        allowed_market_groups=ODDSPAPI_PRE_START_SETTINGS.as_list(
+            ODDSPAPI_PRE_START_SETTINGS.allowed_market_groups
         ),
-        allowed_market_periods=getattr(
-            Config,
-            "ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS",
-            None,
+        allowed_market_periods=ODDSPAPI_PRE_START_SETTINGS.as_list(
+            ODDSPAPI_PRE_START_SETTINGS.allowed_market_periods
         ),
         max_events=getattr(Config, "ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN", 0),
         api_keys=api_keys,

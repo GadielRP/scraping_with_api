@@ -8,14 +8,24 @@ import logging
 from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingIndex,
 )
+from infrastructure.persistence.repositories.oddspapi_mainline_cache_repository import (
+    OddspapiMainlineCacheRepository,
+)
 from modules.odds_ingestion.fetch_result import OddsFetchResult
 
 from .constants import (
     ODDSPAPI_CURRENT_ODDS_ENDPOINT,
     ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
 )
-from .exchange_outcome_selector import OddspapiExchangeOutcomeSelector
+from .exchange_historical_fetch_executor import (
+    OddspapiExchangeHistoricalFetchExecutor,
+)
+from .exchange_outcome_selector import (
+    ExchangeHistoricalSelection,
+    OddspapiExchangeOutcomeSelector,
+)
 from .historical_odds_enricher import OddspapiHistoricalOddsEnricher
+from .mainline_outcome_extractor import OddspapiMainlineOutcomeExtractor
 from .odds_fetcher import OddspapiOddsFetcher
 
 logger = logging.getLogger(__name__)
@@ -27,6 +37,7 @@ class OddspapiOddsAcquisitionResult:
     debug_raw_payload: dict | None = None
     debug_bookmakers: list[str] = field(default_factory=list)
     bookies_requested: int = 0
+    bookmaker_slugs_requested: list[str] = field(default_factory=list)
     endpoint_missing: bool = False
     http_requests_attempted: int = 0
     exchange_historical_requests_attempted: int = 0
@@ -34,13 +45,21 @@ class OddspapiOddsAcquisitionResult:
     exchange_outcomes_selected: int = 0
     exchange_outcomes_skipped_budget: int = 0
     exchange_selection_diagnostics: dict[str, int] = field(default_factory=dict)
+    mainline_outcomes_cached: int = 0
 
 
 class OddspapiPreStartOddsAcquisitionService:
     """Acquire one fixture while keeping provider-specific branching isolated."""
 
-    def __init__(self, fetcher: OddspapiOddsFetcher | None = None):
+    def __init__(
+        self,
+        fetcher: OddspapiOddsFetcher | None = None,
+        mainline_cache_repository: type[OddspapiMainlineCacheRepository] = (
+            OddspapiMainlineCacheRepository
+        ),
+    ):
         self.fetcher = fetcher or OddspapiOddsFetcher()
+        self.mainline_cache_repository = mainline_cache_repository
 
     @staticmethod
     def _unique_bookmakers(*groups: list[str] | None) -> list[str]:
@@ -67,23 +86,26 @@ class OddspapiPreStartOddsAcquisitionService:
             )
 
     @staticmethod
-    def _should_fetch_current_odds(
-        *,
-        selected_endpoint: str,
-        exchange_bookmakers: list[str],
+    def _opening_moment_minutes(
+        exchange_historical_moments: list[int] | None,
+    ) -> int:
+        moments = [
+            int(moment)
+            for moment in (exchange_historical_moments or [120])
+            if moment is not None
+        ]
+        return max(moments) if moments else 120
+
+    @classmethod
+    def _should_enrich_opening_odds(
+        cls,
         minutes_until_start: int | float | None,
-        current_odds_available: bool,
+        exchange_historical_moments: list[int] | None,
     ) -> bool:
-        """Use /odds only when the selected flow or an exchange requires it."""
-        if not current_odds_available:
+        if minutes_until_start is None:
             return False
-        if minutes_until_start is not None and minutes_until_start <= 0:
-            return False
-        return (
-            str(selected_endpoint or "").strip().lower()
-            == ODDSPAPI_CURRENT_ODDS_ENDPOINT
-            or bool(exchange_bookmakers)
-        )
+        opening_moment = cls._opening_moment_minutes(exchange_historical_moments)
+        return float(minutes_until_start) >= float(opening_moment)
 
     def _fetch(
         self,
@@ -106,60 +128,148 @@ class OddspapiPreStartOddsAcquisitionService:
             capture_raw_response=capture_raw_response,
         )
 
-    def acquire(
+    def _selection_limit(
+        self,
+        *,
+        exchange_max_outcomes_per_event: int,
+        exchange_request_budget: int | None,
+    ) -> int | None:
+        selection_limit = (
+            max(0, int(exchange_max_outcomes_per_event))
+            if exchange_max_outcomes_per_event
+            and int(exchange_max_outcomes_per_event) > 0
+            else None
+        )
+        if exchange_request_budget is None:
+            return selection_limit
+        if selection_limit is None:
+            return max(0, exchange_request_budget)
+        return min(selection_limit, max(0, exchange_request_budget))
+
+    def _apply_exchange_historical_result(
+        self,
+        fixture_id: str,
+        selection: ExchangeHistoricalSelection,
+        historical_result: OddsFetchResult | None,
+        error: Exception | None,
+        *,
+        payload: dict | None,
+        result: OddspapiOddsAcquisitionResult,
+        merge_full_bookmakers: bool,
+    ) -> dict | None:
+        if error is not None:
+            result.exchange_historical_requests_failed += 1
+            logger.warning(
+                "Oddspapi exchange historical request failed "
+                "fixture_id=%s bookmaker=%s market_id=%s "
+                "outcome_id=%s: %s",
+                fixture_id,
+                selection.bookmaker_slug,
+                selection.source_market_id,
+                selection.source_outcome_id,
+                error,
+            )
+            return payload
+        if historical_result is None or historical_result.endpoint_missing:
+            result.exchange_historical_requests_failed += 1
+            return payload
+        if not historical_result.payload:
+            return payload
+        if merge_full_bookmakers:
+            return OddspapiHistoricalOddsEnricher.merge_bookmaker_odds(
+                payload,
+                historical_result.payload,
+            )
+        return OddspapiHistoricalOddsEnricher.merge_initial_prices(
+            payload or {},
+            historical_result.payload,
+        )
+
+    def _fetch_exchange_historical_selections(
         self,
         fixture_id: str,
         *,
+        selections: list[ExchangeHistoricalSelection],
         source_sport_id: str | int | None,
-        minutes_until_start: int | float | None,
-        selected_endpoint: str,
-        regular_bookmakers: list[str] | None,
-        exchange_bookmakers: list[str] | None,
-        market_mapping_index: MarketMappingIndex,
-        exchange_market_keys: list[str] | None,
-        exchange_main_line_only: bool,
-        exchange_include_player_props: bool,
-        exchange_historical_moments: list[int],
+        minimum_initial_span_minutes: float,
+        payload: dict | None,
+        result: OddspapiOddsAcquisitionResult,
+        requested_bookmakers: set[str],
+        merge_full_bookmakers: bool,
+        fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
+    ) -> dict | None:
+        for selection in selections:
+            requested_bookmakers.add(selection.bookmaker_slug)
+
+        if fetch_executor is not None and len(selections) > 1:
+            result.http_requests_attempted += len(selections)
+            result.exchange_historical_requests_attempted += len(selections)
+            outcomes = fetch_executor.fetch_all(
+                fixture_id,
+                selections=selections,
+                source_sport_id=source_sport_id,
+                minimum_initial_span_minutes=minimum_initial_span_minutes,
+            )
+            for outcome in outcomes:
+                payload = self._apply_exchange_historical_result(
+                    fixture_id,
+                    outcome.selection,
+                    outcome.result,
+                    outcome.error,
+                    payload=payload,
+                    result=result,
+                    merge_full_bookmakers=merge_full_bookmakers,
+                )
+            return payload
+
+        for selection in selections:
+            result.http_requests_attempted += 1
+            result.exchange_historical_requests_attempted += 1
+            historical_result = None
+            error = None
+            try:
+                historical_result = self._fetch(
+                    fixture_id,
+                    bookmakers=[selection.bookmaker_slug],
+                    endpoint=ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
+                    source_sport_id=source_sport_id,
+                    outcome_id=int(selection.source_outcome_id),
+                    minimum_initial_span_minutes=minimum_initial_span_minutes,
+                )
+            except Exception as exc:
+                error = exc
+            payload = self._apply_exchange_historical_result(
+                fixture_id,
+                selection,
+                historical_result,
+                error,
+                payload=payload,
+                result=result,
+                merge_full_bookmakers=merge_full_bookmakers,
+            )
+        return payload
+
+    def _acquire_live(
+        self,
+        fixture_id: str,
+        *,
+        event_id: int,
+        source_sport_id: str | int | None,
+        enable_exchange_historical: bool,
+        regular: list[str],
+        exchange: list[str],
         exchange_max_outcomes_per_event: int,
         exchange_request_budget: int | None,
         minimum_initial_span_minutes: float,
-        current_odds_available: bool,
-        debug_mode: bool = False,
+        debug_mode: bool,
+        result: OddspapiOddsAcquisitionResult,
+        requested_bookmakers: set[str],
+        fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
     ) -> OddspapiOddsAcquisitionResult:
-        regular = self._unique_bookmakers(regular_bookmakers)
-        exchange = self._unique_bookmakers(exchange_bookmakers)
-        self._validate_bookmaker_groups(regular, exchange)
-        combined = self._unique_bookmakers(regular, exchange)
-        result = OddspapiOddsAcquisitionResult()
-        requested_bookmakers: set[str] = set()
-
-        current_payload: dict | None = None
-        current_missing = False
-        should_fetch_current = self._should_fetch_current_odds(
-            selected_endpoint=selected_endpoint,
-            exchange_bookmakers=exchange,
-            minutes_until_start=minutes_until_start,
-            current_odds_available=current_odds_available,
-        )
-        if combined and should_fetch_current:
-            requested_bookmakers.update(combined)
-            result.http_requests_attempted += 1
-            current_result = self._fetch(
-                fixture_id,
-                bookmakers=combined,
-                endpoint=ODDSPAPI_CURRENT_ODDS_ENDPOINT,
-                source_sport_id=source_sport_id,
-                capture_raw_response=debug_mode,
-            )
-            current_missing = current_result.endpoint_missing
-            current_payload = current_result.payload
-            if selected_endpoint == ODDSPAPI_CURRENT_ODDS_ENDPOINT:
-                result.debug_raw_payload = current_result.raw_payload
-                result.debug_bookmakers = list(combined)
-
-        payload = current_payload
+        payload: dict | None = None
         historical_missing = False
-        if selected_endpoint == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT and regular:
+
+        if regular:
             requested_bookmakers.update(regular)
             result.http_requests_attempted += 1
             historical_result = self._fetch(
@@ -171,34 +281,160 @@ class OddspapiPreStartOddsAcquisitionService:
                 capture_raw_response=debug_mode,
             )
             historical_missing = historical_result.endpoint_missing
+            payload = historical_result.payload
             result.debug_raw_payload = historical_result.raw_payload
             result.debug_bookmakers = list(regular)
-            if current_payload:
+
+        if exchange and enable_exchange_historical:
+            cached_rows = self.mainline_cache_repository.get_exchange_mainline_selections(
+                event_id,
+                exchange,
+            )
+            selections = [
+                ExchangeHistoricalSelection(
+                    bookmaker_slug=str(row.get("bookmaker_slug") or "").strip().lower(),
+                    source_market_id=str(row.get("source_market_id") or ""),
+                    source_outcome_id=str(row.get("source_outcome_id") or ""),
+                    canonical_market_key=str(row.get("canonical_market_key") or ""),
+                )
+                for row in cached_rows
+                if str(row.get("bookmaker_slug") or "").strip()
+                and str(row.get("source_outcome_id") or "").strip()
+            ]
+            selection_limit = self._selection_limit(
+                exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
+                exchange_request_budget=exchange_request_budget,
+            )
+            if selection_limit is not None and len(selections) > selection_limit:
+                result.exchange_outcomes_skipped_budget = (
+                    len(selections) - selection_limit
+                )
+                selections = selections[:selection_limit]
+            result.exchange_outcomes_selected = len(selections)
+            result.exchange_selection_diagnostics = {
+                "from_mainline_cache": len(selections),
+                "truncated": result.exchange_outcomes_skipped_budget,
+            }
+            logger.info(
+                "Oddspapi live exchange historical plan fixture_id=%s "
+                "event_id=%s selected=%s diagnostics=%s",
+                fixture_id,
+                event_id,
+                result.exchange_outcomes_selected,
+                result.exchange_selection_diagnostics,
+            )
+            payload = self._fetch_exchange_historical_selections(
+                fixture_id,
+                selections=selections,
+                source_sport_id=source_sport_id,
+                minimum_initial_span_minutes=minimum_initial_span_minutes,
+                payload=payload,
+                result=result,
+                requested_bookmakers=requested_bookmakers,
+                merge_full_bookmakers=True,
+                fetch_executor=fetch_executor,
+            )
+
+        result.bookies_requested = len(requested_bookmakers)
+        result.bookmaker_slugs_requested = sorted(requested_bookmakers)
+        result.payload = payload
+        result.endpoint_missing = historical_missing and payload is None
+        return result
+
+    def _acquire_pre_start(
+        self,
+        fixture_id: str,
+        *,
+        event_id: int,
+        source_sport_id: str | int | None,
+        minutes_until_start: int | float | None,
+        enable_exchange_historical: bool,
+        regular: list[str],
+        exchange: list[str],
+        market_mapping_index: MarketMappingIndex,
+        exchange_market_keys: list[str] | None,
+        exchange_main_line_only: bool,
+        exchange_include_player_props: bool,
+        exchange_historical_moments: list[int],
+        exchange_max_outcomes_per_event: int,
+        exchange_request_budget: int | None,
+        minimum_initial_span_minutes: float,
+        current_odds_available: bool,
+        require_active_quotes: bool = True,
+        debug_mode: bool,
+        result: OddspapiOddsAcquisitionResult,
+        requested_bookmakers: set[str],
+        fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
+    ) -> OddspapiOddsAcquisitionResult:
+        combined = self._unique_bookmakers(regular, exchange)
+        current_payload: dict | None = None
+        current_missing = False
+
+        if combined and current_odds_available:
+            requested_bookmakers.update(combined)
+            result.http_requests_attempted += 1
+            current_result = self._fetch(
+                fixture_id,
+                bookmakers=combined,
+                endpoint=ODDSPAPI_CURRENT_ODDS_ENDPOINT,
+                source_sport_id=source_sport_id,
+                capture_raw_response=debug_mode,
+            )
+            current_missing = current_result.endpoint_missing
+            current_payload = current_result.payload
+            result.debug_raw_payload = current_result.raw_payload
+            result.debug_bookmakers = list(combined)
+
+        payload = current_payload
+        if current_payload:
+            mainline_outcomes = OddspapiMainlineOutcomeExtractor.extract(
+                current_payload,
+                exchange_bookmakers=exchange,
+            )
+            if mainline_outcomes:
+                result.mainline_outcomes_cached = (
+                    self.mainline_cache_repository.save_mainline_outcomes(
+                        event_id,
+                        fixture_id,
+                        (
+                            str(source_sport_id)
+                            if source_sport_id is not None
+                            else None
+                        ),
+                        mainline_outcomes,
+                    )
+                )
+
+        if (
+            self._should_enrich_opening_odds(
+                minutes_until_start,
+                exchange_historical_moments,
+            )
+            and regular
+            and current_payload
+        ):
+            requested_bookmakers.update(regular)
+            result.http_requests_attempted += 1
+            historical_result = self._fetch(
+                fixture_id,
+                bookmakers=regular,
+                endpoint=ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
+                source_sport_id=source_sport_id,
+                minimum_initial_span_minutes=minimum_initial_span_minutes,
+            )
+            if historical_result.payload:
                 payload = OddspapiHistoricalOddsEnricher.merge_initial_prices(
                     current_payload,
                     historical_result.payload,
                 )
-            elif historical_result.payload:
-                payload = historical_result.payload
 
         should_fetch_exchange_history = (
             bool(exchange)
+            and enable_exchange_historical
             and current_payload is not None
             and minutes_until_start in set(exchange_historical_moments or [])
         )
         if should_fetch_exchange_history:
-            selection_limit = (
-                max(0, int(exchange_max_outcomes_per_event))
-                if exchange_max_outcomes_per_event
-                and int(exchange_max_outcomes_per_event) > 0
-                else None
-            )
-            if exchange_request_budget is not None:
-                selection_limit = (
-                    min(selection_limit, exchange_request_budget)
-                    if selection_limit is not None
-                    else max(0, exchange_request_budget)
-                )
             selection_result = OddspapiExchangeOutcomeSelector.select(
                 current_payload,
                 exchange_bookmakers=exchange,
@@ -206,7 +442,11 @@ class OddspapiPreStartOddsAcquisitionService:
                 allowed_market_keys=exchange_market_keys,
                 main_line_only=exchange_main_line_only,
                 include_player_props=exchange_include_player_props,
-                max_outcomes=selection_limit,
+                max_outcomes=self._selection_limit(
+                    exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
+                    exchange_request_budget=exchange_request_budget,
+                ),
+                require_active_quotes=require_active_quotes,
             )
             result.exchange_outcomes_selected = len(selection_result.selections)
             result.exchange_selection_diagnostics = {
@@ -234,50 +474,91 @@ class OddspapiPreStartOddsAcquisitionService:
                 result.exchange_outcomes_selected,
                 result.exchange_selection_diagnostics,
             )
-
-            for selection in selection_result.selections:
-                requested_bookmakers.add(selection.bookmaker_slug)
-                result.http_requests_attempted += 1
-                result.exchange_historical_requests_attempted += 1
-                try:
-                    historical_result = self._fetch(
-                        fixture_id,
-                        bookmakers=[selection.bookmaker_slug],
-                        endpoint=ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
-                        source_sport_id=source_sport_id,
-                        outcome_id=int(selection.source_outcome_id),
-                        minimum_initial_span_minutes=(
-                            minimum_initial_span_minutes
-                        ),
-                    )
-                    if historical_result.endpoint_missing:
-                        result.exchange_historical_requests_failed += 1
-                        continue
-                    if historical_result.payload:
-                        payload = (
-                            OddspapiHistoricalOddsEnricher.merge_initial_prices(
-                                payload or current_payload,
-                                historical_result.payload,
-                            )
-                        )
-                except Exception as exc:
-                    result.exchange_historical_requests_failed += 1
-                    logger.warning(
-                        "Oddspapi exchange historical request failed "
-                        "fixture_id=%s bookmaker=%s market_id=%s "
-                        "outcome_id=%s: %s",
-                        fixture_id,
-                        selection.bookmaker_slug,
-                        selection.source_market_id,
-                        selection.source_outcome_id,
-                        exc,
-                    )
+            payload = self._fetch_exchange_historical_selections(
+                fixture_id,
+                selections=selection_result.selections,
+                source_sport_id=source_sport_id,
+                minimum_initial_span_minutes=minimum_initial_span_minutes,
+                payload=payload,
+                result=result,
+                requested_bookmakers=requested_bookmakers,
+                merge_full_bookmakers=False,
+                fetch_executor=fetch_executor,
+            )
 
         result.bookies_requested = len(requested_bookmakers)
+        result.bookmaker_slugs_requested = sorted(requested_bookmakers)
         result.payload = payload
-        result.endpoint_missing = (
-            current_missing
-            if selected_endpoint == ODDSPAPI_CURRENT_ODDS_ENDPOINT
-            else historical_missing and payload is None
-        )
+        result.endpoint_missing = current_missing
         return result
+
+    def acquire(
+        self,
+        fixture_id: str,
+        *,
+        event_id: int,
+        source_sport_id: str | int | None,
+        minutes_until_start: int | float | None,
+        is_live: bool,
+        enable_exchange_historical: bool = True,
+        regular_bookmakers: list[str] | None,
+        exchange_bookmakers: list[str] | None,
+        market_mapping_index: MarketMappingIndex,
+        exchange_market_keys: list[str] | None,
+        exchange_main_line_only: bool,
+        exchange_include_player_props: bool,
+        exchange_historical_moments: list[int],
+        exchange_max_outcomes_per_event: int,
+        exchange_request_budget: int | None,
+        minimum_initial_span_minutes: float,
+        current_odds_available: bool,
+        require_active_quotes: bool = True,
+        debug_mode: bool = False,
+        exchange_fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
+    ) -> OddspapiOddsAcquisitionResult:
+        regular = self._unique_bookmakers(regular_bookmakers)
+        exchange = self._unique_bookmakers(exchange_bookmakers)
+        self._validate_bookmaker_groups(regular, exchange)
+        result = OddspapiOddsAcquisitionResult()
+        requested_bookmakers: set[str] = set()
+
+        if is_live:
+            return self._acquire_live(
+                fixture_id,
+                event_id=event_id,
+                source_sport_id=source_sport_id,
+                enable_exchange_historical=enable_exchange_historical,
+                regular=regular,
+                exchange=exchange,
+                exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
+                exchange_request_budget=exchange_request_budget,
+                minimum_initial_span_minutes=minimum_initial_span_minutes,
+                debug_mode=debug_mode,
+                result=result,
+                requested_bookmakers=requested_bookmakers,
+                fetch_executor=exchange_fetch_executor,
+            )
+
+        return self._acquire_pre_start(
+            fixture_id,
+            event_id=event_id,
+            source_sport_id=source_sport_id,
+            minutes_until_start=minutes_until_start,
+            enable_exchange_historical=enable_exchange_historical,
+            regular=regular,
+            exchange=exchange,
+            market_mapping_index=market_mapping_index,
+            exchange_market_keys=exchange_market_keys,
+            exchange_main_line_only=exchange_main_line_only,
+            exchange_include_player_props=exchange_include_player_props,
+            exchange_historical_moments=exchange_historical_moments,
+            exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
+            exchange_request_budget=exchange_request_budget,
+            minimum_initial_span_minutes=minimum_initial_span_minutes,
+            current_odds_available=current_odds_available,
+            require_active_quotes=require_active_quotes,
+            debug_mode=debug_mode,
+            result=result,
+            requested_bookmakers=requested_bookmakers,
+            fetch_executor=exchange_fetch_executor,
+        )

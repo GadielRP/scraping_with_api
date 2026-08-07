@@ -8,8 +8,12 @@ import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
-from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import Base, Event, Participant
+from infrastructure.persistence.models import (
+    Base,
+    Event,
+    EventSourceMapping,
+    Participant,
+)
 from infrastructure.persistence.repositories.event_source_mapping_repository import (
     EventSourceMappingRepository,
 )
@@ -306,9 +310,17 @@ def test_existing_oddspapi_mapping_hydrates_participant_links(monkeypatch):
 
 
 def test_event_source_mapping_repository_stores_participant_links():
-    Base.metadata.create_all(bind=db_manager.engine)
+    # Isolated in-memory engine: this test must never write Event/Participant/
+    # EventSourceMapping rows into the real configured database (doing so
+    # previously leaked a permanent "events without SofaScore mapping" row
+    # that broke the startup schema migration validation).
+    engine = create_engine("sqlite:///:memory:")
+    Event.__table__.create(bind=engine)
+    Participant.__table__.create(bind=engine)
+    EventSourceMapping.__table__.create(bind=engine)
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
 
-    with db_manager.get_session() as session:
+    with Session() as session:
         event = Event(
             slug="oddspapi-participant-link-test",
             start_time_utc=datetime(2099, 1, 3, 12, 0),
