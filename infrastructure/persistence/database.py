@@ -142,6 +142,7 @@ class DatabaseManager:
             EventSourceMappingRepository.ensure_participant_link_schema()
             OddspapiFixtureDiscoveryRunRepository.ensure_run_scope_schema()
             self._migrate_oddspapi_mainline_outcome_cache()
+            self._migrate_market_choice_quotes()
             
             # Re-create inspector after manual migrations may have changed schema
             inspector = inspect(self.engine)
@@ -634,6 +635,35 @@ class DatabaseManager:
             logger.info("Oddspapi mainline outcome cache schema is ready")
         except Exception as e:
             logger.error(f"Oddspapi mainline outcome cache migration failed: {e}")
+            logger.error(traceback.format_exc())
+
+    def _migrate_market_choice_quotes(self):
+        """Ensure the market_choice_quotes table exists with indexes.
+
+        See docs/refactors/db-schema-odds-refactor.md (Fase 1) for the design
+        rationale: this table is the current-state cache for a price
+        instrument scoped by (choice, source, exchange_side, exchange_level),
+        replacing the ad-hoc side/source handling previously smuggled into
+        Market.choice_group (OddsPortal) or market_choice_snapshots (Oddspapi).
+        """
+        try:
+            from infrastructure.persistence.models import MarketChoiceQuote
+
+            self._create_table_and_indexes(
+                MarketChoiceQuote,
+                [
+                    "CREATE UNIQUE INDEX IF NOT EXISTS unique_market_choice_quote "
+                    "ON market_choice_quotes "
+                    "(choice_id, source, exchange_side, exchange_level)",
+                    "CREATE INDEX IF NOT EXISTS idx_market_choice_quotes_choice "
+                    "ON market_choice_quotes (choice_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_market_choice_quotes_source "
+                    "ON market_choice_quotes (source)",
+                ],
+            )
+            logger.info("Market choice quotes schema is ready")
+        except Exception as e:
+            logger.error(f"Market choice quotes migration failed: {e}")
             logger.error(traceback.format_exc())
 
     def _migrate_market_period_not_null(self):

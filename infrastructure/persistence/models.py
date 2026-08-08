@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Boolean, Index, JSON
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Boolean, Index, JSON, SmallInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker, relationship
@@ -522,6 +522,10 @@ class MarketChoice(Base):
     choice_name = Column(Text, nullable=False)  # "1", "x", "2", "over", "under", "yes", "no", "no_goal"
     
     # Odds values (stored as decimals for easy math)
+    # NOTE: these mirror the "primary" quote (see MarketChoiceQuote) for
+    # backward compatibility with existing readers. Source of truth for
+    # per-source/per-side state (e.g. Betfair back vs lay) is MarketChoiceQuote.
+    # Scheduled for deprecation once readers migrate (see docs/refactors/db-schema-odds-refactor.md Fase 7).
     initial_odds = Column(Numeric(8, 3))  # Opening odds (decimal, e.g., 1.53)
     current_odds = Column(Numeric(8, 3))  # Current/final odds (decimal, e.g., 1.48)
     
@@ -537,6 +541,7 @@ class MarketChoice(Base):
     # Relationships
     market = relationship("Market", back_populates="choices")
     snapshots = relationship("MarketChoiceSnapshot", back_populates="choice", cascade="all, delete-orphan")
+    quotes = relationship("MarketChoiceQuote", back_populates="choice", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<MarketChoice(choice_id={self.choice_id}, name='{self.choice_name}', initial={self.initial_odds}, current={self.current_odds})>"
@@ -574,6 +579,68 @@ class MarketChoiceSnapshot(Base):
     
     # Relationships
     choice = relationship("MarketChoice", back_populates="snapshots")
+
+
+class MarketChoiceQuote(Base):
+    """
+    Current-state price instrument for one canonical choice, scoped by source
+    and exchange side/level (e.g. Betfair back vs lay from OddsPortal vs Oddspapi).
+
+    This is the "current state" counterpart to MarketChoiceSnapshot's pure
+    append-only history: exactly one row per (choice, source, exchange_side,
+    exchange_level), updated in place as new prices arrive, independently for
+    initial_odds and current_odds so partial arrival (initial-only, current-only,
+    or either one first) never requires special-case handling.
+
+    See docs/refactors/db-schema-odds-refactor.md for the full design rationale.
+    """
+    __tablename__ = 'market_choice_quotes'
+
+    quote_id = Column(Integer, primary_key=True, autoincrement=True)
+    choice_id = Column(Integer, ForeignKey('market_choices.choice_id', ondelete='CASCADE'), nullable=False)
+
+    # Identity of the price instrument. exchange_side is NEVER NULL: Postgres
+    # treats NULL != NULL in UNIQUE constraints, so a nullable side would allow
+    # duplicate 'single' rows for the same (choice_id, source) pair.
+    source = Column(Text, nullable=False)
+    exchange_side = Column(Text, nullable=False, default="single", server_default=text("'single'"))
+    exchange_level = Column(SmallInteger, nullable=False, default=0, server_default=text("0"))
+
+    # Metadata of this instrument (previously only available on snapshots)
+    main_line = Column(Boolean)
+    source_market_id = Column(Text)
+    source_outcome_id = Column(Text)
+    bookmaker_outcome_id = Column(Text)
+    source_limit = Column(Numeric(12, 3))
+
+    # Current state (independently nullable by design, see class docstring)
+    initial_odds = Column(Numeric(8, 3))
+    initial_captured_at = Column(DateTime)
+    current_odds = Column(Numeric(8, 3))
+    current_updated_at = Column(DateTime)
+    movement = Column(SmallInteger, default=0)  # -1 = dropped, 0 = unchanged, +1 = increased
+
+    created_at = Column(DateTime, default=get_local_now)
+    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'choice_id', 'source', 'exchange_side', 'exchange_level',
+            name='unique_market_choice_quote',
+        ),
+        Index('idx_market_choice_quotes_choice', 'choice_id'),
+        Index('idx_market_choice_quotes_source', 'source'),
+    )
+
+    # Relationships
+    choice = relationship("MarketChoice", back_populates="quotes")
+
+    def __repr__(self):
+        return (
+            f"<MarketChoiceQuote(quote_id={self.quote_id}, choice_id={self.choice_id}, "
+            f"source='{self.source}', exchange_side='{self.exchange_side}', "
+            f"initial={self.initial_odds}, current={self.current_odds})>"
+        )
 
 
 class PredictionLog(Base):

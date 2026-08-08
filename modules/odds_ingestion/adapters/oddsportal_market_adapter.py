@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Mapping
 
@@ -20,6 +20,12 @@ class CanonicalChoicePayload:
     initial_odds: str | None = None
     initial_changed_at: str | None = None
     source_collected_at: str | None = None
+    # 'back' | 'lay' for a Betfair Exchange choice, None for every other
+    # bookie. See docs/refactors/db-schema-odds-refactor.md (Fase 3): this
+    # replaces the old choice_group='Back'/'Lay' encoding, which forced back
+    # and lay into two separate Market rows instead of one market with two
+    # priced sides per outcome.
+    exchange_side: str | None = None
 
     def as_repository_dict(self) -> dict:
         payload = {
@@ -32,6 +38,8 @@ class CanonicalChoicePayload:
             payload["initialChangedAt"] = self.initial_changed_at
         if self.source_collected_at:
             payload["sourceCollectedAt"] = self.source_collected_at
+        if self.exchange_side:
+            payload["exchangeSide"] = self.exchange_side
         return payload
 
 
@@ -209,124 +217,24 @@ class OddsPortalMarketAdapter:
                 continue
 
             requires_choice_group = bool(canonical_type.requires_choice_group)
-            for source_bookie in getattr(extraction, "bookie_odds", None) or []:
-                source_name = str(getattr(source_bookie, "name", "") or "").strip()
-                source_slug = cls._slugify(source_name)
-                choice_group = cls._line(getattr(source_bookie, "handicap", None))
-                if not source_name or not source_slug or (requires_choice_group and choice_group is None):
-                    diagnostics.append(
-                        {
-                            "canonicalMarketKey": canonical_key,
-                            "sourceBookie": source_name,
-                            "reason": "missing_bookie_identity_or_required_choice_group",
-                        }
-                    )
-                    continue
-
-                role_1 = "over" if canonical_type.market_family in {"total", "team_total"} else "1"
-                role_2 = "under" if canonical_type.market_family in {"total", "team_total"} else "2"
-                choices = cls._choices(
-                    family=canonical_type.market_family,
-                    current={
-                        role_1: getattr(source_bookie, "odds_1", None),
-                        "x": getattr(source_bookie, "odds_x", None),
-                        role_2: getattr(source_bookie, "odds_2", None),
-                    },
-                    initial={
-                        role_1: getattr(source_bookie, "initial_odds_1", None),
-                        "x": getattr(source_bookie, "initial_odds_x", None),
-                        role_2: getattr(source_bookie, "initial_odds_2", None),
-                    },
-                    initial_changed_at={
-                        role_1: getattr(source_bookie, "initial_odds_1_time", None),
-                        "x": getattr(source_bookie, "initial_odds_x_time", None),
-                        role_2: getattr(source_bookie, "initial_odds_2_time", None),
-                    },
-                    source_collected_at={
-                        role_1: getattr(source_bookie, "odds_1_time", None),
-                        "x": getattr(source_bookie, "odds_x_time", None),
-                        role_2: getattr(source_bookie, "odds_2_time", None),
-                    },
-                    reference_time=reference_time,
-                )
-                if not choices:
-                    diagnostics.append(
-                        {
-                            "canonicalMarketKey": canonical_key,
-                            "sourceBookie": source_name,
-                            "reason": "incomplete_canonical_choices",
-                        }
-                    )
-                    continue
-                markets_by_bookie.setdefault((source_name, source_slug), []).append(
-                    CanonicalMarketPayload(
-                        canonical_market_key=canonical_key,
-                        market_name=canonical_type.canonical_market_name,
-                        market_group=canonical_type.canonical_market_group,
-                        market_period=canonical_type.canonical_market_period,
-                        choice_group=choice_group,
-                        choices=choices,
-                    )
-                )
-
-            betfair = getattr(extraction, "betfair", None)
-            if betfair is None:
-                continue
-            choice_group_line = cls._line(getattr(betfair, "handicap", None))
-            if requires_choice_group and choice_group_line is None:
-                diagnostics.append(
-                    {
-                        "canonicalMarketKey": canonical_key,
-                        "sourceBookie": "Betfair Exchange",
-                        "reason": "missing_required_choice_group",
-                    }
-                )
-                continue
-
-            for side in ("back", "lay"):
-                role_1 = "over" if canonical_type.market_family in {"total", "team_total"} else "1"
-                role_2 = "under" if canonical_type.market_family in {"total", "team_total"} else "2"
-                choices = cls._choices(
-                    family=canonical_type.market_family,
-                    current={
-                        role_1: getattr(betfair, f"{side}_1", None),
-                        "x": getattr(betfair, f"{side}_x", None),
-                        role_2: getattr(betfair, f"{side}_2", None),
-                    },
-                    initial={
-                        role_1: getattr(betfair, f"initial_{side}_1", None),
-                        "x": getattr(betfair, f"initial_{side}_x", None),
-                        role_2: getattr(betfair, f"initial_{side}_2", None),
-                    },
-                    initial_changed_at={
-                        role_1: getattr(betfair, f"initial_{side}_1_time", None),
-                        "x": getattr(betfair, f"initial_{side}_x_time", None),
-                        role_2: getattr(betfair, f"initial_{side}_2_time", None),
-                    },
-                    source_collected_at={
-                        role_1: getattr(betfair, f"{side}_1_time", None),
-                        "x": getattr(betfair, f"{side}_x_time", None),
-                        role_2: getattr(betfair, f"{side}_2_time", None),
-                    },
-                    reference_time=reference_time,
-                )
-                if not choices:
-                    continue
-                side_group = side.title()
-                if choice_group_line is not None:
-                    side_group = f"{side_group} {choice_group_line}"
-                markets_by_bookie.setdefault(
-                    ("Betfair Exchange", "betfair-ex"), []
-                ).append(
-                    CanonicalMarketPayload(
-                        canonical_market_key=canonical_key,
-                        market_name=canonical_type.canonical_market_name,
-                        market_group=canonical_type.canonical_market_group,
-                        market_period=canonical_type.canonical_market_period,
-                        choice_group=side_group,
-                        choices=choices,
-                    )
-                )
+            cls._build_regular_bookmaker_markets(
+                extraction,
+                canonical_key=canonical_key,
+                canonical_type=canonical_type,
+                requires_choice_group=requires_choice_group,
+                reference_time=reference_time,
+                markets_by_bookie=markets_by_bookie,
+                diagnostics=diagnostics,
+            )
+            cls._build_betfair_exchange_markets(
+                extraction,
+                canonical_key=canonical_key,
+                canonical_type=canonical_type,
+                requires_choice_group=requires_choice_group,
+                reference_time=reference_time,
+                markets_by_bookie=markets_by_bookie,
+                diagnostics=diagnostics,
+            )
 
         bookmakers = tuple(
             OddsPortalBookmakerPayload(
@@ -340,6 +248,163 @@ class OddsPortalMarketAdapter:
         return OddsPortalOddsResponse(
             bookmakers=bookmakers,
             diagnostics=tuple(diagnostics),
+        )
+
+    @classmethod
+    def _build_regular_bookmaker_markets(
+        cls,
+        extraction,
+        *,
+        canonical_key: str,
+        canonical_type,
+        requires_choice_group: bool,
+        reference_time: datetime,
+        markets_by_bookie: dict[tuple[str, str], list["CanonicalMarketPayload"]],
+        diagnostics: list[dict],
+    ) -> None:
+        """Non-exchange bookies: one outcome, one price. Unchanged behaviour."""
+        for source_bookie in getattr(extraction, "bookie_odds", None) or []:
+            source_name = str(getattr(source_bookie, "name", "") or "").strip()
+            source_slug = cls._slugify(source_name)
+            choice_group = cls._line(getattr(source_bookie, "handicap", None))
+            if not source_name or not source_slug or (requires_choice_group and choice_group is None):
+                diagnostics.append(
+                    {
+                        "canonicalMarketKey": canonical_key,
+                        "sourceBookie": source_name,
+                        "reason": "missing_bookie_identity_or_required_choice_group",
+                    }
+                )
+                continue
+
+            role_1 = "over" if canonical_type.market_family in {"total", "team_total"} else "1"
+            role_2 = "under" if canonical_type.market_family in {"total", "team_total"} else "2"
+            choices = cls._choices(
+                family=canonical_type.market_family,
+                current={
+                    role_1: getattr(source_bookie, "odds_1", None),
+                    "x": getattr(source_bookie, "odds_x", None),
+                    role_2: getattr(source_bookie, "odds_2", None),
+                },
+                initial={
+                    role_1: getattr(source_bookie, "initial_odds_1", None),
+                    "x": getattr(source_bookie, "initial_odds_x", None),
+                    role_2: getattr(source_bookie, "initial_odds_2", None),
+                },
+                initial_changed_at={
+                    role_1: getattr(source_bookie, "initial_odds_1_time", None),
+                    "x": getattr(source_bookie, "initial_odds_x_time", None),
+                    role_2: getattr(source_bookie, "initial_odds_2_time", None),
+                },
+                source_collected_at={
+                    role_1: getattr(source_bookie, "odds_1_time", None),
+                    "x": getattr(source_bookie, "odds_x_time", None),
+                    role_2: getattr(source_bookie, "odds_2_time", None),
+                },
+                reference_time=reference_time,
+            )
+            if not choices:
+                diagnostics.append(
+                    {
+                        "canonicalMarketKey": canonical_key,
+                        "sourceBookie": source_name,
+                        "reason": "incomplete_canonical_choices",
+                    }
+                )
+                continue
+            markets_by_bookie.setdefault((source_name, source_slug), []).append(
+                CanonicalMarketPayload(
+                    canonical_market_key=canonical_key,
+                    market_name=canonical_type.canonical_market_name,
+                    market_group=canonical_type.canonical_market_group,
+                    market_period=canonical_type.canonical_market_period,
+                    choice_group=choice_group,
+                    choices=choices,
+                )
+            )
+
+    @classmethod
+    def _build_betfair_exchange_markets(
+        cls,
+        extraction,
+        *,
+        canonical_key: str,
+        canonical_type,
+        requires_choice_group: bool,
+        reference_time: datetime,
+        markets_by_bookie: dict[tuple[str, str], list["CanonicalMarketPayload"]],
+        diagnostics: list[dict],
+    ) -> None:
+        """Betfair Exchange: back and lay are two prices for the SAME outcome.
+
+        Fase 3 fix (docs/refactors/db-schema-odds-refactor.md): back and lay
+        used to be encoded as choice_group='Back'/'Lay', which produced two
+        separate Market rows sharing no identity with each other or with the
+        line ("Back 2.5" vs "Lay 2.5" instead of just "2.5"). Now both sides
+        land in the SAME market (choice_group is the line only, like every
+        other bookie) and each CanonicalChoicePayload carries its own
+        exchange_side, so MarketChoiceQuoteWriter can persist back/lay as two
+        independent quotes for one MarketChoice.
+        """
+        betfair = getattr(extraction, "betfair", None)
+        if betfair is None:
+            return
+        choice_group_line = cls._line(getattr(betfair, "handicap", None))
+        if requires_choice_group and choice_group_line is None:
+            diagnostics.append(
+                {
+                    "canonicalMarketKey": canonical_key,
+                    "sourceBookie": "Betfair Exchange",
+                    "reason": "missing_required_choice_group",
+                }
+            )
+            return
+
+        role_1 = "over" if canonical_type.market_family in {"total", "team_total"} else "1"
+        role_2 = "under" if canonical_type.market_family in {"total", "team_total"} else "2"
+
+        all_choices: list[CanonicalChoicePayload] = []
+        for side in ("back", "lay"):
+            choices = cls._choices(
+                family=canonical_type.market_family,
+                current={
+                    role_1: getattr(betfair, f"{side}_1", None),
+                    "x": getattr(betfair, f"{side}_x", None),
+                    role_2: getattr(betfair, f"{side}_2", None),
+                },
+                initial={
+                    role_1: getattr(betfair, f"initial_{side}_1", None),
+                    "x": getattr(betfair, f"initial_{side}_x", None),
+                    role_2: getattr(betfair, f"initial_{side}_2", None),
+                },
+                initial_changed_at={
+                    role_1: getattr(betfair, f"initial_{side}_1_time", None),
+                    "x": getattr(betfair, f"initial_{side}_x_time", None),
+                    role_2: getattr(betfair, f"initial_{side}_2_time", None),
+                },
+                source_collected_at={
+                    role_1: getattr(betfair, f"{side}_1_time", None),
+                    "x": getattr(betfair, f"{side}_x_time", None),
+                    role_2: getattr(betfair, f"{side}_2_time", None),
+                },
+                reference_time=reference_time,
+            )
+            if not choices:
+                continue
+            all_choices.extend(replace(choice, exchange_side=side) for choice in choices)
+
+        if not all_choices:
+            return
+
+        markets_by_bookie.setdefault(("Betfair Exchange", "betfair-ex"), []).append(
+            CanonicalMarketPayload(
+                canonical_market_key=canonical_key,
+                market_name=canonical_type.canonical_market_name,
+                market_group=canonical_type.canonical_market_group,
+                market_period=canonical_type.canonical_market_period,
+                choice_group=choice_group_line,
+                choices=tuple(all_choices),
+            )
         )
 
 

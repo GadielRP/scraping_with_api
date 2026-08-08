@@ -127,7 +127,13 @@ def test_adapter_transports_per_choice_tooltip_timestamps():
     )
 
 
-def test_adapter_transports_exchange_tooltip_current_for_back_and_lay():
+def test_adapter_shares_one_market_between_betfair_back_and_lay():
+    """Fase 3 fix: back/lay used to be encoded as choice_group='Back'/'Lay',
+    splitting them into two unrelated Market rows. They must now land in the
+    SAME market (choice_group is the line only, like every other bookie),
+    with each choice tagged with its own exchange_side so back and lay stay
+    disambiguated at the choice level instead of the market level.
+    """
     exchange = BetfairExchangeOdds(
         back_1="1.42",
         back_x="3.5",
@@ -161,16 +167,25 @@ def test_adapter_transports_exchange_tooltip_current_for_back_and_lay():
     )
 
     betfair = response.bookmakers[0]
-    markets = {market.choice_group: market for market in betfair.markets}
     assert betfair.source_slug == "betfair-ex"
-    assert markets["Back"].choices[0].current_odds == "1.42"
-    assert markets["Back"].choices[0].source_collected_at.endswith(
-        "-08-05T10:01"
-    )
-    assert markets["Lay"].choices[0].current_odds == "1.44"
-    assert markets["Lay"].choices[0].source_collected_at.endswith(
-        "-08-05T10:02"
-    )
+    assert len(betfair.markets) == 1
+    market = betfair.markets[0]
+    assert market.choice_group is None
+    assert [choice.name for choice in market.choices] == [
+        "1", "x", "2", "1", "x", "2",
+    ]
+
+    by_side_and_name = {
+        (choice.exchange_side, choice.name): choice for choice in market.choices
+    }
+    back_1 = by_side_and_name[("back", "1")]
+    lay_1 = by_side_and_name[("lay", "1")]
+    assert back_1.current_odds == "1.42"
+    assert back_1.source_collected_at.endswith("-08-05T10:01")
+    assert back_1.as_repository_dict()["exchangeSide"] == "back"
+    assert lay_1.current_odds == "1.44"
+    assert lay_1.source_collected_at.endswith("-08-05T10:02")
+    assert lay_1.as_repository_dict()["exchangeSide"] == "lay"
 
 
 def test_adapter_preserves_including_overtime_semantics():

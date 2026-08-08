@@ -578,6 +578,7 @@ class MarketOddsIngestionService:
         bookies_reused = 0
         bookie_mappings_created = 0
         bookie_mappings_updated = 0
+        bookmaker_batches = []
         try:
             for bookmaker in bookmakers:
                 resolution_result = BookieRepository.resolve_bookie_from_source(
@@ -604,15 +605,24 @@ class MarketOddsIngestionService:
                 if resolution_result.mapping_updated:
                     bookie_mappings_updated += 1
 
-                save_result = MarketRepository.save_markets_from_response_with_stats(
-                    event_id=resolution.canonical_event_id,
-                    odds_response={"markets": bookmaker.get("markets", [])},
-                    bookie_id=resolution_result.bookie.bookie_id,
-                    source="oddspapi",
+                bookmaker_batches.append(
+                    {
+                        "bookie_id": resolution_result.bookie.bookie_id,
+                        "markets": bookmaker.get("markets", []),
+                    }
                 )
-                markets_saved += save_result.markets_saved
-                choices_saved += save_result.choices_saved
-                snapshots_saved += save_result.snapshots_saved
+
+            # All bookmakers for this event/response are persisted through the
+            # same canonical entry point as OddsPortal/SofaScore. See
+            # docs/refactors/db-schema-odds-refactor.md (Fase 2).
+            save_result = MarketRepository.save_canonical_bookmaker_batches(
+                resolution.canonical_event_id,
+                bookmaker_batches,
+                source="oddspapi",
+            )
+            markets_saved = save_result.markets_saved
+            choices_saved = save_result.choices_saved
+            snapshots_saved = save_result.snapshots_saved
 
             if bookies_processed == 0:
                 logger.info(
@@ -782,10 +792,13 @@ class MarketOddsIngestionService:
             )
 
         try:
-            save_result = MarketRepository.save_markets_from_response_with_stats(
+            # SofaScore is a single-bookmaker source (bookie_id=1); wrapping it
+            # in a one-element batch lets it share the same canonical
+            # persistence entry point as OddsPortal/OddsPapi. See
+            # docs/refactors/db-schema-odds-refactor.md (Fase 2).
+            save_result = MarketRepository.save_canonical_bookmaker_batches(
                 event_id,
-                normalized_response,
-                bookie_id=1,
+                [{"bookie_id": 1, "markets": markets}],
                 source=source,
             )
             dual_process_available = DualProcessOddsRepository.event_has_dual_process_odds(event_id)

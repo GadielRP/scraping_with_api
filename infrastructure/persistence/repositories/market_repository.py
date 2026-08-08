@@ -14,6 +14,10 @@ from infrastructure.persistence.market_write_policy import (
     market_write_policy_for_source,
 )
 from infrastructure.persistence.repositories.bookie_repository import BookieRepository
+from infrastructure.persistence.repositories.market.market_choice_quote_writer import (
+    MarketChoiceQuoteWriter,
+)
+from infrastructure.persistence.repositories.market.odds_movement import compute_movement
 from shared.odds_utils import fractional_to_decimal, normalize_odds_value
 from shared.timezone_utils import convert_utc_to_local, get_local_now
 
@@ -105,26 +109,17 @@ class MarketRepository:
         initial_odds,
         current_odds,
     ) -> Optional[int]:
-        if explicit_change not in (None, ""):
-            normalized_change = MarketRepository._numeric_or_none(
-                explicit_change
-            )
-            if normalized_change in {
-                Decimal("-1"),
-                Decimal("0"),
-                Decimal("1"),
-            }:
-                return int(normalized_change)
+        """Thin wrapper kept for internal call sites; logic lives in odds_movement.
 
-        initial = MarketRepository._numeric_or_none(initial_odds)
-        current = MarketRepository._numeric_or_none(current_odds)
-        if initial is None or current is None:
-            return None
-        if current > initial:
-            return 1
-        if current < initial:
-            return -1
-        return 0
+        See infrastructure/persistence/repositories/market/odds_movement.py
+        (extracted per docs/refactors/db-schema-odds-refactor.md §7) so
+        MarketChoiceQuoteWriter can reuse the exact same computation.
+        """
+        return compute_movement(
+            explicit_change=explicit_change,
+            initial_odds=initial_odds,
+            current_odds=current_odds,
+        )
 
     @staticmethod
     def _slugify_source_bookie_name(name: str) -> str:
@@ -159,7 +154,18 @@ class MarketRepository:
 
     @staticmethod
     def save_markets_from_response(event_id: int, odds_response: Dict, bookie_id: int) -> int:
-        """Save all markets from an odds API response to the database."""
+        """Save all markets from an odds API response to the database.
+
+        LEGACY_MAINTENANCE_ONLY: as of docs/refactors/db-schema-odds-refactor.md
+        (Fase 2), the live ingestion pipeline (market_odds_ingestion_service.py)
+        persists OddsPortal, OddsPapi and SofaScore exclusively through
+        `save_canonical_bookmaker_batches`, which also writes MarketChoiceQuote.
+        This method (and `save_markets_from_response_with_stats` below) is not
+        dead: it's still called by scripts/legacy/process_null_seasons_legacy_event_odds.py,
+        scripts/legacy/extract_historical_results_legacy_event_odds.py and
+        scripts/sport_seasons_processing.py. Do not add new call sites; migrate
+        those scripts and remove both methods in Fase 8.
+        """
         return MarketRepository.save_markets_from_response_with_stats(
             event_id=event_id,
             odds_response=odds_response,
@@ -616,14 +622,21 @@ class MarketRepository:
                 bookie_id = int(batch["bookie_id"])
                 for market_data in batch.get("markets") or []:
                     eligible_choices = []
-                    seen_choice_names = set()
+                    seen_choice_sides = set()
                     for choice_data in market_data.get("choices") or []:
                         choice_name = MarketRepository._normalize_string_or_none(
                             choice_data.get("name")
                         )
-                        if not choice_name or choice_name in seen_choice_names:
+                        # Betfair Exchange sends back AND lay as two choice
+                        # dicts sharing the same name within one market (see
+                        # OddsPortalMarketAdapter._build_betfair_exchange_markets,
+                        # Fase 3). Dedupe on (name, exchangeSide) so lay isn't
+                        # silently dropped as a "duplicate" of back.
+                        choice_side = str(choice_data.get("exchangeSide") or "").strip().lower()
+                        dedupe_key = (choice_name, choice_side)
+                        if not choice_name or dedupe_key in seen_choice_sides:
                             continue
-                        seen_choice_names.add(choice_name)
+                        seen_choice_sides.add(dedupe_key)
                         if (
                             write_policy.require_initial_odds
                             and MarketRepository._choice_odds_value(
@@ -795,11 +808,20 @@ class MarketRepository:
                     )
                     result.choices_saved += 1
 
-            # Assign IDs to all new choices in one flush, then append snapshots.
+            # Assign IDs to all new choices in one flush, then append snapshots
+            # and refresh the current-state MarketChoiceQuote cache.
             session.flush()
+            uses_oddspapi_source_time = MarketRepository._uses_utc_source_timestamps(
+                source
+            )
             for choice, choice_data, current_odds, initial_odds, initial_was_set in prepared_choices:
                 initial_source_collected_at = MarketRepository._parse_source_datetime(
-                    choice_data.get("initialChangedAt")
+                    choice_data.get("initialChangedAt"),
+                    convert_to_project_timezone=uses_oddspapi_source_time,
+                )
+                current_source_collected_at = MarketRepository._parse_source_datetime(
+                    choice_data.get("sourceCollectedAt") or choice_data.get("changedAt"),
+                    convert_to_project_timezone=uses_oddspapi_source_time,
                 )
                 if (
                     write_policy.persist_opening_snapshots
@@ -827,12 +849,22 @@ class MarketRepository:
                             odds_value=current_odds,
                             collected_at=collected_at,
                             source=source,
-                            source_collected_at=MarketRepository._parse_source_datetime(
-                                choice_data.get("sourceCollectedAt")
-                            ),
+                            source_collected_at=current_source_collected_at,
                         )
                     )
                     result.snapshots_saved += 1
+
+                MarketRepository._upsert_choice_quotes(
+                    session,
+                    choice=choice,
+                    choice_data=choice_data,
+                    source=source,
+                    write_policy=write_policy,
+                    initial_odds=initial_odds,
+                    initial_captured_at=initial_source_collected_at,
+                    current_odds=current_odds,
+                    current_captured_at=current_source_collected_at,
+                )
 
         oddsportal_logger.info(
             "Saved canonical event batch: event=%s bookies=%s markets=%s "
@@ -845,6 +877,114 @@ class MarketRepository:
             write_policy.name,
         )
         return result
+
+    @staticmethod
+    def _upsert_choice_quotes(
+        session,
+        *,
+        choice,
+        choice_data: Dict,
+        source: str,
+        write_policy,
+        initial_odds,
+        initial_captured_at,
+        current_odds,
+        current_captured_at,
+    ) -> None:
+        """Refresh the MarketChoiceQuote current-state cache for one choice.
+
+        Three shapes of choice_data are handled:
+        - Plain single-price choice (most bookies): writes a 'single' row
+          mirroring MarketChoice.initial_odds/current_odds (policy-gated).
+        - OddsPortal Betfair Exchange: choice_data['exchangeSide'] names the
+          single side ('back'/'lay') this choice_data dict already IS -
+          initial_odds/current_odds are that side's own values, so they are
+          written straight to that side's quote instead of also to 'single'
+          (there is no side-agnostic price to mirror there).
+        - Oddspapi Betfair Exchange: choice_data['exchangeQuotes'] is a list
+          carrying BOTH sides (and price levels) for one outcome, alongside a
+          side-agnostic 'single' price; each entry gets its own row.
+        See docs/refactors/db-schema-odds-refactor.md (Fase 2-3) for the
+        rationale.
+        """
+        common_source_fields = dict(
+            main_line=choice_data.get("mainLine"),
+            source_market_id=choice_data.get("sourceMarketId"),
+            source_outcome_id=choice_data.get("sourceOutcomeId"),
+            bookmaker_outcome_id=choice_data.get("bookmakerOutcomeId"),
+        )
+
+        explicit_side = str(choice_data.get("exchangeSide") or "").strip().lower()
+        if explicit_side in {"back", "lay"}:
+            MarketChoiceQuoteWriter.upsert(
+                session,
+                choice_id=choice.choice_id,
+                source=source,
+                exchange_side=explicit_side,
+                exchange_level=0,
+                initial_price=initial_odds,
+                initial_captured_at=initial_captured_at,
+                current_price=current_odds if write_policy.persist_current_odds else None,
+                current_captured_at=current_captured_at,
+                source_limit=MarketRepository._numeric_or_none(choice_data.get("limit")),
+                overwrite_initial=write_policy.overwrite_initial_odds,
+                **common_source_fields,
+            )
+            return
+
+        MarketChoiceQuoteWriter.upsert(
+            session,
+            choice_id=choice.choice_id,
+            source=source,
+            initial_price=initial_odds,
+            initial_captured_at=initial_captured_at,
+            current_price=current_odds if write_policy.persist_current_odds else None,
+            current_captured_at=current_captured_at,
+            source_limit=MarketRepository._numeric_or_none(choice_data.get("limit")),
+            overwrite_initial=write_policy.overwrite_initial_odds,
+            **common_source_fields,
+        )
+
+        exchange_quotes = choice_data.get("exchangeQuotes")
+        if not isinstance(exchange_quotes, list):
+            return
+        for quote in exchange_quotes:
+            if not isinstance(quote, dict):
+                continue
+            quote_price = MarketRepository._float_or_none(quote.get("price"))
+            quote_side = str(quote.get("side") or "").strip().lower()
+            if quote_price is None or quote_side not in {"back", "lay"}:
+                continue
+            try:
+                quote_level = int(quote.get("level"))
+            except (TypeError, ValueError):
+                quote_level = 0
+
+            # Only the top-of-book back quote carries a meaningful "opening"
+            # value today (mirrors the legacy MarketChoiceSnapshot behaviour
+            # of labelling the choice-level initial_odds as exchange_side
+            # "back"); lay has no historical opening counterpart yet.
+            side_initial_price = (
+                initial_odds if quote_side == "back" and quote_level == 0 else None
+            )
+            side_initial_captured_at = (
+                initial_captured_at if side_initial_price is not None else None
+            )
+
+            MarketChoiceQuoteWriter.upsert(
+                session,
+                choice_id=choice.choice_id,
+                source=source,
+                exchange_side=quote_side,
+                exchange_level=quote_level,
+                initial_price=side_initial_price,
+                initial_captured_at=side_initial_captured_at,
+                current_price=quote_price,
+                current_captured_at=current_captured_at,
+                source_limit=MarketRepository._numeric_or_none(quote.get("size")),
+                overwrite_initial=write_policy.overwrite_initial_odds,
+                **common_source_fields,
+            )
 
     @staticmethod
     def _choice_odds_value(choice_data: Dict, fractional_key: str, *decimal_keys):
@@ -976,7 +1116,8 @@ class MarketRepository:
             logger.error(f"Error getting external markets for event {event_id}: {e}")
             return []
 
-    # Backwards compatibility alias
+    # LEGACY_DEAD_CODE: backwards-compat alias, no call sites found repo-wide.
+    # Scheduled for removal in Fase 8. Ver docs/refactors/db-schema-odds-refactor.md §8.
     get_oddsportal_markets_for_event = get_external_markets_for_event
 
     @staticmethod
@@ -993,6 +1134,8 @@ class MarketRepository:
         """Apply only defensive trimming; provider semantics are normalized upstream."""
         return MarketRepository._normalize_string_or_none(period) or "Full Time"
 
+    # LEGACY_DEAD_CODE: sin call sites activos (solo desde _save_oddsportal_market,
+    # también legacy). Ver docs/refactors/db-schema-odds-refactor.md §8 Fase 8.
     @staticmethod
     def _build_choice_payload(choice_name: str, current_odds, initial_odds=None) -> Dict:
         payload = {
@@ -1003,6 +1146,9 @@ class MarketRepository:
             payload["initialOdds"] = initial_odds
         return payload
 
+    # LEGACY_DEAD_CODE: sin call sites activos (solo desde save_markets_from_oddsportal,
+    # también legacy; el path vivo de OddsPortal es OddsPortalMarketAdapter +
+    # save_canonical_bookmaker_batches). Ver docs/refactors/db-schema-odds-refactor.md §8 Fase 8.
     @staticmethod
     def _save_oddsportal_market(
         event_id: int,
@@ -1043,6 +1189,10 @@ class MarketRepository:
         )
         return save_result.markets_saved
 
+    # LEGACY_DEAD_CODE: no call sites found repo-wide as of refactor/db-schema-odds-refactor
+    # (superseded by OddsPortalMarketAdapter.from_match_odds_data + save_canonical_bookmaker_batches,
+    # wired through MarketOddsIngestionService.save_from_oddsportal_data). Scheduled for
+    # removal in Fase 8. Ver docs/refactors/db-schema-odds-refactor.md §3 y §8.
     @staticmethod
     def save_markets_from_oddsportal(event_id: int, odds_data: object) -> int:
         """

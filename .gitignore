@@ -95,6 +95,8 @@ logs_for_observations_refactor.txt
 
 copies/
 *.md
+!docs/refactors/db-schema-odds-refactor.md
+
 test_*.py
 *.json
 odds_papi/**/*.json
@@ -112,6 +114,11 @@ tests/*
 !tests/test_oddsportal_hover_parser.py
 !tests/test_oddsportal_logging.py
 !tests/test_oddsportal_canonical_ingestion.py
+!tests/test_oddsportal_betfair_back_lay_quotes.py
+!tests/test_market_choice_quote_model.py
+!tests/test_market_choice_quote_writer.py
+!tests/test_odds_movement.py
+!tests/test_save_canonical_bookmaker_batches_quotes.py
 !tests/pillars/
 tests/pillars/*.pyc
 !tests/pillars/test_odds_trajectory_context.py

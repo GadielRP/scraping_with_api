@@ -221,7 +221,10 @@ def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
             BookieResolution(bookie=None, resolved=False, reason="canonical_bookie_not_found"),
         ],
     ) as resolve_bookie, patch(
-        f"{SERVICE}.MarketRepository.save_markets_from_response_with_stats",
+        # save_from_oddspapi_response now persists all resolved bookmakers in
+        # one call to the canonical entry point shared with OddsPortal/
+        # SofaScore. See docs/refactors/db-schema-odds-refactor.md (Fase 2).
+        f"{SERVICE}.MarketRepository.save_canonical_bookmaker_batches",
         return_value=type("SaveResult", (), {"markets_saved": 1, "choices_saved": 1, "snapshots_saved": 1})(),
     ) as save, patch(
         f"{SERVICE}.DualProcessOddsRepository.event_has_dual_process_odds", return_value=True
@@ -232,8 +235,11 @@ def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
     assert resolve_bookie.call_args_list[0].kwargs["source_bookie_name"] == "Pinnacle Sports"
     assert resolve_bookie.call_args_list[0].kwargs["source_bookie_slug"] == "pinnacle"
     assert save.call_count == 1
-    assert save.call_args.kwargs["event_id"] == 55
-    assert save.call_args.kwargs["bookie_id"] == 23
+    assert save.call_args.args[0] == 55
+    bookmaker_batches = save.call_args.args[1]
+    # The unresolved "unknown" bookmaker must never reach persistence.
+    assert [batch["bookie_id"] for batch in bookmaker_batches] == [23]
+    assert save.call_args.kwargs["source"] == "oddspapi"
     assert result.markets_saved == 1
     assert result.choices_saved == 1
     assert result.snapshots_saved == 1
@@ -304,15 +310,15 @@ def test_commit_passes_canonical_market_payload_to_repository():
         f"{SERVICE}.BookieRepository.resolve_bookie_from_source",
         return_value=BookieResolution(bookie=type("Bookie", (), {"bookie_id": 23})(), resolved=True, reused=True),
     ), patch(
-        f"{SERVICE}.MarketRepository.save_markets_from_response_with_stats",
+        f"{SERVICE}.MarketRepository.save_canonical_bookmaker_batches",
         return_value=type("SaveResult", (), {"markets_saved": 1, "choices_saved": 1, "snapshots_saved": 1})(),
     ) as save, patch(
         f"{SERVICE}.DualProcessOddsRepository.event_has_dual_process_odds", return_value=True
     ):
         result = MarketOddsIngestionService.save_from_oddspapi_response({})
 
-    saved_payload = save.call_args.kwargs["odds_response"]
-    saved_market = saved_payload["markets"][0]
+    bookmaker_batches = save.call_args.args[1]
+    saved_market = bookmaker_batches[0]["markets"][0]
     assert saved_market["marketName"] == "1X2 Full Time"
     assert saved_market["marketGroup"] == "1X2"
     assert saved_market["marketPeriod"] == "Full Time"
