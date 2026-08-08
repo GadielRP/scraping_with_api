@@ -121,6 +121,7 @@ class DatabaseManager:
             self._migrate_markets_to_bookies()
             self._migrate_bookie_source_mappings()
             self._migrate_market_period_not_null()
+            self._migrate_market_choice_quotes()
             self._migrate_market_choice_snapshot_lineage()
             self._migrate_event_source_resolution_queue()
             
@@ -142,7 +143,6 @@ class DatabaseManager:
             EventSourceMappingRepository.ensure_participant_link_schema()
             OddspapiFixtureDiscoveryRunRepository.ensure_run_scope_schema()
             self._migrate_oddspapi_mainline_outcome_cache()
-            self._migrate_market_choice_quotes()
             
             # Re-create inspector after manual migrations may have changed schema
             inspector = inspect(self.engine)
@@ -804,7 +804,7 @@ class DatabaseManager:
             logger.error(traceback.format_exc())
 
     def _migrate_market_choice_snapshot_lineage(self):
-        """Add source lineage fields to market_choice_snapshots without backfilling historical raw payloads."""
+        """Ensure snapshot lineage can reference one exact market choice quote."""
         try:
             from sqlalchemy import inspect
 
@@ -816,6 +816,10 @@ class DatabaseManager:
 
             with self.get_session() as session:
                 column_definitions = {
+                    'quote_id': (
+                        'INTEGER REFERENCES market_choice_quotes(quote_id) '
+                        'ON DELETE CASCADE'
+                    ),
                     'source': 'TEXT',
                     'source_collected_at': 'TIMESTAMP',
                     'source_market_id': 'TEXT',
@@ -835,6 +839,7 @@ class DatabaseManager:
                 index_statements = [
                     "CREATE INDEX IF NOT EXISTS idx_choice_collected ON market_choice_snapshots (choice_id, collected_at)",
                     "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_choice_collected_desc ON market_choice_snapshots (choice_id, collected_at DESC, snapshot_id DESC)",
+                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_quote_collected ON market_choice_snapshots (quote_id, collected_at DESC, snapshot_id DESC)",
                     "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source ON market_choice_snapshots (source)",
                     "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source_collected ON market_choice_snapshots (source, source_collected_at)",
                     "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source_market ON market_choice_snapshots (source, source_market_id)",
@@ -843,11 +848,33 @@ class DatabaseManager:
                 for statement in index_statements:
                     session.execute(text(statement))
 
+                foreign_keys = inspect(session.connection()).get_foreign_keys(
+                    'market_choice_snapshots'
+                )
+                has_quote_foreign_key = any(
+                    foreign_key.get('referred_table') == 'market_choice_quotes'
+                    and foreign_key.get('constrained_columns') == ['quote_id']
+                    for foreign_key in foreign_keys
+                )
+                if not has_quote_foreign_key:
+                    if self.engine.dialect.name != 'postgresql':
+                        raise RuntimeError(
+                            "market_choice_snapshots.quote_id exists without its "
+                            "foreign key; rebuild the SQLite test table before continuing"
+                        )
+                    session.execute(text(
+                        "ALTER TABLE market_choice_snapshots "
+                        "ADD CONSTRAINT fk_market_choice_snapshots_quote_id "
+                        "FOREIGN KEY (quote_id) "
+                        "REFERENCES market_choice_quotes(quote_id) ON DELETE CASCADE"
+                    ))
+
                 session.commit()
                 logger.info("market_choice_snapshots lineage migration completed")
         except Exception as e:
             logger.error(f"Market choice snapshot lineage migration failed: {e}")
             logger.error(traceback.format_exc())
+            raise
 
     def _reorder_markets_columns(self):
         """

@@ -8,6 +8,7 @@ from infrastructure.persistence.models import (
     Bookie,
     Event,
     MarketChoice,
+    MarketChoiceQuote,
     MarketChoiceSnapshot,
 )
 from infrastructure.persistence.repositories.market_repository import MarketRepository
@@ -234,6 +235,10 @@ def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
     assert resolve_bookie.call_args_list[0].kwargs["source"] == "oddspapi"
     assert resolve_bookie.call_args_list[0].kwargs["source_bookie_name"] == "Pinnacle Sports"
     assert resolve_bookie.call_args_list[0].kwargs["source_bookie_slug"] == "pinnacle"
+    assert (
+        resolve_bookie.call_args_list[0].kwargs["session"]
+        is resolve_bookie.call_args_list[1].kwargs["session"]
+    )
     assert save.call_count == 1
     assert save.call_args.args[0] == 55
     bookmaker_batches = save.call_args.args[1]
@@ -380,6 +385,9 @@ def test_repository_sportsbook_choice_keeps_single_null_exchange_snapshot(tmp_pa
     assert result.snapshots_saved == 1
     with manager.get_session() as session:
         snapshot = session.query(MarketChoiceSnapshot).one()
+        quote = session.query(MarketChoiceQuote).one()
+    assert snapshot.quote_id == quote.quote_id
+    assert snapshot.choice_id == quote.choice_id
     assert snapshot.exchange_side is None
     assert snapshot.exchange_level is None
     assert snapshot.exchange_size is None
@@ -564,6 +572,7 @@ def test_repository_persists_exchange_opening_as_back_without_initial_lay(
             .order_by(MarketChoiceSnapshot.snapshot_id)
             .all()
         )
+        quotes = session.query(MarketChoiceQuote).all()
 
     assert float(choice.initial_odds) == 1.7
     assert [
@@ -582,6 +591,15 @@ def test_repository_persists_exchange_opening_as_back_without_initial_lay(
     assert snapshots[0].source_collected_at == convert_utc_to_local(
         datetime.fromisoformat("2026-06-19T10:00:00+00:00")
     )
+    quote_ids = {
+        (quote.exchange_side, quote.exchange_level): quote.quote_id
+        for quote in quotes
+    }
+    assert [snapshot.quote_id for snapshot in snapshots] == [
+        quote_ids[("back", 0)],
+        quote_ids[("back", 0)],
+        quote_ids[("lay", 0)],
+    ]
 
 
 def test_repository_exchange_choice_persists_ladder_and_best_back_current_odds(tmp_path):
@@ -618,6 +636,7 @@ def test_repository_exchange_choice_persists_ladder_and_best_back_current_odds(t
             .order_by(MarketChoiceSnapshot.snapshot_id)
             .all()
         )
+        quotes = session.query(MarketChoiceQuote).all()
 
     assert choice.choice_name == "2"
     assert float(choice.current_odds) == 4.8
@@ -634,4 +653,14 @@ def test_repository_exchange_choice_persists_ladder_and_best_back_current_odds(t
         ("back", 1, 4.7, 2091.25),
         ("lay", 0, 5.0, 100.92),
         ("lay", 1, 5.1, 103.6),
+    ]
+    quote_ids = {
+        (quote.exchange_side, quote.exchange_level): quote.quote_id
+        for quote in quotes
+    }
+    assert [snapshot.quote_id for snapshot in snapshots] == [
+        quote_ids[("back", 0)],
+        quote_ids[("back", 1)],
+        quote_ids[("lay", 0)],
+        quote_ids[("lay", 1)],
     ]

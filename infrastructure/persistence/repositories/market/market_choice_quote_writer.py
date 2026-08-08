@@ -16,18 +16,56 @@ table definition.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, MutableMapping, Optional
 
 from infrastructure.persistence.repositories.market.odds_movement import compute_movement
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from infrastructure.persistence.models import MarketChoiceQuote
 
 
 class MarketChoiceQuoteWriter:
     """Creates/updates one MarketChoiceQuote row per (choice, source, side, level)."""
 
     @staticmethod
-    def upsert(
-        session,
+    def identity_key(
         *,
+        choice_id: int,
+        source: str,
+        exchange_side: Optional[str] = None,
+        exchange_level: int = 0,
+    ) -> tuple[int, str, Optional[str], int]:
+        """Return the normalized identity shared by preload and upsert."""
+        if choice_id is None:
+            raise ValueError("choice_id is required to identify a quote")
+        normalized_source = str(source or "").strip().lower()
+        if not normalized_source:
+            raise ValueError("source is required to identify a quote")
+        normalized_side = (
+            str(exchange_side).strip().lower() if exchange_side else None
+        )
+        if normalized_side not in {None, "back", "lay"}:
+            raise ValueError(f"Unsupported exchange_side={normalized_side!r}")
+        normalized_level = int(exchange_level or 0)
+        if normalized_level < 0:
+            raise ValueError("exchange_level cannot be negative")
+        return (
+            int(choice_id),
+            normalized_source,
+            normalized_side,
+            normalized_level,
+        )
+
+    @staticmethod
+    def upsert(
+        session: Session,
+        *,
+        quote_index: MutableMapping[
+            tuple[int, str, Optional[str], int],
+            MarketChoiceQuote,
+        ],
         choice_id: int,
         source: str,
         exchange_side: Optional[str] = None,
@@ -43,37 +81,29 @@ class MarketChoiceQuoteWriter:
         source_limit=None,
         overwrite_initial: bool = False,
     ):
-        """Create or refresh the quote row; returns None if nothing to persist."""
+        """Create or refresh a quote using a caller-preloaded identity map."""
         from infrastructure.persistence.models import MarketChoiceQuote
 
         if initial_price is None and current_price is None:
             return None
 
-        normalized_side = str(exchange_side).strip().lower() if exchange_side else None
-
-        side_filter = (
-            MarketChoiceQuote.exchange_side.is_(None)
-            if normalized_side is None
-            else MarketChoiceQuote.exchange_side == normalized_side
+        identity = MarketChoiceQuoteWriter.identity_key(
+            choice_id=choice_id,
+            source=source,
+            exchange_side=exchange_side,
+            exchange_level=exchange_level,
         )
-        quote = (
-            session.query(MarketChoiceQuote)
-            .filter(
-                MarketChoiceQuote.choice_id == choice_id,
-                MarketChoiceQuote.source == source,
-                side_filter,
-                MarketChoiceQuote.exchange_level == exchange_level,
-            )
-            .first()
-        )
+        _, normalized_source, normalized_side, normalized_level = identity
+        quote = quote_index.get(identity)
         if quote is None:
             quote = MarketChoiceQuote(
                 choice_id=choice_id,
-                source=source,
+                source=normalized_source,
                 exchange_side=normalized_side,
-                exchange_level=exchange_level,
+                exchange_level=normalized_level,
             )
             session.add(quote)
+            quote_index[identity] = quote
 
         if main_line is not None:
             quote.main_line = main_line

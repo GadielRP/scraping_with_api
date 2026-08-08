@@ -1,7 +1,7 @@
 # Refactor de schema de odds — separación de responsabilidades
 
 **Branch:** `refactor/db-schema-odds-refactor`
-**Estado:** Fases 1-3 completadas (tabla/writer de quotes + convergencia de los 3 providers en un solo writer + fix de back/lay en OddsPortal). Adicionalmente: `exchange_side` migrado de sentinel `'single'` a `NULL` + índice funcional `COALESCE` (congruencia con `Market.choice_group`), y `market_choices` dejó de recibir escrituras de `initial_odds/current_odds/change` desde el path canónico — ver [§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado). Pendiente: Fase 4 (backfill) en adelante, con Fase 5 (migrar lectores) ahora más urgente.
+**Estado:** Fases 1-3 y Fase 4a completadas (tabla/writer de quotes + convergencia de los 3 providers + fix de back/lay en OddsPortal + FK nullable `snapshot.quote_id` + `MarketChoiceSnapshotWriter` único para escritura canónica y legacy). Adicionalmente: `exchange_side` migrado de sentinel `'single'` a `NULL` + índice funcional `COALESCE` (congruencia con `Market.choice_group`), y `market_choices` dejó de recibir escrituras de `initial_odds/current_odds/change` desde el path canónico — ver [§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado). Pendiente: Fase 4b (backfill histórico) en adelante, con Fase 5 (migrar lectores) ahora más urgente.
 **Alcance:** `infrastructure/persistence/models.py`, `infrastructure/persistence/repositories/market_repository.py`, `infrastructure/persistence/market_write_policy.py`, `modules/odds_ingestion/adapters/*`, `modules/oddspapi/exchange_quotes.py`, lectores de trajectory/alerts/pillars.
 
 ## Índice
@@ -21,12 +21,21 @@
   - [Fase 2 — Unificar escritura: writers compartidos](#fase-2--unificar-escritura-writers-compartidos)
   - [Fase 3 — OddsPortal: split del adapter y fix Back/Lay](#fase-3--oddsportal-split-del-adapter-y-fix-backlay)
   - [Fase 4 — Backfill de datos históricos](#fase-4--backfill-de-datos-históricos)
+    - [Plan ejecutable de Fase 4b](./db-schema-odds-refactor-phase-4b.md)
   - [Fase 5 — Migrar lectores a quotes](#fase-5--migrar-lectores-a-quotes)
   - [Fase 6 — Adelgazar `market_choice_snapshots`](#fase-6--adelgazar-market_choice_snapshots)
   - [Fase 7 — Deprecar columnas legacy en `market_choices`](#fase-7--deprecar-columnas-legacy-en-market_choices)
   - [Fase 8 — Limpieza de código legacy](#fase-8--limpieza-de-código-legacy)
 - [9. Riesgos y mitigaciones](#9-riesgos-y-mitigaciones)
 - [10. Mapa rápido de archivos](#10-mapa-rápido-de-archivos)
+- [11. Handoff: continuar desde Fase 4b](#11-handoff-continuar-desde-fase-4b)
+  - [11.1. Qué ya está hecho (no rehacer)](#111-qué-ya-está-hecho-no-rehacer)
+  - [11.2. APIs y puntos de entrada a reutilizar](#112-apis-y-puntos-de-entrada-a-reutilizar)
+  - [11.3. Inventario de lectores aún en columnas legacy](#113-inventario-de-lectores-aún-en-columnas-legacy)
+  - [11.4. Inventario de metadata de identidad aún en snapshots](#114-inventario-de-metadata-de-identidad-aún-en-snapshots)
+  - [11.5. Patrones de scripts de backfill a copiar](#115-patrones-de-scripts-de-backfill-a-copiar)
+  - [11.6. Orden sugerido de PRs y smoke checks](#116-orden-sugerido-de-prs-y-smoke-checks)
+  - [11.7. Gotchas operativos](#117-gotchas-operativos)
 
 ---
 
@@ -107,7 +116,7 @@ Ningún archivo de `modules/jobs/*` (pipeline en vivo) llama ya a `save_markets_
 - `legacy/parse_telegram_odds.py`
 - `verify_snapshots.py` (script de desarrollo, raíz del repo)
 
-Esas rutas **no escriben `MarketChoiceQuote`** (nunca se extendieron, quedan documentadas como `LEGACY_MAINTENANCE_ONLY`, ver [§7](#7-tabla-de-renombresreemplazos)) — si algún día vuelven a correr sobre datos con exchange back/lay, ese dato no llegaría a quotes. No es un problema hoy porque no ingieren datos en producción, pero es una razón más para resolverlo en Fase 8 en vez de dejarlo indefinidamente.
+Esas rutas están marcadas `LEGACY_MAINTENANCE_ONLY`: ya delegan quotes en `MarketChoiceQuoteWriter` y snapshots en `MarketChoiceSnapshotWriter`, por lo que no pueden romper el lineage mientras sigan invocables. Siguen siendo legacy porque duplican resolución de markets/choices y escriben el mirror congelado de `MarketChoice`; sus scripts deben migrarse y ambos métodos deben eliminarse en Fase 8.
 
 **Lo que falta para cerrar el refactor por completo** (Fases 4-8, ver [§8](#8-fases-de-implementación)):
 1. **Fase 4 — Backfill**: todo el historial anterior a este refactor (`market_choice_snapshots` viejos, `MarketChoice` sin quotes) no tiene fila en `market_choice_quotes` todavía. Los eventos que ya estaban en curso antes de este deploy no tienen quotes retroactivas hasta correr el script de backfill.
@@ -129,7 +138,7 @@ En resumen: la ingesta ya es 100% la implementación nueva; lo que resta es back
 **Qué cambió en `market_repository.py::save_canonical_bookmaker_batches`:**
 - `MarketChoice` ahora se crea/actualiza como identidad pura (`market_id`, `choice_name`) — ya no recibe `initial_odds=`, `current_odds=` ni `change=`.
 - La señal "¿se fijó el initial por primera vez (o se sobreescribió legítimamente)?" — que decide si se agrega un `MarketChoiceSnapshot` de apertura — ya no se lee de `choice.initial_odds` (congelado) sino de la `MarketChoiceQuote` primaria existente (`exchange_side IS NULL`, `exchange_level=0`, mismo `source`), precargada en una sola query para evitar N+1.
-- `save_markets_from_response_with_stats` (ruta legacy, `LEGACY_MAINTENANCE_ONLY`) **no se tocó** — sigue escribiendo el mirror de `choices` de forma independiente, tal como antes. Solo el path canónico deja de hacerlo.
+- `save_markets_from_response_with_stats` sigue escribiendo el mirror de `choices` y por eso permanece `LEGACY_MAINTENANCE_ONLY`, pero sus quotes y snapshots pasan por los mismos writers SRP que el path canónico. No se conserva una implementación legacy paralela para esas dos tablas.
 
 **Tests actualizados** para verificar la combinación cross-source contra `MarketChoiceQuote` en vez de `MarketChoice` (mismo comportamiento, distinta tabla de verificación): `tests/test_oddsportal_canonical_ingestion.py` (`test_service_persists_one_canonical_event_batch_with_one_session`, `test_oddsportal_opening_and_oddspapi_current_are_order_independent`, `test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current`). Estas pruebas también se cambiaron para invocar Oddspapi vía `save_canonical_bookmaker_batches` (el path real de producción) en vez de la ruta legacy directa, porque solo el path canónico escribe quotes.
 
@@ -150,7 +159,7 @@ En resumen: la ingesta ya es 100% la implementación nueva; lo que resta es back
 
 ```sql
 CREATE TABLE market_choice_quotes (
-    quote_id             BIGSERIAL PRIMARY KEY,
+    quote_id             SERIAL PRIMARY KEY,
     choice_id            INTEGER NOT NULL REFERENCES market_choices(choice_id) ON DELETE CASCADE,
 
     source               TEXT NOT NULL,                       -- 'oddspapi', 'oddsportal'
@@ -200,15 +209,23 @@ de identidad redundantes.
 ```sql
 CREATE TABLE market_choice_snapshots (
     snapshot_id          BIGSERIAL PRIMARY KEY,
-    quote_id             BIGINT NOT NULL REFERENCES market_choice_quotes(quote_id) ON DELETE CASCADE,
+    quote_id             INTEGER NOT NULL REFERENCES market_choice_quotes(quote_id) ON DELETE CASCADE,
     odds_value           NUMERIC(8,3) NOT NULL,
     collected_at         TIMESTAMP NOT NULL DEFAULT now(),
     source_collected_at  TIMESTAMP,
+    source_limit         NUMERIC(12,3),
     exchange_size        NUMERIC(18,3)
 );
 
-CREATE INDEX idx_market_choice_snapshots_quote_collected ON market_choice_snapshots (quote_id, collected_at);
+CREATE INDEX idx_market_choice_snapshots_quote_collected
+    ON market_choice_snapshots (quote_id, collected_at DESC, snapshot_id DESC);
 ```
+
+> `quote_id` es `INTEGER`, no `BIGINT`: el modelo ya desplegado de
+> `MarketChoiceQuote.quote_id` usa `Integer`. La FK nueva debe conservar el
+> mismo tipo físico. `source_limit` y `exchange_size` se mantienen porque son
+> valores del tick; la identidad estable (`source`, side, level, lineage y
+> `main_line`) sí se obtiene de la quote.
 
 ### Contrato de payload compartido entre providers
 
@@ -254,7 +271,7 @@ Reescribir el `return` de esos dos adapters a dataclass rompía todo eso en la m
 
 ### 6.2. Subpaquete de persistencia
 
-`infrastructure/persistence/repositories/market_repository.py` hoy tiene ~1300 líneas y mezcla: resolución de identidad de mercado, upsert de choices, upsert de exchange quotes, snapshots, y queries de lectura. El plan original separaba **4** colaboradores nuevos (`MarketIdentityResolver`, `MarketChoiceWriter`, `MarketChoiceQuoteWriter`, `MarketChoiceSnapshotWriter`). Al implementar Fase 2 solo se extrajo el que era estrictamente necesario para el fix de back/lay; los otros 3 quedan pendientes (ver abajo):
+`infrastructure/persistence/repositories/market_repository.py` sigue mezclando resolución de identidad, upsert de choices, orquestación y queries de lectura, pero ya no construye quotes ni snapshots directamente. `MarketChoiceQuoteWriter` y `MarketChoiceSnapshotWriter` son los dos puntos de escritura SRP; `MarketIdentityResolver` y `MarketChoiceWriter` siguen pendientes:
 
 ```
 infrastructure/persistence/repositories/market/
@@ -264,7 +281,7 @@ infrastructure/persistence/repositories/market/
     market_choice_quote_writer.py    # MarketChoiceQuoteWriter   (Fase 2, hecho)
     market_identity_resolver.py      # MarketIdentityResolver           — PENDIENTE, sigue inline en save_canonical_bookmaker_batches
     market_choice_writer.py          # MarketChoiceWriter               — PENDIENTE, sigue inline en save_canonical_bookmaker_batches
-    market_choice_snapshot_writer.py # MarketChoiceSnapshotWriter       — PENDIENTE, sigue inline en save_canonical_bookmaker_batches
+    market_choice_snapshot_writer.py # MarketChoiceSnapshotWriter       — HECHO (Fase 4a), único append de snapshots
     market_read_queries.py           # MarketReadQueries         (Fase 5A)
     legacy_writer.py                 # funciones muertas, marcadas, para borrar en Fase 8
 
@@ -273,15 +290,17 @@ infrastructure/persistence/repositories/market_repository.py
     # ahora delega en MarketChoiceQuoteWriter vía el método privado
     # _upsert_choice_quotes(session, choice, choice_data, source, write_policy,
     # initial_odds, initial_captured_at, current_odds, current_captured_at),
-    # que escribe una quote side-agnostic (exchange_side=NULL) con los mismos valores efectivos que
-    # MarketChoice.initial_odds/current_odds, y una quote adicional por cada
-    # entrada de choice_data["exchangeQuotes"] (back/lay). El resto de la
-    # identidad de mercado y el upsert de MarketChoice/MarketChoiceSnapshot
-    # sigue siendo código inline de save_canonical_bookmaker_batches, tal
-    # como estaba antes de esta fase.
+    # que escribe una quote side-agnostic (exchange_side=NULL) con los mismos
+    # valores efectivos de precio (ya NO escribe el mirror de MarketChoice —
+    # ver §3.2), y una quote adicional por cada entrada de
+    # choice_data["exchangeQuotes"] (back/lay) o por choice_data["exchangeSide"]
+    # (forma singular de OddsPortal). El resto de la identidad de mercado y el
+    # _upsert_choice_quotes retorna un mapa por (side, level). La orquestación
+    # selecciona la quote exacta y delega todo append a
+    # MarketChoiceSnapshotWriter; no hay MarketChoiceSnapshot(...) inline.
 ```
 
-`market_repository.py` **no desaparece** en este refactor — la conversión completa a fachada (extrayendo `MarketIdentityResolver`/`MarketChoiceWriter`/`MarketChoiceSnapshotWriter`) queda como trabajo pendiente, no bloqueante para las fases siguientes. No romperá los ~19 archivos que hacen `from infrastructure.persistence.repositories.market_repository import MarketRepository` cuando se haga, porque los métodos públicos no cambian de firma.
+`market_repository.py` **no desaparece** todavía: conserva la transacción y la orquestación. La conversión completa a fachada solo necesita extraer `MarketIdentityResolver`/`MarketChoiceWriter` y mover lecturas; la escritura de snapshots ya salió por completo del archivo.
 
 ## 7. Tabla de renombres/reemplazos
 
@@ -292,9 +311,9 @@ infrastructure/persistence/repositories/market_repository.py
 | Bloque de resolución/creación de `Market` (existing_market query + create) | `market_repository.py:245-273` y `:564-693` (duplicado en ambos métodos) | **Unificar** | `MarketIdentityResolver.resolve_or_create(session, event_id, bookie_id, market_name, market_period, choice_group, is_live)` |
 | Bloque de upsert de `MarketChoice` (initial/current/change) | `market_repository.py:280-371` y `:699-796` (duplicado) | **Unificar** | `market/market_choice_writer.py::MarketChoiceWriter.upsert(session, market, choice_data, write_policy)` |
 | Bloque inline de `exchangeQuotes`/`exchange_side` en snapshots | `market_repository.py:389-496` | **Reemplazar por completo** (no legacy, se borra) | `market/market_choice_quote_writer.py::MarketChoiceQuoteWriter.upsert(session, choice, quotes, source, write_policy)` |
-| Inserts de `MarketChoiceSnapshot` (2 bloques casi idénticos) | `market_repository.py:396-496` y `:800-835` | **Unificar** | `market/market_choice_snapshot_writer.py::MarketChoiceSnapshotWriter.append(session, quote, odds_value, source_collected_at)` |
+| Inserts de `MarketChoiceSnapshot` en paths canónico y legacy | `market_repository.py` → `repositories/market/market_choice_snapshot_writer.py` | **Hecho (Fase 4a):** cero constructores inline; ambos enlazan el tick con la quote exacta y el path canónico hace un solo flush final por batch | `MarketChoiceSnapshotWriter.append(session, quote, odds_value, collected_at, ...)` |
 | `MarketRepository.save_markets_from_response_with_stats` | `market_repository.py:165` | **Hecho (Fase 2):** se retiran sus 3 call sites en `market_odds_ingestion_service.py`; queda documentada como `LEGACY_MAINTENANCE_ONLY` (no shim, sigue con su propio código porque scripts de mantenimiento la llaman directo vía `save_markets_from_response`) | sin cambio de nombre; eliminar en Fase 8 solo si se migran también los scripts de mantenimiento |
-| `MarketRepository.save_canonical_bookmaker_batches` | `market_repository.py:531` | **Extendido (Fase 2):** único writer real para las 3 fuentes; agrega `_upsert_choice_quotes` (usa `MarketChoiceQuoteWriter`). Los otros 3 colaboradores (`MarketIdentityResolver`, `MarketChoiceWriter`, `MarketChoiceSnapshotWriter`) **no** se extrajeron todavía — sigue código inline | sin cambio de nombre público |
+| `MarketRepository.save_canonical_bookmaker_batches` | `market_repository.py` | **Extendido (Fases 2 y 4a):** orquestador para las 3 fuentes; delega quotes y snapshots a sus writers SRP. `MarketIdentityResolver`/`MarketChoiceWriter` siguen pendientes | sin cambio de nombre público |
 | `MarketRepository.get_external_markets_for_event` | `market_repository.py:894` | **Reemplazar** lógica de `source` "adivinado" desde snapshot (líneas 940-951) | `market/market_read_queries.py::MarketReadQueries.get_external_market_quotes_for_event(event_id)` — quote-aware, agrupa por `(bookie, choice, source, exchange_side)` |
 | `MarketRepository.get_oddsportal_markets_for_event` (alias) | `market_repository.py:980` | **Legacy, borrar** | eliminar en Fase 8 |
 | `MarketRepository.get_markets_for_event`, `get_market_count`, `delete_markets_for_event` | `market_repository.py:882,983,1223` | **Mover** (sin cambio de nombre/firma) | `market/market_read_queries.py` / `market/market_lifecycle.py` |
@@ -359,20 +378,20 @@ Cada fase es un PR independiente. Cuando una fase tiene subfases explícitas
 
 **Archivos modificados:**
 - `infrastructure/persistence/repositories/market_repository.py::save_canonical_bookmaker_batches` — parsea timestamps con `_uses_utc_source_timestamps(source)` (paridad con Oddspapi, antes solo lo hacía `save_markets_from_response_with_stats`); después de cada upsert de `MarketChoice`, llama al nuevo método privado `_upsert_choice_quotes(...)` (ver [§6.2](#62-subpaquete-de-persistencia)).
-- `infrastructure/persistence/repositories/market_repository.py::save_markets_from_response`/`save_markets_from_response_with_stats` — sin cambios de comportamiento; se documentan como `LEGACY_MAINTENANCE_ONLY` (no `LEGACY_DEAD_CODE`: siguen vivos para `scripts/legacy/process_null_seasons_legacy_event_odds.py`, `scripts/legacy/extract_historical_results_legacy_event_odds.py` y `scripts/sport_seasons_processing.py`).
+- `infrastructure/persistence/repositories/market_repository.py::save_markets_from_response`/`save_markets_from_response_with_stats` — se documentan como `LEGACY_MAINTENANCE_ONLY` (no `LEGACY_DEAD_CODE`: siguen vivos para scripts); en Fase 4a su escritura de quotes/snapshots se delegó a los writers compartidos sin conservar otro writer legacy.
 - `modules/odds_ingestion/market_odds_ingestion_service.py::save_from_oddspapi_response` — el loop por bookmaker ya no llama a `save_markets_from_response_with_stats` una vez por bookmaker; arma `bookmaker_batches` y hace una única llamada a `save_canonical_bookmaker_batches`.
 - `modules/odds_ingestion/market_odds_ingestion_service.py::_save_normalized` — ídem, envuelve `{"bookie_id": 1, "markets": markets}` y llama a `save_canonical_bookmaker_batches` en vez de `save_markets_from_response_with_stats`.
 - `tests/oddspapi/test_ingestion_service.py` — 2 tests (`test_commit_uses_source_resolution_and_skips_unresolved_bookmaker`, `test_commit_passes_canonical_market_payload_to_repository`) actualizados para mockear `save_canonical_bookmaker_batches` en vez del método retirado.
-- `tests/pillars/test_market_odds_ingestion_service.py` — ídem para `test_save_from_dropping_odds_map_entry_normalizes_source_and_logs_it` (este test ya fallaba antes por un assert de log obsoleto, no relacionado; se deja documentado, no se corrige en este PR).
+- `tests/pillars/test_market_odds_ingestion_service.py` — ídem para `test_save_from_dropping_odds_map_entry_normalizes_source_and_logs_it`; el log del batch conserva los conteos semánticos de markets, choices y snapshots.
 
 **No implementado en esta fase** (ver [§6.1](#61-unificación-de-adapters--decisión-revisada-al-implementar) y [§6.2](#62-subpaquete-de-persistencia)):
 - `canonical_odds_payload.py`, reescritura de `OddspapiMarketAdapter`/`SofaScoreMarketAdapter` a `CanonicalOddsResponse`.
-- Extracción de `MarketIdentityResolver`, `MarketChoiceWriter`, `MarketChoiceSnapshotWriter` (siguen inline en `save_canonical_bookmaker_batches`).
+- Extracción de `MarketIdentityResolver` y `MarketChoiceWriter` (siguen inline en `save_canonical_bookmaker_batches`). `MarketChoiceSnapshotWriter` se extrajo en Fase 4a.
 
 **Criterio de aceptación (cumplido):**
 - `market_odds_ingestion_service.py` ya no llama a `save_markets_from_response_with_stats` en ningún punto.
 - `MarketChoiceQuoteWriter` cubierto con tests unitarios + test de integración de extremo a extremo sobre `save_canonical_bookmaker_batches`.
-- Suite completa de tests de mercado/odds corrida antes/después vía `git stash`: los únicos tests que cambiaron de resultado fueron los 3 con mocks del método retirado (ya corregidos); las fallas restantes son pre-existentes en la rama (`Full-time` vs `Full Time`, `DROP TABLE ... CASCADE` en SQLite, candidate matcher, etc.), no causadas por este cambio.
+- Suite de tests de mercado/odds corrida tras el cambio; los mocks del método retirado y el contrato de observabilidad del batch quedaron actualizados.
 
 ---
 
@@ -402,9 +421,122 @@ Cada fase es un PR independiente. Cuando una fase tiene subfases explícitas
 
 ### Fase 4 — Backfill de datos históricos
 
+El plan ejecutable de Fase 4b vive en
+[db-schema-odds-refactor-phase-4b.md](./db-schema-odds-refactor-phase-4b.md).
+Esta sección conserva las decisiones arquitectónicas y criterios globales del
+refactor; el documento dedicado define archivos, contratos, orden de commits,
+tests y runbook de implementación.
+
+**Estado actual:** Fase 4a completada. `MarketChoiceSnapshot.quote_id`, su FK
+real y el índice temporal ya existen; todo snapshot nuevo de los paths
+canónico y `LEGACY_MAINTENANCE_ONLY` queda ligado a su quote exacta. Oddspapi
+con `exchangeQuotes` conserva un tick por `(side, level)` y ya no crea el
+snapshot current side-agnostic redundante. La persistencia canónica procesa
+todos los bookmakers del evento como un solo batch y usa una única sesión:
+precarga markets/choices/quotes, hace los upserts contra índices en memoria y
+persiste el grafo quote/snapshot con un único flush final. Lo que **falta** en
+Fase 4 es:
+1. Política temporal/fill-only que impida degradar estado nuevo al procesar
+   candidatos históricos.
+2. Script de backfill histórico + reporte de cobertura antes del cutover.
+3. Ejecución y verificación de coverage/idempotencia en staging y producción.
+
 **Objetivo:** poblar quotes para el histórico, enlazar cada snapshot
 clasificable con su quote y preparar el cutover de lectores sin borrar ni
 reescribir todavía las columnas legacy.
+
+#### Decisiones no negociables
+
+1. Un snapshot representa un tick de **una quote exacta**. Su identidad es
+   `(choice_id canónico, source, exchange_side, exchange_level)`; no basta con
+   enlazarlo a “alguna quote del choice”.
+2. `MarketChoiceQuoteWriter.upsert` se ejecuta antes del append sobre el
+   `quote_index` precargado por el orquestador. El mapa de quotes exactas
+   retornado por `_upsert_choice_quotes` selecciona el instrumento y
+   `MarketChoiceSnapshotWriter.append` realiza toda la escritura histórica.
+3. No hay excepción para la ruta `LEGACY_MAINTENANCE_ONLY`: también hace
+   upsert → snapshot ligado dentro de la misma unidad de trabajo. Dejarla crear filas con
+   `quote_id=NULL` haría imposible el `NOT NULL` de Fase 6.
+4. El backfill nunca degrada una quote más nueva. El writer actual reemplaza
+   `current_odds` sin comparar timestamps; antes de usarlo para histórico se
+   agrega una política de merge temporal explícita y testeada.
+5. En exchange, una serie explícita Back/Lay domina a la quote redundante
+   `exchange_side=NULL` que Oddspapi conserva por compatibilidad. No se crean
+   snapshots side-agnostic cuando el payload contiene `exchangeQuotes`. **Dejar
+   de escribir** esa quote `NULL` en la ingesta Oddspapi Betfair y/o borrarla
+   del histórico es trabajo **diferido** (post Fase 5 / limpieza dedicada) —
+   ver [§11.7 gotcha 10](#117-gotchas-operativos). El backfill (4b) debe
+   *clasificar* filas `NULL` históricas, no eliminarlas ni decidir el corte
+   del writer live.
+
+#### Checklist completado (PR 4a — expand schema + dual-write)
+
+Completado **antes** del script de backfill, como cambio aditivo y reversible:
+
+1. Agregar `MarketChoiceSnapshot.quote_id = Column(Integer, ForeignKey(...),
+   nullable=True)`, relación `snapshot.quote` y relación inversa
+   `quote.snapshots` en `models.py`. Mantener temporalmente `choice_id` y todas
+   las columnas legacy.
+2. Extender el migrador existente
+   `database.py::_migrate_market_choice_snapshot_lineage()` —sin crear otro
+   método— y ejecutarlo **después** de `_migrate_market_choice_quotes()`:
+   - agregar la columna nullable con tipo `INTEGER`;
+   - crear/verificar la FK real en bases existentes (el migrador genérico solo
+     agrega columnas y no garantiza constraints);
+   - crear `idx_market_choice_snapshots_quote_collected` sobre
+     `(quote_id, collected_at DESC, snapshot_id DESC)`;
+   - fallar la inicialización si la migración no queda aplicada; no ocultar el
+     error y continuar con un schema parcial.
+3. Extraer `MarketChoiceSnapshotWriter.append` a
+   `repositories/market/market_choice_snapshot_writer.py`. Recibe una
+   `MarketChoiceQuote` asociada a la misma sesión —puede estar pending—, deriva
+   de ella `choice_id`, source, side, level y metadata estable, y solo acepta
+   como argumentos los valores del tick.
+4. Hacer que `_upsert_choice_quotes` devuelva el mapa
+   `(exchange_side, exchange_level) → MarketChoiceQuote` en lugar de descartar
+   lo retornado por `MarketChoiceQuoteWriter.upsert`. El orquestador precarga
+   todas las quotes de los choices existentes en un `quote_index`; cada upsert
+   reutiliza ese índice sin ejecutar SELECT. Después enlaza los snapshots a las
+   quotes aunque estén pending y hace un único `flush()` del grafo completo.
+5. **Pendiente para 4b, antes de reutilizar el writer en el backfill:** extender
+   `MarketChoiceQuoteWriter` con dos políticas de merge explícitas:
+   - **live**: comportamiento del pipeline, pero un current con timestamp más
+     viejo no puede pisar otro más nuevo;
+   - **backfill-fill-only**: completar NULLs, conservar initial existente y
+     avanzar current solo con timestamp estrictamente posterior. Metadata
+     estable se completa si falta; una contradicción se devuelve al caller.
+6. Retirar todos los constructores `MarketChoiceSnapshot(...)` de
+   `market_repository.py` (path canónico y legacy). El único constructor de
+   producción queda dentro de `MarketChoiceSnapshotWriter` y siempre escribe
+   `choice_id` + `quote_id` a partir de la misma quote.
+7. Eliminar el N+1 de quotes y los flushes por choice en
+   `save_canonical_bookmaker_batches`: un batch existente tiene un presupuesto
+   constante de tres SELECT (`Market`, `MarketChoice` mediante `selectinload` y
+   `MarketChoiceQuote`) sin importar cuántos choices contenga. Hay un test de
+   integración con 25 choices que fija este contrato.
+8. Resolver todos los bookmakers de una respuesta Oddspapi dentro de una sola
+   sesión de referencia. La persistencia de odds conserva su propia sesión y
+   transacción atómica; por tanto este tramo usa dos unidades de trabajo con
+   SRP, no una sesión por bookmaker más otra por persistencia. La resolución
+   previa del evento/mapeo y la comprobación posterior del dual-process siguen
+   siendo lecturas independientes porque tienen contratos distintos.
+
+**Semántica exacta de snapshots nuevos:**
+
+| Forma del payload | Quote del snapshot de apertura | Quote(s) de current |
+|---|---|---|
+| Bookie normal | `(source, NULL, 0)` | `(source, NULL, 0)` |
+| Oddspapi con `exchangeQuotes` | `(source, back, 0)`, siguiendo la convención legacy existente | una por cada `(source, side, level)` válido; sin duplicado `NULL` |
+| OddsPortal con `exchangeSide` | el side explícito | el side explícito; hoy la policy opening-only no persiste snapshots |
+
+Tests de 4a cubren las tres formas, la migración de una tabla SQLite legacy,
+ausencia de writes nuevos sin `quote_id` y la invariante
+`mcs.choice_id = mcq.choice_id`. El orden temporal fuera de secuencia se prueba
+en 4b junto con la política fill-only. Un guard estático en
+`test_market_choice_snapshot_writer.py` falla si reaparece un constructor de
+snapshot inline en `market_repository.py`.
+
+Solo después de eso: script de backfill (PR 4b).
 
 #### Invariante de transición
 
@@ -414,11 +546,11 @@ hasta Fase 6. Por eso Fase 4 empieza con una migración *expand-only*:
 
 ```sql
 ALTER TABLE market_choice_snapshots
-    ADD COLUMN quote_id BIGINT NULL
+    ADD COLUMN quote_id INTEGER NULL
     REFERENCES market_choice_quotes(quote_id) ON DELETE CASCADE;
 
 CREATE INDEX idx_market_choice_snapshots_quote_collected
-    ON market_choice_snapshots (quote_id, collected_at, snapshot_id);
+    ON market_choice_snapshots (quote_id, collected_at DESC, snapshot_id DESC);
 ```
 
 Durante Fases 4 y 5 conviven ambas FKs. Un snapshot nuevo debe cumplir
@@ -427,27 +559,41 @@ desde su `choice_id` legacy a un quote cuyo `choice_id` ya es el canónico. La
 vista de Fase 5 toma mercado/choice desde `mcq.choice_id`, no desde
 `mcs.choice_id`. Fase 6 elimina finalmente la FK legacy.
 
-**Archivo nuevo:**
-- `scripts/maintenance/backfill_market_choice_quotes.py` (seguir convención de `scripts/maintenance/backfill_sofascore_choice_names_and_groups.py`).
+**Archivos nuevos de 4b:**
+- `scripts/maintenance/backfill_market_choice_quotes.py` — copiar CLI/contratos
+  de `scripts/maintenance/backfill_sofascore_choice_names_and_groups.py`
+  (`--dry-run` default, `--commit` explícito, filtros por evento y reporte
+  JSON). El script **no llama** `check_and_migrate_schema()` en dry-run: esa
+  función puede mutar schema. 4a ya debe estar desplegada; el script hace un
+  preflight read-only que verifica columna, FK, índice y versión esperada.
+- `modules/odds_ingestion/backfill/market_choice_quote_backfill.py` —
+  clasificación pura, contratos y orquestación de las dos pasadas.
+- `infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py`
+  — lecturas set-based y bulk link de snapshots, sin reglas de negocio.
+- `infrastructure/persistence/repositories/market/market_choice_quote_merge_policy.py`
+  — decisión temporal pura compartida por dry-run y writer.
 
 **Archivos modificados:**
 - `infrastructure/persistence/models.py` — `MarketChoiceSnapshot.quote_id`
   nullable + relación `quote`; mantener `choice_id` y el resto de columnas.
 - `infrastructure/persistence/database.py` — migración aditiva e índice.
+- `infrastructure/persistence/repositories/market_repository.py` —
+  ordena upsert de quotes y append de snapshots en ambos paths todavía vivos.
 - `infrastructure/persistence/repositories/market/market_choice_snapshot_writer.py`
-  — `append(...)` recibe el `MarketChoiceQuote` y hace dual-write de ambas FKs.
+  — único punto de append después de 4a.
 - `infrastructure/persistence/repositories/market/market_choice_quote_writer.py`
-  — expone el upsert idempotente que reutiliza el backfill.
+  — agregar merge temporal/fill-only y reutilizarlo desde el backfill; no
+  inventar otro upsert SQL con reglas divergentes.
 
 #### Orden de despliegue
 
 1. **Expandir schema**: agregar FK/índice nullable, sin cambiar lectores.
-2. **Activar dual-write**: todo snapshot nuevo sale con `quote_id`; rechazar en
-   tests cualquier append del writer nuevo que no reciba quote.
+2. **Activar lineage obligatorio**: todo snapshot nuevo de cualquier path sale
+   con `quote_id`; además se recupera el historial Back/Lay del path canónico.
 3. **Preflight**: ejecutar el script en `--dry-run`, producir reporte de
    clasificación/conflictos y resolver ambiguos no permitidos.
 4. **Backfill por lotes**: upsert de quotes y update de `mcs.quote_id`, por rango
-   de `event_id`, con transacción por lote.
+   de `event_id` con keyset pagination y transacción por lote.
 5. **Verificación**: repetir dry-run; el segundo pase debe proyectar cero
    mutaciones y los contadores deben cuadrar antes de habilitar Fase 5.
 
@@ -459,19 +605,21 @@ posible.
 
 | Campo | Regla de backfill, en orden de precedencia |
 |---|---|
-| `source` | `LOWER(TRIM(mcs.source))`; si no existe y `bookie_id = 1`, `sofascore`; si el market legacy codifica Back/Lay, `oddsportal`; cualquier otro externo sin evidencia queda `ambiguous_source` |
-| `exchange_side` | valor normalizado de `mcs.exchange_side`; si falta, side extraído de `Market.choice_group`; en otro caso `NULL` |
+| `source` | `LOWER(TRIM(mcs.source))`; si falta, source único probado por `source_market_id` + mappings; si el market legacy codifica Back/Lay, `oddsportal`; si `bookie_id = 1`, `sofascore`; si existe un único source distinto en `bookie_source_mappings` para ese bookie, usarlo; en otro caso `ambiguous_source` |
+| `exchange_side` | valor normalizado de `mcs.exchange_side`; si falta, side extraído de `Market.choice_group`; para snapshots canónicos Oddspapi creados entre Fase 2 y 4a, usar `back` solo si el choice/bookie está probado como exchange por quotes side-specific o mapping y se cumple el contrato documentado `decimalValue = top back`; en otro caso `NULL` |
 | `exchange_level` | `COALESCE(mcs.exchange_level, 0)`; nunca negativo |
 | choice destino | para markets normales, el choice actual; para OddsPortal legacy, el choice con el mismo nombre dentro del market canónico destino |
 | market destino OddsPortal | misma identidad `(event_id, bookie_id, market_name, market_period, línea, is_live)`; la línea sale de `(?i)^(Back|Lay)(?:\s+(.+))?$` y queda `NULL` cuando no hay sufijo |
 
-Si el market/choice canónico destino no existe, el script puede crearlo solo
-cuando la identidad y el nombre del choice son unívocos. Diferencias de case,
-dos targets posibles, source desconocido, side inválido o metadata de lineage
-contradictoria se reportan y no se mutan. En Fase 4 **no se borran** markets ni
-choices Back/Lay legacy; quedan disponibles para rollback y se eliminan en la
-limpieza de datos posterior, explícita y separada (no es requisito de Fase 8),
-después de una ventana de observación.
+Toda evidencia disponible se valida aunque una regla anterior ya haya resuelto
+el valor: `mcs.source='oddspapi'` frente a un lineage que solo puede ser
+`oddsportal` es `contradictory_evidence`, no “precedencia aplicada”. Si el
+market/choice canónico destino no existe, solo puede crearse mediante un único
+resolver testeado que use la misma normalización/constraint de identidad del
+writer canónico; diferencias de case, dos targets posibles, source desconocido
+o side inválido se reportan y no mutan. En Fase 4 **no se borran** markets ni
+choices Back/Lay legacy. Tampoco se eliminan mientras `mcs.choice_id` siga
+apuntándolos, porque la FK legacy tiene `ON DELETE CASCADE`.
 
 El script inspecciona también `MarketChoice` sin snapshots. Esos valores solo
 se migran cuando las reglas anteriores prueban ownership (SofaScore o market
@@ -492,30 +640,58 @@ oculta en código.
   `COALESCE(source_collected_at, collected_at), collected_at, snapshot_id`; si
   no hay snapshots, puede usar `MarketChoice.current_odds` solo con ownership
   unívoco.
-- `initial_captured_at`/`current_updated_at` usan tiempo de fuente cuando
-  existe y `collected_at` como fallback.
-- `main_line`, IDs de lineage y `source_limit` se toman del snapshot más
-  reciente con valor no nulo; `exchange_size` permanece en cada snapshot. Dos
-  valores de identity metadata
-  distintos para el mismo quote incrementan `metadata_conflicts` y requieren
-  revisión; no se elige silenciosamente.
+- `initial_captured_at` solo se rellena cuando existe evidencia de apertura
+  (quote existente o snapshot creado por el bloque de opening legacy). Si el
+  initial solo proviene de `MarketChoice`, queda `NULL`; no se inventa una hora.
+  `current_updated_at` usa tiempo de fuente y `collected_at` como fallback.
+- `main_line` e IDs de lineage son metadata estable: contradicciones para una
+  misma quote incrementan `metadata_conflicts`. `source_limit` y
+  `exchange_size` son valores variables del tick; la quote conserva el más
+  reciente y el snapshot conserva su valor histórico, sin tratarlos como
+  conflicto de identidad.
 - Cada snapshot clasificable recibe exactamente un `quote_id`. El script no
   cambia su `odds_value`, timestamps ni `choice_id` legacy.
+
+#### Diseño de ejecución y rendimiento
+
+- Congelar primero un scope acotado de event IDs y paginar snapshots por
+  keyset de `snapshot_id`; la segunda pasada usa `choice_id`. Nunca usar
+  `OFFSET` ni ordenar todo el histórico por event.
+- Agregar candidatos por identidad de quote y hacer **un upsert por bucket**,
+  no uno por snapshot. Precargar markets/choices/quotes del lote en mapas para
+  evitar N+1.
+- Enlazar snapshots con `executemany`/bulk update en chunks acotados; no cargar
+  relaciones ORM completas. Registrar filas/segundo y duración por lote.
+- `--batch-size` limita snapshots, no solo eventos; un evento patológico no
+  puede consumir memoria sin límite.
+- `--max-events` y `--max-rows` limitan el trabajo total de una ejecución. En
+  el servidor de 1 GB, la CLI rechaza scopes no acotados y el histórico se
+  completa mediante runs pequeños reanudados por checkpoint.
+- El advisory lock evita dos backfills simultáneos. Como el writer live hoy no
+  toma ese lock, **pausar ingesta es obligatorio** para el primer `--commit`.
+  Un backfill online solo se autoriza después de implementar un upsert
+  condicional/locking compartido que gane carreras en base de datos.
 
 #### Contrato operativo del script
 
 - `--dry-run` por defecto y `--commit` explícito.
-- Filtros `--event-id`, `--event-id-min`, `--event-id-max`, `--source` y
-  `--batch-size`, más `--resolution-file` para decisiones manuales auditables;
+- Filtros `--event-id`, `--event-id-min`, `--event-id-max`, `--source`,
+  `--batch-size`, `--max-events`, `--max-rows` y `--after-snapshot-id`, más
+  `--resolution-file` versionado para decisiones manuales auditables;
   reanudar equivale a repetir el último rango porque el proceso es idempotente.
-- Advisory lock de PostgreSQL compartido con otras migraciones de markets;
-  pausar jobs de ingesta durante el primer commit de producción.
+- `--event-id` o al menos uno de `--max-events`/`--max-rows` es obligatorio;
+  si ambos límites aparecen, gana el primero que se alcance.
+- El resolution file incluye versión, motivo y evidencia por decisión; se
+  valida contra IDs existentes y se incluye su checksum en el reporte.
 - Salida humana + `--output-json` con, como mínimo:
   `snapshots_scanned`, `snapshots_linked`, `legacy_choice_states_scanned`,
   `quotes_inserted`, `quotes_updated`, `legacy_markets_mapped`,
   `canonical_markets_created`, `ambiguous_source`, `ambiguous_choice_state`,
-  `ambiguous_target`, `metadata_conflicts`, `invalid_side_or_level`,
-  `unlinked_snapshots` y `unmigrated_choice_states`.
+  `ambiguous_target`, `contradictory_evidence`, `metadata_conflicts`,
+  `invalid_side_or_level`, `oddspapi_null_ticks_mapped_to_back`,
+  `stale_candidates_ignored`, `unlinked_snapshots`, `unmigrated_choice_states`,
+  duración y throughput por lote. Cada rechazo
+  incluye `event_id/market_id/choice_id/snapshot_id`, razón y evidencia.
 - Código de salida no cero si existen ambiguos fuera de un allowlist explícito.
 - Backup lógico previo; el rollback de aplicación no exige deshacer el
   backfill porque todos los cambios son aditivos y los lectores legacy siguen
@@ -529,12 +705,15 @@ oculta en código.
   metadata contradictoria y snapshot no clasificable.
 - Idempotencia real: ejecutar `--commit` dos veces y verificar que el segundo
   pase no inserta ni actualiza filas.
-- Concurrencia: una quote más nueva creada por el writer entre lotes no puede
-  ser degradada por el backfill.
+- Regresión del path canónico: Oddspapi con back+lay crea dos snapshots ligados
+  a dos quote IDs y no un snapshot `exchange_side=NULL` duplicado.
+- Merge temporal: una quote más nueva nunca es degradada por un candidato viejo;
+  timestamps iguales son no-op determinista.
+- Dry-run: cero cambios de datos **y de schema**.
 
 **Criterio de aceptación:**
-- 100% de snapshots creados después del dual-write tienen `quote_id` no nulo y
-  `mcs.choice_id = mcq.choice_id`.
+- 100% de snapshots creados por cualquier writer después de 4a tienen
+  `quote_id` no nulo y `mcs.choice_id = mcq.choice_id`.
 - 100% de snapshots históricos clasificables tienen un único `quote_id`; los
   no clasificables aparecen nominados en el reporte, no ocultos en un contador.
 - Todo estado legacy que consumen alertas/trajectory/dual process tiene quote o
@@ -549,42 +728,92 @@ oculta en código.
 
 ### Fase 5 — Migrar lectores a quotes
 
+**Estado al arrancar / urgencia:** por [§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado)
+los lectores de abajo ya ven `NULL`/datos incompletos en
+`MarketChoice.initial_odds/current_odds/change` para **eventos nuevos**.
+Fase 5 no es opcional ni puede quedar indefinida. Si Fase 4 aún no cerró
+coverage histórica, se puede empezar **5A** (query quote-aware + fachada)
+sobre eventos que ya tienen quotes del pipeline nuevo, pero solo en modo
+`shadow`; el cutover se acota explícitamente a eventos cubiertos o espera el
+backfill completo.
+
 **Objetivo:** hacer de `market_choice_quotes` la única fuente de estado e
 identidad para lecturas de odds, con cutover observable y reversible. No se
 eliminan todavía columnas legacy.
 
-**Precondición bloqueante:** Fase 4 desplegada, dual-write activo, cero
-snapshots clasificables sin `quote_id` y cero estados legacy leídos en
-producción sin quote. Si no se cumple, los lectores quote-aware perderían
-historia/estado y Fase 5 no comienza.
+**Precondición bloqueante (cutover completo):** Fase 4 desplegada, dual-write
+activo, cero snapshots clasificables sin `quote_id` y cero estados legacy
+leídos en producción sin quote. Si no se cumple, los lectores quote-aware
+perderían historia/estado — acotar el cutover a eventos post-deploy o
+completar backfill primero.
+
+#### Inventario concreto de call sites a migrar
+
+| Prioridad | Archivo | Superficie | Qué lee hoy |
+|---|---|---|---|
+| P0 | `infrastructure/persistence/repositories/market_repository.py` | `get_external_markets_for_event` | `choice.initial_odds` / `choice.current_odds` + `source` del último snapshot |
+| P0 | `modules/alerts/alerts_formatter/odds_alert.py` | `_format_external_markets_section` | consume `initial`/`current` del método anterior |
+| P0 | `modules/jobs/pre_start_check_job/alert_pipeline.py` | availability / alert path | llama `get_external_markets_for_event` |
+| P0 | `infrastructure/persistence/models.py` | `PRE_START_ODDS_TRAJECTORY_VIEW_SQL` | `mc.initial_odds` + metadata de `mcs.*` |
+| P0 | `infrastructure/persistence/repositories/odds_trajectory_repository.py` | `OddsTrajectoryPoint` / query a la vista | propaga `initial_odds`; ranking sin `quote_id` |
+| P0 | `modules/pillars/odds_trajectory_context.py` | `build_odds_trajectory_context`, `_get_bookie_container` | `initial_odds`; key = `bookie_name` (colisiona back/lay) |
+| P1 | `modules/pillars/pillar_4/drift_engine/drift_engine.py` | `_get_required_inputs` | `choice.initial_odds` vía trajectory context |
+| P1 | `infrastructure/persistence/models.py` | `build_dual_process_event_odds_view_sql` | `mc.initial_odds` + `COALESCE(latest.odds_value, mc.current_odds)` |
+| P1 | `infrastructure/persistence/repositories/dual_process_odds_repository.py` | `get_event_odds*` | `v_dual_process_event_odds` |
+| P1 | `modules/pillars/pillar_4/drift_engine/drift_engine.py` | `_build_choice_result_key` y resultados | la clave no incluye source/side/level y sobrescribiría series |
+| P2 | `scripts/development/simulate_pre_start_check.py` | prints diagnósticos | `choice.initial_odds/current_odds/change` |
+
+**No migrar por confusión:** `modules/jobs/pre_start_check_job/odds_extraction.py`
+arma `initial_odds`/`current_odds` desde el **payload live de SofaScore API**,
+no desde columnas de DB.
 
 #### Política de lectura común
 
 - Cada serie se identifica por `(market_id, choice_id, source, exchange_side,
   exchange_level)`; `bookie_name` es presentación, no identidad.
-- Los consumidores actuales son top-of-book. Cuando hay varios niveles, se
-  elige el menor `exchange_level` existente por
-  `(choice_id, source, exchange_side)`. No se mezclan niveles en una trayectoria.
+- Los consumidores actuales son top-of-book. Entre quotes con precio se elige
+  el menor `exchange_level` por `(choice_id, source, exchange_side)`. El nivel
+  elegido queda visible en el contrato; no se mezclan niveles en una serie.
+- Oddspapi conserva hoy una quote `exchange_side=NULL` además de Back/Lay para
+  exchange. Si existen sides explícitos para `(choice_id, source)`, los readers
+  de presentación/trajectory suprimen esa fila `NULL`; no se muestran tres
+  instrumentos para un mercado que realmente tiene dos. La fila se conserva
+  durante el rollout para rollback y se audita antes de borrarla.
 - Nunca combinar opening de una fuente con current de otra. Un
   `(oddsportal, back)` y un `(oddspapi, back)` son series distintas aunque
   compartan market, choice y bookie.
 - `initial_odds`, `current_odds`, `movement`, `source`, side y lineage salen de
   `MarketChoiceQuote`; `MarketChoice` aporta solo identidad del outcome.
+- La metadata estable (`source`, side, level, IDs, `main_line`) sale de la
+  quote. Los valores históricos del tick (`odds_value`, tiempos,
+  `source_limit`, `exchange_size`) salen del snapshot.
+- Un reader no puede elegir una quote arbitraria ante empate o datos
+  contradictorios: devuelve diagnóstico y omite el bloque afectado.
 
 #### Fase 5A — Query de alertas y contrato de salida
 
-- Crear
-  `market/market_read_queries.py::MarketReadQueries.get_external_market_quotes_for_event`.
-  Devuelve un bloque por `(market_id, source, exchange_side)` y choices con
-  `choice_id`, `quote_id`, `initial`, `current`, `movement`; el nivel elegido
-  también queda explícito para diagnóstico.
-- Mantener temporalmente
-  `MarketRepository.get_external_markets_for_event` como fachada para no romper
-  `odds_alert.py` y `alert_pipeline.py` en el primer deploy.
-- Agregar un comparador legacy-vs-quotes por evento. Paridad exacta es exigible
-  para mercados `single` de una sola fuente; diferencias Betfair se clasifican
-  como esperadas solo si consisten en separar source/side, nunca en perder
-  choices o precios.
+- Crear `market/market_read_models.py` con DTOs/`TypedDict` del contrato y
+  `market/market_read_queries.py::get_external_market_quotes_for_event`.
+  La query es set-based (`Market → Choice → Quote → Bookie`), sin N+1, y aplica
+  top-of-book + supresión del `NULL` redundante en SQL o en una sola capa pura.
+- Devuelve un bloque por `(market_id, source, exchange_side)` con:
+  `market_id`, identidad de market/bookie, `source`, `exchange_side` y una lista
+  de choices con `choice_id`, `quote_id`, `exchange_level`, `initial`,
+  `current`, `movement` (`-1/0/1`). Solo incluye quotes con algún precio; el
+  read model no mezcla datos con glifos de presentación.
+- Mantener `MarketRepository.get_external_markets_for_event` como fachada. El
+  modo de lectura es configurable y acotado a este consumidor:
+  `legacy | shadow | quotes`. `shadow` devuelve legacy pero ejecuta ambos,
+  compara y emite métricas; `quotes` es el cutover reversible.
+- El comparador clasifica diferencias como `equal`, `expected_source_split`,
+  `expected_side_split`, `expected_frozen_legacy`, `missing_quote`,
+  `missing_choice`, `price_mismatch` o `unexpected_duplicate`. Las cuatro
+  últimas bloquean el cutover. Paridad exacta solo se exige al histórico
+  single-source anterior al stop-write; para filas nuevas el mirror legacy
+  congelado no es un oracle válido.
+- Tests de query verifican orden estable, una sola consulta principal, choices
+  incompletos, empate de level y que Betfair Oddspapi expone Back/Lay sin la
+  quote `NULL` duplicada.
 
 #### Fase 5B — Alertas
 
@@ -595,14 +824,21 @@ historia/estado y Fase 5 no comienza.
   `modules/jobs/pre_start_check_job/alert_pipeline.py`) y sus tests de snapshot
   textual. OddsPortal opening-only conserva `opening→N/A`; Oddspapi muestra su
   propio opening/current bajo otra sección, sin fabricar una trayectoria mixta.
-- El orden estable es market, período, línea, bookie, `NULL/back/lay`.
+- El orden estable es source, market, período, línea, bookie y
+  `NULL/back/lay`; el formatter no vuelve a inferir source o side por nombre.
+- El formatter traduce `movement` a `↓/=/↑`; la fachada legacy puede conservar
+  temporalmente el glifo para su contrato anterior, pero persistencia/query no.
+- Desplegar primero en `shadow`, observar al menos un ciclo pre-start y cambiar
+  a `quotes` solo si `missing_*`, `price_mismatch` y duplicados inesperados son
+  cero. Rollback = volver el flag a `legacy`, sin tocar datos.
 
 #### Fase 5C — Trajectory y pillars
 
 - Crear primero `v_pre_start_odds_trajectory_quotes` en paralelo a la vista
   actual. Su CTE parte de `mcs JOIN mcq ON mcq.quote_id = mcs.quote_id`, y luego
   une `market_choices` mediante `mcq.choice_id`. Lee `source`, side, level,
-  lineage, `main_line`, límites e `initial_odds` desde `mcq`.
+  lineage, `main_line` e `initial_odds` desde `mcq`; mantiene odds, tiempos,
+  `source_limit` y `exchange_size` desde `mcs`.
 - El join a `event_source_mappings` y `market_source_mappings` usa
   `mcq.source`/`mcq.source_market_id`, no columnas del snapshot.
 - `OddsTrajectoryPoint` agrega `quote_id`, `source`, `exchange_side` y
@@ -610,22 +846,35 @@ historia/estado y Fase 5 no comienza.
   `(event_id, quote_id, target_minute)`, no solo por bookie/choice, para que
   back, lay y providers no compitan por el mismo slot.
 - `BookieOddsTrajectory` expone source/side/level y
-  `ChoiceOddsTrajectory` expone `quote_id`. La clave interna de bookie/serie es
-  `(bookie_id o bookie_name, source, exchange_side, exchange_level)`, no solo
-  `bookie_name` ni `(bookie_name, exchange_side)`.
+  `ChoiceOddsTrajectory` expone `quote_id`. La clave interna es un string
+  estable derivado de `(bookie_id o bookie_name, source, exchange_side,
+  exchange_level)`, no una tupla difícil de serializar. Helpers como
+  `get_choice_odds_values` resuelven por los campos del objeto y fallan ante
+  ambigüedad, en vez de indexar directamente por `bookie_name`.
 - `drift_engine.py` puede seguir leyendo `choice.initial_odds`, pero ese valor
-  ya proviene de `mcq.initial_odds`; agregar regresión que impida mezclar el
+  ya proviene de `mcq.initial_odds`. Su `_build_choice_result_key` y output
+  incluyen `quote_id/source/side/level`; de lo contrario dos providers del
+  mismo bookie se pisan silenciosamente. Agregar regresión que impida mezclar
   opening OddsPortal con snapshots Oddspapi.
 - Comparar ambas vistas en staging y después sustituir
   `v_pre_start_odds_trajectory` por la definición quote-aware, manteniendo el
-  nombre público para no cambiar el pipeline de pillars.
+  nombre público para no cambiar el pipeline de pillars. Conservar ambas
+  constantes SQL y el selector de rollout hasta Fase 6; `create_or_replace_views`
+  crea la vista shadow sin dropear la pública antes de la comparación.
+- Tests cubren: 2 sources × 2 sides en el mismo `target_minute`, helper de
+  SofaScore compatible, claves serializables, no colisión en drift y ausencia
+  total de filas `quote_id=NULL` en la vista nueva.
 
 #### Fase 5D — Lectores restantes y cierre
 
 - Migrar `build_dual_process_event_odds_view_sql`: para `bookie_id = 1` usar la
   quote explícita `(source='sofascore', exchange_side IS NULL, nivel
-  preferido)` y buscar el último snapshot por `quote_id`, no por `choice_id`.
-  Verificar también la materialized view que depende de ella.
+  preferido) y calcular current como
+  `COALESCE(latest_snapshot.odds_value, mcq.current_odds)`, buscando el último
+  snapshot por `quote_id`, no por `choice_id`.
+- Re-crear/refrescar en el mismo despliegue `event_all_odds` y
+  `mv_alert_events`, que dependen de `v_dual_process_event_odds`; comparar
+  cardinalidad, nulos y resultados 1/X/2 antes/después.
 - Actualizar scripts activos de desarrollo/mantenimiento que filtran metadata
   directamente en `MarketChoiceSnapshot`; las herramientas legacy pueden
   quedar excluidas solo con comentario y owner explícitos.
@@ -634,28 +883,36 @@ historia/estado y Fase 5 no comienza.
   lecturas de `MarketChoice.initial_odds/current_odds/change` o de metadata de
   `MarketChoiceSnapshot`, con allowlist temporal y fechada para writers y
   migraciones.
+- El guard incluye SQL embebido (`mc.initial_odds`, `mcs.source`, etc.), no solo
+  accesos ORM, y se ejecuta en CI. Tests de la ruta legacy que validan escritura
+  se permiten hasta Fase 7; código de producción lector no.
 
 #### Estrategia de cutover y rollback
 
-1. Desplegar query/vista quote-aware sin cambiar consumidores.
-2. Ejecutar comparación sobre los eventos de Fase 0 y una muestra por deporte,
-   provider, market y side.
-3. Cortar alertas y trajectory por subfase; observar al menos un ciclo completo
-   del pre-start job y métricas de filas/latencia/errores.
-4. Ante regresión, volver a la fachada/vista legacy; dual-write y backfill
-   permanecen porque son compatibles hacia atrás.
-5. Solo después de la ventana acordada se autoriza Fase 6. Fase 5 no elimina
-   columnas, índices ni código de rollback.
+1. Desplegar query/vistas quote-aware en shadow, sin cambiar consumidores.
+2. Comparar eventos de Fase 0 y una muestra estratificada por deporte,
+   antigüedad, provider, market, side y presencia/ausencia de snapshots.
+3. Definir presupuesto antes del corte: cero pérdidas/mezclas/duplicados,
+   cardinalidad esperada y p95 de query no peor que el límite acordado.
+4. Cortar alertas, trajectory y dual-process por subfase; observar un ciclo
+   pre-start completo y al menos un refresh de materialized views.
+5. Ante regresión, volver el flag/fachada o recrear la vista legacy; dual-write
+   y backfill permanecen porque son aditivos.
+6. Solo tras la ventana acordada se autoriza Fase 6. Fase 5 no elimina columnas,
+   índices, quotes redundantes ni código de rollback.
 
 **Criterio de aceptación:**
-- Paridad exacta para eventos no exchange/single-source y diferencias esperadas
-  documentadas para Betfair multi-source.
+- Paridad exacta para histórico no exchange/single-source con mirror vigente;
+  eventos post stop-write se validan contra quotes/payload, no contra columnas
+  legacy congeladas. Toda diferencia queda clasificada.
 - Evento `158955` produce un market/choice canónico con series separadas para
-  `(oddsportal|oddspapi) × (back|lay)`, sin colisiones ni side en `choice_group`.
+  `(oddsportal|oddspapi) × (back|lay)`, sin quote `NULL` visible duplicada,
+  colisiones ni side en `choice_group`.
 - Ningún ranking de trajectory colapsa quotes distintas; tests cubren dos
   sources y dos sides en el mismo target minute.
-- Alertas, pillars, drift y dual process pasan suites de regresión y un ciclo de
-  staging; conteos y latencia no degradan fuera del presupuesto acordado.
+- Alertas, pillars, drift, dual process y materialized views pasan suites de
+  regresión y un ciclo de staging; conteos y latencia quedan dentro del
+  presupuesto definido antes del cutover.
 - El guard de lecturas legacy queda verde. Las únicas referencias permitidas
   están en writers de compatibilidad, backfill y código expresamente agendado
   para Fases 6–7.
@@ -664,12 +921,32 @@ historia/estado y Fase 5 no comienza.
 
 ### Fase 6 — Adelgazar `market_choice_snapshots`
 
-**Objetivo:** migrar a la versión slim (ver [§5](#5-schema-propuesto)) una vez nada dependa de sus columnas redundantes.
+**Estado al arrancar:** solo después de que Fase 5 esté en producción y el
+guard `check_no_legacy_odds_reads.py` esté verde (salvo allowlist fechada de
+writers/backfill).
+
+**Objetivo:** migrar a la versión slim (ver [§5](#5-schema-propuesto)) una vez
+nada dependa de sus columnas redundantes.
+
+**Pasos concretos:**
+1. Confirmar con búsqueda global que ningún lector/query/vista selecciona
+   `mcs.source`, `mcs.main_line`, `mcs.exchange_side`, `mcs.source_market_id`,
+   `mcs.source_outcome_id`, `mcs.bookmaker_outcome_id` (deben venir de `mcq`).
+2. DDL: `quote_id SET NOT NULL` tras verificar `COUNT(*) WHERE quote_id IS NULL`
+   = 0. Un allowlist no es compatible con el constraint: toda excepción debe
+   resolverse, archivarse fuera de la tabla o bloquear esta fase.
+3. DDL: `DROP COLUMN` de las columnas de identity redundantes; mantener
+   `odds_value`, `collected_at`, `source_collected_at`, `source_limit`,
+   `exchange_size`. Eliminar también `choice_id`: desde este punto el choice se
+   obtiene exclusivamente por `quote_id → market_choice_quotes.choice_id`.
+   Solo después es seguro limpiar choices/markets Back/Lay legacy.
+4. Actualizar ORM `MarketChoiceSnapshot` y cualquier writer legacy que aún
+   rellene esas columnas.
+5. Medir tamaño de tabla/índices antes/después y archivarlo en el PR.
 
 **Criterio de aceptación:**
 - `market_choice_snapshots.quote_id` puede cambiarse a `NOT NULL` sin encontrar
-  snapshots clasificables pendientes; los casos exceptuados están documentados
-  y resueltos antes de ejecutar el DDL.
+  snapshots pendientes; toda excepción fue resuelta antes de ejecutar el DDL.
 - Todas las queries que filtran/seleccionan `source`/`exchange_side`/`main_line`/etc. en `market_choice_snapshots` pasan a hacerlo vía `JOIN market_choice_quotes`.
 - Medir tamaño de tabla/índices antes/después.
 
@@ -677,7 +954,24 @@ historia/estado y Fase 5 no comienza.
 
 ### Fase 7 — Deprecar columnas legacy en `market_choices`
 
-**Objetivo:** eliminar `MarketChoice.initial_odds`, `current_odds`, `change` una vez todos los lectores (Fase 5) usen quotes.
+**Estado al arrancar:** la *escritura* desde el path canónico **ya se detuvo**
+([§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado)).
+A esta fase solo le queda el DDL + retirar lecturas residuales / ruta legacy.
+
+**Objetivo:** eliminar `MarketChoice.initial_odds`, `current_odds`, `change`
+una vez todos los lectores (Fase 5) usen quotes y
+`save_markets_from_response_with_stats` ya no las escriba (migrada o retirada
+en Fase 8).
+
+**Pasos concretos:**
+1. Búsqueda global de `MarketChoice.initial_odds`, `.current_odds`, `.change`
+   y de columnas SQL `mc.initial_odds` / `c.initial_odds` — cero hits fuera de
+   migraciones/backfill documentados.
+2. Confirmar que la ruta `LEGACY_MAINTENANCE_ONLY` ya no escribe esas columnas
+   (o que los scripts que la usan se migraron).
+3. Migración: `ALTER TABLE market_choices DROP COLUMN initial_odds, …`
+   (Postgres) + rebuild SQLite en tests si aplica.
+4. Quitar columnas del ORM `MarketChoice` y actualizar comentarios FROZEN.
 
 **Criterio de aceptación:**
 - Ningún archivo referencia esas columnas (búsqueda global).
@@ -687,19 +981,40 @@ historia/estado y Fase 5 no comienza.
 
 ### Fase 8 — Limpieza de código legacy
 
-**Objetivo:** eliminar en bloque todo lo marcado como legacy a lo largo de las fases anteriores. Esta fase es exclusivamente borrado + verificación, sin nueva funcionalidad.
+**Objetivo:** eliminar en bloque todo lo marcado como legacy a lo largo de las
+fases anteriores. Esta fase es exclusivamente borrado + verificación, sin
+nueva funcionalidad.
 
-**A eliminar:**
-- `MarketRepository.save_markets_from_oddsportal`, `_save_oddsportal_market`, `_build_choice_payload` (marcados en Fase 0, confirmados sin uso).
-- `MarketRepository.save_markets_from_response_with_stats` como shim (Fase 2) — una vez `market_odds_ingestion_service.py` llama directo a `save_canonical_bookmaker_batches`.
-- `MarketRepository.get_oddsportal_markets_for_event` (alias).
-- Cualquier bloque de código dejado con comentario `# LEGACY_*` durante Fases 0-7 que ya no tenga call sites.
-- `infrastructure/persistence/repositories/market_repository.py` — evaluar si queda algo propio o si se convierte 100% en imports de `market/*` (decisión de equipo, no bloqueante).
+**A eliminar (lista verificada al momento del handoff):**
+
+| Símbolo | Ubicación aprox. | Call sites restantes |
+|---|---|---|
+| `save_markets_from_oddsportal` | `market_repository.py` | ninguno (muerto) |
+| `_save_oddsportal_market` | idem | ninguno |
+| `_build_choice_payload` | idem | ninguno |
+| `get_oddsportal_markets_for_event` | idem | alias sin call sites |
+| `get_external_markets_for_event` | idem, `LEGACY_ODDS_READ` | alertas externas; migrar a `MarketReadQueries` en Fase 5 y borrar en Fase 8 |
+| `save_markets_from_response_with_stats` | idem | solo vía `save_markets_from_response` + scripts abajo |
+| `save_markets_from_response` | idem | scripts de mantenimiento; migrar y eliminar, no conservar como compatibilidad |
+
+**Scripts que aún llaman la ruta legacy** (resolver uno a uno antes de borrar
+`save_markets_from_response*`):
+- `scripts/sport_seasons_processing.py`
+- `scripts/legacy/extract_historical_results_legacy_event_odds.py`
+- `scripts/legacy/process_null_seasons_legacy_event_odds.py`
+- `legacy/parse_telegram_odds.py`
+- `verify_snapshots.py` (raíz del repo)
+
+**También limpiar:** cualquier `# LEGACY_DEAD_CODE`,
+`# LEGACY_MAINTENANCE_ONLY` o `# LEGACY_ODDS_READ`. Convertir
+`market_repository.py` en fachada/orquestador puro sobre `market/*`; no se
+conservan aliases ni rutas de compatibilidad una vez migrados sus call sites.
 
 **Criterio de aceptación:**
 - Búsqueda global de `LEGACY_` sin resultados pendientes de esta lista.
 - Suite de tests completa en verde.
-- `save_markets_from_response` (sin stats) se mantiene documentado como "solo para scripts de mantenimiento", explícitamente fuera de esta limpieza.
+- Los 5 scripts de arriba ya migraron a `save_canonical_bookmaker_batches` y
+  `save_markets_from_response*` fue eliminado, no conservado.
 
 ---
 
@@ -709,10 +1024,14 @@ historia/estado y Fase 5 no comienza.
 |---|---|
 | Fase 2 desincroniza el comportamiento de Oddspapi al converger sobre `save_canonical_bookmaker_batches` | Test de paridad automatizado antes de retirar el shim |
 | Backfill (Fase 4) corre sobre datos en producción con jobs activos | Ventana de baja actividad o pausa del pre-start job durante el backfill |
+| El backfill pisa una quote live más nueva porque el writer actual no compara timestamps | Política `backfill-fill-only`, test de orden fuera de secuencia y pausa obligatoria de ingesta hasta tener locking condicional compartido |
 | Fase 5 intenta unir por `quote_id` antes de que exista/esté poblado | Fase 4 agrega la FK nullable, activa dual-write y exige coverage antes del cutover |
+| La ruta legacy crea snapshots nuevos sin `quote_id` después de 4a | Mitigado: el path marcado hace upsert/flush y delega al mismo `MarketChoiceSnapshotWriter`; no existe writer legacy paralelo |
+| Oddspapi actualiza quotes Back/Lay pero solo guarda snapshot side-agnostic | 4a genera ticks por quote explícita y testea que no exista el duplicado `NULL` |
 | Source de un estado legacy externo no puede probarse | Clasificar como ambiguo; resolver con archivo auditable, nunca adivinar por nombre de bookie |
 | Migrar lectores (Fase 5) rompe alertas en producción | Cada PR compara output contra eventos de referencia de Fase 0 |
 | Ranking de trajectory vuelve a colisionar providers o Back/Lay | Particionar por `quote_id` y testear 2 sources × 2 sides en el mismo minuto |
+| Alerts/drift muestran o sobrescriben la quote `NULL` redundante junto a Back/Lay | Regla común “side explícito domina NULL” + claves que incluyen source/side/level/quote_id |
 | Duplicado de fila `exchange_side IS NULL` por migración incompleta | Índice funcional `unique_market_choice_quote_side_null_safe` (`COALESCE`) + test explícito que llama `check_and_migrate_schema()` |
 | `market_choices` deja de escribirse antes de Fase 5 ([§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado)): `odds_alert.py`/`odds_trajectory_context.py`/`drift_engine.py`/dual-process view ven datos incompletos para eventos nuevos | Riesgo aceptado explícitamente; Fase 5 pasa a ser prioritaria, no opcional — no debe quedar pendiente indefinidamente |
 | Borrar código en Fase 8 antes de tiempo | Fase 8 solo se ejecuta después de que Fases 2-7 estén en producción sin incidentes |
@@ -720,41 +1039,306 @@ historia/estado y Fase 5 no comienza.
 ## 10. Mapa rápido de archivos
 
 **Modelos / schema:**
-- `infrastructure/persistence/models.py` — `Market`, `MarketChoice`, `MarketChoiceSnapshot`, `MarketChoiceQuote` (nuevo), vista `v_pre_start_odds_trajectory`.
+- `infrastructure/persistence/models.py` — `Market`, `MarketChoice` (odds columns FROZEN), `MarketChoiceSnapshot` (`quote_id` nullable + relaciones), `MarketChoiceQuote`, vistas `PRE_START_ODDS_TRAJECTORY_VIEW_SQL` / `build_dual_process_event_odds_view_sql`.
 - `infrastructure/persistence/market_write_policy.py`.
-- `infrastructure/persistence/database.py`.
+- `infrastructure/persistence/database.py` — incluye `_migrate_market_choice_quotes` (NULL-safe + ALTER de nullability).
 
-**Writers (nuevo subpaquete):**
-- `infrastructure/persistence/repositories/market/market_identity_resolver.py`
-- `infrastructure/persistence/repositories/market/market_choice_writer.py`
-- `infrastructure/persistence/repositories/market/market_choice_quote_writer.py`
-- `infrastructure/persistence/repositories/market/market_choice_snapshot_writer.py`
-- `infrastructure/persistence/repositories/market/exchange_quote_payload.py`
-- `infrastructure/persistence/repositories/market/odds_movement.py`
-- `infrastructure/persistence/repositories/market/market_read_queries.py`
-- `infrastructure/persistence/repositories/market_repository.py` (fachada)
+**Writers (subpaquete `repositories/market/`):**
+- `exchange_quote_payload.py` — hecho
+- `odds_movement.py` — hecho
+- `market_choice_quote_writer.py` — hecho
+- `market_identity_resolver.py` — **PENDIENTE** (sigue inline)
+- `market_choice_writer.py` — **PENDIENTE** (sigue inline; ya no escribe odds)
+- `market_choice_snapshot_writer.py` — **HECHO**; único constructor/append de snapshots, deriva identidad estable desde `MarketChoiceQuote`
+- `market_read_queries.py` — **PENDIENTE** (Fase 5A)
+- `infrastructure/persistence/repositories/market_repository.py` — sigue siendo la clase real, no fachada pura
 
-**Adapters:**
-- `modules/odds_ingestion/adapters/canonical_odds_payload.py` (PENDIENTE — no creado, ver [§6.1](#61-unificación-de-adapters--decisión-revisada-al-implementar))
+**Adapters / ingesta:**
+- `modules/odds_ingestion/adapters/canonical_odds_payload.py` — PENDIENTE (diferido, §6.1)
 - `modules/odds_ingestion/adapters/sofascore_market_adapter.py`
 - `modules/odds_ingestion/adapters/oddspapi_market_adapter.py`
 - `modules/odds_ingestion/adapters/oddsportal_market_adapter.py`
 - `modules/oddspapi/exchange_quotes.py`
-- `modules/odds_ingestion/market_odds_ingestion_service.py`
+- `modules/odds_ingestion/market_odds_ingestion_service.py` — 100% canónico
 
-**Lectores:**
+**Lectores (aún legacy — ver §11.3):**
 - `modules/alerts/alerts_formatter/odds_alert.py`
+- `modules/jobs/pre_start_check_job/alert_pipeline.py`
 - `infrastructure/persistence/repositories/odds_trajectory_repository.py`
 - `modules/pillars/odds_trajectory_context.py`
 - `modules/pillars/pillar_4/drift_engine/drift_engine.py`
+- `infrastructure/persistence/repositories/dual_process_odds_repository.py`
+
+**Backfill a crear:**
+- `scripts/maintenance/backfill_market_choice_quotes.py` (Fase 4b)
+- Referencias: `backfill_sofascore_choice_names_and_groups.py`, `backfill_sofascore_canonical_markets.py`
 
 **Tests relevantes existentes:**
-- `tests/test_oddsportal_canonical_ingestion.py` (ejercita `OddsPortalMarketAdapter` + `save_canonical_bookmaker_batches` + `save_markets_from_response_with_stats` — se actualizará en cada fase; `test_adapter_shares_one_market_between_betfair_back_and_lay` prueba el fix de Fase 3 a nivel adapter)
+- `tests/test_oddsportal_canonical_ingestion.py`
 - `tests/test_oddsportal_hover_parser.py`
-- `tests/test_market_choice_quote_model.py` (Fase 1)
+- `tests/test_market_choice_quote_model.py` (Fase 1 + NULL sentinel rewrite)
 - `tests/test_odds_movement.py` (Fase 1)
 - `tests/test_market_choice_quote_writer.py` (Fase 2)
-- `tests/test_save_canonical_bookmaker_batches_quotes.py` (Fase 2, integración end-to-end del fix de back/lay vía Oddspapi)
-- `tests/test_oddsportal_betfair_back_lay_quotes.py` (Fase 3, integración end-to-end del fix de back/lay vía OddsPortal — adapter real + servicio + repositorio)
+- `tests/test_market_choice_snapshot_writer.py` (Fase 4a, contrato SRP)
+- `tests/test_save_canonical_bookmaker_batches_quotes.py` (Fase 2)
+- `tests/test_oddsportal_betfair_back_lay_quotes.py` (Fase 3)
 
-**Nota:** todos los `tests/test_*.py` nuevos deben agregarse también como excepción en `.gitignore` (ver nota operativa en Fase 3) o quedan fuera de git silenciosamente.
+**Nota:** si el repo vuelve a ignorar `tests/test_*.py` por defecto, cualquier
+archivo nuevo necesita excepción explícita en `.gitignore` o queda fuera de git
+sin aviso. Verificar el estado actual de `.gitignore` al crear tests nuevos.
+
+---
+
+## 11. Handoff: continuar desde Fase 4b
+
+Esta sección es el punto de entrada para un dev que llega a
+`refactor/db-schema-odds-refactor` **después** de completar el expand schema y
+dual-write de Fase 4a.
+Lee primero [§3.1](#31-estado-actual-post-fase-3), [§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado)
+y después esta sección; las fases detalladas siguen en [§8](#8-fases-de-implementación).
+
+### 11.1. Qué ya está hecho (no rehacer)
+
+| Pieza | Dónde | Estado |
+|---|---|---|
+| Tabla/modelo `MarketChoiceQuote` | `models.py`, `database.py::_migrate_market_choice_quotes` | Hecho |
+| `exchange_side` nullable + índice `unique_market_choice_quote_side_null_safe` (`COALESCE`) | ORM + migración Postgres (`DROP NOT NULL`/`DROP DEFAULT` + rewrite `'single'→NULL`) | Hecho |
+| `ExchangeQuotePayload` (`side: Optional[str] = None`) | `repositories/market/exchange_quote_payload.py` | Hecho |
+| `compute_movement` | `repositories/market/odds_movement.py` | Hecho |
+| `MarketChoiceQuoteWriter.upsert` | `repositories/market/market_choice_quote_writer.py` | Hecho — **reutilizar en backfill** |
+| Convergencia 3 providers → `save_canonical_bookmaker_batches` | `market_odds_ingestion_service.py` | Hecho |
+| OddsPortal back/lay sin `choice_group=Back/Lay` | `oddsportal_market_adapter.py` | Hecho |
+| Stop-write de odds a `MarketChoice` en path canónico | `market_repository.py::save_canonical_bookmaker_batches` | Hecho (adelanto de Fase 7 write-stop) |
+| `MarketChoiceSnapshot.quote_id` nullable + FK/índice | `models.py`, `database.py::_migrate_market_choice_snapshot_lineage` | Hecho (Fase 4a) |
+| Writer único de snapshots | `repositories/market/market_choice_snapshot_writer.py::MarketChoiceSnapshotWriter.append` | Hecho; `market_repository.py` no construye snapshots |
+| Lineage exacto en paths canónico y legacy | `_upsert_choice_quotes` → `MarketChoiceSnapshotWriter` | Hecho; ambos delegan al mismo writer |
+| Snapshots Oddspapi Back/Lay por side/level | `save_canonical_bookmaker_batches` | Hecho; sin current `exchange_side=NULL` redundante |
+| Persistencia batch sin N+1 de quotes | `save_canonical_bookmaker_batches` + `MarketChoiceQuoteWriter` | Hecho; quote preload único, índice de identidad compartido y tres SELECT constantes para un batch existente |
+| Resolución Oddspapi con sesión compartida | `market_odds_ingestion_service.py::save_from_oddspapi_response` | Hecho; una sesión de referencias para todos los bookmakers y otra transacción atómica para odds |
+| Tests de quotes / OddsPortal / writer | `tests/test_market_choice_quote_*.py`, `test_save_canonical_bookmaker_batches_quotes.py`, `test_oddsportal_*` | Hecho |
+
+**Pendiente (empezar aquí):**
+
+| Pieza | Estado |
+|---|---|
+| Merge temporal live + fill-only | Pendiente — implementar antes de usar el writer desde 4b |
+| Script `backfill_market_choice_quotes.py` | Pendiente |
+| Lectores quote-aware (alertas/trajectory/drift/dual-process) | Pendiente (Fase 5, urgente) |
+| Slim de snapshots / DROP columns de choices / limpieza legacy | Fases 6–8 |
+| Extracción de `MarketIdentityResolver` / `MarketChoiceWriter` | Limpieza posterior; snapshot writer ya extraído |
+| Unificación de adapters a `CanonicalOddsResponse` | Diferida ([§6.1](#61-unificación-de-adapters--decisión-revisada-al-implementar)) |
+
+### 11.2. APIs y puntos de entrada a reutilizar
+
+**Escritura de quotes (idempotente, partial-arrival safe):**
+
+```python
+MarketChoiceQuoteWriter.upsert(
+    session,
+    quote_index=preloaded_quotes_by_identity,
+    choice_id=...,
+    source="oddspapi" | "oddsportal" | "sofascore",
+    exchange_side=None | "back" | "lay",  # NULL = non-exchange
+    exchange_level=0,
+    initial_price=...,
+    initial_captured_at=...,
+    current_price=...,
+    current_captured_at=...,
+    main_line=...,
+    source_market_id=...,
+    source_outcome_id=...,
+    bookmaker_outcome_id=...,
+    source_limit=...,
+    overwrite_initial=False,  # True solo para OddsPortal opening-only
+)
+```
+
+**Append de snapshots (único punto de escritura):**
+
+```python
+MarketChoiceSnapshotWriter.append(
+    session,
+    quote=persisted_or_pending_quote,  # asociada a la misma Session
+    odds_value=...,
+    collected_at=...,
+    source_collected_at=...,
+    source_limit=...,
+    exchange_size=...,
+)
+```
+
+El writer deriva `choice_id`, `source`, metadata, `exchange_side` y
+`exchange_level` desde la quote; ningún caller puede suministrar una identidad
+paralela contradictoria. No exige `quote_id` antes del append: la relación ORM
+permite que SQLAlchemy ordene los INSERT y propague la PK/FK en el flush final.
+
+**Wiring en vivo:** `MarketRepository._upsert_choice_quotes` (privado) es
+llamado desde `save_canonical_bookmaker_batches` después del flush de choices.
+Soporta dos formas de wire:
+- `choice_data["exchangeQuotes"]` — lista (Oddspapi).
+- `choice_data["exchangeSide"]` — singular `back`/`lay` (OddsPortal).
+
+**Políticas:** `infrastructure/persistence/market_write_policy.py`
+(`ODDSPORTAL_OPENING_ONLY_POLICY`, `DEFAULT_MARKET_WRITE_POLICY`).
+
+**Migraciones de aplicación:** el deploy pasa por
+`db_manager.check_and_migrate_schema()` (`app/initialize.py`). La migración de
+quotes ya incluye el ALTER de nullability en Postgres. El backfill no dispara
+ese migrador: su `--dry-run` valida el schema de forma read-only y falla si 4a
+no fue desplegada.
+
+**NO inventar** un segundo upsert de quotes en el backfill. Si el writer no
+cubre un caso, extenderlo con la política `backfill-fill-only` y tests. Estado
+actual importante: `upsert()` retorna la quote y `_upsert_choice_quotes` ya
+propaga un mapa por `(side, level)`; lo pendiente antes del histórico es impedir
+que `current_odds` retroceda por timestamps antiguos.
+
+### 11.3. Inventario de lectores aún en columnas legacy
+
+Ver tabla detallada en [Fase 5](#fase-5--migrar-lectores-a-quotes). Resumen de
+prioridad:
+
+1. **Alertas externas:** `get_external_markets_for_event` → `odds_alert.py` →
+   `alert_pipeline.py`. Hoy leen el mirror congelado de `MarketChoice` +
+   `source` del último snapshot. Primer cutover visible para el usuario.
+2. **Trajectory:** `PRE_START_ODDS_TRAJECTORY_VIEW_SQL` →
+   `odds_trajectory_repository.py` → `odds_trajectory_context.py` →
+   `drift_engine.py`. Hoy particiona sin `quote_id`/`exchange_side`.
+3. **Dual-process:** `build_dual_process_event_odds_view_sql` →
+   `dual_process_odds_repository.py` (+ engines process_1/process_2,
+   `streak_analysis_resolver.py`). Scope `bookie_id = 1` / SofaScore.
+
+Hasta que esos tres grupos lean quotes, **eventos nuevos** muestran
+`NULL`/incompletos en opening/current donde antes el mirror cruzaba fuentes
+([§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado)).
+
+### 11.4. Inventario de metadata de identidad aún en snapshots
+
+Columnas de identity que **deberían** vivir solo en `market_choice_quotes`
+(y que Fase 6 dropea de snapshots una vez Fase 5 lea vía `quote_id`):
+
+`source`, `source_market_id`, `source_outcome_id`, `bookmaker_outcome_id`,
+`main_line`, `exchange_side`, `exchange_level`.
+
+| Quién escribe hoy | Qué pone en el snapshot |
+|---|---|
+| `MarketChoiceSnapshotWriter` desde path canónico | Copia temporalmente identity estable desde la quote + valores propios del tick |
+| `MarketChoiceSnapshotWriter` desde path legacy marcado | Exactamente el mismo contrato; no existe writer legacy paralelo |
+
+Lectores que aún dependen de `mcs.*` para identity: sobre todo
+`PRE_START_ODDS_TRAJECTORY_VIEW_SQL` y `get_external_markets_for_event`
+(último `source`).
+
+Tick-only (se quedan en snapshots): `odds_value`, `collected_at`,
+`source_collected_at`, `source_limit`, `exchange_size`.
+
+### 11.5. Patrones de scripts de backfill a copiar
+
+| Script de referencia | Qué copiar |
+|---|---|
+| `scripts/maintenance/backfill_sofascore_choice_names_and_groups.py` | CLI: `--dry-run` default / `--commit` explícito (`args.dry_run = not args.commit`), filtros por `event-id` range, `--output-json`, reportes CSV bajo `debug/` |
+| `scripts/maintenance/backfill_sofascore_canonical_markets.py` | Copiar bootstrap/imports y `progress_step`; **no** copiar la llamada automática a `check_and_migrate_schema()` porque el dry-run de Fase 4 debe ser read-only |
+| `scripts/maintenance/backfill_event_entities_from_sofascore.py` | Segundo ejemplo de lote + idempotencia |
+
+Contrato mínimo del nuevo
+`scripts/maintenance/backfill_market_choice_quotes.py`: ver
+[Fase 4 § Contrato operativo](#contrato-operativo-del-script).
+
+### 11.6. Orden sugerido de PRs y smoke checks
+
+| PR | Contenido | Smoke / aceptación mínima |
+|---|---|---|
+| **4a — HECHO** | `quote_id` nullable + FK/índice + `MarketChoiceSnapshotWriter` único + ticks Back/Lay | Cero `MarketChoiceSnapshot(...)` en `market_repository.py`; todo snapshot tiene quote exacta, incluido path legacy marcado |
+| **4b** | Merge temporal/fill-only + backfill optimizado + dry-run read-only + tests de clasificación | `--dry-run` sobre `158955`; cero mutaciones de datos/schema; segundo `--commit` es no-op |
+| **4c** | Commit de backfill en staging/prod (ventana de baja actividad) | Coverage: `unlinked_snapshots` / `unmigrated_choice_states` = 0 en scope del cutover; JSON archivado |
+| **5A** | Read models + query set-based + fachada `legacy/shadow/quotes` + comparador | Cero N+1; diferencias clasificadas; side explícito suprime quote `NULL` redundante |
+| **5B** | `odds_alert.py` + `alert_pipeline.py` + cutover por flag | Alertas muestran back/lay y sources separados; métricas bloqueantes en cero |
+| **5C** | Vista trajectory shadow + ranking por `quote_id` + context/drift | 2 sources × 2 sides no colisionan en ranking, contexto ni output de drift |
+| **5D** | Dual-process + refresh de dependencias + guard de lecturas legacy | Guard CI verde; dual-process usa quote SofaScore y materialized views conservan cardinalidad |
+| **6** | Slim snapshots | `quote_id NOT NULL` + DROP identity cols; tamaño medido |
+| **7** | `DROP COLUMN` en `market_choices` | Búsqueda global limpia |
+| **8** | Borrar métodos muertos + decidir scripts legacy | `LEGACY_` resuelto; suite verde |
+
+**Tests de humo locales recomendados al tocar persistencia:**
+
+```bash
+python -m pytest tests/test_market_choice_quote_model.py tests/test_market_choice_quote_writer.py tests/test_save_canonical_bookmaker_batches_quotes.py tests/test_oddsportal_canonical_ingestion.py tests/test_oddsportal_betfair_back_lay_quotes.py -q
+```
+
+**Simulación end-to-end:** `scripts/development/simulate_pre_start_check.py`
+(llama `initialize_system` → `check_and_migrate_schema`). Tras cambios de
+schema, reiniciar para que corra la migración (p.ej. el `DROP NOT NULL` de
+`exchange_side`).
+
+Consulta útil para inspeccionar el estado post-ingesta:
+
+```sql
+SELECT m.market_id, m.market_name, m.choice_group, b.name AS bookie,
+       mc.choice_name,
+       mcq.source, mcq.exchange_side, mcq.exchange_level,
+       mcq.initial_odds, mcq.current_odds, mcq.main_line,
+       mcq.source_market_id, mcq.source_outcome_id
+FROM markets m
+JOIN bookies b ON b.bookie_id = m.bookie_id
+JOIN market_choices mc ON mc.market_id = m.market_id
+LEFT JOIN market_choice_quotes mcq ON mcq.choice_id = mc.choice_id
+WHERE m.event_id = :event_id
+ORDER BY b.name, m.market_name, m.choice_group NULLS FIRST,
+         mc.choice_name, mcq.source, mcq.exchange_side NULLS FIRST;
+```
+
+### 11.7. Gotchas operativos
+
+1. **`NULL != NULL` en UNIQUE:** nunca confiar solo en
+   `UniqueConstraint(choice_id, source, exchange_side, exchange_level)`. La
+   protección real es el índice funcional
+   `unique_market_choice_quote_side_null_safe`. Tras crear tablas en tests,
+   llamar `check_and_migrate_schema()` (o al menos
+   `_migrate_market_choice_quotes()`).
+2. **Tablas viejas con `NOT NULL DEFAULT 'single'`:**
+   `_migrate_market_choice_quotes` ya hace `DROP NOT NULL`/`DROP DEFAULT` en
+   Postgres y reescribe `'single'→NULL`. Si un entorno no pasó por
+   `initialize_system` después de ese cambio, Oddspapi falla con
+   `NotNullViolation` al insertar quotes no-exchange.
+3. **No mezclar sources en una sola serie:** OddsPortal opening + Oddspapi
+   current son **dos quotes**. El mirror de `MarketChoice` que las combinaba
+   ya no se escribe; Fase 5 debe presentarlas como series distintas (o una
+   política de presentación explícita), nunca reintroducir un merge silencioso
+   en el reader.
+4. **OddsPortal legacy `choice_group IN ('Back','Lay')`:** el pipeline nuevo ya
+   no las crea, pero el histórico sí las tiene. El backfill (Fase 4) las mapea
+   al market canónico; **no las borres** en Fase 4. Limpieza de datos = paso
+   separado post-observación.
+5. **Las rutas de scripts siguen siendo legacy aunque compartan writers.**
+   `save_markets_from_response(_with_stats)` está marcado
+   `LEGACY_MAINTENANCE_ONLY` porque duplica orquestación y mirror de choices;
+   no agregar call sites y eliminarlo en Fase 8.
+6. **No hay writer legacy de snapshots.** Ambos paths delegan en
+   `MarketChoiceSnapshotWriter`; una regresión se detecta buscando cualquier
+   `MarketChoiceSnapshot(...)` fuera de ese archivo y fixtures/tests.
+7. **Oddspapi exchange conserva ticks por side/level.** `_upsert_choice_quotes`
+   crea Back/Lay y el writer agrega una serie por instrumento, sin current
+   side-agnostic redundante.
+8. **Gate de opening snapshot es side-aware (vivo).**
+   `save_canonical_bookmaker_batches` decide `initial_was_set` mirando en el
+   `quote_index` precargado la quote de
+   `_opening_gate_side_and_level(choice_data)` — `exchangeSide` (OddsPortal),
+   `back/0` si hay `exchangeQuotes` (Oddspapi), o `NULL/0` en bookies normales.
+   **No** hace SELECT extra. Antes solo miraba `exchange_side IS NULL`, lo que
+   hacía que OddsPortal Betfair (solo back/lay) pareciera “primer opening” en
+   cada re-ingest; era inocuo mientras `persist_opening_snapshots=False`.
+9. **Oddspapi Betfair aún escribe una quote `exchange_side=NULL` además de
+   back/lay** (eco del `decimalValue` plano del payload). Es compatibilidad,
+   no el modelo ideal. **No** copiar ese patrón en OddsPortal. Plan de retiro:
+   - Fase 5: readers suprimen `NULL` cuando existen sides explícitos (ya
+     documentado en política de lectura).
+   - Post cutover (PR propio, no 4b): dejar de upsertar la fila `NULL` cuando
+     `exchangeQuotes` viene poblado; auditar/borrar filas `NULL` huérfanas
+     solo cuando nada las lea.
+   - 4b: clasificar evidencia histórica `NULL` vs `back`/`lay` sin borrar;
+     nunca fusionar silenciosamente `NULL` con `back`.
+10. **El writer actual no es seguro para backfill temporal.** Siempre reemplaza
+   current; agregar `backfill-fill-only` antes de reutilizarlo (Fase 4b).
+11. **Fase 5 es prioritaria** respecto a extracciones cosméticas
+   (`MarketIdentityResolver`, unificación de adapters). No bloquees alertas por
+   refactors de estructura de archivos.

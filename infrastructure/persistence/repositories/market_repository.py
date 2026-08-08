@@ -22,6 +22,9 @@ from infrastructure.persistence.repositories.bookie_repository import BookieRepo
 from infrastructure.persistence.repositories.market.market_choice_quote_writer import (
     MarketChoiceQuoteWriter,
 )
+from infrastructure.persistence.repositories.market.market_choice_snapshot_writer import (
+    MarketChoiceSnapshotWriter,
+)
 from infrastructure.persistence.repositories.market.odds_movement import compute_movement
 from shared.odds_utils import fractional_to_decimal, normalize_odds_value
 from shared.timezone_utils import convert_utc_to_local, get_local_now
@@ -157,6 +160,8 @@ class MarketRepository:
             ]
         }
 
+    # LEGACY_MAINTENANCE_ONLY: live ingestion uses save_canonical_bookmaker_batches.
+    # Migrate the remaining maintenance scripts and delete this facade in Fase 8.
     @staticmethod
     def save_markets_from_response(event_id: int, odds_response: Dict, bookie_id: int) -> int:
         """Save all markets from an odds API response to the database.
@@ -175,15 +180,21 @@ class MarketRepository:
             event_id=event_id,
             odds_response=odds_response,
             bookie_id=bookie_id,
+            source="sofascore",
         ).markets_saved
 
+    # LEGACY_MAINTENANCE_ONLY: duplicated market/choice orchestration retained only
+    # for explicitly listed maintenance scripts. Do not add call sites; Fase 8 deletes it.
     @staticmethod
     def save_markets_from_response_with_stats(
         event_id: int,
         odds_response: Dict,
         bookie_id: int,
-        source: Optional[str] = None,
+        source: str,
     ) -> MarketSaveResult:
+        source = str(source or "").strip().lower()
+        if not source:
+            raise ValueError("source is required to persist quote-linked snapshots")
         write_policy = market_write_policy_for_source(source)
         operation_logger = (
             oddsportal_logger if source == "oddsportal" else logger
@@ -206,6 +217,29 @@ class MarketRepository:
             result = MarketSaveResult()
 
             with db_manager.get_session() as session:
+                existing_quotes = (
+                    session.query(MarketChoiceQuote)
+                    .join(
+                        MarketChoice,
+                        MarketChoice.choice_id == MarketChoiceQuote.choice_id,
+                    )
+                    .join(Market, Market.market_id == MarketChoice.market_id)
+                    .filter(
+                        Market.event_id == event_id,
+                        Market.bookie_id == bookie_id,
+                        MarketChoiceQuote.source == source,
+                    )
+                    .all()
+                )
+                quote_index = {
+                    MarketChoiceQuoteWriter.identity_key(
+                        choice_id=quote.choice_id,
+                        source=quote.source,
+                        exchange_side=quote.exchange_side,
+                        exchange_level=quote.exchange_level,
+                    ): quote
+                    for quote in existing_quotes
+                }
                 for market_data in markets_data:
                     try:
                         with session.begin_nested():
@@ -385,23 +419,42 @@ class MarketRepository:
                                     choice_data.get("changedAt") or choice_data.get("sourceCollectedAt"),
                                     convert_to_project_timezone=uses_oddspapi_source_time,
                                 )
-                                snapshot_fields = {
-                                    "choice_id": choice.choice_id,
-                                    "collected_at": market.collected_at,
-                                    "source": source,
-                                    "source_collected_at": source_collected_at,
-                                    "source_market_id": choice_data.get('sourceMarketId'),
-                                    "source_outcome_id": choice_data.get('sourceOutcomeId'),
-                                    "bookmaker_outcome_id": choice_data.get('bookmakerOutcomeId'),
-                                    "main_line": choice_data.get('mainLine'),
-                                    "source_limit": MarketRepository._numeric_or_none(choice_data.get('limit')),
-                                }
-
-                                exchange_quotes = choice_data.get("exchangeQuotes")
                                 initial_source_collected_at = (
                                     MarketRepository._parse_source_datetime(
                                         choice_data.get("initialChangedAt"),
                                         convert_to_project_timezone=uses_oddspapi_source_time,
+                                    )
+                                )
+                                quotes_by_identity = MarketRepository._upsert_choice_quotes(
+                                    session,
+                                    quote_index=quote_index,
+                                    choice=choice,
+                                    choice_data=choice_data,
+                                    source=source,
+                                    write_policy=write_policy,
+                                    initial_odds=initial_odds,
+                                    initial_captured_at=initial_source_collected_at,
+                                    current_odds=current_odds,
+                                    current_captured_at=source_collected_at,
+                                )
+
+                                exchange_quotes = choice_data.get("exchangeQuotes")
+                                explicit_exchange_quotes = {
+                                    identity: quote
+                                    for identity, quote in quotes_by_identity.items()
+                                    if identity[0] is not None
+                                }
+                                explicit_side = str(
+                                    choice_data.get("exchangeSide") or ""
+                                ).strip().lower()
+                                opening_identity = (
+                                    ("back", 0)
+                                    if explicit_exchange_quotes
+                                    and isinstance(exchange_quotes, list)
+                                    else (
+                                        (explicit_side, 0)
+                                        if explicit_side in {"back", "lay"}
+                                        else (None, 0)
                                     )
                                 )
                                 if (
@@ -410,99 +463,101 @@ class MarketRepository:
                                     and initial_odds is not None
                                     and initial_source_collected_at is not None
                                 ):
-                                    is_exchange_opening = isinstance(
-                                        exchange_quotes,
-                                        list,
+                                    opening_quote = quotes_by_identity.get(
+                                        opening_identity
                                     )
-                                    session.add(
-                                        MarketChoiceSnapshot(
-                                            choice_id=choice.choice_id,
-                                            odds_value=initial_odds,
-                                            collected_at=market.collected_at,
-                                            source=source,
-                                            source_collected_at=(
-                                                initial_source_collected_at
-                                            ),
-                                            source_market_id=choice_data.get(
-                                                'sourceMarketId'
-                                            ),
-                                            source_outcome_id=choice_data.get(
-                                                'sourceOutcomeId'
-                                            ),
-                                            bookmaker_outcome_id=choice_data.get(
-                                                'bookmakerOutcomeId'
-                                            ),
-                                            main_line=choice_data.get('mainLine'),
-                                            source_limit=(
-                                                MarketRepository._numeric_or_none(
-                                                    choice_data.get(
-                                                        "initialLimit"
-                                                    )
-                                                )
-                                            ),
-                                            exchange_side=(
-                                                "back"
-                                                if is_exchange_opening
-                                                else None
-                                            ),
-                                            exchange_level=(
-                                                0
-                                                if is_exchange_opening
-                                                else None
-                                            ),
-                                            exchange_size=(
-                                                MarketRepository._numeric_or_none(
-                                                    choice_data.get(
-                                                        "initialLimit"
-                                                    )
-                                                )
-                                                if is_exchange_opening
-                                                else None
-                                            ),
+                                    if opening_quote is None:
+                                        raise ValueError(
+                                            "Opening snapshot has no matching quote for "
+                                            f"choice_id={choice.choice_id}, identity={opening_identity}"
                                         )
+                                    initial_limit = MarketRepository._numeric_or_none(
+                                        choice_data.get("initialLimit")
+                                    )
+                                    MarketChoiceSnapshotWriter.append(
+                                        session,
+                                        quote=opening_quote,
+                                        odds_value=initial_odds,
+                                        collected_at=market.collected_at,
+                                        source_collected_at=initial_source_collected_at,
+                                        source_limit=initial_limit,
+                                        exchange_size=(
+                                            initial_limit
+                                            if opening_quote.exchange_side is not None
+                                            else None
+                                        ),
                                     )
                                     result.snapshots_saved += 1
 
                                 if (
                                     write_policy.persist_current_snapshots
+                                    and explicit_exchange_quotes
                                     and isinstance(exchange_quotes, list)
                                 ):
-                                    for quote in exchange_quotes:
-                                        if not isinstance(quote, dict):
+                                    for quote_data in exchange_quotes:
+                                        if not isinstance(quote_data, dict):
                                             continue
-                                        quote_price = MarketRepository._float_or_none(quote.get("price"))
-                                        quote_side = str(quote.get("side") or "").strip().lower()
+                                        quote_price = MarketRepository._float_or_none(
+                                            quote_data.get("price")
+                                        )
+                                        quote_side = str(
+                                            quote_data.get("side") or ""
+                                        ).strip().lower()
                                         try:
-                                            quote_level = int(quote.get("level"))
+                                            quote_level = int(quote_data.get("level"))
                                         except (TypeError, ValueError):
                                             continue
                                         if quote_price is None or quote_side not in {"back", "lay"}:
                                             continue
-
-                                        session.add(
-                                            MarketChoiceSnapshot(
-                                                odds_value=quote_price,
-                                                exchange_side=quote_side,
-                                                exchange_level=quote_level,
-                                                exchange_size=MarketRepository._numeric_or_none(
-                                                    quote.get("size")
-                                                ),
-                                                **snapshot_fields,
+                                        persisted_quote = quotes_by_identity.get(
+                                            (quote_side, quote_level)
+                                        )
+                                        if persisted_quote is None:
+                                            raise ValueError(
+                                                "Current exchange snapshot has no matching quote for "
+                                                f"choice_id={choice.choice_id}, "
+                                                f"identity={(quote_side, quote_level)}"
                                             )
+
+                                        MarketChoiceSnapshotWriter.append(
+                                            session,
+                                            quote=persisted_quote,
+                                            odds_value=quote_price,
+                                            collected_at=market.collected_at,
+                                            source_collected_at=source_collected_at,
+                                            source_limit=(
+                                                MarketRepository._numeric_or_none(
+                                                    choice_data.get("limit")
+                                                )
+                                            ),
+                                            exchange_size=(
+                                                MarketRepository._numeric_or_none(
+                                                    quote_data.get("size")
+                                                )
+                                            ),
                                         )
                                         result.snapshots_saved += 1
                                 elif (
                                     write_policy.persist_current_snapshots
                                     and effective_current_odds is not None
                                 ):
-                                    session.add(
-                                        MarketChoiceSnapshot(
-                                            odds_value=effective_current_odds,
-                                            exchange_side=None,
-                                            exchange_level=None,
-                                            exchange_size=None,
-                                            **snapshot_fields,
+                                    current_quote = quotes_by_identity.get(
+                                        opening_identity
+                                    )
+                                    if current_quote is None:
+                                        raise ValueError(
+                                            "Current snapshot has no matching quote for "
+                                            f"choice_id={choice.choice_id}, identity={opening_identity}"
                                         )
+                                    MarketChoiceSnapshotWriter.append(
+                                        session,
+                                        quote=current_quote,
+                                        odds_value=effective_current_odds,
+                                        collected_at=market.collected_at,
+                                        source_collected_at=source_collected_at,
+                                        source_limit=MarketRepository._numeric_or_none(
+                                            choice_data.get("limit")
+                                        ),
                                     )
                                     result.snapshots_saved += 1
 
@@ -556,6 +611,9 @@ class MarketRepository:
         short session/transaction and preloads existing markets plus choices,
         avoiding a session and SELECT pair for every scraped market.
         """
+        source = str(source or "").strip().lower()
+        if not source:
+            raise ValueError("source is required to persist canonical quotes")
         write_policy = market_write_policy_for_source(source)
         batches = [batch for batch in bookmaker_batches or [] if batch.get("markets")]
         if not batches:
@@ -722,25 +780,33 @@ class MarketRepository:
             # non-migrated readers see incomplete data until Fase 5).
             # "Was this choice's opening price set for the first time (or
             # legitimately overwritten)" - the signal that gates whether we
-            # append an opening MarketChoiceSnapshot - is therefore looked up
-            # from the existing *quote* instead of the (now-frozen) choice
-            # mirror, preloaded in one query to avoid N+1 lookups.
+            # append an opening MarketChoiceSnapshot - is looked up from the
+            # existing *quote of the same side/level* (via quote_index), not
+            # from a NULL-side-only map and not from the frozen choice mirror.
             existing_choice_ids = [
                 choice.choice_id
                 for market, _ in prepared_markets
                 for choice in market.choices
                 if choice.choice_id is not None
             ]
-            existing_primary_initial_by_choice = {}
+            quote_index = {}
             if existing_choice_ids:
-                existing_primary_initial_by_choice = {
-                    quote.choice_id: quote.initial_odds
-                    for quote in session.query(MarketChoiceQuote).filter(
+                existing_quotes = (
+                    session.query(MarketChoiceQuote)
+                    .filter(
                         MarketChoiceQuote.choice_id.in_(existing_choice_ids),
                         MarketChoiceQuote.source == source,
-                        MarketChoiceQuote.exchange_side.is_(None),
-                        MarketChoiceQuote.exchange_level == 0,
                     )
+                    .all()
+                )
+                quote_index = {
+                    MarketChoiceQuoteWriter.identity_key(
+                        choice_id=quote.choice_id,
+                        source=quote.source,
+                        exchange_side=quote.exchange_side,
+                        exchange_level=quote.exchange_level,
+                    ): quote
+                    for quote in existing_quotes
                 }
 
             prepared_choices = []
@@ -778,9 +844,29 @@ class MarketRepository:
                         session.add(choice)
                         existing_choices[choice_name] = choice
                         initial_was_set = initial_odds is not None
+                    elif choice.choice_id is None:
+                        # Same MarketChoice created earlier in this batch
+                        # (OddsPortal back+lay share one choice_name) — not
+                        # flushed yet, so no quote row can exist in quote_index.
+                        initial_was_set = initial_odds is not None
                     else:
+                        gate_side, gate_level = (
+                            MarketRepository._opening_gate_side_and_level(
+                                choice_data
+                            )
+                        )
+                        existing_quote = quote_index.get(
+                            MarketChoiceQuoteWriter.identity_key(
+                                choice_id=choice.choice_id,
+                                source=source,
+                                exchange_side=gate_side,
+                                exchange_level=gate_level,
+                            )
+                        )
                         existing_initial = MarketRepository._numeric_or_none(
-                            existing_primary_initial_by_choice.get(choice.choice_id)
+                            existing_quote.initial_odds
+                            if existing_quote is not None
+                            else None
                         )
                         incoming_initial = MarketRepository._numeric_or_none(
                             initial_odds
@@ -822,39 +908,9 @@ class MarketRepository:
                     choice_data.get("sourceCollectedAt") or choice_data.get("changedAt"),
                     convert_to_project_timezone=uses_oddspapi_source_time,
                 )
-                if (
-                    write_policy.persist_opening_snapshots
-                    and initial_was_set
-                    and initial_odds is not None
-                    and initial_source_collected_at
-                ):
-                    session.add(
-                        MarketChoiceSnapshot(
-                            choice_id=choice.choice_id,
-                            odds_value=initial_odds,
-                            collected_at=collected_at,
-                            source=source,
-                            source_collected_at=initial_source_collected_at,
-                        )
-                    )
-                    result.snapshots_saved += 1
-                if (
-                    write_policy.persist_current_snapshots
-                    and current_odds is not None
-                ):
-                    session.add(
-                        MarketChoiceSnapshot(
-                            choice_id=choice.choice_id,
-                            odds_value=current_odds,
-                            collected_at=collected_at,
-                            source=source,
-                            source_collected_at=current_source_collected_at,
-                        )
-                    )
-                    result.snapshots_saved += 1
-
-                MarketRepository._upsert_choice_quotes(
+                quotes_by_identity = MarketRepository._upsert_choice_quotes(
                     session,
+                    quote_index=quote_index,
                     choice=choice,
                     choice_data=choice_data,
                     source=source,
@@ -864,6 +920,124 @@ class MarketRepository:
                     current_odds=current_odds,
                     current_captured_at=current_source_collected_at,
                 )
+
+                exchange_quotes = choice_data.get("exchangeQuotes")
+                explicit_exchange_quotes = {
+                    identity: quote
+                    for identity, quote in quotes_by_identity.items()
+                    if identity[0] is not None
+                }
+                explicit_side = str(
+                    choice_data.get("exchangeSide") or ""
+                ).strip().lower()
+                primary_identity = (
+                    ("back", 0)
+                    if explicit_exchange_quotes and isinstance(exchange_quotes, list)
+                    else (
+                        (explicit_side, 0)
+                        if explicit_side in {"back", "lay"}
+                        else (None, 0)
+                    )
+                )
+                if (
+                    write_policy.persist_opening_snapshots
+                    and initial_was_set
+                    and initial_odds is not None
+                    and initial_source_collected_at
+                ):
+                    opening_quote = quotes_by_identity.get(primary_identity)
+                    if opening_quote is None:
+                        raise ValueError(
+                            "Opening snapshot has no matching quote for "
+                            f"choice_id={choice.choice_id}, identity={primary_identity}"
+                        )
+                    initial_limit = MarketRepository._numeric_or_none(
+                        choice_data.get("initialLimit")
+                    )
+                    MarketChoiceSnapshotWriter.append(
+                        session,
+                        quote=opening_quote,
+                        odds_value=initial_odds,
+                        collected_at=collected_at,
+                        source_collected_at=initial_source_collected_at,
+                        source_limit=initial_limit,
+                        exchange_size=(
+                            initial_limit
+                            if opening_quote.exchange_side is not None
+                            else None
+                        ),
+                    )
+                    result.snapshots_saved += 1
+
+                if (
+                    write_policy.persist_current_snapshots
+                    and explicit_exchange_quotes
+                    and isinstance(exchange_quotes, list)
+                ):
+                    for quote_data in exchange_quotes:
+                        if not isinstance(quote_data, dict):
+                            continue
+                        quote_price = MarketRepository._float_or_none(
+                            quote_data.get("price")
+                        )
+                        quote_side = str(
+                            quote_data.get("side") or ""
+                        ).strip().lower()
+                        try:
+                            quote_level = int(quote_data.get("level"))
+                        except (TypeError, ValueError):
+                            continue
+                        if quote_price is None or quote_side not in {"back", "lay"}:
+                            continue
+                        persisted_quote = quotes_by_identity.get(
+                            (quote_side, quote_level)
+                        )
+                        if persisted_quote is None:
+                            raise ValueError(
+                                "Current exchange snapshot has no matching quote for "
+                                f"choice_id={choice.choice_id}, "
+                                f"identity={(quote_side, quote_level)}"
+                            )
+                        MarketChoiceSnapshotWriter.append(
+                            session,
+                            quote=persisted_quote,
+                            odds_value=quote_price,
+                            collected_at=collected_at,
+                            source_collected_at=current_source_collected_at,
+                            source_limit=MarketRepository._numeric_or_none(
+                                choice_data.get("limit")
+                            ),
+                            exchange_size=MarketRepository._numeric_or_none(
+                                quote_data.get("size")
+                            ),
+                        )
+                        result.snapshots_saved += 1
+                elif (
+                    write_policy.persist_current_snapshots
+                    and current_odds is not None
+                ):
+                    current_quote = quotes_by_identity.get(primary_identity)
+                    if current_quote is None:
+                        raise ValueError(
+                            "Current snapshot has no matching quote for "
+                            f"choice_id={choice.choice_id}, identity={primary_identity}"
+                        )
+                    MarketChoiceSnapshotWriter.append(
+                        session,
+                        quote=current_quote,
+                        odds_value=current_odds,
+                        collected_at=collected_at,
+                        source_collected_at=current_source_collected_at,
+                        source_limit=MarketRepository._numeric_or_none(
+                            choice_data.get("limit")
+                        ),
+                    )
+                    result.snapshots_saved += 1
+
+            # Persist the complete quote/snapshot graph in one flush. Snapshot
+            # relationships can reference pending quotes; SQLAlchemy orders the
+            # INSERTs by FK dependency without a per-choice round trip.
+            session.flush()
 
         oddsportal_logger.info(
             "Saved canonical event batch: event=%s bookies=%s markets=%s "
@@ -881,6 +1055,7 @@ class MarketRepository:
     def _upsert_choice_quotes(
         session,
         *,
+        quote_index,
         choice,
         choice_data: Dict,
         source: str,
@@ -889,13 +1064,13 @@ class MarketRepository:
         initial_captured_at,
         current_odds,
         current_captured_at,
-    ) -> None:
-        """Refresh the MarketChoiceQuote current-state cache for one choice.
+    ) -> Dict[tuple[Optional[str], int], MarketChoiceQuote]:
+        """Persist current quote state and return it by exact side/level identity.
 
         Three shapes of choice_data are handled:
         - Plain single-price choice (most bookies): writes a side-agnostic
-          row (exchange_side=None) mirroring MarketChoice.initial_odds/
-          current_odds (policy-gated).
+          row (exchange_side=None) with the effective initial/current prices
+          (policy-gated).
         - OddsPortal Betfair Exchange: choice_data['exchangeSide'] names the
           single side ('back'/'lay') this choice_data dict already IS -
           initial_odds/current_odds are that side's own values, so they are
@@ -904,9 +1079,19 @@ class MarketRepository:
         - Oddspapi Betfair Exchange: choice_data['exchangeQuotes'] is a list
           carrying BOTH sides (and price levels) for one outcome, alongside a
           side-agnostic price; each entry gets its own row.
-        See docs/refactors/db-schema-odds-refactor.md (Fase 2-3) for the
-        rationale.
+
+        LEGACY note (pre-§3.2 wording): older comments described the
+        side-agnostic quote as "mirroring MarketChoice.initial_odds/
+        current_odds". That mirror is gone — the canonical path no longer
+        writes those MarketChoice columns; MarketChoiceQuote is the sole
+        persistence target for price state. See
+        docs/refactors/db-schema-odds-refactor.md §3.2 and Fase 2-3.
         """
+        source = str(source or "").strip().lower()
+        if not source:
+            raise ValueError("source is required to persist market choice quotes")
+
+        quotes_by_identity = {}
         common_source_fields = dict(
             main_line=choice_data.get("mainLine"),
             source_market_id=choice_data.get("sourceMarketId"),
@@ -916,8 +1101,9 @@ class MarketRepository:
 
         explicit_side = str(choice_data.get("exchangeSide") or "").strip().lower()
         if explicit_side in {"back", "lay"}:
-            MarketChoiceQuoteWriter.upsert(
+            persisted_quote = MarketChoiceQuoteWriter.upsert(
                 session,
+                quote_index=quote_index,
                 choice_id=choice.choice_id,
                 source=source,
                 exchange_side=explicit_side,
@@ -930,10 +1116,13 @@ class MarketRepository:
                 overwrite_initial=write_policy.overwrite_initial_odds,
                 **common_source_fields,
             )
-            return
+            if persisted_quote is not None:
+                quotes_by_identity[(explicit_side, 0)] = persisted_quote
+            return quotes_by_identity
 
-        MarketChoiceQuoteWriter.upsert(
+        persisted_quote = MarketChoiceQuoteWriter.upsert(
             session,
+            quote_index=quote_index,
             choice_id=choice.choice_id,
             source=source,
             initial_price=initial_odds,
@@ -944,10 +1133,12 @@ class MarketRepository:
             overwrite_initial=write_policy.overwrite_initial_odds,
             **common_source_fields,
         )
+        if persisted_quote is not None:
+            quotes_by_identity[(None, 0)] = persisted_quote
 
         exchange_quotes = choice_data.get("exchangeQuotes")
         if not isinstance(exchange_quotes, list):
-            return
+            return quotes_by_identity
         for quote in exchange_quotes:
             if not isinstance(quote, dict):
                 continue
@@ -971,8 +1162,9 @@ class MarketRepository:
                 initial_captured_at if side_initial_price is not None else None
             )
 
-            MarketChoiceQuoteWriter.upsert(
+            persisted_quote = MarketChoiceQuoteWriter.upsert(
                 session,
+                quote_index=quote_index,
                 choice_id=choice.choice_id,
                 source=source,
                 exchange_side=quote_side,
@@ -985,6 +1177,37 @@ class MarketRepository:
                 overwrite_initial=write_policy.overwrite_initial_odds,
                 **common_source_fields,
             )
+            if persisted_quote is not None:
+                quotes_by_identity[(quote_side, quote_level)] = persisted_quote
+
+        return quotes_by_identity
+
+    @staticmethod
+    def _opening_gate_side_and_level(choice_data: Dict) -> tuple[Optional[str], int]:
+        """Return the quote side/level whose initial gates opening snapshots.
+
+        Must match the identity used later for the opening snapshot itself:
+        - OddsPortal Betfair: choice_data['exchangeSide'] (back|lay)
+        - Oddspapi Betfair with exchangeQuotes: top back (level 0), same as
+          primary_identity when building opening snapshots
+        - Everyone else: side-agnostic NULL / level 0
+
+        Lookup uses the already-preloaded quote_index — no extra DB query.
+        """
+        explicit_side = str(choice_data.get("exchangeSide") or "").strip().lower()
+        if explicit_side in {"back", "lay"}:
+            return explicit_side, 0
+
+        exchange_quotes = choice_data.get("exchangeQuotes")
+        if isinstance(exchange_quotes, list):
+            for quote in exchange_quotes:
+                if not isinstance(quote, dict):
+                    continue
+                side = str(quote.get("side") or "").strip().lower()
+                if side in {"back", "lay"}:
+                    return "back", 0
+
+        return None, 0
 
     @staticmethod
     def _choice_odds_value(choice_data: Dict, fractional_key: str, *decimal_keys):
@@ -1030,6 +1253,8 @@ class MarketRepository:
             logger.error(f"Error getting markets for event {event_id}: {e}")
             return []
 
+    # LEGACY_ODDS_READ: infers source from snapshots and reads frozen choice odds.
+    # Replace with quote-aware MarketReadQueries in Fase 5, then remove in Fase 8.
     @staticmethod
     def get_external_markets_for_event(event_id: int) -> List[Dict]:
         """

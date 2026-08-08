@@ -580,37 +580,43 @@ class MarketOddsIngestionService:
         bookie_mappings_updated = 0
         bookmaker_batches = []
         try:
-            for bookmaker in bookmakers:
-                resolution_result = BookieRepository.resolve_bookie_from_source(
-                    source="oddspapi",
-                    source_bookie_name=bookmaker.get("name"),
-                    source_bookie_slug=bookmaker.get("slug"),
-                    allow_create=False,
-                )
-                if not resolution_result.resolved or resolution_result.bookie is None:
-                    logger.warning(
-                        "Skipping unresolved OddsPapi bookmaker slug=%s name=%s",
-                        bookmaker.get("slug"),
-                        bookmaker.get("name"),
+            # Resolve every bookmaker in one short unit of work. Passing the
+            # shared session prevents one connection/transaction lifecycle per
+            # bookmaker while keeping reference resolution separate from the
+            # atomic odds-persistence transaction below.
+            with db_manager.get_session() as reference_session:
+                for bookmaker in bookmakers:
+                    resolution_result = BookieRepository.resolve_bookie_from_source(
+                        source="oddspapi",
+                        source_bookie_name=bookmaker.get("name"),
+                        source_bookie_slug=bookmaker.get("slug"),
+                        allow_create=False,
+                        session=reference_session,
                     )
-                    continue
+                    if not resolution_result.resolved or resolution_result.bookie is None:
+                        logger.warning(
+                            "Skipping unresolved OddsPapi bookmaker slug=%s name=%s",
+                            bookmaker.get("slug"),
+                            bookmaker.get("name"),
+                        )
+                        continue
 
-                bookies_processed += 1
-                if resolution_result.created:
-                    bookies_created += 1
-                else:
-                    bookies_reused += 1
-                if resolution_result.mapping_created:
-                    bookie_mappings_created += 1
-                if resolution_result.mapping_updated:
-                    bookie_mappings_updated += 1
+                    bookies_processed += 1
+                    if resolution_result.created:
+                        bookies_created += 1
+                    else:
+                        bookies_reused += 1
+                    if resolution_result.mapping_created:
+                        bookie_mappings_created += 1
+                    if resolution_result.mapping_updated:
+                        bookie_mappings_updated += 1
 
-                bookmaker_batches.append(
-                    {
-                        "bookie_id": resolution_result.bookie.bookie_id,
-                        "markets": bookmaker.get("markets", []),
-                    }
-                )
+                    bookmaker_batches.append(
+                        {
+                            "bookie_id": resolution_result.bookie.bookie_id,
+                            "markets": bookmaker.get("markets", []),
+                        }
+                    )
 
             # All bookmakers for this event/response are persisted through the
             # same canonical entry point as OddsPortal/SofaScore. See
@@ -822,9 +828,12 @@ class MarketOddsIngestionService:
 
             if save_result.markets_saved > 0:
                 logger.info(
-                    "Market odds saved for event %s: %s markets (source=%s)",
-                    event_id,
+                    "Saved %s markets, %s choices and %s snapshots for event %s "
+                    "(source=%s)",
                     save_result.markets_saved,
+                    save_result.choices_saved,
+                    save_result.snapshots_saved,
+                    event_id,
                     source,
                 )
                 if not dual_process_available:

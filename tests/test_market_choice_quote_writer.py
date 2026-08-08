@@ -68,13 +68,31 @@ def _quote(session, choice_id, source, exchange_side=None, exchange_level=0):
     )
 
 
+def _upsert_quote(session, **kwargs):
+    existing_quotes = session.query(MarketChoiceQuote).all()
+    quote_index = {
+        MarketChoiceQuoteWriter.identity_key(
+            choice_id=quote.choice_id,
+            source=quote.source,
+            exchange_side=quote.exchange_side,
+            exchange_level=quote.exchange_level,
+        ): quote
+        for quote in existing_quotes
+    }
+    return MarketChoiceQuoteWriter.upsert(
+        session,
+        quote_index=quote_index,
+        **kwargs,
+    )
+
+
 def test_upsert_creates_row_with_initial_only(tmp_path):
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
     initial_time = datetime(2026, 6, 20, 10, 0, 0)
 
     with manager.get_session() as session:
-        MarketChoiceQuoteWriter.upsert(
+        _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddspapi",
@@ -101,7 +119,7 @@ def test_upsert_merges_current_into_existing_initial_only_row(tmp_path):
     current_time = datetime(2026, 6, 20, 11, 55, 0)
 
     with manager.get_session() as session:
-        MarketChoiceQuoteWriter.upsert(
+        _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddspapi",
@@ -110,7 +128,7 @@ def test_upsert_merges_current_into_existing_initial_only_row(tmp_path):
         )
 
     with manager.get_session() as session:
-        MarketChoiceQuoteWriter.upsert(
+        _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddspapi",
@@ -131,7 +149,7 @@ def test_upsert_does_not_overwrite_initial_by_default(tmp_path):
     choice_id = seed_choice(manager)
 
     with manager.get_session() as session:
-        MarketChoiceQuoteWriter.upsert(
+        _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddspapi",
@@ -139,7 +157,7 @@ def test_upsert_does_not_overwrite_initial_by_default(tmp_path):
         )
 
     with manager.get_session() as session:
-        MarketChoiceQuoteWriter.upsert(
+        _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddspapi",
@@ -157,7 +175,7 @@ def test_upsert_overwrites_initial_when_policy_allows(tmp_path):
     choice_id = seed_choice(manager)
 
     with manager.get_session() as session:
-        MarketChoiceQuoteWriter.upsert(
+        _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddsportal",
@@ -165,7 +183,7 @@ def test_upsert_overwrites_initial_when_policy_allows(tmp_path):
         )
 
     with manager.get_session() as session:
-        MarketChoiceQuoteWriter.upsert(
+        _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddsportal",
@@ -183,14 +201,14 @@ def test_upsert_keeps_back_and_lay_as_independent_rows(tmp_path):
     choice_id = seed_choice(manager)
 
     with manager.get_session() as session:
-        MarketChoiceQuoteWriter.upsert(
+        _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddspapi",
             exchange_side="back",
             current_price=3.05,
         )
-        MarketChoiceQuoteWriter.upsert(
+        _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddspapi",
@@ -210,7 +228,7 @@ def test_upsert_returns_none_and_persists_nothing_without_any_price(tmp_path):
     choice_id = seed_choice(manager)
 
     with manager.get_session() as session:
-        result = MarketChoiceQuoteWriter.upsert(
+        result = _upsert_quote(
             session,
             choice_id=choice_id,
             source="oddspapi",
@@ -221,3 +239,32 @@ def test_upsert_returns_none_and_persists_nothing_without_any_price(tmp_path):
         assert session.query(MarketChoiceQuote).filter(
             MarketChoiceQuote.choice_id == choice_id
         ).count() == 0
+
+
+def test_upsert_reuses_pending_quote_from_preloaded_identity_map(tmp_path):
+    manager = make_manager(tmp_path)
+    choice_id = seed_choice(manager)
+
+    with manager.get_session() as session:
+        quote_index = {}
+        created = MarketChoiceQuoteWriter.upsert(
+            session,
+            quote_index=quote_index,
+            choice_id=choice_id,
+            source="ODDSPAPI",
+            initial_price=1.80,
+        )
+        updated = MarketChoiceQuoteWriter.upsert(
+            session,
+            quote_index=quote_index,
+            choice_id=choice_id,
+            source="oddspapi",
+            current_price=1.95,
+        )
+        session.flush()
+
+        assert updated is created
+        assert len(quote_index) == 1
+        assert session.query(MarketChoiceQuote).count() == 1
+        assert float(created.initial_odds) == 1.80
+        assert float(created.current_odds) == 1.95

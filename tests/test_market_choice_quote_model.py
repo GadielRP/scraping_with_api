@@ -12,10 +12,18 @@ alone would let two NULL-side rows through.
 from datetime import datetime
 
 import pytest
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from infrastructure.persistence.database import DatabaseManager
-from infrastructure.persistence.models import Bookie, Event, Market, MarketChoice, MarketChoiceQuote
+from infrastructure.persistence.models import (
+    Bookie,
+    Event,
+    Market,
+    MarketChoice,
+    MarketChoiceQuote,
+    MarketChoiceSnapshot,
+)
 
 
 def make_manager(tmp_path):
@@ -73,9 +81,33 @@ def test_exchange_side_defaults_to_null_for_non_exchange_bookies(tmp_path):
         )
         session.add(quote)
         session.flush()
+        snapshot = MarketChoiceSnapshot(
+            choice_id=choice_id,
+            quote=quote,
+            odds_value=1.90,
+        )
+        session.add(snapshot)
+        session.flush()
         session.refresh(quote)
         assert quote.exchange_side is None
         assert quote.exchange_level == 0
+        assert snapshot.quote_id == quote.quote_id
+
+    with manager.get_session() as session:
+        snapshot = session.query(MarketChoiceSnapshot).one()
+        assert snapshot.quote.choice_id == snapshot.choice_id
+        assert snapshot.quote.snapshots[0].snapshot_id == snapshot.snapshot_id
+
+    inspector = inspect(manager.engine)
+    assert "idx_market_choice_snapshots_quote_collected" in {
+        index["name"]
+        for index in inspector.get_indexes("market_choice_snapshots")
+    }
+    assert any(
+        foreign_key.get("referred_table") == "market_choice_quotes"
+        and foreign_key.get("constrained_columns") == ["quote_id"]
+        for foreign_key in inspector.get_foreign_keys("market_choice_snapshots")
+    )
 
 
 def test_duplicate_null_side_quote_for_same_source_is_rejected(tmp_path):
@@ -226,8 +258,8 @@ def test_initial_then_current_arriving_later_updates_same_row(tmp_path):
         assert float(quote.current_odds) == 3.05
 
 
-def test_migrate_rewrites_legacy_single_sentinel_to_null(tmp_path):
-    """Rows left over from the pre-NULL 'single' sentinel must become NULL.
+def test_manual_migrations_upgrade_legacy_quote_and_snapshot_schema(tmp_path):
+    """Legacy quote values and snapshot lineage are upgraded in place.
 
     Production tables created under the earlier design may still contain
     exchange_side='single'. Re-running the quotes migration must rewrite
@@ -258,3 +290,35 @@ def test_migrate_rewrites_legacy_single_sentinel_to_null(tmp_path):
             .one()
         )
         assert quote.exchange_side is None
+
+    with manager.get_session() as session:
+        session.execute(text("DROP TABLE market_choice_snapshots"))
+        session.execute(text("""
+            CREATE TABLE market_choice_snapshots (
+                snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                choice_id INTEGER NOT NULL
+                    REFERENCES market_choices(choice_id) ON DELETE CASCADE,
+                odds_value NUMERIC(8, 3) NOT NULL,
+                collected_at TIMESTAMP NOT NULL,
+                exchange_side TEXT,
+                exchange_level INTEGER,
+                exchange_size NUMERIC(18, 3)
+            )
+        """))
+
+    manager._migrate_market_choice_snapshot_lineage()
+
+    inspector = inspect(manager.engine)
+    assert "quote_id" in {
+        column["name"]
+        for column in inspector.get_columns("market_choice_snapshots")
+    }
+    assert "idx_market_choice_snapshots_quote_collected" in {
+        index["name"]
+        for index in inspector.get_indexes("market_choice_snapshots")
+    }
+    assert any(
+        foreign_key.get("referred_table") == "market_choice_quotes"
+        and foreign_key.get("constrained_columns") == ["quote_id"]
+        for foreign_key in inspector.get_foreign_keys("market_choice_snapshots")
+    )

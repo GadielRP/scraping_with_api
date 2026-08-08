@@ -96,6 +96,7 @@ logs_for_observations_refactor.txt
 copies/
 *.md
 !docs/refactors/db-schema-odds-refactor.md
+!docs/refactors/db-schema-odds-refactor-phase-4b.md
 
 test_*.py
 *.json
@@ -117,6 +118,7 @@ tests/*
 !tests/test_oddsportal_betfair_back_lay_quotes.py
 !tests/test_market_choice_quote_model.py
 !tests/test_market_choice_quote_writer.py
+!tests/test_market_choice_snapshot_writer.py
 !tests/test_odds_movement.py
 !tests/test_save_canonical_bookmaker_batches_quotes.py
 !tests/pillars/

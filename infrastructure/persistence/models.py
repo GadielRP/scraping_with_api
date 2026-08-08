@@ -563,6 +563,7 @@ class MarketChoiceSnapshot(Base):
     
     snapshot_id = Column(Integer, primary_key=True, autoincrement=True)
     choice_id = Column(Integer, ForeignKey('market_choices.choice_id', ondelete='CASCADE'), nullable=False)
+    quote_id = Column(Integer, ForeignKey('market_choice_quotes.quote_id', ondelete='CASCADE'))
     odds_value = Column(Numeric(8, 3), nullable=False)
     collected_at = Column(DateTime, default=get_local_now, nullable=False)
     source = Column(Text)
@@ -579,6 +580,12 @@ class MarketChoiceSnapshot(Base):
     # Constraints & Indexes
     __table_args__ = (
         Index('idx_choice_collected', 'choice_id', 'collected_at'),
+        Index(
+            'idx_market_choice_snapshots_quote_collected',
+            quote_id,
+            collected_at.desc(),
+            snapshot_id.desc(),
+        ),
         Index('idx_market_choice_snapshots_source', 'source'),
         Index('idx_market_choice_snapshots_source_collected', 'source', 'source_collected_at'),
         Index('idx_market_choice_snapshots_source_market', 'source', 'source_market_id'),
@@ -586,6 +593,7 @@ class MarketChoiceSnapshot(Base):
     
     # Relationships
     choice = relationship("MarketChoice", back_populates="snapshots")
+    quote = relationship("MarketChoiceQuote", back_populates="snapshots")
 
 
 class MarketChoiceQuote(Base):
@@ -658,6 +666,7 @@ class MarketChoiceQuote(Base):
 
     # Relationships
     choice = relationship("MarketChoice", back_populates="quotes")
+    snapshots = relationship("MarketChoiceSnapshot", back_populates="quote")
 
     def __repr__(self):
         return (
