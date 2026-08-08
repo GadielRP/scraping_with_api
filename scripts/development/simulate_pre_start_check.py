@@ -284,7 +284,7 @@ def _run_pre_start_check_simulation(
     simulated_minutes: int,
 ) -> bool:
     key_moments = Config.PRE_START_ODDS_MOMENTS
-    debug_mode = False
+    debug_mode = True
     scheduler = _SingleEventSimulationScheduler()
 
     logger.info("=" * 80)

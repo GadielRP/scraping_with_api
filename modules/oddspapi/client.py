@@ -305,7 +305,7 @@ class OddsPapiClient:
             "language": language or Config.ODDSPAPI_DEFAULT_LANGUAGE,
             "verbosity": Config.ODDSPAPI_DEFAULT_VERBOSITY if verbosity is None else verbosity,
         }
-        logger.info("✈️ Fetching oddspapi odds for fixture_id: %s", fixture_id)
+        logger.info("💰 Fetching oddspapi odds for fixture_id: %s", fixture_id)
         return self._request("odds", params)
 
     def get_historical_odds(
