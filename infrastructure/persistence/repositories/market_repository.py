@@ -8,7 +8,12 @@ from datetime import datetime
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import joinedload, selectinload
 
-from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceSnapshot
+from infrastructure.persistence.models import (
+    Market,
+    MarketChoice,
+    MarketChoiceQuote,
+    MarketChoiceSnapshot,
+)
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.market_write_policy import (
     market_write_policy_for_source,
@@ -708,6 +713,36 @@ class MarketRepository:
 
             # Assign IDs to all new markets in one flush.
             session.flush()
+
+            # MarketChoice is pure identity (market_id, choice_name) as of this
+            # refactor - initial_odds/current_odds/change are no longer written
+            # here. MarketChoiceQuote (per source/side/level) is the sole
+            # persistence target for price state; see
+            # docs/refactors/db-schema-odds-refactor.md §3.2 (accepted risk:
+            # non-migrated readers see incomplete data until Fase 5).
+            # "Was this choice's opening price set for the first time (or
+            # legitimately overwritten)" - the signal that gates whether we
+            # append an opening MarketChoiceSnapshot - is therefore looked up
+            # from the existing *quote* instead of the (now-frozen) choice
+            # mirror, preloaded in one query to avoid N+1 lookups.
+            existing_choice_ids = [
+                choice.choice_id
+                for market, _ in prepared_markets
+                for choice in market.choices
+                if choice.choice_id is not None
+            ]
+            existing_primary_initial_by_choice = {}
+            if existing_choice_ids:
+                existing_primary_initial_by_choice = {
+                    quote.choice_id: quote.initial_odds
+                    for quote in session.query(MarketChoiceQuote).filter(
+                        MarketChoiceQuote.choice_id.in_(existing_choice_ids),
+                        MarketChoiceQuote.source == source,
+                        MarketChoiceQuote.exchange_side.is_(None),
+                        MarketChoiceQuote.exchange_level == 0,
+                    )
+                }
+
             prepared_choices = []
             for market, eligible_choices in prepared_markets:
                 existing_choices = {
@@ -734,74 +769,38 @@ class MarketRepository:
                         "odds",
                     )
                     choice = existing_choices.get(choice_name)
-                    if (
-                        write_policy.overwrite_initial_odds
-                        and initial_odds is not None
-                    ):
-                        effective_initial = initial_odds
-                    elif choice is not None and choice.initial_odds is not None:
-                        effective_initial = choice.initial_odds
-                    else:
-                        effective_initial = initial_odds
-                    effective_current = (
-                        current_odds
-                        if write_policy.persist_current_odds
-                        else (
-                            choice.current_odds
-                            if choice is not None
-                            else None
-                        )
-                    )
-                    change = MarketRepository._choice_change(
-                        explicit_change=(
-                            choice_data.get("change")
-                            if write_policy.persist_current_odds
-                            else None
-                        ),
-                        initial_odds=effective_initial,
-                        current_odds=effective_current,
-                    )
-                    initial_was_set = False
+
                     if choice is None:
                         choice = MarketChoice(
                             market_id=market.market_id,
                             choice_name=choice_name,
-                            initial_odds=initial_odds,
-                            current_odds=effective_current,
-                            change=change if change is not None else 0,
                         )
                         session.add(choice)
                         existing_choices[choice_name] = choice
                         initial_was_set = initial_odds is not None
                     else:
-                        if (
-                            write_policy.persist_current_odds
-                            and current_odds is not None
-                        ):
-                            choice.current_odds = current_odds
-                        if change is not None:
-                            choice.change = change
+                        existing_initial = MarketRepository._numeric_or_none(
+                            existing_primary_initial_by_choice.get(choice.choice_id)
+                        )
+                        incoming_initial = MarketRepository._numeric_or_none(
+                            initial_odds
+                        )
                         if (
                             write_policy.overwrite_initial_odds
-                            and initial_odds is not None
+                            and incoming_initial is not None
                         ):
-                            existing_initial = MarketRepository._numeric_or_none(
-                                choice.initial_odds
+                            initial_was_set = existing_initial != incoming_initial
+                        else:
+                            initial_was_set = (
+                                existing_initial is None
+                                and incoming_initial is not None
                             )
-                            incoming_initial = MarketRepository._numeric_or_none(
-                                initial_odds
-                            )
-                            if existing_initial != incoming_initial:
-                                choice.initial_odds = initial_odds
-                                initial_was_set = True
-                        elif choice.initial_odds is None and initial_odds is not None:
-                            choice.initial_odds = initial_odds
-                            initial_was_set = True
+
                     prepared_choices.append(
                         (
                             choice,
                             choice_data,
-                            effective_current,
+                            current_odds,
                             initial_odds,
                             initial_was_set,
                         )
@@ -894,16 +893,17 @@ class MarketRepository:
         """Refresh the MarketChoiceQuote current-state cache for one choice.
 
         Three shapes of choice_data are handled:
-        - Plain single-price choice (most bookies): writes a 'single' row
-          mirroring MarketChoice.initial_odds/current_odds (policy-gated).
+        - Plain single-price choice (most bookies): writes a side-agnostic
+          row (exchange_side=None) mirroring MarketChoice.initial_odds/
+          current_odds (policy-gated).
         - OddsPortal Betfair Exchange: choice_data['exchangeSide'] names the
           single side ('back'/'lay') this choice_data dict already IS -
           initial_odds/current_odds are that side's own values, so they are
-          written straight to that side's quote instead of also to 'single'
-          (there is no side-agnostic price to mirror there).
+          written straight to that side's quote instead of also to the
+          side-agnostic row (there is no side-agnostic price to mirror there).
         - Oddspapi Betfair Exchange: choice_data['exchangeQuotes'] is a list
           carrying BOTH sides (and price levels) for one outcome, alongside a
-          side-agnostic 'single' price; each entry gets its own row.
+          side-agnostic price; each entry gets its own row.
         See docs/refactors/db-schema-odds-refactor.md (Fase 2-3) for the
         rationale.
         """

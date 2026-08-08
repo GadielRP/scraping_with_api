@@ -41,12 +41,17 @@ def _seed_event_and_bookie(manager):
 
 
 def _quote(session, choice_id, source, exchange_side, exchange_level=0):
+    side_filter = (
+        MarketChoiceQuote.exchange_side.is_(None)
+        if exchange_side is None
+        else MarketChoiceQuote.exchange_side == exchange_side
+    )
     return (
         session.query(MarketChoiceQuote)
         .filter(
             MarketChoiceQuote.choice_id == choice_id,
             MarketChoiceQuote.source == source,
-            MarketChoiceQuote.exchange_side == exchange_side,
+            side_filter,
             MarketChoiceQuote.exchange_level == exchange_level,
         )
         .one()
@@ -96,7 +101,7 @@ def test_single_side_quote_is_seeded_from_initial_at_t120(tmp_path):
 
     with manager.get_session() as session:
         choice = session.query(MarketChoice).one()
-        quote = _quote(session, choice.choice_id, "oddspapi", "single")
+        quote = _quote(session, choice.choice_id, "oddspapi", None)
         assert float(quote.initial_odds) == 1.90
         assert quote.current_odds is None
 
@@ -174,6 +179,6 @@ def test_partial_arrival_current_only_then_initial_backfilled_later(tmp_path):
 
     with manager.get_session() as session:
         choice = session.query(MarketChoice).one()
-        quote = _quote(session, choice.choice_id, "oddspapi", "single")
+        quote = _quote(session, choice.choice_id, "oddspapi", None)
         assert float(quote.current_odds) == 1.95
         assert float(quote.initial_odds) == 1.80

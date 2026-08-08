@@ -638,29 +638,125 @@ class DatabaseManager:
             logger.error(traceback.format_exc())
 
     def _migrate_market_choice_quotes(self):
-        """Ensure the market_choice_quotes table exists with indexes.
+        """Ensure the market_choice_quotes table exists with a NULL-safe unique index.
 
         See docs/refactors/db-schema-odds-refactor.md (Fase 1) for the design
         rationale: this table is the current-state cache for a price
         instrument scoped by (choice, source, exchange_side, exchange_level),
         replacing the ad-hoc side/source handling previously smuggled into
         Market.choice_group (OddsPortal) or market_choice_snapshots (Oddspapi).
+
+        exchange_side is NULL for non-exchange bookies (mirrors
+        Market.choice_group's NULL convention rather than a 'single'
+        sentinel). NULL != NULL in a UNIQUE constraint (Postgres and SQLite
+        alike), so the plain UniqueConstraint declared on the ORM model
+        (unique_market_choice_quote) does not by itself reject duplicate
+        NULL-side rows. Real enforcement is this functional index using
+        COALESCE(exchange_side, ''), deliberately named differently so
+        "CREATE ... IF NOT EXISTS" doesn't silently no-op against the plain
+        constraint's own auto-created index of the same name - the same
+        pattern used for Market's unique_market_per_event_bookie_period_line
+        (see _migrate_market_period_identity).
+
+        Tables created under the earlier 'single'-sentinel design still have
+        ``exchange_side TEXT NOT NULL DEFAULT 'single'``. create_all(checkfirst)
+        will not rewrite that column, so this migration also drops the NOT NULL
+        / DEFAULT on Postgres and rewrites any leftover 'single' rows to NULL
+        - otherwise live ingestion hits NotNullViolation the moment it tries to
+        insert a non-exchange quote.
         """
         try:
+            from sqlalchemy import inspect
+
             from infrastructure.persistence.models import MarketChoiceQuote
 
             self._create_table_and_indexes(
                 MarketChoiceQuote,
                 [
-                    "CREATE UNIQUE INDEX IF NOT EXISTS unique_market_choice_quote "
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "unique_market_choice_quote_side_null_safe "
                     "ON market_choice_quotes "
-                    "(choice_id, source, exchange_side, exchange_level)",
+                    "(choice_id, source, COALESCE(exchange_side, ''), exchange_level)",
                     "CREATE INDEX IF NOT EXISTS idx_market_choice_quotes_choice "
                     "ON market_choice_quotes (choice_id)",
                     "CREATE INDEX IF NOT EXISTS idx_market_choice_quotes_source "
                     "ON market_choice_quotes (source)",
                 ],
             )
+
+            inspector = inspect(self.engine)
+            if "market_choice_quotes" not in inspector.get_table_names():
+                return
+
+            exchange_side_meta = next(
+                (
+                    col
+                    for col in inspector.get_columns("market_choice_quotes")
+                    if col["name"] == "exchange_side"
+                ),
+                None,
+            )
+            if exchange_side_meta is None:
+                return
+
+            with self.get_session() as session:
+                # Postgres only: SQLite cannot ALTER COLUMN nullability in place,
+                # and fresh test DBs already create the column as nullable from
+                # the current ORM model.
+                if (
+                    self.engine.dialect.name == "postgresql"
+                    and exchange_side_meta.get("nullable") is False
+                ):
+                    try:
+                        session.execute(
+                            text(
+                                "ALTER TABLE market_choice_quotes "
+                                "ALTER COLUMN exchange_side DROP NOT NULL"
+                            )
+                        )
+                        logger.info(
+                            "Dropped NOT NULL on market_choice_quotes.exchange_side"
+                        )
+                    except Exception as exc:
+                        logger.debug(
+                            "Could not DROP NOT NULL on exchange_side "
+                            "(may already be nullable): %s",
+                            exc,
+                        )
+                    try:
+                        session.execute(
+                            text(
+                                "ALTER TABLE market_choice_quotes "
+                                "ALTER COLUMN exchange_side DROP DEFAULT"
+                            )
+                        )
+                        logger.info(
+                            "Dropped DEFAULT on market_choice_quotes.exchange_side"
+                        )
+                    except Exception as exc:
+                        logger.debug(
+                            "Could not DROP DEFAULT on exchange_side "
+                            "(may already be gone): %s",
+                            exc,
+                        )
+
+                # Rewrite leftover sentinel rows from the pre-NULL design so
+                # readers and the COALESCE unique index see one convention.
+                rewritten = session.execute(
+                    text(
+                        "UPDATE market_choice_quotes "
+                        "SET exchange_side = NULL "
+                        "WHERE exchange_side = 'single'"
+                    )
+                )
+                if rewritten.rowcount:
+                    logger.info(
+                        "Rewrote %s market_choice_quotes row(s) from "
+                        "exchange_side='single' to NULL",
+                        rewritten.rowcount,
+                    )
+                session.commit()
+
             logger.info("Market choice quotes schema is ready")
         except Exception as e:
             logger.error(f"Market choice quotes migration failed: {e}")

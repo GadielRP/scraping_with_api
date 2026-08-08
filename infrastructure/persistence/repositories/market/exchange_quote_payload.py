@@ -16,29 +16,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-#: Sentinel used for non-exchange bookies (single price, no back/lay split).
-#: Must match the DB default on MarketChoiceQuote.exchange_side, since
-#: Postgres treats NULL != NULL in UNIQUE constraints.
-SINGLE_SIDE = "single"
-
-_VALID_SIDES = {SINGLE_SIDE, "back", "lay"}
+#: Non-exchange bookies (single price, no back/lay split) use side=None,
+#: the same NULL-for-"not applicable" convention as Market.choice_group.
+#: Real-world uniqueness for NULL sides is enforced with a functional
+#: COALESCE(exchange_side, '') index - see MarketChoiceQuote in models.py.
+_VALID_SIDES = {None, "back", "lay"}
 
 
 @dataclass(frozen=True, slots=True)
 class ExchangeQuotePayload:
     """One priced instrument for a choice: a specific source, side and depth level."""
 
-    side: str = SINGLE_SIDE
+    side: Optional[str] = None
     level: int = 0
     price: Optional[float] = None
     size: Optional[float] = None
     main_line: Optional[bool] = None
 
     def __post_init__(self) -> None:
-        normalized_side = str(self.side or SINGLE_SIDE).strip().lower()
+        normalized_side = str(self.side).strip().lower() if self.side else None
         if normalized_side not in _VALID_SIDES:
             raise ValueError(
-                f"Invalid exchange_side={self.side!r}; expected one of {sorted(_VALID_SIDES)}"
+                f"Invalid exchange_side={self.side!r}; expected one of {sorted(filter(None, _VALID_SIDES))} or None"
             )
         object.__setattr__(self, "side", normalized_side)
 
@@ -52,4 +51,4 @@ class ExchangeQuotePayload:
         }
 
 
-__all__ = ["ExchangeQuotePayload", "SINGLE_SIDE"]
+__all__ = ["ExchangeQuotePayload"]

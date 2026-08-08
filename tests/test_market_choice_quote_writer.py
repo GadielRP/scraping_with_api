@@ -50,13 +50,18 @@ def seed_choice(manager):
         return choice.choice_id
 
 
-def _quote(session, choice_id, source, exchange_side="single", exchange_level=0):
+def _quote(session, choice_id, source, exchange_side=None, exchange_level=0):
+    side_filter = (
+        MarketChoiceQuote.exchange_side.is_(None)
+        if exchange_side is None
+        else MarketChoiceQuote.exchange_side == exchange_side
+    )
     return (
         session.query(MarketChoiceQuote)
         .filter(
             MarketChoiceQuote.choice_id == choice_id,
             MarketChoiceQuote.source == source,
-            MarketChoiceQuote.exchange_side == exchange_side,
+            side_filter,
             MarketChoiceQuote.exchange_level == exchange_level,
         )
         .one()

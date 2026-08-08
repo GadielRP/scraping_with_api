@@ -12,6 +12,7 @@ from infrastructure.persistence.models import (
     Event,
     Market,
     MarketChoice,
+    MarketChoiceQuote,
     MarketChoiceSnapshot,
 )
 from infrastructure.persistence.repositories.canonical_market_type_repository import (
@@ -306,6 +307,26 @@ def _oddsportal_opening_data():
     )
 
 
+def _primary_quotes_by_choice_name(session, *, source):
+    """MarketChoice is pure identity as of this refactor (see
+    docs/refactors/db-schema-odds-refactor.md, "choices vs quotes"): initial/
+    current price state for a given source now lives exclusively in the
+    side-agnostic (exchange_side=NULL) MarketChoiceQuote row, keyed by
+    choice_name for readability in these tests.
+    """
+    rows = (
+        session.query(MarketChoice.choice_name, MarketChoiceQuote)
+        .join(MarketChoiceQuote, MarketChoiceQuote.choice_id == MarketChoice.choice_id)
+        .filter(
+            MarketChoiceQuote.source == source,
+            MarketChoiceQuote.exchange_side.is_(None),
+            MarketChoiceQuote.exchange_level == 0,
+        )
+        .all()
+    )
+    return {choice_name: quote for choice_name, quote in rows}
+
+
 def _seed_event_and_bookie(manager):
     with manager.get_session() as session:
         event = Event(
@@ -365,11 +386,16 @@ def test_service_persists_one_canonical_event_batch_with_one_session(tmp_path):
     with original_get_session() as session:
         market = session.query(Market).one()
         choices = session.query(MarketChoice).order_by(MarketChoice.choice_name).all()
+        quotes = _primary_quotes_by_choice_name(session, source="oddsportal")
     assert market.market_name == "1X2 Full Time"
     assert market.market_period == "Full Time"
     assert [choice.choice_name for choice in choices] == ["1", "2", "x"]
-    assert all(choice.initial_odds is not None for choice in choices)
+    # MarketChoice is pure identity now; price state lives in MarketChoiceQuote.
+    assert all(choice.initial_odds is None for choice in choices)
     assert all(choice.current_odds is None for choice in choices)
+    assert set(quotes) == {"1", "2", "x"}
+    assert all(quote.initial_odds is not None for quote in quotes.values())
+    assert all(quote.current_odds is None for quote in quotes.values())
 
 
 @pytest.mark.parametrize("write_order", ["oddspapi_first", "oddsportal_first"])
@@ -377,16 +403,27 @@ def test_oddsportal_opening_and_oddspapi_current_are_order_independent(
     tmp_path,
     write_order,
 ):
+    """OddsPortal's opening and Oddspapi's current no longer land in one
+    MarketChoice mirror row (see docs/refactors/db-schema-odds-refactor.md,
+    "choices vs quotes") - each source now keeps its own MarketChoiceQuote
+    row. The order-independence guarantee that used to be visible on
+    MarketChoice is instead visible as: oddsportal's quote always carries the
+    opening price, oddspapi's quote always carries the current price,
+    regardless of write order.
+    """
     manager = DatabaseManager(f"sqlite:///{tmp_path / f'{write_order}.db'}")
     manager.create_tables()
     event_id, bookie_id = _seed_event_and_bookie(manager)
     references = _oddsportal_references(bookie_id)
 
     def save_oddspapi():
-        return MarketRepository.save_markets_from_response_with_stats(
+        # Production Oddspapi ingestion converges on save_canonical_bookmaker_batches
+        # (docs/refactors/db-schema-odds-refactor.md, Fase 2) - that is what
+        # populates MarketChoiceQuote, unlike the legacy
+        # save_markets_from_response_with_stats used only by scripts/legacy/*.
+        return MarketRepository.save_canonical_bookmaker_batches(
             event_id,
-            _oddspapi_market_response(),
-            bookie_id,
+            [{"bookie_id": bookie_id, "markets": _oddspapi_market_response()["markets"]}],
             source="oddspapi",
         )
 
@@ -410,21 +447,18 @@ def test_oddsportal_opening_and_oddspapi_current_are_order_independent(
 
     assert oddsportal_result.snapshots_saved == 0
     with manager.get_session() as session:
-        choices = {
-            choice.choice_name: choice
-            for choice in session.query(MarketChoice).all()
-        }
+        oddsportal_quotes = _primary_quotes_by_choice_name(session, source="oddsportal")
+        oddspapi_quotes = _primary_quotes_by_choice_name(session, source="oddspapi")
         snapshots = session.query(MarketChoiceSnapshot).all()
 
-    assert float(choices["1"].initial_odds) == 1.86
-    assert float(choices["x"].initial_odds) == 3.20
-    assert float(choices["2"].initial_odds) == 1.86
-    assert float(choices["1"].current_odds) == 1.44
-    assert float(choices["x"].current_odds) == 3.25
-    assert float(choices["2"].current_odds) == 2.85
-    assert choices["1"].change == -1
-    assert choices["x"].change == 1
-    assert choices["2"].change == 1
+    assert float(oddsportal_quotes["1"].initial_odds) == 1.86
+    assert float(oddsportal_quotes["x"].initial_odds) == 3.20
+    assert float(oddsportal_quotes["2"].initial_odds) == 1.86
+    assert all(quote.current_odds is None for quote in oddsportal_quotes.values())
+
+    assert float(oddspapi_quotes["1"].current_odds) == 1.44
+    assert float(oddspapi_quotes["x"].current_odds) == 3.25
+    assert float(oddspapi_quotes["2"].current_odds) == 2.85
     assert len(snapshots) == 3
     assert {snapshot.source for snapshot in snapshots} == {"oddspapi"}
 
@@ -514,10 +548,13 @@ def test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current
         "infrastructure.persistence.repositories.market_repository.db_manager",
         manager,
     ):
-        MarketRepository.save_markets_from_response_with_stats(
+        # Production Oddspapi ingestion converges on save_canonical_bookmaker_batches
+        # (docs/refactors/db-schema-odds-refactor.md, Fase 2) - that is what
+        # populates MarketChoiceQuote, unlike the legacy
+        # save_markets_from_response_with_stats used only by scripts/legacy/*.
+        MarketRepository.save_canonical_bookmaker_batches(
             event_id,
-            _oddspapi_market_response(),
-            bookie_id,
+            [{"bookie_id": bookie_id, "markets": _oddspapi_market_response()["markets"]}],
             source="oddspapi",
         )
         if candidates:
@@ -529,19 +566,22 @@ def test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current
 
     assert bool(candidates) is oddsportal_enabled
     with manager.get_session() as session:
-        choices = {
-            choice.choice_name: choice
-            for choice in session.query(MarketChoice).all()
-        }
+        oddspapi_quotes = _primary_quotes_by_choice_name(session, source="oddspapi")
+        oddsportal_quotes = _primary_quotes_by_choice_name(session, source="oddsportal")
         snapshots = session.query(MarketChoiceSnapshot).all()
 
-    assert {
-        name: float(choice.initial_odds)
-        for name, choice in choices.items()
-    } == expected_initials
-    assert float(choices["1"].current_odds) == 1.44
-    assert float(choices["x"].current_odds) == 3.25
-    assert float(choices["2"].current_odds) == 2.85
+    # When OddsPortal is enabled, its own quote carries the "opening owner"
+    # price (see docstring). When disabled, Oddspapi's quote is both the only
+    # initial and the only current available - MarketChoice no longer mirrors
+    # either (see docs/refactors/db-schema-odds-refactor.md, "choices vs quotes").
+    effective_initials = {
+        name: float((oddsportal_quotes.get(name) or oddspapi_quotes[name]).initial_odds)
+        for name in ("1", "x", "2")
+    }
+    assert effective_initials == expected_initials
+    assert float(oddspapi_quotes["1"].current_odds) == 1.44
+    assert float(oddspapi_quotes["x"].current_odds) == 3.25
+    assert float(oddspapi_quotes["2"].current_odds) == 2.85
     assert len(snapshots) == 3
     assert {snapshot.source for snapshot in snapshots} == {"oddspapi"}
 

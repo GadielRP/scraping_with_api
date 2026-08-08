@@ -1,9 +1,12 @@
 """Model-level tests for MarketChoiceQuote (Fase 1 of the odds schema refactor).
 
 See docs/refactors/db-schema-odds-refactor.md §5 for the design rationale:
-exchange_side must default to 'single' (never NULL) so the unique constraint
-(choice_id, source, exchange_side, exchange_level) actually prevents
-duplicate rows for non-exchange bookies.
+exchange_side is NULL for non-exchange bookies (same NULL-for-"not
+applicable" convention as Market.choice_group). NULL != NULL in a UNIQUE
+constraint, so real duplicate-row protection is the functional index
+``unique_market_choice_quote_side_null_safe`` (COALESCE(exchange_side, '')),
+applied via ``check_and_migrate_schema`` - the plain ORM UniqueConstraint
+alone would let two NULL-side rows through.
 """
 
 from datetime import datetime
@@ -18,6 +21,10 @@ from infrastructure.persistence.models import Bookie, Event, Market, MarketChoic
 def make_manager(tmp_path):
     manager = DatabaseManager(f"sqlite:///{tmp_path / 'market_choice_quotes.db'}")
     manager.create_tables()
+    # create_tables() only runs Base.metadata.create_all(), which applies the
+    # plain (NULL-unsafe) UniqueConstraint from __table_args__. The real
+    # NULL-safe functional index is only created by the manual migration.
+    manager.check_and_migrate_schema()
     return manager
 
 
@@ -53,12 +60,8 @@ def seed_choice(manager, *, choice_group=None):
         return choice.choice_id
 
 
-def test_exchange_side_defaults_to_single_sentinel(tmp_path):
-    """A quote created without exchange_side must NOT persist as NULL.
-
-    NULL != NULL in a UNIQUE constraint, so leaving this nullable would let
-    duplicate 'no side' rows for the same (choice_id, source) slip through.
-    """
+def test_exchange_side_defaults_to_null_for_non_exchange_bookies(tmp_path):
+    """A quote created without exchange_side must persist as NULL, not a sentinel string."""
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
 
@@ -71,12 +74,14 @@ def test_exchange_side_defaults_to_single_sentinel(tmp_path):
         session.add(quote)
         session.flush()
         session.refresh(quote)
-        assert quote.exchange_side == "single"
+        assert quote.exchange_side is None
         assert quote.exchange_level == 0
 
 
-def test_duplicate_single_quote_for_same_source_is_rejected(tmp_path):
-    """Two 'single' quotes for the same (choice, source) must violate the unique constraint."""
+def test_duplicate_null_side_quote_for_same_source_is_rejected(tmp_path):
+    """Two NULL-side quotes for the same (choice, source) must violate the
+    functional COALESCE(exchange_side, '') unique index, even though NULL
+    is otherwise never equal to NULL."""
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
 
@@ -178,7 +183,7 @@ def test_initial_then_current_arriving_later_updates_same_row(tmp_path):
     """Initial-only, then current arriving in a later write, must upsert in place.
 
     Mirrors the tolerance MarketChoice already has today via two independent
-    nullable columns — MarketChoiceQuote must preserve the same property.
+    nullable columns - MarketChoiceQuote must preserve the same property.
     """
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
@@ -219,3 +224,37 @@ def test_initial_then_current_arriving_later_updates_same_row(tmp_path):
         )
         assert float(quote.initial_odds) == 3.30
         assert float(quote.current_odds) == 3.05
+
+
+def test_migrate_rewrites_legacy_single_sentinel_to_null(tmp_path):
+    """Rows left over from the pre-NULL 'single' sentinel must become NULL.
+
+    Production tables created under the earlier design may still contain
+    exchange_side='single'. Re-running the quotes migration must rewrite
+    them so live ingestion and the COALESCE unique index share one convention.
+    """
+    manager = make_manager(tmp_path)
+    choice_id = seed_choice(manager)
+
+    with manager.get_session() as session:
+        session.add(
+            MarketChoiceQuote(
+                choice_id=choice_id,
+                source="oddspapi",
+                exchange_side="single",
+                current_odds=1.90,
+            )
+        )
+
+    # Call the quotes migration directly: a full check_and_migrate_schema()
+    # would abort earlier on sqlite test DBs (event-identity validation) and
+    # never reach this step - the production path still runs it after that.
+    manager._migrate_market_choice_quotes()
+
+    with manager.get_session() as session:
+        quote = (
+            session.query(MarketChoiceQuote)
+            .filter(MarketChoiceQuote.choice_id == choice_id)
+            .one()
+        )
+        assert quote.exchange_side is None

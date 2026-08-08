@@ -522,10 +522,17 @@ class MarketChoice(Base):
     choice_name = Column(Text, nullable=False)  # "1", "x", "2", "over", "under", "yes", "no", "no_goal"
     
     # Odds values (stored as decimals for easy math)
-    # NOTE: these mirror the "primary" quote (see MarketChoiceQuote) for
-    # backward compatibility with existing readers. Source of truth for
-    # per-source/per-side state (e.g. Betfair back vs lay) is MarketChoiceQuote.
-    # Scheduled for deprecation once readers migrate (see docs/refactors/db-schema-odds-refactor.md Fase 7).
+    # FROZEN as of docs/refactors/db-schema-odds-refactor.md §3.2:
+    # save_canonical_bookmaker_batches (the live ingestion path for all 3
+    # providers) no longer writes these - MarketChoiceQuote is now the sole
+    # persistence target for price state. These columns keep whatever value
+    # they had before that change (stale for old rows, always NULL/0 for
+    # choices created after it) purely so non-migrated readers (odds_alert.py,
+    # odds_trajectory_context.py, drift_engine.py, dual-process view) don't
+    # crash on a missing column while Fase 5 migrates them to read
+    # MarketChoiceQuote instead. Only `save_markets_from_response_with_stats`
+    # (LEGACY_MAINTENANCE_ONLY, scripts only) still writes them. Dropped
+    # entirely in Fase 7 once Fase 5 is done.
     initial_odds = Column(Numeric(8, 3))  # Opening odds (decimal, e.g., 1.53)
     current_odds = Column(Numeric(8, 3))  # Current/final odds (decimal, e.g., 1.48)
     
@@ -599,11 +606,24 @@ class MarketChoiceQuote(Base):
     quote_id = Column(Integer, primary_key=True, autoincrement=True)
     choice_id = Column(Integer, ForeignKey('market_choices.choice_id', ondelete='CASCADE'), nullable=False)
 
-    # Identity of the price instrument. exchange_side is NEVER NULL: Postgres
-    # treats NULL != NULL in UNIQUE constraints, so a nullable side would allow
-    # duplicate 'single' rows for the same (choice_id, source) pair.
+    # Identity of the price instrument. exchange_side is NULL for non-exchange
+    # bookies (single price, no back/lay split) - same NULL-for-"not
+    # applicable" convention as Market.choice_group, instead of a 'single'
+    # sentinel string.
+    #
+    # Postgres/SQLite both treat NULL != NULL in UNIQUE constraints, so the
+    # plain UniqueConstraint below does NOT by itself reject two NULL-side
+    # rows for the same (choice_id, source, exchange_level). Real enforcement
+    # is the functional index
+    # unique_market_choice_quote_side_null_safe (choice_id, source,
+    # COALESCE(exchange_side, ''), exchange_level), created in
+    # database.py::_migrate_market_choice_quotes. It has a different name so
+    # it doesn't collide with (and get skipped by "IF NOT EXISTS" behind) the
+    # plain constraint's own auto-created index - mirrors how Market keeps
+    # unique_market_per_event_bookie alongside the functional
+    # unique_market_per_event_bookie_period_line.
     source = Column(Text, nullable=False)
-    exchange_side = Column(Text, nullable=False, default="single", server_default=text("'single'"))
+    exchange_side = Column(Text)
     exchange_level = Column(SmallInteger, nullable=False, default=0, server_default=text("0"))
 
     # Metadata of this instrument (previously only available on snapshots)
@@ -624,6 +644,10 @@ class MarketChoiceQuote(Base):
     updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
 
     __table_args__ = (
+        # NOTE: incomplete on its own for NULL exchange_side (see comment on
+        # the column above) - kept for ORM/introspection parity with the rest
+        # of the schema. Real protection is the functional index created in
+        # database.py::_migrate_market_choice_quotes.
         UniqueConstraint(
             'choice_id', 'source', 'exchange_side', 'exchange_level',
             name='unique_market_choice_quote',
