@@ -306,17 +306,24 @@ class OddsPortalAttemptMixin:
             js_observer = f"""
                 () => new Promise(resolve => {{
                     setTimeout(() => {{
-                        const shell1 = document.querySelector('div.event-container');
-                        const shell2 = document.querySelector('ul.visible-links.odds-tabs li');
+                        const shell1 = document.querySelector('div.event-container')
+                            || document.querySelector('[data-testid="game-participants"]')
+                            || document.querySelector('[data-testid="sports-nav"]');
+                        const shell2 = document.querySelector('ul.visible-links.odds-tabs li')
+                            || document.querySelector('li.tab-item');
                         const shell3 = document.querySelector('div[data-testid="kickoff-events-nav"]');
                         const has_shell = shell1 || shell2 || shell3;
 
                         const skeleton = document.querySelector('div.animate-pulse.bg-gray-light');
-                        const data1 = document.querySelector('div.border-black-borders.flex.h-9');
+                        const data1 = document.querySelector('div.border-black-borders.flex.h-9')
+                            || document.querySelector('tr.h-9')
+                            || document.querySelector('table');
                         const data2 = document.querySelector('div[data-testid="over-under-collapsed-row"]');
                         const data3 = document.querySelector('div[data-testid="asian-handicap-collapsed-row"]');
                         const data4 = document.querySelector('div[data-testid="over-under-expanded-row"]');
-                        const data5 = document.querySelector('div.odds-cell');
+                        const data5 = document.querySelector('div.odds-cell')
+                            || document.querySelector('[data-testid="odd-container"]')
+                            || document.querySelector('td.h-9');
                         const has_data = data1 || data2 || data3 || data4 || data5;
 
                         if (!has_data) {{

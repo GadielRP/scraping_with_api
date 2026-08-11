@@ -363,14 +363,34 @@ class OddsPortalHoverMixin:
                 return None
         else:
             initial_scope = None
-            rows = await page.query_selector_all("div.border-black-borders.flex.h-9")
+            rows = await page.query_selector_all("tr.h-9, div.border-black-borders.flex.h-9")
             if not rows:
-                rows = await page.query_selector_all("div.border-black-borders.flex")
+                rows = await page.query_selector_all("tr, div.border-black-borders.flex")
             for row in rows:
+                row_tag = await (await row.get_property("tagName")).json_value()
+                if row_tag.lower() == 'tr':
+                    cells = await row.query_selector_all('td')
+                    if not cells:
+                        continue
                 link = await row.query_selector("a[title]")
                 image = await row.query_selector("img[alt]")
                 link_title = await link.get_attribute("title") if link else ""
                 image_alt = await image.get_attribute("alt") if image else ""
+                
+                href_link = await row.query_selector("a[href*='/bookmakers/']")
+                if href_link:
+                    href = await href_link.get_attribute("href") or ""
+                    parts = href.split('/bookmakers/')
+                    if len(parts) >= 2:
+                        href_bookie = parts[1].split('/')[0]
+                        if not link_title:
+                            link_title = href_bookie
+                            
+                if not link_title:
+                    first_cell = await row.query_selector("td, th")
+                    if first_cell:
+                        text = await first_cell.inner_text() or ""
+                        link_title = re.sub(r'claim\s*bonus', '', text, flags=re.IGNORECASE).strip()
                 if (
                     bookie_name.lower() in (link_title or "").lower()
                     or bookie_name.lower() in (image_alt or "").lower()
@@ -381,7 +401,7 @@ class OddsPortalHoverMixin:
                 logger.warning("Bookie row not found for: %s", bookie_name)
                 return None
             initial_containers = await initial_scope.query_selector_all(
-                "div[data-testid='odd-container']"
+                "[data-testid='odd-container']"
             )
             if not initial_containers:
                 logger.warning("No odd containers found for: %s", bookie_name)
@@ -437,18 +457,34 @@ class OddsPortalHoverMixin:
                             break
                     else:
                         scope = None
-                        rows = await page.query_selector_all(
-                            "div.border-black-borders.flex.h-9"
-                        )
+                        rows = await page.query_selector_all("tr.h-9, div.border-black-borders.flex.h-9")
                         if not rows:
-                            rows = await page.query_selector_all(
-                                "div.border-black-borders.flex"
-                            )
+                            rows = await page.query_selector_all("tr, div.border-black-borders.flex")
                         for row in rows:
+                            row_tag = await (await row.get_property("tagName")).json_value()
+                            if row_tag.lower() == 'tr':
+                                cells = await row.query_selector_all('td')
+                                if not cells:
+                                    continue
                             link = await row.query_selector("a[title]")
                             image = await row.query_selector("img[alt]")
                             link_title = await link.get_attribute("title") if link else ""
                             image_alt = await image.get_attribute("alt") if image else ""
+                            
+                            href_link = await row.query_selector("a[href*='/bookmakers/']")
+                            if href_link:
+                                href = await href_link.get_attribute("href") or ""
+                                parts = href.split('/bookmakers/')
+                                if len(parts) >= 2:
+                                    href_bookie = parts[1].split('/')[0]
+                                    if not link_title:
+                                        link_title = href_bookie
+                                        
+                            if not link_title:
+                                first_cell = await row.query_selector("td, th")
+                                if first_cell:
+                                    text = await first_cell.inner_text() or ""
+                                    link_title = re.sub(r'claim\s*bonus', '', text, flags=re.IGNORECASE).strip()
                             if (
                                 bookie_name.lower() in (link_title or "").lower()
                                 or bookie_name.lower() in (image_alt or "").lower()
@@ -459,7 +495,7 @@ class OddsPortalHoverMixin:
                             await asyncio.sleep(0.4)
                             continue
                         containers = await scope.query_selector_all(
-                            "div[data-testid='odd-container']"
+                            "[data-testid='odd-container']"
                         )
                         container_index = configured_index
 

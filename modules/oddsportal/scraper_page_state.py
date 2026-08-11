@@ -96,7 +96,7 @@ class OddsPortalPageStateMixin:
     async def _has_market_content(self, page: Page) -> bool:
         """Return True when any known market data container is present."""
         try:
-            return await page.evaluate('\n                () => {\n                    const hasRows = document.querySelectorAll(\'div.border-black-borders.flex.h-9\').length > 0;\n                    const hasOUCollapsed = document.querySelectorAll(\'div[data-testid="over-under-collapsed-row"]\').length > 0;\n                    const hasAHCollapsed = document.querySelectorAll(\'div[data-testid="asian-handicap-collapsed-row"]\').length > 0;\n                    const hasOUExpanded = document.querySelectorAll(\'div[data-testid="over-under-expanded-row"]\').length > 0;\n                    return hasRows || hasOUCollapsed || hasAHCollapsed || hasOUExpanded;\n                }\n            ')
+            return await page.evaluate('\n                () => {\n                    const hasRows = document.querySelectorAll(\'div.border-black-borders.flex.h-9, tr.h-9\').length > 0;\n                    const hasOUCollapsed = document.querySelectorAll(\'div[data-testid="over-under-collapsed-row"]\').length > 0;\n                    const hasAHCollapsed = document.querySelectorAll(\'div[data-testid="asian-handicap-collapsed-row"]\').length > 0;\n                    const hasOUExpanded = document.querySelectorAll(\'div[data-testid="over-under-expanded-row"]\').length > 0;\n                    return hasRows || hasOUCollapsed || hasAHCollapsed || hasOUExpanded;\n                }\n            ')
         except Exception:
             return False
 
@@ -145,7 +145,7 @@ class OddsPortalPageStateMixin:
     async def _get_active_group_label(self, page: Page) -> str:
         """Return active market group tab label (e.g. '1X2', 'Over/Under')."""
         try:
-            return await page.evaluate('\n                () => {\n                    const active = document.querySelector(\'ul.visible-links.odds-tabs li.active-odds\')\n                        || document.querySelector(\'li[data-testid="navigation-active-tab"]\');\n                    return active ? active.textContent.trim() : \'\';\n                }\n            ') or ''
+            return await page.evaluate('\n                () => {\n                    const active = document.querySelector(\'ul.visible-links.odds-tabs li.active-odds\')\n                        || document.querySelector(\'li[data-testid="navigation-active-tab"]\')\n                        || document.querySelector(\'li.active-item-feed\');\n                    return active ? active.textContent.trim() : \'\';\n                }\n            ') or ''
         except Exception:
             return ''
 
@@ -176,7 +176,93 @@ class OddsPortalPageStateMixin:
             Uses selectors validated against actual OddsPortal match-page DOM.
             """
         try:
-            return await page.evaluate('\n                () => {\n                    const getCount = (sel) => document.querySelectorAll(sel).length;\n\n                    // --- Shell markers ---\n                    const event_container_count = getCount(\'div.event-container\');\n                    const group_tab_count = getCount(\'ul.visible-links.odds-tabs li\');\n                    const period_nav_count = getCount(\'div[data-testid="kickoff-events-nav"]\');\n\n                    // --- Data markers ---\n                    const bookmaker_row_count = getCount(\'div.border-black-borders.flex.h-9\');\n                    const odds_cell_count = getCount(\'div.odds-cell\');\n                    const ou_collapsed_count = getCount(\'div[data-testid="over-under-collapsed-row"]\');\n                    const ah_collapsed_count = getCount(\'div[data-testid="asian-handicap-collapsed-row"]\');\n                    const ou_expanded_count = getCount(\'div[data-testid="over-under-expanded-row"]\');\n\n                    // --- Skeleton / placeholder markers ---\n                    const skeleton_row_count = getCount(\'div.animate-pulse.bg-gray-light\')\n                        + getCount(\'[class*="skeleton"]\');\n\n                    // --- Event container child count ---\n                    const firstContainer = document.querySelector(\'div.event-container\');\n                    const event_container_child_count = firstContainer ? firstContainer.children.length : 0;\n\n                    // --- Active group label ---\n                    const activeGroupEl = document.querySelector(\'ul.visible-links.odds-tabs li.active-odds\')\n                        || document.querySelector(\'li[data-testid="navigation-active-tab"]\');\n                    const active_group_label = activeGroupEl ? activeGroupEl.textContent.trim() : \'\';\n\n                    // --- Active period labels ---\n                    const active_period_labels = [];\n                    const navs = document.querySelectorAll(\'div[data-testid="kickoff-events-nav"]\');\n                    navs.forEach(nav => {\n                        const active = nav.querySelector(\'div[data-testid="sub-nav-active-tab"]\');\n                        if (active) {\n                            const txt = active.textContent.trim();\n                            if (txt) active_period_labels.push(txt);\n                        }\n                    });\n\n                    // --- Error Code (e.g. 404) ---\n                    const errEl = document.querySelector(\'div.error-code\');\n                    const error_code_text = errEl ? errEl.textContent.trim() : \'\';\n\n                    // --- Derived booleans ---\n                    const has_shell_markers = event_container_count > 0\n                        || group_tab_count > 0\n                        || period_nav_count > 0;\n\n                    const has_data_markers = bookmaker_row_count > 0\n                        || odds_cell_count > 0\n                        || ou_collapsed_count > 0\n                        || ah_collapsed_count > 0\n                        || ou_expanded_count > 0;\n\n                    return {\n                        error_code_text,\n                        url: window.location.href,\n                        title: document.title,\n                        ready_state: document.readyState,\n                        event_container_count,\n                        event_container_child_count,\n                        group_tab_count,\n                        period_nav_count,\n                        active_group_label,\n                        active_period_labels,\n                        bookmaker_row_count,\n                        odds_cell_count,\n                        ou_collapsed_count,\n                        ah_collapsed_count,\n                        ou_expanded_count,\n                        skeleton_row_count,\n                        has_shell_markers,\n                        has_data_markers,\n                    };\n                }\n            ')
+            return await page.evaluate("""
+                () => {
+                    const getCount = (sel) => document.querySelectorAll(sel).length;
+
+                    // --- Shell markers ---
+                    const event_container_count = getCount('div.event-container')
+                        + getCount('[data-testid="game-participants"]')
+                        + getCount('[data-testid="sports-nav"]');
+                    const group_tab_count = getCount('ul.visible-links.odds-tabs li')
+                        + getCount('li.tab-item');
+                    const period_nav_count = getCount('div[data-testid="kickoff-events-nav"]')
+                        + getCount('[data-testid="sub-nav-active-tab"]');
+
+                    // --- Data markers ---
+                    const bookmaker_row_count = getCount('div.border-black-borders.flex.h-9')
+                        + getCount('tr.h-9');
+                    const odds_cell_count = getCount('div.odds-cell')
+                        + getCount('[data-testid="odd-container"]')
+                        + getCount('td.h-9');
+                    const ou_collapsed_count = getCount('div[data-testid="over-under-collapsed-row"]');
+                    const ah_collapsed_count = getCount('div[data-testid="asian-handicap-collapsed-row"]');
+                    const ou_expanded_count = getCount('div[data-testid="over-under-expanded-row"]');
+
+                    // --- Skeleton / placeholder markers ---
+                    const skeleton_row_count = getCount('div.animate-pulse.bg-gray-light')
+                        + getCount('[class*="skeleton"]');
+
+                    // --- Event container child count ---
+                    const firstContainer = document.querySelector('div.event-container')
+                        || document.querySelector('[data-testid="game-participants"]')
+                        || document.querySelector('[data-testid="sports-nav"]');
+                    const event_container_child_count = firstContainer ? firstContainer.children.length : 0;
+
+                    // --- Active group label ---
+                    const activeGroupEl = document.querySelector('ul.visible-links.odds-tabs li.active-odds')
+                        || document.querySelector('li[data-testid="navigation-active-tab"]')
+                        || document.querySelector('li.active-item-feed');
+                    const active_group_label = activeGroupEl ? activeGroupEl.textContent.trim() : '';
+
+                    // --- Active period labels ---
+                    const active_period_labels = [];
+                    const navs = document.querySelectorAll('div[data-testid="kickoff-events-nav"]');
+                    navs.forEach(nav => {
+                        const active = nav.querySelector('div[data-testid="sub-nav-active-tab"]');
+                        if (active) {
+                            const txt = active.textContent.trim();
+                            if (txt) active_period_labels.push(txt);
+                        }
+                    });
+
+                    // --- Error Code (e.g. 404) ---
+                    const errEl = document.querySelector('div.error-code');
+                    const error_code_text = errEl ? errEl.textContent.trim() : '';
+
+                    // --- Derived booleans ---
+                    const has_shell_markers = event_container_count > 0
+                        || group_tab_count > 0
+                        || period_nav_count > 0;
+
+                    const has_data_markers = bookmaker_row_count > 0
+                        || odds_cell_count > 0
+                        || ou_collapsed_count > 0
+                        || ah_collapsed_count > 0
+                        || ou_expanded_count > 0;
+
+                    return {
+                        error_code_text,
+                        url: window.location.href,
+                        title: document.title,
+                        ready_state: document.readyState,
+                        event_container_count,
+                        event_container_child_count,
+                        group_tab_count,
+                        period_nav_count,
+                        active_group_label,
+                        active_period_labels,
+                        bookmaker_row_count,
+                        odds_cell_count,
+                        ou_collapsed_count,
+                        ah_collapsed_count,
+                        ou_expanded_count,
+                        skeleton_row_count,
+                        has_shell_markers,
+                        has_data_markers,
+                    };
+                }
+            """)
         except Exception:
             return {'error_code_text': '', 'url': '', 'title': '', 'ready_state': '', 'event_container_count': 0, 'event_container_child_count': 0, 'group_tab_count': 0, 'period_nav_count': 0, 'active_group_label': '', 'active_period_labels': [], 'bookmaker_row_count': 0, 'odds_cell_count': 0, 'ou_collapsed_count': 0, 'ah_collapsed_count': 0, 'ou_expanded_count': 0, 'skeleton_row_count': 0, 'has_shell_markers': False, 'has_data_markers': False}
 

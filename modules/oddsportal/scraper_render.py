@@ -91,13 +91,15 @@ class OddsPortalRenderMixin:
                     const getFirstVisibleText = (selector) => {
                         const el = Array.from(document.querySelectorAll(selector)).find(
                             e => e.getBoundingClientRect().width > 0 &&
-                                e.getBoundingClientRect().height > 0
+                                 e.getBoundingClientRect().height > 0
                         );
 
                         return el ? el.innerText.trim() : null;
                     };
 
-                    const oddsVal = getFirstVisibleText('div.odds-cell');
+                    const oddsVal = getFirstVisibleText('div.odds-cell')
+                        || getFirstVisibleText('td.h-9 a')
+                        || getFirstVisibleText('[data-testid="odd-container"]');
                     if (oddsVal) return oddsVal;
 
                     const ouVal = getFirstVisibleText(
@@ -121,9 +123,9 @@ class OddsPortalRenderMixin:
             """
         try:
             if extract_fn == 'standard':
-                await page.wait_for_selector('div.border-black-borders.flex.h-9', state='visible', timeout=timeout_ms)
+                await page.wait_for_selector('tr.h-9, div.border-black-borders.flex.h-9', state='visible', timeout=timeout_ms)
             else:
-                await page.wait_for_selector("div[data-testid='over-under-collapsed-row'], div[data-testid='asian-handicap-collapsed-row'], div[data-testid='over-under-expanded-row'], div.border-black-borders.flex.h-9", state='visible', timeout=timeout_ms)
+                await page.wait_for_selector("div[data-testid='over-under-collapsed-row'], div[data-testid='asian-handicap-collapsed-row'], div[data-testid='over-under-expanded-row'], tr.h-9, div.border-black-borders.flex.h-9", state='visible', timeout=timeout_ms)
             return True
         except Exception as e:
             try:
@@ -263,7 +265,7 @@ class OddsPortalRenderMixin:
                 before_active_group,
                 group_candidates,
             )
-            tabs = await page.query_selector_all('ul.visible-links.odds-tabs li')
+            tabs = await page.query_selector_all('li.tab-item, ul.visible-links.odds-tabs li')
             if not tabs:
                 logger.warning('⚠️ Market group tabs not found')
                 return False
@@ -281,7 +283,7 @@ class OddsPortalRenderMixin:
                 logger.warning(f"⚠️ Market group tab '{group_display_name}' not found")
                 logger.warning(f'   Available tabs: {available_tabs}')
                 return False
-            is_active = await target_tab.evaluate("el => el.classList.contains('active-odds')")
+            is_active = await target_tab.evaluate("el => el.classList.contains('active-odds') || el.classList.contains('active-item-feed')")
             if is_active:
                 logger.info(f"ℹ️ Market group tab '{group_display_name}' is already active. Verifying content...")
                 if await self._has_market_content(page):

@@ -228,27 +228,11 @@ class OddsPortalBrowserMixin:
             logger.info('🛑 OddsPortalScraper: Browser stopped')
 
     async def _goto_fresh(self, page: Page, url: str, **kwargs) -> object:
-        """Cache-defeating wrapper around page.goto().
-
-            1. Sets no-cache/no-store HTTP headers for this navigation only.
-            2. Appends a _t=<timestamp> cache-buster to the URL (before the fragment).
-            3. Used by match-page navigation to emulate a fresh/incognito-style load
-               as closely as server behavior allows.
-            """
-        if '#' in url:
-            base_part, fragment = url.split('#', 1)
-        else:
-            base_part, fragment = (url, None)
-        cache_buster = f'_t={int(time.time())}'
-        if '?' in base_part:
-            base_part = f'{base_part}&{cache_buster}'
-        else:
-            base_part = f'{base_part}?{cache_buster}'
-        fresh_url = f'{base_part}#{fragment}' if fragment else base_part
-        logger.debug(f'🔄 _goto_fresh: {fresh_url}')
+        """Wrapper around page.goto() that sets cache-defeating HTTP headers but avoids appending a query parameter cache-buster (which causes 502 Gateway errors on dynamic match page routes)."""
+        logger.debug(f'🔄 _goto_fresh: {url}')
         try:
             await page.set_extra_http_headers({'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache'})
-            response = await page.goto(fresh_url, **kwargs)
+            response = await page.goto(url, **kwargs)
             return response
         finally:
             await page.set_extra_http_headers({})

@@ -172,12 +172,12 @@ class OddsPortalLookupMixin:
             except Exception:
                 pass
             try:
-                league_container_selector = 'div[class*="empty:min-h-[80vh]"]'
-                await page.wait_for_selector(f'{league_container_selector} div.eventRow', timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS)
+                # Support both old 'div.eventRow' and new 'div[data-testid="game-row"]'
+                await page.wait_for_selector('div.eventRow, div[data-testid="game-row"]', timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS)
                 t_wait = time.perf_counter()
-                log_timing(f'Waiting for scoped event rows took {t_wait - t_goto:.2f}s')
+                log_timing(f'Waiting for event rows took {t_wait - t_goto:.2f}s')
             except Exception as e:
-                logger.error(f'🔄 FAST FAIL (League rows): no scoped event rows loaded within {ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS}ms on {navigation_league_url}')
+                logger.error(f'🔄 FAST FAIL (League rows): no event rows loaded within {ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS}ms on {navigation_league_url}')
                 if getattr(self, 'debug_dir', None) and hasattr(self, '_save_debug_artifacts'):
                     await self._save_debug_artifacts(page, 'league_no_rows', {'error': str(e), 'url': navigation_league_url})
                 return []
@@ -191,15 +191,23 @@ class OddsPortalLookupMixin:
 
             t_js_league = time.perf_counter()
             rows_data = await page.evaluate("""() => {
-                const container = document.querySelector('div[class*="empty:min-h-[80vh]"]');
-                if (!container) return [];
-
+                const elements = Array.from(document.querySelectorAll('[data-testid="secondary-header"], div.eventRow, div[data-testid="game-row"]'));
+                
                 let currentDate = "";
                 const results = [];
-                const rows = Array.from(container.querySelectorAll('div.eventRow'));
-
-                for (const row of rows) {
-                    const rowId = row.getAttribute('id') || '';
+                
+                for (const el of elements) {
+                    const testid = el.getAttribute('data-testid');
+                    
+                    if (testid === 'secondary-header') {
+                        const dateHeader = el.querySelector('[data-testid="date-header"]');
+                        if (dateHeader) {
+                            currentDate = dateHeader.innerText.trim();
+                        }
+                        continue;
+                    }
+                    
+                    const row = el;
                     const rect = row.getBoundingClientRect();
                     const style = window.getComputedStyle(row);
 
@@ -211,43 +219,62 @@ class OddsPortalLookupMixin:
 
                     if (!isVisible) continue;
 
-                    const dateHeader = row.querySelector('[data-testid="date-header"]');
-                    if (dateHeader) {
-                        currentDate = dateHeader.innerText.trim();
-                    }
-
-                    const matchAnchor = row.querySelector('div.group.flex[data-testid="game-row"] > a[href]');
+                    let rowId = row.getAttribute('id') || '';
+                    
+                    let matchAnchor = row.querySelector('a[href]');
                     if (!matchAnchor) continue;
-
+                    
                     let originalHref = matchAnchor.getAttribute('href') || '';
                     let href = originalHref;
-
+                    
                     if (href && !href.includes('/#') && rowId) {
                         href = href.replace(/\/+$/, '') + '/#' + rowId;
                     }
-
+                    
+                    if (href && !rowId && href.includes('#')) {
+                        rowId = href.split('#')[1];
+                    }
+                    
                     if (href && href.includes('/inplay-odds')) {
                         href = href.replace('/inplay-odds', '')
                     }
-
-                    const participantAnchors = row.querySelectorAll('div[data-testid="event-participants"] a[title]');
-
-                    const titles = Array.from(participantAnchors)
-                        .map(a => (a.getAttribute('title') || '').trim())
+                    
+                    let home = "";
+                    let away = "";
+                    const participantNames = Array.from(row.querySelectorAll('[data-testid="participant-name"]'))
+                        .map(p => p.innerText.trim())
                         .filter(Boolean);
-
+                    if (participantNames.length >= 2) {
+                        home = participantNames[0];
+                        away = participantNames[1];
+                    } else {
+                        const participantAnchors = row.querySelectorAll('div[data-testid="event-participants"] a[title]');
+                        const titles = Array.from(participantAnchors)
+                            .map(a => (a.getAttribute('title') || '').trim())
+                            .filter(Boolean);
+                        home = titles[0] || '';
+                        away = titles[1] || '';
+                    }
+                    
+                    const inlineDateHeader = row.querySelector('[data-testid="date-header"]');
+                    let rowDate = currentDate;
+                    if (inlineDateHeader) {
+                        rowDate = inlineDateHeader.innerText.trim();
+                    }
+                    
                     results.push({
                         original_href: originalHref,
                         href,
                         row_id: rowId,
-                        date: currentDate,
-                        home: titles[0] || '',
-                        away: titles[1] || '',
+                        date: rowDate,
+                        home: home,
+                        away: away,
                         game_text: row.innerText.trim(),
                     });
                 }
-
-                return results;}""")
+                
+                return results;
+            }""")
                 
             log_timing(f'Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s')
             if not rows_data:

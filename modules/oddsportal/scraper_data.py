@@ -123,7 +123,7 @@ class OddsPortalDataMixin:
             }
 
             // --- Bookmakers ---
-            const allDivs = document.querySelectorAll('div.flex.h-9');
+            const allDivs = Array.from(document.querySelectorAll('tr.h-9, div.flex.h-9'));
             const normalizeIdentity = (value) => (value || '')
                 .normalize('NFKD')
                 .replace(/[\\u0300-\\u036f]/g, '')
@@ -132,7 +132,12 @@ class OddsPortalDataMixin:
             const candidateRows = [];
 
             for (const row of allDivs) {
-                if (!row.className.includes('border-black-borders')) continue;
+                if (row.tagName.toLowerCase() === 'tr') {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length === 0) continue;
+                } else {
+                    if (!row.className.includes('border-black-borders')) continue;
+                }
 
                 let bookieName = null;
 
@@ -140,11 +145,29 @@ class OddsPortalDataMixin:
                 if (nameLink) bookieName = nameLink.getAttribute('title');
 
                 if (!bookieName) {
+                    const hrefLink = row.querySelector('a[href*="/bookmakers/"]');
+                    if (hrefLink) {
+                        const href = hrefLink.getAttribute('href') || '';
+                        const parts = href.split('/bookmakers/');
+                        if (parts.length >= 2) {
+                            bookieName = parts[1].split('/')[0];
+                        }
+                    }
+                }
+
+                if (!bookieName) {
+                    const firstCell = row.querySelector('td, th');
+                    if (firstCell) {
+                        bookieName = firstCell.textContent.replace(/claim\\s*bonus/gi, '').trim();
+                    }
+                }
+
+                if (!bookieName) {
                     const img = row.querySelector('img[alt]');
                     if (img) bookieName = img.getAttribute('alt');
                 }
 
-                if (!bookieName || ['Oddsportal', 'Search'].includes(bookieName)) continue;
+                if (!bookieName || ['Oddsportal', 'Search', 'Bookmaker'].includes(bookieName)) continue;
 
                 candidateRows.push({
                     row,
@@ -175,17 +198,29 @@ class OddsPortalDataMixin:
             // overwrites these values later without performing another hover.
             // Read prices only for rows that will be hovered and persisted.
             for (const {row, bookieName} of selectedRows) {
-                const oddsCells = row.querySelectorAll('div.odds-cell');
+                let oddsCells = Array.from(row.querySelectorAll('td, div.odds-cell'));
+                if (row.tagName.toLowerCase() === 'tr') {
+                    oddsCells = oddsCells.slice(1, oddsCells.length - 1);
+                }
                 if (oddsCells.length < 2) continue;
 
                 const odds = Array.from(oddsCells).map(c => c.textContent.trim());
 
                 // Payout
-                const lastChild = row.children[row.children.length - 1];
                 let payout = '-';
-
-                if (lastChild && lastChild.textContent.includes('%')) {
-                    payout = lastChild.textContent.trim();
+                if (row.tagName.toLowerCase() === 'tr') {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length >= 3) {
+                        const lastCell = cells[cells.length - 1];
+                        if (lastCell && lastCell.textContent.includes('%')) {
+                            payout = lastCell.textContent.trim();
+                        }
+                    }
+                } else {
+                    const lastChild = row.children[row.children.length - 1];
+                    if (lastChild && lastChild.textContent.includes('%')) {
+                        payout = lastChild.textContent.trim();
+                    }
                 }
 
                 const isThreeWay = odds.length >= 3;
@@ -206,7 +241,7 @@ class OddsPortalDataMixin:
             const exchangeSection = document.querySelector('div[data-testid="betting-exchanges-section"]');
 
             if (exchangeSection) {
-                const allOddContainers = exchangeSection.querySelectorAll('div[data-testid="odd-container"]');
+                const allOddContainers = exchangeSection.querySelectorAll('[data-testid="odd-container"]');
                 result.betfairContainerCount = allOddContainers.length;
                 result.betfairStatus = allOddContainers.length >= 4
                     ? 'containers_found'
