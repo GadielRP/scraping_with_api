@@ -490,6 +490,9 @@ activo sin perder el cursor anterior.
 Gate: todos los criterios de aceptación de la sección 14 están automatizados
 o tienen consulta operativa documentada.
 
+**Runbook de ejecución (Fase 4c):** ver
+[db-schema-odds-refactor-phase-4c-runbook.md](./db-schema-odds-refactor-phase-4c-runbook.md).
+
 ## 12. Matriz mínima de tests
 
 | Caso | Resultado esperado |

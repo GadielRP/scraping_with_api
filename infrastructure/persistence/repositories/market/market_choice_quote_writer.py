@@ -8,22 +8,45 @@ opening odds arrive at T-120, a later poll only refreshes ``current_odds``
 at T-5). ``upsert`` merges into whichever slots have new data instead of
 requiring both to arrive together.
 
-See docs/refactors/db-schema-odds-refactor.md (Fase 1-2) for the schema
-rationale and infrastructure/persistence/models.py::MarketChoiceQuote for the
-table definition.
+Temporal ordering and fill-only backfill rules live in
+``market_choice_quote_merge_policy`` so live ingestion and Phase 4b share one
+decision path.
+
+See docs/refactors/db-schema-odds-refactor.md (Fase 1-2) and
+docs/refactors/db-schema-odds-refactor-phase-4b.md §5.1.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, MutableMapping, Optional
 
+from infrastructure.persistence.repositories.market.market_choice_quote_merge_policy import (
+    QuoteCandidateState,
+    QuoteMergeDecision,
+    QuoteMergeMode,
+    decide_quote_merge,
+    existing_state_from_quote,
+)
 from infrastructure.persistence.repositories.market.odds_movement import compute_movement
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from infrastructure.persistence.models import MarketChoiceQuote
+
+
+@dataclass(frozen=True)
+class QuoteUpsertResult:
+    """Auditable outcome of one ``MarketChoiceQuoteWriter.upsert`` call."""
+
+    quote: Optional["MarketChoiceQuote"]
+    decision: QuoteMergeDecision
+
+    @property
+    def applied(self) -> bool:
+        return self.quote is not None and self.decision.has_mutations
 
 
 class MarketChoiceQuoteWriter:
@@ -80,8 +103,14 @@ class MarketChoiceQuoteWriter:
         bookmaker_outcome_id: Optional[str] = None,
         source_limit=None,
         overwrite_initial: bool = False,
-    ):
-        """Create or refresh a quote using a caller-preloaded identity map."""
+        mode: QuoteMergeMode = QuoteMergeMode.LIVE,
+    ) -> Optional[QuoteUpsertResult]:
+        """Create or refresh a quote using a caller-preloaded identity map.
+
+        Returns ``None`` when no price candidate is provided. Otherwise returns
+        a ``QuoteUpsertResult`` whose ``.quote`` is the ORM row (callers that
+        previously consumed the bare quote should use ``result.quote``).
+        """
         from infrastructure.persistence.models import MarketChoiceQuote
 
         if initial_price is None and current_price is None:
@@ -95,6 +124,25 @@ class MarketChoiceQuoteWriter:
         )
         _, normalized_source, normalized_side, normalized_level = identity
         quote = quote_index.get(identity)
+
+        candidate = QuoteCandidateState(
+            initial_price=initial_price,
+            initial_captured_at=initial_captured_at,
+            current_price=current_price,
+            current_captured_at=current_captured_at,
+            main_line=main_line,
+            source_market_id=source_market_id,
+            source_outcome_id=source_outcome_id,
+            bookmaker_outcome_id=bookmaker_outcome_id,
+            source_limit=source_limit,
+            overwrite_initial=overwrite_initial,
+        )
+        decision = decide_quote_merge(
+            existing=existing_state_from_quote(quote),
+            candidate=candidate,
+            mode=mode,
+        )
+
         if quote is None:
             quote = MarketChoiceQuote(
                 choice_id=choice_id,
@@ -105,31 +153,33 @@ class MarketChoiceQuoteWriter:
             session.add(quote)
             quote_index[identity] = quote
 
-        if main_line is not None:
-            quote.main_line = main_line
-        if source_market_id is not None:
-            quote.source_market_id = source_market_id
-        if source_outcome_id is not None:
-            quote.source_outcome_id = source_outcome_id
-        if bookmaker_outcome_id is not None:
-            quote.bookmaker_outcome_id = bookmaker_outcome_id
-        if source_limit is not None:
-            quote.source_limit = source_limit
+        MarketChoiceQuoteWriter._apply_decision(quote, decision)
+        return QuoteUpsertResult(quote=quote, decision=decision)
 
-        if initial_price is not None and (quote.initial_odds is None or overwrite_initial):
-            quote.initial_odds = initial_price
-            quote.initial_captured_at = initial_captured_at
+    @staticmethod
+    def _apply_decision(quote: "MarketChoiceQuote", decision: QuoteMergeDecision) -> None:
+        if decision.apply_initial:
+            quote.initial_odds = decision.initial_odds
+            quote.initial_captured_at = decision.initial_captured_at
+        elif decision.apply_initial_timestamp_only:
+            quote.initial_captured_at = decision.initial_captured_at
 
-        if current_price is not None:
-            quote.current_odds = current_price
-            quote.current_updated_at = current_captured_at
+        if decision.apply_current:
+            quote.current_odds = decision.current_odds
+            quote.current_updated_at = decision.current_updated_at
 
-        quote.movement = compute_movement(
-            explicit_change=None,
-            initial_odds=quote.initial_odds,
-            current_odds=quote.current_odds,
-        )
-        return quote
+        for field_name, value in decision.metadata_updates.items():
+            setattr(quote, field_name, value)
+
+        if decision.apply_source_limit:
+            quote.source_limit = decision.source_limit
+
+        if decision.recalculate_movement:
+            quote.movement = compute_movement(
+                explicit_change=None,
+                initial_odds=quote.initial_odds,
+                current_odds=quote.current_odds,
+            )
 
 
-__all__ = ["MarketChoiceQuoteWriter"]
+__all__ = ["MarketChoiceQuoteWriter", "QuoteUpsertResult"]

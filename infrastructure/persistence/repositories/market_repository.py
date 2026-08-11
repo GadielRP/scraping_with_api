@@ -1101,7 +1101,7 @@ class MarketRepository:
 
         explicit_side = str(choice_data.get("exchangeSide") or "").strip().lower()
         if explicit_side in {"back", "lay"}:
-            persisted_quote = MarketChoiceQuoteWriter.upsert(
+            upsert_result = MarketChoiceQuoteWriter.upsert(
                 session,
                 quote_index=quote_index,
                 choice_id=choice.choice_id,
@@ -1116,11 +1116,11 @@ class MarketRepository:
                 overwrite_initial=write_policy.overwrite_initial_odds,
                 **common_source_fields,
             )
-            if persisted_quote is not None:
-                quotes_by_identity[(explicit_side, 0)] = persisted_quote
+            if upsert_result is not None and upsert_result.quote is not None:
+                quotes_by_identity[(explicit_side, 0)] = upsert_result.quote
             return quotes_by_identity
 
-        persisted_quote = MarketChoiceQuoteWriter.upsert(
+        upsert_result = MarketChoiceQuoteWriter.upsert(
             session,
             quote_index=quote_index,
             choice_id=choice.choice_id,
@@ -1133,8 +1133,8 @@ class MarketRepository:
             overwrite_initial=write_policy.overwrite_initial_odds,
             **common_source_fields,
         )
-        if persisted_quote is not None:
-            quotes_by_identity[(None, 0)] = persisted_quote
+        if upsert_result is not None and upsert_result.quote is not None:
+            quotes_by_identity[(None, 0)] = upsert_result.quote
 
         exchange_quotes = choice_data.get("exchangeQuotes")
         if not isinstance(exchange_quotes, list):
@@ -1162,7 +1162,7 @@ class MarketRepository:
                 initial_captured_at if side_initial_price is not None else None
             )
 
-            persisted_quote = MarketChoiceQuoteWriter.upsert(
+            upsert_result = MarketChoiceQuoteWriter.upsert(
                 session,
                 quote_index=quote_index,
                 choice_id=choice.choice_id,
@@ -1177,8 +1177,8 @@ class MarketRepository:
                 overwrite_initial=write_policy.overwrite_initial_odds,
                 **common_source_fields,
             )
-            if persisted_quote is not None:
-                quotes_by_identity[(quote_side, quote_level)] = persisted_quote
+            if upsert_result is not None and upsert_result.quote is not None:
+                quotes_by_identity[(quote_side, quote_level)] = upsert_result.quote
 
         return quotes_by_identity
 

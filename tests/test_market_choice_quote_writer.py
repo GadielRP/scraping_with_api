@@ -79,11 +79,12 @@ def _upsert_quote(session, **kwargs):
         ): quote
         for quote in existing_quotes
     }
-    return MarketChoiceQuoteWriter.upsert(
+    result = MarketChoiceQuoteWriter.upsert(
         session,
         quote_index=quote_index,
         **kwargs,
     )
+    return None if result is None else result.quote
 
 
 def test_upsert_creates_row_with_initial_only(tmp_path):
@@ -247,14 +248,14 @@ def test_upsert_reuses_pending_quote_from_preloaded_identity_map(tmp_path):
 
     with manager.get_session() as session:
         quote_index = {}
-        created = MarketChoiceQuoteWriter.upsert(
+        created_result = MarketChoiceQuoteWriter.upsert(
             session,
             quote_index=quote_index,
             choice_id=choice_id,
             source="ODDSPAPI",
             initial_price=1.80,
         )
-        updated = MarketChoiceQuoteWriter.upsert(
+        updated_result = MarketChoiceQuoteWriter.upsert(
             session,
             quote_index=quote_index,
             choice_id=choice_id,
@@ -263,6 +264,8 @@ def test_upsert_reuses_pending_quote_from_preloaded_identity_map(tmp_path):
         )
         session.flush()
 
+        created = created_result.quote
+        updated = updated_result.quote
         assert updated is created
         assert len(quote_index) == 1
         assert session.query(MarketChoiceQuote).count() == 1
