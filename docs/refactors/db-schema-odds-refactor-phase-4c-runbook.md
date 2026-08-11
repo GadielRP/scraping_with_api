@@ -55,7 +55,9 @@ python -m scripts.maintenance.backfill_market_choice_quotes \
   --max-rows 5000
 ```
 
-## 4. Reanudación
+## 4. Reanudación / campaña continua
+
+Chunk único (resume manual):
 
 ```bash
 python -m scripts.maintenance.backfill_market_choice_quotes \
@@ -67,12 +69,47 @@ python -m scripts.maintenance.backfill_market_choice_quotes \
   --max-rows 5000
 ```
 
-`--resume-from` sin path usa el `checkpoint.json` compartido y hace
-**append** a `rejections.ndjson`. Usa `--fresh-artifacts` solo para empezar
-una campaña nueva (trunca rejections).
+Campaña en loop (recomendado en local/server). Una sola invocación procesa
+chunks hasta `events_selected=0`. El presupuesto por chunk sigue siendo
+`--max-events` / `--max-rows` (hard caps del CLI).
 
-`--resume-from` reinicia el presupuesto de filas/eventos de la invocación y
-conserva el cursor + scope incompleto.
+```bash
+# Nueva campaña
+python -m scripts.maintenance.backfill_market_choice_quotes \
+  --commit \
+  --confirm-ingestion-paused \
+  --confirm-purge \
+  --purge-oddspapi-null-mainline-lines \
+  --until-empty \
+  --fresh-artifacts \
+  --max-events 200 \
+  --max-rows 80000 \
+  --batch-size 200
+
+# Continuar campaña existente (reusa checkpoint.json si existe)
+python -m scripts.maintenance.backfill_market_choice_quotes \
+  --commit \
+  --confirm-ingestion-paused \
+  --confirm-purge \
+  --purge-oddspapi-null-mainline-lines \
+  --until-empty \
+  --max-events 200 \
+  --max-rows 80000 \
+  --batch-size 200
+```
+
+`--resume-from` sin path usa el `checkpoint.json` compartido.
+`rejections.ndjson` **siempre hace append** entre invocaciones; usa
+`--fresh-artifacts` solo para empezar una campaña nueva (trunca rejections
+y no auto-resume del checkpoint). Cada run escribe un `run_header` /
+`run_boundary` (línea en blanco + JSON) para separar bloques.
+
+`--resume-from` / cada chunk de `--until-empty` reinicia el presupuesto de
+filas/eventos de la invocación y conserva el cursor + scope incompleto.
+
+Si el checkpoint tiene `algorithm_version` distinta (p.ej. `4b.2` → `4b.3`
+tras el auto-seed de mercados canónicos Back/Lay), hay que empezar campaña
+nueva con `--fresh-artifacts` (no se puede reanudar entre versiones).
 
 ## 5. Verificación post-run
 

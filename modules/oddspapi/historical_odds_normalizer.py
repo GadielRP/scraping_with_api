@@ -61,6 +61,7 @@ class OddspapiHistoricalOddsNormalizer:
         value: Any,
         *,
         minimum_initial_span_minutes: float = 0.0,
+        require_active_quotes: bool = True,
     ) -> dict | None:
         quotes = [
             quote
@@ -73,20 +74,25 @@ class OddspapiHistoricalOddsNormalizer:
         if not quotes:
             return None
 
-        active_quotes = [
-            quote for quote in quotes if quote.get("active") is not False
-        ]
-        if not active_quotes:
+        # ``require_active_quotes`` mirrors ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES:
+        # when True, both opening and current come from the active timeline;
+        # when False, use every priced observation (needed for suspended lines
+        # that still publish prices with active=false).
+        if require_active_quotes:
+            candidate_quotes = [
+                quote for quote in quotes if quote.get("active") is not False
+            ]
+        else:
+            candidate_quotes = quotes
+        if not candidate_quotes:
             return None
 
-        # The historical endpoint may append inactive availability observations
-        # after the last offered price.  For odds ingestion, "current" means the
-        # most recent quote that OddsPAPI explicitly marked active; later inactive
-        # observations must not hide that usable price.
-        opening = active_quotes[0]
-        latest = active_quotes[-1]
+        opening = candidate_quotes[0]
+        latest = candidate_quotes[-1]
         normalized = dict(latest)
-        normalized["active"] = True
+        if require_active_quotes:
+            # Selected from the active pool; keep the current-odds contract.
+            normalized["active"] = True
         normalized["changedAt"] = latest.get("createdAt")
         opening_at = cls._parse_timestamp(opening.get("createdAt"))
         latest_at = cls._parse_timestamp(latest.get("createdAt"))
@@ -95,8 +101,7 @@ class OddspapiHistoricalOddsNormalizer:
             float(minimum_initial_span_minutes or 0.0),
         ) * 60.0
         has_credible_opening = (
-            len(active_quotes) >= 2
-            and opening_at is not None
+            opening_at is not None
             and latest_at is not None
             and (latest_at - opening_at).total_seconds() >= minimum_span_seconds
         )
@@ -113,6 +118,7 @@ class OddspapiHistoricalOddsNormalizer:
         *,
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float = 0.0,
+        require_active_quotes: bool = True,
     ) -> dict:
         payload = historical_response if isinstance(historical_response, dict) else {}
         normalized_bookmakers: dict[str, dict] = {}
@@ -151,6 +157,7 @@ class OddspapiHistoricalOddsNormalizer:
                                 minimum_initial_span_minutes=(
                                     minimum_initial_span_minutes
                                 ),
+                                require_active_quotes=require_active_quotes,
                             )
                         )
                         is not None

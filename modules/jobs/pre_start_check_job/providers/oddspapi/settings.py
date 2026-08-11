@@ -47,8 +47,10 @@ class OddspapiPreStartSettings:
     exchange_max_requests_per_run: int = 40
 
     # Persistence/normalization policy.
-    # When False, quotes with active=false are still eligible (needed when a
-    # bookmaker marks suspended/stale lines inactive but still publishes prices).
+    # When False, quotes with active=false are still eligible for current and
+    # historical opening/current selection (needed when a bookmaker marks
+    # suspended/stale lines inactive but still publishes prices). Driven by
+    # Config.ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES at runtime.
     require_active_quotes: bool = True
     persist_main_line_only: bool = False
 

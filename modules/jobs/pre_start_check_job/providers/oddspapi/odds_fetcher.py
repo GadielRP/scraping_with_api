@@ -33,6 +33,7 @@ class OddspapiOddsFetcher:
         source_sport_id: str | int | None = None,
         outcome_id: int | None = None,
         minimum_initial_span_minutes: float = 0.0,
+        require_active_quotes: bool = True,
         capture_raw_response: bool = False,
     ) -> OddsFetchResult:
         selected_endpoint = str(endpoint or "").strip().lower()
@@ -57,6 +58,7 @@ class OddspapiOddsFetcher:
                     historical_payload,
                     source_sport_id=source_sport_id,
                     minimum_initial_span_minutes=minimum_initial_span_minutes,
+                    require_active_quotes=require_active_quotes,
                 )
             else:
                 payload = self.client.get_odds(

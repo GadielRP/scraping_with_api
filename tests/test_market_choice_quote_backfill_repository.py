@@ -531,3 +531,183 @@ def test_initial_odds_unavailable_written_to_rejections(tmp_path):
     assert "initial_odds_unavailable" in rej.read_text(encoding="utf-8")
     # Notes must not be treated as blocking decisions by themselves.
     assert summary["blocking_decisions"] == 0
+
+
+def test_commit_seeds_canonical_market_for_legacy_back_lay(tmp_path):
+    """Back/Lay legacy markets get a choice_group=NULL canonical destination."""
+    from infrastructure.persistence.models import BookieSourceMapping
+
+    manager = make_manager(tmp_path, name="back_lay_seed")
+    with manager.get_session() as session:
+        sofascore = Bookie(name="SofaScore", slug="sofascore")
+        event = Event(
+            slug="bf-back-lay",
+            start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
+            sport="Football",
+            competition="Test",
+            home_team="Home",
+            away_team="Away",
+        )
+        bookie = Bookie(name="Betfair Exchange", slug="betfair-ex")
+        session.add_all([sofascore, event, bookie])
+        session.flush()
+        session.add(
+            BookieSourceMapping(
+                bookie_id=bookie.bookie_id,
+                source="oddsportal",
+                source_bookie_name="Betfair Exchange",
+                source_bookie_slug="betfair-ex",
+                match_method="manual_alias",
+            )
+        )
+        back = Market(
+            event_id=event.id,
+            bookie_id=bookie.bookie_id,
+            market_name="1X2 Full Time",
+            market_group="1X2",
+            market_period="Full Time",
+            choice_group="Back",
+            is_live=False,
+        )
+        lay = Market(
+            event_id=event.id,
+            bookie_id=bookie.bookie_id,
+            market_name="1X2 Full Time",
+            market_group="1X2",
+            market_period="Full Time",
+            choice_group="Lay",
+            is_live=False,
+        )
+        session.add_all([back, lay])
+        session.flush()
+        choices = []
+        for market, side_price in ((back, 2.3), (lay, 2.32)):
+            for name, price in (("1", side_price), ("x", side_price + 0.8), ("2", side_price + 1.7)):
+                choice = MarketChoice(
+                    market_id=market.market_id,
+                    choice_name=name,
+                    current_odds=price,
+                )
+                session.add(choice)
+                choices.append((choice, price, "back" if market is back else "lay"))
+        session.flush()
+        for choice, price, _side in choices:
+            session.add(
+                MarketChoiceSnapshot(
+                    choice_id=choice.choice_id,
+                    odds_value=price,
+                    collected_at=datetime(2026, 6, 20, 11, 0, 0),
+                    source=None,
+                )
+            )
+        event_id = event.id
+        bookie_id = bookie.bookie_id
+
+    service = MarketChoiceQuoteBackfillService(manager.get_session)
+    code, summary = service.run(
+        RunConfig(
+            dry_run=False,
+            event_id=event_id,
+            batch_size=50,
+            max_rows=100,
+            confirm_ingestion_paused=True,
+            checkpoint_file=tmp_path / "checkpoint.json",
+            output_json=tmp_path / "summary.json",
+            output_rejections=tmp_path / "rej.ndjson",
+        )
+    )
+    assert code == 0, summary
+    assert summary["canonical_markets_created"] >= 1
+    assert summary["canonical_choices_created"] >= 3
+    assert summary["snapshots_linked"] == 6
+    assert summary["blocking_decisions"] == 0
+
+    with manager.get_session() as session:
+        canonical = (
+            session.query(Market)
+            .filter(
+                Market.event_id == event_id,
+                Market.bookie_id == bookie_id,
+                Market.market_name == "1X2 Full Time",
+                Market.choice_group.is_(None),
+            )
+            .one()
+        )
+        assert canonical.market_group == "1X2"
+        assert canonical.market_period == "Full Time"
+        choice_names = {
+            c.choice_name
+            for c in session.query(MarketChoice)
+            .filter(MarketChoice.market_id == canonical.market_id)
+            .all()
+        }
+        assert choice_names == {"1", "x", "2"}
+        quotes = (
+            session.query(MarketChoiceQuote)
+            .join(MarketChoice, MarketChoice.choice_id == MarketChoiceQuote.choice_id)
+            .filter(MarketChoice.market_id == canonical.market_id)
+            .all()
+        )
+        assert len(quotes) == 6
+        sides = {(q.exchange_side, session.get(MarketChoice, q.choice_id).choice_name) for q in quotes}
+        assert ("back", "1") in sides
+        assert ("lay", "1") in sides
+        unlinked = (
+            session.query(MarketChoiceSnapshot)
+            .join(MarketChoice, MarketChoice.choice_id == MarketChoiceSnapshot.choice_id)
+            .join(Market, Market.market_id == MarketChoice.market_id)
+            .filter(Market.event_id == event_id, MarketChoiceSnapshot.quote_id.is_(None))
+            .count()
+        )
+        assert unlinked == 0
+
+
+def test_lookup_catalog_seed_for_1x2_full_time():
+    from modules.odds_ingestion.backfill.market_choice_quote_backfill import (
+        lookup_catalog_seed_for_market,
+    )
+
+    seed = lookup_catalog_seed_for_market("1X2 Full Time", "Full Time")
+    assert seed is not None
+    assert seed["canonical_market_group"] == "1X2"
+    assert seed["requires_choice_group"] is False
+
+
+def test_rejections_file_appends_with_run_headers(tmp_path):
+    manager = make_manager(tmp_path, "rej_append")
+    seeded = seed_event_with_unlinked_snapshot(manager, source="oddspapi")
+    rej = tmp_path / "rej.ndjson"
+    service = MarketChoiceQuoteBackfillService(manager.get_session)
+
+    code1, _ = service.run(
+        RunConfig(
+            dry_run=True,
+            event_id=seeded["event_id"],
+            batch_size=50,
+            max_rows=100,
+            output_json=tmp_path / "s1.json",
+            output_rejections=rej,
+            append_rejections=False,
+        )
+    )
+    assert code1 in (0, 2)
+    first = rej.read_text(encoding="utf-8")
+    assert '"reason_code": "run_boundary"' in first
+    assert first.count('"reason_code": "run_boundary"') == 1
+
+    code2, _ = service.run(
+        RunConfig(
+            dry_run=True,
+            event_id=seeded["event_id"],
+            batch_size=50,
+            max_rows=100,
+            output_json=tmp_path / "s2.json",
+            output_rejections=rej,
+            append_rejections=True,
+        )
+    )
+    assert code2 in (0, 2)
+    second = rej.read_text(encoding="utf-8")
+    assert second.startswith(first.rstrip("\n"))
+    assert second.count('"reason_code": "run_boundary"') == 2
+    assert "\n\n{" in second or "\n\n{\n" in second or second.count("\n\n") >= 1

@@ -362,7 +362,9 @@ class Config:
         'ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY',
         False,
     )
-    # When false, inactive OddsPapi quotes may still be normalized/persisted.
+    # When false, inactive OddsPapi quotes may still be selected for current and
+    # historical opening/current (adapter + historical normalizer + exchange
+    # selector). When true, active=false ticks are skipped.
     ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES = _parse_env_bool(
         'ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES',
         True,

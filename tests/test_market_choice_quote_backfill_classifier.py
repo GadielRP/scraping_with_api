@@ -57,12 +57,15 @@ def test_sportsbook_with_source_resolves_null_side():
     assert decision.identity.exchange_level == 0
 
 
-def test_channel_sources_kept_verbatim_even_on_sofascore_bookie():
+def test_channel_sources_rewrite_to_sofascore():
     for channel in (
         "daily_discovery",
         "dropping_odds",
         "winning_odds",
         "secondary_discovery",
+        "parallel_odds_checking",
+        "sofascore_daily_discovery",
+        "sofascore_dropping_odds",
     ):
         decision = classify_candidate(
             _candidate(raw_source=channel, bookie_id=1),
@@ -72,7 +75,62 @@ def test_channel_sources_kept_verbatim_even_on_sofascore_bookie():
             choices_by_market_name={},
         )
         assert decision.status is ClassificationStatus.RESOLVED, channel
-        assert decision.identity.source == channel
+        assert decision.identity.source == "sofascore"
+        assert decision.evidence.get("canonicalized_from") == channel
+
+
+def test_channel_ticks_share_sofascore_identity_and_latest_current():
+    from modules.odds_ingestion.backfill.market_choice_quote_backfill import (
+        build_quote_state_candidates,
+    )
+
+    early = classify_candidate(
+        _candidate(
+            snapshot_id=1,
+            raw_source="daily_discovery",
+            bookie_id=1,
+            odds_value=1.11,
+            collected_at=datetime(2026, 8, 9, 23, 0, 0),
+        ),
+        bookie_sources={},
+        exchange_choice_ids=set(),
+        canonical_markets={},
+        choices_by_market_name={},
+    )
+    mid = classify_candidate(
+        _candidate(
+            snapshot_id=2,
+            raw_source="dropping_odds",
+            bookie_id=1,
+            odds_value=1.09,
+            collected_at=datetime(2026, 8, 10, 12, 0, 0),
+        ),
+        bookie_sources={},
+        exchange_choice_ids=set(),
+        canonical_markets={},
+        choices_by_market_name={},
+    )
+    late = classify_candidate(
+        _candidate(
+            snapshot_id=3,
+            raw_source="sofascore",
+            bookie_id=1,
+            odds_value=1.08,
+            collected_at=datetime(2026, 8, 10, 18, 0, 0),
+        ),
+        bookie_sources={},
+        exchange_choice_ids=set(),
+        canonical_markets={},
+        choices_by_market_name={},
+    )
+    assert {early.identity, mid.identity, late.identity} == {early.identity}
+    assert early.identity.source == "sofascore"
+
+    states = build_quote_state_candidates([early, mid, late])
+    assert len(states) == 1
+    assert states[0].current_price == 1.08
+    assert states[0].current_captured_at == datetime(2026, 8, 10, 18, 0, 0)
+    assert states[0].snapshot_ids == (1, 2, 3)
 
 
 def test_null_source_infers_sofascore_from_bookie_id():

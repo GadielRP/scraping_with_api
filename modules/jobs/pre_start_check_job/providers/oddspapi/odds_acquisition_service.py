@@ -116,6 +116,7 @@ class OddspapiPreStartOddsAcquisitionService:
         source_sport_id: str | int | None,
         outcome_id: int | None = None,
         minimum_initial_span_minutes: float = 0.0,
+        require_active_quotes: bool = True,
         capture_raw_response: bool = False,
     ) -> OddsFetchResult:
         return self.fetcher.fetch_odds(
@@ -125,6 +126,7 @@ class OddspapiPreStartOddsAcquisitionService:
             source_sport_id=source_sport_id,
             outcome_id=outcome_id,
             minimum_initial_span_minutes=minimum_initial_span_minutes,
+            require_active_quotes=require_active_quotes,
             capture_raw_response=capture_raw_response,
         )
 
@@ -192,6 +194,7 @@ class OddspapiPreStartOddsAcquisitionService:
         selections: list[ExchangeHistoricalSelection],
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float,
+        require_active_quotes: bool = True,
         payload: dict | None,
         result: OddspapiOddsAcquisitionResult,
         requested_bookmakers: set[str],
@@ -209,6 +212,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 selections=selections,
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
+                require_active_quotes=require_active_quotes,
             )
             for outcome in outcomes:
                 payload = self._apply_exchange_historical_result(
@@ -235,6 +239,7 @@ class OddspapiPreStartOddsAcquisitionService:
                     source_sport_id=source_sport_id,
                     outcome_id=int(selection.source_outcome_id),
                     minimum_initial_span_minutes=minimum_initial_span_minutes,
+                    require_active_quotes=require_active_quotes,
                 )
             except Exception as exc:
                 error = exc
@@ -261,6 +266,7 @@ class OddspapiPreStartOddsAcquisitionService:
         exchange_max_outcomes_per_event: int,
         exchange_request_budget: int | None,
         minimum_initial_span_minutes: float,
+        require_active_quotes: bool = True,
         debug_mode: bool,
         result: OddspapiOddsAcquisitionResult,
         requested_bookmakers: set[str],
@@ -278,6 +284,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 endpoint=ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
+                require_active_quotes=require_active_quotes,
                 capture_raw_response=debug_mode,
             )
             historical_missing = historical_result.endpoint_missing
@@ -328,6 +335,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 selections=selections,
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
+                require_active_quotes=require_active_quotes,
                 payload=payload,
                 result=result,
                 requested_bookmakers=requested_bookmakers,
@@ -421,6 +429,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 endpoint=ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
+                require_active_quotes=require_active_quotes,
             )
             if historical_result.payload:
                 payload = OddspapiHistoricalOddsEnricher.merge_initial_prices(
@@ -479,6 +488,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 selections=selection_result.selections,
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
+                require_active_quotes=require_active_quotes,
                 payload=payload,
                 result=result,
                 requested_bookmakers=requested_bookmakers,
@@ -533,6 +543,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
                 exchange_request_budget=exchange_request_budget,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
+                require_active_quotes=require_active_quotes,
                 debug_mode=debug_mode,
                 result=result,
                 requested_bookmakers=requested_bookmakers,

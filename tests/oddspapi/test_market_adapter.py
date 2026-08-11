@@ -623,6 +623,83 @@ def test_historical_normalizer_selects_opening_and_latest_current_quote():
     assert normalized_player["changedAt"] == "2026-06-19T00:03:00Z"
 
 
+def test_historical_normalizer_opening_allows_inactive_earliest_with_span():
+    """With require_active_quotes=False, opening/current ignore active."""
+    historical = {
+        "fixtureId": "fixture-1",
+        "bookmakers": {
+            "1xbet": {
+                "markets": {
+                    "100": {
+                        "outcomes": {
+                            "1": {
+                                "players": {
+                                    "0": [
+                                        {
+                                            "createdAt": "2026-06-19T00:00:00Z",
+                                            "price": 1.55,
+                                            "limit": 100,
+                                            "active": False,
+                                        },
+                                        {
+                                            "createdAt": "2026-06-19T00:10:00Z",
+                                            "price": 1.6,
+                                            "active": False,
+                                        },
+                                        {
+                                            "createdAt": "2026-06-19T01:30:00Z",
+                                            "price": 1.72,
+                                            "limit": 50,
+                                            "active": True,
+                                        },
+                                        {
+                                            "createdAt": "2026-06-19T01:45:00Z",
+                                            "price": 1.8,
+                                            "limit": 40,
+                                            "active": False,
+                                        },
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+
+    normalized = OddspapiHistoricalOddsNormalizer.normalize(
+        historical,
+        source_sport_id="10",
+        minimum_initial_span_minutes=60,
+        require_active_quotes=False,
+    )
+    player = (
+        normalized["bookmakerOdds"]["1xbet"]["markets"]["100"]
+        ["outcomes"]["1"]["players"]["0"]
+    )
+    assert player["price"] == 1.8
+    assert player["active"] is False
+    assert player["initialPrice"] == 1.55
+    assert player["initialChangedAt"] == "2026-06-19T00:00:00Z"
+    assert player["initialLimit"] == 100
+
+    # Default require_active_quotes=True keeps current on last active only.
+    active_only = OddspapiHistoricalOddsNormalizer.normalize(
+        historical,
+        source_sport_id="10",
+        minimum_initial_span_minutes=60,
+        require_active_quotes=True,
+    )
+    active_player = (
+        active_only["bookmakerOdds"]["1xbet"]["markets"]["100"]
+        ["outcomes"]["1"]["players"]["0"]
+    )
+    assert active_player["price"] == 1.72
+    assert active_player["active"] is True
+    assert "initialPrice" not in active_player
+
+
 def test_historical_normalizer_uses_latest_bet365_observation():
     historical = {
         "fixtureId": "fixture-1",
@@ -753,6 +830,18 @@ def test_historical_normalizer_does_not_emit_never_active_players():
     )
 
     assert normalized["bookmakerOdds"] == {}
+
+    allowed = OddspapiHistoricalOddsNormalizer.normalize(
+        historical,
+        source_sport_id="10",
+        require_active_quotes=False,
+    )
+    player = (
+        allowed["bookmakerOdds"]["pinnacle"]["markets"]["100"]
+        ["outcomes"]["1"]["players"]["0"]
+    )
+    assert player["price"] == 1.7
+    assert player["active"] is False
 
 
 def test_historical_normalizer_requires_configured_span_for_initial_price():

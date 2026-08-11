@@ -17,6 +17,10 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+    # Parallel query workers need /dev/shm; Docker default (64MB) OOMs on
+    # large UNION/joins used by maintenance backfills (DiskFull on shm resize).
+    shm_size: "1gb"
+
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 10s

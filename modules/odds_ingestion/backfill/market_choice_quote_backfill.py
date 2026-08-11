@@ -10,7 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
+import time
 import uuid
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
@@ -37,13 +39,43 @@ from infrastructure.persistence.repositories.market.market_choice_quote_merge_po
 from infrastructure.persistence.repositories.market.market_choice_quote_writer import (
     MarketChoiceQuoteWriter,
 )
+from infrastructure.persistence.catalogs.canonical_market_types import (
+    CANONICAL_MARKET_TYPE_SEEDS,
+)
 
 logger = logging.getLogger(__name__)
 
-ALGORITHM_VERSION = "4b.1"
+ALGORITHM_VERSION = "4b.3"
+# Cooperative cancel for Ctrl+C / SIGTERM: finish the current batch, persist
+# checkpoint, then stop (campaign loop also honors this between chunks).
+_STOP_REQUESTED = False
+_STOP_FORCE = False
+
+
+def request_stop(*, force: bool = False) -> None:
+    global _STOP_REQUESTED, _STOP_FORCE
+    _STOP_REQUESTED = True
+    if force:
+        _STOP_FORCE = True
+
+
+def clear_stop() -> None:
+    global _STOP_REQUESTED, _STOP_FORCE
+    _STOP_REQUESTED = False
+    _STOP_FORCE = False
+
+
+def stop_requested() -> bool:
+    return _STOP_REQUESTED
+
+
+def stop_forced() -> bool:
+    return _STOP_FORCE
+
 # Provider sources (canonical) + historical SofaScore *pipeline channel* labels
-# that were written into snapshot.source. Channel labels are kept verbatim on
-# quotes — never rewritten to "sofascore".
+# that were written into snapshot.source. Channels are accepted as input but
+# always rewritten to quote.source = "sofascore" so ticks from daily_discovery /
+# dropping_odds / sofascore share one quote identity (current = latest tick).
 PROVIDER_SOURCES = frozenset({"sofascore", "oddspapi", "oddsportal"})
 CHANNEL_SOURCES = frozenset(
     {
@@ -161,6 +193,8 @@ class BatchReport:
     snapshots_linked: int = 0
     stale_candidates_ignored: int = 0
     metadata_conflicts: int = 0
+    canonical_markets_created: int = 0
+    canonical_choices_created: int = 0
     rejections: list[dict[str, Any]] = field(default_factory=list)
     notes: list[dict[str, Any]] = field(default_factory=list)
 
@@ -219,11 +253,58 @@ def parse_legacy_back_lay_choice_group(
     return side, (line or None)
 
 
+def lookup_catalog_seed_for_market(
+    market_name: str, market_period: str
+) -> Optional[dict[str, Any]]:
+    """Match a persisted market name/period to ``CANONICAL_MARKET_TYPE_SEEDS``.
+
+    Used when seeding the destination market for legacy Back/Lay rematerialization
+    so ``market_group`` / ``requires_choice_group`` come from the catalog.
+    """
+    name = str(market_name or "").strip()
+    period = str(market_period or "Full Time").strip() or "Full Time"
+    if not name:
+        return None
+    exact: list[dict[str, Any]] = []
+    by_name: list[dict[str, Any]] = []
+    for seed in CANONICAL_MARKET_TYPE_SEEDS.values():
+        seed_name = str(seed.get("canonical_market_name") or "").strip()
+        seed_period = str(seed.get("canonical_market_period") or "").strip()
+        if seed_name != name:
+            continue
+        by_name.append(seed)
+        if seed_period == period:
+            exact.append(seed)
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        enabled = [s for s in exact if s.get("enabled_for_ingestion")]
+        return (enabled or exact)[0]
+    if len(by_name) == 1:
+        return by_name[0]
+    return None
+
+
 def _normalize_source(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
     normalized = str(value).strip().lower()
     return normalized or None
+
+
+def canonicalize_quote_source(source: Optional[str]) -> Optional[str]:
+    """Map historical SofaScore pipeline channels onto provider ``sofascore``.
+
+    Snapshot rows may still carry ``daily_discovery`` / ``dropping_odds`` / etc.
+    Quote identity must use the canonical provider so all SofaScore ticks for a
+    choice share one quote and ``current`` is the latest across channels.
+    """
+    normalized = _normalize_source(source)
+    if normalized is None:
+        return None
+    if normalized in CHANNEL_SOURCES:
+        return "sofascore"
+    return normalized
 
 
 def _normalize_side(value: Optional[str]) -> Optional[str]:
@@ -273,7 +354,7 @@ def classify_candidate(
         try:
             identity = QuoteIdentity(
                 choice_id=int(res["canonical_choice_id"]),
-                source=_normalize_source(res["source"]) or "",
+                source=canonicalize_quote_source(res["source"]) or "",
                 exchange_side=_normalize_side(res.get("exchange_side")),
                 exchange_level=int(res.get("exchange_level") or 0),
             )
@@ -284,7 +365,7 @@ def classify_candidate(
                 candidate=candidate,
                 evidence={"error": str(exc), "resolution": dict(res)},
             )
-        if identity.source not in KNOWN_SOURCES:
+        if identity.source not in PROVIDER_SOURCES:
             return ClassificationDecision(
                 status=ClassificationStatus.INVALID,
                 reason_code="invalid_resolution_source",
@@ -325,16 +406,16 @@ def classify_candidate(
                 candidate=candidate,
                 evidence=evidence,
             )
-        # Keep channel labels verbatim (daily_discovery, dropping_odds, …).
-        # Do not rewrite them to "sofascore".
-        source = raw_source
+        # Historical SofaScore pipeline channels → canonical provider source.
+        source = canonicalize_quote_source(raw_source)
+        if raw_source in CHANNEL_SOURCES:
+            evidence["canonicalized_from"] = raw_source
         # Back/Lay legacy markets are OddsPortal; an explicit non-oddsportal
-        # *provider* label on those rows is contradictory. Channel labels are
-        # left as-is even if odd (no silent rewrite).
+        # provider label on those rows is contradictory.
         if (
             legacy_side is not None
-            and raw_source in PROVIDER_SOURCES
-            and raw_source != "oddsportal"
+            and source in PROVIDER_SOURCES
+            and source != "oddsportal"
         ):
             return ClassificationDecision(
                 status=ClassificationStatus.CONFLICT,
@@ -342,7 +423,7 @@ def classify_candidate(
                 candidate=candidate,
                 evidence={
                     **evidence,
-                    "sources": sorted({raw_source, "oddsportal"}),
+                    "sources": sorted({source, "oddsportal"}),
                 },
             )
     else:
@@ -485,7 +566,9 @@ def classify_candidate(
                     **evidence,
                     "target_market_id": target_market_id,
                     "choice_name": candidate.choice_name,
+                    "note": "canonical choice missing; creation requires resolution or prior seed",
                 },
+                plan_create_canonical=True,
                 canonical_market_key=canonical_market_key,
             )
         canonical_choice_id = int(target_choice.choice_id)
@@ -700,10 +783,42 @@ def load_checkpoint(path: Path) -> Checkpoint:
 
 
 def write_checkpoint_atomic(path: Path, checkpoint: Checkpoint) -> None:
+    """Write checkpoint via temp file + replace, with Windows-friendly retries.
+
+    Editors (Cursor/VS Code) often keep ``checkpoint.json`` open and briefly
+    deny ``os.replace`` on Windows (WinError 5). Retry and fall back to
+    unlink+replace before giving up.
+    """
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(asdict(checkpoint), indent=2, default=str), encoding="utf-8")
-    tmp.replace(path)
+    payload = json.dumps(asdict(checkpoint), indent=2, default=str)
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    last_error: Optional[BaseException] = None
+    try:
+        for attempt in range(8):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as exc:
+                last_error = exc
+                time.sleep(0.05 * (2**attempt))
+                try:
+                    if path.exists():
+                        path.unlink()
+                    os.replace(tmp, path)
+                    return
+                except OSError as exc2:
+                    last_error = exc2
+                    time.sleep(0.05 * (2**attempt))
+        assert last_error is not None
+        raise last_error
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def _rejection_row(decision: ClassificationDecision) -> dict[str, Any]:
@@ -749,6 +864,47 @@ def _append_ndjson(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(dict(row), default=str) + "\n")
+
+
+def _write_rejections_run_header(
+    path: Path,
+    *,
+    run_id: str,
+    config: RunConfig,
+    append: bool,
+) -> None:
+    """Append a parseable run boundary (and a blank line when continuing a file)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    leading_blank = append and path.exists() and path.stat().st_size > 0
+    header = {
+        "status": "run_header",
+        "reason_code": "run_boundary",
+        "run_id": run_id,
+        "event_id": config.event_id,
+        "market_id": None,
+        "choice_id": None,
+        "snapshot_id": None,
+        "evidence": {
+            "algorithm_version": ALGORITHM_VERSION,
+            "dry_run": config.dry_run,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "append": append,
+            "filters": {
+                "event_id": config.event_id,
+                "event_id_min": config.event_id_min,
+                "event_id_max": config.event_id_max,
+                "after_event_id": config.after_event_id,
+                "source": config.source,
+                "pass": config.pass_name,
+                "max_events": config.max_events,
+                "max_rows": config.max_rows,
+            },
+        },
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        if leading_blank:
+            handle.write("\n")
+        handle.write(json.dumps(header, default=str) + "\n")
 
 
 class MarketChoiceQuoteBackfillService:
@@ -886,6 +1042,8 @@ class MarketChoiceQuoteBackfillService:
             "quotes_unchanged": 0,
             "stale_candidates_ignored": 0,
             "metadata_conflicts": 0,
+            "canonical_markets_created": 0,
+            "canonical_choices_created": 0,
             "ambiguous_source": 0,
             "ambiguous_target": 0,
             "ambiguous_choice_state": 0,
@@ -906,14 +1064,26 @@ class MarketChoiceQuoteBackfillService:
             config.max_rows if config.max_rows is not None else MAX_ROWS_HARD_CAP
         )
         hit_row_limit = False
+        hit_interrupt = False
         rejection_path = config.output_rejections
         if rejection_path is not None:
             rejection_path.parent.mkdir(parents=True, exist_ok=True)
             if config.append_rejections and rejection_path.exists():
-                # Keep prior campaign audit rows (multi-invocation / resume).
-                pass
+                # Keep prior campaign / prior-run audit rows.
+                _write_rejections_run_header(
+                    rejection_path,
+                    run_id=run_id,
+                    config=config,
+                    append=True,
+                )
             else:
                 rejection_path.write_text("", encoding="utf-8")
+                _write_rejections_run_header(
+                    rejection_path,
+                    run_id=run_id,
+                    config=config,
+                    append=False,
+                )
 
         if config.purge_oddspapi_null_mainline_lines and event_scope:
             with self._session_factory() as session:
@@ -988,8 +1158,10 @@ class MarketChoiceQuoteBackfillService:
                 passes = ["snapshots", "choice_states"]
 
         blocking = 0
+        checkpoint_pass_name = passes[0] if passes else "snapshots"
         try:
             for pass_name in passes:
+                checkpoint_pass_name = pass_name
                 if rows_remaining <= 0:
                     summary["stop_reason"] = "max_rows"
                     hit_row_limit = True
@@ -1003,6 +1175,14 @@ class MarketChoiceQuoteBackfillService:
                 cursor_choice = after_choice_id if pass_name == "choice_states" else None
 
                 while rows_remaining > 0:
+                    if stop_requested():
+                        hit_interrupt = True
+                        summary["stop_reason"] = "interrupted"
+                        logger.info(
+                            "stop requested: skipping further batches "
+                            "(last committed batch already checkpointed)"
+                        )
+                        break
                     batch_limit = min(config.batch_size, rows_remaining)
                     report = self._process_batch(
                         config=config,
@@ -1036,6 +1216,8 @@ class MarketChoiceQuoteBackfillService:
                     summary["quotes_unchanged"] += report.quotes_unchanged
                     summary["stale_candidates_ignored"] += report.stale_candidates_ignored
                     summary["metadata_conflicts"] += report.metadata_conflicts
+                    summary["canonical_markets_created"] += report.canonical_markets_created
+                    summary["canonical_choices_created"] += report.canonical_choices_created
 
                     for rejection in report.rejections:
                         reason = rejection.get("reason_code")
@@ -1074,11 +1256,42 @@ class MarketChoiceQuoteBackfillService:
 
                     if report.rows_scanned < batch_limit:
                         break
+                    if stop_requested():
+                        hit_interrupt = True
+                        summary["stop_reason"] = "interrupted"
+                        logger.info(
+                            "stop requested after batch: checkpoint persisted, exiting chunk"
+                        )
+                        break
 
                 after_snapshot_id = cursor_snapshot
                 after_choice_id = cursor_choice
+                if hit_interrupt:
+                    break
 
-            if hit_row_limit:
+            if hit_interrupt:
+                summary["stop_reason"] = "interrupted"
+                # Mid-batch checkpoints already wrote events_completed=False.
+                # Re-write once more so updated_at / cursors reflect the stop.
+                if config.checkpoint_file is not None and not config.dry_run:
+                    write_checkpoint_atomic(
+                        config.checkpoint_file,
+                        Checkpoint(
+                            algorithm_version=ALGORITHM_VERSION,
+                            run_id=run_id,
+                            pass_name=checkpoint_pass_name,
+                            event_scope=event_scope,
+                            last_snapshot_id=after_snapshot_id,
+                            last_choice_id=after_choice_id,
+                            after_event_id=config.after_event_id,
+                            filters=summary["filters"],
+                            resolution_sha256=resolution_sha,
+                            rows_consumed_total=summary["rows_consumed"],
+                            events_completed=False,
+                            updated_at=datetime.now(timezone.utc).isoformat(),
+                        ),
+                    )
+            elif hit_row_limit:
                 summary["stop_reason"] = "max_rows"
 
             if (
@@ -1118,9 +1331,117 @@ class MarketChoiceQuoteBackfillService:
             datetime.now(timezone.utc) - started
         ).total_seconds()
         self._write_outputs(config, summary, [])
+        if summary.get("stop_reason") == "interrupted":
+            return 130, summary
         if blocking:
             return 2, summary
         return 0, summary
+
+    def _seed_missing_canonical_targets(
+        self,
+        session: Session,
+        *,
+        decisions: Sequence[ClassificationDecision],
+        canonical_markets: dict[tuple[int, int, str, str, Optional[str], bool], Any],
+        choices_by_market_name: dict[tuple[int, str], Any],
+    ) -> dict[str, int]:
+        """Create catalog-aligned markets/choices for legacy Back/Lay remaps.
+
+        Only seeds when the classifier already proved a deterministic identity
+        (``plan_create_canonical``) and the market name/period matches
+        ``CANONICAL_MARKET_TYPE_SEEDS``. Line markets that require a choice_group
+        but have no parsed line stay ambiguous.
+        """
+        markets_created = 0
+        choices_created = 0
+        seed_jobs: dict[
+            tuple[int, int, str, str, Optional[str], bool], set[str]
+        ] = defaultdict(set)
+
+        for decision in decisions:
+            if decision.status is not ClassificationStatus.AMBIGUOUS:
+                continue
+            if not decision.plan_create_canonical:
+                continue
+            if decision.canonical_market_key is None:
+                continue
+            key = decision.canonical_market_key
+            seed_jobs[key].add(str(decision.candidate.choice_name).strip())
+
+        for key, batch_names in seed_jobs.items():
+            event_id, bookie_id, market_name, market_period, line, is_live = key
+            catalog = lookup_catalog_seed_for_market(market_name, market_period)
+            if catalog is None:
+                logger.warning(
+                    "skip canonical seed: market not in catalog name=%s period=%s",
+                    market_name,
+                    market_period,
+                )
+                continue
+            if catalog.get("requires_choice_group") and line is None:
+                logger.warning(
+                    "skip canonical seed: requires_choice_group but line missing "
+                    "name=%s period=%s event_id=%s",
+                    market_name,
+                    market_period,
+                    event_id,
+                )
+                continue
+
+            sibling_names = (
+                MarketChoiceQuoteBackfillRepository.find_legacy_back_lay_choice_names(
+                    session,
+                    event_id=event_id,
+                    bookie_id=bookie_id,
+                    market_name=market_name,
+                    market_period=market_period,
+                    line=line,
+                    is_live=is_live,
+                )
+            )
+            choice_names = sorted(
+                {n for n in batch_names if n} | {n for n in sibling_names if n}
+            )
+            if not choice_names:
+                continue
+
+            market_group = str(catalog.get("canonical_market_group") or "").strip()
+            market, choices, created_market, created_choice_count = (
+                MarketChoiceQuoteBackfillRepository.ensure_canonical_market_with_choices(
+                    session,
+                    event_id=event_id,
+                    bookie_id=bookie_id,
+                    market_name=market_name,
+                    market_group=market_group,
+                    market_period=market_period,
+                    choice_group=line,
+                    is_live=is_live,
+                    choice_names=choice_names,
+                )
+            )
+            if created_market:
+                markets_created += 1
+                logger.info(
+                    "seeded canonical market event_id=%s bookie_id=%s name=%s "
+                    "period=%s choice_group=%s market_id=%s",
+                    event_id,
+                    bookie_id,
+                    market_name,
+                    market_period,
+                    line,
+                    market.market_id,
+                )
+            choices_created += created_choice_count
+            canonical_markets[key] = market
+            for choice in choices:
+                choices_by_market_name[
+                    (int(market.market_id), str(choice.choice_name).strip().lower())
+                ] = choice
+
+        return {
+            "markets_created": markets_created,
+            "choices_created": choices_created,
+        }
 
     def _process_batch(
         self,
@@ -1226,6 +1547,32 @@ class MarketChoiceQuoteBackfillService:
                 ):
                     continue
                 decisions.append(decision)
+
+            if not config.dry_run:
+                seeded = self._seed_missing_canonical_targets(
+                    session,
+                    decisions=decisions,
+                    canonical_markets=canonical_markets,
+                    choices_by_market_name=choices_by_market_name,
+                )
+                report.canonical_markets_created += seeded["markets_created"]
+                report.canonical_choices_created += seeded["choices_created"]
+                if seeded["markets_created"] or seeded["choices_created"]:
+                    # Re-classify after seed so Back/Lay ticks resolve to the new
+                    # canonical choice_ids in this same batch.
+                    decisions = [
+                        classify_candidate(
+                            decision.candidate,
+                            bookie_sources=bookie_sources,
+                            exchange_choice_ids=exchange_choice_ids,
+                            canonical_markets=canonical_markets,
+                            choices_by_market_name=choices_by_market_name,
+                            resolutions=resolutions,
+                        )
+                        for decision in decisions
+                    ]
+
+            for decision in decisions:
                 if decision.status is ClassificationStatus.RESOLVED:
                     if decision.reason_code != "already_linked":
                         report.resolved += 1
@@ -1386,9 +1733,14 @@ __all__ = [
     "QuoteIdentity",
     "QuoteStateCandidate",
     "RunConfig",
+    "canonicalize_quote_source",
     "classify_candidate",
+    "clear_stop",
     "load_checkpoint",
     "load_resolution_file",
+    "lookup_catalog_seed_for_market",
     "parse_legacy_back_lay_choice_group",
+    "request_stop",
+    "stop_requested",
     "write_checkpoint_atomic",
 ]

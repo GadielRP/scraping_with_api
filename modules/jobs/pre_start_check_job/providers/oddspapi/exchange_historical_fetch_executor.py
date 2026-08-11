@@ -70,6 +70,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         selections: list[ExchangeHistoricalSelection],
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float,
+        require_active_quotes: bool = True,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         if not selections:
             return []
@@ -85,12 +86,14 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 selections=selections,
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
+                require_active_quotes=require_active_quotes,
             )
         return self._fetch_with_worker_pool(
             fixture_id,
             selections=selections,
             source_sport_id=source_sport_id,
             minimum_initial_span_minutes=minimum_initial_span_minutes,
+            require_active_quotes=require_active_quotes,
             worker_count=worker_count,
         )
 
@@ -102,6 +105,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         *,
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float,
+        require_active_quotes: bool,
     ) -> ExchangeHistoricalFetchOutcome:
         try:
             result = fetcher.fetch_odds(
@@ -111,6 +115,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 source_sport_id=source_sport_id,
                 outcome_id=int(selection.source_outcome_id),
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
+                require_active_quotes=require_active_quotes,
             )
             return ExchangeHistoricalFetchOutcome(selection=selection, result=result)
         except Exception as exc:  # noqa: BLE001 - surfaced for caller bookkeeping/logging
@@ -125,6 +130,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         selections: list[ExchangeHistoricalSelection],
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float,
+        require_active_quotes: bool,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         api_key = self._api_keys[0] if self._api_keys else None
         client = self._client_factory(api_key=api_key)
@@ -137,6 +143,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                     selection,
                     source_sport_id=source_sport_id,
                     minimum_initial_span_minutes=minimum_initial_span_minutes,
+                    require_active_quotes=require_active_quotes,
                 )
                 for selection in selections
             ]
@@ -152,6 +159,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         selections: list[ExchangeHistoricalSelection],
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float,
+        require_active_quotes: bool,
         worker_count: int,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         chunks = [selections[index::worker_count] for index in range(worker_count)]
@@ -167,6 +175,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                         selection,
                         source_sport_id=source_sport_id,
                         minimum_initial_span_minutes=minimum_initial_span_minutes,
+                        require_active_quotes=require_active_quotes,
                     )
                     for selection in chunks[worker_index]
                 ]

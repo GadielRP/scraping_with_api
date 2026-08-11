@@ -284,11 +284,20 @@ Evaluar toda la evidencia y rechazar contradicciones:
   choice por nombre normalizado.
 - La línea sale únicamente de `Back|Lay` con sufijo explícito.
 - Un target existente único se reutiliza.
-- Un target inexistente solo puede planificarse para creación cuando todas las
-  piezas de identidad son deterministas y pasan el mismo normalizador y
-  constraint del path canónico.
-- Dos targets, diferencias solo resolubles por heurística o choice ausente son
-  `ambiguous_target`; requieren resolution file.
+- Un target inexistente se **auto-siembra en `--commit`** cuando:
+  1. la identidad Back/Lay es determinista (`plan_create_canonical`),
+  2. `market_name` + `market_period` matchean exactamente un seed de
+     `CANONICAL_MARKET_TYPE_SEEDS`, y
+  3. si el seed `requires_choice_group`, hay línea parseada del legacy
+     `choice_group`.
+  El market canónico se crea con `choice_group=NULL` (o la línea) y
+  `market_group` del catálogo; las choices se copian de los mercados
+  legacy Back/Lay hermanos. Dry-run sigue reportando `ambiguous_target`
+  sin DML. Tras el seed, el batch re-clasifica y linkea quotes con
+  `exchange_side`.
+- Targets fuera del catálogo, línea faltante en mercados con
+  `requires_choice_group`, o ambigüedad no determinista siguen siendo
+  `ambiguous_target` y requieren resolution file.
 
 ### 6.4. Estado de la quote
 

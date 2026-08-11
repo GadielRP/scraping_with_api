@@ -23,6 +23,7 @@ from infrastructure.persistence.models import (
 from infrastructure.persistence.repositories.market.market_choice_quote_writer import (
     MarketChoiceQuoteWriter,
 )
+from shared.timezone_utils import get_local_now
 
 ODDSPAPI_SOURCE = "oddspapi"
 # bookie_source_mappings also stores a non-provider "canonical" row per bookie.
@@ -337,6 +338,140 @@ class MarketChoiceQuoteBackfillRepository:
             (int(choice.market_id), str(choice.choice_name).strip().lower()): choice
             for choice in choices
         }
+
+    @staticmethod
+    def find_legacy_back_lay_choice_names(
+        session: Session,
+        *,
+        event_id: int,
+        bookie_id: int,
+        market_name: str,
+        market_period: str,
+        line: Optional[str],
+        is_live: bool,
+    ) -> list[str]:
+        """Choice names on legacy Back/Lay markets that share a canonical identity."""
+        from modules.odds_ingestion.backfill.market_choice_quote_backfill import (
+            parse_legacy_back_lay_choice_group,
+        )
+
+        period = str(market_period or "Full Time").strip() or "Full Time"
+        name = str(market_name).strip()
+        markets = (
+            session.query(Market)
+            .filter(
+                Market.event_id == int(event_id),
+                Market.bookie_id == int(bookie_id),
+                Market.market_name == name,
+                Market.market_period == period,
+                Market.is_live == bool(is_live),
+            )
+            .all()
+        )
+        names: set[str] = set()
+        normalized_line = str(line).strip() if line is not None else None
+        if normalized_line == "":
+            normalized_line = None
+        for market in markets:
+            side, parsed_line = parse_legacy_back_lay_choice_group(market.choice_group)
+            if side is None:
+                continue
+            parsed = str(parsed_line).strip() if parsed_line is not None else None
+            if parsed == "":
+                parsed = None
+            if parsed != normalized_line:
+                continue
+            for choice in (
+                session.query(MarketChoice)
+                .filter(MarketChoice.market_id == market.market_id)
+                .all()
+            ):
+                choice_name = str(choice.choice_name or "").strip()
+                if choice_name:
+                    names.add(choice_name)
+        return sorted(names)
+
+    @classmethod
+    def ensure_canonical_market_with_choices(
+        cls,
+        session: Session,
+        *,
+        event_id: int,
+        bookie_id: int,
+        market_name: str,
+        market_group: str,
+        market_period: str,
+        choice_group: Optional[str],
+        is_live: bool,
+        choice_names: Sequence[str],
+    ) -> tuple[Market, list[MarketChoice], bool, int]:
+        """Get-or-create canonical market + choices for legacy Back/Lay rematerialization.
+
+        Returns ``(market, choices, market_created, choices_created)``.
+        """
+        period = str(market_period or "Full Time").strip() or "Full Time"
+        name = str(market_name).strip()
+        group = str(market_group or "").strip() or None
+        line = str(choice_group).strip() if choice_group is not None else None
+        if line == "":
+            line = None
+
+        query = session.query(Market).filter(
+            Market.event_id == int(event_id),
+            Market.bookie_id == int(bookie_id),
+            Market.market_name == name,
+            Market.market_period == period,
+            Market.is_live == bool(is_live),
+        )
+        if line is None:
+            query = query.filter(Market.choice_group.is_(None))
+        else:
+            query = query.filter(Market.choice_group == line)
+        market = query.one_or_none()
+        market_created = False
+        if market is None:
+            market = Market(
+                event_id=int(event_id),
+                bookie_id=int(bookie_id),
+                market_name=name,
+                market_group=group,
+                market_period=period,
+                choice_group=line,
+                is_live=bool(is_live),
+                collected_at=get_local_now(),
+            )
+            session.add(market)
+            session.flush()
+            market_created = True
+        elif group and not market.market_group:
+            market.market_group = group
+
+        existing = {
+            str(c.choice_name).strip().lower(): c
+            for c in session.query(MarketChoice)
+            .filter(MarketChoice.market_id == market.market_id)
+            .all()
+        }
+        created_choices = 0
+        choices: list[MarketChoice] = []
+        for raw_name in choice_names:
+            choice_name = str(raw_name or "").strip()
+            if not choice_name:
+                continue
+            key = choice_name.lower()
+            choice = existing.get(key)
+            if choice is None:
+                choice = MarketChoice(
+                    market_id=market.market_id,
+                    choice_name=choice_name,
+                )
+                session.add(choice)
+                existing[key] = choice
+                created_choices += 1
+            choices.append(choice)
+        if created_choices:
+            session.flush()
+        return market, choices, market_created, created_choices
 
     @staticmethod
     def preload_quotes(
