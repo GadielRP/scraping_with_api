@@ -54,7 +54,7 @@ class OddsPortalBrowserPolicy:
     save_debug_on_goto_timeout: bool = True
     enable_shell_grace: bool = True
     debug_timing: bool = False
-    debug_dir: str = "oddsportal_debug"
+    debug_dir: str = "logs/debug/oddsportal"
 
     def __post_init__(self) -> None:
         numeric_timeouts = (

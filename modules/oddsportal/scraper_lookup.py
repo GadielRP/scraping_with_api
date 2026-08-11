@@ -150,17 +150,24 @@ class OddsPortalLookupMixin:
                 error_str = str(e).lower()
                 if 'timeout' in error_str or 'err_' in error_str or 'net::' in error_str:
                     logger.error(f'🔄 FAST FAIL (League goto): navigation failed quickly after {ODDSPORTAL_LEAGUE_GOTO_TIMEOUT_MS}ms: {str(e).split(chr(10))[0]}')
+                    if getattr(self, 'debug_dir', None) and hasattr(self, '_save_debug_artifacts'):
+                        await self._save_debug_artifacts(page, 'league_goto_timeout', {'error': str(e), 'url': navigation_league_url})
                     return []
                 raise
             t_goto = time.perf_counter()
             log_timing(f'League page load ({navigation_league_url}) took {t_goto - t0:.2f}s')
             if not response or response.status != 200:
-                logger.error(f"❌ Failed to load league page. Status: {(response.status if response else 'N/A')}")
+                status_code = response.status if response else 'none'
+                logger.error(f"❌ Failed to load league page. Status: {status_code}")
+                if getattr(self, 'debug_dir', None) and hasattr(self, '_save_debug_artifacts'):
+                    await self._save_debug_artifacts(page, f'league_status_{status_code}', {'url': navigation_league_url})
                 return []
             try:
                 page_title = await page.title()
                 if any((blocked in page_title for blocked in ['Access Denied', 'Just a moment...', 'Attention Required!', 'Security check', 'Cloudflare'])):
                     logger.error(f"🔄 FAST FAIL (League title): Proxy IP blocked. Title: '{page_title}'")
+                    if getattr(self, 'debug_dir', None) and hasattr(self, '_save_debug_artifacts'):
+                        await self._save_debug_artifacts(page, 'league_blocked', {'title': page_title, 'url': navigation_league_url})
                     return []
             except Exception:
                 pass
@@ -169,8 +176,10 @@ class OddsPortalLookupMixin:
                 await page.wait_for_selector(f'{league_container_selector} div.eventRow', timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS)
                 t_wait = time.perf_counter()
                 log_timing(f'Waiting for scoped event rows took {t_wait - t_goto:.2f}s')
-            except Exception:
+            except Exception as e:
                 logger.error(f'🔄 FAST FAIL (League rows): no scoped event rows loaded within {ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS}ms on {navigation_league_url}')
+                if getattr(self, 'debug_dir', None) and hasattr(self, '_save_debug_artifacts'):
+                    await self._save_debug_artifacts(page, 'league_no_rows', {'error': str(e), 'url': navigation_league_url})
                 return []
             try:
                 accept_btn = await page.query_selector("button:has-text('I Accept'), button:has-text('Accept All')")
@@ -214,7 +223,7 @@ class OddsPortalLookupMixin:
                     let href = originalHref;
 
                     if (href && !href.includes('/#') && rowId) {
-                        href = href.replace(/\\/+$/, '') + '/#' + rowId;
+                        href = href.replace(/\/+$/, '') + '/#' + rowId;
                     }
 
                     if (href && href.includes('/inplay-odds')) {
@@ -243,6 +252,8 @@ class OddsPortalLookupMixin:
             log_timing(f'Extracting league rows via JS evaluating took {time.perf_counter() - t_js_league:.2f}s')
             if not rows_data:
                 logger.warning(f'⚠️ No event rows found on {navigation_league_url}')
+                if getattr(self, 'debug_dir', None) and hasattr(self, '_save_debug_artifacts'):
+                    await self._save_debug_artifacts(page, 'league_no_rows_data', {'url': navigation_league_url})
                 return []
             candidates = []
             total_rows = len(rows_data)

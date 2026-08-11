@@ -723,7 +723,7 @@ def test_worker_loads_reference_data_once_and_requests_streaming(monkeypatch):
     assert len(loads) == 1
     assert calls[0]["collect_results"] is False
     assert calls[0]["debug_mode"] is True
-    assert calls[0]["debug_dir"] == "debug"
+    assert calls[0]["debug_dir"] == "logs/debug/oddsportal"
 
 
 def test_worker_propagates_debug_mode_into_background_scrape(monkeypatch):
@@ -759,3 +759,129 @@ def test_worker_propagates_debug_mode_into_background_scrape(monkeypatch):
     )
 
     assert captured["kwargs"]["debug_mode"] is True
+
+
+@pytest.mark.asyncio
+async def test_league_goto_timeout_saves_debug_artifacts():
+    from unittest.mock import AsyncMock, MagicMock
+    from modules.oddsportal.scraper_impl import OddsPortalScraper
+
+    scraper = OddsPortalScraper(debug_dir="logs/debug/oddsportal", debug_mode=True)
+    mock_page = AsyncMock()
+    mock_page.url = "https://www.oddsportal.com/baseball/usa/mlb/"
+    mock_page.goto.side_effect = Exception("net::ERR_TIMED_OUT or timeout exceeded")
+    mock_context = AsyncMock()
+    mock_context.new_page.return_value = mock_page
+    scraper.context = mock_context
+    scraper.browser = MagicMock()
+    save_mock = AsyncMock()
+    scraper._save_debug_artifacts = save_mock
+
+    candidates = await scraper._extract_league_candidates(
+        league_url="https://www.oddsportal.com/baseball/usa/mlb/",
+        season_id=123,
+        skip_cache_save=True
+    )
+
+    assert candidates == []
+    save_mock.assert_called_once()
+    args, kwargs = save_mock.call_args
+    assert args[0] is mock_page
+    assert args[1] == "league_goto_timeout"
+    assert "error" in args[2]
+
+
+@pytest.mark.asyncio
+async def test_league_non_200_saves_debug_artifacts():
+    from unittest.mock import AsyncMock, MagicMock
+    from modules.oddsportal.scraper_impl import OddsPortalScraper
+
+    scraper = OddsPortalScraper(debug_dir="logs/debug/oddsportal", debug_mode=True)
+    mock_page = AsyncMock()
+    mock_page.url = "https://www.oddsportal.com/baseball/usa/mlb/"
+    mock_response = MagicMock()
+    mock_response.status = 500
+    mock_page.goto.return_value = mock_response
+    mock_context = AsyncMock()
+    mock_context.new_page.return_value = mock_page
+    scraper.context = mock_context
+    scraper.browser = MagicMock()
+    save_mock = AsyncMock()
+    scraper._save_debug_artifacts = save_mock
+
+    candidates = await scraper._extract_league_candidates(
+        league_url="https://www.oddsportal.com/baseball/usa/mlb/",
+        season_id=123,
+        skip_cache_save=True
+    )
+
+    assert candidates == []
+    save_mock.assert_called_once()
+    args, kwargs = save_mock.call_args
+    assert args[0] is mock_page
+    assert args[1] == "league_status_500"
+
+
+@pytest.mark.asyncio
+async def test_league_blocked_saves_debug_artifacts():
+    from unittest.mock import AsyncMock, MagicMock
+    from modules.oddsportal.scraper_impl import OddsPortalScraper
+
+    scraper = OddsPortalScraper(debug_dir="logs/debug/oddsportal", debug_mode=True)
+    mock_page = AsyncMock()
+    mock_page.url = "https://www.oddsportal.com/baseball/usa/mlb/"
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_page.goto.return_value = mock_response
+    mock_page.title.return_value = "Just a moment..."
+    mock_context = AsyncMock()
+    mock_context.new_page.return_value = mock_page
+    scraper.context = mock_context
+    scraper.browser = MagicMock()
+    save_mock = AsyncMock()
+    scraper._save_debug_artifacts = save_mock
+
+    candidates = await scraper._extract_league_candidates(
+        league_url="https://www.oddsportal.com/baseball/usa/mlb/",
+        season_id=123,
+        skip_cache_save=True
+    )
+
+    assert candidates == []
+    save_mock.assert_called_once()
+    args, kwargs = save_mock.call_args
+    assert args[0] is mock_page
+    assert args[1] == "league_blocked"
+
+
+@pytest.mark.asyncio
+async def test_league_no_rows_saves_debug_artifacts():
+    from unittest.mock import AsyncMock, MagicMock
+    from modules.oddsportal.scraper_impl import OddsPortalScraper
+
+    scraper = OddsPortalScraper(debug_dir="logs/debug/oddsportal", debug_mode=True)
+    mock_page = AsyncMock()
+    mock_page.url = "https://www.oddsportal.com/baseball/usa/mlb/"
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_page.goto.return_value = mock_response
+    mock_page.title.return_value = "MLB Odds"
+    mock_page.wait_for_selector.side_effect = Exception("timeout waiting for selector")
+    mock_context = AsyncMock()
+    mock_context.new_page.return_value = mock_page
+    scraper.context = mock_context
+    scraper.browser = MagicMock()
+    save_mock = AsyncMock()
+    scraper._save_debug_artifacts = save_mock
+
+    candidates = await scraper._extract_league_candidates(
+        league_url="https://www.oddsportal.com/baseball/usa/mlb/",
+        season_id=123,
+        skip_cache_save=True
+    )
+
+    assert candidates == []
+    save_mock.assert_called_once()
+    args, kwargs = save_mock.call_args
+    assert args[0] is mock_page
+    assert args[1] == "league_no_rows"

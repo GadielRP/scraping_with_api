@@ -196,7 +196,7 @@ def scrape_multiple_matches_sync(
 
         async def _run():
             effective_debug_dir = debug_dir or (
-                "debug" if debug_mode else None
+                "logs/debug/oddsportal" if debug_mode else None
             )
             scraper = _get_scraper_cls()(
                 debug_dir=effective_debug_dir,

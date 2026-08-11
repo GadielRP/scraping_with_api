@@ -350,7 +350,7 @@ def scrape_oddsportal_batch(
     op_results = scrape_multiple_matches_parallel_sync(
         op_tasks,
         num_browsers=num_browsers,
-        debug_dir="debug" if debug_mode else None,
+        debug_dir="logs/debug/oddsportal" if debug_mode else None,
         debug_mode=debug_mode,
         on_task_started=_on_event_started,
         on_result=_on_event_scraped,
