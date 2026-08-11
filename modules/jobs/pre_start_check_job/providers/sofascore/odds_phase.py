@@ -49,6 +49,10 @@ def run_sofascore_pre_start_odds(
 
     def _ingest_sofascore_odds(candidate: dict, payload: dict):
         event_data = candidate["event_data"]
+        # Raw SofaScore JSON is passed through unchanged from odds_fetcher.
+        # SofaScoreMarketAdapter + CanonicalMarketNormalizer stamp each choice
+        # with mainLine=True and sourceMarketId=<catalog marketId> before
+        # MarketRepository persists MarketChoiceQuote.source_market_id.
         return MarketOddsIngestionService.save_from_sofascore_response(
             candidate["event_id"],
             payload,

@@ -159,7 +159,7 @@ def batch_process_odds(events_with_odds: Dict[str, Dict], events: List[Dict]) ->
             ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
                 db_event.id,
                 odds_response,
-                source="secondary_discovery",
+                source="sofascore",
             )
             if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
                 logger.debug("Failed to save market odds for event %s: %s", sofascore_event_id, ingestion_result.reason)
@@ -256,7 +256,7 @@ def process_with_parallel_db_ops(
             ingestion_result = MarketOddsIngestionService.save_from_dropping_odds_map_entry(
                 event.id,
                 odds_map_entry,
-                source=discovery_source or "dropping_odds",
+                source="sofascore",
             )
             if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
                 return False, f"Failed to save market odds for event {sofascore_event_id}: {ingestion_result.reason}"

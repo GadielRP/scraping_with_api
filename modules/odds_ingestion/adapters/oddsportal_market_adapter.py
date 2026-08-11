@@ -31,6 +31,9 @@ class CanonicalChoicePayload:
         payload = {
             "name": self.name,
             "currentOdds": self.current_odds,
+            # OddsPortal only scrapes main-line markets; Oddspapi is the
+            # provider that distinguishes main vs alternate lines.
+            "mainLine": True,
         }
         if self.initial_odds is not None:
             payload["initialOdds"] = self.initial_odds

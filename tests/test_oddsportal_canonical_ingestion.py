@@ -126,6 +126,7 @@ def test_adapter_transports_per_choice_tooltip_timestamps():
     assert choice.as_repository_dict()["sourceCollectedAt"].endswith(
         "-08-05T10:01"
     )
+    assert choice.as_repository_dict()["mainLine"] is True
 
 
 def test_adapter_shares_one_market_between_betfair_back_and_lay():
@@ -184,9 +185,11 @@ def test_adapter_shares_one_market_between_betfair_back_and_lay():
     assert back_1.current_odds == "1.42"
     assert back_1.source_collected_at.endswith("-08-05T10:01")
     assert back_1.as_repository_dict()["exchangeSide"] == "back"
+    assert back_1.as_repository_dict()["mainLine"] is True
     assert lay_1.current_odds == "1.44"
     assert lay_1.source_collected_at.endswith("-08-05T10:02")
     assert lay_1.as_repository_dict()["exchangeSide"] == "lay"
+    assert lay_1.as_repository_dict()["mainLine"] is True
 
 
 def test_adapter_preserves_including_overtime_semantics():

@@ -751,33 +751,43 @@ class MarketOddsIngestionService:
             home_team=home_team,
             away_team=away_team,
         )
-        return MarketOddsIngestionService._save_normalized(event_id, canonical_response, source)
+        return MarketOddsIngestionService._save_normalized(
+            event_id, canonical_response, source
+        )
 
     @staticmethod
     def save_from_dropping_odds_map_entry(
         event_id: int,
         odds_map_entry: Dict,
-        source: str = "sofascore_dropping_odds",
+        source: str = "sofascore",
     ) -> MarketIngestionResult:
-        source = MarketOddsIngestionService._normalize_source(source, "sofascore_dropping_odds")
+        source = MarketOddsIngestionService._normalize_source(source, "sofascore")
         adapted_response = SofaScoreMarketAdapter.from_dropping_odds_map_entry(odds_map_entry)
-        canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(adapted_response)
-        return MarketOddsIngestionService._save_normalized(event_id, canonical_response, source)
+        canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(
+            adapted_response
+        )
+        return MarketOddsIngestionService._save_normalized(
+            event_id, canonical_response, source
+        )
 
     @staticmethod
     def save_from_daily_odds_entry(
         event_id: int,
         daily_odds_entry: Dict,
-        source: str = "sofascore_daily_discovery",
+        source: str = "sofascore",
     ) -> MarketIngestionResult:
-        source = MarketOddsIngestionService._normalize_source(source, "sofascore_daily_discovery")
+        source = MarketOddsIngestionService._normalize_source(source, "sofascore")
         adapted_response = SofaScoreMarketAdapter.from_daily_odds_entry(daily_odds_entry)
-        canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(adapted_response)
-        return MarketOddsIngestionService._save_normalized(event_id, canonical_response, source)
+        canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(
+            adapted_response
+        )
+        return MarketOddsIngestionService._save_normalized(
+            event_id, canonical_response, source
+        )
 
     @staticmethod
     def _save_normalized(event_id: int, normalized_response: Dict, source: str) -> MarketIngestionResult:
-        source = MarketOddsIngestionService._normalize_source(source, "unknown")
+        source = MarketOddsIngestionService._normalize_source(source, "sofascore")
         diagnostics = (normalized_response or {}).get("diagnostics") or {}
         unmapped_markets = len(diagnostics.get("unmapped_markets") or [])
         unmapped_choices = len(diagnostics.get("unmapped_choices") or [])

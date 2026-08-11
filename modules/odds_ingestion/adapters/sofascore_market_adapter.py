@@ -90,11 +90,22 @@ class SofaScoreMarketAdapter:
         market_period = SofaScoreMarketAdapter._normalize_text(entry.get("marketPeriod"))
         choice_group = SofaScoreMarketAdapter._normalize_text(entry.get("choiceGroup"))
 
-        source_market_id = entry.get("sourceId")
+        # Prefer SofaScore catalog marketId (e.g. 1 for "Full time" 1X2) as the
+        # stable sourceMarketId written on quotes. sourceId/id are instance ids
+        # for a specific event's market row and are not used as the catalog key.
+        catalog_market_id = entry.get("marketId")
+        source_market_id = catalog_market_id
+        if source_market_id is None:
+            source_market_id = entry.get("sourceId")
         if source_market_id is None:
             source_market_id = entry.get("id")
-        if source_market_id is None:
-            source_market_id = entry.get("marketId")
+        normalized_source_market_id = (
+            str(source_market_id) if source_market_id is not None else None
+        )
+
+        if normalized_source_market_id is not None:
+            for choice in choices:
+                choice["sourceMarketId"] = normalized_source_market_id
 
         market = {
             "marketName": market_name,
@@ -106,8 +117,12 @@ class SofaScoreMarketAdapter:
             market["marketGroup"] = market_group
         if market_period:
             market["marketPeriod"] = market_period
-        if source_market_id is not None:
-            market["sourceMarketId"] = str(source_market_id)
+        # Keep catalog marketId visible to CanonicalMarketNormalizer even after
+        # adapting (writer still reads choice["sourceMarketId"]).
+        if catalog_market_id is not None:
+            market["marketId"] = catalog_market_id
+        if normalized_source_market_id is not None:
+            market["sourceMarketId"] = normalized_source_market_id
 
         return {
             "markets": [market]
@@ -160,6 +175,9 @@ class SofaScoreMarketAdapter:
                 "odds": choice.get("odds"),
                 "change": choice.get("change", 0),
                 "sourceOutcomeId": str(source_outcome_id) if source_outcome_id is not None else None,
+                # SofaScore only ingests main-line markets; Oddspapi is the
+                # provider that distinguishes main vs alternate lines.
+                "mainLine": True,
             })
         return normalized
 

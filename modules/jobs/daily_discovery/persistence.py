@@ -34,7 +34,7 @@ def persist_event_and_optional_odds(api_client, event: Dict, odds_data: Dict | N
             ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
                 db_event.id,
                 odds_data,
-                source="daily_discovery",
+                source="sofascore",
             )
             if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
                 logger.warning("Failed to save market odds for event %s: %s", db_event.id, ingestion_result.reason)

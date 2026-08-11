@@ -173,7 +173,7 @@ def run_results_collection_for_date(target_date) -> None:
                 ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
                     event_data.id,
                     final_odds_response,
-                    source="results_collection_for_date",
+                    source="sofascore",
                 )
                 if ingestion_result.markets_saved > 0 or ingestion_result.dual_process_market_available:
                     odds_updated_count += 1

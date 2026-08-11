@@ -95,6 +95,15 @@ class CanonicalMarketNormalizer:
                 continue
 
             market_choice_group = CanonicalMarketNormalizer._text(raw_market.get("choiceGroup"))
+            # Catalog marketId is the stable SofaScore market key we persist as
+            # quote.source_market_id (e.g. "1"). Prefer it over instance ids.
+            market_source_market_id = None
+            if raw_market.get("marketId") is not None:
+                market_source_market_id = str(raw_market.get("marketId")).strip() or None
+            if market_source_market_id is None:
+                market_source_market_id = CanonicalMarketNormalizer._text(
+                    raw_market.get("sourceMarketId")
+                )
             raw_choices = [c for c in raw_market.get("choices", []) if isinstance(c, dict)]
             total_choices_count = len(raw_choices)
             choices = []
@@ -132,9 +141,13 @@ class CanonicalMarketNormalizer:
                 choice = {
                     key: value
                     for key, value in raw_choice.items()
-                    if key not in {"name", "choiceGroup", "sourceMarketId"}
+                    if key not in {"name", "choiceGroup"}
                 }
                 choice["name"] = choice_result.canonical_choice_name
+                # Always stamp catalog sourceMarketId onto the persisted choice
+                # object (MarketRepository reads choice_data["sourceMarketId"]).
+                if market_source_market_id:
+                    choice["sourceMarketId"] = market_source_market_id
                 choices.append(choice)
 
             if not choices:

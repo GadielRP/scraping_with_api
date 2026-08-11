@@ -4,7 +4,7 @@ OddsPapi exchange outcomes expose a top-of-book price/limit on the player
 row plus an optional ``exchangeMeta`` ladder. For persistence we only keep:
 
 - back: player ``price`` + ``limit``
-- lay: best (lowest) ``availableToLay`` price + size
+- lay: best (top of book) ``availableToLay`` price + size
 """
 
 from __future__ import annotations
@@ -56,10 +56,10 @@ def best_exchange_quotes(
             price = _finite_float(quote.get("price"))
             if price is None:
                 continue
-            # Best lay for the layer is the lowest available lay price.
-            if best_lay_price is None or price < best_lay_price:
-                best_lay_price = price
-                best_lay_size = _finite_float(quote.get("size"))
+            # Best lay is the top (first available) lay price in the list.
+            best_lay_price = price
+            best_lay_size = _finite_float(quote.get("size"))
+            break
 
     if best_lay_price is not None:
         quotes.append(
