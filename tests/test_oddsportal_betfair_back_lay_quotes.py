@@ -10,6 +10,7 @@ MarketChoiceQuote.exchange_side.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from types import MappingProxyType
 from unittest.mock import patch
@@ -148,3 +149,61 @@ def test_oddsportal_betfair_back_lay_share_one_market_and_choice(tmp_path):
     assert float(back.initial_odds) == 1.86
     assert lay.current_odds is None
     assert float(lay.initial_odds) == 1.90
+
+
+def test_current_only_betfair_logs_why_opening_only_policy_skips_it(
+    tmp_path,
+    caplog,
+):
+    manager = DatabaseManager(f"sqlite:///{tmp_path / 'current-only.db'}")
+    manager.create_tables()
+    event_id, betfair_bookie_id = _seed_event_and_betfair_bookie(manager)
+    odds_data = MatchOddsData(
+        sport="football",
+        extractions=[
+            MarketExtraction(
+                source_group_key="1X2",
+                source_period_key="FULL_TIME",
+                betfair=BetfairExchangeOdds(
+                    back_1="1.90",
+                    back_x="3.40",
+                    back_2="4.20",
+                    lay_1="1.95",
+                    lay_x="3.50",
+                    lay_2="4.30",
+                ),
+            )
+        ],
+    )
+    references = OddsPortalIngestionReferenceData(
+        canonical_types=CANONICAL_TYPES,
+        bookie_ids_by_source_slug=MappingProxyType(
+            {"betfair-ex": betfair_bookie_id}
+        ),
+    )
+
+    with (
+        patch(
+            "infrastructure.persistence.repositories.market_repository.db_manager",
+            manager,
+        ),
+        caplog.at_level(
+            logging.WARNING,
+            logger="infrastructure.persistence.repositories.market_repository",
+        ),
+    ):
+        result = MarketOddsIngestionService.save_from_oddsportal_data(
+            event_id,
+            odds_data,
+            reference_data=references,
+        )
+
+    assert result.markets_saved == 0
+    assert result.choices_saved == 0
+    assert "bookmaker=Betfair Exchange" in caplog.text
+    assert "bookmaker_slug=betfair-ex" in caplog.text
+    assert "reason=required_initial_odds_missing" in caplog.text
+    assert "exchange_side': 'back'" in caplog.text
+    assert "current_odds': 1.9" in caplog.text
+    assert "reason=no_choices_satisfied_write_policy" in caplog.text
+    assert "policy=oddsportal_opening_only" in caplog.text

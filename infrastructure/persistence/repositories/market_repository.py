@@ -617,6 +617,11 @@ class MarketRepository:
         if not source:
             raise ValueError("source is required to persist canonical quotes")
         write_policy = market_write_policy_for_source(source)
+        operation_logger = (
+            oddsportal_logger
+            if source == "oddsportal" or source.startswith("oddsportal_")
+            else logger
+        )
         batches = [batch for batch in bookmaker_batches or [] if batch.get("markets")]
         if not batches:
             return MarketSaveResult()
@@ -630,6 +635,9 @@ class MarketRepository:
             return MarketSaveResult()
 
         result = MarketSaveResult()
+        persisted_bookie_ids = set()
+        skipped_market_count = 0
+        skipped_choice_count = 0
         collected_at = get_local_now()
         with db_manager.get_session() as session:
             existing_markets = (
@@ -685,9 +693,22 @@ class MarketRepository:
 
             for batch in batches:
                 bookie_id = int(batch["bookie_id"])
+                source_bookie_name = (
+                    MarketRepository._normalize_string_or_none(
+                        batch.get("source_bookie_name")
+                    )
+                    or "unknown"
+                )
+                source_bookie_slug = (
+                    MarketRepository._normalize_string_or_none(
+                        batch.get("source_bookie_slug")
+                    )
+                    or "unknown"
+                )
                 for market_data in batch.get("markets") or []:
                     eligible_choices = []
                     seen_choice_sides = set()
+                    missing_initial_choices = []
                     for choice_data in market_data.get("choices") or []:
                         choice_name = MarketRepository._normalize_string_or_none(
                             choice_data.get("name")
@@ -713,15 +734,74 @@ class MarketRepository:
                             )
                             is None
                         ):
+                            skipped_choice_count += 1
+                            missing_initial_choices.append(
+                                {
+                                    "choice": choice_name,
+                                    "exchange_side": choice_side or None,
+                                    "current_odds": MarketRepository._choice_odds_value(
+                                        choice_data,
+                                        "fractionalValue",
+                                        "decimalValue",
+                                        "currentOdds",
+                                        "current_odds",
+                                        "odds",
+                                    ),
+                                }
+                            )
                             continue
                         eligible_choices.append(choice_data)
+                    if missing_initial_choices:
+                        operation_logger.warning(
+                            "Canonical persistence rejected choices: event=%s "
+                            "source=%s bookmaker=%s bookmaker_slug=%s bookie_id=%s "
+                            "market=%s period=%s reason=required_initial_odds_missing "
+                            "rejected=%s policy=%s",
+                            event_id,
+                            source,
+                            source_bookie_name,
+                            source_bookie_slug,
+                            bookie_id,
+                            market_data.get("marketName"),
+                            market_data.get("marketPeriod"),
+                            missing_initial_choices,
+                            write_policy.name,
+                        )
                     if not eligible_choices:
+                        skipped_market_count += 1
+                        operation_logger.warning(
+                            "Canonical persistence skipped market: event=%s source=%s "
+                            "bookmaker=%s bookmaker_slug=%s bookie_id=%s market=%s "
+                            "period=%s reason=no_choices_satisfied_write_policy "
+                            "input_choices=%s policy=%s",
+                            event_id,
+                            source,
+                            source_bookie_name,
+                            source_bookie_slug,
+                            bookie_id,
+                            market_data.get("marketName"),
+                            market_data.get("marketPeriod"),
+                            len(market_data.get("choices") or []),
+                            write_policy.name,
+                        )
                         continue
 
                     market_name = MarketRepository._normalize_market_name(
                         market_data.get("marketName")
                     )
                     if not market_name:
+                        skipped_market_count += 1
+                        operation_logger.warning(
+                            "Canonical persistence skipped market: event=%s source=%s "
+                            "bookmaker=%s bookmaker_slug=%s bookie_id=%s "
+                            "reason=market_name_missing policy=%s",
+                            event_id,
+                            source,
+                            source_bookie_name,
+                            source_bookie_slug,
+                            bookie_id,
+                            write_policy.name,
+                        )
                         continue
                     market_group = MarketRepository._normalize_market_group(
                         market_data.get("marketGroup")
@@ -769,6 +849,7 @@ class MarketRepository:
                         market.collected_at = collected_at
                     market_index[identity] = market
                     prepared_markets.append((market, eligible_choices))
+                    persisted_bookie_ids.add(bookie_id)
                     result.markets_saved += 1
 
             # Assign IDs to all new markets in one flush.
@@ -1052,14 +1133,18 @@ class MarketRepository:
             # INSERTs by FK dependency without a per-choice round trip.
             session.flush()
 
-        oddsportal_logger.info(
-            "Saved canonical event batch: event=%s bookies=%s markets=%s "
-            "choices=%s snapshots=%s policy=%s",
+        operation_logger.info(
+            "Saved canonical event batch: event=%s input_bookies=%s "
+            "persisted_bookies=%s markets=%s choices=%s snapshots=%s "
+            "skipped_markets=%s skipped_choices=%s policy=%s",
             event_id,
             len(bookie_ids),
+            len(persisted_bookie_ids),
             result.markets_saved,
             result.choices_saved,
             result.snapshots_saved,
+            skipped_market_count,
+            skipped_choice_count,
             write_policy.name,
         )
         return result

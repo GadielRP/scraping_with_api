@@ -166,6 +166,10 @@ class MarketOddsIngestionService:
             bookmaker_batches.append(
                 {
                     "bookie_id": bookie_id,
+                    # Preserve source identity for repository diagnostics. The
+                    # database write still uses the resolved canonical ID.
+                    "source_bookie_name": bookmaker.source_name,
+                    "source_bookie_slug": bookmaker.source_slug,
                     "markets": [
                         market.as_repository_dict()
                         for market in bookmaker.markets
