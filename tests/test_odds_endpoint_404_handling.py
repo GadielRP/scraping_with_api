@@ -33,6 +33,7 @@ from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 from modules.sofascore.results_parser import (
     extract_results_from_response,
     is_event_status_deletable,
+    parse_event_result,
 )
 from scripts.development import pre_start_odds_simulation
 from scripts.development import simulate_pre_start_check
@@ -448,6 +449,143 @@ def test_postponed_status_requires_a_deletable_status_code():
 
     assert is_event_status_deletable(postponed_event) is True
     assert is_event_status_deletable(non_deletable_code_event) is False
+
+
+def test_walkover_is_deletable_even_when_type_is_finished():
+    """Walkover never starts; SofaScore may still send type=finished."""
+    raw_event = {
+        "id": 16601610,
+        "status": {
+            "code": 91,
+            "type": "finished",
+            "description": "Walkover",
+        },
+    }
+
+    assert is_event_status_deletable(raw_event) is True
+
+    parsed = parse_event_result({"event": raw_event})
+    assert parsed.kind == "canceled"
+    assert parsed.status_code == 91
+    assert parsed.status_description == "walkover"
+
+    legacy = extract_results_from_response({"event": raw_event})
+    assert legacy == {
+        "_canceled": True,
+        "status_code": 91,
+        "status_description": "walkover",
+    }
+
+
+def test_walkover_is_queued_for_batch_deletion_with_walkover_reason(monkeypatch):
+    deferred_deletion_event_ids = set()
+    queued_reasons = []
+    client = SimpleNamespace(
+        request_json=lambda *_args, **_kwargs: {
+            "event": {
+                "id": 9001,
+                "status": {
+                    "code": 91,
+                    "type": "finished",
+                    "description": "Walkover",
+                },
+            }
+        }
+    )
+
+    def _tracking_queue(canonical_event_id, sofascore_event_id, reason, deferred_ids):
+        queued_reasons.append(reason)
+        deferred_ids.add(canonical_event_id)
+        return True
+
+    monkeypatch.setattr(
+        event_details,
+        "_queue_canonical_event_for_deletion",
+        _tracking_queue,
+    )
+
+    result = event_details.get_event_results(
+        client,
+        9001,
+        update_event_info=False,
+        canonical_event_id=101,
+        deferred_deletion_event_ids=deferred_deletion_event_ids,
+    )
+
+    assert result is None
+    assert deferred_deletion_event_ids == {101}
+    assert queued_reasons == ["walkover"]
+
+
+def test_parse_event_result_classifies_not_started():
+    payload = {
+        "event": {
+            "id": 1,
+            "status": {
+                "code": 0,
+                "type": "notstarted",
+                "description": "Not started",
+            },
+        }
+    }
+    parsed = parse_event_result(payload)
+    assert parsed.kind == "not_started"
+    assert extract_results_from_response(payload) is None
+
+
+def test_get_event_results_can_delete_stale_not_started():
+    deferred_deletion_event_ids = set()
+    client = SimpleNamespace(
+        request_json=lambda *_args, **_kwargs: {
+            "event": {
+                "id": 9001,
+                "status": {
+                    "code": 0,
+                    "type": "notstarted",
+                    "description": "Not started",
+                },
+            }
+        }
+    )
+
+    result = event_details.get_event_results(
+        client,
+        9001,
+        update_event_info=False,
+        canonical_event_id=101,
+        deferred_deletion_event_ids=deferred_deletion_event_ids,
+        on_not_started="delete",
+    )
+
+    assert result is None
+    assert deferred_deletion_event_ids == {101}
+
+
+def test_get_event_results_ignores_not_started_by_default():
+    deferred_deletion_event_ids = set()
+    client = SimpleNamespace(
+        request_json=lambda *_args, **_kwargs: {
+            "event": {
+                "id": 9001,
+                "status": {
+                    "code": 0,
+                    "type": "notstarted",
+                    "description": "Not started",
+                },
+            }
+        }
+    )
+
+    result = event_details.get_event_results(
+        client,
+        9001,
+        update_event_info=False,
+        canonical_event_id=101,
+        deferred_deletion_event_ids=deferred_deletion_event_ids,
+    )
+
+    assert result is None
+    assert deferred_deletion_event_ids == set()
 
 
 def test_intraday_batches_postponed_event_using_shared_status_parser(monkeypatch):

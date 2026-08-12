@@ -522,6 +522,7 @@ class SofaScoreAPI:
         current_start_time: Optional[datetime] = None,
         canonical_event_id: int | None = None,
         deferred_deletion_event_ids: set[int] | None = None,
+        on_not_started: str = "ignore",
     ) -> Optional[Dict]:
         return get_event_results(
             self,
@@ -534,6 +535,7 @@ class SofaScoreAPI:
             return_snapshot=return_snapshot,
             current_start_time=current_start_time,
             deferred_deletion_event_ids=deferred_deletion_event_ids,
+            on_not_started=on_not_started,
         )
 
     def extract_results_from_response(

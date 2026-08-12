@@ -40,10 +40,14 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
                     f"Missing SofaScore source mapping for event_id={event.id}"
                 )
 
+            # Job E / date collection: stale not_started events are a minority
+            # of zombie fixtures that never update on SofaScore. Policy lives
+            # here (caller), not in the shared results parser.
             result_data = api_client.get_event_results(
                 int(source_event_id),
                 canonical_event_id=event.id,
                 deferred_deletion_event_ids=deferred_deletion_event_ids,
+                on_not_started="delete",
             )
             if not result_data:
                 if event.id not in deferred_deletion_event_ids:

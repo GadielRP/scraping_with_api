@@ -13,7 +13,7 @@ from modules.sofascore import api_client
 from modules.sofascore.event_details import update_event_information_from_response
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.exceptions import SofaScoreNotFoundException
-from modules.sofascore.results_parser import extract_results_from_response
+from modules.sofascore.results_parser import parse_event_result
 
 logger = logging.getLogger(__name__)
 
@@ -137,12 +137,12 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
                 _describe_status(raw_event),
             )
 
-            result_data = extract_results_from_response(response)
+            parsed = parse_event_result(response)
 
-            if isinstance(result_data, dict) and result_data.get("_canceled"):
+            if parsed.kind == "canceled":
                 logger.info(
                     "Intraday result freshness: event %s queued for deletion as "
-                    "canceled/postponed. status=%s",
+                    "canceled/postponed/walkover. status=%s",
                     event_id,
                     _describe_status(raw_event),
                 )
@@ -152,14 +152,17 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
                     "delete_event_id": event_id,
                 }
 
-            if result_data is None:
+            if parsed.kind != "finished" or not parsed.result:
                 logger.info(
-                    "Intraday result freshness: event %s has no finished result yet. status=%s",
+                    "Intraday result freshness: event %s has no finished result yet. "
+                    "kind=%s status=%s",
                     event_id,
+                    parsed.kind,
                     _describe_status(raw_event),
                 )
                 return {"api_checked": 1, "not_finished": 1}
 
+            result_data = parsed.result
             upserted = ResultRepository.upsert_result(event_id, result_data)
             if upserted:
                 logger.info(

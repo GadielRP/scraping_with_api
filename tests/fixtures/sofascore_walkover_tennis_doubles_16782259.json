@@ -1,0 +1,181 @@
+{
+  "event": {
+    "tournament": {
+      "name": "ITF M25 Idanha-a-Nova Men Doubles",
+      "slug": "itf-m25-idanha-a-nova-men-doubles",
+      "category": {
+        "name": "ITF Men",
+        "slug": "itf-men",
+        "sport": {
+          "name": "Tennis",
+          "slug": "tennis",
+          "id": 5
+        },
+        "priority": 4,
+        "country": {},
+        "id": 785,
+        "flag": "itf-men",
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "اتحاد التنس الدولي للرجال",
+            "ru": "Мужской мировой теннисный тур ITF"
+          },
+          "shortNameTranslation": {}
+        }
+      },
+      "uniqueTournament": {
+        "name": "ITF M25 Idanha-a-Nova Men Doubles",
+        "slug": "itf-m25-idanha-a-nova-men-doubles",
+        "category": {
+          "name": "ITF Men",
+          "slug": "itf-men",
+          "sport": {
+            "name": "Tennis",
+            "slug": "tennis",
+            "id": 5
+          },
+          "priority": 4,
+          "country": {},
+          "id": 785,
+          "flag": "itf-men",
+          "fieldTranslations": {
+            "nameTranslation": {
+              "ar": "اتحاد التنس الدولي للرجال",
+              "ru": "Мужской мировой теннисный тур ITF"
+            },
+            "shortNameTranslation": {}
+          }
+        },
+        "userCount": 1,
+        "groundType": "Hardcourt outdoor",
+        "hasRounds": true,
+        "hasPerformanceGraphFeature": false,
+        "country": {},
+        "id": 28598,
+        "hasEventPlayerStatistics": false,
+        "displayInverseHomeAwayTeams": false,
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "ITF M25 إيدانها-أ-نوفا للرجال زوجي",
+            "ru": "ITF M25 Иданья-а-Нова, парный разряд"
+          },
+          "shortNameTranslation": {}
+        }
+      },
+      "priority": 0,
+      "competitionType": 2,
+      "id": 160531,
+      "fieldTranslations": {
+        "nameTranslation": {
+          "ar": "ITF M25 إيدانها-أ-نوفا للرجال زوجي",
+          "ru": "ITF M25 Иданья-а-Нова, парный разряд, мужчины"
+        },
+        "shortNameTranslation": {}
+      }
+    },
+    "season": {
+      "name": "2026",
+      "year": "2026",
+      "editor": false,
+      "id": 100080
+    },
+    "roundInfo": {
+      "round": 5,
+      "name": "Round of 16",
+      "slug": "round-of-16",
+      "cupRoundType": 8
+    },
+    "customId": "WtPdsaErj",
+    "status": {
+      "code": 91,
+      "description": "Walkover",
+      "type": "finished"
+    },
+    "winnerCode": 1,
+    "homeTeam": {
+      "name": "F. Andaloro / L. Lorusso",
+      "slug": "andaloro-f-lorusso-l",
+      "gender": "M",
+      "sport": {
+        "name": "Tennis",
+        "slug": "tennis",
+        "id": 5
+      },
+      "userCount": 0,
+      "nameCode": "A/L",
+      "national": false,
+      "type": 2,
+      "country": {},
+      "id": 475946,
+      "fullName": "F. Andaloro / L. Lorusso",
+      "teamColors": {
+        "primary": "#374df5",
+        "secondary": "#374df5",
+        "text": "#ffffff"
+      },
+      "timeActive": []
+    },
+    "awayTeam": {
+      "name": "Almazan Valiente I / Callejon Hernando S",
+      "slug": "almazan-valiente-i-callejon-hernando-s",
+      "gender": "M",
+      "sport": {
+        "name": "Tennis",
+        "slug": "tennis",
+        "id": 5
+      },
+      "userCount": 1,
+      "nameCode": "A/C",
+      "national": false,
+      "type": 2,
+      "country": {},
+      "id": 1168950,
+      "fullName": "Almazan Valiente I / Callejon Hernando S",
+      "teamColors": {
+        "primary": "#374df5",
+        "secondary": "#374df5",
+        "text": "#ffffff"
+      },
+      "timeActive": []
+    },
+    "homeScore": {},
+    "awayScore": {},
+    "time": {},
+    "changes": {
+      "changes": [
+        "status.code",
+        "status.description",
+        "status.type",
+        "providerLock.status",
+        "providerLock.statusSource"
+      ],
+      "changeTimestamp": 1786489840
+    },
+    "hasGlobalHighlights": false,
+    "crowdsourcingDataDisplayEnabled": false,
+    "id": 16782259,
+    "defaultPeriodCount": 3,
+    "slug": "almazan-valiente-callejon-hernando-f-andaloro-lorusso",
+    "startTimestamp": 1786460400,
+    "periods": {
+      "point": "Game",
+      "current": "Match",
+      "period1": "1st set",
+      "period2": "2nd set",
+      "period3": "3rd set",
+      "period4": "4th set",
+      "period5": "5th set"
+    },
+    "finalResultOnly": false,
+    "feedLocked": false,
+    "groundType": "Hardcourt outdoor",
+    "showTotoPromo": true,
+    "isEditor": false,
+    "eventFilters": {
+      "category": ["doubles"],
+      "level": ["pro"],
+      "tournament": ["lower"],
+      "gender": ["M"]
+    }
+  }
+}

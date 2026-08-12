@@ -11,7 +11,7 @@ from modules.observations.sofascore_extractor import extract_observations_from_s
 
 from .event_normalizer import normalize_event_payload
 from .exceptions import SofaScoreNotFoundException, SofaScoreRateLimitException
-from .results_parser import extract_results_from_response
+from .results_parser import parse_event_result
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +195,7 @@ def get_event_results(
     current_start_time=None,
     canonical_event_id: int | None = None,
     deferred_deletion_event_ids: set[int] | None = None,
+    on_not_started: str = "ignore",
 ) -> EventResultsResponse:
     def _empty_response() -> EventResultsResponse:
         return (None, None) if return_snapshot else None
@@ -296,17 +297,39 @@ def get_event_results(
             logger.info("Parsing metadata snapshot for event %s (timestamp correction bypassed)", event_id)
             return True, _extract_metadata_snapshot(response)
 
-        result = extract_results_from_response(response)
-        if isinstance(result, dict) and result.get("_canceled"):
+        if on_not_started not in {"ignore", "delete"}:
+            raise ValueError(
+                f"Unsupported on_not_started policy: {on_not_started!r}"
+            )
+
+        parsed = parse_event_result(response)
+        if parsed.kind == "canceled":
+            deletion_reason = (
+                "walkover"
+                if (parsed.status_description or "") == "walkover"
+                else "canceled_or_postponed"
+            )
             _queue_canonical_event_for_deletion(
                 canonical_event_id,
                 event_id,
-                "canceled_or_postponed",
+                deletion_reason,
                 deferred_deletion_event_ids,
             )
             return _empty_response()
 
-        return result
+        if parsed.kind == "not_started" and on_not_started == "delete":
+            _queue_canonical_event_for_deletion(
+                canonical_event_id,
+                event_id,
+                "stale_not_started",
+                deferred_deletion_event_ids,
+            )
+            return _empty_response()
+
+        if parsed.kind == "finished":
+            return parsed.result
+
+        return _empty_response()
     except Exception as exc:
         logger.error("Error fetching event results for %s: %s", event_id, exc)
         return _empty_response()
