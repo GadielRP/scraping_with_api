@@ -1,6 +1,7 @@
 import unicodedata
 import re
 import logging
+from datetime import datetime
 from difflib import SequenceMatcher
 from typing import List, Set, Dict, Optional
 
@@ -114,11 +115,24 @@ class TeamMatcher:
         
         return max(jaccard, ratio)
 
-    def find_best_match(self, query_home: str, query_away: str, candidates: List[Dict]) -> Optional[Dict]:
+    def find_best_match(self, query_home: str, query_away: str, candidates: List[Dict], target_time_utc: Optional[datetime] = None) -> Optional[Dict]:
         """
         candidates: List of { "home": str, "away": str, "href": str, ... }
         Returns the best candidate if it exceeds thresholds.
         """
+        def _parse_cand_datetime(cand: Dict) -> Optional[datetime]:
+            date_str = cand.get('date')
+            raw_text = cand.get('raw_text', '')
+            if not date_str:
+                return None
+            time_match = re.search(r'(\d{2}:\d{2})', raw_text)
+            time_str = time_match.group(1) if time_match else "00:00"
+            try:
+                # OddsPortal date format: '12 Aug 2026'
+                return datetime.strptime(f"{date_str} {time_str}", "%d %b %Y %H:%M")
+            except Exception:
+                return None
+
         scored_candidates = []
         for cand in candidates:
             # Direct score
@@ -131,12 +145,32 @@ class TeamMatcher:
             score_ra = self.get_score(query_away, cand['home'])
             reverse_total = score_rh + score_ra
             
+            max_score = max(direct_total, reverse_total)
+            time_penalty = 0.0
+            
+            if target_time_utc:
+                cand_dt = _parse_cand_datetime(cand)
+                if cand_dt:
+                    try:
+                        naive_target = target_time_utc.replace(tzinfo=None)
+                        delta_days = abs((cand_dt.date() - naive_target.date()).days)
+                        time_penalty = min(delta_days * 20.0, 50.0)
+                    except Exception:
+                        pass
+            
+            status_penalty = 0.0
+            raw_text_lower = cand.get("raw_text", "").lower()
+            if "finished" in raw_text_lower or "canc." in raw_text_lower or "postp." in raw_text_lower:
+                status_penalty = 80.0
+            
             scored_candidates.append({
                 **cand,
                 "direct_score": direct_total,
                 "reverse_score": reverse_total,
-                "max_score": max(direct_total, reverse_total),
-                "is_reversed": reverse_total > direct_total
+                "max_score": max_score - time_penalty - status_penalty,
+                "is_reversed": reverse_total > direct_total,
+                "time_penalty": time_penalty,
+                "status_penalty": status_penalty,
             })
 
         # Sort by max score descending

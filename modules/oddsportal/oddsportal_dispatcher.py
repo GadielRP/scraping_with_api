@@ -211,9 +211,9 @@ def scrape_multiple_matches_sync(
                         logger.info(f"🔍 OddsPortal [{i + 1}/{len(tasks)}]: {task['home_team']} vs {task['away_team']}")
                         match_url = None
                         if season_id:
-                            match_url = scraper.find_match_url_from_cache(season_id, task['home_team'], task['away_team'], current_date=current_date)
+                            match_url = scraper.find_match_url_from_cache(season_id, task['home_team'], task['away_team'], current_date=current_date, target_time_utc=task.get('start_time_utc'))
                         if not match_url:
-                            match_url = await scraper.find_match_url(task['league_url'], task['home_team'], task['away_team'], season_id=season_id, current_date=current_date)
+                            match_url = await scraper.find_match_url(task['league_url'], task['home_team'], task['away_team'], season_id=season_id, current_date=current_date, target_time_utc=task.get('start_time_utc'))
                         task_sport = task.get('sport')
                         if not task_sport:
                             op_info = ODDSPORTAL_COMPETITION_ROUTES.get(
@@ -246,9 +246,9 @@ def scrape_multiple_matches_sync(
                             await scraper.start()
                             retry_url = match_url
                             if not retry_url and season_id:
-                                retry_url = scraper.find_match_url_from_cache(season_id, task['home_team'], task['away_team'], current_date=current_date)
+                                retry_url = scraper.find_match_url_from_cache(season_id, task['home_team'], task['away_team'], current_date=current_date, target_time_utc=task.get('start_time_utc'))
                             if not retry_url:
-                                retry_url = await scraper.find_match_url(task['league_url'], task['home_team'], task['away_team'], season_id=season_id, current_date=current_date)
+                                retry_url = await scraper.find_match_url(task['league_url'], task['home_team'], task['away_team'], season_id=season_id, current_date=current_date, target_time_utc=task.get('start_time_utc'))
                             if retry_url:
                                 retry_task = {
                                     "event_id": event_id,

@@ -105,12 +105,6 @@ def _parse_oddsportal_cache_date(date_text: Any, current_date: Optional[date] = 
         # Check for word boundary to avoid partial matches (though rare for months)
         translated_text = re.sub(rf'\b{loc}\b', en, translated_text)
 
-    # Relative Tokens (Hoy, Mañana, Ayer)
-    # We check the original 'text' for tokens to prioritize them
-    for relative_token, offset in ODDSPORTAL_RELATIVE_DATE_OFFSETS.items():
-        if relative_token in text:
-            return reference_date + timedelta(days=offset)
-
     # Explicit Date Match (Día Mes [Año])
     # Now uses the translated text (English months) for standard parsing
     explicit_date_match = re.search(r"\b\d{1,2}\s+[a-z]{3,9}(?:\s+\d{4})?\b", translated_text, re.IGNORECASE)
@@ -129,6 +123,12 @@ def _parse_oddsportal_cache_date(date_text: Any, current_date: Optional[date] = 
             if parsed < reference_date and reference_date.month == 12 and parsed.month == 1:
                 parsed = parsed.replace(year=reference_date.year + 1)
             return parsed
+
+    # Relative Tokens (Hoy, Mañana, Ayer)
+    # We check the original 'text' for tokens to prioritize them if no explicit date was found
+    for relative_token, offset in ODDSPORTAL_RELATIVE_DATE_OFFSETS.items():
+        if relative_token in text:
+            return reference_date + timedelta(days=offset)
 
     if text:
         logger.debug(f"⚠️ Date parsing failed for text: '{date_text}' (normalized: '{text}', translated: '{translated_text}')")

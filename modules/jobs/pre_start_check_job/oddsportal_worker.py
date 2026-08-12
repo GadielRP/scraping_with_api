@@ -242,6 +242,7 @@ def scrape_oddsportal_batch(
                     "season_id": season_id,
                     "competition_id": competition_id,
                     "sport": op_info["sport"],
+                    "start_time_utc": event_data.get("start_time_utc"),
                     "_oddsportal_resume_state": None,
                     "_oddsportal_partial_match_data": None,
                 }

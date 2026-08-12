@@ -393,13 +393,13 @@ class OddsPortalLookupMixin:
                 except Exception:
                     pass
 
-    async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int=None, force_live: bool=False, skip_cache_save: bool=False, current_date: Optional[date]=None) -> Optional[str]:
+    async def find_match_url(self, league_url: str, home_team: str, away_team: str, season_id: int=None, force_live: bool=False, skip_cache_save: bool=False, current_date: Optional[date]=None, target_time_utc: Optional[datetime]=None) -> Optional[str]:
         """
             Resolve a match URL by team names.
             Cache hits return immediately; cache misses reuse the shared league extraction path.
             """
         if season_id and (not force_live):
-            cached_url = self.find_match_url_from_cache(season_id, home_team, away_team, league_url=league_url, current_date=current_date)
+            cached_url = self.find_match_url_from_cache(season_id, home_team, away_team, league_url=league_url, current_date=current_date, target_time_utc=target_time_utc)
             if cached_url:
                 logger.info(f'Cache hit (internal): {cached_url}')
                 return cached_url
@@ -410,7 +410,7 @@ class OddsPortalLookupMixin:
                 logger.warning(f'OddsPortal discovery returned no candidates for {league_url}')
                 return None
             logger.info(f'Scanning {len(candidates)} candidates for {home_team} vs {away_team}...')
-            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
+            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates, target_time_utc=target_time_utc)
             if best_match:
                 logger.info(f"Match found: {best_match['home']} vs {best_match['away']} (Score: {best_match['max_score']:.1f}, Reversed: {best_match['is_reversed']})")
                 return f"https://www.{ODDSPORTAL_SCRAPING_SETTINGS.domain}{best_match['href']}"
@@ -420,7 +420,7 @@ class OddsPortalLookupMixin:
             logger.error(f'Error finding match on {league_url}: {e}')
             return None
 
-    def find_match_url_from_cache(self, season_id: int, home_team: str, away_team: str, league_url: Optional[str]=None, current_date: Optional[date]=None) -> Optional[str]:
+    def find_match_url_from_cache(self, season_id: int, home_team: str, away_team: str, league_url: Optional[str]=None, current_date: Optional[date]=None, target_time_utc: Optional[datetime]=None) -> Optional[str]:
         """Try to find a match URL from the DB-backed league cache."""
         try:
             candidates = self._load_cached_candidates(season_id, league_url=league_url, current_date=current_date)
@@ -428,7 +428,7 @@ class OddsPortalLookupMixin:
                 logger.debug(f'No valid candidates parsed from cache for season {season_id}')
                 return None
             logger.debug(f'Scanning {len(candidates)} cached candidates for {home_team} vs {away_team}...')
-            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates)
+            best_match = self.team_matcher.find_best_match(home_team, away_team, candidates, target_time_utc=target_time_utc)
             if best_match and best_match['max_score'] >= 80:
                 logger.info(f"Cache hit: {best_match['home']} vs {best_match['away']} (Score: {best_match['max_score']:.1f})")
                 return f"https://www.{ODDSPORTAL_SCRAPING_SETTINGS.domain}{best_match['href']}"
