@@ -1195,10 +1195,17 @@ class MarketChoiceQuoteBackfillRepository:
             result["markets_deleted"] = orphan_markets
             return result
 
-        session.query(MarketChoiceSnapshot).filter(
-            MarketChoiceSnapshot.snapshot_id.in_(snapshot_ids)
-        ).delete(synchronize_session=False)
-        result["snapshots_deleted"] = len(snapshot_ids)
+        # Chunk IN-lists: Postgres bind-parameter limit is 65535; dense
+        # event scopes routinely match 80k+ null-mainline snapshots.
+        delete_chunk = 5000
+        snapshots_deleted = 0
+        for offset in range(0, len(snapshot_ids), delete_chunk):
+            chunk = snapshot_ids[offset : offset + delete_chunk]
+            session.query(MarketChoiceSnapshot).filter(
+                MarketChoiceSnapshot.snapshot_id.in_(chunk)
+            ).delete(synchronize_session=False)
+            snapshots_deleted += len(chunk)
+        result["snapshots_deleted"] = snapshots_deleted
 
         choices_deleted = 0
         for choice_id in touched_choice_ids:
