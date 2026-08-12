@@ -652,6 +652,7 @@ class OddsPortalAttemptMixin:
                         '⚠️ Betfair Exchange unavailable for %s: current extraction returned no exchange data',
                         db_market_period,
                     )
+                    await self._save_debug_artifacts(page, f"betfair_missing_data_{db_market_period}")
                 extraction = MarketExtraction(
                     market_group=db_market_group,
                     market_period=db_market_period,

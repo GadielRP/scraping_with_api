@@ -238,20 +238,23 @@ class OddsPortalDataMixin:
             // These visible Back/Lay prices are also legacy fallbacks. The
             // timestamped tooltip movement value is authoritative when found.
             // Search for the section directly
-            const exchangeSection = document.querySelector('div[data-testid="betting-exchanges-section"]');
+            const exchangeSection = document.querySelector('[data-testid="betting-exchanges-section"]');
 
             if (exchangeSection) {
-                const allOddContainers = exchangeSection.querySelectorAll('[data-testid="odd-container"]');
-                result.betfairContainerCount = allOddContainers.length;
-                result.betfairStatus = allOddContainers.length >= 4
+                const desktop = exchangeSection.querySelector('[class*="max-mm:hidden"]') || exchangeSection;
+                const allOddContainers = Array.from(desktop.querySelectorAll('[data-testid="odd-container"]'));
+                const leafContainers = allOddContainers.filter(el => !el.querySelector('[data-testid="odd-container"]'));
+                
+                result.betfairContainerCount = leafContainers.length;
+                result.betfairStatus = leafContainers.length >= 4
                     ? 'containers_found'
                     : 'insufficient_containers';
 
                 const extractOddFromContainer = (container) => {
-                    const ps = container.querySelectorAll('p');
+                    const elements = container.querySelectorAll('a, p');
 
-                    for (const p of ps) {
-                        const txt = p.textContent.trim();
+                    for (const el of elements) {
+                        const txt = el.textContent.trim();
 
                         if (!txt || txt === '-') continue;
                         if (/^(?:\\d+(?:[.,]\\d+)?|\\d+\\s*\\/\\s*\\d+)$/.test(txt)) return txt;
@@ -260,17 +263,17 @@ class OddsPortalDataMixin:
                     return null;
                 };
 
-                if (allOddContainers.length >= 6) {
+                if (leafContainers.length >= 6) {
                     // 3-Way Market (1X2)
                     // Back Odds (Indices 0, 1, 2)
-                    const back1 = extractOddFromContainer(allOddContainers[0]);
-                    const backX = extractOddFromContainer(allOddContainers[1]);
-                    const back2 = extractOddFromContainer(allOddContainers[2]);
+                    const back1 = extractOddFromContainer(leafContainers[0]);
+                    const backX = extractOddFromContainer(leafContainers[1]);
+                    const back2 = extractOddFromContainer(leafContainers[2]);
 
                     // Lay Odds (Indices 3, 4, 5)
-                    const lay1 = extractOddFromContainer(allOddContainers[3]);
-                    const layX = extractOddFromContainer(allOddContainers[4]);
-                    const lay2 = extractOddFromContainer(allOddContainers[5]);
+                    const lay1 = extractOddFromContainer(leafContainers[3]);
+                    const layX = extractOddFromContainer(leafContainers[4]);
+                    const lay2 = extractOddFromContainer(leafContainers[5]);
 
                     if (back1 || backX || back2) {
                         result.betfairBack = {
@@ -287,15 +290,15 @@ class OddsPortalDataMixin:
                             odds2: lay2 || '-'
                         };
                     }
-                } else if (allOddContainers.length >= 4) {
+                } else if (leafContainers.length >= 4) {
                     // 2-Way Market (Home/Away)
                     // Back Odds (Indices 0, 1)
-                    const back1 = extractOddFromContainer(allOddContainers[0]);
-                    const back2 = extractOddFromContainer(allOddContainers[1]);
+                    const back1 = extractOddFromContainer(leafContainers[0]);
+                    const back2 = extractOddFromContainer(leafContainers[1]);
 
                     // Lay Odds (Indices 2, 3)
-                    const lay1 = extractOddFromContainer(allOddContainers[2]);
-                    const lay2 = extractOddFromContainer(allOddContainers[3]);
+                    const lay1 = extractOddFromContainer(leafContainers[2]);
+                    const lay2 = extractOddFromContainer(leafContainers[3]);
 
                     if (back1 || back2) {
                         result.betfairBack = {
@@ -322,7 +325,7 @@ class OddsPortalDataMixin:
 
                 if (result.betfairBack) {
                     result.betfairStatus = 'current_odds_extracted';
-                } else if (allOddContainers.length >= 4) {
+                } else if (leafContainers.length >= 4) {
                     result.betfairStatus = 'no_parseable_back_odds';
                 }
             }

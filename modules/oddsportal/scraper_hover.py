@@ -330,15 +330,30 @@ class OddsPortalHoverMixin:
         )
 
         if source == "betfair":
-            initial_scope = await page.query_selector(
-                "div[data-testid='betting-exchanges-section']"
+            leaf_selectors = await page.evaluate(
+                """() => {
+                    const section = document.querySelector('[data-testid="betting-exchanges-section"]');
+                    if (!section) return [];
+                    const desktop = section.querySelector('[class*="max-mm:hidden"]') || section;
+                    const all = Array.from(desktop.querySelectorAll('[data-testid="odd-container"]'));
+                    const leaves = all.filter(el => !el.querySelector('[data-testid="odd-container"]'));
+                    
+                    leaves.forEach((el, idx) => {
+                        el.setAttribute('data-bf-leaf-idx', idx.toString());
+                    });
+                    return leaves.map((el, idx) => `[data-bf-leaf-idx="${idx}"]`);
+                }"""
             )
-            if not initial_scope:
+            if not leaf_selectors:
                 logger.warning("Betfair Exchange section not found for hover extraction")
                 return None
-            initial_containers = await initial_scope.query_selector_all(
-                "div[data-testid='odd-container']"
-            )
+                
+            initial_containers = []
+            for sel in leaf_selectors:
+                el = await page.query_selector(sel)
+                if el:
+                    initial_containers.append(el)
+
             if len(initial_containers) >= 6:
                 choice_indexes = {
                     "back_1": 0,
@@ -424,37 +439,14 @@ class OddsPortalHoverMixin:
             for attempt in range(3):
                 try:
                     if source == "betfair":
-                        scope = await page.query_selector(
-                            "div[data-testid='betting-exchanges-section']"
+                        target_cell = await page.query_selector(
+                            f"[data-bf-leaf-idx='{configured_index}']"
                         )
-                        if not scope:
+                        if not target_cell:
                             await asyncio.sleep(0.4)
                             continue
-                        containers = await scope.query_selector_all(
-                            "div[data-testid='odd-container']"
-                        )
-                        if len(containers) >= 6:
-                            live_indexes = {
-                                "back_1": 0,
-                                "back_x": 1,
-                                "back_2": 2,
-                                "lay_1": 3,
-                                "lay_x": 4,
-                                "lay_2": 5,
-                            }
-                        elif len(containers) >= 4:
-                            live_indexes = {
-                                "back_1": 0,
-                                "back_2": 1,
-                                "lay_1": 2,
-                                "lay_2": 3,
-                            }
-                        else:
-                            await asyncio.sleep(0.4)
-                            continue
-                        container_index = live_indexes.get(choice)
-                        if container_index is None:
-                            break
+                        containers = [target_cell]
+                        container_index = 0
                     else:
                         scope = None
                         rows = await page.query_selector_all("tr.h-9, div.border-black-borders.flex.h-9")
