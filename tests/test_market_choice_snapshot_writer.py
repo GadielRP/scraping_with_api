@@ -86,16 +86,18 @@ def test_append_derives_identity_and_stable_lineage_from_quote(tmp_path):
 
     with manager.get_session() as session:
         snapshot = session.query(MarketChoiceSnapshot).one()
-        assert snapshot.choice_id == choice_id
-        assert snapshot.source == "oddspapi"
-        assert snapshot.exchange_side == "back"
-        assert snapshot.exchange_level == 1
-        assert snapshot.source_market_id == "market-1"
-        assert snapshot.source_outcome_id == "outcome-1"
-        assert snapshot.bookmaker_outcome_id == "bookmaker-outcome-1"
-        assert snapshot.main_line is True
+        assert snapshot.quote.choice_id == choice_id
+        assert snapshot.quote.source == "oddspapi"
+        assert snapshot.quote.exchange_side == "back"
+        assert snapshot.quote.exchange_level == 1
+        assert snapshot.quote.source_market_id == "market-1"
+        assert snapshot.quote.source_outcome_id == "outcome-1"
+        assert snapshot.quote.bookmaker_outcome_id == "bookmaker-outcome-1"
+        assert snapshot.quote.main_line is True
         assert float(snapshot.source_limit) == 100
         assert float(snapshot.exchange_size) == 75
+        assert not hasattr(snapshot, "choice_id")
+        assert not hasattr(snapshot, "source")
 
 
 def test_append_accepts_pending_quote_in_same_unit_of_work(tmp_path):

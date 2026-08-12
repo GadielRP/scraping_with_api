@@ -1257,9 +1257,27 @@ class MarketChoiceQuoteBackfillRepository:
             errors.append("missing table market_choice_snapshots")
             return errors
 
-        snapshot_cols = {col["name"] for col in inspector.get_columns("market_choice_snapshots")}
-        if "quote_id" not in snapshot_cols:
-            errors.append("missing column market_choice_snapshots.quote_id")
+        snapshot_cols = {
+            col["name"]
+            for col in inspector.get_columns("market_choice_snapshots")
+        }
+        expanded_columns = {
+            "choice_id",
+            "quote_id",
+            "source",
+            "source_market_id",
+            "source_outcome_id",
+            "bookmaker_outcome_id",
+            "main_line",
+            "exchange_side",
+            "exchange_level",
+        }
+        missing_expanded = sorted(expanded_columns - snapshot_cols)
+        if missing_expanded:
+            errors.append(
+                "Phase 4 quote backfill is retired by the Phase 6 slim schema; "
+                "missing legacy snapshot columns: " + ", ".join(missing_expanded)
+            )
 
         indexes = inspector.get_indexes("market_choice_snapshots")
         index_names = {idx.get("name") for idx in indexes}

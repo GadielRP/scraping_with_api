@@ -1,7 +1,15 @@
 # Refactor de schema de odds — separación de responsabilidades
 
 **Branch:** `refactor/db-schema-odds-refactor`
-**Estado:** Fases 1–5 implementadas. Fase 4b/4c terminó en producción el 2026-08-12 (`algorithm_version=4b.7`, `events_selected=0`) y Fase 5 quedó activada en la copia PostgreSQL local post-4c el 2026-08-12. Los tres lectores públicos locales están en `quotes`; readiness, paridad, lineage, cardinalidad, checksum y presupuesto local de refresh pasaron. Antes de autorizar Fase 6 todavía se requiere la ventana operativa real de observación indicada en el plan de Fase 5. Evidencia y deuda en [§12](#12-implementación-de-fase-5-mapa-y-deuda-de-cleanup).
+**Estado:** Fases 1–5 implementadas; Fase 5 quedó cerrada en el commit
+`67b1d3f`. Fase 4b/4c terminó en producción el 2026-08-12
+(`algorithm_version=4b.7`, `events_selected=0`) y los tres lectores públicos de
+la copia PostgreSQL local están en `quotes`. Fase 6 inició el 2026-08-12 sobre
+esa copia y quedó completada localmente con migración slim fail-closed,
+compactación y postflight integral ejecutados únicamente por el CLI.
+La ventana operativa de Fase 5 continúa siendo requisito para repetir el DDL en
+el servidor. Evidencia de Fase 5 en [§12](#12-implementación-de-fase-5-mapa-y-deuda-de-cleanup)
+y ejecución de Fase 6 en [§13](#13-implementación-de-fase-6-snapshots-slim).
 **Alcance:** `infrastructure/persistence/models.py`, `infrastructure/persistence/repositories/market_repository.py`, `infrastructure/persistence/market_write_policy.py`, `modules/odds_ingestion/adapters/*`, `modules/oddspapi/exchange_quotes.py`, lectores de trajectory/alerts/pillars.
 
 ## Índice
@@ -1453,9 +1461,9 @@ vigente; los inventarios de §§3 y 11 se conservan como historial de decisiones
 | Readiness | `repositories/market/market_quote_readiness.py`, `scripts/maintenance/audit_market_quote_readiness.py` | Gates read-only de schema, coverage, lineage e identidad |
 | Fachada temporal | `repositories/market_repository.py` | Selección `legacy/shadow/quotes`; delega el algoritmo nuevo |
 | Presentación | `modules/alerts/alerts_formatter/odds_alert.py` | Traduce DTOs a texto; no infiere source/side ni consulta DB |
-| Trajectory | vistas privadas en `models.py`, `odds_trajectory_repository.py` | Selección histórica por `quote_id` y target minute |
+| Trajectory | vista canónica en `models.py`, `odds_trajectory_repository.py` | Selección histórica por `quote_id` y target minute; sin modos runtime |
 | Contexto/pillars | `odds_trajectory_context.py`, drift y Pilar 5 | Identidad serializable y consumo de series ya seleccionadas |
-| Dual-process | vistas privadas/pública en `models.py` | Quote SofaScore exacta, último tick por quote y contrato público estable |
+| Dual-process | vista canónica en `models.py` | Quote SofaScore exacta, último tick por quote y contrato público estable; sin modos runtime |
 | Protección | `check_no_legacy_odds_reads.py`, workflow `legacy-odds-read-guard.yml` | Impedir nuevas lecturas legacy ORM/SQL fuera de allowlist fechada |
 | Inicialización | `app/initialize.py` | Validar config, migrar, crear wrappers en orden y reconstruir dependencias |
 
@@ -1464,8 +1472,8 @@ Flujo activo:
 ```text
 market_choice_quotes + snapshots(quote_id)
     ├─ MarketReadQueries → DTOs → formatter de alertas
-    ├─ v_pre_start_*_quotes → repository → contexto → drift/Pilar 5
-    └─ v_dual_*_quotes → wrapper → event_all_odds / mv_alert_events
+    ├─ v_pre_start_odds_trajectory → repository → contexto → drift/Pilar 5
+    └─ v_dual_process_event_odds → event_all_odds / mv_alert_events
 ```
 
 ### 12.2. Evidencia local de aceptación
@@ -1503,7 +1511,7 @@ market_choice_quotes + snapshots(quote_id)
 | Pieza | Marca/estado | Por qué no se elimina ahora | Cleanup |
 |---|---|---|---|
 | `_get_external_markets_legacy` y branch dict del formatter | `LEGACY_ODDS_READ` | Shadow/rollback durante observación | Borrar en Fase 8 junto con modo `legacy` |
-| Vistas privadas `*_legacy` | rollback explícito | Repoint seguro sin rebackfill | Borrar después de Fase 6 + ventana acordada |
+| `retire_odds_read_variants_postgresql` y `RETIRED_ODDS_READ_VIEWS` | `PHASE8_CLEANUP` | Local/staging sí pueden tener variantes dual/trajectory de la primera Fase 5; el servidor puede no tenerlas | Borrar después de que todos los entornos crucen Fase 6; sus `DROP VIEW IF EXISTS` son no-op donde nunca existieron |
 | `save_markets_from_response(_with_stats)` y scripts callers | `LEGACY_MAINTENANCE_ONLY` | Aún usados por scripts históricos | Migrar scripts y borrar en Fase 8 |
 | `_save_oddsportal_market`, `_build_choice_payload`, `save_markets_from_oddsportal`, alias `get_oddsportal_markets_for_event` | `LEGACY_DEAD_CODE` | Se preservaron fuera del cutover lector | Eliminación conjunta en Fase 8 |
 | Quotes exchange `exchange_side=NULL` redundantes de Oddspapi | compatibilidad de datos | Readers ya las suprimen; borrarlas durante rollout rompería rollback | Dejar de escribir y purgar en PR post-observación |
@@ -1512,6 +1520,7 @@ market_choice_quotes + snapshots(quote_id)
 | Dual view creado tanto en `create_or_replace_views` como en `create_or_replace_materialized_views` | redundancia | Garantiza dependencia hoy, pero duplica responsabilidad | Un único `rebuild_dual_process_dependencies()` transaccional |
 | `DROP VIEW ... CASCADE` para vistas basketball/season durante init | cleanup de seguridad | Preexistente y fuera de odds; puede ocultar dependencias nuevas | Inventariar y reemplazar por DDL fail-safe sin `CASCADE` |
 | `DatabaseManager.check_and_migrate_schema` monolítico | deuda SRP | Orquesta migraciones históricas de muchas áreas | Mover DDL versionado a Alembic/servicios de migración pequeños |
+| `initialize_system` continuaba después de un schema migration failure | `LEGACY_INCORRECT` corregido en Fase 6 | Permitía arrancar writers con contrato incompatible | Mantener el startup fail-closed y agregar healthcheck de schema por versión |
 | Allowlist del guard | temporal, por path+símbolo+motivo+fase | Backfill/readiness/modelos todavía necesitan columnas legacy | Expira en Fase 7/8; no admitir consumidores nuevos |
 | `.gitignore` ignora globalmente `tests/`, `*.json`, `*.md` y exige excepciones | deuda de tooling | Preexistente | Simplificar reglas para que tests/config/docs no queden fuera de git |
 
@@ -1544,11 +1553,82 @@ market_choice_quotes + snapshots(quote_id)
   dos archivos excluidos son exactamente los nominados arriba; no se ocultó
   ningún fallo nuevo del refactor.
 
-### 12.5. Pendiente operativo antes de Fase 6
+### 12.5. Pendiente operativo antes del DDL de Fase 6 en servidor
 
 El código y el entorno local están cortados a quotes. Falta observar en el
 entorno objetivo al menos un ciclo pre-start completo (T-120/T-30/T-5/T0 y el
 momento posterior configurado), recopilar p95 con una muestra estratificada y
 confirmar cero blockers. `MARKET_CHOICE_LEGACY_STOP_WRITE_AT` permanece vacío:
-no se inventó una hora; sólo hace falta para clasificar shadow. Hasta cerrar
-esa ventana, mantener wrappers legacy y flags de rollback.
+no se inventó una hora; sólo hace falta para clasificar shadow.
+
+La preparación y validación de Fase 6 puede hacerse sobre la copia local. El
+DDL destructivo **no se replica al servidor** hasta cerrar esa ventana. Una
+vez aplicado el snapshot slim, el rollback de Fase 5 por flag deja de ser una
+garantía estructural completa: restaurar columnas exige recuperar el backup o
+la copia pre-6.
+
+---
+
+## 13. Implementación de Fase 6: snapshots slim
+
+**Ejecución local completada:** 2026-08-12. Plan, runbook y evidencia en
+[`db-schema-odds-refactor-phase-6.md`](db-schema-odds-refactor-phase-6.md).
+
+- La migración y compactación se ejecutaron exclusivamente mediante
+  `python -m scripts.maintenance.migrate_market_choice_snapshots_slim`; queda
+  prohibido aplicar su SQL manualmente en servidor.
+- Schema final: siete columnas, `quote_id NOT NULL`, cero nulos/huérfanos y
+  una sola identidad vía quote.
+- Filas/checksum preservados: 2,762,285 y
+  `8fec7e3fb72e38a910a84d657b7f1784`.
+- Tamaño total: 651,206,656 → 366,993,408 bytes (-43.6%).
+- Postflight de `158955`/`169158`, vistas, wrappers y MV: verde; ejecución
+  repetida del CLI: idempotente.
+- Servidor sigue bloqueado hasta completar la observación operativa descrita
+  en §12.5; luego debe usar el mismo runbook, con jobs detenidos y backup.
+
+Deuda marcada: el backfill 4b/4c y los dos scripts históricos de
+canonicalización todavía dependen del schema snapshot expandido. Sus
+preflights los bloquean bajo Fase 6; eliminar o portar a quote lineage en Fase
+8. El startup ya no migra snapshots y falla de forma explícita si se intenta
+reanudar la aplicación Fase 6 antes de ejecutar el script.
+
+### 13.1. Baseline confirmado
+
+- Tabla exacta: `public.market_choice_snapshots`.
+- Filas al preflight inicial: 2,762,285.
+- `quote_id IS NULL = 0`.
+- Tamaño total 651,206,656 bytes: heap 218,112,000 e índices 433,004,544.
+- Dependencias SQL iniciales: las antiguas vistas privadas dual y trajectory.
+  La migración instala ambas vistas canónicas quote-aware y retira las cuatro
+  privadas cuando existan.
+- Columnas slim conservadas: `snapshot_id`, `quote_id`, `odds_value`,
+  `collected_at`, `source_collected_at`, `source_limit`, `exchange_size`.
+- Columnas a retirar: `choice_id`, `source`, `source_market_id`,
+  `source_outcome_id`, `bookmaker_outcome_id`, `main_line`, `exchange_side`,
+  `exchange_level`.
+
+### 13.2. Decisiones de frontera
+
+- Toda identidad se obtiene mediante
+  `snapshot.quote_id → market_choice_quotes → market_choices`.
+- Los datos por tick (`source_collected_at`, `source_limit`, `exchange_size`)
+  permanecen en snapshots; no son identidad duplicada.
+- El writer deja de copiar identidad desde la quote al snapshot.
+- Las vistas llamadas `*_legacy` sólo pueden conservar rollback del estado de
+  precio de `market_choices`; incluso ellas deben resolver lineage histórica
+  por `quote_id`. No se conserva un reader de identidad snapshot legacy.
+- El backfill 4b/4c de snapshots queda cerrado tras Fase 6: un esquema con
+  `quote_id NOT NULL` no puede volver a clasificar snapshots sin lineage. Las
+  operaciones de limpieza que sigan vivas deben navegar mediante quotes.
+- La migración no usa `CASCADE`. Cualquier dependencia no reconocida bloquea
+  el DROP.
+
+### 13.3. Estado
+
+Fase 6 está **completada en local y lista para commit**. El commit de cierre de
+Fase 5 es `67b1d3f`; la aplicación, el script, el schema local, readers, MV,
+guards y regresión quedaron verdes. La réplica en servidor conserva el gate
+operativo de §12.5 y debe usar exclusivamente el runbook versionado. Las
+modificaciones preexistentes de los documentos 4b/4c permanecen fuera del
+scope del commit de Fase 6.

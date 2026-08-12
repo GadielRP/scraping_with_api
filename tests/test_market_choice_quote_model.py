@@ -82,7 +82,6 @@ def test_exchange_side_defaults_to_null_for_non_exchange_bookies(tmp_path):
         session.add(quote)
         session.flush()
         snapshot = MarketChoiceSnapshot(
-            choice_id=choice_id,
             quote=quote,
             odds_value=1.90,
         )
@@ -95,7 +94,7 @@ def test_exchange_side_defaults_to_null_for_non_exchange_bookies(tmp_path):
 
     with manager.get_session() as session:
         snapshot = session.query(MarketChoiceSnapshot).one()
-        assert snapshot.quote.choice_id == snapshot.choice_id
+        assert snapshot.quote.choice_id == choice_id
         assert snapshot.quote.snapshots[0].snapshot_id == snapshot.snapshot_id
 
     inspector = inspect(manager.engine)
@@ -258,12 +257,12 @@ def test_initial_then_current_arriving_later_updates_same_row(tmp_path):
         assert float(quote.current_odds) == 3.05
 
 
-def test_manual_migrations_upgrade_legacy_quote_and_snapshot_schema(tmp_path):
-    """Legacy quote values and snapshot lineage are upgraded in place.
+def test_startup_does_not_upgrade_legacy_snapshot_schema(tmp_path):
+    """Phase 6 structural changes belong only to the explicit script.
 
     Production tables created under the earlier design may still contain
     exchange_side='single'. Re-running the quotes migration must rewrite
-    them so live ingestion and the COALESCE unique index share one convention.
+    it, but startup must not alter the snapshot schema.
     """
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
@@ -306,19 +305,12 @@ def test_manual_migrations_upgrade_legacy_quote_and_snapshot_schema(tmp_path):
             )
         """))
 
-    manager._migrate_market_choice_snapshot_lineage()
+    with pytest.raises(RuntimeError, match="missing columns"):
+        manager._migrate_market_choice_snapshot_lineage()
 
-    inspector = inspect(manager.engine)
-    assert "quote_id" in {
+    assert "quote_id" not in {
         column["name"]
-        for column in inspector.get_columns("market_choice_snapshots")
+        for column in inspect(manager.engine).get_columns(
+            "market_choice_snapshots"
+        )
     }
-    assert "idx_market_choice_snapshots_quote_collected" in {
-        index["name"]
-        for index in inspector.get_indexes("market_choice_snapshots")
-    }
-    assert any(
-        foreign_key.get("referred_table") == "market_choice_quotes"
-        and foreign_key.get("constrained_columns") == ["quote_id"]
-        for foreign_key in inspector.get_foreign_keys("market_choice_snapshots")
-    )

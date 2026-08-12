@@ -43,10 +43,10 @@ class MarketChoiceSnapshotWriter:
         if collected_at is None:
             raise ValueError("collected_at is required to append a snapshot")
 
-        source = str(quote.source or "").strip().lower()
-        if not source:
+        normalized_source = str(quote.source or "").strip().lower()
+        if not normalized_source:
             raise ValueError("quote.source is required to append a snapshot")
-        if quote.source != source:
+        if quote.source != normalized_source:
             raise ValueError(
                 "quote.source must be normalized before appending a snapshot"
             )
@@ -66,19 +66,11 @@ class MarketChoiceSnapshotWriter:
             raise ValueError("quote.exchange_level cannot be negative")
 
         snapshot = MarketChoiceSnapshot(
-            choice_id=quote.choice_id,
             quote=quote,
             odds_value=odds_value,
             collected_at=collected_at,
-            source=source,
             source_collected_at=source_collected_at,
-            source_market_id=quote.source_market_id,
-            source_outcome_id=quote.source_outcome_id,
-            bookmaker_outcome_id=quote.bookmaker_outcome_id,
-            main_line=quote.main_line,
             source_limit=source_limit,
-            exchange_side=exchange_side,
-            exchange_level=exchange_level,
             exchange_size=exchange_size,
         )
         session.add(snapshot)

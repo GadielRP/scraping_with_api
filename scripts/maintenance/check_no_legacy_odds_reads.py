@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SCAN_ROOTS = ("app", "infrastructure", "modules", "scripts")
 LEGACY_CHOICE_FIELDS = {"initial_odds", "current_odds", "change"}
 LEGACY_SNAPSHOT_IDENTITY_FIELDS = {
+    "choice_id",
     "source",
     "source_market_id",
     "source_outcome_id",
@@ -33,7 +34,7 @@ SQL_CHOICE_PATTERN = re.compile(
 )
 SQL_SNAPSHOT_PATTERN = re.compile(
     r"\b(?:mcs|market_choice_snapshots?)\s*\.\s*"
-    r"(source|source_market_id|source_outcome_id|bookmaker_outcome_id|"
+    r"(choice_id|source|source_market_id|source_outcome_id|bookmaker_outcome_id|"
     r"main_line|exchange_side|exchange_level)\b",
     re.IGNORECASE,
 )
@@ -64,11 +65,11 @@ ALLOWLIST = (
         "8",
     ),
     LegacyReadAllowance(
-        "infrastructure/persistence/models.py",
-        "build_pre_start_odds_trajectory_view_sql",
+        "infrastructure/persistence/migrations/market_choice_snapshot_slim.py",
+        "_audit_connection",
         "legacy_sql_snapshot_identity",
-        "Private rollback trajectory view retains snapshot metadata.",
-        "8",
+        "Phase 6 pre-drop consistency gate; skipped once choice_id is absent.",
+        "6",
     ),
     LegacyReadAllowance(
         "infrastructure/persistence/repositories/market_repository.py",
@@ -82,6 +83,13 @@ ALLOWLIST = (
         "select_event_scope",
         "legacy_orm_choice_state",
         "Phase 4 backfill coverage selector, not a production odds consumer.",
+        "8",
+    ),
+    LegacyReadAllowance(
+        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
+        "select_event_scope",
+        "legacy_orm_snapshot_identity",
+        "Retired Phase 4 selector; Phase 6 preflight blocks its execution.",
         "8",
     ),
     LegacyReadAllowance(
@@ -103,6 +111,13 @@ ALLOWLIST = (
         "fetch_choice_states_without_snapshots",
         "legacy_orm_choice_state",
         "Backfill-only recovery of historical choice state.",
+        "8",
+    ),
+    LegacyReadAllowance(
+        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
+        "fetch_choice_states_without_snapshots",
+        "legacy_orm_snapshot_identity",
+        "Retired Phase 4 recovery; Phase 6 preflight blocks its execution.",
         "8",
     ),
     LegacyReadAllowance(
@@ -134,11 +149,53 @@ ALLOWLIST = (
         "8",
     ),
     LegacyReadAllowance(
+        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
+        "purge_legacy_back_lay_markets",
+        "legacy_orm_snapshot_identity",
+        "Retired Phase 4c purge; Phase 6 preflight blocks its execution.",
+        "8",
+    ),
+    LegacyReadAllowance(
+        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
+        "select_ambiguous_choice_state_event_scope",
+        "legacy_orm_snapshot_identity",
+        "Retired Phase 4c selector; Phase 6 preflight blocks its execution.",
+        "8",
+    ),
+    LegacyReadAllowance(
+        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
+        "purge_ambiguous_choice_states",
+        "legacy_orm_snapshot_identity",
+        "Retired Phase 4c purge; Phase 6 preflight blocks its execution.",
+        "8",
+    ),
+    LegacyReadAllowance(
+        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
+        "purge_markets_outside_allowed_bookies",
+        "legacy_orm_snapshot_identity",
+        "Retired Phase 4c purge; Phase 6 preflight blocks its execution.",
+        "8",
+    ),
+    LegacyReadAllowance(
+        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
+        "purge_oddspapi_null_mainline_line_markets",
+        "legacy_orm_snapshot_identity",
+        "Retired Phase 4c purge; Phase 6 preflight blocks its execution.",
+        "8",
+    ),
+    LegacyReadAllowance(
         "infrastructure/persistence/repositories/market/market_quote_readiness.py",
         "audit",
         "legacy_sql_choice_state",
         "Readiness gate proves frozen choice state is covered by quotes.",
         "7",
+    ),
+    LegacyReadAllowance(
+        "infrastructure/persistence/repositories/market/market_quote_readiness.py",
+        "audit",
+        "legacy_sql_snapshot_identity",
+        "Expanded-schema consistency gate; skipped after Phase 6 DROP.",
+        "6",
     ),
     LegacyReadAllowance(
         "scripts/maintenance/backfill_sofascore_choice_names_and_groups.py",

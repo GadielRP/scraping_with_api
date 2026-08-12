@@ -48,7 +48,7 @@ class MarketQuoteReadinessAuditor:
             "exchange_side",
             "exchange_level",
         },
-        "market_choice_snapshots": {"snapshot_id", "choice_id", "quote_id"},
+        "market_choice_snapshots": {"snapshot_id", "quote_id"},
     }
 
     @staticmethod
@@ -113,36 +113,35 @@ class MarketQuoteReadinessAuditor:
             return MarketQuoteReadinessReport(False, scope, schema_errors=schema_errors)
 
         scope_sql, params, binds = MarketQuoteReadinessAuditor._scope_sql(scope)
+        snapshot_columns = {
+            item["name"]
+            for item in inspect(session.get_bind()).get_columns(
+                "market_choice_snapshots"
+            )
+        }
+        issues = []
+        # A NULL quote has no path to an event.  This lineage invariant is
+        # therefore deliberately global even when the rest of the audit is
+        # scoped to reference events.
+        unlinked_issue = MarketQuoteReadinessAuditor._issue_from_query(
+            session,
+            code="unlinked_snapshot",
+            sql="""
+                SELECT mcs.snapshot_id AS sample_id, 1 AS row_count,
+                       COUNT(*) OVER () AS total_count
+                FROM market_choice_snapshots mcs
+                WHERE mcs.quote_id IS NULL
+                ORDER BY mcs.snapshot_id
+                LIMIT 20
+            """,
+            params={},
+            bind_params=[],
+            detail="Global invariant: an unlinked row cannot be event-scoped.",
+        )
+        if unlinked_issue:
+            issues.append(unlinked_issue)
+
         queries = [
-            (
-                "unlinked_snapshot",
-                f"""
-                SELECT mcs.snapshot_id AS sample_id, 1 AS row_count,
-                       COUNT(*) OVER () AS total_count
-                FROM market_choice_snapshots mcs
-                JOIN market_choices mc ON mc.choice_id = mcs.choice_id
-                JOIN markets m ON m.market_id = mc.market_id
-                WHERE mcs.quote_id IS NULL {scope_sql}
-                ORDER BY mcs.snapshot_id
-                LIMIT 20
-                """,
-                None,
-            ),
-            (
-                "snapshot_quote_choice_mismatch",
-                f"""
-                SELECT mcs.snapshot_id AS sample_id, 1 AS row_count,
-                       COUNT(*) OVER () AS total_count
-                FROM market_choice_snapshots mcs
-                JOIN market_choice_quotes mcq ON mcq.quote_id = mcs.quote_id
-                JOIN market_choices mc ON mc.choice_id = mcs.choice_id
-                JOIN markets m ON m.market_id = mc.market_id
-                WHERE mcs.choice_id <> mcq.choice_id {scope_sql}
-                ORDER BY mcs.snapshot_id
-                LIMIT 20
-                """,
-                None,
-            ),
             (
                 "legacy_choice_state_without_quote",
                 f"""
@@ -192,6 +191,27 @@ class MarketQuoteReadinessAuditor:
                 None,
             ),
         ]
+        # This consistency check only exists during the expanded pre-Phase 6
+        # schema.  After the DROP, quote_id is the sole lineage identity.
+        if "choice_id" in snapshot_columns:
+            queries.insert(
+                0,
+                (
+                    "snapshot_quote_choice_mismatch",
+                    f"""
+                    SELECT mcs.snapshot_id AS sample_id, 1 AS row_count,
+                           COUNT(*) OVER () AS total_count
+                    FROM market_choice_snapshots mcs
+                    JOIN market_choice_quotes mcq ON mcq.quote_id = mcs.quote_id
+                    JOIN market_choices mc ON mc.choice_id = mcq.choice_id
+                    JOIN markets m ON m.market_id = mc.market_id
+                    WHERE mcs.choice_id <> mcq.choice_id {scope_sql}
+                    ORDER BY mcs.snapshot_id
+                    LIMIT 20
+                    """,
+                    None,
+                ),
+            )
         if not scope:
             queries.append(
                 (
@@ -209,7 +229,6 @@ class MarketQuoteReadinessAuditor:
                     None,
                 )
             )
-        issues = []
         for code, sql, detail in queries:
             issue = MarketQuoteReadinessAuditor._issue_from_query(
                 session,

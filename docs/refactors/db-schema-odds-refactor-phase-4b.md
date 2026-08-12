@@ -1,10 +1,9 @@
 # Fase 4b — Plan de implementación del backfill de quotes
 
-**Estado:** listo para implementación  
-**Prerrequisito:** Fase 4a desplegada y verificada  
-**Documento maestro:** [db-schema-odds-refactor.md](./db-schema-odds-refactor.md)  
-**Resultado de 4b:** herramienta segura, idempotente y probada; la ejecución
-completa en staging/producción pertenece a Fase 4c.
+**Estado:** completada (herramienta `4b.7` desplegada y usada en 4c)
+**Prerrequisito:** Fase 4a desplegada y verificada
+**Documento maestro:** [db-schema-odds-refactor.md](./db-schema-odds-refactor.md)
+**Ejecución en prod:** [Fase 4c](./db-schema-odds-refactor-phase-4c-runbook.md) (completada 2026-08-12).
 
 ## 1. Objetivo
 

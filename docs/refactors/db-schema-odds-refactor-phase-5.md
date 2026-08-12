@@ -268,8 +268,8 @@ opciones; documentarlas también en `.env.example`:
 | Variable | Valores | Default | Efecto |
 |---|---|---|---|
 | `EXTERNAL_ODDS_READ_MODE` | `legacy`, `shadow`, `quotes` | `legacy` | Fachada de alertas externas |
-| `PRE_START_TRAJECTORY_READ_MODE` | `legacy`, `shadow`, `quotes` | `legacy` | Repository y vista pública de trajectory |
-| `DUAL_PROCESS_ODDS_READ_MODE` | `legacy`, `quotes` | `legacy` | Definición de la vista pública al inicializar |
+| `PRE_START_TRAJECTORY_READ_MODE` | retirado en Fase 6 | — | Trajectory quedó fija en la vista canónica quote-aware |
+| `DUAL_PROCESS_ODDS_READ_MODE` | retirado en Fase 6 | — | Dual quedó fijo en la vista canónica quote-aware |
 | `ODDS_READ_SHADOW_SAMPLE_RATE` | decimal `[0,1]` | `1.0` en staging, explícito en prod | Muestreo determinista por `event_id` |
 | `ODDS_READ_PRIORITY_CONFIG` | path | `config/odds_read_priority.json` | Prioridad por field/scope |
 | `MARKET_CHOICE_LEGACY_STOP_WRITE_AT` | ISO-8601 UTC o vacío | vacío | Clasificar diferencias por mirror congelado |
@@ -580,10 +580,11 @@ y después, sin depender de que la key del diccionario sea `"SofaScore"`.
 
 Crear definiciones paralelas con schema idéntico:
 
-- `v_dual_process_event_odds_legacy`.
-- `v_dual_process_event_odds_quotes`.
-- `v_dual_process_event_odds` como wrapper seleccionado por
-  `DUAL_PROCESS_ODDS_READ_MODE`.
+- Durante el rollout existieron `v_dual_process_event_odds_legacy` y
+  `v_dual_process_event_odds_quotes` detrás de un wrapper configurable.
+- Tras la validación funcional y Fase 6, ambas privadas y el selector fueron
+  retirados. `v_dual_process_event_odds` es ahora la implementación quote-aware
+  canónica.
 
 La definición quotes une para cada choice exactamente:
 
@@ -878,3 +879,15 @@ DUAL_PROCESS_ODDS_READ_MODE=quotes
 `MARKET_CHOICE_LEGACY_STOP_WRITE_AT` se dejó vacío deliberadamente: no se
 recibió una fecha/hora UTC exacta y no se inventa. El campo sólo afecta la
 clasificación shadow, no el path quotes activo.
+
+## 17. Cierre y transición
+
+La implementación de esta fase quedó cerrada en el commit `67b1d3f`
+(`feat(odds): cut readers over to quote identities`). Fase 6 inició después de
+ese commit sobre la copia PostgreSQL local. Su plan, gates destructivos y
+evidencia se mantienen separados en
+[`db-schema-odds-refactor-phase-6.md`](db-schema-odds-refactor-phase-6.md).
+
+El rollback por flags descrito aquí aplica mientras el schema expandido de
+snapshots siga presente. Después del DROP slim de Fase 6, volver al schema
+anterior requiere restaurar una copia/backup; no basta cambiar un flag.

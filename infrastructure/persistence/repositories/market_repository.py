@@ -14,7 +14,6 @@ from infrastructure.persistence.models import (
     Market,
     MarketChoice,
     MarketChoiceQuote,
-    MarketChoiceSnapshot,
 )
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.market_write_policy import (
@@ -1370,7 +1369,8 @@ class MarketRepository:
             logger.error(f"Error getting markets for event {event_id}: {e}")
             return []
 
-    # LEGACY_ODDS_READ: infers source from snapshots and reads frozen choice odds.
+    # LEGACY_ODDS_READ: reads frozen choice odds and obtains source from quote
+    # identity. Snapshots remain pure ticks even for this rollback reader.
     # Retained only for shadow/rollback during Phase 5; remove in Phase 8.
     @staticmethod
     def _get_external_markets_legacy(event_id: int) -> List[Dict]:
@@ -1419,18 +1419,22 @@ class MarketRepository:
                             'movement': movement
                         })
 
-                    # Determine source from snapshots of choices
+                    # Determine source from quote identity. Phase 6 removes all
+                    # identity columns from market_choice_snapshots.
                     source = "oddsportal"
                     if market.choices:
                         first_choice = market.choices[0]
-                        snapshot = (
-                            session.query(MarketChoiceSnapshot)
-                            .filter(MarketChoiceSnapshot.choice_id == first_choice.choice_id)
-                            .order_by(MarketChoiceSnapshot.collected_at.desc())
+                        quote = (
+                            session.query(MarketChoiceQuote)
+                            .filter(MarketChoiceQuote.choice_id == first_choice.choice_id)
+                            .order_by(
+                                MarketChoiceQuote.current_updated_at.desc(),
+                                MarketChoiceQuote.quote_id.desc(),
+                            )
                             .first()
                         )
-                        if snapshot and snapshot.source:
-                            source = snapshot.source
+                        if quote and quote.source:
+                            source = quote.source
 
                     result.append({
                         'bookie_name': bookie_name,

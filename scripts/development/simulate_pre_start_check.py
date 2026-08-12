@@ -25,7 +25,7 @@ from infrastructure.persistence.catalogs.canonical_market_types import (
     CANONICAL_MARKET_TYPE_SEEDS,
 )
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import Market, MarketChoice
+from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceQuote
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.key_moment_evaluation import (
@@ -166,8 +166,9 @@ def _log_persisted_market_odds(
             session.query(Market)
             .options(
                 joinedload(Market.bookie),
-                joinedload(Market.choices).joinedload(MarketChoice.snapshots),
-                joinedload(Market.choices).joinedload(MarketChoice.quotes),
+                joinedload(Market.choices)
+                .joinedload(MarketChoice.quotes)
+                .joinedload(MarketChoiceQuote.snapshots),
             )
             .filter(Market.event_id == event_id)
             .order_by(Market.market_id)
@@ -178,7 +179,8 @@ def _log_persisted_market_odds(
             snapshot
             for market in markets
             for choice in market.choices
-            for snapshot in choice.snapshots
+            for quote in choice.quotes
+            for snapshot in quote.snapshots
         ]
         new_snapshot_ids = {
             snapshot.snapshot_id
@@ -203,7 +205,8 @@ def _log_persisted_market_odds(
             has_new_snapshot = any(
                 snapshot.snapshot_id in new_snapshot_ids
                 for choice in market.choices
-                for snapshot in choice.snapshots
+                for quote in choice.quotes
+                for snapshot in quote.snapshots
             )
             logger.info("-" * 100)
             logger.info(
@@ -247,24 +250,24 @@ def _log_persisted_market_odds(
                         quote.source_outcome_id,
                         quote.main_line,
                     )
-                for snapshot in sorted(
-                    choice.snapshots,
-                    key=lambda item: item.snapshot_id,
-                ):
-                    logger.info(
-                        "    %sSNAPSHOT id=%s odds=%s collected_at=%s "
-                        "quote_id=%s limit=%r",
-                        (
-                            "NEW "
-                            if snapshot.snapshot_id in new_snapshot_ids
-                            else ""
-                        ),
-                        snapshot.snapshot_id,
-                        snapshot.odds_value,
-                        snapshot.collected_at,
-                        snapshot.quote_id,
-                        snapshot.source_limit,
-                    )
+                    for snapshot in sorted(
+                        quote.snapshots,
+                        key=lambda item: item.snapshot_id,
+                    ):
+                        logger.info(
+                            "      %sSNAPSHOT id=%s odds=%s collected_at=%s "
+                            "quote_id=%s limit=%r",
+                            (
+                                "NEW "
+                                if snapshot.snapshot_id in new_snapshot_ids
+                                else ""
+                            ),
+                            snapshot.snapshot_id,
+                            snapshot.odds_value,
+                            snapshot.collected_at,
+                            snapshot.quote_id,
+                            snapshot.source_limit,
+                        )
         logger.info("=" * 100)
         logger.info("END DATABASE PERSISTENCE REPORT")
         logger.info("=" * 100)

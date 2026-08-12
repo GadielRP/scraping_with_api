@@ -387,9 +387,9 @@ def test_repository_sportsbook_choice_keeps_single_null_exchange_snapshot(tmp_pa
         snapshot = session.query(MarketChoiceSnapshot).one()
         quote = session.query(MarketChoiceQuote).one()
     assert snapshot.quote_id == quote.quote_id
-    assert snapshot.choice_id == quote.choice_id
-    assert snapshot.exchange_side is None
-    assert snapshot.exchange_level is None
+    assert quote.choice_id is not None
+    assert quote.exchange_side is None
+    assert quote.exchange_level == 0
     assert snapshot.exchange_size is None
 
 
@@ -575,10 +575,11 @@ def test_repository_persists_exchange_opening_as_back_without_initial_lay(
         quotes = session.query(MarketChoiceQuote).all()
 
     assert float(choice.initial_odds) == 1.7
+    quotes_by_id = {quote.quote_id: quote for quote in quotes}
     assert [
         (
-            snapshot.exchange_side,
-            snapshot.exchange_level,
+            quotes_by_id[snapshot.quote_id].exchange_side,
+            quotes_by_id[snapshot.quote_id].exchange_level,
             float(snapshot.odds_value),
         )
         for snapshot in snapshots
@@ -640,10 +641,11 @@ def test_repository_exchange_choice_persists_ladder_and_best_back_current_odds(t
 
     assert choice.choice_name == "2"
     assert float(choice.current_odds) == 4.8
+    quotes_by_id = {quote.quote_id: quote for quote in quotes}
     assert [
         (
-            snapshot.exchange_side,
-            snapshot.exchange_level,
+            quotes_by_id[snapshot.quote_id].exchange_side,
+            quotes_by_id[snapshot.quote_id].exchange_level,
             float(snapshot.odds_value),
             float(snapshot.exchange_size),
         )

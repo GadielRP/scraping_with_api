@@ -11,6 +11,7 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import (
     Market,
     MarketChoice,
+    MarketChoiceQuote,
     MarketChoiceSnapshot,
 )
 from infrastructure.persistence.repositories import EventRepository
@@ -98,8 +99,12 @@ def run_production_odds_phase(
                 for (snapshot_id,) in (
                     session.query(MarketChoiceSnapshot.snapshot_id)
                     .join(
+                        MarketChoiceQuote,
+                        MarketChoiceSnapshot.quote_id == MarketChoiceQuote.quote_id,
+                    )
+                    .join(
                         MarketChoice,
-                        MarketChoiceSnapshot.choice_id == MarketChoice.choice_id,
+                        MarketChoiceQuote.choice_id == MarketChoice.choice_id,
                     )
                     .join(Market, MarketChoice.market_id == Market.market_id)
                     .filter(Market.event_id == event_id)

@@ -22,7 +22,11 @@ def initialize_system() -> bool:
         db_manager.create_tables()
 
         if not db_manager.check_and_migrate_schema():
-            logger.warning("Schema migration check failed, but continuing...")
+            logger.error(
+                "Schema validation/migration failed; application startup is "
+                "blocked to prevent writes against an incompatible schema."
+            )
+            return False
 
         create_or_replace_views(db_manager.engine)
         create_or_replace_materialized_views(db_manager.engine)

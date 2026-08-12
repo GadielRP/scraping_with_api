@@ -806,6 +806,11 @@ def validate_required_schema(connection) -> dict:
             "requires_choice_group",
             "enabled_for_trajectory",
         },
+        # LEGACY_PHASE6_BLOCKER: duplicate-choice merging still reassigns
+        # snapshots by choice_id. The Phase 6 slim schema intentionally blocks
+        # this historical maintenance command until its merge logic is ported
+        # to quote lineage or removed in Phase 8.
+        "market_choice_snapshots": {"snapshot_id", "choice_id"},
     }
 
     errors: list[str] = []

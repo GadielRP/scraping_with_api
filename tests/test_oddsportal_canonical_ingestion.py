@@ -453,6 +453,7 @@ def test_oddsportal_opening_and_oddspapi_current_are_order_independent(
         oddsportal_quotes = _primary_quotes_by_choice_name(session, source="oddsportal")
         oddspapi_quotes = _primary_quotes_by_choice_name(session, source="oddspapi")
         snapshots = session.query(MarketChoiceSnapshot).all()
+        snapshot_sources = {snapshot.quote.source for snapshot in snapshots}
 
     assert float(oddsportal_quotes["1"].initial_odds) == 1.86
     assert float(oddsportal_quotes["x"].initial_odds) == 3.20
@@ -463,7 +464,7 @@ def test_oddsportal_opening_and_oddspapi_current_are_order_independent(
     assert float(oddspapi_quotes["x"].current_odds) == 3.25
     assert float(oddspapi_quotes["2"].current_odds) == 2.85
     assert len(snapshots) == 3
-    assert {snapshot.source for snapshot in snapshots} == {"oddspapi"}
+    assert snapshot_sources == {"oddspapi"}
 
 
 def test_market_not_covered_by_oddsportal_keeps_oddspapi_initial(tmp_path):
@@ -572,6 +573,7 @@ def test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current
         oddspapi_quotes = _primary_quotes_by_choice_name(session, source="oddspapi")
         oddsportal_quotes = _primary_quotes_by_choice_name(session, source="oddsportal")
         snapshots = session.query(MarketChoiceSnapshot).all()
+        snapshot_sources = {snapshot.quote.source for snapshot in snapshots}
 
     # When OddsPortal is enabled, its own quote carries the "opening owner"
     # price (see docstring). When disabled, Oddspapi's quote is both the only
@@ -586,7 +588,7 @@ def test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current
     assert float(oddspapi_quotes["x"].current_odds) == 3.25
     assert float(oddspapi_quotes["2"].current_odds) == 2.85
     assert len(snapshots) == 3
-    assert {snapshot.source for snapshot in snapshots} == {"oddspapi"}
+    assert snapshot_sources == {"oddspapi"}
 
 
 def test_canonical_write_upgrades_unique_legacy_full_time_row(tmp_path):

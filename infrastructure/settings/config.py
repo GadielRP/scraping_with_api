@@ -421,16 +421,10 @@ class Config:
 
     PERIODS_DUAL_PROCESS = _parse_env_list_alias('PERIODS_DUAL_PROCESS', 'periods_dual_process', ['Full Time'])
 
-    # Phase 5 quote-aware read cutover. Keep each consumer independently
-    # reversible; never infer one consumer's mode from another's.
+    # External alert presentation remains the only configurable Phase 5
+    # consumer. Dual process and trajectory are permanently quote-aware.
     EXTERNAL_ODDS_READ_MODE = _parse_env_choice(
         'EXTERNAL_ODDS_READ_MODE', {'legacy', 'shadow', 'quotes'}, 'legacy'
-    )
-    PRE_START_TRAJECTORY_READ_MODE = _parse_env_choice(
-        'PRE_START_TRAJECTORY_READ_MODE', {'legacy', 'shadow', 'quotes'}, 'legacy'
-    )
-    DUAL_PROCESS_ODDS_READ_MODE = _parse_env_choice(
-        'DUAL_PROCESS_ODDS_READ_MODE', {'legacy', 'quotes'}, 'legacy'
     )
     ODDS_READ_SHADOW_SAMPLE_RATE = _parse_env_rate(
         'ODDS_READ_SHADOW_SAMPLE_RATE', 1.0

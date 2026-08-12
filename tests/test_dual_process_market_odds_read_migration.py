@@ -4,7 +4,6 @@ from infrastructure.persistence.models import (
     EVENT_ALL_ODDS_VIEW_SQL,
     MV_ALERT_EVENTS_SQL,
     build_dual_process_event_odds_view_sql,
-    build_dual_process_public_view_sql,
 )
 
 
@@ -27,12 +26,10 @@ def test_dual_process_event_odds_view_uses_market_tables():
     assert "ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC" in sql
 
 
-def test_quote_view_selects_exact_sofascore_quote_and_latest_tick_by_quote():
+def test_canonical_view_selects_exact_sofascore_quote_and_latest_tick_by_quote():
     sql = build_dual_process_event_odds_view_sql(
         ["Full time", "Home/Away"],
         ["Full-time", "Match"],
-        view_name="v_dual_process_event_odds_quotes",
-        quote_aware=True,
     )
 
     assert "JOIN LATERAL" in sql
@@ -46,11 +43,10 @@ def test_quote_view_selects_exact_sofascore_quote_and_latest_tick_by_quote():
     assert "COALESCE(latest.odds_value, mcq.current_odds)" in sql
     assert "mcq.current_updated_at" in sql
     assert "mcq.initial_captured_at" in sql
-
-
-def test_dual_process_public_wrapper_is_explicit_and_reversible():
-    assert "v_dual_process_event_odds_legacy" in build_dual_process_public_view_sql("legacy")
-    assert "v_dual_process_event_odds_quotes" in build_dual_process_public_view_sql("quotes")
+    assert "mc.initial_odds" not in sql
+    assert "mc.current_odds" not in sql
+    assert "v_dual_process_event_odds_legacy" not in sql
+    assert "v_dual_process_event_odds_quotes" not in sql
 
 
 def test_alert_and_reporting_views_read_dual_process_view():

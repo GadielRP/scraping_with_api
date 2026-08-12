@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional
-import zlib
 
 from sqlalchemy import bindparam, text
 
@@ -74,16 +73,6 @@ class OddsTrajectoryPoint:
 
 class OddsTrajectoryRepository:
     @staticmethod
-    def _is_shadow_sampled(event_ids: List[int], sample_rate: float) -> bool:
-        if sample_rate <= 0:
-            return False
-        if sample_rate >= 1:
-            return True
-        stable_scope = ",".join(str(int(item)) for item in sorted(set(event_ids)))
-        bucket = zlib.crc32(stable_scope.encode("ascii")) % 10_000
-        return bucket < int(sample_rate * 10_000)
-
-    @staticmethod
     def _from_row(row) -> OddsTrajectoryPoint:
         data = dict(row)
         return OddsTrajectoryPoint(
@@ -133,44 +122,11 @@ class OddsTrajectoryRepository:
         if not target_minutes:
             return {}
 
-        mode = Config.PRE_START_TRAJECTORY_READ_MODE
-        if mode == "legacy":
-            return OddsTrajectoryRepository._load_pre_start_trajectory_map(
-                event_ids=event_ids,
-                target_minutes=target_minutes,
-                tolerance_minutes=tolerance_minutes,
-                view_name="v_pre_start_odds_trajectory_legacy",
-                quote_aware=False,
-            )
-        if mode == "quotes":
-            return OddsTrajectoryRepository._load_pre_start_trajectory_map(
-                event_ids=event_ids,
-                target_minutes=target_minutes,
-                tolerance_minutes=tolerance_minutes,
-                view_name="v_pre_start_odds_trajectory_quotes",
-                quote_aware=True,
-            )
-
-        legacy = OddsTrajectoryRepository._load_pre_start_trajectory_map(
+        return OddsTrajectoryRepository._load_pre_start_trajectory_map(
             event_ids=event_ids,
             target_minutes=target_minutes,
             tolerance_minutes=tolerance_minutes,
-            view_name="v_pre_start_odds_trajectory_legacy",
-            quote_aware=False,
         )
-        if not OddsTrajectoryRepository._is_shadow_sampled(
-            event_ids, Config.ODDS_READ_SHADOW_SAMPLE_RATE
-        ):
-            return legacy
-        quotes = OddsTrajectoryRepository._load_pre_start_trajectory_map(
-            event_ids=event_ids,
-            target_minutes=target_minutes,
-            tolerance_minutes=tolerance_minutes,
-            view_name="v_pre_start_odds_trajectory_quotes",
-            quote_aware=True,
-        )
-        OddsTrajectoryRepository._log_shadow_comparison(legacy, quotes)
-        return legacy
 
     @staticmethod
     def _load_pre_start_trajectory_map(
@@ -178,14 +134,7 @@ class OddsTrajectoryRepository:
         event_ids: List[int],
         target_minutes: List[int],
         tolerance_minutes: int,
-        view_name: str,
-        quote_aware: bool,
     ) -> Dict[int, List[OddsTrajectoryPoint]]:
-        if view_name not in {
-            "v_pre_start_odds_trajectory_legacy",
-            "v_pre_start_odds_trajectory_quotes",
-        }:
-            raise ValueError(f"Unsupported trajectory view: {view_name}")
         target_value_rows = ", ".join(
             f"(:target_minute_{idx})" for idx, _ in enumerate(target_minutes)
         )
@@ -197,9 +146,8 @@ class OddsTrajectoryRepository:
         where_clauses = [
             "traj.event_id IN :event_ids",
             "ABS(traj.minutes_before_start - tm.target_minute) <= :tolerance_minutes",
+            "traj.quote_id IS NOT NULL",
         ]
-        if quote_aware:
-            where_clauses.append("traj.quote_id IS NOT NULL")
         query_params = {
             "event_ids": event_ids,
             "tolerance_minutes": tolerance_minutes,
@@ -209,11 +157,6 @@ class OddsTrajectoryRepository:
             bindparam("event_ids", expanding=True),
         ]
 
-        partition_columns = (
-            "event_id, quote_id, target_minute"
-            if quote_aware
-            else "event_id, market_id, bookie_id, choice_id, target_minute"
-        )
         query = text(
             f"""
             WITH target_moments AS (
@@ -225,7 +168,7 @@ class OddsTrajectoryRepository:
                     traj.*,
                     tm.target_minute,
                     ABS(traj.minutes_before_start - tm.target_minute) AS distance_from_target
-                FROM {view_name} traj
+                FROM v_pre_start_odds_trajectory traj
                 CROSS JOIN target_moments tm
                 WHERE {" AND ".join(where_clauses)}
             ),
@@ -233,7 +176,7 @@ class OddsTrajectoryRepository:
                 SELECT
                     *,
                     ROW_NUMBER() OVER (
-                        PARTITION BY {partition_columns}
+                        PARTITION BY event_id, quote_id, target_minute
                         ORDER BY
                             distance_from_target ASC,
                             collected_at DESC,
@@ -276,51 +219,3 @@ class OddsTrajectoryRepository:
             point = OddsTrajectoryRepository._from_row(row)
             grouped.setdefault(point.event_id, []).append(point)
         return grouped
-
-    @staticmethod
-    def _log_shadow_comparison(
-        legacy: Dict[int, List[OddsTrajectoryPoint]],
-        quotes: Dict[int, List[OddsTrajectoryPoint]],
-    ) -> None:
-        event_ids = sorted(set(legacy) | set(quotes))
-        for event_id in event_ids:
-            legacy_points = legacy.get(event_id, [])
-            quote_points = quotes.get(event_id, [])
-            legacy_keys = {
-                OddsTrajectoryRepository._shadow_point_key(item)
-                for item in legacy_points
-            }
-            quote_keys = {
-                OddsTrajectoryRepository._shadow_point_key(item)
-                for item in quote_points
-            }
-            payload = {
-                "event": "odds_quote_read_shadow",
-                "consumer": "trajectory",
-                "event_id": event_id,
-                "legacy_points": len(legacy_points),
-                "quote_points": len(quote_points),
-                "legacy_only": len(legacy_keys - quote_keys),
-                "quotes_only": len(quote_keys - legacy_keys),
-            }
-            if legacy_keys == quote_keys:
-                logger.info("Trajectory quote shadow comparison: %s", payload)
-            else:
-                logger.warning("Trajectory quote shadow mismatch: %s", payload)
-
-    @staticmethod
-    def _shadow_point_key(item: OddsTrajectoryPoint) -> tuple:
-        identity = (
-            ("quote", item.quote_id)
-            if item.quote_id is not None
-            else (
-                "legacy",
-                item.market_id,
-                item.bookie_id,
-                item.choice_id,
-                item.source,
-                item.exchange_side,
-                item.exchange_level,
-            )
-        )
-        return identity, item.target_minute, item.odds_value

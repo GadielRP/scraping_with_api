@@ -804,7 +804,13 @@ class DatabaseManager:
             logger.error(traceback.format_exc())
 
     def _migrate_market_choice_snapshot_lineage(self):
-        """Ensure snapshot lineage can reference one exact market choice quote."""
+        """Validate snapshot lineage without mutating the Phase 6 table.
+
+        Phase 4 established ``quote_id`` and Phase 6 owns every subsequent
+        structural change through its explicit maintenance CLI.  In
+        particular, application startup must never recreate columns removed
+        by the slim migration.
+        """
         try:
             from sqlalchemy import inspect
 
@@ -813,64 +819,43 @@ class DatabaseManager:
                 return
 
             db_columns = {col['name'] for col in inspector.get_columns('market_choice_snapshots')}
-
-            with self.get_session() as session:
-                column_definitions = {
-                    'quote_id': (
-                        'INTEGER REFERENCES market_choice_quotes(quote_id) '
-                        'ON DELETE CASCADE'
-                    ),
-                    'source': 'TEXT',
-                    'source_collected_at': 'TIMESTAMP',
-                    'source_market_id': 'TEXT',
-                    'source_outcome_id': 'TEXT',
-                    'bookmaker_outcome_id': 'TEXT',
-                    'main_line': 'BOOLEAN',
-                    'source_limit': 'NUMERIC(12, 3)',
-                }
-
-                for column_name, column_sql in column_definitions.items():
-                    if column_name not in db_columns:
-                        session.execute(text(
-                            f"ALTER TABLE market_choice_snapshots ADD COLUMN {column_name} {column_sql}"
-                        ))
-                        logger.info("Added market_choice_snapshots.%s", column_name)
-
-                index_statements = [
-                    "CREATE INDEX IF NOT EXISTS idx_choice_collected ON market_choice_snapshots (choice_id, collected_at)",
-                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_choice_collected_desc ON market_choice_snapshots (choice_id, collected_at DESC, snapshot_id DESC)",
-                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_quote_collected ON market_choice_snapshots (quote_id, collected_at DESC, snapshot_id DESC)",
-                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source ON market_choice_snapshots (source)",
-                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source_collected ON market_choice_snapshots (source, source_collected_at)",
-                    "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_source_market ON market_choice_snapshots (source, source_market_id)",
-                ]
-
-                for statement in index_statements:
-                    session.execute(text(statement))
-
-                foreign_keys = inspect(session.connection()).get_foreign_keys(
-                    'market_choice_snapshots'
+            required = {
+                'snapshot_id',
+                'quote_id',
+                'odds_value',
+                'collected_at',
+                'source_collected_at',
+                'source_limit',
+                'exchange_size',
+            }
+            missing = sorted(required - db_columns)
+            if missing:
+                raise RuntimeError(
+                    "market_choice_snapshots is not Phase 6 compatible; "
+                    "missing columns: " + ", ".join(missing)
                 )
-                has_quote_foreign_key = any(
-                    foreign_key.get('referred_table') == 'market_choice_quotes'
-                    and foreign_key.get('constrained_columns') == ['quote_id']
-                    for foreign_key in foreign_keys
+            redundant = {
+                'choice_id',
+                'source',
+                'source_market_id',
+                'source_outcome_id',
+                'bookmaker_outcome_id',
+                'main_line',
+                'exchange_side',
+                'exchange_level',
+            }
+            if redundant & db_columns:
+                raise RuntimeError(
+                    "Phase 6 application code requires the slim snapshot schema. "
+                    "Stop application jobs and run: python -m "
+                    "scripts.maintenance.migrate_market_choice_snapshots_slim "
+                    "--commit --confirm-destructive"
                 )
-                if not has_quote_foreign_key:
-                    if self.engine.dialect.name != 'postgresql':
-                        raise RuntimeError(
-                            "market_choice_snapshots.quote_id exists without its "
-                            "foreign key; rebuild the SQLite test table before continuing"
-                        )
-                    session.execute(text(
-                        "ALTER TABLE market_choice_snapshots "
-                        "ADD CONSTRAINT fk_market_choice_snapshots_quote_id "
-                        "FOREIGN KEY (quote_id) "
-                        "REFERENCES market_choice_quotes(quote_id) ON DELETE CASCADE"
-                    ))
 
-                session.commit()
-                logger.info("market_choice_snapshots lineage migration completed")
+            logger.debug(
+                "market_choice_snapshots lineage contract validated; "
+                "structural migration is script-owned"
+            )
         except Exception as e:
             logger.error(f"Market choice snapshot lineage migration failed: {e}")
             logger.error(traceback.format_exc())
@@ -1054,7 +1039,9 @@ class DatabaseManager:
             DECLARE
                 dup RECORD;
                 dup_choice RECORD;
+                dup_quote RECORD;
                 keeper_choice_id INTEGER;
+                keeper_quote_id INTEGER;
             BEGIN
                 FOR dup IN
                     WITH ranked AS (
@@ -1091,9 +1078,46 @@ class DatabaseManager:
                             SET market_id = dup.keeper_id
                             WHERE choice_id = dup_choice.choice_id;
                         ELSE
-                            UPDATE market_choice_snapshots
-                            SET choice_id = keeper_choice_id
-                            WHERE choice_id = dup_choice.choice_id;
+                            FOR dup_quote IN
+                                SELECT *
+                                FROM market_choice_quotes
+                                WHERE choice_id = dup_choice.choice_id
+                            LOOP
+                                SELECT quote_id
+                                INTO keeper_quote_id
+                                FROM market_choice_quotes
+                                WHERE choice_id = keeper_choice_id
+                                  AND source = dup_quote.source
+                                  AND exchange_side IS NOT DISTINCT FROM dup_quote.exchange_side
+                                  AND exchange_level = dup_quote.exchange_level
+                                LIMIT 1;
+
+                                IF keeper_quote_id IS NULL THEN
+                                    UPDATE market_choice_quotes
+                                    SET choice_id = keeper_choice_id
+                                    WHERE quote_id = dup_quote.quote_id;
+                                ELSE
+                                    UPDATE market_choice_snapshots
+                                    SET quote_id = keeper_quote_id
+                                    WHERE quote_id = dup_quote.quote_id;
+
+                                    UPDATE market_choice_quotes keeper_quote
+                                    SET
+                                        initial_odds = COALESCE(keeper_quote.initial_odds, dup_quote.initial_odds),
+                                        initial_captured_at = COALESCE(keeper_quote.initial_captured_at, dup_quote.initial_captured_at),
+                                        current_odds = COALESCE(dup_quote.current_odds, keeper_quote.current_odds),
+                                        current_updated_at = COALESCE(dup_quote.current_updated_at, keeper_quote.current_updated_at),
+                                        source_market_id = COALESCE(keeper_quote.source_market_id, dup_quote.source_market_id),
+                                        source_outcome_id = COALESCE(keeper_quote.source_outcome_id, dup_quote.source_outcome_id),
+                                        bookmaker_outcome_id = COALESCE(keeper_quote.bookmaker_outcome_id, dup_quote.bookmaker_outcome_id),
+                                        main_line = COALESCE(keeper_quote.main_line, dup_quote.main_line),
+                                        source_limit = COALESCE(dup_quote.source_limit, keeper_quote.source_limit)
+                                    WHERE keeper_quote.quote_id = keeper_quote_id;
+
+                                    DELETE FROM market_choice_quotes
+                                    WHERE quote_id = dup_quote.quote_id;
+                                END IF;
+                            END LOOP;
 
                             UPDATE market_choices keeper
                             SET

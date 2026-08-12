@@ -115,7 +115,7 @@ def test_single_side_quote_is_seeded_from_initial_at_t120(tmp_path):
         assert float(quote.initial_odds) == 1.90
         assert quote.current_odds is None
         assert snapshot.quote_id == quote.quote_id
-        assert snapshot.choice_id == quote.choice_id
+        assert snapshot.quote.choice_id == quote.choice_id
 
 
 def test_back_and_lay_quotes_become_current_state_at_t5(tmp_path):
@@ -173,9 +173,12 @@ def test_back_and_lay_quotes_become_current_state_at_t5(tmp_path):
         assert back.movement == 1
         assert len(snapshots) == 4
         assert all(snapshot.quote_id is not None for snapshot in snapshots)
-        assert all(snapshot.choice_id == choice.choice_id for snapshot in snapshots)
+        assert all(
+            snapshot.quote.choice_id == choice.choice_id
+            for snapshot in snapshots
+        )
         assert [
-            (snapshot.exchange_side, float(snapshot.odds_value))
+            (snapshot.quote.exchange_side, float(snapshot.odds_value))
             for snapshot in snapshots
         ] == [
             ("back", 1.90),
@@ -185,7 +188,9 @@ def test_back_and_lay_quotes_become_current_state_at_t5(tmp_path):
         ]
         assert {snapshot.quote_id for snapshot in snapshots[:3]} == {back.quote_id}
         assert snapshots[3].quote_id == lay.quote_id
-        assert not any(snapshot.exchange_side is None for snapshot in snapshots)
+        assert not any(
+            snapshot.quote.exchange_side is None for snapshot in snapshots
+        )
 
 
 def test_partial_arrival_current_only_then_initial_backfilled_later(tmp_path):

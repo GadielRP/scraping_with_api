@@ -1,8 +1,16 @@
 # Fase 4c — Runbook de ejecución del backfill de quotes
 
-**Prerrequisito:** Fase 4b desplegada (script + tests verdes).  
-**Plan de herramienta:** [db-schema-odds-refactor-phase-4b.md](./db-schema-odds-refactor-phase-4b.md)  
+**Estado:** completada (producción, 2026-08-12)
+**Prerrequisito:** Fase 4b desplegada (script + tests verdes).
+**Plan de herramienta:** [db-schema-odds-refactor-phase-4b.md](./db-schema-odds-refactor-phase-4b.md)
 **Documento maestro:** [db-schema-odds-refactor.md](./db-schema-odds-refactor.md)
+**Siguiente:** [Fase 5](./db-schema-odds-refactor-phase-5.md) (cutover de lectores).
+
+**Cierre en producción:** campaña `algorithm_version=4b.7` con
+`--until-empty` y todos los purges; artefacto final
+`events_selected=0` / advisory lock liberado. Local y server: snapshots
+clasificables con `quote_id` ligado. Antes de reanudar ingesta, conviene
+repetir la verificación §5 (pase idempotente + query de duplicados).
 
 Esta fase **ejecuta** el backfill en staging/producción. No cambia el código
 del clasificador ni del writer.

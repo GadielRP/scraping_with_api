@@ -4,6 +4,17 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
+# LEGACY_PHASE6_TEST: this module validates the completed Phase 4b/4c tool
+# against the expanded snapshot schema. Phase 6 permanently retires that
+# schema and the executable now fails its preflight explicitly. Keep these
+# fixtures as historical documentation until the Phase 8 cleanup removes the
+# retired implementation.
+pytestmark = pytest.mark.skip(
+    reason="Phase 4b/4c backfill retired by Phase 6 slim snapshots"
+)
+
 from infrastructure.persistence.database import DatabaseManager
 from infrastructure.persistence.models import (
     Bookie,
