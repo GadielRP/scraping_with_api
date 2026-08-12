@@ -1,7 +1,7 @@
 # Refactor de schema de odds — separación de responsabilidades
 
 **Branch:** `refactor/db-schema-odds-refactor`
-**Estado:** Fases 1-3 y Fase 4a completadas (tabla/writer de quotes + convergencia de los 3 providers + fix de back/lay en OddsPortal + FK nullable `snapshot.quote_id` + `MarketChoiceSnapshotWriter` único para escritura canónica y legacy). Adicionalmente: `exchange_side` migrado de sentinel `'single'` a `NULL` + índice funcional `COALESCE` (congruencia con `Market.choice_group`), y `market_choices` dejó de recibir escrituras de `initial_odds/current_odds/change` desde el path canónico — ver [§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado). Pendiente: Fase 4b (backfill histórico) en adelante, con Fase 5 (migrar lectores) ahora más urgente.
+**Estado:** Fases 1-3 y Fase 4a completadas (tabla/writer de quotes + convergencia de los 3 providers + fix de back/lay en OddsPortal + FK nullable `snapshot.quote_id` + `MarketChoiceSnapshotWriter` único para escritura canónica y legacy). Adicionalmente: `exchange_side` migrado de sentinel `'single'` a `NULL` + índice funcional `COALESCE` (congruencia con `Market.choice_group`), y `market_choices` dejó de recibir escrituras de `initial_odds/current_odds/change` desde el path canónico — ver [§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado). Revisado (sin cambiar identidad): se confirma que `source` se conserva en `market_choice_quotes` — ver [§3.3](#33-decisión-revisada-se-conserva-source-en-la-identidad-de-market_choice_quotes) — y se ajusta Fase 5B para fusionar por prioridad de campo entre sources en bookies no-exchange. Pendiente: Fase 4b (backfill histórico) en adelante, con Fase 5 (migrar lectores) ahora más urgente.
 **Alcance:** `infrastructure/persistence/models.py`, `infrastructure/persistence/repositories/market_repository.py`, `infrastructure/persistence/market_write_policy.py`, `modules/odds_ingestion/adapters/*`, `modules/oddspapi/exchange_quotes.py`, lectores de trajectory/alerts/pillars.
 
 ## Índice
@@ -11,6 +11,7 @@
 - [3. Inventario actual: código vivo vs legacy](#3-inventario-actual-código-vivo-vs-legacy)
   - [3.1. Estado actual (post Fase 3)](#31-estado-actual-post-fase-3)
   - [3.2. Decisión: `market_choices` deja de escribirse antes de Fase 5 (riesgo aceptado)](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado)
+  - [3.3. Decisión revisada: se conserva `source` en la identidad de `market_choice_quotes`](#33-decisión-revisada-se-conserva-source-en-la-identidad-de-market_choice_quotes)
 - [4. Principio de diseño](#4-principio-de-diseño)
 - [5. Schema propuesto](#5-schema-propuesto)
 - [6. Estructura de módulos propuesta](#6-estructura-de-módulos-propuesta)
@@ -23,6 +24,7 @@
   - [Fase 4 — Backfill de datos históricos](#fase-4--backfill-de-datos-históricos)
     - [Plan ejecutable de Fase 4b](./db-schema-odds-refactor-phase-4b.md)
   - [Fase 5 — Migrar lectores a quotes](#fase-5--migrar-lectores-a-quotes)
+    - [Plan ejecutable detallado de Fase 5](./db-schema-odds-refactor-phase-5.md)
   - [Fase 6 — Adelgazar `market_choice_snapshots`](#fase-6--adelgazar-market_choice_snapshots)
   - [Fase 7 — Deprecar columnas legacy en `market_choices`](#fase-7--deprecar-columnas-legacy-en-market_choices)
   - [Fase 8 — Limpieza de código legacy](#fase-8--limpieza-de-código-legacy)
@@ -141,6 +143,65 @@ En resumen: la ingesta ya es 100% la implementación nueva; lo que resta es back
 - `save_markets_from_response_with_stats` sigue escribiendo el mirror de `choices` y por eso permanece `LEGACY_MAINTENANCE_ONLY`, pero sus quotes y snapshots pasan por los mismos writers SRP que el path canónico. No se conserva una implementación legacy paralela para esas dos tablas.
 
 **Tests actualizados** para verificar la combinación cross-source contra `MarketChoiceQuote` en vez de `MarketChoice` (mismo comportamiento, distinta tabla de verificación): `tests/test_oddsportal_canonical_ingestion.py` (`test_service_persists_one_canonical_event_batch_with_one_session`, `test_oddsportal_opening_and_oddspapi_current_are_order_independent`, `test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current`). Estas pruebas también se cambiaron para invocar Oddspapi vía `save_canonical_bookmaker_batches` (el path real de producción) en vez de la ruta legacy directa, porque solo el path canónico escribe quotes.
+
+### 3.3. Decisión revisada: se conserva `source` en la identidad de `market_choice_quotes`
+
+**Contexto.** Al operar la Fase 4b apareció `ambiguous_source` en volumen para
+bet365 (`bookie_id=3`, mapeado a `oddspapi` **y** `oddsportal` en
+`bookie_source_mappings`): el histórico nunca grabó `source` a nivel de fila
+para ese bookie (todo `market_choice_snapshots.source IS NULL` antes de
+`2026-07-30`), y con dos providers posibles no había forma de saber a cuál
+pertenecía cada fila. Esto, sumado a evidencia real de un evento con OddsPortal
++ Oddspapi para el mismo bet365/mercado terminando en 4 quotes en vez de 2
+([ver ejemplo completo](#1-problema)-style, evento `169158`), abrió la
+pregunta: ¿fue un error separar `market_choice_quotes` por `source`? ¿Debería
+colapsarse una fila por `(choice_id, exchange_side, exchange_level)` sin
+importar el provider, como hacía el mirror de `MarketChoice`?
+
+**Corrección a la causa raíz descrita en §3.2.** La motivación original de
+separar por `source` **no** fue evitar que dos providers asíncronos se
+pisaran — ese problema ya estaba resuelto a nivel de campo con
+`MarketWritePolicy` sobre una fila *compartida* (`MarketChoice`), probado por
+`test_oddsportal_opening_and_oddspapi_current_are_order_independent` **antes**
+de que existieran las quotes. La causa raíz real es la de [§2](#2-causa-raíz):
+`MarketChoice` asume 1 outcome = 1 precio, falso para exchanges (`back`/`lay`
+con múltiples `exchange_level`), y cada provider metía esa dimensión donde no
+cabía. Al resolverlo con una tabla nueva, `source` terminó en la clave porque
+cada provider trae sus propios IDs de correlación
+(`source_market_id`/`source_outcome_id`/`bookmaker_outcome_id`) y su propia
+numeración de `exchange_level`, no porque separar por provider fuera un
+objetivo en sí mismo.
+
+**Decisión (mantenida tras revisión):** no se quita `source` de la identidad.
+Motivo concreto, no el de "evitar carreras": `source_market_id`,
+`source_outcome_id`, `bookmaker_outcome_id`, `source_limit`,
+`initial_captured_at` y `current_updated_at` son columnas de **un solo valor
+por fila**. Si dos providers compartieran una fila, el segundo `upsert`
+pisaría silenciosamente los IDs de correlación y el timestamp del primero —
+exactamente el patrón de "meter cosas donde no caben" que [§2](#2-causa-raíz)
+señala como el defecto original, solo que ahora en `market_choice_quotes` en
+vez de en `snapshots`/`choice_group`. Además, para exchanges, el
+`exchange_level` de un provider no siempre corresponde 1:1 con el de otro
+(uno puede no reportar niveles en absoluto), así que fusionar en la
+*identidad de escritura* sería ambiguo justo donde más se necesita precisión.
+
+**Consecuencia para Fase 5 (lectores).** Lo que sí se acepta como error es
+que, tras dejar de escribir el mirror de `MarketChoice` ([§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado)),
+no quedó ningún reemplazo — ni en escritura ni en lectura — para el "un
+número por bookie" que ese mirror daba gratis combinando OddsPortal (`initial`)
++ Oddspapi (`current`). La Fase 5B (ver más abajo) queda ajustada: para
+quotes **sin side/level múltiple** (bookies normales, no exchange), el lector
+debe fusionar por prioridad de campo entre sources — el equivalente en
+lectura de `MarketWritePolicy` — en vez de mostrarlas como series separadas
+sin relación. Para exchanges (`exchange_side`/`exchange_level` múltiples)
+se mantiene la separación por source, porque ahí no hay correspondencia
+segura entre niveles de distintos providers.
+
+**Backfill (Fase 4b).** Para el histórico donde `source` nunca se grabó (bet365
+y cualquier otro bookie mapeado a más de un provider), la ambigüedad se
+resuelve — cuando es posible — con evidencia dura de `MarketWritePolicy` en
+vez de con una fila fusionada: ver
+[Fase 4b §6.1](./db-schema-odds-refactor-phase-4b.md#61-source).
 
 ## 4. Principio de diseño
 
@@ -728,6 +789,9 @@ oculta en código.
 
 ### Fase 5 — Migrar lectores a quotes
 
+> Plan ejecutable, contratos, gates y orden de PRs:
+> [db-schema-odds-refactor-phase-5.md](./db-schema-odds-refactor-phase-5.md).
+
 **Estado al arrancar / urgencia:** por [§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado)
 los lectores de abajo ya ven `NULL`/datos incompletos en
 `MarketChoice.initial_odds/current_odds/change` para **eventos nuevos**.
@@ -817,13 +881,33 @@ no desde columnas de DB.
 
 #### Fase 5B — Alertas
 
-- `modules/alerts/alerts_formatter/odds_alert.py` agrupa primero por `source` y
-  después por market/bookie/side. El label Back/Lay usa `exchange_side`, no
+- **Ajustado tras [§3.3](#33-decisión-revisada-se-conserva-source-en-la-identidad-de-market_choice_quotes):**
+  para quotes sin side/level múltiple (`exchange_side IS NULL`, bookies
+  normales), `get_external_market_quotes_for_event` (Fase 5A) debe exponer un
+  valor **fusionado por prioridad de campo entre sources**, no una lista de
+  bloques sin relación — es el equivalente en lectura de `MarketWritePolicy`:
+  `initial = COALESCE(oddsportal.initial, oddspapi.initial, sofascore.initial)`,
+  `current = COALESCE(oddspapi.current, sofascore.current, oddsportal.current)`.
+  La prioridad es configurable por campo, no hardcodeada a "OddsPortal siempre
+  gana"; debe poder ajustarse por deporte/bookie si la fiabilidad de un
+  provider cambia. Cada campo fusionado conserva en el read model de qué
+  `quote_id`/`source` vino, para no perder trazabilidad aunque se presente un
+  solo número.
+- Para exchanges (`exchange_side`/`exchange_level` múltiples) **no se fusiona
+  entre sources** — ahí sigue aplicando el criterio anterior: OddsPortal
+  opening-only conserva `opening→N/A`; Oddspapi muestra su propio
+  opening/current bajo otra sección. La razón es la misma de
+  [§3.3](#33-decisión-revisada-se-conserva-source-en-la-identidad-de-market_choice_quotes):
+  el nivel de un provider no corresponde 1:1 con el del otro, fusionar ahí
+  sería inventar una correspondencia que no existe.
+- `modules/alerts/alerts_formatter/odds_alert.py` agrupa primero por `source`
+  solo para el caso exchange; para bookies normales consume el valor ya
+  fusionado del read model. El label Back/Lay usa `exchange_side`, no
   `choice_group`; `choice_group` queda reservado para líneas como `2.5`.
 - Actualizar ambos call sites (`odds_alert.py` y
   `modules/jobs/pre_start_check_job/alert_pipeline.py`) y sus tests de snapshot
-  textual. OddsPortal opening-only conserva `opening→N/A`; Oddspapi muestra su
-  propio opening/current bajo otra sección, sin fabricar una trayectoria mixta.
+  textual, cubriendo tanto el caso fusionado (bookie normal, 2 sources) como
+  el caso separado (exchange, 2 sides).
 - El orden estable es source, market, período, línea, bookie y
   `NULL/back/lay`; el formatter no vuelve a inferir source o side por nombre.
 - El formatter traduce `movement` a `↓/=/↑`; la fachada legacy puede conservar
@@ -905,11 +989,15 @@ no desde columnas de DB.
 - Paridad exacta para histórico no exchange/single-source con mirror vigente;
   eventos post stop-write se validan contra quotes/payload, no contra columnas
   legacy congeladas. Toda diferencia queda clasificada.
-- Evento `158955` produce un market/choice canónico con series separadas para
-  `(oddsportal|oddspapi) × (back|lay)`, sin quote `NULL` visible duplicada,
-  colisiones ni side en `choice_group`.
-- Ningún ranking de trajectory colapsa quotes distintas; tests cubren dos
-  sources y dos sides en el mismo target minute.
+- Evento `158955` (exchange) produce un market/choice canónico con series
+  separadas para `(oddsportal|oddspapi) × (back|lay)`, sin quote `NULL`
+  visible duplicada, colisiones ni side en `choice_group`.
+- Un bookie normal con dos providers mapeados (p. ej. bet365, evento `169158`)
+  produce **un solo** valor fusionado de `initial`/`current` por choice en el
+  read model de alertas — no 2 quotes visibles sin relación — con
+  trazabilidad de qué `source` aportó cada campo ([§3.3](#33-decisión-revisada-se-conserva-source-en-la-identidad-de-market_choice_quotes)).
+- Ningún ranking de trajectory colapsa quotes distintas de exchange; tests
+  cubren dos sources y dos sides en el mismo target minute.
 - Alertas, pillars, drift, dual process y materialized views pasan suites de
   regresión y un ciclo de staging; conteos y latencia quedan dentro del
   presupuesto definido antes del cutover.

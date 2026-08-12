@@ -262,10 +262,47 @@ Evaluar toda la evidencia y rechazar contradicciones:
 
 1. `LOWER(TRIM(snapshot.source))` válido.
 2. Source único probado por IDs de lineage y mappings.
-3. Market legacy cuyo `choice_group` codifica Back/Lay: `oddsportal`.
+3. Market legacy cuyo `choice_group` codifica Back/Lay: **abandonado**
+   (`legacy_back_lay_abandoned`, no bloqueante). Ya no se rematerializa a
+   quotes `source=oddsportal`. Usar `--purge-legacy-back-lay` para borrar
+   esos markets/choices/snapshots (y quotes oddsportal remanentes del scope).
 4. `bookie_id = 1`: `sofascore`.
 5. Único source en `bookie_source_mappings` para el bookie.
-6. Si quedan cero o varios candidatos: `ambiguous_source`.
+6. **Eliminación por `MarketWritePolicy` (algoritmo ≥4b.4)**: si el bookie
+   mapea a *varios* sources (p. ej. bet365/`bookie_id=3` → `oddspapi` +
+   `oddsportal`), antes de rendirse se descartan los sources cuya política de
+   escritura no pudo haber producido esta fila:
+   - Candidato `snapshot`: se descarta cualquier source con
+     `persist_opening_snapshots=False` **y** `persist_current_snapshots=False`
+     (caso de `ODDSPORTAL_OPENING_ONLY_POLICY`) — OddsPortal nunca ha escrito
+     una fila en `market_choice_snapshots` bajo esa política, confirmado
+     empíricamente (0 filas `source ILIKE 'oddsportal%'` en producción al
+     momento de escribir esto).
+   - Candidato `choice_state` (mirror `MarketChoice.initial_odds/current_odds`
+     sin snapshots) **con `current_odds IS NOT NULL`**: se descarta cualquier
+     source con `persist_current_odds=False` — OddsPortal nunca pudo haber
+     fijado `current_odds` en el mirror legacy.
+   - Si tras la eliminación queda exactamente un source, se resuelve con
+     `reason_code="classified"` y evidencia
+     `resolved_by="write_policy_elimination"` +
+     `eliminated_sources=[...]` (auditable, no es un guess silencioso).
+   - Si no se puede eliminar nada (p. ej. dos sources con política default, o
+     un `choice_state` con solo `initial_odds` y sin `current_odds`), sigue
+     ambiguo.
+7. Si tras 1-6 quedan cero o varios candidatos: `ambiguous_source`.
+
+Ver `infrastructure/persistence/market_write_policy.py::market_write_policy_for_source`
+y `modules/odds_ingestion/backfill/market_choice_quote_backfill.py::_feasible_sources_for_candidate`.
+Este paso es una consecuencia directa de que, para bet365, el histórico jamás
+grabó `source` en `market_choice_snapshots` (todas las filas pre-`2026-07-30`
+tienen `source IS NULL`) y `MarketChoice` es un mirror sin atribución por
+proveedor — la política de escritura es la única evidencia dura que sigue
+existiendo para reconstruir el origen sin adivinar.
+
+**Nota (algoritmo ≥4b.5):** los `ambiguous_source` de bet365 **no** son filas
+OddsPortal. Son choice-states/snapshots sin `source` en un bookie mapeado a
+dos providers; con `current_odds` o con forma snapshot se atribuyen a
+`oddspapi` por eliminación de política. No deben purgarse como OddsPortal.
 
 ### 6.2. Side y level
 
@@ -510,7 +547,8 @@ o tienen consulta operativa documentada.
 | Oddspapi Back/Lay con varios levels | Quote distinta por side/level; sin colisiones. |
 | OddsPortal market legacy `Back 2.5`/`Lay 2.5` | Ambos sides apuntan al mismo choice canónico de línea `2.5`. |
 | Snapshot sin source pero bookie SofaScore | Source resuelto a `sofascore`. |
-| Dos sources posibles | `ambiguous_source`, cero mutaciones. |
+| Dos sources posibles, ninguno descartable por `MarketWritePolicy` | `ambiguous_source`, cero mutaciones. |
+| Dos sources posibles pero uno no pudo escribir esta fila (p. ej. bet365 snapshot sin source, OddsPortal nunca persiste snapshots) | Resuelto por eliminación, `resolved_by=write_policy_elimination` en evidencia. |
 | Quote live más nueva | Candidato stale ignorado. |
 | Timestamp igual, precio diferente | Conflicto determinista. |
 | Metadata estable contradictoria | `metadata_conflict`, no overwrite. |

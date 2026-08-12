@@ -146,15 +146,38 @@ def test_null_source_infers_sofascore_from_bookie_id():
 
 
 def test_null_source_without_ownership_is_ambiguous():
+    """Two mapped sources that could both write snapshots (default policy) stay
+    ambiguous - write-policy elimination only helps when a source is
+    structurally incapable of producing this row shape."""
     decision = classify_candidate(
         _candidate(raw_source=None, bookie_id=42),
-        bookie_sources={42: {"oddspapi", "oddsportal"}},
+        bookie_sources={42: {"oddspapi", "sofascore"}},
         exchange_choice_ids=set(),
         canonical_markets={},
         choices_by_market_name={},
     )
     assert decision.status is ClassificationStatus.AMBIGUOUS
     assert decision.reason_code == "ambiguous_source"
+
+
+def test_null_source_snapshot_resolves_via_write_policy_elimination():
+    """OddsPortal's ``ODDSPORTAL_OPENING_ONLY_POLICY`` forbids persisting any
+    snapshot (opening or current), so it can never be the true source of a
+    ``snapshot`` candidate. When a bookie maps to both oddspapi and
+    oddsportal (e.g. bet365, ``bookie_id=3`` in production), that lets us
+    resolve deterministically to oddspapi instead of blocking as ambiguous.
+    """
+    decision = classify_candidate(
+        _candidate(raw_source=None, bookie_id=3),
+        bookie_sources={3: {"oddspapi", "oddsportal"}},
+        exchange_choice_ids=set(),
+        canonical_markets={},
+        choices_by_market_name={},
+    )
+    assert decision.status is ClassificationStatus.RESOLVED
+    assert decision.identity.source == "oddspapi"
+    assert decision.evidence.get("resolved_by") == "write_policy_elimination"
+    assert decision.evidence.get("eliminated_sources") == ["oddsportal"]
 
 
 def test_null_source_unique_bookie_mapping_uses_provider_not_bookie_name():
@@ -275,7 +298,7 @@ def test_sofascore_and_oddsportal_default_main_line_true():
 def test_ambiguous_when_two_sources_possible():
     decision = classify_candidate(
         _candidate(raw_source=None, bookie_id=5),
-        bookie_sources={5: {"oddspapi", "oddsportal"}},
+        bookie_sources={5: {"oddspapi", "sofascore"}},
         exchange_choice_ids=set(),
         canonical_markets={},
         choices_by_market_name={},
@@ -285,6 +308,7 @@ def test_ambiguous_when_two_sources_possible():
 
 
 def test_contradictory_raw_source_vs_legacy_back_lay():
+    """Back/Lay markets are abandoned before source contradiction checks."""
     decision = classify_candidate(
         _candidate(raw_source="oddspapi", choice_group="Back 2.5"),
         bookie_sources={},
@@ -292,11 +316,11 @@ def test_contradictory_raw_source_vs_legacy_back_lay():
         canonical_markets={},
         choices_by_market_name={},
     )
-    assert decision.status is ClassificationStatus.CONFLICT
-    assert decision.reason_code == "contradictory_evidence"
+    assert decision.status is ClassificationStatus.INVALID
+    assert decision.reason_code == "legacy_back_lay_abandoned"
 
 
-def test_oddsportal_legacy_maps_to_canonical_choice():
+def test_oddsportal_legacy_back_lay_is_abandoned_not_rematerialized():
     market = SimpleNamespace(market_id=200)
     choice = SimpleNamespace(choice_id=99)
     key = (1000, 2, "Over/Under Full Time", "Full Time", "2.5", False)
@@ -312,10 +336,10 @@ def test_oddsportal_legacy_maps_to_canonical_choice():
         canonical_markets={key: market},
         choices_by_market_name={(200, "over"): choice},
     )
-    assert decision.status is ClassificationStatus.RESOLVED
-    assert decision.identity.choice_id == 99
-    assert decision.identity.source == "oddsportal"
-    assert decision.identity.exchange_side == "back"
+    assert decision.status is ClassificationStatus.INVALID
+    assert decision.reason_code == "legacy_back_lay_abandoned"
+    assert decision.identity is None
+    assert decision.evidence.get("legacy_side") == "back"
 
 
 def test_oddspapi_null_side_maps_to_back_with_exchange_proof():
@@ -360,6 +384,7 @@ def test_invalid_negative_level():
 
 
 def test_choice_state_without_ownership_is_ambiguous():
+    """Snapless choice_state with dual mapping stays ambiguous (no write-policy)."""
     decision = classify_candidate(
         _candidate(
             kind="choice_state",
@@ -367,7 +392,7 @@ def test_choice_state_without_ownership_is_ambiguous():
             raw_source=None,
             bookie_id=9,
             choice_initial_odds=1.5,
-            choice_current_odds=1.6,
+            choice_current_odds=None,
         ),
         bookie_sources={9: {"oddspapi", "oddsportal"}},
         exchange_choice_ids=set(),
@@ -375,7 +400,66 @@ def test_choice_state_without_ownership_is_ambiguous():
         choices_by_market_name={},
     )
     assert decision.status is ClassificationStatus.AMBIGUOUS
-    assert decision.reason_code == "ambiguous_source"
+    assert decision.reason_code == "ambiguous_choice_state"
+
+
+def test_choice_state_with_current_odds_not_resolved_by_write_policy():
+    """Opening-only is recent — do not use it to attribute historical mirrors."""
+    decision = classify_candidate(
+        _candidate(
+            kind="choice_state",
+            snapshot_id=None,
+            raw_source=None,
+            bookie_id=3,
+            choice_initial_odds=1.5,
+            choice_current_odds=1.6,
+        ),
+        bookie_sources={3: {"oddspapi", "oddsportal"}},
+        exchange_choice_ids=set(),
+        canonical_markets={},
+        choices_by_market_name={},
+    )
+    assert decision.status is ClassificationStatus.AMBIGUOUS
+    assert decision.reason_code == "ambiguous_choice_state"
+
+
+def test_oddsportal_era_choice_state_not_unique_mapped_to_oddspapi():
+    """Even with only oddspapi left in mappings, bet365 snapless stays ambiguous."""
+    decision = classify_candidate(
+        _candidate(
+            kind="choice_state",
+            snapshot_id=None,
+            raw_source=None,
+            bookie_id=3,
+            choice_initial_odds=2.0,
+            choice_current_odds=2.08,
+        ),
+        bookie_sources={3: {"oddspapi"}},
+        exchange_choice_ids=set(),
+        canonical_markets={},
+        choices_by_market_name={},
+    )
+    assert decision.status is ClassificationStatus.AMBIGUOUS
+    assert decision.reason_code == "ambiguous_choice_state"
+
+
+def test_non_oddsportal_era_choice_state_unique_maps_to_oddspapi():
+    decision = classify_candidate(
+        _candidate(
+            kind="choice_state",
+            snapshot_id=None,
+            raw_source=None,
+            bookie_id=13,
+            choice_initial_odds=1.5,
+            choice_current_odds=1.6,
+        ),
+        bookie_sources={13: {"oddspapi"}},
+        exchange_choice_ids=set(),
+        canonical_markets={},
+        choices_by_market_name={},
+    )
+    assert decision.status is ClassificationStatus.RESOLVED
+    assert decision.identity.source == "oddspapi"
 
 
 def test_resolution_file_wins():

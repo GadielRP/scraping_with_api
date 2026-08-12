@@ -108,8 +108,17 @@ y no auto-resume del checkpoint). Cada run escribe un `run_header` /
 filas/eventos de la invocación y conserva el cursor + scope incompleto.
 
 Si el checkpoint tiene `algorithm_version` distinta (p.ej. `4b.2` → `4b.3`
-tras el auto-seed de mercados canónicos Back/Lay), hay que empezar campaña
-nueva con `--fresh-artifacts` (no se puede reanudar entre versiones).
+tras el auto-seed de mercados canónicos Back/Lay, `4b.3` → `4b.4` tras la
+eliminación de sources por `MarketWritePolicy`, `4b.4` → `4b.5` al abandonar
+rematerialización Back/Lay→oddsportal, `4b.5` → `4b.6` al dejar de atribuir
+choice_states snapless de bookies OddsPortal-era y purgarlos con
+`--purge-ambiguous-choice-states`, o `4b.6` → `4b.7` al borrar
+automáticamente markets fuera de bookies `{1,3,4,302}`), hay que empezar
+campaña nueva con
+`--fresh-artifacts` (no se puede reanudar entre versiones). Cada run (≥4b.7)
+también borra automáticamente markets cuyo ``bookie_id`` no está en
+``{1, 3, 4, 302}`` (SofaScore / bet365 / Betfair / Pinnacle), con cascade de
+choices/snapshots/quotes — sin flag CLI.
 
 ## 5. Verificación post-run
 

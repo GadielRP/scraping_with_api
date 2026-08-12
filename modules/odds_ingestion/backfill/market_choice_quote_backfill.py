@@ -42,10 +42,11 @@ from infrastructure.persistence.repositories.market.market_choice_quote_writer i
 from infrastructure.persistence.catalogs.canonical_market_types import (
     CANONICAL_MARKET_TYPE_SEEDS,
 )
+from infrastructure.persistence.market_write_policy import market_write_policy_for_source
 
 logger = logging.getLogger(__name__)
 
-ALGORITHM_VERSION = "4b.3"
+ALGORITHM_VERSION = "4b.7"
 # Cooperative cancel for Ctrl+C / SIGTERM: finish the current batch, persist
 # checkpoint, then stop (campaign loop also honors this between chunks).
 _STOP_REQUESTED = False
@@ -94,6 +95,14 @@ KNOWN_SOURCES = PROVIDER_SOURCES | CHANNEL_SOURCES
 ALWAYS_MAIN_LINE_SOURCES = frozenset({"sofascore", "oddsportal"}) | CHANNEL_SOURCES
 LEGACY_BACK_LAY_RE = re.compile(r"(?i)^(Back|Lay)(?:\s+(.+))?$")
 SOFA_SCORE_BOOKIE_ID = 1
+# Bookies that historically also mapped to OddsPortal. Snapless ``choice_state``
+# mirrors on these bookies must not be unique-mapped to oddspapi: pre-policy
+# OddsPortal wrote initial/current onto MarketChoice without snapshots, and
+# today's opening-only policy cannot rewrite that history.
+ODDSPORTAL_ERA_BOOKIE_IDS = frozenset({3, 4})  # bet365, Betfair Exchange
+# Only these bookies are kept by the backfill; every other market (and its
+# choices / snapshots / quotes) is deleted automatically on each run.
+BACKFILL_ALLOWED_BOOKIE_IDS = frozenset({1, 3, 4, 302})  # SofaScore, bet365, Betfair, Pinnacle
 DEFAULT_BATCH_SIZE = 200
 MAX_BATCH_SIZE = 1000
 MAX_EVENTS_HARD_CAP = 500
@@ -220,6 +229,8 @@ class RunConfig:
     append_rejections: bool = False
     confirm_ingestion_paused: bool = False
     purge_oddspapi_null_mainline_lines: bool = False
+    purge_legacy_back_lay: bool = False
+    purge_ambiguous_choice_states: bool = False
     confirm_purge: bool = False
 
 
@@ -328,6 +339,34 @@ def _normalize_level(value: Any) -> tuple[Optional[int], Optional[str]]:
     return level, None
 
 
+def _feasible_sources_for_candidate(
+    mapped: set[str], candidate: "BackfillCandidate"
+) -> set[str]:
+    """Narrow ``mapped`` bookie sources using hard ``MarketWritePolicy`` facts.
+
+    Only applied to ``snapshot`` candidates. OddsPortal's opening-only policy
+    forbids writing snapshots, so a multi-mapped bookie (e.g. historical
+    bet365 → oddspapi+oddsportal) can drop OddsPortal when the row is a
+    snapshot. ``choice_state`` rows are NOT narrowed here: opening-only is a
+    *recent* policy, and pre-policy OddsPortal wrote ``initial``/``current``
+    onto ``MarketChoice`` without snapshots — using today's policy to
+    attribute those mirrors to Oddspapi would be historically wrong.
+    """
+    if len(mapped) <= 1:
+        return mapped
+    if candidate.kind == "snapshot":
+        feasible = {
+            s
+            for s in mapped
+            if (
+                market_write_policy_for_source(s).persist_opening_snapshots
+                or market_write_policy_for_source(s).persist_current_snapshots
+            )
+        }
+        return feasible or mapped
+    return mapped
+
+
 def classify_candidate(
     candidate: BackfillCandidate,
     *,
@@ -395,6 +434,24 @@ def classify_candidate(
         "legacy_line": legacy_line,
     }
 
+    # OddsPortal-era Back/Lay markets are abandoned: do not rematerialize them
+    # into ``source=oddsportal`` quotes. Use ``--purge-legacy-back-lay`` to
+    # delete the legacy markets/choices/snapshots. This decision is a note
+    # (non-blocking) so campaigns can finish while purge catches up.
+    if legacy_side is not None:
+        return ClassificationDecision(
+            status=ClassificationStatus.INVALID,
+            reason_code="legacy_back_lay_abandoned",
+            candidate=candidate,
+            evidence={
+                **evidence,
+                "note": (
+                    "OddsPortal Back/Lay rematerialization disabled; "
+                    "purge with --purge-legacy-back-lay"
+                ),
+            },
+        )
+
     raw_source = _normalize_source(candidate.raw_source)
     source: Optional[str] = None
 
@@ -410,27 +467,9 @@ def classify_candidate(
         source = canonicalize_quote_source(raw_source)
         if raw_source in CHANNEL_SOURCES:
             evidence["canonicalized_from"] = raw_source
-        # Back/Lay legacy markets are OddsPortal; an explicit non-oddsportal
-        # provider label on those rows is contradictory.
-        if (
-            legacy_side is not None
-            and source in PROVIDER_SOURCES
-            and source != "oddsportal"
-        ):
-            return ClassificationDecision(
-                status=ClassificationStatus.CONFLICT,
-                reason_code="contradictory_evidence",
-                candidate=candidate,
-                evidence={
-                    **evidence,
-                    "sources": sorted({source, "oddsportal"}),
-                },
-            )
     else:
-        # Infer only when snapshot.source is NULL.
+        # Infer only when snapshot.source / choice_state source is NULL.
         source_candidates: list[str] = []
-        if legacy_side is not None:
-            source_candidates.append("oddsportal")
         if candidate.bookie_id == SOFA_SCORE_BOOKIE_ID:
             source_candidates.append("sofascore")
 
@@ -438,7 +477,17 @@ def classify_candidate(
         if candidate.bookie_id is not None:
             mapped = set(bookie_sources.get(int(candidate.bookie_id), set()))
             evidence["mapped_sources"] = sorted(mapped)
-            if len(mapped) == 1:
+            # Unique bookie→provider mapping is trustworthy for *snapshots*.
+            # For choice_state on OddsPortal-era bookies it is not: early
+            # OddsPortal wrote initial/current without snapshots, and after
+            # oddsportal was removed from mappings a lone oddspapi row would
+            # silently mis-attribute those mirrors. Other bookies (oddspapi-
+            # only) still use the unique mapping.
+            if len(mapped) == 1 and not (
+                candidate.kind == "choice_state"
+                and candidate.bookie_id is not None
+                and int(candidate.bookie_id) in ODDSPORTAL_ERA_BOOKIE_IDS
+            ):
                 source_candidates.append(next(iter(mapped)))
 
         unique_sources = {s for s in source_candidates if s}
@@ -450,25 +499,42 @@ def classify_candidate(
                 evidence={**evidence, "sources": sorted(unique_sources)},
             )
         if len(unique_sources) == 0:
-            if len(mapped) > 1:
+            if len(mapped) > 1 and candidate.kind == "snapshot":
+                feasible = _feasible_sources_for_candidate(mapped, candidate)
+                if len(feasible) == 1:
+                    source = next(iter(feasible))
+                    evidence["resolved_by"] = "write_policy_elimination"
+                    evidence["eliminated_sources"] = sorted(mapped - feasible)
+                else:
+                    return ClassificationDecision(
+                        status=ClassificationStatus.AMBIGUOUS,
+                        reason_code="ambiguous_source",
+                        candidate=candidate,
+                        evidence=evidence,
+                    )
+            else:
+                reason = (
+                    "ambiguous_choice_state"
+                    if candidate.kind == "choice_state"
+                    else "ambiguous_source"
+                )
+                if (
+                    candidate.kind == "choice_state"
+                    and candidate.bookie_id is not None
+                    and int(candidate.bookie_id) in ODDSPORTAL_ERA_BOOKIE_IDS
+                ):
+                    evidence["note"] = (
+                        "OddsPortal-era bookie snapless choice_state; "
+                        "not attributed via unique oddspapi mapping"
+                    )
                 return ClassificationDecision(
                     status=ClassificationStatus.AMBIGUOUS,
-                    reason_code="ambiguous_source",
+                    reason_code=reason,
                     candidate=candidate,
                     evidence=evidence,
                 )
-            reason = (
-                "ambiguous_choice_state"
-                if candidate.kind == "choice_state"
-                else "ambiguous_source"
-            )
-            return ClassificationDecision(
-                status=ClassificationStatus.AMBIGUOUS,
-                reason_code=reason,
-                candidate=candidate,
-                evidence=evidence,
-            )
-        source = next(iter(unique_sources))
+        else:
+            source = next(iter(unique_sources))
 
     assert source is not None
 
@@ -479,20 +545,6 @@ def classify_candidate(
             reason_code="invalid_side_or_level",
             candidate=candidate,
             evidence={**evidence, "exchange_side": side},
-        )
-
-    if side is None and legacy_side is not None:
-        side = legacy_side
-    elif side is not None and legacy_side is not None and side != legacy_side:
-        return ClassificationDecision(
-            status=ClassificationStatus.CONFLICT,
-            reason_code="contradictory_evidence",
-            candidate=candidate,
-            evidence={
-                **evidence,
-                "snapshot_side": side,
-                "legacy_side": legacy_side,
-            },
         )
 
     # Oddspapi side-agnostic historical ticks: map to top-back only with proof.
@@ -517,64 +569,8 @@ def classify_candidate(
     if side is None:
         level = 0
 
-    canonical_choice_id = candidate.choice_id
-    plan_create = False
-    canonical_market_key = None
-
-    if legacy_side is not None:
-        if candidate.bookie_id is None:
-            return ClassificationDecision(
-                status=ClassificationStatus.AMBIGUOUS,
-                reason_code="ambiguous_target",
-                candidate=candidate,
-                evidence=evidence,
-            )
-        market_period = str(candidate.market_period or "Full Time").strip() or "Full Time"
-        canonical_market_key = (
-            int(candidate.event_id),
-            int(candidate.bookie_id),
-            str(candidate.market_name).strip(),
-            market_period,
-            legacy_line,
-            bool(candidate.is_live),
-        )
-        target_market = canonical_markets.get(canonical_market_key)
-        if target_market is None:
-            # Deterministic identity pieces present — may plan creation in commit.
-            plan_create = True
-            return ClassificationDecision(
-                status=ClassificationStatus.AMBIGUOUS,
-                reason_code="ambiguous_target",
-                candidate=candidate,
-                evidence={
-                    **evidence,
-                    "canonical_market_key": list(canonical_market_key),
-                    "note": "canonical market missing; creation requires resolution or prior seed",
-                },
-                plan_create_canonical=plan_create,
-                canonical_market_key=canonical_market_key,
-            )
-        target_market_id = int(target_market.market_id)
-        choice_key = (target_market_id, str(candidate.choice_name).strip().lower())
-        target_choice = choices_by_market_name.get(choice_key)
-        if target_choice is None:
-            return ClassificationDecision(
-                status=ClassificationStatus.AMBIGUOUS,
-                reason_code="ambiguous_target",
-                candidate=candidate,
-                evidence={
-                    **evidence,
-                    "target_market_id": target_market_id,
-                    "choice_name": candidate.choice_name,
-                    "note": "canonical choice missing; creation requires resolution or prior seed",
-                },
-                plan_create_canonical=True,
-                canonical_market_key=canonical_market_key,
-            )
-        canonical_choice_id = int(target_choice.choice_id)
-
     identity = QuoteIdentity(
-        choice_id=canonical_choice_id,
+        choice_id=int(candidate.choice_id),
         source=source,
         exchange_side=side,
         exchange_level=level,
@@ -585,8 +581,6 @@ def classify_candidate(
         candidate=candidate,
         identity=identity,
         evidence=evidence,
-        plan_create_canonical=plan_create,
-        canonical_market_key=canonical_market_key,
     )
 
 
@@ -1011,6 +1005,35 @@ class MarketChoiceQuoteBackfillService:
                     event_scope = sorted(set(event_scope) | set(purge_scope))
                     if config.max_events is not None:
                         event_scope = event_scope[: int(config.max_events)]
+                if config.purge_legacy_back_lay and config.event_id is None:
+                    back_lay_scope = (
+                        MarketChoiceQuoteBackfillRepository.select_legacy_back_lay_event_scope(
+                            session,
+                            event_id=config.event_id,
+                            event_id_min=config.event_id_min,
+                            event_id_max=config.event_id_max,
+                            after_event_id=config.after_event_id,
+                            max_events=config.max_events,
+                        )
+                    )
+                    event_scope = sorted(set(event_scope) | set(back_lay_scope))
+                    if config.max_events is not None:
+                        event_scope = event_scope[: int(config.max_events)]
+                if config.purge_ambiguous_choice_states and config.event_id is None:
+                    choice_state_scope = (
+                        MarketChoiceQuoteBackfillRepository.select_ambiguous_choice_state_event_scope(
+                            session,
+                            bookie_ids=sorted(ODDSPORTAL_ERA_BOOKIE_IDS),
+                            event_id=config.event_id,
+                            event_id_min=config.event_id_min,
+                            event_id_max=config.event_id_max,
+                            after_event_id=config.after_event_id,
+                            max_events=config.max_events,
+                        )
+                    )
+                    event_scope = sorted(set(event_scope) | set(choice_state_scope))
+                    if config.max_events is not None:
+                        event_scope = event_scope[: int(config.max_events)]
 
         summary: dict[str, Any] = {
             "run_id": run_id,
@@ -1025,6 +1048,8 @@ class MarketChoiceQuoteBackfillService:
                 "purge_oddspapi_null_mainline_lines": (
                     config.purge_oddspapi_null_mainline_lines
                 ),
+                "purge_legacy_back_lay": config.purge_legacy_back_lay,
+                "purge_ambiguous_choice_states": config.purge_ambiguous_choice_states,
             },
             "configured_batch_size": config.batch_size,
             "configured_max_events": config.max_events,
@@ -1049,11 +1074,22 @@ class MarketChoiceQuoteBackfillService:
             "ambiguous_choice_state": 0,
             "contradictory_evidence": 0,
             "invalid_side_or_level": 0,
+            "legacy_back_lay_abandoned": 0,
             "initial_odds_unavailable": 0,
             "purge_snapshots_matched": 0,
             "purge_snapshots_deleted": 0,
             "purge_choices_deleted": 0,
             "purge_markets_deleted": 0,
+            "purge_legacy_back_lay_markets_deleted": 0,
+            "purge_legacy_back_lay_choices_deleted": 0,
+            "purge_legacy_back_lay_snapshots_deleted": 0,
+            "purge_oddsportal_quotes_deleted": 0,
+            "purge_ambiguous_choice_states_deleted": 0,
+            "purge_ambiguous_choice_state_markets_deleted": 0,
+            "purge_disallowed_bookie_markets_deleted": 0,
+            "purge_disallowed_bookie_choices_deleted": 0,
+            "purge_disallowed_bookie_snapshots_deleted": 0,
+            "purge_disallowed_bookie_quotes_deleted": 0,
             "rows_consumed": 0,
             "stop_reason": "completed_scope",
             "blocking_decisions": 0,
@@ -1084,6 +1120,59 @@ class MarketChoiceQuoteBackfillService:
                     config=config,
                     append=False,
                 )
+
+        # Always keep only SofaScore / bet365 / Betfair / Pinnacle markets.
+        # No CLI flag: this is part of the backfill contract (algorithm ≥4b.7).
+        with self._session_factory() as session:
+            if not config.dry_run:
+                self._acquire_lock(session)
+            disallowed_purge = (
+                MarketChoiceQuoteBackfillRepository.purge_markets_outside_allowed_bookies(
+                    session,
+                    allowed_bookie_ids=sorted(BACKFILL_ALLOWED_BOOKIE_IDS),
+                    dry_run=config.dry_run,
+                )
+            )
+            if not config.dry_run:
+                session.commit()
+            else:
+                session.rollback()
+        summary["purge_disallowed_bookie_markets_deleted"] = int(
+            disallowed_purge.get("markets_deleted") or 0
+        )
+        summary["purge_disallowed_bookie_choices_deleted"] = int(
+            disallowed_purge.get("choices_deleted") or 0
+        )
+        summary["purge_disallowed_bookie_snapshots_deleted"] = int(
+            disallowed_purge.get("snapshots_deleted") or 0
+        )
+        summary["purge_disallowed_bookie_quotes_deleted"] = int(
+            disallowed_purge.get("quotes_deleted") or 0
+        )
+        if rejection_path is not None and disallowed_purge.get("markets_matched"):
+            _append_ndjson(
+                rejection_path,
+                [
+                    {
+                        "status": "note" if config.dry_run else "purged",
+                        "reason_code": "purge_disallowed_bookie_markets",
+                        "event_id": None,
+                        "market_id": None,
+                        "choice_id": None,
+                        "snapshot_id": None,
+                        "evidence": {
+                            "dry_run": config.dry_run,
+                            "criterion": (
+                                "markets.bookie_id NOT IN "
+                                f"{sorted(BACKFILL_ALLOWED_BOOKIE_IDS)} "
+                                "(or NULL); cascade choices/snapshots/quotes"
+                            ),
+                            **disallowed_purge,
+                        },
+                    }
+                ],
+            )
+            summary["notes_written"] += 1
 
         if config.purge_oddspapi_null_mainline_lines and event_scope:
             with self._session_factory() as session:
@@ -1130,6 +1219,108 @@ class MarketChoiceQuoteBackfillService:
                                     "+ main_line IS NULL + choice_group IS NOT NULL"
                                 ),
                                 **purge_result,
+                            },
+                        }
+                    ],
+                )
+                summary["notes_written"] += 1
+
+        if config.purge_legacy_back_lay and event_scope:
+            with self._session_factory() as session:
+                if not config.dry_run:
+                    self._acquire_lock(session)
+                back_lay_purge = (
+                    MarketChoiceQuoteBackfillRepository.purge_legacy_back_lay_markets(
+                        session,
+                        event_ids=event_scope,
+                        dry_run=config.dry_run,
+                    )
+                )
+                if not config.dry_run:
+                    session.commit()
+                else:
+                    session.rollback()
+            summary["purge_legacy_back_lay_markets_deleted"] = int(
+                back_lay_purge.get("markets_deleted") or 0
+            )
+            summary["purge_legacy_back_lay_choices_deleted"] = int(
+                back_lay_purge.get("choices_deleted") or 0
+            )
+            summary["purge_legacy_back_lay_snapshots_deleted"] = int(
+                back_lay_purge.get("snapshots_deleted") or 0
+            )
+            summary["purge_oddsportal_quotes_deleted"] = int(
+                back_lay_purge.get("oddsportal_quotes_deleted") or 0
+            )
+            if rejection_path is not None and (
+                back_lay_purge.get("markets_matched")
+                or back_lay_purge.get("oddsportal_quotes_deleted")
+            ):
+                _append_ndjson(
+                    rejection_path,
+                    [
+                        {
+                            "status": "note" if config.dry_run else "purged",
+                            "reason_code": "purge_legacy_back_lay",
+                            "event_id": None,
+                            "market_id": None,
+                            "choice_id": None,
+                            "snapshot_id": None,
+                            "evidence": {
+                                "dry_run": config.dry_run,
+                                "criterion": (
+                                    "markets.choice_group matches Back/Lay "
+                                    "(OddsPortal-era) + any source=oddsportal "
+                                    "quotes in the same event scope"
+                                ),
+                                **back_lay_purge,
+                            },
+                        }
+                    ],
+                )
+                summary["notes_written"] += 1
+
+        if config.purge_ambiguous_choice_states and event_scope:
+            with self._session_factory() as session:
+                if not config.dry_run:
+                    self._acquire_lock(session)
+                choice_state_purge = (
+                    MarketChoiceQuoteBackfillRepository.purge_ambiguous_choice_states(
+                        session,
+                        event_ids=event_scope,
+                        bookie_ids=sorted(ODDSPORTAL_ERA_BOOKIE_IDS),
+                        dry_run=config.dry_run,
+                    )
+                )
+                if not config.dry_run:
+                    session.commit()
+                else:
+                    session.rollback()
+            summary["purge_ambiguous_choice_states_deleted"] = int(
+                choice_state_purge.get("choices_deleted") or 0
+            )
+            summary["purge_ambiguous_choice_state_markets_deleted"] = int(
+                choice_state_purge.get("markets_deleted") or 0
+            )
+            if rejection_path is not None and choice_state_purge.get("choices_matched"):
+                _append_ndjson(
+                    rejection_path,
+                    [
+                        {
+                            "status": "note" if config.dry_run else "purged",
+                            "reason_code": "purge_ambiguous_choice_states",
+                            "event_id": None,
+                            "market_id": None,
+                            "choice_id": None,
+                            "snapshot_id": None,
+                            "evidence": {
+                                "dry_run": config.dry_run,
+                                "criterion": (
+                                    "snapless MarketChoice odds mirrors on "
+                                    f"OddsPortal-era bookies {sorted(ODDSPORTAL_ERA_BOOKIE_IDS)} "
+                                    "(ambiguous_choice_state cohort)"
+                                ),
+                                **choice_state_purge,
                             },
                         }
                     ],
@@ -1223,9 +1414,21 @@ class MarketChoiceQuoteBackfillService:
                         reason = rejection.get("reason_code")
                         if reason in summary:
                             summary[reason] = int(summary[reason]) + 1
-                        blocking += 1
-                        if rejection_path is not None:
-                            _append_ndjson(rejection_path, [rejection])
+                        # Abandoned Back/Lay is expected until purge removes the
+                        # rows; do not fail the campaign on it.
+                        if reason in {
+                            "legacy_back_lay_abandoned",
+                            "ambiguous_choice_state",
+                        }:
+                            summary["notes_written"] = int(summary["notes_written"]) + 1
+                            if rejection_path is not None:
+                                note = dict(rejection)
+                                note["status"] = "note"
+                                _append_ndjson(rejection_path, [note])
+                        else:
+                            blocking += 1
+                            if rejection_path is not None:
+                                _append_ndjson(rejection_path, [rejection])
 
                     for note in report.notes:
                         reason = note.get("reason_code")

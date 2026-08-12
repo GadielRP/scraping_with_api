@@ -1,6 +1,10 @@
 services:
   postgres:
     restart: unless-stopped
+    # Parallel query workers need /dev/shm; Docker default (64MB) OOMs on
+    # large UNION/joins used by maintenance backfills (DiskFull on shm resize).
+    # 512m is enough on the 1GB host without matching local's full 1gb.
+    shm_size: "512m"
     logging:
       driver: "json-file"
       options:

@@ -133,6 +133,7 @@ config/backfills/market_choice_quotes/**
 !config/backfills/market_choice_quotes/*.json
 !config/backfills/market_choice_quotes/.gitkeep
 !docs/refactors/db-schema-odds-refactor-phase-4c-runbook.md
+!docs/refactors/db-schema-odds-refactor-phase-5.md
 !tests/pillars/
 tests/pillars/*.pyc
 !tests/pillars/test_odds_trajectory_context.py

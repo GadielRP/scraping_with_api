@@ -30,8 +30,9 @@ def make_manager(tmp_path, name="backfill"):
 
 def seed_event_with_unlinked_snapshot(manager, *, source="oddspapi", side=None, level=0):
     with manager.get_session() as session:
-        # Reserve bookie_id=1 for SofaScore (classifier rule).
-        sofascore = Bookie(name="SofaScore", slug="sofascore")
+        # Reserve bookie_id=1 for SofaScore; use allowed Betfair id=4 so the
+        # automatic disallowed-bookie purge (≥4b.7) does not wipe the fixture.
+        sofascore = Bookie(bookie_id=1, name="SofaScore", slug="sofascore")
         event = Event(
             slug="bf-event",
             start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
@@ -40,7 +41,7 @@ def seed_event_with_unlinked_snapshot(manager, *, source="oddspapi", side=None, 
             home_team="Home",
             away_team="Away",
         )
-        bookie = Bookie(name="Betfair", slug="betfair")
+        bookie = Bookie(bookie_id=4, name="Betfair Exchange", slug="betfair-ex")
         session.add_all([sofascore, event, bookie])
         session.flush()
         market = Market(
@@ -206,7 +207,7 @@ def test_backfill_does_not_degrade_newer_live_quote(tmp_path):
 def test_bulk_link_many_snapshots_one_quote(tmp_path):
     manager = make_manager(tmp_path, "bulk")
     with manager.get_session() as session:
-        sofascore = Bookie(name="SofaScore", slug="sofascore")
+        sofascore = Bookie(bookie_id=1, name="SofaScore", slug="sofascore")
         event = Event(
             slug="bulk-event",
             start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
@@ -215,7 +216,7 @@ def test_bulk_link_many_snapshots_one_quote(tmp_path):
             home_team="Home",
             away_team="Away",
         )
-        bookie = Bookie(name="Pinnacle", slug="pinnacle")
+        bookie = Bookie(bookie_id=302, name="Pinnacle Sports", slug="pinnacle")
         session.add_all([sofascore, event, bookie])
         session.flush()
         market = Market(
@@ -271,7 +272,7 @@ def test_bulk_link_many_snapshots_one_quote(tmp_path):
 def test_max_rows_stops_and_checkpoint_resumes(tmp_path):
     manager = make_manager(tmp_path, "resume")
     with manager.get_session() as session:
-        sofascore = Bookie(name="SofaScore", slug="sofascore")
+        sofascore = Bookie(bookie_id=1, name="SofaScore", slug="sofascore")
         event = Event(
             slug="resume-event",
             start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
@@ -280,7 +281,7 @@ def test_max_rows_stops_and_checkpoint_resumes(tmp_path):
             home_team="Home",
             away_team="Away",
         )
-        bookie = Bookie(name="Bet365", slug="bet365")
+        bookie = Bookie(bookie_id=3, name="bet365", slug="bet365")
         session.add_all([sofascore, event, bookie])
         session.flush()
         market = Market(
@@ -352,7 +353,7 @@ def test_max_rows_stops_and_checkpoint_resumes(tmp_path):
 def test_purge_oddspapi_null_mainline_line_markets_and_orphans(tmp_path):
     manager = make_manager(tmp_path, "purge")
     with manager.get_session() as session:
-        sofascore = Bookie(name="SofaScore", slug="sofascore")
+        sofascore = Bookie(bookie_id=1, name="SofaScore", slug="sofascore")
         event = Event(
             slug="purge-event",
             start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
@@ -361,7 +362,7 @@ def test_purge_oddspapi_null_mainline_line_markets_and_orphans(tmp_path):
             home_team="Home",
             away_team="Away",
         )
-        bookie = Bookie(name="Pinnacle", slug="pinnacle")
+        bookie = Bookie(bookie_id=302, name="Pinnacle Sports", slug="pinnacle")
         session.add_all([sofascore, event, bookie])
         session.flush()
 
@@ -474,7 +475,7 @@ def test_purge_oddspapi_null_mainline_line_markets_and_orphans(tmp_path):
 def test_initial_odds_unavailable_written_to_rejections(tmp_path):
     manager = make_manager(tmp_path, "initial-note")
     with manager.get_session() as session:
-        sofascore = Bookie(name="SofaScore", slug="sofascore")
+        sofascore = Bookie(bookie_id=1, name="SofaScore", slug="sofascore")
         event = Event(
             slug="note-event",
             start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
@@ -483,7 +484,7 @@ def test_initial_odds_unavailable_written_to_rejections(tmp_path):
             home_team="Home",
             away_team="Away",
         )
-        bookie = Bookie(name="Betfair", slug="betfair")
+        bookie = Bookie(bookie_id=4, name="Betfair Exchange", slug="betfair-ex")
         session.add_all([sofascore, event, bookie])
         session.flush()
         market = Market(
@@ -533,28 +534,28 @@ def test_initial_odds_unavailable_written_to_rejections(tmp_path):
     assert summary["blocking_decisions"] == 0
 
 
-def test_commit_seeds_canonical_market_for_legacy_back_lay(tmp_path):
-    """Back/Lay legacy markets get a choice_group=NULL canonical destination."""
+def test_purge_legacy_back_lay_deletes_markets_and_skips_rematerialization(tmp_path):
+    """Back/Lay OddsPortal-era markets are purged, not rematerialized to quotes."""
     from infrastructure.persistence.models import BookieSourceMapping
 
-    manager = make_manager(tmp_path, name="back_lay_seed")
+    manager = make_manager(tmp_path, name="back_lay_purge")
     with manager.get_session() as session:
-        sofascore = Bookie(name="SofaScore", slug="sofascore")
+        sofascore = Bookie(bookie_id=1, name="SofaScore", slug="sofascore")
         event = Event(
-            slug="bf-back-lay",
+            slug="bf-back-lay-purge",
             start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
             sport="Football",
             competition="Test",
             home_team="Home",
             away_team="Away",
         )
-        bookie = Bookie(name="Betfair Exchange", slug="betfair-ex")
+        bookie = Bookie(bookie_id=4, name="Betfair Exchange", slug="betfair-ex")
         session.add_all([sofascore, event, bookie])
         session.flush()
         session.add(
             BookieSourceMapping(
                 bookie_id=bookie.bookie_id,
-                source="oddsportal",
+                source="oddspapi",
                 source_bookie_name="Betfair Exchange",
                 source_bookie_slug="betfair-ex",
                 match_method="manual_alias",
@@ -580,7 +581,6 @@ def test_commit_seeds_canonical_market_for_legacy_back_lay(tmp_path):
         )
         session.add_all([back, lay])
         session.flush()
-        choices = []
         for market, side_price in ((back, 2.3), (lay, 2.32)):
             for name, price in (("1", side_price), ("x", side_price + 0.8), ("2", side_price + 1.7)):
                 choice = MarketChoice(
@@ -589,17 +589,15 @@ def test_commit_seeds_canonical_market_for_legacy_back_lay(tmp_path):
                     current_odds=price,
                 )
                 session.add(choice)
-                choices.append((choice, price, "back" if market is back else "lay"))
-        session.flush()
-        for choice, price, _side in choices:
-            session.add(
-                MarketChoiceSnapshot(
-                    choice_id=choice.choice_id,
-                    odds_value=price,
-                    collected_at=datetime(2026, 6, 20, 11, 0, 0),
-                    source=None,
+                session.flush()
+                session.add(
+                    MarketChoiceSnapshot(
+                        choice_id=choice.choice_id,
+                        odds_value=price,
+                        collected_at=datetime(2026, 6, 20, 11, 0, 0),
+                        source=None,
+                    )
                 )
-            )
         event_id = event.id
         bookie_id = bookie.bookie_id
 
@@ -611,55 +609,32 @@ def test_commit_seeds_canonical_market_for_legacy_back_lay(tmp_path):
             batch_size=50,
             max_rows=100,
             confirm_ingestion_paused=True,
+            purge_legacy_back_lay=True,
+            confirm_purge=True,
             checkpoint_file=tmp_path / "checkpoint.json",
             output_json=tmp_path / "summary.json",
             output_rejections=tmp_path / "rej.ndjson",
         )
     )
     assert code == 0, summary
-    assert summary["canonical_markets_created"] >= 1
-    assert summary["canonical_choices_created"] >= 3
-    assert summary["snapshots_linked"] == 6
+    assert summary["purge_legacy_back_lay_markets_deleted"] == 2
+    assert summary["purge_legacy_back_lay_choices_deleted"] == 6
+    assert summary["purge_legacy_back_lay_snapshots_deleted"] == 6
+    assert summary["canonical_markets_created"] == 0
     assert summary["blocking_decisions"] == 0
 
     with manager.get_session() as session:
-        canonical = (
+        remaining_legacy = (
             session.query(Market)
             .filter(
                 Market.event_id == event_id,
                 Market.bookie_id == bookie_id,
-                Market.market_name == "1X2 Full Time",
-                Market.choice_group.is_(None),
             )
-            .one()
-        )
-        assert canonical.market_group == "1X2"
-        assert canonical.market_period == "Full Time"
-        choice_names = {
-            c.choice_name
-            for c in session.query(MarketChoice)
-            .filter(MarketChoice.market_id == canonical.market_id)
-            .all()
-        }
-        assert choice_names == {"1", "x", "2"}
-        quotes = (
-            session.query(MarketChoiceQuote)
-            .join(MarketChoice, MarketChoice.choice_id == MarketChoiceQuote.choice_id)
-            .filter(MarketChoice.market_id == canonical.market_id)
-            .all()
-        )
-        assert len(quotes) == 6
-        sides = {(q.exchange_side, session.get(MarketChoice, q.choice_id).choice_name) for q in quotes}
-        assert ("back", "1") in sides
-        assert ("lay", "1") in sides
-        unlinked = (
-            session.query(MarketChoiceSnapshot)
-            .join(MarketChoice, MarketChoice.choice_id == MarketChoiceSnapshot.choice_id)
-            .join(Market, Market.market_id == MarketChoice.market_id)
-            .filter(Market.event_id == event_id, MarketChoiceSnapshot.quote_id.is_(None))
             .count()
         )
-        assert unlinked == 0
+        assert remaining_legacy == 0
+        assert session.query(MarketChoiceSnapshot).count() == 0
+        assert session.query(MarketChoiceQuote).count() == 0
 
 
 def test_lookup_catalog_seed_for_1x2_full_time():
@@ -711,3 +686,89 @@ def test_rejections_file_appends_with_run_headers(tmp_path):
     assert second.startswith(first.rstrip("\n"))
     assert second.count('"reason_code": "run_boundary"') == 2
     assert "\n\n{" in second or "\n\n{\n" in second or second.count("\n\n") >= 1
+
+
+def test_run_purges_markets_outside_allowed_bookies(tmp_path):
+    """Every run deletes markets whose bookie_id is not in {1,3,4,302}."""
+    manager = make_manager(tmp_path, "disallowed_bookies")
+    with manager.get_session() as session:
+        sofascore = Bookie(bookie_id=1, name="SofaScore", slug="sofascore")
+        other = Bookie(bookie_id=13, name="Cloudbet", slug="cloudbet")
+        event = Event(
+            slug="keep-purge-bookies",
+            start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
+            sport="Football",
+            competition="Test",
+            home_team="Home",
+            away_team="Away",
+        )
+        session.add_all([sofascore, other, event])
+        session.flush()
+
+        keep = Market(
+            event_id=event.id,
+            bookie_id=sofascore.bookie_id,
+            market_name="1X2 Full Time",
+            market_group="1X2",
+            market_period="Full Time",
+            choice_group=None,
+            is_live=False,
+        )
+        drop = Market(
+            event_id=event.id,
+            bookie_id=other.bookie_id,
+            market_name="1X2 Full Time",
+            market_group="1X2",
+            market_period="Full Time",
+            choice_group=None,
+            is_live=False,
+        )
+        session.add_all([keep, drop])
+        session.flush()
+        keep_choice = MarketChoice(
+            market_id=keep.market_id, choice_name="1", current_odds=1.9
+        )
+        drop_choice = MarketChoice(
+            market_id=drop.market_id, choice_name="1", current_odds=2.1
+        )
+        session.add_all([keep_choice, drop_choice])
+        session.flush()
+        session.add_all(
+            [
+                MarketChoiceSnapshot(
+                    choice_id=keep_choice.choice_id,
+                    odds_value=1.9,
+                    collected_at=datetime(2026, 6, 20, 11, 0, 0),
+                    source="sofascore",
+                ),
+                MarketChoiceSnapshot(
+                    choice_id=drop_choice.choice_id,
+                    odds_value=2.1,
+                    collected_at=datetime(2026, 6, 20, 11, 0, 0),
+                    source="oddspapi",
+                ),
+            ]
+        )
+        event_id = event.id
+        keep_market_id = keep.market_id
+        drop_market_id = drop.market_id
+
+    service = MarketChoiceQuoteBackfillService(manager.get_session)
+    code, summary = service.run(
+        RunConfig(
+            dry_run=False,
+            event_id=event_id,
+            batch_size=50,
+            max_rows=100,
+            confirm_ingestion_paused=True,
+            checkpoint_file=tmp_path / "checkpoint.json",
+            output_json=tmp_path / "summary.json",
+            output_rejections=tmp_path / "rej.ndjson",
+        )
+    )
+    assert code in (0, 2), summary
+    assert summary["purge_disallowed_bookie_markets_deleted"] == 1
+
+    with manager.get_session() as session:
+        assert session.get(Market, keep_market_id) is not None
+        assert session.get(Market, drop_market_id) is None

@@ -145,9 +145,33 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--purge-legacy-back-lay",
+        action="store_true",
+        help=(
+            "Before backfill, delete OddsPortal-era markets whose choice_group "
+            "is Back/Lay (and their choices/snapshots/quotes), plus any "
+            "remaining source=oddsportal quotes in the same event scope. "
+            "Replaces the old Back/Lay→oddsportal rematerialization path."
+        ),
+    )
+    parser.add_argument(
+        "--purge-ambiguous-choice-states",
+        action="store_true",
+        help=(
+            "Before backfill, delete snapless MarketChoice odds mirrors on "
+            "OddsPortal-era bookies (bet365 / Betfair Exchange) — the "
+            "ambiguous_choice_state cohort that must not be attributed to "
+            "oddspapi via unique mapping."
+        ),
+    )
+    parser.add_argument(
         "--confirm-purge",
         action="store_true",
-        help="Required with --commit when --purge-oddspapi-null-mainline-lines is set.",
+        help=(
+            "Required with --commit when any --purge-* flag is set "
+            "(oddspapi null-mainline, legacy Back/Lay, and/or ambiguous "
+            "choice-states)."
+        ),
     )
     return parser
 
@@ -236,10 +260,14 @@ def validate_args(args: argparse.Namespace) -> Optional[str]:
     if args.commit:
         if not args.confirm_ingestion_paused:
             return "--commit requires --confirm-ingestion-paused"
-        if args.purge_oddspapi_null_mainline_lines and not args.confirm_purge:
+        needs_purge_confirm = (
+            args.purge_oddspapi_null_mainline_lines
+            or getattr(args, "purge_legacy_back_lay", False)
+            or getattr(args, "purge_ambiguous_choice_states", False)
+        )
+        if needs_purge_confirm and not args.confirm_purge:
             return (
-                "--commit with --purge-oddspapi-null-mainline-lines "
-                "requires --confirm-purge"
+                "--commit with any --purge-* flag requires --confirm-purge"
             )
 
     if args.resolution_file is not None and not args.resolution_file.exists():
@@ -281,6 +309,10 @@ def build_run_config(args: argparse.Namespace) -> RunConfig:
         append_rejections=args.append_rejections,
         confirm_ingestion_paused=args.confirm_ingestion_paused,
         purge_oddspapi_null_mainline_lines=args.purge_oddspapi_null_mainline_lines,
+        purge_legacy_back_lay=getattr(args, "purge_legacy_back_lay", False),
+        purge_ambiguous_choice_states=getattr(
+            args, "purge_ambiguous_choice_states", False
+        ),
         confirm_purge=args.confirm_purge,
     )
 

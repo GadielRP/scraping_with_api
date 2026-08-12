@@ -704,6 +704,426 @@ class MarketChoiceQuoteBackfillRepository:
             query = query.limit(int(max_events))
         return [int(row[0]) for row in query.all()]
 
+    @staticmethod
+    def _legacy_back_lay_market_predicate():
+        """SQL filter for OddsPortal-era ``choice_group`` values ``Back`` / ``Lay``.
+
+        Matches ``Back``, ``Lay``, ``Back 2.5``, ``Lay 3.0``, case-insensitive.
+        Kept as ILIKE (not Postgres regex) so SQLite tests stay portable.
+        """
+        return or_(
+            Market.choice_group.ilike("Back"),
+            Market.choice_group.ilike("Back %"),
+            Market.choice_group.ilike("Lay"),
+            Market.choice_group.ilike("Lay %"),
+        )
+
+    @classmethod
+    def select_legacy_back_lay_event_scope(
+        cls,
+        session: Session,
+        *,
+        event_id: Optional[int] = None,
+        event_id_min: Optional[int] = None,
+        event_id_max: Optional[int] = None,
+        after_event_id: Optional[int] = None,
+        max_events: Optional[int] = None,
+    ) -> list[int]:
+        """Event IDs that still have at least one legacy Back/Lay market."""
+        if event_id is not None:
+            return [int(event_id)]
+        query = (
+            session.query(Market.event_id)
+            .filter(cls._legacy_back_lay_market_predicate())
+            .distinct()
+        )
+        if event_id_min is not None:
+            query = query.filter(Market.event_id >= int(event_id_min))
+        if event_id_max is not None:
+            query = query.filter(Market.event_id <= int(event_id_max))
+        if after_event_id is not None:
+            query = query.filter(Market.event_id > int(after_event_id))
+        query = query.order_by(Market.event_id.asc())
+        if max_events is not None:
+            query = query.limit(int(max_events))
+        return [int(row[0]) for row in query.all()]
+
+    @classmethod
+    def purge_legacy_back_lay_markets(
+        cls,
+        session: Session,
+        *,
+        event_ids: Sequence[int],
+        dry_run: bool,
+    ) -> dict[str, Any]:
+        """Delete OddsPortal-era Back/Lay markets and their choices/snapshots/quotes.
+
+        Also deletes any remaining ``source=oddsportal`` quotes on markets in
+        the same event scope (covers rematerialized canonical quotes the
+        backfill used to create from these legacy rows). Snapshots that only
+        pointed at those quotes are unlinked (``quote_id=NULL``) first so
+        price history on non-legacy choices is not CASCADE-deleted; snapshots
+        that live *on* the legacy Back/Lay choices themselves are deleted with
+        the market.
+        """
+        ids = sorted({int(e) for e in event_ids if e is not None})
+        result: dict[str, Any] = {
+            "markets_matched": 0,
+            "markets_deleted": 0,
+            "choices_deleted": 0,
+            "snapshots_deleted": 0,
+            "quotes_deleted_on_legacy": 0,
+            "oddsportal_quotes_unlinked_snaps": 0,
+            "oddsportal_quotes_deleted": 0,
+            "dry_run": dry_run,
+            "sample_market_ids": [],
+        }
+        if not ids:
+            return result
+
+        legacy_markets = (
+            session.query(Market.market_id)
+            .filter(
+                Market.event_id.in_(ids),
+                cls._legacy_back_lay_market_predicate(),
+            )
+            .order_by(Market.market_id.asc())
+            .all()
+        )
+        legacy_market_ids = [int(r[0]) for r in legacy_markets]
+        result["markets_matched"] = len(legacy_market_ids)
+        result["sample_market_ids"] = legacy_market_ids[:50]
+
+        legacy_choice_ids: list[int] = []
+        if legacy_market_ids:
+            legacy_choice_ids = [
+                int(r[0])
+                for r in session.query(MarketChoice.choice_id)
+                .filter(MarketChoice.market_id.in_(legacy_market_ids))
+                .all()
+            ]
+
+        oddsportal_quote_ids = [
+            int(r[0])
+            for r in (
+                session.query(MarketChoiceQuote.quote_id)
+                .join(MarketChoice, MarketChoice.choice_id == MarketChoiceQuote.choice_id)
+                .join(Market, Market.market_id == MarketChoice.market_id)
+                .filter(
+                    Market.event_id.in_(ids),
+                    func.lower(MarketChoiceQuote.source).like("oddsportal%"),
+                )
+                .all()
+            )
+        ]
+
+        snap_on_legacy = 0
+        if legacy_choice_ids:
+            snap_on_legacy = (
+                session.query(func.count(MarketChoiceSnapshot.snapshot_id))
+                .filter(MarketChoiceSnapshot.choice_id.in_(legacy_choice_ids))
+                .scalar()
+                or 0
+            )
+        quotes_on_legacy = 0
+        if legacy_choice_ids:
+            quotes_on_legacy = (
+                session.query(func.count(MarketChoiceQuote.quote_id))
+                .filter(MarketChoiceQuote.choice_id.in_(legacy_choice_ids))
+                .scalar()
+                or 0
+            )
+
+        result["snapshots_deleted"] = int(snap_on_legacy)
+        result["choices_deleted"] = len(legacy_choice_ids)
+        result["quotes_deleted_on_legacy"] = int(quotes_on_legacy)
+        result["oddsportal_quotes_deleted"] = len(oddsportal_quote_ids)
+        if oddsportal_quote_ids:
+            result["oddsportal_quotes_unlinked_snaps"] = int(
+                session.query(func.count(MarketChoiceSnapshot.snapshot_id))
+                .filter(MarketChoiceSnapshot.quote_id.in_(oddsportal_quote_ids))
+                .scalar()
+                or 0
+            )
+
+        if dry_run:
+            result["markets_deleted"] = len(legacy_market_ids)
+            return result
+
+        if oddsportal_quote_ids:
+            session.query(MarketChoiceSnapshot).filter(
+                MarketChoiceSnapshot.quote_id.in_(oddsportal_quote_ids)
+            ).update({MarketChoiceSnapshot.quote_id: None}, synchronize_session=False)
+            session.query(MarketChoiceQuote).filter(
+                MarketChoiceQuote.quote_id.in_(oddsportal_quote_ids)
+            ).delete(synchronize_session=False)
+
+        if legacy_choice_ids:
+            session.query(MarketChoiceSnapshot).filter(
+                MarketChoiceSnapshot.choice_id.in_(legacy_choice_ids)
+            ).delete(synchronize_session=False)
+            session.query(MarketChoiceQuote).filter(
+                MarketChoiceQuote.choice_id.in_(legacy_choice_ids)
+            ).delete(synchronize_session=False)
+            session.query(MarketChoice).filter(
+                MarketChoice.choice_id.in_(legacy_choice_ids)
+            ).delete(synchronize_session=False)
+
+        if legacy_market_ids:
+            session.query(Market).filter(
+                Market.market_id.in_(legacy_market_ids)
+            ).delete(synchronize_session=False)
+        result["markets_deleted"] = len(legacy_market_ids)
+        return result
+
+    @classmethod
+    def select_ambiguous_choice_state_event_scope(
+        cls,
+        session: Session,
+        *,
+        bookie_ids: Sequence[int],
+        event_id: Optional[int] = None,
+        event_id_min: Optional[int] = None,
+        event_id_max: Optional[int] = None,
+        after_event_id: Optional[int] = None,
+        max_events: Optional[int] = None,
+    ) -> list[int]:
+        """Events with snapless odds mirrors on the given OddsPortal-era bookies."""
+        ids = sorted({int(b) for b in bookie_ids if b is not None})
+        if not ids:
+            return []
+        if event_id is not None:
+            return [int(event_id)]
+        query = (
+            session.query(Market.event_id)
+            .join(MarketChoice, MarketChoice.market_id == Market.market_id)
+            .filter(
+                Market.bookie_id.in_(ids),
+                (MarketChoice.initial_odds.isnot(None))
+                | (MarketChoice.current_odds.isnot(None)),
+                ~session.query(MarketChoiceSnapshot.snapshot_id)
+                .filter(MarketChoiceSnapshot.choice_id == MarketChoice.choice_id)
+                .exists(),
+            )
+            .distinct()
+        )
+        if event_id_min is not None:
+            query = query.filter(Market.event_id >= int(event_id_min))
+        if event_id_max is not None:
+            query = query.filter(Market.event_id <= int(event_id_max))
+        if after_event_id is not None:
+            query = query.filter(Market.event_id > int(after_event_id))
+        query = query.order_by(Market.event_id.asc())
+        if max_events is not None:
+            query = query.limit(int(max_events))
+        return [int(row[0]) for row in query.all()]
+
+    @classmethod
+    def purge_ambiguous_choice_states(
+        cls,
+        session: Session,
+        *,
+        event_ids: Sequence[int],
+        bookie_ids: Sequence[int],
+        dry_run: bool,
+    ) -> dict[str, Any]:
+        """Delete snapless MarketChoice mirrors on OddsPortal-era bookies.
+
+        These are the ``choice_state`` rows the classifier leaves as
+        ``ambiguous_choice_state`` (no snapshots, null source, bookie historically
+        shared with OddsPortal). Deletes choices + any quotes on them, then
+        markets left with zero choices.
+        """
+        events = sorted({int(e) for e in event_ids if e is not None})
+        bookies = sorted({int(b) for b in bookie_ids if b is not None})
+        result: dict[str, Any] = {
+            "choices_matched": 0,
+            "choices_deleted": 0,
+            "quotes_deleted": 0,
+            "markets_deleted": 0,
+            "dry_run": dry_run,
+            "bookie_ids": bookies,
+            "sample_choice_ids": [],
+        }
+        if not events or not bookies:
+            return result
+
+        choice_rows = (
+            session.query(MarketChoice.choice_id, Market.market_id)
+            .join(Market, Market.market_id == MarketChoice.market_id)
+            .filter(
+                Market.event_id.in_(events),
+                Market.bookie_id.in_(bookies),
+                (MarketChoice.initial_odds.isnot(None))
+                | (MarketChoice.current_odds.isnot(None)),
+                ~session.query(MarketChoiceSnapshot.snapshot_id)
+                .filter(MarketChoiceSnapshot.choice_id == MarketChoice.choice_id)
+                .exists(),
+            )
+            .all()
+        )
+        choice_ids = [int(r[0]) for r in choice_rows]
+        market_ids = sorted({int(r[1]) for r in choice_rows})
+        result["choices_matched"] = len(choice_ids)
+        result["sample_choice_ids"] = choice_ids[:50]
+        if not choice_ids:
+            return result
+
+        quotes_count = (
+            session.query(func.count(MarketChoiceQuote.quote_id))
+            .filter(MarketChoiceQuote.choice_id.in_(choice_ids))
+            .scalar()
+            or 0
+        )
+        result["quotes_deleted"] = int(quotes_count)
+
+        if dry_run:
+            orphan_markets = 0
+            for market_id in market_ids:
+                other = (
+                    session.query(MarketChoice.choice_id)
+                    .filter(
+                        MarketChoice.market_id == market_id,
+                        ~MarketChoice.choice_id.in_(choice_ids),
+                    )
+                    .first()
+                )
+                if other is None:
+                    orphan_markets += 1
+            result["choices_deleted"] = len(choice_ids)
+            result["markets_deleted"] = orphan_markets
+            return result
+
+        session.query(MarketChoiceQuote).filter(
+            MarketChoiceQuote.choice_id.in_(choice_ids)
+        ).delete(synchronize_session=False)
+        session.query(MarketChoice).filter(
+            MarketChoice.choice_id.in_(choice_ids)
+        ).delete(synchronize_session=False)
+        result["choices_deleted"] = len(choice_ids)
+
+        markets_deleted = 0
+        for market_id in market_ids:
+            still = (
+                session.query(MarketChoice.choice_id)
+                .filter(MarketChoice.market_id == market_id)
+                .first()
+            )
+            if still is not None:
+                continue
+            session.query(Market).filter(Market.market_id == market_id).delete(
+                synchronize_session=False
+            )
+            markets_deleted += 1
+        result["markets_deleted"] = markets_deleted
+        return result
+
+    @classmethod
+    def purge_markets_outside_allowed_bookies(
+        cls,
+        session: Session,
+        *,
+        allowed_bookie_ids: Sequence[int],
+        dry_run: bool,
+        market_batch_size: int = 2000,
+    ) -> dict[str, Any]:
+        """Delete every market whose bookie_id is not in ``allowed_bookie_ids``.
+
+        Also deletes dependent choices, snapshots, and quotes. ``bookie_id IS
+        NULL`` is treated as disallowed. Runs globally (not event-scoped).
+        """
+        allowed = sorted({int(b) for b in allowed_bookie_ids if b is not None})
+        result: dict[str, Any] = {
+            "allowed_bookie_ids": allowed,
+            "markets_matched": 0,
+            "markets_deleted": 0,
+            "choices_deleted": 0,
+            "snapshots_deleted": 0,
+            "quotes_deleted": 0,
+            "dry_run": dry_run,
+            "sample_market_ids": [],
+        }
+        if not allowed:
+            raise ValueError("allowed_bookie_ids must not be empty")
+
+        market_ids = [
+            int(r[0])
+            for r in session.query(Market.market_id)
+            .filter(
+                or_(
+                    Market.bookie_id.is_(None),
+                    ~Market.bookie_id.in_(allowed),
+                )
+            )
+            .order_by(Market.market_id.asc())
+            .all()
+        ]
+        result["markets_matched"] = len(market_ids)
+        result["sample_market_ids"] = market_ids[:50]
+        if not market_ids:
+            return result
+
+        disallowed = or_(
+            Market.bookie_id.is_(None),
+            ~Market.bookie_id.in_(allowed),
+        )
+        choices_count = int(
+            session.query(func.count(MarketChoice.choice_id))
+            .join(Market, Market.market_id == MarketChoice.market_id)
+            .filter(disallowed)
+            .scalar()
+            or 0
+        )
+        snaps = int(
+            session.query(func.count(MarketChoiceSnapshot.snapshot_id))
+            .join(MarketChoice, MarketChoice.choice_id == MarketChoiceSnapshot.choice_id)
+            .join(Market, Market.market_id == MarketChoice.market_id)
+            .filter(disallowed)
+            .scalar()
+            or 0
+        )
+        quotes = int(
+            session.query(func.count(MarketChoiceQuote.quote_id))
+            .join(MarketChoice, MarketChoice.choice_id == MarketChoiceQuote.choice_id)
+            .join(Market, Market.market_id == MarketChoice.market_id)
+            .filter(disallowed)
+            .scalar()
+            or 0
+        )
+        result["choices_deleted"] = choices_count
+        result["snapshots_deleted"] = snaps
+        result["quotes_deleted"] = quotes
+
+        if dry_run:
+            result["markets_deleted"] = len(market_ids)
+            return result
+
+        # Batch deletes to keep lock/memory bounded on large DBs.
+        batch = max(1, int(market_batch_size))
+        for offset in range(0, len(market_ids), batch):
+            chunk_markets = market_ids[offset : offset + batch]
+            chunk_choices = [
+                int(r[0])
+                for r in session.query(MarketChoice.choice_id)
+                .filter(MarketChoice.market_id.in_(chunk_markets))
+                .all()
+            ]
+            if chunk_choices:
+                session.query(MarketChoiceSnapshot).filter(
+                    MarketChoiceSnapshot.choice_id.in_(chunk_choices)
+                ).delete(synchronize_session=False)
+                session.query(MarketChoiceQuote).filter(
+                    MarketChoiceQuote.choice_id.in_(chunk_choices)
+                ).delete(synchronize_session=False)
+                session.query(MarketChoice).filter(
+                    MarketChoice.choice_id.in_(chunk_choices)
+                ).delete(synchronize_session=False)
+            session.query(Market).filter(
+                Market.market_id.in_(chunk_markets)
+            ).delete(synchronize_session=False)
+        result["markets_deleted"] = len(market_ids)
+        return result
+
     @classmethod
     def purge_oddspapi_null_mainline_line_markets(
         cls,
