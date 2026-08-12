@@ -5,6 +5,7 @@ from infrastructure.persistence.models import (
     create_or_replace_materialized_views,
     create_or_replace_views,
 )
+from infrastructure.settings import Config
 
 
 def initialize_system() -> bool:
@@ -12,6 +13,8 @@ def initialize_system() -> bool:
     logger = logging.getLogger(__name__)
 
     try:
+        Config.validate_odds_read_settings()
+
         if not db_manager.test_connection():
             logger.error("Database connection failed")
             return False

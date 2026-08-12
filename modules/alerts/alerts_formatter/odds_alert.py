@@ -6,10 +6,13 @@ It uses OddsExtractor to parse data before formatting.
 """
 
 import logging
-from typing import Dict, List, Optional
-from decimal import Decimal
+from typing import Dict, List, Sequence, Union
 
 from infrastructure.persistence.repositories import EventRepository, MarketRepository
+from infrastructure.persistence.repositories.market.market_read_models import (
+    ExternalChoiceQuote,
+    ExternalMarketQuoteBlock,
+)
 from modules.alerts import pre_start_notifier
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.oddsportal.oddsportal_config import ODDSPORTAL_COMPETITION_ROUTES
@@ -206,10 +209,18 @@ def _format_market_choices(market: Dict, indent: str = "  ") -> str:
     
     return result
 
-def _format_external_markets_section(external_markets: List[Dict], event_data: Dict = None, op_data=None) -> str:
+def _format_external_markets_section(
+    external_markets: Union[Sequence[Dict], Sequence[ExternalMarketQuoteBlock]],
+    event_data: Dict = None,
+    op_data=None,
+) -> str:
     """Format external bookmakers odds section of the alert message."""
     if not external_markets:
         return ""
+    if all(isinstance(item, ExternalMarketQuoteBlock) for item in external_markets):
+        return _format_external_quote_blocks(external_markets, event_data)
+    if not all(isinstance(item, dict) for item in external_markets):
+        raise TypeError("External odds read must not mix legacy and quote-aware blocks")
         
     result = ""
     
@@ -308,6 +319,77 @@ def _format_external_markets_section(external_markets: List[Dict], event_data: D
                 
             result += "\n"
             
+    return result
+
+
+def _format_quote_choice(choice: ExternalChoiceQuote) -> str:
+    movement = {-1: "↓", 0: "=", 1: "↑"}.get(choice.movement, "")
+    if choice.initial is not None and choice.current is not None:
+        return (
+            f"{_format_odds_value(choice.initial)}→"
+            f"{_format_odds_value(choice.current)}{movement}"
+        )
+    if choice.initial is not None:
+        return f"{_format_odds_value(choice.initial)}→N/A"
+    if choice.current is not None:
+        return _format_odds_value(choice.current)
+    return "N/A"
+
+
+def _format_external_quote_blocks(
+    blocks: Sequence[ExternalMarketQuoteBlock], event_data: Dict = None
+) -> str:
+    """Render the quote-aware contract without inferring source or side."""
+    from collections import defaultdict
+
+    grouped_headers = defaultdict(list)
+    for block in blocks:
+        header_key = (
+            "field_priority",
+            "",
+        ) if block.aggregation == "field_priority" else ("exchange", block.source or "unknown")
+        grouped_headers[header_key].append(block)
+
+    result = ""
+    for (aggregation, source), header_blocks in sorted(grouped_headers.items()):
+        if aggregation == "field_priority":
+            result += "\n🟡 <b>CONSOLIDATED ODDS</b>\n\n"
+        else:
+            result += f"\n🟡 <b>{source.upper().replace('_', ' ')} EXCHANGE ODDS</b>\n\n"
+
+        market_sections = defaultdict(list)
+        for block in header_blocks:
+            market_sections[(block.market_group or "Unknown", block.market_period)].append(block)
+        for (market_group, market_period), market_blocks in sorted(market_sections.items()):
+            display_group = (
+                "Full Time" if market_group == "1X2" and market_period == "Full Time"
+                else market_period if market_group == "1X2"
+                else f"{market_group} - {market_period}"
+            )
+            result += f"📊 <b>{display_group}</b>\n"
+            for block in sorted(
+                market_blocks,
+                key=lambda item: (
+                    item.choice_group is not None,
+                    item.choice_group or "",
+                    item.bookie_name.casefold(),
+                    {None: 0, "back": 1, "lay": 2}.get(item.exchange_side, 9),
+                    item.market_id,
+                ),
+            ):
+                display = block.bookie_name
+                if block.aggregation == "exchange":
+                    display += f" ({(block.exchange_side or 'Unspecified').title()})"
+                elif block.market_group in {"Asian Handicap", "Over/Under"} and block.choice_group:
+                    display += f" [{block.choice_group}]"
+                if block.is_live:
+                    display += " (LIVE)"
+
+                rendered_choices = []
+                for choice in block.choices:
+                    rendered_choices.append(_format_quote_choice(choice))
+                result += f"  {display}: {' | '.join(rendered_choices)}\n"
+            result += "\n"
     return result
 
 # Backwards compatibility alias

@@ -1,5 +1,7 @@
 import logging
 import re
+import time
+import zlib
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Dict
@@ -1008,7 +1010,13 @@ class MarketRepository:
                             quote=persisted_quote,
                             odds_value=quote_price,
                             collected_at=collected_at,
-                            source_collected_at=current_source_collected_at,
+                            source_collected_at=(
+                                MarketRepository._resolve_exchange_observation_time(
+                                    current_odds=current_odds,
+                                    initial_captured_at=initial_source_collected_at,
+                                    current_captured_at=current_source_collected_at,
+                                )
+                            ),
                             source_limit=MarketRepository._numeric_or_none(
                                 choice_data.get("limit")
                             ),
@@ -1055,6 +1063,18 @@ class MarketRepository:
             write_policy.name,
         )
         return result
+
+    @staticmethod
+    def _resolve_exchange_observation_time(
+        *,
+        current_odds,
+        initial_captured_at,
+        current_captured_at,
+    ):
+        """Timestamp a ladder that accompanied opening-only data as opening."""
+        if current_odds is None and initial_captured_at is not None:
+            return initial_captured_at
+        return current_captured_at
 
     @staticmethod
     def _upsert_choice_quotes(
@@ -1144,6 +1164,13 @@ class MarketRepository:
         exchange_quotes = choice_data.get("exchangeQuotes")
         if not isinstance(exchange_quotes, list):
             return quotes_by_identity
+        exchange_current_captured_at = (
+            MarketRepository._resolve_exchange_observation_time(
+                current_odds=current_odds,
+                initial_captured_at=initial_captured_at,
+                current_captured_at=current_captured_at,
+            )
+        )
         for quote in exchange_quotes:
             if not isinstance(quote, dict):
                 continue
@@ -1177,7 +1204,7 @@ class MarketRepository:
                 initial_price=side_initial_price,
                 initial_captured_at=side_initial_captured_at,
                 current_price=quote_price,
-                current_captured_at=current_captured_at,
+                current_captured_at=exchange_current_captured_at,
                 source_limit=MarketRepository._numeric_or_none(quote.get("size")),
                 overwrite_initial=write_policy.overwrite_initial_odds,
                 **common_source_fields,
@@ -1259,9 +1286,9 @@ class MarketRepository:
             return []
 
     # LEGACY_ODDS_READ: infers source from snapshots and reads frozen choice odds.
-    # Replace with quote-aware MarketReadQueries in Fase 5, then remove in Fase 8.
+    # Retained only for shadow/rollback during Phase 5; remove in Phase 8.
     @staticmethod
-    def get_external_markets_for_event(event_id: int) -> List[Dict]:
+    def _get_external_markets_legacy(event_id: int) -> List[Dict]:
         """
         Fetch external bookmaker markets for a specific event (bookie_id != 1).
         
@@ -1345,6 +1372,100 @@ class MarketRepository:
         except Exception as e:
             logger.error(f"Error getting external markets for event {event_id}: {e}")
             return []
+
+    @staticmethod
+    def _is_shadow_sampled(event_id: int, sample_rate: float) -> bool:
+        if sample_rate <= 0:
+            return False
+        if sample_rate >= 1:
+            return True
+        bucket = zlib.crc32(str(int(event_id)).encode("ascii")) % 10_000
+        return bucket < int(sample_rate * 10_000)
+
+    @staticmethod
+    def get_external_markets_for_event(event_id: int):
+        """Read external markets through the Phase 5 cutover facade.
+
+        ``legacy`` returns the historical dict contract, ``shadow`` returns the
+        same contract while comparing quotes, and ``quotes`` returns typed
+        ``ExternalMarketQuoteBlock`` instances.
+        """
+        from infrastructure.persistence.repositories.market.market_quote_read_policy import (
+            load_quote_read_priority_policy,
+        )
+        from infrastructure.persistence.repositories.market.market_read_comparator import (
+            compare_external_market_reads,
+        )
+        from infrastructure.persistence.repositories.market.market_read_queries import (
+            MarketReadQueries,
+        )
+        from infrastructure.settings import Config
+
+        mode = Config.EXTERNAL_ODDS_READ_MODE
+        if mode == "legacy":
+            return MarketRepository._get_external_markets_legacy(event_id)
+
+        policy = load_quote_read_priority_policy(Config.ODDS_READ_PRIORITY_CONFIG)
+        if mode == "quotes":
+            result = MarketReadQueries.get_external_market_quotes_for_event(event_id, policy)
+            blocking = [item.code for item in result.diagnostics if item.blocking]
+            if blocking:
+                logger.error(
+                    "Quote-aware external odds read produced blocking diagnostics "
+                    "event_id=%s codes=%s",
+                    event_id,
+                    sorted(set(blocking)),
+                )
+            return list(result.blocks)
+
+        legacy_started = time.perf_counter()
+        legacy = MarketRepository._get_external_markets_legacy(event_id)
+        legacy_duration_ms = (time.perf_counter() - legacy_started) * 1000
+        if not MarketRepository._is_shadow_sampled(
+            event_id, Config.ODDS_READ_SHADOW_SAMPLE_RATE
+        ):
+            return legacy
+
+        quote_started = time.perf_counter()
+        result = MarketReadQueries.get_external_market_quotes_for_event(event_id, policy)
+        quote_duration_ms = (time.perf_counter() - quote_started) * 1000
+        comparison = compare_external_market_reads(
+            event_id=event_id,
+            legacy_markets=legacy,
+            quote_blocks=result.blocks,
+            quote_diagnostics=result.diagnostics,
+            legacy_stop_write_at=Config.MARKET_CHOICE_LEGACY_STOP_WRITE_AT,
+            legacy_duration_ms=legacy_duration_ms,
+            quote_duration_ms=quote_duration_ms,
+        )
+        fields = comparison.as_log_fields()
+        if result.has_blocking_diagnostics or comparison.blocking_count:
+            logger.warning("Quote read shadow mismatch: %s", fields)
+        else:
+            logger.info("Quote read shadow comparison: %s", fields)
+        return legacy
+
+    @staticmethod
+    def has_external_markets_for_event(event_id: int) -> bool:
+        """Cheap availability check matching the active read mode."""
+        from infrastructure.persistence.repositories.market.market_read_queries import (
+            MarketReadQueries,
+        )
+        from infrastructure.settings import Config
+
+        if Config.EXTERNAL_ODDS_READ_MODE == "quotes":
+            return MarketReadQueries.has_external_market_quotes_for_event(event_id)
+        with db_manager.get_session() as session:
+            return (
+                session.query(Market.market_id)
+                .filter(
+                    Market.event_id == int(event_id),
+                    Market.bookie_id.isnot(None),
+                    Market.bookie_id != 1,
+                )
+                .first()
+                is not None
+            )
 
     # LEGACY_DEAD_CODE: backwards-compat alias, no call sites found repo-wide.
     # Scheduled for removal in Fase 8. Ver docs/refactors/db-schema-odds-refactor.md §8.

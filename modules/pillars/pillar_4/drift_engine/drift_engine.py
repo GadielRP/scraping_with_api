@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, Optional
 
 from modules.pillars.context import EventContext
 from modules.pillars.odds_trajectory_context import (
+    BookieOddsTrajectory,
     ChoiceOddsTrajectory,
     OddsTrajectoryContext,
 )
@@ -175,10 +176,22 @@ def _build_choice_result_key(
     choice_group: Any,
     bookie_name: Any,
     choice_name: Any,
+    source: Any,
+    exchange_side: Any,
+    exchange_level: Any,
+    quote_id: Any,
 ) -> str:
     resolved_choice_group = "__default__" if choice_group in (None, "") else str(choice_group)
     resolved_bookie_name = "__unknown__" if bookie_name in (None, "") else str(bookie_name)
-    return f"{resolved_bookie_name}|{resolved_choice_group}|{choice_name}|{market_name}"
+    resolved_source = "unknown" if source in (None, "") else str(source)
+    resolved_side = "single" if exchange_side in (None, "") else str(exchange_side)
+    resolved_level = 0 if exchange_level is None else exchange_level
+    resolved_quote = "unknown" if quote_id is None else quote_id
+    return (
+        f"{resolved_bookie_name}|{resolved_source}|{resolved_side}|"
+        f"{resolved_level}|{resolved_quote}|{resolved_choice_group}|"
+        f"{choice_name}|{market_name}"
+    )
 
 
 def _get_required_inputs(choice: ChoiceOddsTrajectory) -> Dict[str, Optional[Decimal]]:
@@ -372,6 +385,7 @@ def _serialize_meta_by_minute(choice: ChoiceOddsTrajectory) -> Dict[int, Dict[st
         if meta is None:
             continue
         serialized[minute] = {
+            "quote_id": meta.quote_id,
             "snapshot_id": meta.snapshot_id,
             "collected_at": meta.collected_at.isoformat() if meta.collected_at else None,
             "minutes_before_start": meta.minutes_before_start,
@@ -388,6 +402,7 @@ def _build_missing_result(
     choice_group: Optional[str],
     bookie_name: str,
     choice_name: str,
+    bookie: BookieOddsTrajectory,
     required_inputs: Dict[str, Optional[Decimal]],
     choice: ChoiceOddsTrajectory,
     debug_mode: bool = False,
@@ -409,11 +424,21 @@ def _build_missing_result(
         "choice_group": choice_group,
         "bookie_name": bookie_name,
         "choice_name": choice_name,
+        "quote_id": choice.quote_id,
+        "source": bookie.source,
+        "exchange_side": bookie.exchange_side,
+        "exchange_level": bookie.exchange_level,
         "post_kickoff_odds": _to_decimal_or_none(choice.odds_values.get(-5)),
         "effective_kickoff_odds": None,
         "POST_KICKOFF_AUDIT_STATUS": "NOT_AVAILABLE",
         "POST_KICKOFF_REPLACED_KICKOFF": False,
         "raw": {
+            "quote_identity": {
+                "quote_id": choice.quote_id,
+                "source": bookie.source,
+                "exchange_side": bookie.exchange_side,
+                "exchange_level": bookie.exchange_level,
+            },
             "required_inputs": {key: required_inputs.get(key) for key in _REQUIRED_INPUT_LABELS},
             "meta_by_minute": _serialize_meta_by_minute(choice),
         },
@@ -427,6 +452,7 @@ def _build_active_result(
     choice_group: Optional[str],
     bookie_name: str,
     choice_name: str,
+    bookie: BookieOddsTrajectory,
     required_inputs: Dict[str, Decimal],
     choice: ChoiceOddsTrajectory,
     event_id: Optional[int],
@@ -591,6 +617,10 @@ def _build_active_result(
         "choice_group": choice_group,
         "bookie_name": bookie_name,
         "choice_name": choice_name,
+        "quote_id": choice.quote_id,
+        "source": bookie.source,
+        "exchange_side": bookie.exchange_side,
+        "exchange_level": bookie.exchange_level,
         "open_odds": open_odds,
         "t120_odds": t120_odds,
         "t30_odds": t30_odds,
@@ -632,6 +662,12 @@ def _build_active_result(
         "MISSING_INPUTS": [],
         "SIGN_CHANGE_COUNT": sign_change_count,
         "raw": {
+            "quote_identity": {
+                "quote_id": choice.quote_id,
+                "source": bookie.source,
+                "exchange_side": bookie.exchange_side,
+                "exchange_level": bookie.exchange_level,
+            },
             "min_move_threshold": MIN_MOVE_THRESHOLD,
             "min_move_threshold_status": MIN_MOVE_THRESHOLD_STATUS,
             "effective_abs": effective_abs_deltas,
@@ -790,6 +826,10 @@ def calculate_p4_drift_engine(
                                 choice_group=resolved_choice_group,
                                 bookie_name=resolved_bookie_name,
                                 choice_name=choice.choice_name,
+                                source=bookie.source,
+                                exchange_side=bookie.exchange_side,
+                                exchange_level=bookie.exchange_level,
+                                quote_id=choice.quote_id,
                             )
 
                             missing_inputs = _build_missing_inputs(required_inputs)
@@ -804,6 +844,7 @@ def calculate_p4_drift_engine(
                                     choice_group=resolved_choice_group,
                                     bookie_name=resolved_bookie_name,
                                     choice_name=choice.choice_name,
+                                    bookie=bookie,
                                     required_inputs=required_inputs,
                                     choice=choice,
                                     debug_mode=debug_mode,
@@ -821,6 +862,7 @@ def calculate_p4_drift_engine(
                                     choice_group=resolved_choice_group,
                                     bookie_name=resolved_bookie_name,
                                     choice_name=choice.choice_name,
+                                    bookie=bookie,
                                     required_inputs=required_inputs,
                                     choice=choice,
                                     event_id=event_context.event_id,

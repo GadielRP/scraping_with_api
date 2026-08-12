@@ -19,7 +19,12 @@ import sys
 from app.initialize import initialize_system
 from app.logging_setup import setup_logging
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceSnapshot
+from infrastructure.persistence.models import (
+    Market,
+    MarketChoice,
+    MarketChoiceQuote,
+    MarketChoiceSnapshot,
+)
 from infrastructure.persistence.repositories import EventRepository, EventSourceMappingRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.providers.oddspapi.odds_phase import (
@@ -46,11 +51,15 @@ def _snapshot_count(event_id: int) -> int:
     with db_manager.get_session() as session:
         return (
             session.query(MarketChoiceSnapshot)
-            .join(MarketChoice, MarketChoiceSnapshot.choice_id == MarketChoice.choice_id)
+            .join(
+                MarketChoiceQuote,
+                MarketChoiceSnapshot.quote_id == MarketChoiceQuote.quote_id,
+            )
+            .join(MarketChoice, MarketChoiceQuote.choice_id == MarketChoice.choice_id)
             .join(Market, MarketChoice.market_id == Market.market_id)
             .filter(
                 Market.event_id == event_id,
-                MarketChoiceSnapshot.source == "oddspapi",
+                MarketChoiceQuote.source == "oddspapi",
             )
             .count()
         )

@@ -1,0 +1,16 @@
+name: Legacy odds read guard
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  no-legacy-odds-reads:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reject non-allowlisted legacy odds reads
+        run: python -m scripts.maintenance.check_no_legacy_odds_reads

@@ -7,7 +7,9 @@
 
 **Branch objetivo:** `refactor/db-schema-odds-refactor`
 
-**Estado al redactar:** plan; no implementado
+**Estado (2026-08-12):** implementación terminada y cutover validado en la
+copia PostgreSQL local post-4c. Pendiente únicamente el ciclo de observación en
+el entorno objetivo antes de declarar cierre operativo y habilitar Fase 6.
 
 ## 1. Resultado esperado
 
@@ -830,3 +832,49 @@ Fase 5 está completa únicamente cuando:
 - Reportes de readiness, shadow y comparación de MVs quedan archivados.
 
 Solo entonces se habilita Fase 6.
+
+## 16. Registro de ejecución local
+
+Implementado:
+
+- 5A: DTOs inmutables, política JSON versionada, query set-based, comparator,
+  flags, muestreo estable y auditoría read-only.
+- 5B: formatter quote-aware y availability barato; legacy queda aislado detrás
+  de la fachada de rollback.
+- 5C: vistas privadas legacy/quotes, ranking por quote, identidad completa en
+  contexto/drift y filtro exacto SofaScore para Pilar 5.
+- 5D: vistas dual privadas/pública, rebuild de dependencias sin `CASCADE` para
+  la MV, guard AST+SQL con allowlist por símbolo y workflow CI.
+- Simuladores activos migrados a quotes. Se corrigió además el timestamp
+  provisional de una ladder exchange opening-only para permitir que el current
+  provider posterior avance.
+
+Evidencia:
+
+- readiness total `ready=true`;
+- trajectory `158955`: 84 legacy / 84 quotes; `169158`: 16/16;
+- alert reader: paridad `equal`, cero blockers, quote-aware más rápido en ambos
+  eventos de referencia;
+- dual final: 126,071 eventos comunes, cero pérdidas/mismatches y 177 altas
+  quote-only; las 177 tienen mirror legacy incompleto y cero choices presentan
+  quotes SofaScore elegibles duplicadas;
+- MV final: 123,051 filas y checksum ordenado por `event_id`
+  `ff4802dea244f4fb6651264d47143c2f`, idéntico en legacy/quotes;
+- refresh alternado final (3+3): medianas 3.658 s legacy / 4.329 s quotes,
+  ratio `1.183×` (`≤1.20×`). El plan usa los índices específicos de quote y
+  snapshot;
+- guard repo-wide: cero violaciones no allowlisted;
+- regresión mantenida más tests nuevos: 287 verdes. La suite global antigua
+  conserva fallos preexistentes documentados en el maestro §12.4.
+
+Configuración local persistida:
+
+```text
+EXTERNAL_ODDS_READ_MODE=quotes
+PRE_START_TRAJECTORY_READ_MODE=quotes
+DUAL_PROCESS_ODDS_READ_MODE=quotes
+```
+
+`MARKET_CHOICE_LEGACY_STOP_WRITE_AT` se dejó vacío deliberadamente: no se
+recibió una fecha/hora UTC exacta y no se inventa. El campo sólo afecta la
+clasificación shadow, no el path quotes activo.

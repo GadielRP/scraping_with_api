@@ -316,6 +316,22 @@ def _extract_current_price_set(
                             if debug_mode:
                                 _debug_line("    - Bookie %s no permitido (no está en %s). Omitiendo.", bookie.bookie_name, ALLOWED_BOOKIES)
                             continue
+                        if not (
+                            bookie.bookie_id == 1
+                            and (bookie.source or "").casefold() == "sofascore"
+                            and bookie.exchange_side is None
+                            and bookie.exchange_level == 0
+                        ):
+                            if debug_mode:
+                                _debug_line(
+                                    "    - Identidad quote no elegible para Pilar 5: "
+                                    "id=%s source=%s side=%s level=%s.",
+                                    bookie.bookie_id,
+                                    bookie.source,
+                                    bookie.exchange_side,
+                                    bookie.exchange_level,
+                                )
+                            continue
 
                         trace["candidate_line_count"] += 1
                         saw_allowed_bookie_line = True

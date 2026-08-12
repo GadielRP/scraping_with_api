@@ -142,13 +142,13 @@ def _find_matching_raw_market(
 ) -> dict | None:
     raw_markets = (adapted_response or {}).get("markets", [])
     for choice in market.choices:
-        for snapshot in choice.snapshots:
-            if not snapshot.source_outcome_id:
+        for quote in choice.quotes:
+            if not quote.source_outcome_id:
                 continue
             for raw_market in raw_markets:
                 if any(
                     raw_choice.get("sourceOutcomeId")
-                    == snapshot.source_outcome_id
+                    == quote.source_outcome_id
                     for raw_choice in raw_market.get("choices", [])
                 ):
                     return raw_market
@@ -167,6 +167,7 @@ def _log_persisted_market_odds(
             .options(
                 joinedload(Market.bookie),
                 joinedload(Market.choices).joinedload(MarketChoice.snapshots),
+                joinedload(Market.choices).joinedload(MarketChoice.quotes),
             )
             .filter(Market.event_id == event_id)
             .order_by(Market.market_id)
@@ -225,21 +226,34 @@ def _log_persisted_market_odds(
                 key=lambda item: item.choice_id,
             ):
                 logger.info(
-                    "  CHOICE id=%s name=%r initial=%s current=%s change=%s",
+                    "  CHOICE id=%s name=%r quotes=%s",
                     choice.choice_id,
                     choice.choice_name,
-                    choice.initial_odds,
-                    choice.current_odds,
-                    choice.change,
+                    len(choice.quotes),
                 )
+                for quote in sorted(choice.quotes, key=lambda item: item.quote_id):
+                    logger.info(
+                        "    QUOTE id=%s source=%r side=%r level=%s "
+                        "initial=%s current=%s movement=%s "
+                        "source_market_id=%r source_outcome_id=%r main_line=%r",
+                        quote.quote_id,
+                        quote.source,
+                        quote.exchange_side,
+                        quote.exchange_level,
+                        quote.initial_odds,
+                        quote.current_odds,
+                        quote.movement,
+                        quote.source_market_id,
+                        quote.source_outcome_id,
+                        quote.main_line,
+                    )
                 for snapshot in sorted(
                     choice.snapshots,
                     key=lambda item: item.snapshot_id,
                 ):
                     logger.info(
                         "    %sSNAPSHOT id=%s odds=%s collected_at=%s "
-                        "source=%r source_market_id=%r source_outcome_id=%r "
-                        "main_line=%r limit=%r",
+                        "quote_id=%s limit=%r",
                         (
                             "NEW "
                             if snapshot.snapshot_id in new_snapshot_ids
@@ -248,10 +262,7 @@ def _log_persisted_market_odds(
                         snapshot.snapshot_id,
                         snapshot.odds_value,
                         snapshot.collected_at,
-                        snapshot.source,
-                        snapshot.source_market_id,
-                        snapshot.source_outcome_id,
-                        snapshot.main_line,
+                        snapshot.quote_id,
                         snapshot.source_limit,
                     )
         logger.info("=" * 100)

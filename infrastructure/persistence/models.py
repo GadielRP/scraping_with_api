@@ -823,11 +823,53 @@ def _sql_string_list(values):
     return ", ".join(cleaned) if cleaned else "''"
 
 
-def build_dual_process_event_odds_view_sql(markets, periods) -> str:
+def build_dual_process_event_odds_view_sql(
+    markets,
+    periods,
+    *,
+    view_name: str = "v_dual_process_event_odds",
+    quote_aware: bool = False,
+) -> str:
+    if view_name not in {
+        "v_dual_process_event_odds",
+        "v_dual_process_event_odds_legacy",
+        "v_dual_process_event_odds_quotes",
+    }:
+        raise ValueError(f"Unsupported dual-process view name: {view_name}")
     market_values = _sql_string_list(markets)
     period_values = _sql_string_list(periods)
+    if quote_aware:
+        initial_expression = "mcq.initial_odds"
+        current_expression = "COALESCE(latest.odds_value, mcq.current_odds)"
+        quote_join = """
+        JOIN LATERAL (
+            SELECT quote_candidate.*
+            FROM market_choice_quotes quote_candidate
+            WHERE quote_candidate.choice_id = mc.choice_id
+              AND quote_candidate.source = 'sofascore'
+              AND quote_candidate.exchange_side IS NULL
+              AND quote_candidate.exchange_level = 0
+            ORDER BY quote_candidate.quote_id
+            LIMIT 1
+        ) mcq ON TRUE
+        """
+        latest_filter = "mcs.quote_id = mcq.quote_id"
+        sync_expression = """
+        COALESCE(
+            latest.collected_at,
+            mcq.current_updated_at,
+            mcq.initial_captured_at,
+            m.collected_at
+        )
+        """
+    else:
+        initial_expression = "mc.initial_odds"
+        current_expression = "COALESCE(latest.odds_value, mc.current_odds)"
+        quote_join = ""
+        latest_filter = "mcs.choice_id = mc.choice_id"
+        sync_expression = "COALESCE(latest.collected_at, m.collected_at)"
     return f"""
-    CREATE OR REPLACE VIEW v_dual_process_event_odds AS
+    CREATE OR REPLACE VIEW {view_name} AS
     WITH choice_values AS (
         SELECT
             m.event_id,
@@ -838,15 +880,16 @@ def build_dual_process_event_odds_view_sql(markets, periods) -> str:
             m.bookie_id,
             m.collected_at,
             mc.choice_name,
-            mc.initial_odds,
-            COALESCE(latest.odds_value, mc.current_odds) AS current_odds,
-            latest.collected_at AS latest_snapshot_at
+            {initial_expression} AS initial_odds,
+            {current_expression} AS current_odds,
+            {sync_expression} AS latest_snapshot_at
         FROM markets m
         JOIN market_choices mc ON mc.market_id = m.market_id
+        {quote_join}
         LEFT JOIN LATERAL (
             SELECT mcs.odds_value, mcs.collected_at
             FROM market_choice_snapshots mcs
-            WHERE mcs.choice_id = mc.choice_id
+            WHERE {latest_filter}
             ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC
             LIMIT 1
         ) latest ON TRUE
@@ -1104,6 +1147,10 @@ DUAL_PROCESS_MARKET_INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_markets_event_bookie_live_group_period ON markets (event_id, bookie_id, is_live, market_group, market_period);",
     "CREATE INDEX IF NOT EXISTS idx_market_choices_market_choice_name ON market_choices (market_id, choice_name);",
     "CREATE INDEX IF NOT EXISTS idx_choice_collected ON market_choice_snapshots (choice_id, collected_at);",
+    """CREATE INDEX IF NOT EXISTS idx_market_choice_quotes_dual_sofascore
+       ON market_choice_quotes (choice_id, quote_id)
+       INCLUDE (initial_odds, current_odds, current_updated_at, initial_captured_at)
+       WHERE source = 'sofascore' AND exchange_side IS NULL AND exchange_level = 0;""",
 ]
 
 PRE_START_ODDS_TRAJECTORY_INDEXES_SQL = [
@@ -1161,10 +1208,81 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
 )
 
 
-PRE_START_ODDS_TRAJECTORY_VIEW_SQL = (
-    """
-    CREATE OR REPLACE VIEW v_pre_start_odds_trajectory AS
-    WITH snapshot_context AS (
+def build_pre_start_odds_trajectory_view_sql(view_name: str, *, quote_aware: bool) -> str:
+    """Build one private trajectory view with a stable public column contract."""
+    if view_name not in {
+        "v_pre_start_odds_trajectory_legacy",
+        "v_pre_start_odds_trajectory_quotes",
+    }:
+        raise ValueError(f"Unsupported trajectory view name: {view_name}")
+
+    if quote_aware:
+        eligibility_cte = """
+        eligible_quotes AS (
+            SELECT ranked.*
+            FROM (
+                SELECT
+                    mcq.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY mcq.choice_id, mcq.source, mcq.exchange_side
+                        ORDER BY mcq.exchange_level, mcq.quote_id
+                    ) AS depth_rank
+                FROM market_choice_quotes mcq
+                WHERE EXISTS (
+                    SELECT 1 FROM market_choice_snapshots history
+                    WHERE history.quote_id = mcq.quote_id
+                )
+                  AND NOT (
+                    mcq.exchange_side IS NULL
+                    AND EXISTS (
+                        SELECT 1
+                        FROM market_choice_quotes explicit_q
+                        WHERE explicit_q.choice_id = mcq.choice_id
+                          AND explicit_q.source = mcq.source
+                          AND explicit_q.exchange_side IN ('back', 'lay')
+                          AND EXISTS (
+                              SELECT 1 FROM market_choice_snapshots explicit_history
+                              WHERE explicit_history.quote_id = explicit_q.quote_id
+                          )
+                    )
+                  )
+            ) ranked
+            WHERE ranked.depth_rank = 1
+        ),
+        """
+        quote_join = """
+        JOIN eligible_quotes mcq
+          ON mcq.quote_id = mcs.quote_id
+         AND mcq.choice_id = mcs.choice_id
+        JOIN market_choices mc ON mc.choice_id = mcq.choice_id
+        """
+        initial_expression = "mcq.initial_odds"
+        quote_id_expression = "mcq.quote_id"
+        source_expression = "mcq.source"
+        source_market_expression = "mcq.source_market_id"
+        source_outcome_expression = "mcq.source_outcome_id"
+        bookmaker_outcome_expression = "mcq.bookmaker_outcome_id"
+        main_line_expression = "mcq.main_line"
+        side_expression = "mcq.exchange_side"
+        level_expression = "mcq.exchange_level"
+    else:
+        eligibility_cte = ""
+        quote_join = "JOIN market_choices mc ON mc.choice_id = mcs.choice_id"
+        initial_expression = "mc.initial_odds"
+        quote_id_expression = "mcs.quote_id"
+        source_expression = "mcs.source"
+        source_market_expression = "mcs.source_market_id"
+        source_outcome_expression = "mcs.source_outcome_id"
+        bookmaker_outcome_expression = "mcs.bookmaker_outcome_id"
+        main_line_expression = "mcs.main_line"
+        side_expression = "mcs.exchange_side"
+        level_expression = "COALESCE(mcs.exchange_level, 0)"
+
+    return f"""
+    CREATE OR REPLACE VIEW {view_name} AS
+    WITH
+    {eligibility_cte}
+    snapshot_context AS (
         SELECT
             e.id AS event_id,
             e.start_time_utc,
@@ -1177,27 +1295,30 @@ PRE_START_ODDS_TRAJECTORY_VIEW_SQL = (
             b.name AS bookie_name,
             mc.choice_id,
             mc.choice_name,
-            mc.initial_odds,
+            {initial_expression} AS initial_odds,
             mcs.snapshot_id,
-            mcs.source,
+            {source_expression} AS source,
             mcs.source_collected_at,
-            mcs.source_market_id,
-            mcs.source_outcome_id,
-            mcs.bookmaker_outcome_id,
-            mcs.main_line,
+            {source_market_expression} AS source_market_id,
+            {source_outcome_expression} AS source_outcome_id,
+            {bookmaker_outcome_expression} AS bookmaker_outcome_id,
+            {main_line_expression} AS main_line,
             mcs.source_limit,
             mcs.odds_value,
             mcs.collected_at,
             esm.source_sport_id AS event_source_sport_id,
-            ROUND(EXTRACT(EPOCH FROM (e.start_time_utc - mcs.collected_at)) / 60)::int AS minutes_before_start
+            ROUND(EXTRACT(EPOCH FROM (e.start_time_utc - mcs.collected_at)) / 60)::int AS minutes_before_start,
+            {quote_id_expression} AS quote_id,
+            {side_expression} AS exchange_side,
+            {level_expression} AS exchange_level
         FROM market_choice_snapshots mcs
-        JOIN market_choices mc ON mc.choice_id = mcs.choice_id
+        {quote_join}
         JOIN markets m ON m.market_id = mc.market_id
         JOIN events e ON e.id = m.event_id
         JOIN bookies b ON b.bookie_id = m.bookie_id
         LEFT JOIN event_source_mappings esm
             ON esm.event_id = e.id
-           AND esm.source = mcs.source
+           AND esm.source = {source_expression}
         WHERE m.is_live = false
     ),
     source_mapped AS (
@@ -1224,7 +1345,6 @@ PRE_START_ODDS_TRAJECTORY_VIEW_SQL = (
             cmt.canonical_market_period AS textual_market_period,
             cmt.market_family AS textual_market_family,
             cmt.requires_choice_group AS textual_requires_choice_group,
-            cmt.enabled_for_ingestion AS textual_enabled_for_ingestion,
             cmt.enabled_for_trajectory AS textual_enabled_for_trajectory,
             cmt.display_order AS textual_market_display_order
         FROM source_mapped sm
@@ -1263,7 +1383,10 @@ PRE_START_ODDS_TRAJECTORY_VIEW_SQL = (
         tcm.source_limit,
         tcm.odds_value,
         tcm.collected_at,
-        tcm.minutes_before_start
+        tcm.minutes_before_start,
+        tcm.quote_id,
+        tcm.exchange_side,
+        tcm.exchange_level
     FROM textual_canonical_match tcm
     LEFT JOIN canonical_market_types mapped_cmt
         ON mapped_cmt.canonical_market_key = tcm.mapped_canonical_market_key
@@ -1276,6 +1399,44 @@ PRE_START_ODDS_TRAJECTORY_VIEW_SQL = (
           OR tcm.choice_group IS NOT NULL
       );
     """
+
+
+def build_dual_process_public_view_sql(mode: str) -> str:
+    if mode not in {"legacy", "quotes"}:
+        raise ValueError(f"Unsupported dual-process read mode: {mode}")
+    source_view = f"v_dual_process_event_odds_{mode}"
+    return f"""
+    CREATE OR REPLACE VIEW v_dual_process_event_odds AS
+    SELECT * FROM {source_view};
+    """
+
+
+PRE_START_ODDS_TRAJECTORY_LEGACY_VIEW_SQL = build_pre_start_odds_trajectory_view_sql(
+    "v_pre_start_odds_trajectory_legacy", quote_aware=False
+)
+PRE_START_ODDS_TRAJECTORY_QUOTES_VIEW_SQL = build_pre_start_odds_trajectory_view_sql(
+    "v_pre_start_odds_trajectory_quotes", quote_aware=True
+)
+
+
+def build_pre_start_odds_trajectory_public_view_sql(mode: str) -> str:
+    if mode not in {"legacy", "shadow", "quotes"}:
+        raise ValueError(f"Unsupported trajectory read mode: {mode}")
+    source_view = (
+        "v_pre_start_odds_trajectory_quotes"
+        if mode == "quotes"
+        else "v_pre_start_odds_trajectory_legacy"
+    )
+    return f"""
+    CREATE OR REPLACE VIEW v_pre_start_odds_trajectory AS
+    SELECT * FROM {source_view};
+    """
+
+
+# LEGACY_ODDS_READ compatibility constant. New code must use the two private
+# definitions plus build_pre_start_odds_trajectory_public_view_sql().
+PRE_START_ODDS_TRAJECTORY_VIEW_SQL = build_pre_start_odds_trajectory_public_view_sql(
+    "legacy"
 )
 
 
@@ -1288,7 +1449,25 @@ def create_or_replace_views(engine):
             conn.exec_driver_sql(index_sql)
         for index_sql in PRE_START_ODDS_TRAJECTORY_INDEXES_SQL:
             conn.exec_driver_sql(index_sql)
-        conn.exec_driver_sql(build_dual_process_event_odds_view_sql(Config.MARKETS_DUAL_PROCESS, Config.PERIODS_DUAL_PROCESS))
+        conn.exec_driver_sql(
+            build_dual_process_event_odds_view_sql(
+                Config.MARKETS_DUAL_PROCESS,
+                Config.PERIODS_DUAL_PROCESS,
+                view_name="v_dual_process_event_odds_legacy",
+                quote_aware=False,
+            )
+        )
+        conn.exec_driver_sql(
+            build_dual_process_event_odds_view_sql(
+                Config.MARKETS_DUAL_PROCESS,
+                Config.PERIODS_DUAL_PROCESS,
+                view_name="v_dual_process_event_odds_quotes",
+                quote_aware=True,
+            )
+        )
+        conn.exec_driver_sql(
+            build_dual_process_public_view_sql(Config.DUAL_PROCESS_ODDS_READ_MODE)
+        )
         conn.exec_driver_sql(EVENT_ALL_ODDS_VIEW_SQL)
         # Drop basketball_results view first if it exists (to handle column removal)
         conn.exec_driver_sql("DROP VIEW IF EXISTS basketball_results CASCADE;")
@@ -1297,9 +1476,13 @@ def create_or_replace_views(engine):
         conn.exec_driver_sql("DROP VIEW IF EXISTS season_events_with_results CASCADE;")
         # Create season events with results view for historical standings
         conn.exec_driver_sql(SEASON_EVENTS_WITH_RESULTS_VIEW_SQL)
-        conn.exec_driver_sql("DROP VIEW IF EXISTS v_pre_start_odds_trajectory CASCADE;")
-        conn.exec_driver_sql("DROP VIEW IF EXISTS v_market_choice_trajectory CASCADE;")
-        conn.exec_driver_sql(PRE_START_ODDS_TRAJECTORY_VIEW_SQL)
+        conn.exec_driver_sql(PRE_START_ODDS_TRAJECTORY_LEGACY_VIEW_SQL)
+        conn.exec_driver_sql(PRE_START_ODDS_TRAJECTORY_QUOTES_VIEW_SQL)
+        conn.exec_driver_sql(
+            build_pre_start_odds_trajectory_public_view_sql(
+                Config.PRE_START_TRAJECTORY_READ_MODE
+            )
+        )
 
 def create_or_replace_materialized_views(engine):
     """Create or replace materialized views for alerts. Call this after engine init."""
@@ -1310,9 +1493,28 @@ def create_or_replace_materialized_views(engine):
             conn.exec_driver_sql(index_sql)
         for index_sql in PRE_START_ODDS_TRAJECTORY_INDEXES_SQL:
             conn.exec_driver_sql(index_sql)
-        conn.exec_driver_sql(build_dual_process_event_odds_view_sql(Config.MARKETS_DUAL_PROCESS, Config.PERIODS_DUAL_PROCESS))
+        conn.exec_driver_sql(
+            build_dual_process_event_odds_view_sql(
+                Config.MARKETS_DUAL_PROCESS,
+                Config.PERIODS_DUAL_PROCESS,
+                view_name="v_dual_process_event_odds_legacy",
+                quote_aware=False,
+            )
+        )
+        conn.exec_driver_sql(
+            build_dual_process_event_odds_view_sql(
+                Config.MARKETS_DUAL_PROCESS,
+                Config.PERIODS_DUAL_PROCESS,
+                view_name="v_dual_process_event_odds_quotes",
+                quote_aware=True,
+            )
+        )
+        conn.exec_driver_sql(
+            build_dual_process_public_view_sql(Config.DUAL_PROCESS_ODDS_READ_MODE)
+        )
+        conn.exec_driver_sql(EVENT_ALL_ODDS_VIEW_SQL)
         # Drop existing materialized view to recreate with new schema
-        conn.exec_driver_sql("DROP MATERIALIZED VIEW IF EXISTS mv_alert_events CASCADE;")
+        conn.exec_driver_sql("DROP MATERIALIZED VIEW IF EXISTS mv_alert_events;")
         conn.exec_driver_sql(MV_ALERT_EVENTS_SQL)
         for index_sql in MV_ALERT_EVENTS_INDEXES_SQL:
             conn.exec_driver_sql(index_sql)

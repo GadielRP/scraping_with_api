@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
 
 
@@ -14,6 +16,10 @@ def _make_rows() -> list[dict[str, object]]:
             "choice_group": None,
             "bookie_id": 1,
             "bookie_name": "SofaScore",
+            "source": "sofascore",
+            "exchange_side": None,
+            "exchange_level": 0,
+            "quote_id": 100,
             "choice_id": 101,
             "choice_name": "1",
             "initial_odds": "1.900",
@@ -33,6 +39,10 @@ def _make_rows() -> list[dict[str, object]]:
             "choice_group": None,
             "bookie_id": 2,
             "bookie_name": "Pinnacle",
+            "source": "oddspapi",
+            "exchange_side": None,
+            "exchange_level": 0,
+            "quote_id": 200,
             "choice_id": 201,
             "choice_name": "1",
             "initial_odds": "1.910",
@@ -62,10 +72,16 @@ def test_filter_by_bookie_ids_keeps_only_requested_bookie() -> None:
         filtered.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"].bookies
     )
 
-    assert set(original_bookies.keys()) == {"SofaScore", "Pinnacle"}
-    assert set(filtered_bookies.keys()) == {"SofaScore"}
-    assert "Pinnacle" not in filtered_bookies
-    assert set(original_bookies.keys()) == {"SofaScore", "Pinnacle"}
+    assert set(original_bookies.keys()) == {
+        "1:sofascore:single:0",
+        "2:oddspapi:single:0",
+    }
+    assert set(filtered_bookies.keys()) == {"1:sofascore:single:0"}
+    assert all(bookie.bookie_name != "Pinnacle" for bookie in filtered_bookies.values())
+    assert set(original_bookies.keys()) == {
+        "1:sofascore:single:0",
+        "2:oddspapi:single:0",
+    }
 
 
 def test_filter_by_bookie_ids_returns_unavailable_context_when_no_bookie_matches() -> None:
@@ -90,6 +106,10 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
             "choice_group": None,
             "bookie_id": 1,
             "bookie_name": "SofaScore",
+            "source": "sofascore",
+            "exchange_side": None,
+            "exchange_level": 0,
+            "quote_id": 101,
             "choice_id": 102,
             "choice_name": "1",
             "initial_odds": "2.010",
@@ -109,6 +129,10 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
             "choice_group": None,
             "bookie_id": 1,
             "bookie_name": "SofaScore",
+            "source": "sofascore",
+            "exchange_side": None,
+            "exchange_level": 0,
+            "quote_id": 102,
             "choice_id": 103,
             "choice_name": "over",
             "initial_odds": "1.750",
@@ -130,3 +154,44 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
     assert set(filtered.markets["1X2"].keys()) == {"Full Time"}
     assert set(filtered.target_minutes_present) == {0}
     assert filtered.missing_target_minutes == []
+
+
+def test_multi_source_exchange_series_do_not_collide() -> None:
+    rows = []
+    quote_id = 500
+    for source in ("oddsportal", "oddspapi"):
+        for side in ("back", "lay"):
+            rows.append(
+                {
+                    **_make_rows()[0],
+                    "bookie_id": 9,
+                    "bookie_name": "Betfair Exchange",
+                    "source": source,
+                    "exchange_side": side,
+                    "exchange_level": 0,
+                    "quote_id": quote_id,
+                    "snapshot_id": quote_id + 1000,
+                    "odds_value": str(Decimal("2") + Decimal(quote_id) / 1000),
+                }
+            )
+            quote_id += 1
+
+    context = build_odds_trajectory_context(rows, target_minutes_expected=[0])
+    bookies = context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"].bookies
+
+    assert set(bookies) == {
+        "9:oddspapi:back:0",
+        "9:oddspapi:lay:0",
+        "9:oddsportal:back:0",
+        "9:oddsportal:lay:0",
+    }
+    assert {bookie.choices["1"].quote_id for bookie in bookies.values()} == {
+        500,
+        501,
+        502,
+        503,
+    }
+    assert {
+        bookie.choices["1"].meta_by_minute[0].quote_id
+        for bookie in bookies.values()
+    } == {500, 501, 502, 503}

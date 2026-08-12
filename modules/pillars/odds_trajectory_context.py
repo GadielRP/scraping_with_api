@@ -105,6 +105,10 @@ def _normalize_choice_group_key(choice_group: Optional[str]) -> str:
     return choice_group
 
 
+def _normalize_market_period_key(value: str) -> str:
+    return " ".join(str(value).replace("-", " ").casefold().split())
+
+
 def _normalize_expected_minutes(target_minutes_expected: Optional[List[int]]) -> List[int]:
     source = Config.PRE_START_ODDS_MOMENTS if target_minutes_expected is None else target_minutes_expected
     normalized: List[int] = []
@@ -125,6 +129,7 @@ class OddsPointMeta:
     minutes_before_start: Optional[int]
     target_minute: int
     distance_from_target: Optional[int]
+    quote_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -132,6 +137,7 @@ class ChoiceOddsTrajectory:
     choice_name: str
     choice_id: Optional[int]
     initial_odds: Optional[Decimal]
+    quote_id: Optional[int] = None
     odds_values: Dict[int, Decimal] = field(default_factory=dict)
     meta_by_minute: Dict[int, OddsPointMeta] = field(default_factory=dict)
 
@@ -140,6 +146,9 @@ class ChoiceOddsTrajectory:
 class BookieOddsTrajectory:
     bookie_id: Optional[int]
     bookie_name: str
+    source: Optional[str] = "sofascore"
+    exchange_side: Optional[str] = None
+    exchange_level: int = 0
     choices: Dict[str, ChoiceOddsTrajectory] = field(default_factory=dict)
 
 
@@ -177,11 +186,11 @@ class OddsTrajectoryContext:
         self,
         allowed_periods: set[str] | list[str] | tuple[str, ...] = ("Full Time",),
     ) -> OddsTrajectoryContext:
-        allowed_set = set(allowed_periods)
+        allowed_set = {_normalize_market_period_key(item) for item in allowed_periods}
         filtered_markets = _filter_market_tree(
             self.markets,
             keep_group=lambda _group: True,
-            keep_period=lambda period: period in allowed_set,
+            keep_period=lambda period: _normalize_market_period_key(period) in allowed_set,
         )
         return _build_filtered_context(self, filtered_markets)
 
@@ -339,18 +348,27 @@ def _get_bookie_container(
     bookie_key: str,
     bookie_id: Optional[int],
     bookie_name: str,
+    source: Optional[str],
+    exchange_side: Optional[str],
+    exchange_level: int,
 ) -> BookieOddsTrajectory:
     bookie = market_line.bookies.get(bookie_key)
     if bookie is None:
         bookie = BookieOddsTrajectory(
             bookie_id=bookie_id,
             bookie_name=bookie_name,
+            source=source,
+            exchange_side=exchange_side,
+            exchange_level=exchange_level,
         )
         market_line.bookies[bookie_key] = bookie
     elif bookie.bookie_id is None and bookie_id is not None:
         bookie = BookieOddsTrajectory(
             bookie_id=bookie_id,
             bookie_name=bookie.bookie_name,
+            source=bookie.source,
+            exchange_side=bookie.exchange_side,
+            exchange_level=bookie.exchange_level,
             choices=bookie.choices,
         )
         market_line.bookies[bookie_key] = bookie
@@ -361,6 +379,7 @@ def _get_choice_container(
     bookie: BookieOddsTrajectory,
     choice_name: str,
     choice_id: Optional[int],
+    quote_id: Optional[int],
     initial_odds: Optional[Decimal],
 ) -> ChoiceOddsTrajectory:
     choice = bookie.choices.get(choice_name)
@@ -368,15 +387,19 @@ def _get_choice_container(
         choice = ChoiceOddsTrajectory(
             choice_name=choice_name,
             choice_id=choice_id,
+            quote_id=quote_id,
             initial_odds=initial_odds,
         )
         bookie.choices[choice_name] = choice
-    elif (choice.choice_id is None and choice_id is not None) or (
-        choice.initial_odds is None and initial_odds is not None
+    elif (
+        (choice.choice_id is None and choice_id is not None)
+        or (choice.quote_id is None and quote_id is not None)
+        or (choice.initial_odds is None and initial_odds is not None)
     ):
         choice = ChoiceOddsTrajectory(
             choice_name=choice.choice_name,
             choice_id=choice_id if choice.choice_id is None and choice_id is not None else choice.choice_id,
+            quote_id=quote_id if choice.quote_id is None and quote_id is not None else choice.quote_id,
             initial_odds=initial_odds if choice.initial_odds is None and initial_odds is not None else choice.initial_odds,
             odds_values=choice.odds_values,
             meta_by_minute=choice.meta_by_minute,
@@ -483,7 +506,15 @@ def build_odds_trajectory_context(
         choice_group_value = _coerce_text(row.get("choice_group"))
         choice_group_key = _normalize_choice_group_key(choice_group_value)
         bookie_name = _coerce_text(row.get("bookie_name")) or "__unknown__"
-        bookie_key = bookie_name
+        bookie_id = _coerce_int(row.get("bookie_id"))
+        source = (_coerce_text(row.get("source")) or "unknown").lower()
+        exchange_side = (_coerce_text(row.get("exchange_side")) or "").lower() or None
+        exchange_level = _coerce_int(row.get("exchange_level")) or 0
+        bookie_identity = str(bookie_id) if bookie_id is not None else bookie_name
+        bookie_key = (
+            f"{bookie_identity}:{source}:"
+            f"{exchange_side or 'single'}:{exchange_level}"
+        )
 
         market_line = _get_market_line_container(
             markets,
@@ -496,17 +527,22 @@ def build_odds_trajectory_context(
         bookie = _get_bookie_container(
             market_line,
             bookie_key=bookie_key,
-            bookie_id=_coerce_int(row.get("bookie_id")),
+            bookie_id=bookie_id,
             bookie_name=bookie_name,
+            source=source,
+            exchange_side=exchange_side,
+            exchange_level=exchange_level,
         )
         choice = _get_choice_container(
             bookie,
             choice_name=choice_name,
             choice_id=_coerce_int(row.get("choice_id")),
+            quote_id=_coerce_int(row.get("quote_id")),
             initial_odds=_coerce_decimal(row.get("initial_odds")),
         )
 
         meta = OddsPointMeta(
+            quote_id=_coerce_int(row.get("quote_id")),
             snapshot_id=_coerce_int(row.get("snapshot_id")),
             collected_at=_coerce_datetime(row.get("collected_at")),
             minutes_before_start=_coerce_int(row.get("minutes_before_start")),
@@ -567,13 +603,33 @@ def get_choice_odds_values(
     market_line: MarketLineOddsTrajectory,
     choice_name: str,
     bookie_name: str = "SofaScore",
+    *,
+    bookie_id: Optional[int] = 1,
+    source: Optional[str] = "sofascore",
+    exchange_side: Optional[str] = None,
+    exchange_level: Optional[int] = 0,
 ) -> Dict[int, Decimal]:
     if market_line is None:
         return {}
 
-    bookie = market_line.bookies.get(bookie_name)
-    if bookie is None:
+    matches = [
+        bookie
+        for bookie in market_line.bookies.values()
+        if bookie.bookie_name == bookie_name
+        and (bookie_id is None or bookie.bookie_id == bookie_id)
+        and (source is None or bookie.source == source)
+        and bookie.exchange_side == exchange_side
+        and (exchange_level is None or bookie.exchange_level == exchange_level)
+    ]
+    if not matches:
         return {}
+    if len(matches) > 1:
+        raise ValueError(
+            "Ambiguous odds trajectory bookie selection: "
+            f"name={bookie_name!r} id={bookie_id!r} source={source!r} "
+            f"side={exchange_side!r} level={exchange_level!r}"
+        )
+    bookie = matches[0]
 
     choice = bookie.choices.get(choice_name)
     if choice is None:

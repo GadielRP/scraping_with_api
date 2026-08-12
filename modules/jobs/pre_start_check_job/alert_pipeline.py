@@ -187,10 +187,9 @@ class EventAlertProcessor:
 
         # Verify DB availability
         try:
-            external_markets = MarketRepository.get_external_markets_for_event(event_obj.id)
-            if external_markets:
+            if MarketRepository.has_external_markets_for_event(event_obj.id):
                 logger.info(
-                    f"[OP] External markets data available for {event_obj.id} ({len(external_markets)} rows).",
+                    f"[OP] External markets data available for {event_obj.id}.",
                     extra={"oddsportal": True},
                 )
             else:

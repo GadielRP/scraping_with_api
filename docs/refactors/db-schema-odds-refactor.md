@@ -1,7 +1,7 @@
 # Refactor de schema de odds — separación de responsabilidades
 
 **Branch:** `refactor/db-schema-odds-refactor`
-**Estado:** Fases 1-3 y Fase 4a completadas (tabla/writer de quotes + convergencia de los 3 providers + fix de back/lay en OddsPortal + FK nullable `snapshot.quote_id` + `MarketChoiceSnapshotWriter` único para escritura canónica y legacy). Adicionalmente: `exchange_side` migrado de sentinel `'single'` a `NULL` + índice funcional `COALESCE` (congruencia con `Market.choice_group`), y `market_choices` dejó de recibir escrituras de `initial_odds/current_odds/change` desde el path canónico — ver [§3.2](#32-decisión-market_choices-deja-de-escribirse-antes-de-fase-5-riesgo-aceptado). Revisado (sin cambiar identidad): se confirma que `source` se conserva en `market_choice_quotes` — ver [§3.3](#33-decisión-revisada-se-conserva-source-en-la-identidad-de-market_choice_quotes) — y se ajusta Fase 5B para fusionar por prioridad de campo entre sources en bookies no-exchange. Pendiente: Fase 4b (backfill histórico) en adelante, con Fase 5 (migrar lectores) ahora más urgente.
+**Estado:** Fases 1–5 implementadas. Fase 4b/4c terminó en producción el 2026-08-12 (`algorithm_version=4b.7`, `events_selected=0`) y Fase 5 quedó activada en la copia PostgreSQL local post-4c el 2026-08-12. Los tres lectores públicos locales están en `quotes`; readiness, paridad, lineage, cardinalidad, checksum y presupuesto local de refresh pasaron. Antes de autorizar Fase 6 todavía se requiere la ventana operativa real de observación indicada en el plan de Fase 5. Evidencia y deuda en [§12](#12-implementación-de-fase-5-mapa-y-deuda-de-cleanup).
 **Alcance:** `infrastructure/persistence/models.py`, `infrastructure/persistence/repositories/market_repository.py`, `infrastructure/persistence/market_write_policy.py`, `modules/odds_ingestion/adapters/*`, `modules/oddspapi/exchange_quotes.py`, lectores de trajectory/alerts/pillars.
 
 ## Índice
@@ -38,6 +38,7 @@
   - [11.5. Patrones de scripts de backfill a copiar](#115-patrones-de-scripts-de-backfill-a-copiar)
   - [11.6. Orden sugerido de PRs y smoke checks](#116-orden-sugerido-de-prs-y-smoke-checks)
   - [11.7. Gotchas operativos](#117-gotchas-operativos)
+- [12. Implementación de Fase 5: mapa y deuda de cleanup](#12-implementación-de-fase-5-mapa-y-deuda-de-cleanup)
 
 ---
 
@@ -488,15 +489,14 @@ Esta sección conserva las decisiones arquitectónicas y criterios globales del
 refactor; el documento dedicado define archivos, contratos, orden de commits,
 tests y runbook de implementación.
 
-**Estado actual:** Fase 4a completada. `MarketChoiceSnapshot.quote_id`, su FK
-real y el índice temporal ya existen; todo snapshot nuevo de los paths
-canónico y `LEGACY_MAINTENANCE_ONLY` queda ligado a su quote exacta. Oddspapi
-con `exchangeQuotes` conserva un tick por `(side, level)` y ya no crea el
-snapshot current side-agnostic redundante. La persistencia canónica procesa
-todos los bookmakers del evento como un solo batch y usa una única sesión:
-precarga markets/choices/quotes, hace los upserts contra índices en memoria y
-persiste el grafo quote/snapshot con un único flush final. Lo que **falta** en
-Fase 4 es:
+**Estado actual:** Fase 4 **completada** (4a + 4b herramienta + 4c ejecución
+en producción, 2026-08-12). `MarketChoiceSnapshot.quote_id`, su FK real y el
+índice temporal existen; snapshots nuevos y el historial clasificable quedan
+ligados a quotes. Oddspapi con `exchangeQuotes` conserva un tick por
+`(side, level)`. La persistencia canónica procesa bookmakers en un solo batch
+con un único flush final. El backfill `4b.7` aplicó fill-only, purges
+(bookies permitidos, null-mainline, Back/Lay, choice_states ambiguos) y
+cerró con scope vacío. Lo que **seguía** tras 4a (ya hecho en 4b/4c) era:
 1. Política temporal/fill-only que impida degradar estado nuevo al procesar
    candidatos históricos.
 2. Script de backfill histórico + reporte de cobertura antes del cutover.
@@ -1149,7 +1149,7 @@ conservan aliases ni rutas de compatibilidad una vez migrados sus call sites.
 - `modules/oddspapi/exchange_quotes.py`
 - `modules/odds_ingestion/market_odds_ingestion_service.py` — 100% canónico
 
-**Lectores (aún legacy — ver §11.3):**
+**Lectores quote-aware (Fase 5):**
 - `modules/alerts/alerts_formatter/odds_alert.py`
 - `modules/jobs/pre_start_check_job/alert_pipeline.py`
 - `infrastructure/persistence/repositories/odds_trajectory_repository.py`
@@ -1157,8 +1157,8 @@ conservan aliases ni rutas de compatibilidad una vez migrados sus call sites.
 - `modules/pillars/pillar_4/drift_engine/drift_engine.py`
 - `infrastructure/persistence/repositories/dual_process_odds_repository.py`
 
-**Backfill a crear:**
-- `scripts/maintenance/backfill_market_choice_quotes.py` (Fase 4b)
+**Backfill completado:**
+- `scripts/maintenance/backfill_market_choice_quotes.py` (Fase 4b/4c)
 - Referencias: `backfill_sofascore_choice_names_and_groups.py`, `backfill_sofascore_canonical_markets.py`
 
 **Tests relevantes existentes:**
@@ -1178,6 +1178,9 @@ sin aviso. Verificar el estado actual de `.gitignore` al crear tests nuevos.
 ---
 
 ## 11. Handoff: continuar desde Fase 4b
+
+> Registro histórico de la transición 4b/4c. Para el estado ejecutable actual
+> post-Fase 5, usar [§12](#12-implementación-de-fase-5-mapa-y-deuda-de-cleanup).
 
 Esta sección es el punto de entrada para un dev que llega a
 `refactor/db-schema-odds-refactor` **después** de completar el expand schema y
@@ -1430,3 +1433,122 @@ ORDER BY b.name, m.market_name, m.choice_group NULLS FIRST,
 11. **Fase 5 es prioritaria** respecto a extracciones cosméticas
    (`MarketIdentityResolver`, unificación de adapters). No bloquees alertas por
    refactors de estructura de archivos.
+
+---
+
+## 12. Implementación de Fase 5: mapa y deuda de cleanup
+
+**Fecha de implementación local:** 2026-08-12.  Esta sección es el estado
+vigente; los inventarios de §§3 y 11 se conservan como historial de decisiones.
+
+### 12.1. Mapa de responsabilidades post-cutover
+
+| Capa | Módulo | Responsabilidad única |
+|---|---|---|
+| Configuración | `infrastructure/settings/config.py`, `config/odds_read_priority.json` | Validar flags, sample rate, boundary UTC y política versionada de prioridad por campo |
+| Contrato | `repositories/market/market_read_models.py` | DTOs inmutables con identidad y provenance; cero SQL/formato |
+| Política | `repositories/market/market_quote_read_policy.py` | Resolver prioridad default y overrides por sport/bookie |
+| Query de alertas | `repositories/market/market_read_queries.py` | Una consulta set-based y proyección determinista normal/exchange |
+| Shadow | `repositories/market/market_read_comparator.py` | Comparación pura y clasificación de diferencias; cero acceso a DB |
+| Readiness | `repositories/market/market_quote_readiness.py`, `scripts/maintenance/audit_market_quote_readiness.py` | Gates read-only de schema, coverage, lineage e identidad |
+| Fachada temporal | `repositories/market_repository.py` | Selección `legacy/shadow/quotes`; delega el algoritmo nuevo |
+| Presentación | `modules/alerts/alerts_formatter/odds_alert.py` | Traduce DTOs a texto; no infiere source/side ni consulta DB |
+| Trajectory | vistas privadas en `models.py`, `odds_trajectory_repository.py` | Selección histórica por `quote_id` y target minute |
+| Contexto/pillars | `odds_trajectory_context.py`, drift y Pilar 5 | Identidad serializable y consumo de series ya seleccionadas |
+| Dual-process | vistas privadas/pública en `models.py` | Quote SofaScore exacta, último tick por quote y contrato público estable |
+| Protección | `check_no_legacy_odds_reads.py`, workflow `legacy-odds-read-guard.yml` | Impedir nuevas lecturas legacy ORM/SQL fuera de allowlist fechada |
+| Inicialización | `app/initialize.py` | Validar config, migrar, crear wrappers en orden y reconstruir dependencias |
+
+Flujo activo:
+
+```text
+market_choice_quotes + snapshots(quote_id)
+    ├─ MarketReadQueries → DTOs → formatter de alertas
+    ├─ v_pre_start_*_quotes → repository → contexto → drift/Pilar 5
+    └─ v_dual_*_quotes → wrapper → event_all_odds / mv_alert_events
+```
+
+### 12.2. Evidencia local de aceptación
+
+- Auditoría total post-4c: `ready=true`; 2,758,365 snapshots auditados en la
+  base, cero snapshots sin `quote_id`, cero identidad NULL-safe duplicada y
+  cero mismatch quote/choice.
+- Eventos de referencia: `158955` produjo 84/84 filas trajectory
+  legacy/quotes y `169158` 16/16; en ambos casos `quote_id IS NULL = 0`.
+- Alertas: ambos eventos dieron igual número de bloques, comparación `equal`,
+  cero diagnostics/blockers. Medianas quote-aware 5.91 ms y 5.07 ms versus
+  11.82 ms y 7.80 ms legacy.
+- Dual-process, verificación final sobre el mismo estado: 126,071 eventos
+  comunes, cero pérdidas y cero value mismatch; quotes añadió 177 eventos.
+  Los 177 tienen estado legacy incompleto, ninguno tiene el mirror legacy
+  completo y no existen choices con más de una quote SofaScore elegible. Son
+  recuperación de estado normalizado, no duplicación del reader.
+- `mv_alert_events` (verificación final): 123,051 filas y checksum ordenado por
+  `event_id` sobre `row_to_json`, `ff4802dea244f4fb6651264d47143c2f`, idéntico
+  en ambos modos. El dataset cambió durante la sesión; cada comparación se
+  repitió en legacy/quotes sobre el mismo estado y el wrapper final quedó en
+  quotes.
+- Refresh alternado final (3+3): legacy `[3.723, 3.526, 3.658]` s y quotes
+  `[4.329, 4.374, 4.294]` s; medianas 3.658/4.329 s, ratio `1.183×`, dentro del
+  presupuesto `≤1.20×`. `EXPLAIN (ANALYZE, BUFFERS)` confirmó
+  `idx_market_choice_quotes_dual_sofascore` y
+  `idx_market_choice_snapshots_quote_collected` (2,431.807 ms en el conteo
+  quote-aware medido).
+- Casos sintéticos cubren dos sources × back/lay, top-of-book, supresión NULL,
+  field merge con provenance, opening-only, colisiones de context/drift y
+  selección SofaScore estricta en Pilar 5.
+
+### 12.3. Código legacy y cleanup futuro
+
+| Pieza | Marca/estado | Por qué no se elimina ahora | Cleanup |
+|---|---|---|---|
+| `_get_external_markets_legacy` y branch dict del formatter | `LEGACY_ODDS_READ` | Shadow/rollback durante observación | Borrar en Fase 8 junto con modo `legacy` |
+| Vistas privadas `*_legacy` | rollback explícito | Repoint seguro sin rebackfill | Borrar después de Fase 6 + ventana acordada |
+| `save_markets_from_response(_with_stats)` y scripts callers | `LEGACY_MAINTENANCE_ONLY` | Aún usados por scripts históricos | Migrar scripts y borrar en Fase 8 |
+| `_save_oddsportal_market`, `_build_choice_payload`, `save_markets_from_oddsportal`, alias `get_oddsportal_markets_for_event` | `LEGACY_DEAD_CODE` | Se preservaron fuera del cutover lector | Eliminación conjunta en Fase 8 |
+| Quotes exchange `exchange_side=NULL` redundantes de Oddspapi | compatibilidad de datos | Readers ya las suprimen; borrarlas durante rollout rompería rollback | Dejar de escribir y purgar en PR post-observación |
+| `market_repository.py` monolítico | deuda SRP | La fachada aún contiene orquestación y writers legacy | Extraer `MarketIdentityResolver`/`MarketChoiceWriter`; reducir a fachada |
+| DDL de reporting dentro de `models.py` | deuda SRP/modularidad | Cambio de ubicación junto al cutover aumentaría riesgo DDL | Mover a `infrastructure/persistence/views/` en Fase 8 |
+| Dual view creado tanto en `create_or_replace_views` como en `create_or_replace_materialized_views` | redundancia | Garantiza dependencia hoy, pero duplica responsabilidad | Un único `rebuild_dual_process_dependencies()` transaccional |
+| `DROP VIEW ... CASCADE` para vistas basketball/season durante init | cleanup de seguridad | Preexistente y fuera de odds; puede ocultar dependencias nuevas | Inventariar y reemplazar por DDL fail-safe sin `CASCADE` |
+| `DatabaseManager.check_and_migrate_schema` monolítico | deuda SRP | Orquesta migraciones históricas de muchas áreas | Mover DDL versionado a Alembic/servicios de migración pequeños |
+| Allowlist del guard | temporal, por path+símbolo+motivo+fase | Backfill/readiness/modelos todavía necesitan columnas legacy | Expira en Fase 7/8; no admitir consumidores nuevos |
+| `.gitignore` ignora globalmente `tests/`, `*.json`, `*.md` y exige excepciones | deuda de tooling | Preexistente | Simplificar reglas para que tests/config/docs no queden fuera de git |
+
+### 12.4. Hallazgos fuera de alcance, marcados para cleanup
+
+- La suite indiscriminada `pytest tests` contiene pruebas antiguas que ni
+  recolectan: referencias a `module_8`, `_aggregate_multilayer_side_engine_v2`,
+  `_is_active_signal`, módulo raíz `odds_alert`, API retirada
+  `get_event_information`, y dependencia no declarada `loguru` en un test
+  ignorado. No mezclar esa reparación con el schema refactor.
+- La suite versionada conserva 12 fallos ajenos al cutover (24 pruebas del
+  mismo grupo sí pasan): 11 contratos obsoletos de mapping/adapter en
+  `tests/oddspapi/test_market_adapter.py` y un test manual de extracción cuyo
+  binario Chromium de Playwright no está instalado en
+  `test_oddsportal_betfair_extraction.py`; requieren cleanup propio.
+- `modules/oddsportal/scraper_lookup.py` emite `SyntaxWarning` por una secuencia
+  `\/` dentro de JavaScript embebido; convertir ese literal a raw/escape válido.
+- `shared/timezone_utils.py` usa `datetime.utcnow()` deprecado y
+  `models.py` todavía importa `declarative_base` desde la ruta SQLAlchemy 1.x.
+- Se corrigió durante Fase 5 una deuda funcional encontrada por regresión:
+  ladders exchange opening-only usaban hora de extracción como
+  `current_updated_at`, por lo que un current provider posterior podía verse
+  stale. Ahora `_resolve_exchange_observation_time` usa el timestamp opening
+  para esa observación provisional; suites writer/merge/exchange: 33 verdes.
+- `requirements.txt` declaraba `psycopg2` mientras `compose.yaml` usa
+  `postgresql+psycopg`; quedó alineado a psycopg v3 y se declaró
+  `pytest-asyncio`, requerido por tests versionados.
+- La regresión mantenida (suite versionada, dos archivos preexistentes
+  excluidos, más tests nuevos de Fase 5) terminó con 287 pruebas verdes. Los
+  dos archivos excluidos son exactamente los nominados arriba; no se ocultó
+  ningún fallo nuevo del refactor.
+
+### 12.5. Pendiente operativo antes de Fase 6
+
+El código y el entorno local están cortados a quotes. Falta observar en el
+entorno objetivo al menos un ciclo pre-start completo (T-120/T-30/T-5/T0 y el
+momento posterior configurado), recopilar p95 con una muestra estratificada y
+confirmar cero blockers. `MARKET_CHOICE_LEGACY_STOP_WRITE_AT` permanece vacío:
+no se inventó una hora; sólo hace falta para clasificar shadow. Hasta cerrar
+esa ventana, mantener wrappers legacy y flags de rollback.

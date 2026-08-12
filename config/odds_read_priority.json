@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "default": {
+    "initial": ["oddsportal", "oddspapi", "sofascore"],
+    "current": ["oddspapi", "sofascore", "oddsportal"]
+  },
+  "overrides": []
+}

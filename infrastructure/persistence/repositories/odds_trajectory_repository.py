@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional
+import zlib
 
 from sqlalchemy import bindparam, text
 
@@ -29,6 +30,10 @@ class OddsTrajectoryPoint:
     choice_id: Optional[int]
     choice_name: Optional[str]
     choice_display_order: Optional[int]
+    quote_id: Optional[int]
+    source: Optional[str]
+    exchange_side: Optional[str]
+    exchange_level: Optional[int]
     initial_odds: Optional[Decimal]
     odds_value: Optional[Decimal]
     snapshot_id: Optional[int]
@@ -53,6 +58,10 @@ class OddsTrajectoryPoint:
             "choice_id": self.choice_id,
             "choice_name": self.choice_name,
             "choice_display_order": self.choice_display_order,
+            "quote_id": self.quote_id,
+            "source": self.source,
+            "exchange_side": self.exchange_side,
+            "exchange_level": self.exchange_level,
             "initial_odds": self.initial_odds,
             "odds_value": self.odds_value,
             "snapshot_id": self.snapshot_id,
@@ -64,6 +73,16 @@ class OddsTrajectoryPoint:
 
 
 class OddsTrajectoryRepository:
+    @staticmethod
+    def _is_shadow_sampled(event_ids: List[int], sample_rate: float) -> bool:
+        if sample_rate <= 0:
+            return False
+        if sample_rate >= 1:
+            return True
+        stable_scope = ",".join(str(int(item)) for item in sorted(set(event_ids)))
+        bucket = zlib.crc32(stable_scope.encode("ascii")) % 10_000
+        return bucket < int(sample_rate * 10_000)
+
     @staticmethod
     def _from_row(row) -> OddsTrajectoryPoint:
         data = dict(row)
@@ -82,6 +101,10 @@ class OddsTrajectoryRepository:
             choice_id=data.get("choice_id"),
             choice_name=data.get("choice_name"),
             choice_display_order=data.get("choice_display_order"),
+            quote_id=data.get("quote_id"),
+            source=data.get("source"),
+            exchange_side=data.get("exchange_side"),
+            exchange_level=data.get("exchange_level"),
             initial_odds=data.get("initial_odds"),
             odds_value=data.get("odds_value"),
             snapshot_id=data.get("snapshot_id"),
@@ -110,6 +133,59 @@ class OddsTrajectoryRepository:
         if not target_minutes:
             return {}
 
+        mode = Config.PRE_START_TRAJECTORY_READ_MODE
+        if mode == "legacy":
+            return OddsTrajectoryRepository._load_pre_start_trajectory_map(
+                event_ids=event_ids,
+                target_minutes=target_minutes,
+                tolerance_minutes=tolerance_minutes,
+                view_name="v_pre_start_odds_trajectory_legacy",
+                quote_aware=False,
+            )
+        if mode == "quotes":
+            return OddsTrajectoryRepository._load_pre_start_trajectory_map(
+                event_ids=event_ids,
+                target_minutes=target_minutes,
+                tolerance_minutes=tolerance_minutes,
+                view_name="v_pre_start_odds_trajectory_quotes",
+                quote_aware=True,
+            )
+
+        legacy = OddsTrajectoryRepository._load_pre_start_trajectory_map(
+            event_ids=event_ids,
+            target_minutes=target_minutes,
+            tolerance_minutes=tolerance_minutes,
+            view_name="v_pre_start_odds_trajectory_legacy",
+            quote_aware=False,
+        )
+        if not OddsTrajectoryRepository._is_shadow_sampled(
+            event_ids, Config.ODDS_READ_SHADOW_SAMPLE_RATE
+        ):
+            return legacy
+        quotes = OddsTrajectoryRepository._load_pre_start_trajectory_map(
+            event_ids=event_ids,
+            target_minutes=target_minutes,
+            tolerance_minutes=tolerance_minutes,
+            view_name="v_pre_start_odds_trajectory_quotes",
+            quote_aware=True,
+        )
+        OddsTrajectoryRepository._log_shadow_comparison(legacy, quotes)
+        return legacy
+
+    @staticmethod
+    def _load_pre_start_trajectory_map(
+        *,
+        event_ids: List[int],
+        target_minutes: List[int],
+        tolerance_minutes: int,
+        view_name: str,
+        quote_aware: bool,
+    ) -> Dict[int, List[OddsTrajectoryPoint]]:
+        if view_name not in {
+            "v_pre_start_odds_trajectory_legacy",
+            "v_pre_start_odds_trajectory_quotes",
+        }:
+            raise ValueError(f"Unsupported trajectory view: {view_name}")
         target_value_rows = ", ".join(
             f"(:target_minute_{idx})" for idx, _ in enumerate(target_minutes)
         )
@@ -122,6 +198,8 @@ class OddsTrajectoryRepository:
             "traj.event_id IN :event_ids",
             "ABS(traj.minutes_before_start - tm.target_minute) <= :tolerance_minutes",
         ]
+        if quote_aware:
+            where_clauses.append("traj.quote_id IS NOT NULL")
         query_params = {
             "event_ids": event_ids,
             "tolerance_minutes": tolerance_minutes,
@@ -131,6 +209,11 @@ class OddsTrajectoryRepository:
             bindparam("event_ids", expanding=True),
         ]
 
+        partition_columns = (
+            "event_id, quote_id, target_minute"
+            if quote_aware
+            else "event_id, market_id, bookie_id, choice_id, target_minute"
+        )
         query = text(
             f"""
             WITH target_moments AS (
@@ -142,7 +225,7 @@ class OddsTrajectoryRepository:
                     traj.*,
                     tm.target_minute,
                     ABS(traj.minutes_before_start - tm.target_minute) AS distance_from_target
-                FROM v_pre_start_odds_trajectory traj
+                FROM {view_name} traj
                 CROSS JOIN target_moments tm
                 WHERE {" AND ".join(where_clauses)}
             ),
@@ -150,12 +233,7 @@ class OddsTrajectoryRepository:
                 SELECT
                     *,
                     ROW_NUMBER() OVER (
-                        PARTITION BY
-                            event_id,
-                            market_id,
-                            bookie_id,
-                            choice_id,
-                            target_minute
+                        PARTITION BY {partition_columns}
                         ORDER BY
                             distance_from_target ASC,
                             collected_at DESC,
@@ -173,6 +251,10 @@ class OddsTrajectoryRepository:
                 market_period,
                 choice_group NULLS FIRST,
                 bookie_name,
+                source,
+                CASE exchange_side WHEN 'back' THEN 1 WHEN 'lay' THEN 2 ELSE 0 END,
+                exchange_level,
+                quote_id,
                 target_minute DESC,
                 choice_display_order NULLS LAST,
                 choice_name;
@@ -194,3 +276,51 @@ class OddsTrajectoryRepository:
             point = OddsTrajectoryRepository._from_row(row)
             grouped.setdefault(point.event_id, []).append(point)
         return grouped
+
+    @staticmethod
+    def _log_shadow_comparison(
+        legacy: Dict[int, List[OddsTrajectoryPoint]],
+        quotes: Dict[int, List[OddsTrajectoryPoint]],
+    ) -> None:
+        event_ids = sorted(set(legacy) | set(quotes))
+        for event_id in event_ids:
+            legacy_points = legacy.get(event_id, [])
+            quote_points = quotes.get(event_id, [])
+            legacy_keys = {
+                OddsTrajectoryRepository._shadow_point_key(item)
+                for item in legacy_points
+            }
+            quote_keys = {
+                OddsTrajectoryRepository._shadow_point_key(item)
+                for item in quote_points
+            }
+            payload = {
+                "event": "odds_quote_read_shadow",
+                "consumer": "trajectory",
+                "event_id": event_id,
+                "legacy_points": len(legacy_points),
+                "quote_points": len(quote_points),
+                "legacy_only": len(legacy_keys - quote_keys),
+                "quotes_only": len(quote_keys - legacy_keys),
+            }
+            if legacy_keys == quote_keys:
+                logger.info("Trajectory quote shadow comparison: %s", payload)
+            else:
+                logger.warning("Trajectory quote shadow mismatch: %s", payload)
+
+    @staticmethod
+    def _shadow_point_key(item: OddsTrajectoryPoint) -> tuple:
+        identity = (
+            ("quote", item.quote_id)
+            if item.quote_id is not None
+            else (
+                "legacy",
+                item.market_id,
+                item.bookie_id,
+                item.choice_id,
+                item.source,
+                item.exchange_side,
+                item.exchange_level,
+            )
+        )
+        return identity, item.target_minute, item.odds_value
