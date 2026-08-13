@@ -1,8 +1,9 @@
 # Fase 6 — `market_choice_snapshots` slim
 
-**Estado:** implementación y migración local completadas; servidor pendiente de ventana operativa.
-**Commit base desplegable (Fases 5/6):** `fa07c5b` más el commit de cierre de
-readers descrito en este documento.
+**Estado:** **FASE 6 FINALIZADA y validada sobre la copia local del servidor**;
+ejecución en el servidor real pendiente de su ventana operativa.
+**Commits desplegables:** `fa07c5b` (Fases 5/6), `5b27e46` (cierre definitivo
+de readers) y `9f2ce74` (política de lectura incluida en la imagen Docker).
 **Fecha de inicio:** 2026-08-12.
 
 ## 1. Resultado buscado
@@ -164,10 +165,11 @@ necesariamente los bytes históricos originales de cada columna.
 
 ## 8. Estado operativo
 
-La copia local satisface el gate principal de lineage (`quote_id IS NULL = 0`).
-El DDL del servidor permanece bloqueado hasta completar la ventana de
-observación de Fase 5. Este bloqueo no impide desarrollar y probar 6A/6B en la
-copia local.
+La ejecución completa con `--commit --confirm-destructive --compact` terminó
+con `ok=true` sobre la copia local del servidor. La Fase 6 local ya no tiene
+trabajo pendiente. En el servidor real quedan únicamente las tareas operativas:
+desplegar los commits, detener aplicación/jobs, confirmar backup, ejecutar el
+mismo CLI y comprobar nuevamente `ok=true` antes de reanudar procesos.
 
 ## 9. Runbook único local/servidor
 
@@ -205,7 +207,12 @@ retiró también el bloque transitorio `RETIRED_ODDS_READ_VIEWS`/
 
 ## 10. Evidencia local final
 
-Migración ejecutada el 2026-08-12 únicamente mediante el CLI anterior:
+Migración definitiva ejecutada el 2026-08-12 mediante Docker Compose y
+únicamente a través del CLI de Fase 6:
+
+```powershell
+docker compose exec app python -m scripts.maintenance.migrate_market_choice_snapshots_slim --commit --confirm-destructive --compact --output-json logs/debug/phase6/market_choice_snapshots_slim_compact.json
+```
 
 | Métrica | Antes | Después del DROP | Después de compactar |
 |---|---:|---:|---:|
@@ -220,6 +227,23 @@ Reducción total: 284,213,248 bytes (43.6%). El schema final tiene exactamente
 siete columnas, `quote_id NOT NULL`, FK vigente, cero nulos/huérfanos,
 únicamente el índice quote+tiempo y ninguna dependencia sobre columnas
 retiradas.
+
+Resultado definitivo reportado por el CLI:
+
+- `ok=true`, `mode=commit` y `compacted=true`;
+- estado inicial `expanded`, listo para migrar y sin blockers;
+- estado final `slim`, sin blockers ni dependencias de columnas retiradas;
+- 2,762,285 filas y rango de IDs `1..4,771,164` preservados;
+- checksum antes/después idéntico:
+  `8fec7e3fb72e38a910a84d657b7f1784`;
+- `quote_id`: cero nulos, cero huérfanos, cero mismatches y `NOT NULL` final;
+- heap final 192,921,600 bytes, índices 174,071,808 bytes y total
+  366,993,408 bytes;
+- `materialized_views_refreshed=true` y postflight de readers `ok=true`;
+- scope de referencia: dual-process 2 filas, trajectory 100 filas,
+  `mv_alert_events` 2 filas y contrato de `event_all_odds` ejecutable;
+- las definiciones canónicas verificadas apuntan a `market_choice_quotes` y
+  `eligible_quotes`, respectivamente.
 
 Postflight idempotente:
 

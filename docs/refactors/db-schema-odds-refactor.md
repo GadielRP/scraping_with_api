@@ -1,11 +1,11 @@
 # Refactor de schema de odds — separación de responsabilidades
 
 **Branch:** `refactor/db-schema-odds-refactor`
-**Estado:** Fases 1–5 implementadas; Fase 5 quedó cerrada en el commit
-`67b1d3f`. Fase 4b/4c terminó en producción el 2026-08-12
+**Estado:** Fases 1–6 implementadas. Fase 5/6 quedó cerrada en los commits
+`fa07c5b`, `5b27e46` y `9f2ce74`. Fase 4b/4c terminó en producción el 2026-08-12
 (`algorithm_version=4b.7`, `events_selected=0`) y los tres lectores públicos de
 la copia PostgreSQL local están en `quotes`. Fase 6 inició el 2026-08-12 sobre
-esa copia y quedó completada localmente con migración slim fail-closed,
+esa copia y quedó **finalizada localmente** con migración slim fail-closed,
 compactación y postflight integral ejecutados únicamente por el CLI.
 La ventana operativa de Fase 5 continúa siendo requisito para repetir el DDL en
 el servidor. Evidencia de Fase 5 en [§12](#12-implementación-de-fase-5-mapa-y-deuda-de-cleanup)
@@ -1624,9 +1624,12 @@ reanudar la aplicación Fase 6 antes de ejecutar el script.
 
 ### 13.3. Estado
 
-Fase 6 está **completada en local y lista para commit**. El commit de cierre de
-Fase 5 es `67b1d3f`; la aplicación, el script, el schema local, readers, MV,
-guards y regresión quedaron verdes. La réplica en servidor conserva el gate
-operativo de §12.5 y debe usar exclusivamente el runbook versionado. Las
-modificaciones preexistentes de los documentos 4b/4c permanecen fuera del
-scope del commit de Fase 6.
+Fase 6 está **finalizada en la copia PostgreSQL local del servidor**. La
+ejecución Docker con todos los flags terminó con `ok=true`, `compacted=true`,
+schema `slim` y postflight `ok=true`. La aplicación, el script, el schema local,
+readers, MV, guards y regresión quedaron verdes. Los commits de cierre son
+`fa07c5b`, `5b27e46` y `9f2ce74`.
+
+Esto no afirma que el DDL ya se ejecutó en el servidor real: allí queda el paso
+operativo de desplegar esos commits y ejecutar exclusivamente el mismo runbook
+versionado con jobs detenidos y backup confirmado.
