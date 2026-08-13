@@ -17,6 +17,11 @@ files) live under ``logs/debug/market_choice_quote_backfill/`` so Docker volume
   truncate only with ``--fresh-artifacts``; run separators between invocations)
 
 See docs/refactors/db-schema-odds-refactor-phase-4b.md.
+
+LEGACY_PHASE8_REMOVE: this Phase 4 campaign CLI is intentionally blocked by
+the Phase 6 slim snapshot schema. Phase 7 confirms that its choice-state
+fallback cannot survive the identity-only MarketChoice contract. Delete it,
+its orchestrator/repository and their tests together in Phase 8.
 """
 
 from __future__ import annotations

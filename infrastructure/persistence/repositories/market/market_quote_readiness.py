@@ -38,8 +38,7 @@ class MarketQuoteReadinessAuditor:
         "market_choices": {
             "choice_id",
             "market_id",
-            "initial_odds",
-            "current_odds",
+            "choice_name",
         },
         "market_choice_quotes": {
             "quote_id",
@@ -142,23 +141,6 @@ class MarketQuoteReadinessAuditor:
             issues.append(unlinked_issue)
 
         queries = [
-            (
-                "legacy_choice_state_without_quote",
-                f"""
-                SELECT mc.choice_id AS sample_id, 1 AS row_count,
-                       COUNT(*) OVER () AS total_count
-                FROM market_choices mc
-                JOIN markets m ON m.market_id = mc.market_id
-                WHERE (mc.initial_odds IS NOT NULL OR mc.current_odds IS NOT NULL)
-                  AND NOT EXISTS (
-                      SELECT 1 FROM market_choice_quotes mcq
-                      WHERE mcq.choice_id = mc.choice_id
-                  ) {scope_sql}
-                ORDER BY mc.choice_id
-                LIMIT 20
-                """,
-                None,
-            ),
             (
                 "invalid_quote_side_or_level",
                 f"""

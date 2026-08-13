@@ -1,7 +1,7 @@
 # Refactor de schema de odds — separación de responsabilidades
 
 **Branch:** `refactor/db-schema-odds-refactor`
-**Estado:** Fases 1–6 implementadas. Fase 5/6 quedó cerrada en los commits
+**Estado:** Fases 1–7 implementadas en código. Fase 5/6 quedó cerrada en los commits
 `fa07c5b`, `5b27e46` y `9f2ce74`. Fase 4b/4c terminó en producción el 2026-08-12
 (`algorithm_version=4b.7`, `events_selected=0`) y los tres lectores públicos de
 la copia PostgreSQL local están en `quotes`. Fase 6 inició el 2026-08-12 sobre
@@ -10,6 +10,10 @@ compactación y postflight integral ejecutados únicamente por el CLI.
 La ventana operativa de Fase 5 continúa siendo requisito para repetir el DDL en
 el servidor. Evidencia de Fase 5 en [§12](#12-implementación-de-fase-5-mapa-y-deuda-de-cleanup)
 y ejecución de Fase 6 en [§13](#13-implementación-de-fase-6-snapshots-slim).
+La Fase 7 quedó ejecutada en la copia PostgreSQL local mediante su migración
+fail-closed y CLI destructivo explícito, incluida compactación y postflight.
+Evidencia y runbook en
+[§14](#14-implementación-de-fase-7-market_choices-como-identidad-pura).
 **Alcance:** `infrastructure/persistence/models.py`, `infrastructure/persistence/repositories/market_repository.py`, `infrastructure/persistence/market_write_policy.py`, `modules/odds_ingestion/adapters/*`, `modules/oddspapi/exchange_quotes.py`, lectores de trajectory/alerts/pillars.
 
 ## Índice
@@ -47,6 +51,8 @@ y ejecución de Fase 6 en [§13](#13-implementación-de-fase-6-snapshots-slim).
   - [11.6. Orden sugerido de PRs y smoke checks](#116-orden-sugerido-de-prs-y-smoke-checks)
   - [11.7. Gotchas operativos](#117-gotchas-operativos)
 - [12. Implementación de Fase 5: mapa y deuda de cleanup](#12-implementación-de-fase-5-mapa-y-deuda-de-cleanup)
+- [13. Implementación de Fase 6: snapshots slim](#13-implementación-de-fase-6-snapshots-slim)
+- [14. Implementación de Fase 7: `market_choices` como identidad pura](#14-implementación-de-fase-7-market_choices-como-identidad-pura)
 
 ---
 
@@ -127,7 +133,7 @@ Ningún archivo de `modules/jobs/*` (pipeline en vivo) llama ya a `save_markets_
 - `legacy/parse_telegram_odds.py`
 - `verify_snapshots.py` (script de desarrollo, raíz del repo)
 
-Esas rutas están marcadas `LEGACY_MAINTENANCE_ONLY`: ya delegan quotes en `MarketChoiceQuoteWriter` y snapshots en `MarketChoiceSnapshotWriter`, por lo que no pueden romper el lineage mientras sigan invocables. Siguen siendo legacy porque duplican resolución de markets/choices y escriben el mirror congelado de `MarketChoice`; sus scripts deben migrarse y ambos métodos deben eliminarse en Fase 8.
+Esas rutas están marcadas `LEGACY_MAINTENANCE_ONLY`: ya delegan quotes en `MarketChoiceQuoteWriter` y snapshots en `MarketChoiceSnapshotWriter`, por lo que no pueden romper el lineage mientras sigan invocables. Desde Fase 7 tampoco escriben el mirror retirado de `MarketChoice`. Siguen siendo legacy porque duplican resolución de markets/choices; sus scripts deben migrarse y ambos métodos deben eliminarse en Fase 8.
 
 **Lo que falta para cerrar el refactor por completo** (Fases 4-8, ver [§8](#8-fases-de-implementación)):
 1. **Fase 4 — Backfill**: todo el historial anterior a este refactor (`market_choice_snapshots` viejos, `MarketChoice` sin quotes) no tiene fila en `market_choice_quotes` todavía. Los eventos que ya estaban en curso antes de este deploy no tienen quotes retroactivas hasta correr el script de backfill.
@@ -149,7 +155,7 @@ En resumen: la ingesta ya es 100% la implementación nueva; lo que resta es back
 **Qué cambió en `market_repository.py::save_canonical_bookmaker_batches`:**
 - `MarketChoice` ahora se crea/actualiza como identidad pura (`market_id`, `choice_name`) — ya no recibe `initial_odds=`, `current_odds=` ni `change=`.
 - La señal "¿se fijó el initial por primera vez (o se sobreescribió legítimamente)?" — que decide si se agrega un `MarketChoiceSnapshot` de apertura — ya no se lee de `choice.initial_odds` (congelado) sino de la `MarketChoiceQuote` primaria existente (`exchange_side IS NULL`, `exchange_level=0`, mismo `source`), precargada en una sola query para evitar N+1.
-- `save_markets_from_response_with_stats` sigue escribiendo el mirror de `choices` y por eso permanece `LEGACY_MAINTENANCE_ONLY`, pero sus quotes y snapshots pasan por los mismos writers SRP que el path canónico. No se conserva una implementación legacy paralela para esas dos tablas.
+- `save_markets_from_response_with_stats` permaneció temporalmente como writer del mirror hasta Fase 7. Ahora conserva la marca `LEGACY_MAINTENANCE_ONLY` solo porque duplica orquestación para scripts históricos; prices y snapshots pasan exclusivamente por los mismos writers SRP que el path canónico.
 
 **Tests actualizados** para verificar la combinación cross-source contra `MarketChoiceQuote` en vez de `MarketChoice` (mismo comportamiento, distinta tabla de verificación): `tests/test_oddsportal_canonical_ingestion.py` (`test_service_persists_one_canonical_event_batch_with_one_session`, `test_oddsportal_opening_and_oddspapi_current_are_order_independent`, `test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current`). Estas pruebas también se cambiaron para invocar Oddspapi vía `save_canonical_bookmaker_batches` (el path real de producción) en vez de la ruta legacy directa, porque solo el path canónico escribe quotes.
 
@@ -1513,7 +1519,7 @@ market_choice_quotes + snapshots(quote_id)
 
 | Pieza | Marca/estado | Por qué no se elimina ahora | Cleanup |
 |---|---|---|---|
-| `save_markets_from_response(_with_stats)` y scripts callers | `LEGACY_MAINTENANCE_ONLY` | Aún usados por scripts históricos | Migrar scripts y borrar en Fase 8 |
+| `save_markets_from_response(_with_stats)` y scripts callers | `LEGACY_MAINTENANCE_ONLY` | Aún usados por scripts históricos; desde Fase 7 ya no escriben el mirror | Migrar scripts y borrar en Fase 8 |
 | `_save_oddsportal_market`, `_build_choice_payload`, `save_markets_from_oddsportal` | `LEGACY_DEAD_CODE` | Se preservaron fuera del cutover lector | Eliminación conjunta en Fase 8 |
 | Quotes exchange `exchange_side=NULL` redundantes de Oddspapi | compatibilidad de datos | Readers ya las suprimen; borrarlas durante rollout rompería rollback | Dejar de escribir y purgar en PR post-observación |
 | `market_repository.py` monolítico | deuda SRP | La fachada aún contiene orquestación y writers legacy | Extraer `MarketIdentityResolver`/`MarketChoiceWriter`; reducir a fachada |
@@ -1633,3 +1639,134 @@ readers, MV, guards y regresión quedaron verdes. Los commits de cierre son
 Esto no afirma que el DDL ya se ejecutó en el servidor real: allí queda el paso
 operativo de desplegar esos commits y ejecutar exclusivamente el mismo runbook
 versionado con jobs detenidos y backup confirmado.
+
+---
+
+## 14. Implementación de Fase 7: `market_choices` como identidad pura
+
+**Implementación y ejecución local completadas:** 2026-08-13. El DDL,
+compactación y postflight se ejecutaron exclusivamente mediante el CLI de
+Fase 7 con la aplicación detenida.
+
+### 14.1. Contrato final
+
+- `MarketChoice` conserva únicamente `choice_id`, `market_id` y `choice_name`.
+- Todo estado de precio, timestamps y movimiento pertenece a
+  `MarketChoiceQuote`.
+- La ruta `save_markets_from_response_with_stats`, aunque sigue marcada
+  `LEGACY_MAINTENANCE_ONLY` hasta Fase 8, ya no lee ni escribe el espejo de
+  precios. Resuelve el gate de apertura desde la quote exacta y persiste choices
+  como identidad pura.
+- `MarketQuoteReadinessAuditor` valida lineage e identidad de quotes sin exigir
+  ni consultar columnas retiradas.
+
+Los backfills históricos de Fase 4/canonicalización que aún contienen SQL del
+schema expandido ya estaban retirados por el preflight de Fase 6. No son rutas
+activas y se eliminarán en bloque en Fase 8; no se portaron dentro de este DDL.
+
+### 14.1.1. Inventario explícito para Fase 8
+
+Todo hallazgo usa un marcador buscable; Fase 8 debe resolverlo sin introducir
+shims para columnas eliminadas:
+
+| Marcador/pieza | Estado confirmado en Fase 7 | Acción de Fase 8 |
+|---|---|---|
+| `LEGACY_MAINTENANCE_ONLY` en `save_markets_from_response(_with_stats)` | Ya es quote-only, pero duplica la orquestación canónica y conserva cinco callers históricos | Migrar callers a `save_canonical_bookmaker_batches` y borrar ambos métodos |
+| `LEGACY_PHASE8_REMOVE` en `market_choice_quote_backfill_repository.py` y `backfill_market_choice_quotes.py` | Campaña Fase 4 cerrada; incompatible con snapshots slim y choices identity-only | Borrar repositorio, orchestrator/CLI y tests dedicados como una unidad |
+| `LEGACY_PHASE8_REMOVE_OR_PORT` en los dos backfills SofaScore | Sus ramas de merge requieren `snapshot.choice_id` y/o el mirror de precios | Portar a `quote_id`/`MarketChoiceQuote` si aún son operativamente necesarias; en caso contrario borrar script y tests |
+| `LEGACY_PHASE8_REMOVE` en `MarketRepository._choice_change` | Cero call sites de producción tras retirar el último mirror writer | Borrar wrapper y migrar sus tests a `compute_movement` |
+| `LEGACY_DEAD_CODE` de OddsPortal | Cero call sites | Borrar `_build_choice_payload`, `_save_oddsportal_market` y `save_markets_from_oddsportal` |
+
+El criterio mecánico de cierre es buscar
+`LEGACY_PHASE8_REMOVE|LEGACY_PHASE8_REMOVE_OR_PORT|LEGACY_MAINTENANCE_ONLY|LEGACY_DEAD_CODE`
+y resolver cada hit, incluidos sus tests.
+
+### 14.2. Migración y seguridad operativa
+
+La migración vive en
+`infrastructure/persistence/migrations/market_choice_price_state_drop.py` y se
+opera únicamente mediante:
+
+```bash
+python -m scripts.maintenance.migrate_market_choice_price_state
+python -m scripts.maintenance.migrate_market_choice_price_state \
+  --commit --confirm-destructive --compact \
+  --output-json exports/phase7-market-choices.json
+```
+
+Con `compose.yaml`, el código está dentro de la imagen y no existe un bind
+mount del repositorio. Por tanto hay que reconstruir `app` antes de invocar un
+CLI recién agregado. `logs/` sí está montado y debe usarse para conservar el
+artefacto después de eliminar el contenedor one-off:
+
+```bash
+docker compose stop app
+docker compose build app
+docker compose run --rm app \
+  python -m scripts.maintenance.migrate_market_choice_price_state
+docker compose run --rm app \
+  python -m scripts.maintenance.migrate_market_choice_price_state \
+  --commit --confirm-destructive --compact \
+  --output-json logs/debug/phase7-market-choices.json
+docker compose up -d app
+```
+
+El primer `run` es el dry-run obligatorio. No iniciar `app` con la imagen de
+Fase 7 antes de completar el CLI: el startup fail-closed detectará las columnas
+legacy y se negará a arrancar. `docker compose run` por sí solo reutiliza la
+imagen existente; crear un contenedor nuevo no implica reconstruirla.
+
+El primer comando es dry-run. El segundo requiere jobs detenidos y backup
+confirmado. La migración:
+
+1. clasifica el schema como `expanded`, `slim` o `invalid`;
+2. exige que Fase 6 ya esté realmente en schema `slim`;
+3. bloquea ante dependencias desconocidas y reconstruye únicamente las dos
+   vistas canónicas quote-aware que administra el script;
+4. toma `ACCESS EXCLUSIVE`, con timeouts configurables;
+5. ejecuta un único `ALTER TABLE` sin `CASCADE`;
+6. comprueba filas, rango de IDs y checksum de identidad antes/después;
+7. con `--compact`, ejecuta `VACUUM (FULL, ANALYZE)` fuera de la transacción y
+   repite la verificación integral de identidad; el JSON reporta bytes de heap,
+   índices y total antes/después para cuantificar el espacio recuperado;
+8. refresca materialized views, ejecuta postflight de readers y es idempotente
+   si el schema ya está slim.
+
+El arranque de la aplicación es fail-closed: si detecta cualquiera de las
+columnas legacy, indica el comando exacto del CLI y no permite iniciar writers.
+El migrador genérico continúa siendo aditivo y no posee este DROP.
+
+El DROP y `VACUUM FULL` no forman una sola transacción porque PostgreSQL no
+permite ejecutar el vacuum dentro de ella. Si la compactación falla después de
+un DROP exitoso, el schema ya queda `slim`; se puede corregir la causa y repetir
+el mismo comando, que detectará el DDL como aplicado y reintentará `--compact`.
+
+### 14.3. Verificación local
+
+- 71 pruebas verdes de migración, ORM, readiness, guard, quotes, snapshots,
+  ingesta canónica, vistas trajectory y dual-process.
+- 4 pruebas async del scraper quedaron deseleccionadas en esa regresión porque
+  el runtime local no cargó `pytest-asyncio`; las 31 pruebas síncronas del primer
+  pase fueron verdes y esas cuatro no ejercitan persistencia.
+- `diff --check` limpio y guard de lecturas legacy verde. Las referencias
+  residuales están limitadas a backfills ya retirados y documentados.
+- Dry-run real sobre la PostgreSQL configurada: `ok=true`, Fase 6 `slim` sin
+  blockers, Fase 7 `expanded` y `ready_to_migrate=true`; 1,474,313 choices,
+  IDs 1–1,983,326 y checksum de identidad
+  `24b4299a586a7addf71867212dd17794`.
+- Ejecución final: `ok=true`, `compacted=true`, schema `slim`, materialized
+  views refrescadas y reader postflight verde para `158955`/`169158`.
+- Identidad preservada exactamente: 1,474,313 filas, IDs 1–1,983,326 y checksum
+  `24b4299a586a7addf71867212dd17794` antes/después.
+- Compactación de `market_choices`: heap 88,481,792 → 65,290,240 bytes
+  (-26.2%); índices 108,871,680 → 108,871,680; total
+  197,410,816 → 174,170,112 bytes (-11.8%).
+- Artefacto archivado en `logs/debug/phase7-market-choices.json`.
+
+### 14.4. Pendiente operativo
+
+La copia PostgreSQL local ya está migrada. Falta reiniciar la aplicación con la
+imagen de Fase 7 y confirmar su healthcheck/log de inicialización. Si existe un
+servidor real distinto de esta copia, no repetir allí el DROP hasta completar
+la misma ventana: despliegue previo, jobs detenidos, backup verificado y
+dry-run verde. Fase 8 puede borrar los métodos y scripts legacy bloqueados.

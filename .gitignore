@@ -135,6 +135,7 @@ tests/*
 !tests/test_dual_process_market_odds_read_migration.py
 !tests/test_no_legacy_odds_reads.py
 !tests/test_market_choice_snapshot_slim_migration.py
+!tests/test_market_choice_price_state_migration.py
 !config/backfills/
 config/backfills/**
 !config/backfills/market_choice_quotes/

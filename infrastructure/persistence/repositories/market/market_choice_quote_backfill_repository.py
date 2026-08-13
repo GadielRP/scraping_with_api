@@ -2,6 +2,12 @@
 
 No classification or temporal policy lives here — only SQL and row mappings.
 The orchestrator owns transactions and commits.
+
+LEGACY_PHASE8_REMOVE: Phase 6 retired this repository when snapshot identity
+moved exclusively to quote_id; Phase 7 also removes the choice-level price
+columns used by its historical recovery queries. It is not an active
+maintenance path. Delete it together with its orchestrator/CLI and tests in
+Phase 8; do not add compatibility branches for the slim schemas.
 """
 
 from __future__ import annotations

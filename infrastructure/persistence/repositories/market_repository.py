@@ -110,13 +110,16 @@ class MarketRepository:
         return float(normalized) if normalized is not None else None
 
     @staticmethod
+    # LEGACY_PHASE8_REMOVE: no production call sites remain after Phase 7
+    # stopped the last MarketChoice mirror writer. Tests that need movement
+    # semantics should call compute_movement directly.
     def _choice_change(
         *,
         explicit_change,
         initial_odds,
         current_odds,
     ) -> Optional[int]:
-        """Thin wrapper kept for internal call sites; logic lives in odds_movement.
+        """Deprecated wrapper around the canonical movement policy.
 
         See infrastructure/persistence/repositories/market/odds_movement.py
         (extracted per docs/refactors/db-schema-odds-refactor.md §7) so
@@ -345,74 +348,54 @@ class MarketRepository:
                                     )
                                 ).first()
 
-                                if (
-                                    write_policy.overwrite_initial_odds
-                                    and initial_odds is not None
-                                ):
-                                    effective_initial_odds = initial_odds
-                                elif (
-                                    existing_choice
-                                    and existing_choice.initial_odds is not None
-                                ):
-                                    effective_initial_odds = existing_choice.initial_odds
-                                else:
-                                    effective_initial_odds = initial_odds
-                                effective_current_odds = (
-                                    current_odds
-                                    if write_policy.persist_current_odds
-                                    else (
-                                        existing_choice.current_odds
-                                        if existing_choice is not None
-                                        else None
-                                    )
-                                )
-                                change = MarketRepository._choice_change(
-                                    explicit_change=(
-                                        choice_data.get('change')
-                                        if write_policy.persist_current_odds
-                                        else None
-                                    ),
-                                    initial_odds=effective_initial_odds,
-                                    current_odds=effective_current_odds,
-                                )
-
-                                initial_was_set = False
                                 if existing_choice:
-                                    if (
-                                        write_policy.persist_current_odds
-                                        and current_odds is not None
-                                    ):
-                                        existing_choice.current_odds = current_odds
-                                    if change is not None:
-                                        existing_choice.change = change
-                                    if (
-                                        write_policy.overwrite_initial_odds
-                                        and initial_odds is not None
-                                    ):
-                                        existing_initial = MarketRepository._numeric_or_none(
-                                            existing_choice.initial_odds
-                                        )
-                                        incoming_initial = MarketRepository._numeric_or_none(
-                                            initial_odds
-                                        )
-                                        if existing_initial != incoming_initial:
-                                            existing_choice.initial_odds = initial_odds
-                                            initial_was_set = True
-                                    elif existing_choice.initial_odds is None and initial_odds is not None:
-                                        existing_choice.initial_odds = initial_odds
-                                        initial_was_set = True
                                     choice = existing_choice
                                 else:
                                     choice = MarketChoice(
                                         market_id=market.market_id,
                                         choice_name=choice_name,
-                                        initial_odds=initial_odds,
-                                        current_odds=effective_current_odds,
-                                        change=change if change is not None else 0
                                     )
                                     session.add(choice)
                                     session.flush()
-                                    initial_was_set = initial_odds is not None
+
+                                gate_side, gate_level = (
+                                    MarketRepository._opening_gate_side_and_level(
+                                        choice_data
+                                    )
+                                )
+                                existing_quote = quote_index.get(
+                                    MarketChoiceQuoteWriter.identity_key(
+                                        choice_id=choice.choice_id,
+                                        source=source,
+                                        exchange_side=gate_side,
+                                        exchange_level=gate_level,
+                                    )
+                                )
+                                existing_initial = MarketRepository._numeric_or_none(
+                                    existing_quote.initial_odds
+                                    if existing_quote is not None
+                                    else None
+                                )
+                                incoming_initial = MarketRepository._numeric_or_none(
+                                    initial_odds
+                                )
+                                if (
+                                    write_policy.overwrite_initial_odds
+                                    and incoming_initial is not None
+                                ):
+                                    initial_was_set = (
+                                        existing_initial != incoming_initial
+                                    )
+                                else:
+                                    initial_was_set = (
+                                        existing_initial is None
+                                        and incoming_initial is not None
+                                    )
+                                effective_current_odds = (
+                                    current_odds
+                                    if write_policy.persist_current_odds
+                                    else None
+                                )
 
                                 source_collected_at = MarketRepository._parse_source_datetime(
                                     choice_data.get("changedAt") or choice_data.get("sourceCollectedAt"),
@@ -1188,8 +1171,8 @@ class MarketRepository:
           side-agnostic price; each entry gets its own row.
 
         LEGACY note (pre-§3.2 wording): older comments described the
-        side-agnostic quote as "mirroring MarketChoice.initial_odds/
-        current_odds". That mirror is gone — the canonical path no longer
+        side-agnostic quote as mirroring the legacy choice-level price state.
+        That mirror is gone — the canonical path no longer
         writes those MarketChoice columns; MarketChoiceQuote is the sole
         persistence target for price state. See
         docs/refactors/db-schema-odds-refactor.md §3.2 and Fase 2-3.

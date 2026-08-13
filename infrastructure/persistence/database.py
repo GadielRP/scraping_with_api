@@ -123,6 +123,7 @@ class DatabaseManager:
             self._migrate_market_period_not_null()
             self._migrate_market_choice_quotes()
             self._migrate_market_choice_snapshot_lineage()
+            self._validate_market_choice_price_state_schema()
             self._migrate_event_source_resolution_queue()
             
             # Check and fix column order (bookie_id should be next to event_id)
@@ -858,6 +859,56 @@ class DatabaseManager:
             )
         except Exception as e:
             logger.error(f"Market choice snapshot lineage migration failed: {e}")
+            logger.error(traceback.format_exc())
+            raise
+
+    def _validate_market_choice_price_state_schema(self):
+        """Require the Phase 7 identity-only ``market_choices`` schema.
+
+        The destructive DDL is deliberately owned by its maintenance CLI.
+        Startup validates only, so the generic additive migrator cannot hide a
+        partial or missed deployment.
+        """
+        try:
+            from sqlalchemy import inspect
+
+            inspector = inspect(self.engine)
+            if "market_choices" not in inspector.get_table_names():
+                return
+
+            columns = {
+                item["name"]
+                for item in inspector.get_columns("market_choices")
+            }
+            required = {"choice_id", "market_id", "choice_name"}
+            missing = sorted(required - columns)
+            if missing:
+                raise RuntimeError(
+                    "market_choices is not Phase 7 compatible; missing "
+                    "identity columns: " + ", ".join(missing)
+                )
+
+            legacy = sorted(
+                {"initial_odds", "current_odds", "change"} & columns
+            )
+            if legacy:
+                raise RuntimeError(
+                    "Phase 7 application code requires identity-only "
+                    "market_choices. Stop application jobs, confirm a backup, "
+                    "and run: python -m scripts.maintenance."
+                    "migrate_market_choice_price_state --commit "
+                    "--confirm-destructive. Remaining columns: "
+                    + ", ".join(legacy)
+                )
+
+            logger.debug(
+                "market_choices identity-only contract validated; "
+                "structural migration is script-owned"
+            )
+        except Exception as exc:
+            logger.error(
+                "Market choice price-state validation failed: %s", exc
+            )
             logger.error(traceback.format_exc())
             raise
 

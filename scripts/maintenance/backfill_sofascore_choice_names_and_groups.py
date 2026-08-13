@@ -1,4 +1,11 @@
-"""Backfill SofaScore historical market choice names and choice groups."""
+"""Backfill SofaScore historical market choice names and choice groups.
+
+LEGACY_PHASE8_REMOVE_OR_PORT: the current merge implementation requires both
+snapshot.choice_id (removed in Phase 6) and the MarketChoice price mirror
+(removed in Phase 7). Its schema preflight therefore blocks execution on the
+current schema. In Phase 8 either port merging to quote_id/MarketChoiceQuote or
+delete this script and its dedicated tests; never recreate the removed fields.
+"""
 
 from __future__ import annotations
 

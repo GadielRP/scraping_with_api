@@ -3,6 +3,12 @@
 This script intentionally updates only ``markets.market_name``,
 ``markets.market_group`` and ``markets.market_period``.  Choice rows, odds,
 snapshots, source lineage and canonical mapping tables are read-only here.
+
+LEGACY_PHASE8_REMOVE_OR_PORT: duplicate-market conflict resolution still
+depends on snapshot.choice_id and the old MarketChoice price mirror despite
+the normal metadata-only path above. Phase 6/7 schema preflights block that
+branch. In Phase 8 port the merge to quote lineage or remove the command and
+its tests; do not restore the legacy columns.
 """
 
 from __future__ import annotations

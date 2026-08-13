@@ -394,8 +394,8 @@ def test_service_persists_one_canonical_event_batch_with_one_session(tmp_path):
     assert market.market_period == "Full Time"
     assert [choice.choice_name for choice in choices] == ["1", "2", "x"]
     # MarketChoice is pure identity now; price state lives in MarketChoiceQuote.
-    assert all(choice.initial_odds is None for choice in choices)
-    assert all(choice.current_odds is None for choice in choices)
+    assert all(not hasattr(choice, "initial_odds") for choice in choices)
+    assert all(not hasattr(choice, "current_odds") for choice in choices)
     assert set(quotes) == {"1", "2", "x"}
     assert all(quote.initial_odds is not None for quote in quotes.values())
     assert all(quote.current_odds is None for quote in quotes.values())
@@ -422,8 +422,8 @@ def test_oddsportal_opening_and_oddspapi_current_are_order_independent(
     def save_oddspapi():
         # Production Oddspapi ingestion converges on save_canonical_bookmaker_batches
         # (docs/refactors/db-schema-odds-refactor.md, Fase 2) - that is what
-        # populates MarketChoiceQuote, unlike the legacy
-        # save_markets_from_response_with_stats used only by scripts/legacy/*.
+        # is the production boundary. The maintenance-only facade now shares
+        # the same quote-only price-state contract.
         return MarketRepository.save_canonical_bookmaker_batches(
             event_id,
             [{"bookie_id": bookie_id, "markets": _oddspapi_market_response()["markets"]}],
@@ -494,15 +494,21 @@ def test_market_not_covered_by_oddsportal_keeps_oddspapi_initial(tmp_path):
             .filter(Market.market_name == "Over/Under Full Time")
             .one()
         )
-        uncovered_choices = {
-            choice.choice_name: choice
+        uncovered_quotes = {
+            choice.choice_name: next(
+                quote
+                for quote in choice.quotes
+                if quote.source == "oddspapi"
+                and quote.exchange_side is None
+                and quote.exchange_level == 0
+            )
             for choice in uncovered_market.choices
         }
 
-    assert float(uncovered_choices["over"].initial_odds) == 1.90
-    assert float(uncovered_choices["under"].initial_odds) == 1.90
-    assert float(uncovered_choices["over"].current_odds) == 1.95
-    assert float(uncovered_choices["under"].current_odds) == 1.85
+    assert float(uncovered_quotes["over"].initial_odds) == 1.90
+    assert float(uncovered_quotes["under"].initial_odds) == 1.90
+    assert float(uncovered_quotes["over"].current_odds) == 1.95
+    assert float(uncovered_quotes["under"].current_odds) == 1.85
 
 
 @pytest.mark.parametrize(

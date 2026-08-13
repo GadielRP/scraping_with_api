@@ -521,24 +521,6 @@ class MarketChoice(Base):
     # Choice identification
     choice_name = Column(Text, nullable=False)  # "1", "x", "2", "over", "under", "yes", "no", "no_goal"
     
-    # Odds values (stored as decimals for easy math)
-    # FROZEN as of docs/refactors/db-schema-odds-refactor.md §3.2:
-    # save_canonical_bookmaker_batches (the live ingestion path for all 3
-    # providers) no longer writes these - MarketChoiceQuote is now the sole
-    # persistence target for price state. These columns keep whatever value
-    # they had before that change (stale for old rows, always NULL/0 for
-    # choices created after it) purely so non-migrated readers (odds_alert.py,
-    # odds_trajectory_context.py, drift_engine.py, dual-process view) don't
-    # crash on a missing column while Fase 5 migrates them to read
-    # MarketChoiceQuote instead. Only `save_markets_from_response_with_stats`
-    # (LEGACY_MAINTENANCE_ONLY, scripts only) still writes them. Dropped
-    # entirely in Fase 7 once Fase 5 is done.
-    initial_odds = Column(Numeric(8, 3))  # Opening odds (decimal, e.g., 1.53)
-    current_odds = Column(Numeric(8, 3))  # Current/final odds (decimal, e.g., 1.48)
-    
-    # Movement indicator: -1 = odds dropped, 0 = unchanged, +1 = odds increased
-    change = Column(Integer, default=0)
-    
     # Constraints
     __table_args__ = (
         UniqueConstraint('market_id', 'choice_name', name='unique_choice_per_market'),
@@ -550,7 +532,10 @@ class MarketChoice(Base):
     quotes = relationship("MarketChoiceQuote", back_populates="choice", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<MarketChoice(choice_id={self.choice_id}, name='{self.choice_name}', initial={self.initial_odds}, current={self.current_odds})>"
+        return (
+            f"<MarketChoice(choice_id={self.choice_id}, "
+            f"market_id={self.market_id}, name='{self.choice_name}')>"
+        )
 
 
 class MarketChoiceSnapshot(Base):

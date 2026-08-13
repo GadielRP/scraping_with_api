@@ -165,13 +165,6 @@ ALLOWLIST = (
     LegacyReadAllowance(
         "infrastructure/persistence/repositories/market/market_quote_readiness.py",
         "audit",
-        "legacy_sql_choice_state",
-        "Readiness gate proves frozen choice state is covered by quotes.",
-        "7",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_quote_readiness.py",
-        "audit",
         "legacy_sql_snapshot_identity",
         "Expanded-schema consistency gate; skipped after Phase 6 DROP.",
         "6",

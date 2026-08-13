@@ -16,8 +16,7 @@ SCHEMA_SQL = (
     """CREATE TABLE market_choices (
         choice_id INTEGER PRIMARY KEY,
         market_id INTEGER NOT NULL,
-        initial_odds NUMERIC,
-        current_odds NUMERIC
+        choice_name TEXT NOT NULL
     )""",
     """CREATE TABLE market_choice_quotes (
         quote_id INTEGER PRIMARY KEY,
@@ -28,7 +27,6 @@ SCHEMA_SQL = (
     )""",
     """CREATE TABLE market_choice_snapshots (
         snapshot_id INTEGER PRIMARY KEY,
-        choice_id INTEGER NOT NULL,
         quote_id INTEGER
     )""",
 )
@@ -48,7 +46,7 @@ def _insert_ready_fixture(engine):
         connection.execute(
             text(
                 "INSERT INTO market_choices VALUES "
-                "(10, 1, 2.0, 1.9), (20, 2, 3.0, 2.9)"
+                "(10, 1, '1'), (20, 2, '1')"
             )
         )
         connection.execute(
@@ -61,7 +59,7 @@ def _insert_ready_fixture(engine):
         connection.execute(
             text(
                 "INSERT INTO market_choice_snapshots VALUES "
-                "(10000, 10, 1000), (20000, 20, 2000)"
+                "(10000, 1000), (20000, 2000)"
             )
         )
 
@@ -97,7 +95,7 @@ def test_audit_reports_every_blocking_data_class_in_scope():
     _insert_ready_fixture(engine)
     with engine.begin() as connection:
         connection.execute(
-            text("INSERT INTO market_choices VALUES (11, 1, 4.0, 3.9)")
+            text("INSERT INTO market_choices VALUES (11, 1, '2')")
         )
         connection.execute(
             text(
@@ -110,7 +108,7 @@ def test_audit_reports_every_blocking_data_class_in_scope():
         connection.execute(
             text(
                 "INSERT INTO market_choice_snapshots VALUES "
-                "(10001, 10, NULL), (10002, 11, 1000)"
+                "(10001, NULL)"
             )
         )
 
@@ -121,14 +119,11 @@ def test_audit_reports_every_blocking_data_class_in_scope():
     assert report.ready is False
     assert {
         "unlinked_snapshot",
-        "snapshot_quote_choice_mismatch",
-        "legacy_choice_state_without_quote",
         "invalid_quote_side_or_level",
         "invalid_quote_source",
         "duplicate_quote_identity",
     } <= set(issues)
     assert issues["unlinked_snapshot"].sample_ids == (10001,)
-    assert issues["legacy_choice_state_without_quote"].sample_ids == (11,)
 
 
 class _AuditContext:
