@@ -1,5 +1,10 @@
 # Fase 5 — Cutover de lectores a `market_choice_quotes`
 
+> **Estado definitivo (2026-08-12):** cutover validado y cerrado. Las variantes
+> `legacy`/`shadow`, sus flags, comparador y vistas privadas de rollback fueron
+> retirados antes de Fase 8. Este documento conserva su diseño como historial;
+> el único contrato ejecutable es quote-aware.
+
 **Documento maestro:** [db-schema-odds-refactor.md](./db-schema-odds-refactor.md)
 
 **Backfill previo:** [Fase 4b](./db-schema-odds-refactor-phase-4b.md) y
@@ -101,10 +106,9 @@ Crear bajo `infrastructure/persistence/repositories/market/`:
 | `market_read_models.py` | DTOs inmutables y serialización; cero SQL |
 | `market_quote_read_policy.py` | Resolver prioridad de sources por campo y scope |
 | `market_read_queries.py` | Query set-based y proyección de filas a read models |
-| `market_read_comparator.py` | Normalización y clasificación shadow; cero acceso a DB |
 
-`market_repository.py` conserva temporalmente la fachada
-`get_external_markets_for_event`; no incorpora el algoritmo nuevo.
+`market_repository.py` conserva el nombre público
+`get_external_markets_for_event`, pero delega directamente al query quote-aware.
 
 ### 4.2. DTOs
 
@@ -262,23 +266,14 @@ crea una quote sintética ni se persiste el resultado fusionado.
 
 ## 6. Configuración y validación
 
-Añadir en `infrastructure/settings/config.py` un parser de enum estricto y estas
-opciones; documentarlas también en `.env.example`:
+La única configuración vigente es `ODDS_READ_PRIORITY_CONFIG`, cuyo default es
+`config/odds_read_priority.json`. El archivo define prioridades por campo y
+scope; un path ausente o un contenido inválido abortan la inicialización.
 
-| Variable | Valores | Default | Efecto |
-|---|---|---|---|
-| `EXTERNAL_ODDS_READ_MODE` | `legacy`, `shadow`, `quotes` | `legacy` | Fachada de alertas externas |
-| `PRE_START_TRAJECTORY_READ_MODE` | retirado en Fase 6 | — | Trajectory quedó fija en la vista canónica quote-aware |
-| `DUAL_PROCESS_ODDS_READ_MODE` | retirado en Fase 6 | — | Dual quedó fijo en la vista canónica quote-aware |
-| `ODDS_READ_SHADOW_SAMPLE_RATE` | decimal `[0,1]` | `1.0` en staging, explícito en prod | Muestreo determinista por `event_id` |
-| `ODDS_READ_PRIORITY_CONFIG` | path | `config/odds_read_priority.json` | Prioridad por field/scope |
-| `MARKET_CHOICE_LEGACY_STOP_WRITE_AT` | ISO-8601 UTC o vacío | vacío | Clasificar diferencias por mirror congelado |
-
-Un valor inválido aborta inicialización; no se degrada silenciosamente a otro
-modo. El muestreo se calcula con un hash estable, por ejemplo
-`crc32(str(event_id)) % 10_000 < rate * 10_000`; no usar `hash()` de Python,
-que cambia entre procesos. El path de prioridades se resuelve contra la raíz
-del proyecto y un archivo ausente/inválido también falla al arrancar.
+Se retiraron `EXTERNAL_ODDS_READ_MODE`, `PRE_START_TRAJECTORY_READ_MODE`,
+`DUAL_PROCESS_ODDS_READ_MODE`, `ODDS_READ_SHADOW_SAMPLE_RATE` y
+`MARKET_CHOICE_LEGACY_STOP_WRITE_AT`. Ya no existe selección runtime: alerts,
+trajectory y dual-process usan quotes siempre.
 
 Versionar `config/odds_read_priority.json`:
 
@@ -682,7 +677,7 @@ se limita a ejecutar el guard sobre un repo que casualmente ya está limpio.
 | Test | Cobertura mínima |
 |---|---|
 | `tests/test_market_read_queries.py` | Query set-based, merge normal, exchange split, supresión NULL, top-of-book, orden, lineage |
-| `tests/test_market_read_comparator.py` | Todas las clases y blockers shadow |
+| `tests/test_market_read_comparator.py` | Retirado junto con el comparador tras validar el cutover |
 | `tests/test_market_quote_readiness.py` | Auditoría y exit codes |
 | `tests/test_external_odds_alert_quote_read.py` | Snapshots textuales consolidado/exchange/opening-only |
 | `tests/test_odds_endpoint_404_handling.py` | Actualizar la regresión existente de OddsPortal initial-only al nuevo label/contrato |
@@ -727,7 +722,6 @@ Suite focal propuesta:
 ```bash
 python -m pytest -q \
   tests/test_market_read_queries.py \
-  tests/test_market_read_comparator.py \
   tests/test_market_quote_readiness.py \
   tests/test_external_odds_alert_quote_read.py \
   tests/test_odds_endpoint_404_handling.py \
@@ -818,8 +812,8 @@ No mezclar el cutover de dos consumidores en un mismo cambio de configuración.
 
 Fase 5 está completa únicamente cuando:
 
-- `EXTERNAL_ODDS_READ_MODE=quotes` y
-  `PRE_START_TRAJECTORY_READ_MODE=quotes` en producción.
+- Alerts externos, trajectory y dual-process usan exclusivamente el contrato
+  quote-aware, sin flags de selección.
 - La vista pública dual-process apunta a quotes y sus dependencias fueron
   recreadas/verificadas.
 - Cero snapshots clasificables sin `quote_id` en scope.
@@ -868,17 +862,8 @@ Evidencia:
 - regresión mantenida más tests nuevos: 287 verdes. La suite global antigua
   conserva fallos preexistentes documentados en el maestro §12.4.
 
-Configuración local persistida:
-
-```text
-EXTERNAL_ODDS_READ_MODE=quotes
-PRE_START_TRAJECTORY_READ_MODE=quotes
-DUAL_PROCESS_ODDS_READ_MODE=quotes
-```
-
-`MARKET_CHOICE_LEGACY_STOP_WRITE_AT` se dejó vacío deliberadamente: no se
-recibió una fecha/hora UTC exacta y no se inventa. El campo sólo afecta la
-clasificación shadow, no el path quotes activo.
+Configuración local final: no existen flags de modo. Sólo permanece la política
+versionada `ODDS_READ_PRIORITY_CONFIG`.
 
 ## 17. Cierre y transición
 
@@ -888,6 +873,22 @@ ese commit sobre la copia PostgreSQL local. Su plan, gates destructivos y
 evidencia se mantienen separados en
 [`db-schema-odds-refactor-phase-6.md`](db-schema-odds-refactor-phase-6.md).
 
-El rollback por flags descrito aquí aplica mientras el schema expandido de
-snapshots siga presente. Después del DROP slim de Fase 6, volver al schema
-anterior requiere restaurar una copia/backup; no basta cambiar un flag.
+El rollback por flags descrito en el plan original fue retirado después de la
+validación funcional. Después del DROP slim de Fase 6, volver al schema anterior
+requiere restaurar una copia/backup.
+
+## 18. Limpieza definitiva posterior a la validación
+
+Ejecutada antes de iniciar cualquier trabajo propio de Fase 8:
+
+- `MarketRepository` usa exclusivamente `MarketReadQueries` y ya no contiene
+  reader legacy, muestreo ni branches por modo;
+- el formatter sólo acepta `ExternalMarketQuoteBlock`; el contrato dict legacy
+  falla explícitamente;
+- se eliminaron `market_read_comparator.py`, sus DTOs shadow y sus tests;
+- se eliminaron el alias muerto `get_oddsportal_markets_for_event` y el script
+  de prueba obsoleto que dependía de contratos antiguos;
+- el CLI de Fase 6 ya no valida modos configurables inexistentes;
+- dual-process y trajectory conservan un único nombre/vista canónica; también
+  se retiró del script de Fase 6 la compatibilidad temporal para variantes,
+  después de eliminarlas de la base local y confirmar que no existen en server.

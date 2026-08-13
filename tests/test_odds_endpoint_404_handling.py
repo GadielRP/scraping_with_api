@@ -6,6 +6,10 @@ import pytest
 import modules.oddspapi.client as oddspapi_client_module
 
 from infrastructure.persistence.repositories import EventOddsSourceState
+from infrastructure.persistence.repositories.market.market_read_models import (
+    ExternalChoiceQuote,
+    ExternalMarketQuoteBlock,
+)
 from modules.alerts.alerts_formatter.odds_alert import (
     _format_external_markets_section,
 )
@@ -1207,19 +1211,24 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
 
 def test_oddsportal_initial_only_choices_are_not_rendered_as_fully_missing():
     external_markets = [
-        {
-            "source": "oddsportal",
-            "bookie_name": "Betfair Exchange",
-            "choice_group": "Back",
-            "market_name": "Home/Away Full Time Including Overtime",
-            "market_group": "Home/Away",
-            "market_period": "Full Time Including Overtime",
-            "is_live": False,
-            "choices": [
-                {"name": "1", "initial": 1.89, "current": None, "movement": "="},
-                {"name": "2", "initial": 1.72, "current": None, "movement": "="},
-            ],
-        }
+        ExternalMarketQuoteBlock(
+            market_id=1,
+            bookie_id=2,
+            bookie_name="Betfair Exchange",
+            market_name="Home/Away Full Time Including Overtime",
+            market_group="Home/Away",
+            market_period="Full Time Including Overtime",
+            choice_group=None,
+            is_live=False,
+            aggregation="exchange",
+            source="oddsportal",
+            exchange_side="back",
+            contributing_sources=("oddsportal",),
+            choices=(
+                ExternalChoiceQuote(1, "1", 0, 1.89, None, None, None, None),
+                ExternalChoiceQuote(2, "2", 0, 1.72, None, None, None, None),
+            ),
+        )
     ]
 
     message = _format_external_markets_section(external_markets)

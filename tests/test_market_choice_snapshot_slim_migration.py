@@ -5,7 +5,6 @@ from sqlalchemy import create_engine
 from infrastructure.persistence.migrations.market_choice_snapshot_slim import (
     LEGACY_INDEXES,
     REDUNDANT_COLUMNS,
-    RETIRED_ODDS_READ_VIEWS,
     SCRIPT_MANAGED_DEPENDENT_VIEWS,
     SLIM_COLUMNS,
     MarketChoiceSnapshotSlimMigrator,
@@ -146,7 +145,6 @@ def test_cli_commit_refreshes_mv_before_reader_postflight(monkeypatch):
     calls = []
     slim = MarketChoiceSnapshotSlimMigrator.audit(_slim_engine())
     monkeypatch.setattr(cli.Config, "validate_odds_read_settings", lambda: None)
-    monkeypatch.setattr(cli, "_assert_quote_modes", lambda: None)
     monkeypatch.setattr(
         cli.MarketChoiceSnapshotSlimMigrator,
         "audit",
@@ -161,11 +159,6 @@ def test_cli_commit_refreshes_mv_before_reader_postflight(monkeypatch):
         cli,
         "create_or_replace_odds_read_views",
         lambda _engine: calls.append("views"),
-    )
-    monkeypatch.setattr(
-        cli.MarketChoiceSnapshotSlimMigrator,
-        "retire_odds_read_variants_postgresql",
-        lambda _engine: calls.append("retire_odds_views") or RETIRED_ODDS_READ_VIEWS,
     )
     monkeypatch.setattr(
         cli,
@@ -187,7 +180,7 @@ def test_cli_commit_refreshes_mv_before_reader_postflight(monkeypatch):
     )
 
     assert cli.main(["--commit", "--confirm-destructive"]) == 0
-    assert calls == ["views", "retire_odds_views", "refresh_mv", "postflight"]
+    assert calls == ["views", "refresh_mv", "postflight"]
 
 
 def test_postflight_covers_all_snapshot_dependent_reader_contracts():
@@ -197,47 +190,6 @@ def test_postflight_covers_all_snapshot_dependent_reader_contracts():
         "v_pre_start_odds_trajectory",
         "mv_alert_events",
     }
-
-
-def test_phase6_owns_odds_read_variant_removal_without_cascade():
-    class _Dialect:
-        name = "postgresql"
-
-    class _Connection:
-        def __init__(self):
-            self.statements = []
-
-        def exec_driver_sql(self, statement):
-            self.statements.append(statement)
-
-    class _Transaction:
-        def __init__(self, connection):
-            self.connection = connection
-
-        def __enter__(self):
-            return self.connection
-
-        def __exit__(self, *_args):
-            return False
-
-    class _Engine:
-        dialect = _Dialect()
-
-        def __init__(self):
-            self.connection = _Connection()
-
-        def begin(self):
-            return _Transaction(self.connection)
-
-    engine = _Engine()
-    MarketChoiceSnapshotSlimMigrator.retire_odds_read_variants_postgresql(engine)
-    rendered = "\n".join(engine.connection.statements)
-
-    assert "CASCADE" not in rendered.upper()
-    assert rendered.upper().count("DROP VIEW IF EXISTS") == len(
-        RETIRED_ODDS_READ_VIEWS
-    )
-    assert all(view_name in rendered for view_name in RETIRED_ODDS_READ_VIEWS)
 
 
 def test_application_startup_is_fail_closed_on_schema_error(monkeypatch):

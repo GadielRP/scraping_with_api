@@ -11,11 +11,6 @@ from typing import Iterable
 
 from sqlalchemy import bindparam, text
 
-from infrastructure.persistence.migrations.market_choice_snapshot_slim import (
-    RETIRED_ODDS_READ_VIEWS,
-)
-
-
 REQUIRED_EVENT_READERS = {
     "v_dual_process_event_odds": "event_id",
     # event_all_odds intentionally exposes no identifier; its contract is a
@@ -31,7 +26,6 @@ class SnapshotSlimReaderPostflight:
     event_scope: tuple[int, ...]
     row_counts: dict[str, int]
     quote_reader_targets: dict[str, str]
-    retired_views_present: tuple[str, ...]
     errors: tuple[str, ...]
 
     @property
@@ -56,7 +50,6 @@ class MarketChoiceSnapshotSlimPostflight:
         scope = tuple(sorted({int(item) for item in event_ids}))
         row_counts: dict[str, int] = {}
         quote_reader_targets: dict[str, str] = {}
-        retired_views_present: list[str] = []
         errors: list[str] = []
 
         for reader, event_column in REQUIRED_EVENT_READERS.items():
@@ -103,20 +96,10 @@ class MarketChoiceSnapshotSlimPostflight:
                         errors.append(
                             f"reader_not_quotes:{reader}:{expected_target}"
                         )
-                for view_name in RETIRED_ODDS_READ_VIEWS:
-                    relation = connection.execute(
-                        text("SELECT to_regclass(:relation_name)"),
-                        {"relation_name": f"public.{view_name}"},
-                    ).scalar()
-                    if relation is not None:
-                        retired_views_present.append(view_name)
-                        errors.append(f"retired_view_still_present:{view_name}")
-
         return SnapshotSlimReaderPostflight(
             event_scope=scope,
             row_counts=row_counts,
             quote_reader_targets=quote_reader_targets,
-            retired_views_present=tuple(retired_views_present),
             errors=tuple(errors),
         )
 

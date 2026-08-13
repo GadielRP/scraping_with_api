@@ -82,7 +82,7 @@ class EventAlertProcessor:
         is_selected_source = discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
 
         # 1. Synchronization (Wait for external data providers if necessary)
-        op_data = self._sync_oddsportal_data(event_obj, odds_response)
+        self._sync_oddsportal_data(event_obj, odds_response)
 
         # 2. Evaluation (Perform analysis and generate prediction reports)
         streak_analysis = None
@@ -129,20 +129,19 @@ class EventAlertProcessor:
             season_id=season_id,
             minutes_until_start=minutes_until_start,
             odds_response=odds_response,
-            op_data=op_data,
             streak_analysis=streak_analysis,
             should_send_streak=should_send_streak,
             dual_report=dual_report,
         )
 
-    def _sync_oddsportal_data(self, event_obj, odds_response) -> Optional[dict]:
-        """Handles waiting for OddsPortal workers and retrieving market data."""
+    def _sync_oddsportal_data(self, event_obj, odds_response) -> None:
+        """Wait for OddsPortal persistence and release its cached payload."""
         if not (odds_response and self.op_event_ids and event_obj.id in self.op_event_ids and self.op_event_states):
-            return None
+            return
 
         state = self.op_event_states.get(event_obj.id)
         if not state:
-            return None
+            return
 
         # Wait for worker claim
         if not state["done_event"].is_set():
@@ -205,7 +204,8 @@ class EventAlertProcessor:
 
         # Transfer ownership to this evaluation so completed scrape trees do
         # not remain retained by the cycle context.
-        return self.op_data_cache.pop(event_obj.id, None) if self.op_data_cache else None
+        if self.op_data_cache:
+            self.op_data_cache.pop(event_obj.id, None)
 
     def _ensure_matchup_streak_analysis(
         self, event_payload: dict, event_obj, event_context, season_id, minutes_until_start: int
@@ -263,7 +263,6 @@ class EventAlertProcessor:
         season_id,
         minutes_until_start: int,
         odds_response: Optional[dict],
-        op_data: Optional[dict],
         streak_analysis: Optional[dict],
         should_send_streak: bool,
         dual_report: Optional[dict],
@@ -282,7 +281,7 @@ class EventAlertProcessor:
                 "season_id": season_id,
                 "competition_id": event_context.competition.competition_id,
             }
-            send_odds_alert(event_data_for_odds, odds_response, minutes_until_start, op_data=op_data)
+            send_odds_alert(event_data_for_odds, odds_response, minutes_until_start)
 
         # 2. Matchup Streak Alerts
         if streak_analysis and should_send_streak:

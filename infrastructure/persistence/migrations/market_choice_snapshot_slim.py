@@ -41,15 +41,6 @@ LEGACY_INDEXES = (
     "idx_market_choice_snapshots_source_market",
 )
 QUOTE_INDEX = "idx_market_choice_snapshots_quote_collected"
-# PHASE8_CLEANUP: transitional compatibility for local/staging databases that
-# ran the original Phase 5 rollout. Production may never have these views;
-# DROP VIEW IF EXISTS deliberately makes that direct upgrade a no-op here.
-RETIRED_ODDS_READ_VIEWS = (
-    "v_dual_process_event_odds_legacy",
-    "v_dual_process_event_odds_quotes",
-    "v_pre_start_odds_trajectory_legacy",
-    "v_pre_start_odds_trajectory_quotes",
-)
 # These canonical views may still be their pre-Phase-5 definitions when a
 # server upgrades directly. The CLI replaces both with quote-aware SQL before
 # taking the table lock and applying the destructive DDL. Any other dependency
@@ -455,29 +446,10 @@ class MarketChoiceSnapshotSlimMigrator:
                 "VACUUM (FULL, ANALYZE) public.market_choice_snapshots"
             )
 
-    @staticmethod
-    def retire_odds_read_variants_postgresql(engine) -> tuple[str, ...]:
-        """Remove optional Phase 5 rollout views after installing the canonical view.
-
-        PHASE8_CLEANUP: delete this compatibility operation once every database
-        has crossed Phase 6. ``IF EXISTS`` is required because production can
-        upgrade without ever having installed either private dual view.
-        """
-        if engine.dialect.name != "postgresql":
-            raise ValueError("Odds-read view retirement requires PostgreSQL")
-        with engine.begin() as connection:
-            for view_name in RETIRED_ODDS_READ_VIEWS:
-                connection.exec_driver_sql(
-                    f'DROP VIEW IF EXISTS public."{view_name}"'
-                )
-        return RETIRED_ODDS_READ_VIEWS
-
-
 __all__ = [
     "LEGACY_INDEXES",
     "MarketChoiceSnapshotSlimMigrator",
     "REDUNDANT_COLUMNS",
-    "RETIRED_ODDS_READ_VIEWS",
     "SCRIPT_MANAGED_DEPENDENT_VIEWS",
     "SLIM_COLUMNS",
     "SnapshotSlimAudit",

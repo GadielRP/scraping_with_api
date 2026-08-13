@@ -1,7 +1,8 @@
 # Fase 6 — `market_choice_snapshots` slim
 
 **Estado:** implementación y migración local completadas; servidor pendiente de ventana operativa.
-**Commit base:** `67b1d3f`.
+**Commit base desplegable (Fases 5/6):** `fa07c5b` más el commit de cierre de
+readers descrito en este documento.
 **Fecha de inicio:** 2026-08-12.
 
 ## 1. Resultado buscado
@@ -32,7 +33,8 @@ snapshot
 ## 2. Fuera de alcance
 
 - No eliminar todavía `MarketChoice.initial_odds/current_odds/change`; Fase 7.
-- No borrar toda la fachada/readers legacy; Fase 8.
+- No iniciar el cleanup general de writers/scripts legacy; Fase 8. Los readers
+  transitorios de Fase 5 sí se retiraron al cerrar su validación.
 - No limpiar automáticamente markets/choices Back/Lay históricos.
 - No aplicar el DDL al servidor antes de cerrar la observación operativa de
   Fase 5.
@@ -142,8 +144,8 @@ necesariamente los bytes históricos originales de cada columna.
 
 - Antes del DROP: rollback = desplegar el commit de Fase 5; no hubo pérdida.
 - Después del DROP: rollback estructural = restaurar backup/copia pre-6.
-- Los flags legacy/shadow no restauran columnas. Dual process y trajectory ya
-  no tienen flags ni variantes legacy.
+- No existen flags legacy/shadow. Alerts externos, dual-process y trajectory
+  usan exclusivamente readers canónicos quote-aware.
 - Un lock, timeout, fila sin lineage o dependencia desconocida aborta toda la
   transacción.
 - Nunca se usa `DROP ... CASCADE`.
@@ -169,8 +171,9 @@ copia local.
 
 ## 9. Runbook único local/servidor
 
-Prerrequisitos: release Fase 6 disponible, jobs detenidos, backup/copia
-pre-6 confirmado y los modos configurables restantes en `quotes`.
+Prerrequisitos: release Fase 6 disponible, jobs detenidos y backup/copia pre-6
+confirmado. No se configura ningún modo de lectura: el código sólo admite
+quotes.
 
 ```powershell
 # 1. Inspección read-only. Exit 0 = expanded listo o slim idempotente.
@@ -189,25 +192,16 @@ python -m scripts.maintenance.migrate_market_choice_snapshots_slim `
 ```
 
 No arrancar la aplicación entre el deploy del código Fase 6 y el paso 2. El
-paso 2 es idempotente: instala las vistas canónicas quote-aware, elimina las
-variantes dual y trajectory con `DROP VIEW IF EXISTS` y sin `CASCADE`, refresca
+paso 2 es idempotente: instala las vistas canónicas quote-aware, refresca
 `mv_alert_events` y ejecuta el postflight. También consulta `event_all_odds`.
 Por defecto usa
 `158955` y `169158`; se puede repetir
 `--reference-event-id` para sustituir ese scope.
 
-Existen dos caminos soportados por el mismo script:
-
-- Local/staging que ejecutó la Fase 5 anterior: las cuatro vistas privadas
-  dual/trajectory pueden existir y se retiran.
-- Servidor sin Fases 5/6 en DB: se crea directamente la vista dual canónica y
-  ambos `DROP VIEW IF EXISTS` son no-op. La migración nunca exige que las
-  variantes hayan existido.
-
-El bloque `RETIRED_ODDS_READ_VIEWS`/
-`retire_odds_read_variants_postgresql` está marcado `PHASE8_CLEANUP`: sólo
-compatibiliza bases que ya recibieron el rollout local anterior y se elimina
-cuando todos los entornos hayan cruzado Fase 6.
+La base local ya no contiene variantes privadas y el servidor aún no recibió
+Fases 5/6. Por ello el script crea directamente los nombres canónicos y se
+retiró también el bloque transitorio `RETIRED_ODDS_READ_VIEWS`/
+`retire_odds_read_variants_postgresql`; no queda código de cleanup diferido.
 
 ## 10. Evidencia local final
 

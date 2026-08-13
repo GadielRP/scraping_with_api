@@ -128,12 +128,10 @@ tests/*
 !tests/test_save_canonical_bookmaker_batches_quotes.py
 !tests/test_market_read_queries.py
 !tests/test_market_quote_read_policy.py
-!tests/test_market_read_comparator.py
 !tests/test_market_quote_readiness.py
 !tests/test_external_odds_alert_quote_read.py
 !tests/test_odds_trajectory_repository.py
 !tests/test_odds_trajectory_quote_view.py
-!tests/test_dual_process_quote_view.py
 !tests/test_dual_process_market_odds_read_migration.py
 !tests/test_no_legacy_odds_reads.py
 !tests/test_market_choice_snapshot_slim_migration.py

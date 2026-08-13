@@ -59,18 +59,6 @@ def _write_payload(payload: dict, output_path: Optional[Path]) -> None:
         output_path.write_text(rendered + "\n", encoding="utf-8")
 
 
-def _assert_quote_modes() -> None:
-    modes = {
-        "EXTERNAL_ODDS_READ_MODE": Config.EXTERNAL_ODDS_READ_MODE,
-    }
-    invalid = {name: value for name, value in modes.items() if value != "quotes"}
-    if invalid:
-        raise ValueError(
-            "Phase 6 requires every configurable odds consumer in quotes mode: "
-            + ", ".join(f"{name}={value}" for name, value in invalid.items())
-        )
-
-
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     if args.compact and not args.commit:
@@ -93,7 +81,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 3
     try:
         Config.validate_odds_read_settings()
-        _assert_quote_modes()
         before = MarketChoiceSnapshotSlimMigrator.audit(db_manager.engine)
         payload = {"ok": not before.blockers, "mode": "dry-run", "before": before.to_dict()}
         if not args.commit:
@@ -101,11 +88,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0 if before.ready_to_migrate or before.is_slim else 2
 
         create_or_replace_odds_read_views(db_manager.engine)
-        cleanup_targets = (
-            MarketChoiceSnapshotSlimMigrator.retire_odds_read_variants_postgresql(
-                db_manager.engine
-            )
-        )
         before, after = MarketChoiceSnapshotSlimMigrator.apply_postgresql(
             db_manager.engine,
             lock_timeout_ms=args.lock_timeout_ms,
@@ -136,7 +118,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "mode": "commit",
             "compacted": compacted,
             "materialized_views_refreshed": True,
-            "odds_read_variant_cleanup_targets": list(cleanup_targets),
             "before": before.to_dict(),
             "after": after.to_dict(),
         }

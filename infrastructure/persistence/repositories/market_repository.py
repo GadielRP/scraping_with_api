@@ -1,7 +1,5 @@
 import logging
 import re
-import time
-import zlib
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Dict
@@ -1369,196 +1367,36 @@ class MarketRepository:
             logger.error(f"Error getting markets for event {event_id}: {e}")
             return []
 
-    # LEGACY_ODDS_READ: reads frozen choice odds and obtains source from quote
-    # identity. Snapshots remain pure ticks even for this rollback reader.
-    # Retained only for shadow/rollback during Phase 5; remove in Phase 8.
-    @staticmethod
-    def _get_external_markets_legacy(event_id: int) -> List[Dict]:
-        """
-        Fetch external bookmaker markets for a specific event (bookie_id != 1).
-        
-        Extracts market choices, odds movement, and snapshot source information
-        for all non-primary bookies.
-        """
-        try:
-            from sqlalchemy.orm import joinedload
-            with db_manager.get_session() as session:
-                markets = (
-                    session.query(Market)
-                    .options(joinedload(Market.choices), joinedload(Market.bookie))
-                    .filter(
-                        Market.event_id == event_id,
-                        Market.bookie_id.isnot(None),
-                        Market.bookie_id != 1
-                    )
-                    .all()
-                )
-
-                result = []
-                for market in markets:
-                    bookie_name = market.bookie.name if market.bookie else "Unknown"
-                    choices_data = []
-                    for choice in sorted(market.choices, key=lambda c: c.choice_name):
-                        initial = float(choice.initial_odds) if choice.initial_odds is not None else None
-                        current = float(choice.current_odds) if choice.current_odds is not None else None
-                        if initial is not None and current is not None:
-                            if current > initial:
-                                movement = '↑'
-                            elif current < initial:
-                                movement = '↓'
-                            else:
-                                movement = '='
-                        elif current is not None:
-                            movement = '='
-                        else:
-                            movement = '='
-                        choices_data.append({
-                            'name': choice.choice_name,
-                            'initial': initial,
-                            'current': current,
-                            'movement': movement
-                        })
-
-                    # Determine source from quote identity. Phase 6 removes all
-                    # identity columns from market_choice_snapshots.
-                    source = "oddsportal"
-                    if market.choices:
-                        first_choice = market.choices[0]
-                        quote = (
-                            session.query(MarketChoiceQuote)
-                            .filter(MarketChoiceQuote.choice_id == first_choice.choice_id)
-                            .order_by(
-                                MarketChoiceQuote.current_updated_at.desc(),
-                                MarketChoiceQuote.quote_id.desc(),
-                            )
-                            .first()
-                        )
-                        if quote and quote.source:
-                            source = quote.source
-
-                    result.append({
-                        'bookie_name': bookie_name,
-                        'choice_group': market.choice_group,
-                        'market_name': market.market_name,
-                        'market_group': market.market_group,
-                        'market_period': market.market_period,
-                        'is_live': market.is_live,
-                        'choices': choices_data,
-                        'source': source
-                    })
-
-                def sort_key(m):
-                    group_order = {'1X2': 1, 'Asian Handicap': 2, 'Over/Under': 3}
-                    mg_order = group_order.get(m.get('market_group', ''), 4)
-                    period_order = {'Full Time': 1, '1st Half': 2, '2nd Half': 3}
-                    mp_order = period_order.get(m.get('market_period', ''), 4)
-                    bookie_is_betfair = 1 if 'betfair' in m['bookie_name'].lower() else 0
-                    cg = m.get('choice_group') or ''
-                    return (mg_order, mp_order, cg, bookie_is_betfair, m['bookie_name'])
-
-                result.sort(key=sort_key)
-                return result
-        except Exception as e:
-            logger.error(f"Error getting external markets for event {event_id}: {e}")
-            return []
-
-    @staticmethod
-    def _is_shadow_sampled(event_id: int, sample_rate: float) -> bool:
-        if sample_rate <= 0:
-            return False
-        if sample_rate >= 1:
-            return True
-        bucket = zlib.crc32(str(int(event_id)).encode("ascii")) % 10_000
-        return bucket < int(sample_rate * 10_000)
-
     @staticmethod
     def get_external_markets_for_event(event_id: int):
-        """Read external markets through the Phase 5 cutover facade.
-
-        ``legacy`` returns the historical dict contract, ``shadow`` returns the
-        same contract while comparing quotes, and ``quotes`` returns typed
-        ``ExternalMarketQuoteBlock`` instances.
-        """
+        """Return the canonical quote-aware external market blocks."""
         from infrastructure.persistence.repositories.market.market_quote_read_policy import (
             load_quote_read_priority_policy,
         )
-        from infrastructure.persistence.repositories.market.market_read_comparator import (
-            compare_external_market_reads,
-        )
         from infrastructure.persistence.repositories.market.market_read_queries import (
             MarketReadQueries,
         )
         from infrastructure.settings import Config
 
-        mode = Config.EXTERNAL_ODDS_READ_MODE
-        if mode == "legacy":
-            return MarketRepository._get_external_markets_legacy(event_id)
-
         policy = load_quote_read_priority_policy(Config.ODDS_READ_PRIORITY_CONFIG)
-        if mode == "quotes":
-            result = MarketReadQueries.get_external_market_quotes_for_event(event_id, policy)
-            blocking = [item.code for item in result.diagnostics if item.blocking]
-            if blocking:
-                logger.error(
-                    "Quote-aware external odds read produced blocking diagnostics "
-                    "event_id=%s codes=%s",
-                    event_id,
-                    sorted(set(blocking)),
-                )
-            return list(result.blocks)
-
-        legacy_started = time.perf_counter()
-        legacy = MarketRepository._get_external_markets_legacy(event_id)
-        legacy_duration_ms = (time.perf_counter() - legacy_started) * 1000
-        if not MarketRepository._is_shadow_sampled(
-            event_id, Config.ODDS_READ_SHADOW_SAMPLE_RATE
-        ):
-            return legacy
-
-        quote_started = time.perf_counter()
         result = MarketReadQueries.get_external_market_quotes_for_event(event_id, policy)
-        quote_duration_ms = (time.perf_counter() - quote_started) * 1000
-        comparison = compare_external_market_reads(
-            event_id=event_id,
-            legacy_markets=legacy,
-            quote_blocks=result.blocks,
-            quote_diagnostics=result.diagnostics,
-            legacy_stop_write_at=Config.MARKET_CHOICE_LEGACY_STOP_WRITE_AT,
-            legacy_duration_ms=legacy_duration_ms,
-            quote_duration_ms=quote_duration_ms,
-        )
-        fields = comparison.as_log_fields()
-        if result.has_blocking_diagnostics or comparison.blocking_count:
-            logger.warning("Quote read shadow mismatch: %s", fields)
-        else:
-            logger.info("Quote read shadow comparison: %s", fields)
-        return legacy
+        blocking = [item.code for item in result.diagnostics if item.blocking]
+        if blocking:
+            logger.error(
+                "Quote-aware external odds read produced blocking diagnostics "
+                "event_id=%s codes=%s",
+                event_id,
+                sorted(set(blocking)),
+            )
+        return list(result.blocks)
 
     @staticmethod
     def has_external_markets_for_event(event_id: int) -> bool:
-        """Cheap availability check matching the active read mode."""
+        """Check availability through the canonical quote-aware reader."""
         from infrastructure.persistence.repositories.market.market_read_queries import (
             MarketReadQueries,
         )
-        from infrastructure.settings import Config
-
-        if Config.EXTERNAL_ODDS_READ_MODE == "quotes":
-            return MarketReadQueries.has_external_market_quotes_for_event(event_id)
-        with db_manager.get_session() as session:
-            return (
-                session.query(Market.market_id)
-                .filter(
-                    Market.event_id == int(event_id),
-                    Market.bookie_id.isnot(None),
-                    Market.bookie_id != 1,
-                )
-                .first()
-                is not None
-            )
-
-    # LEGACY_DEAD_CODE: backwards-compat alias, no call sites found repo-wide.
-    # Scheduled for removal in Fase 8. Ver docs/refactors/db-schema-odds-refactor.md §8.
-    get_oddsportal_markets_for_event = get_external_markets_for_event
+        return MarketReadQueries.has_external_market_quotes_for_event(event_id)
 
     @staticmethod
     def get_market_count(event_id: int) -> int:

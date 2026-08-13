@@ -103,6 +103,6 @@ def test_current_only_does_not_fabricate_movement():
     assert "2.05=" not in message
 
 
-def test_formatter_rejects_mixed_contracts():
+def test_formatter_rejects_legacy_dict_contract():
     with pytest.raises(TypeError):
-        _format_external_markets_section([_block(choices=()), {"choices": []}])
+        _format_external_markets_section([{"choices": []}])

@@ -2,7 +2,7 @@ import os
 import ast
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -95,38 +95,6 @@ def _parse_env_bool_alias(primary_name, alias_name, default_value=False):
     if os.getenv(primary_name) is not None:
         return _parse_env_bool(primary_name, default_value)
     return _parse_env_bool(alias_name, default_value)
-
-
-def _parse_env_choice(env_name, allowed_values, default_value):
-    allowed = {str(item).strip().lower() for item in allowed_values}
-    value = str(os.getenv(env_name, default_value)).strip().lower()
-    if value not in allowed:
-        raise ValueError(
-            f"{env_name} must be one of {sorted(allowed)}; received {value!r}"
-        )
-    return value
-
-
-def _parse_env_rate(env_name, default_value):
-    value = float(os.getenv(env_name, str(default_value)))
-    if not 0.0 <= value <= 1.0:
-        raise ValueError(f"{env_name} must be between 0 and 1")
-    return value
-
-
-def _parse_optional_utc_datetime(env_name):
-    raw = str(os.getenv(env_name, "")).strip()
-    if not raw:
-        return None
-    normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-    try:
-        value = datetime.fromisoformat(normalized)
-    except ValueError as exc:
-        raise ValueError(f"{env_name} must be an ISO-8601 UTC timestamp") from exc
-    if value.tzinfo is None or value.utcoffset() != timezone.utc.utcoffset(value):
-        raise ValueError(f"{env_name} must include the UTC offset Z or +00:00")
-    # PostgreSQL columns in this project are timestamp-without-time-zone values.
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _parse_env_float_map(env_name, default_value=None):
@@ -421,20 +389,10 @@ class Config:
 
     PERIODS_DUAL_PROCESS = _parse_env_list_alias('PERIODS_DUAL_PROCESS', 'periods_dual_process', ['Full Time'])
 
-    # External alert presentation remains the only configurable Phase 5
-    # consumer. Dual process and trajectory are permanently quote-aware.
-    EXTERNAL_ODDS_READ_MODE = _parse_env_choice(
-        'EXTERNAL_ODDS_READ_MODE', {'legacy', 'shadow', 'quotes'}, 'legacy'
-    )
-    ODDS_READ_SHADOW_SAMPLE_RATE = _parse_env_rate(
-        'ODDS_READ_SHADOW_SAMPLE_RATE', 1.0
-    )
+    # All Phase 5 readers are permanently quote-aware.
     ODDS_READ_PRIORITY_CONFIG = os.getenv(
         'ODDS_READ_PRIORITY_CONFIG',
         str(Path(__file__).resolve().parents[2] / 'config' / 'odds_read_priority.json'),
-    )
-    MARKET_CHOICE_LEGACY_STOP_WRITE_AT = _parse_optional_utc_datetime(
-        'MARKET_CHOICE_LEGACY_STOP_WRITE_AT'
     )
 
     @staticmethod

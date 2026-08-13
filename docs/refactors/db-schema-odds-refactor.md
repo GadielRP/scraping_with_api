@@ -105,7 +105,7 @@ Antes de tocar nada, esto es lo que confirmé leyendo `market_odds_ingestion_ser
 | `MarketRepository._save_oddsportal_market` | Solo desde `save_markets_from_oddsportal` (muerto) | **MUERTO** |
 | `MarketRepository._build_choice_payload` | Solo desde `_save_oddsportal_market` (muerto) | **MUERTO** |
 | `MarketRepository.save_markets_from_response` (sin `_with_stats`) | `scripts/legacy/*.py`, `scripts/sport_seasons_processing.py` | **VIVO pero solo para scripts de mantenimiento**, no en el pipeline de ingesta en tiempo real |
-| `MarketRepository.get_oddsportal_markets_for_event` | Alias declarado, sin call sites propios encontrados | **MUERTO/alias redundante** |
+| `MarketRepository.get_oddsportal_markets_for_event` | Alias sin call sites; retirado al cerrar Fase 5 | **ELIMINADO** |
 
 **Implicación clave para el diseño:** el hecho de que `save_canonical_bookmaker_batches` (la ruta "nueva"/canónica, usada por OddsPortal) **nunca recibió** la lógica de exchange quotes que sí tiene `save_markets_from_response_with_stats` (la ruta "vieja", usada por Oddspapi) es en sí mismo un segundo bug de diseño, independiente del de `choice_group`: son dos implementaciones casi paralelas de "upsert market+choice+snapshot" con funcionalidades distintas. Este refactor las converge en una sola.
 
@@ -385,7 +385,7 @@ infrastructure/persistence/repositories/market_repository.py
 | `MarketRepository.save_markets_from_response_with_stats` | `market_repository.py:165` | **Hecho (Fase 2):** se retiran sus 3 call sites en `market_odds_ingestion_service.py`; queda documentada como `LEGACY_MAINTENANCE_ONLY` (no shim, sigue con su propio código porque scripts de mantenimiento la llaman directo vía `save_markets_from_response`) | sin cambio de nombre; eliminar en Fase 8 solo si se migran también los scripts de mantenimiento |
 | `MarketRepository.save_canonical_bookmaker_batches` | `market_repository.py` | **Extendido (Fases 2 y 4a):** orquestador para las 3 fuentes; delega quotes y snapshots a sus writers SRP. `MarketIdentityResolver`/`MarketChoiceWriter` siguen pendientes | sin cambio de nombre público |
 | `MarketRepository.get_external_markets_for_event` | `market_repository.py:894` | **Reemplazar** lógica de `source` "adivinado" desde snapshot (líneas 940-951) | `market/market_read_queries.py::MarketReadQueries.get_external_market_quotes_for_event(event_id)` — quote-aware, agrupa por `(bookie, choice, source, exchange_side)` |
-| `MarketRepository.get_oddsportal_markets_for_event` (alias) | `market_repository.py:980` | **Legacy, borrar** | eliminar en Fase 8 |
+| `MarketRepository.get_oddsportal_markets_for_event` (alias) | eliminado | **Retirado al cerrar Fase 5** | no queda pendiente |
 | `MarketRepository.get_markets_for_event`, `get_market_count`, `delete_markets_for_event` | `market_repository.py:882,983,1223` | **Mover** (sin cambio de nombre/firma) | `market/market_read_queries.py` / `market/market_lifecycle.py` |
 | `MarketRepository.save_markets_from_oddsportal` | `market_repository.py:1047` | **Legacy muerto — borrar directo**, ya no tiene call sites | eliminar en Fase 8 |
 | `MarketRepository._save_oddsportal_market` | `market_repository.py:1007` | **Legacy muerto — borrar directo** | eliminar en Fase 8 |
@@ -409,7 +409,9 @@ Cada fase es un PR independiente. Cuando una fase tiene subfases explícitas
 ### Fase 0 — Preparación y freeze de contrato
 
 - [ ] Congelar este documento como fuente de verdad; cualquier cambio de diseño lo actualiza primero.
-- [ ] Confirmar con búsqueda global (ya hecho, ver [§3](#3-inventario-actual-código-vivo-vs-legacy)) que `save_markets_from_oddsportal`, `_save_oddsportal_market`, `_build_choice_payload`, `get_oddsportal_markets_for_event` no tienen call sites nuevos antes de tocarlos.
+- [x] El alias `get_oddsportal_markets_for_event` se confirmó sin call sites y
+  fue eliminado al cerrar Fase 5. Los tres writers restantes conservan su
+  cleanup independiente en Fase 8.
 - [ ] Marcar esas 4 funciones con comentario `# LEGACY_DEAD_CODE: sin call sites activos, ver docs/refactors/db-schema-odds-refactor.md §8 Fase 8` (cambio de 1 línea, cero riesgo, deja rastro para cualquier dev que llegue a la rama).
 - [ ] Snapshot de evento(s) de referencia (ej. `158955`) para regresión manual en cada fase.
 
@@ -1088,8 +1090,8 @@ nueva funcionalidad.
 | `save_markets_from_oddsportal` | `market_repository.py` | ninguno (muerto) |
 | `_save_oddsportal_market` | idem | ninguno |
 | `_build_choice_payload` | idem | ninguno |
-| `get_oddsportal_markets_for_event` | idem | alias sin call sites |
-| `get_external_markets_for_event` | idem, `LEGACY_ODDS_READ` | alertas externas; migrar a `MarketReadQueries` en Fase 5 y borrar en Fase 8 |
+| `get_oddsportal_markets_for_event` | eliminado al cerrar Fase 5 | sin call sites |
+| `get_external_markets_for_event` | canónico quote-aware | alertas externas; delega a `MarketReadQueries` sin branches |
 | `save_markets_from_response_with_stats` | idem | solo vía `save_markets_from_response` + scripts abajo |
 | `save_markets_from_response` | idem | scripts de mantenimiento; migrar y eliminar, no conservar como compatibilidad |
 
@@ -1448,24 +1450,25 @@ ORDER BY b.name, m.market_name, m.choice_group NULLS FIRST,
 
 **Fecha de implementación local:** 2026-08-12.  Esta sección es el estado
 vigente; los inventarios de §§3 y 11 se conservan como historial de decisiones.
+El cutover ya fue validado: sus mecanismos temporales legacy/shadow se retiraron
+ahora y no forman parte del trabajo pendiente de Fase 8.
 
 ### 12.1. Mapa de responsabilidades post-cutover
 
 | Capa | Módulo | Responsabilidad única |
 |---|---|---|
-| Configuración | `infrastructure/settings/config.py`, `config/odds_read_priority.json` | Validar flags, sample rate, boundary UTC y política versionada de prioridad por campo |
+| Configuración | `infrastructure/settings/config.py`, `config/odds_read_priority.json` | Validar únicamente la política versionada de prioridad por campo |
 | Contrato | `repositories/market/market_read_models.py` | DTOs inmutables con identidad y provenance; cero SQL/formato |
 | Política | `repositories/market/market_quote_read_policy.py` | Resolver prioridad default y overrides por sport/bookie |
 | Query de alertas | `repositories/market/market_read_queries.py` | Una consulta set-based y proyección determinista normal/exchange |
-| Shadow | `repositories/market/market_read_comparator.py` | Comparación pura y clasificación de diferencias; cero acceso a DB |
 | Readiness | `repositories/market/market_quote_readiness.py`, `scripts/maintenance/audit_market_quote_readiness.py` | Gates read-only de schema, coverage, lineage e identidad |
-| Fachada temporal | `repositories/market_repository.py` | Selección `legacy/shadow/quotes`; delega el algoritmo nuevo |
+| Fachada canónica | `repositories/market_repository.py` | Delega directamente el contrato externo a `MarketReadQueries`; sin modos runtime |
 | Presentación | `modules/alerts/alerts_formatter/odds_alert.py` | Traduce DTOs a texto; no infiere source/side ni consulta DB |
 | Trajectory | vista canónica en `models.py`, `odds_trajectory_repository.py` | Selección histórica por `quote_id` y target minute; sin modos runtime |
 | Contexto/pillars | `odds_trajectory_context.py`, drift y Pilar 5 | Identidad serializable y consumo de series ya seleccionadas |
 | Dual-process | vista canónica en `models.py` | Quote SofaScore exacta, último tick por quote y contrato público estable; sin modos runtime |
 | Protección | `check_no_legacy_odds_reads.py`, workflow `legacy-odds-read-guard.yml` | Impedir nuevas lecturas legacy ORM/SQL fuera de allowlist fechada |
-| Inicialización | `app/initialize.py` | Validar config, migrar, crear wrappers en orden y reconstruir dependencias |
+| Inicialización | `app/initialize.py` | Validar política, migrar, crear vistas canónicas y reconstruir dependencias |
 
 Flujo activo:
 
@@ -1510,10 +1513,8 @@ market_choice_quotes + snapshots(quote_id)
 
 | Pieza | Marca/estado | Por qué no se elimina ahora | Cleanup |
 |---|---|---|---|
-| `_get_external_markets_legacy` y branch dict del formatter | `LEGACY_ODDS_READ` | Shadow/rollback durante observación | Borrar en Fase 8 junto con modo `legacy` |
-| `retire_odds_read_variants_postgresql` y `RETIRED_ODDS_READ_VIEWS` | `PHASE8_CLEANUP` | Local/staging sí pueden tener variantes dual/trajectory de la primera Fase 5; el servidor puede no tenerlas | Borrar después de que todos los entornos crucen Fase 6; sus `DROP VIEW IF EXISTS` son no-op donde nunca existieron |
 | `save_markets_from_response(_with_stats)` y scripts callers | `LEGACY_MAINTENANCE_ONLY` | Aún usados por scripts históricos | Migrar scripts y borrar en Fase 8 |
-| `_save_oddsportal_market`, `_build_choice_payload`, `save_markets_from_oddsportal`, alias `get_oddsportal_markets_for_event` | `LEGACY_DEAD_CODE` | Se preservaron fuera del cutover lector | Eliminación conjunta en Fase 8 |
+| `_save_oddsportal_market`, `_build_choice_payload`, `save_markets_from_oddsportal` | `LEGACY_DEAD_CODE` | Se preservaron fuera del cutover lector | Eliminación conjunta en Fase 8 |
 | Quotes exchange `exchange_side=NULL` redundantes de Oddspapi | compatibilidad de datos | Readers ya las suprimen; borrarlas durante rollout rompería rollback | Dejar de escribir y purgar en PR post-observación |
 | `market_repository.py` monolítico | deuda SRP | La fachada aún contiene orquestación y writers legacy | Extraer `MarketIdentityResolver`/`MarketChoiceWriter`; reducir a fachada |
 | DDL de reporting dentro de `models.py` | deuda SRP/modularidad | Cambio de ubicación junto al cutover aumentaría riesgo DDL | Mover a `infrastructure/persistence/views/` en Fase 8 |
@@ -1555,17 +1556,14 @@ market_choice_quotes + snapshots(quote_id)
 
 ### 12.5. Pendiente operativo antes del DDL de Fase 6 en servidor
 
-El código y el entorno local están cortados a quotes. Falta observar en el
-entorno objetivo al menos un ciclo pre-start completo (T-120/T-30/T-5/T0 y el
-momento posterior configurado), recopilar p95 con una muestra estratificada y
-confirmar cero blockers. `MARKET_CHOICE_LEGACY_STOP_WRITE_AT` permanece vacío:
-no se inventó una hora; sólo hace falta para clasificar shadow.
+El código y el entorno local usan exclusivamente quotes. La observación
+funcional de alerts externos, dual-process y trajectory quedó confirmada; no
+existe ya comparador shadow ni boundary temporal que configurar.
 
 La preparación y validación de Fase 6 puede hacerse sobre la copia local. El
 DDL destructivo **no se replica al servidor** hasta cerrar esa ventana. Una
-vez aplicado el snapshot slim, el rollback de Fase 5 por flag deja de ser una
-garantía estructural completa: restaurar columnas exige recuperar el backup o
-la copia pre-6.
+vez aplicado el snapshot slim, restaurar el contrato anterior exige recuperar
+el backup o la copia pre-6; no existe rollback por flag.
 
 ---
 

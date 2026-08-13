@@ -6,7 +6,7 @@ It uses OddsExtractor to parse data before formatting.
 """
 
 import logging
-from typing import Dict, List, Sequence, Union
+from typing import Dict, List, Sequence
 
 from infrastructure.persistence.repositories import EventRepository, MarketRepository
 from infrastructure.persistence.repositories.market.market_read_models import (
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # To control global enablement of odds alerts
 ODDS_ALERT_ENABLED = True
 
-def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: int = None, op_data=None) -> bool:
+def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: int = None) -> bool:
     """
     Process odds response and send alert via Telegram.
     
@@ -32,7 +32,6 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
         event_data: Event information dictionary
         odds_response: Raw provider odds payload.
         minutes_until_start: Minutes until event starts (optional)
-        op_data: Optional MatchOddsData object
         
     Returns:
         True if alert sent successfully, False otherwise
@@ -91,7 +90,7 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
             if competition_id in ODDSPORTAL_COMPETITION_ROUTES:
                 external_markets = MarketRepository.get_external_markets_for_event(event_data.get('id'))
                 if external_markets:
-                    external_section = _format_external_markets_section(external_markets, event_data, op_data=op_data)
+                    external_section = _format_external_markets_section(external_markets)
                     message += external_section
                     logger.info(f"📊 Added external markets section to alert for event {event_data.get('id')}")
         except Exception as op_err:
@@ -210,116 +209,14 @@ def _format_market_choices(market: Dict, indent: str = "  ") -> str:
     return result
 
 def _format_external_markets_section(
-    external_markets: Union[Sequence[Dict], Sequence[ExternalMarketQuoteBlock]],
-    event_data: Dict = None,
-    op_data=None,
+    external_markets: Sequence[ExternalMarketQuoteBlock],
 ) -> str:
-    """Format external bookmakers odds section of the alert message."""
+    """Format canonical quote-aware external bookmaker odds."""
     if not external_markets:
         return ""
-    if all(isinstance(item, ExternalMarketQuoteBlock) for item in external_markets):
-        return _format_external_quote_blocks(external_markets, event_data)
-    if not all(isinstance(item, dict) for item in external_markets):
-        raise TypeError("External odds read must not mix legacy and quote-aware blocks")
-        
-    result = ""
-    
-    home_team = event_data.get('home_team', 'Home') if event_data else 'Home'
-    away_team = event_data.get('away_team', 'Away') if event_data else 'Away'
-    
-    from collections import defaultdict
-    
-    # Group markets by source
-    markets_by_source = defaultdict(list)
-    for m in external_markets:
-        source = m.get('source', 'oddsportal')
-        markets_by_source[source].append(m)
-        
-    for source in sorted(markets_by_source.keys()):
-        source_display = source.upper().replace('_', ' ')
-        result += f"\n🟡 <b>{source_display} ODDS</b>\n\n"
-        
-        grouped_markets = defaultdict(list)
-        for m in markets_by_source[source]:
-            market_group = m.get('market_group', 'Unknown')
-            market_period = m.get('market_period', 'Unknown')
-            grouped_markets[(market_group, market_period)].append(m)
-            
-        for (market_group, market_period), markets in sorted(grouped_markets.items()):
-            if market_group == '1X2':
-                display_group = "Full Time" if market_period == 'Full Time' else market_period
-            else:
-                display_group = f"{market_group} - {market_period}"
-                
-            result += f"📊 <b>{display_group}</b>\n"
-            
-            # Sort markets by bookie name: numbers first, then alphabetical (case-insensitive)
-            markets = sorted(markets, key=lambda x: x['bookie_name'].lower())
-            
-            for m in markets:
-                bookie_name = m['bookie_name']
-                choice_group = m.get('choice_group')
-                is_live = m.get('is_live', False)
-                choices = m['choices']
-                
-                order_map = {'1': 1, '1X': 2, 'X': 3, 'X2': 4, '2': 5, '12': 6, 'Over': 7, 'Under': 8, 'Yes': 9, 'No': 10}
-                choices = sorted(choices, key=lambda c: order_map.get(c.get('name', ''), 99))
-                
-                bookie_time = None
-                if op_data and hasattr(op_data, 'extractions'):
-                    for ext in op_data.extractions:
-                        if ext.market_group == market_group and ext.market_period == market_period:
-                            for bo in ext.bookie_odds:
-                                if bo.name == bookie_name and getattr(bo, 'movement_odds_time', None):
-                                    bookie_time = bo.movement_odds_time
-                                    break
-                            
-                            if not bookie_time and ext.betfair and 'betfair' in bookie_name.lower():
-                                if getattr(ext.betfair, 'movement_odds_time', None):
-                                    bookie_time = ext.betfair.movement_odds_time
-                            break
-                        
-                time_str = f" 🕒 {bookie_time}" if bookie_time else ""
-                live_label = " (LIVE)" if is_live else ""
-                
-                if 'betfair' in bookie_name.lower() and choice_group:
-                    bookie_display = f"{bookie_name} ({choice_group}){live_label}{time_str}"
-                elif market_group in ['Asian Handicap', 'Over/Under'] and choice_group:
-                    bookie_display = f"{bookie_name} [{choice_group}]{live_label}{time_str}"
-                else:
-                    bookie_display = f"{bookie_name}{live_label}{time_str}"
-
-                choice_strs = []
-                for c in choices:
-                    name = c.get('name', '?')
-                    initial = c.get('initial')
-                    current = c.get('current')
-                    movement = c.get('movement', '=')
-                    
-                    if market_group == 'Asian Handicap':
-                        if name == '1': name = home_team
-                        elif name == '2': name = away_team
-                            
-                    if initial is not None and current is not None:
-                        choice_strs.append(f"{_format_odds_value(initial)}→{_format_odds_value(current)}{movement}")
-                    elif initial is not None:
-                        # OddsPortal is temporarily opening-only. Exchange
-                        # markets may therefore have a valid opening without a
-                        # current snapshot; retain that evidence in the alert.
-                        choice_strs.append(
-                            f"{_format_odds_value(initial)}→N/A"
-                        )
-                    elif current is not None:
-                        choice_strs.append(f"{_format_odds_value(current)}")
-                    else:
-                        choice_strs.append("N/A")
-                
-                line_body = " | ".join(choice_strs)
-                result += f"  {bookie_display}: {line_body}\n"
-                
-            result += "\n"
-            
-    return result
+    if not all(isinstance(item, ExternalMarketQuoteBlock) for item in external_markets):
+        raise TypeError("External odds reader requires ExternalMarketQuoteBlock values")
+    return _format_external_quote_blocks(external_markets)
 
 
 def _format_quote_choice(choice: ExternalChoiceQuote) -> str:
@@ -336,9 +233,7 @@ def _format_quote_choice(choice: ExternalChoiceQuote) -> str:
     return "N/A"
 
 
-def _format_external_quote_blocks(
-    blocks: Sequence[ExternalMarketQuoteBlock], event_data: Dict = None
-) -> str:
+def _format_external_quote_blocks(blocks: Sequence[ExternalMarketQuoteBlock]) -> str:
     """Render the quote-aware contract without inferring source or side."""
     from collections import defaultdict
 
@@ -391,6 +286,3 @@ def _format_external_quote_blocks(
                 result += f"  {display}: {' | '.join(rendered_choices)}\n"
             result += "\n"
     return result
-
-# Backwards compatibility alias
-_format_oddsportal_section = _format_external_markets_section

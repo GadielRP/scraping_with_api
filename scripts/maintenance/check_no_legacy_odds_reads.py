@@ -51,32 +51,11 @@ class LegacyReadAllowance:
 
 ALLOWLIST = (
     LegacyReadAllowance(
-        "infrastructure/persistence/models.py",
-        "build_dual_process_event_odds_view_sql",
-        "legacy_sql_choice_state",
-        "Private rollback view retained during the cutover observation window.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/models.py",
-        "build_pre_start_odds_trajectory_view_sql",
-        "legacy_sql_choice_state",
-        "Private rollback trajectory view retained during observation.",
-        "8",
-    ),
-    LegacyReadAllowance(
         "infrastructure/persistence/migrations/market_choice_snapshot_slim.py",
         "_audit_connection",
         "legacy_sql_snapshot_identity",
         "Phase 6 pre-drop consistency gate; skipped once choice_id is absent.",
         "6",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market_repository.py",
-        "_get_external_markets_legacy",
-        "legacy_orm_choice_state",
-        "Frozen comparison/rollback reader; active consumers use the facade.",
-        "8",
     ),
     LegacyReadAllowance(
         "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
