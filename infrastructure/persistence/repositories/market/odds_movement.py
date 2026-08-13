@@ -1,10 +1,4 @@
-"""Pure odds-movement computation, shared by choice and quote writers.
-
-Extracted from ``MarketRepository._choice_change`` (see
-docs/refactors/db-schema-odds-refactor.md §7) so both ``MarketChoiceWriter``
-and ``MarketChoiceQuoteWriter`` can compute the same -1/0/+1 movement
-indicator without depending on the monolithic repository class.
-"""
+"""Pure -1/0/+1 movement policy for persisted bookmaker quotes."""
 
 from __future__ import annotations
 

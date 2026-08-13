@@ -257,13 +257,10 @@ def test_initial_then_current_arriving_later_updates_same_row(tmp_path):
         assert float(quote.current_odds) == 3.05
 
 
-def test_startup_does_not_upgrade_legacy_snapshot_schema(tmp_path):
-    """Phase 6 structural changes belong only to the explicit script.
-
-    Production tables created under the earlier design may still contain
-    exchange_side='single'. Re-running the quotes migration must rewrite
-    it, but startup must not alter the snapshot schema.
-    """
+def test_startup_normalizes_quote_sentinel_and_rejects_expanded_snapshot_schema(
+    tmp_path,
+):
+    """Startup may normalize quotes but must reject, not migrate, old snapshots."""
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
 
@@ -306,7 +303,7 @@ def test_startup_does_not_upgrade_legacy_snapshot_schema(tmp_path):
         """))
 
     with pytest.raises(RuntimeError, match="missing columns"):
-        manager._migrate_market_choice_snapshot_lineage()
+        manager._validate_market_choice_snapshot_schema()
 
     assert "quote_id" not in {
         column["name"]

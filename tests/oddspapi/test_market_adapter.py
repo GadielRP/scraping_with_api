@@ -5,10 +5,12 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
     CanonicalMarketResolution,
     CanonicalOutcomeResolution,
     MarketMappingIndex,
-    MarketMappingRepository,
 )
+from modules.odds_ingestion.canonical_market_resolver import resolve_oddspapi_key
 from modules.odds_ingestion.adapters.oddspapi_market_adapter import OddspapiMarketAdapter
 from modules.odds_ingestion.adapters.sofascore_market_adapter import SofaScoreMarketAdapter
+from modules.oddspapi.catalog_mapping_service import canonical_choice_from_outcome
+from modules.oddspapi.format_utils import format_line
 from modules.oddspapi.historical_odds_normalizer import (
     OddspapiHistoricalOddsNormalizer,
 )
@@ -55,6 +57,7 @@ def catalog_item(
     handicap=0,
 ):
     return {
+        "sportId": "10",
         "marketType": market_type,
         "marketName": market_name,
         "period": period,
@@ -208,7 +211,7 @@ def test_mapping_index_resolves_market_and_outcomes():
 
 
 def test_catalog_moneyline_resolves_to_home_away_full_time():
-    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+    canonical_key, reason = resolve_oddspapi_key(
         catalog_item(
             market_type="moneyline",
             market_name="Moneyline",
@@ -217,14 +220,14 @@ def test_catalog_moneyline_resolves_to_home_away_full_time():
     )
 
     assert canonical_key == "home_away_full_time"
-    assert reason == "matched_moneyline"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1") == "1"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "2") == "2"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X") is None
+    assert reason == "matched_home_away_full_time"
+    assert canonical_choice_from_outcome(canonical_key, "1") == "1"
+    assert canonical_choice_from_outcome(canonical_key, "2") == "2"
+    assert canonical_choice_from_outcome(canonical_key, "X") is None
 
 
 def test_catalog_1x2_resolves_to_1x2_full_time():
-    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+    canonical_key, reason = resolve_oddspapi_key(
         catalog_item(
             market_type="1x2",
             market_name="Full Time Result",
@@ -233,14 +236,14 @@ def test_catalog_1x2_resolves_to_1x2_full_time():
     )
 
     assert canonical_key == "1x2_full_time"
-    assert reason == "matched_1x2"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1") == "1"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X") == "x"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "2") == "2"
+    assert reason == "matched_1x2_full_time"
+    assert canonical_choice_from_outcome(canonical_key, "1") == "1"
+    assert canonical_choice_from_outcome(canonical_key, "X") == "x"
+    assert canonical_choice_from_outcome(canonical_key, "2") == "2"
 
 
 def test_catalog_draw_no_bet_resolves_to_draw_no_bet_full_time():
-    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+    canonical_key, reason = resolve_oddspapi_key(
         catalog_item(
             market_type="drawnobet",
             market_name="Draw No Bet",
@@ -249,13 +252,13 @@ def test_catalog_draw_no_bet_resolves_to_draw_no_bet_full_time():
     )
 
     assert canonical_key == "draw_no_bet_full_time"
-    assert reason == "matched_draw_no_bet"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1") == "1"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "2") == "2"
+    assert reason == "matched_draw_no_bet_full_time"
+    assert canonical_choice_from_outcome(canonical_key, "1") == "1"
+    assert canonical_choice_from_outcome(canonical_key, "2") == "2"
 
 
 def test_catalog_double_chance_resolves_to_double_chance_full_time():
-    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+    canonical_key, reason = resolve_oddspapi_key(
         catalog_item(
             market_type="doublechance",
             market_name="Double Chance",
@@ -264,14 +267,14 @@ def test_catalog_double_chance_resolves_to_double_chance_full_time():
     )
 
     assert canonical_key == "double_chance_full_time"
-    assert reason == "matched_double_chance"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "1X") == "1x"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "X2") == "x2"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "12") == "12"
+    assert reason == "matched_double_chance_full_time"
+    assert canonical_choice_from_outcome(canonical_key, "1X") == "1x"
+    assert canonical_choice_from_outcome(canonical_key, "X2") == "x2"
+    assert canonical_choice_from_outcome(canonical_key, "12") == "12"
 
 
 def test_catalog_first_half_total_resolves_to_over_under_1st_half():
-    canonical_key, reason = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+    canonical_key, reason = resolve_oddspapi_key(
         catalog_item(
             market_type="totals",
             market_name="1st Half Over Under",
@@ -283,13 +286,13 @@ def test_catalog_first_half_total_resolves_to_over_under_1st_half():
 
     assert canonical_key == "over_under_1st_half"
     assert reason == "matched_over_under_1st_half"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "Over") == "over"
-    assert MarketMappingRepository.canonical_choice_from_outcome(canonical_key, "Under") == "under"
-    assert MarketMappingRepository._format_line(0.5) == "0.5"
+    assert canonical_choice_from_outcome(canonical_key, "Over") == "over"
+    assert canonical_choice_from_outcome(canonical_key, "Under") == "under"
+    assert format_line(0.5) == "0.5"
 
 
 def test_catalog_total_and_asian_handicap_regressions_still_resolve():
-    total_key, _ = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+    total_key, _ = resolve_oddspapi_key(
         catalog_item(
             market_type="totals",
             market_name="Over Under Full Time",
@@ -297,7 +300,7 @@ def test_catalog_total_and_asian_handicap_regressions_still_resolve():
             outcomes=["Over", "Under"],
         )
     )
-    handicap_key, _ = MarketMappingRepository.resolve_canonical_key_from_catalog_market(
+    handicap_key, _ = resolve_oddspapi_key(
         catalog_item(
             market_type="spreads",
             market_name="Asian Handicap",
@@ -1011,7 +1014,7 @@ def test_sportsbook_choice_does_not_include_exchange_quotes():
     assert "exchangeQuotes" not in exchange_choice
 
 
-def test_exchange_choice_normalizes_back_and_lay_ladders():
+def test_exchange_choice_keeps_only_top_back_and_lay_quotes():
     exchange_meta = {
         "availableToBack": [
             {"price": 4.8, "size": 64.9},
@@ -1038,14 +1041,12 @@ def test_exchange_choice_normalizes_back_and_lay_ladders():
     assert choice["name"] == "2"
     assert choice["decimalValue"] == 4.8
     assert choice["exchangeQuotes"] == [
-        {"side": "back", "level": 0, "price": 4.8, "size": 64.9},
-        {"side": "back", "level": 1, "price": 4.7, "size": 2091.25},
+        {"side": "back", "level": 0, "price": 4.8, "size": 100.0},
         {"side": "lay", "level": 0, "price": 5.0, "size": 100.92},
-        {"side": "lay", "level": 1, "price": 5.1, "size": 103.6},
     ]
 
 
-def test_exchange_ladder_tolerates_missing_sides_and_skips_invalid_prices():
+def test_exchange_quotes_use_player_back_and_optional_valid_top_lay():
     back_only = OddspapiMarketAdapter.from_odds_response(
         response(
             {
@@ -1098,8 +1099,11 @@ def test_exchange_ladder_tolerates_missing_sides_and_skips_invalid_prices():
     lay_quotes = lay_only["bookmakers"][0]["markets"][0]["choices"][0][
         "exchangeQuotes"
     ]
-    assert back_quotes == [{"side": "back", "level": 1, "price": 1.8, "size": None}]
-    assert lay_quotes == [{"side": "lay", "level": 0, "price": 2.24, "size": 50.0}]
+    assert back_quotes == [{"side": "back", "level": 0, "price": 1.8, "size": 100.0}]
+    assert lay_quotes == [
+        {"side": "back", "level": 0, "price": 2.2, "size": 100.0},
+        {"side": "lay", "level": 0, "price": 2.24, "size": 50.0},
+    ]
 
 
 def _load_sofascore_fixture(name: str) -> dict:
@@ -1107,7 +1111,7 @@ def _load_sofascore_fixture(name: str) -> dict:
     return json.loads(fixture_path.read_text(encoding="utf-8"))
 
 
-def test_sofascore_adapter_preserves_all_market_types_from_real_fixture():
+def test_sofascore_adapter_preserves_provider_shapes_from_real_fixture():
     adapted = SofaScoreMarketAdapter.from_event_odds_response(
         _load_sofascore_fixture("61507_odds_response.json"),
         home_team="IFK Mariehamn",
@@ -1129,10 +1133,13 @@ def test_sofascore_adapter_preserves_all_market_types_from_real_fixture():
     assert market_names.count("Match goals") == 9
 
     asian_handicap = next(market for market in markets if market["marketName"] == "Asian handicap")
-    assert asian_handicap["choiceGroup"] == "1.5"
-    assert [choice["name"] for choice in asian_handicap["choices"]] == ["1", "2"]
+    assert asian_handicap["choiceGroup"] is None
+    assert [choice["name"] for choice in asian_handicap["choices"]] == [
+        "(1.5) IFK Mariehamn",
+        "(-1.5) HJK",
+    ]
     assert asian_handicap["choices"][0]["sourceOutcomeId"] == "1468771326"
-    assert asian_handicap["choices"][0]["sourceMarketId"] == "196042959"
+    assert asian_handicap["choices"][0]["sourceMarketId"] == "17"
 
     first_team_to_score = next(
         market for market in markets if market["marketName"] == "First team to score"
@@ -1172,12 +1179,12 @@ def test_sofascore_adapter_accepts_market_dict_containers():
     assert len(adapted["markets"]) == 1
     market = adapted["markets"][0]
     assert market["marketName"] == "Special market"
-    assert market["choiceGroup"] == "2.5"
+    assert market["choiceGroup"] is None
     assert [choice["name"] for choice in market["choices"]] == ["(2.5) Team A", "(-2.5) Team B"]
     assert market["choices"][0]["sourceOutcomeId"] == "11"
 
 
-def test_sofascore_adapter_maps_parenthesized_team_names_to_1_and_2():
+def test_sofascore_adapter_leaves_team_semantics_for_canonical_normalizer():
     payload = {
         "markets": {
             "market-a": {
@@ -1207,6 +1214,9 @@ def test_sofascore_adapter_maps_parenthesized_team_names_to_1_and_2():
     )
 
     market = adapted["markets"][0]
-    assert market["choiceGroup"] == "1.5"
-    assert [choice["name"] for choice in market["choices"]] == ["1", "2"]
+    assert market["choiceGroup"] is None
+    assert [choice["name"] for choice in market["choices"]] == [
+        "(1.5) IFK Mariehamn",
+        "(-1.5) HJK",
+    ]
     assert market["choices"][0]["sourceOutcomeId"] == "11"

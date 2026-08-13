@@ -8,7 +8,6 @@ instead of one monolithic repository class.
 """
 
 from .exchange_quote_payload import ExchangeQuotePayload
-from .market_choice_quote_backfill_repository import MarketChoiceQuoteBackfillRepository
 from .market_choice_quote_merge_policy import (
     QuoteCandidateState,
     QuoteExistingState,
@@ -40,7 +39,6 @@ from .market_quote_readiness import (
 
 __all__ = [
     "ExchangeQuotePayload",
-    "MarketChoiceQuoteBackfillRepository",
     "MarketChoiceQuoteWriter",
     "MarketChoiceSnapshotWriter",
     "QuoteCandidateState",

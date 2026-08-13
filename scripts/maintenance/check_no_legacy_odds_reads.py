@@ -1,8 +1,7 @@
 """Reject new production reads from frozen legacy odds identity/state fields.
 
-The allowlist is intentionally symbol-scoped.  It documents rollback SQL,
-writers and migrations that survive until the destructive cleanup phases; it
-must not be expanded for a new consumer.
+The final schema has no compatibility allowlist: every detected read is a
+violation.
 """
 
 from __future__ import annotations
@@ -37,145 +36,6 @@ SQL_SNAPSHOT_PATTERN = re.compile(
     r"(choice_id|source|source_market_id|source_outcome_id|bookmaker_outcome_id|"
     r"main_line|exchange_side|exchange_level)\b",
     re.IGNORECASE,
-)
-
-
-@dataclass(frozen=True, slots=True)
-class LegacyReadAllowance:
-    path: str
-    symbol: str
-    rule: str
-    reason: str
-    expires_phase: str
-
-
-ALLOWLIST = (
-    LegacyReadAllowance(
-        "infrastructure/persistence/migrations/market_choice_snapshot_slim.py",
-        "_audit_connection",
-        "legacy_sql_snapshot_identity",
-        "Phase 6 pre-drop consistency gate; skipped once choice_id is absent.",
-        "6",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "select_event_scope",
-        "legacy_orm_choice_state",
-        "Phase 4 backfill coverage selector, not a production odds consumer.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "select_event_scope",
-        "legacy_orm_snapshot_identity",
-        "Retired Phase 4 selector; Phase 6 preflight blocks its execution.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "fetch_pending_snapshots",
-        "legacy_orm_choice_state",
-        "Backfill classifier input retained for maintenance reruns.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "fetch_pending_snapshots",
-        "legacy_orm_snapshot_identity",
-        "Backfill classifier input retained for maintenance reruns.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "fetch_choice_states_without_snapshots",
-        "legacy_orm_choice_state",
-        "Backfill-only recovery of historical choice state.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "fetch_choice_states_without_snapshots",
-        "legacy_orm_snapshot_identity",
-        "Retired Phase 4 recovery; Phase 6 preflight blocks its execution.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "_oddspapi_null_mainline_line_snapshot_filter",
-        "legacy_orm_snapshot_identity",
-        "Phase 4c corrective maintenance predicate.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "select_purge_event_scope",
-        "legacy_orm_snapshot_identity",
-        "Phase 4c corrective maintenance selector.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "select_ambiguous_choice_state_event_scope",
-        "legacy_orm_choice_state",
-        "Phase 4c ambiguity audit retained for maintenance reruns.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "purge_ambiguous_choice_states",
-        "legacy_orm_choice_state",
-        "Phase 4c corrective maintenance command.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "purge_legacy_back_lay_markets",
-        "legacy_orm_snapshot_identity",
-        "Retired Phase 4c purge; Phase 6 preflight blocks its execution.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "select_ambiguous_choice_state_event_scope",
-        "legacy_orm_snapshot_identity",
-        "Retired Phase 4c selector; Phase 6 preflight blocks its execution.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "purge_ambiguous_choice_states",
-        "legacy_orm_snapshot_identity",
-        "Retired Phase 4c purge; Phase 6 preflight blocks its execution.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "purge_markets_outside_allowed_bookies",
-        "legacy_orm_snapshot_identity",
-        "Retired Phase 4c purge; Phase 6 preflight blocks its execution.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_choice_quote_backfill_repository.py",
-        "purge_oddspapi_null_mainline_line_markets",
-        "legacy_orm_snapshot_identity",
-        "Retired Phase 4c purge; Phase 6 preflight blocks its execution.",
-        "8",
-    ),
-    LegacyReadAllowance(
-        "infrastructure/persistence/repositories/market/market_quote_readiness.py",
-        "audit",
-        "legacy_sql_snapshot_identity",
-        "Expanded-schema consistency gate; skipped after Phase 6 DROP.",
-        "6",
-    ),
-    LegacyReadAllowance(
-        "scripts/maintenance/backfill_sofascore_choice_names_and_groups.py",
-        "_load_candidate_rows",
-        "legacy_sql_choice_state",
-        "Maintenance backfill preserves prices while canonicalizing choice names.",
-        "7",
-    ),
 )
 
 
@@ -215,8 +75,7 @@ class _LegacyReadVisitor(ast.NodeVisitor):
             rule=rule,
             expression=self._expression(node),
         )
-        if not _is_allowed(violation):
-            self.violations.append(violation)
+        self.violations.append(violation)
 
     def _lookup_variable_type(self, name: str) -> Optional[str]:
         for scope in reversed(self.variable_types):
@@ -308,15 +167,6 @@ class _LegacyReadVisitor(ast.NodeVisitor):
             self._record(node, "legacy_sql_choice_state")
         if SQL_SNAPSHOT_PATTERN.search(node.value):
             self._record(node, "legacy_sql_snapshot_identity")
-
-
-def _is_allowed(violation: LegacyReadViolation) -> bool:
-    return any(
-        item.path == violation.path
-        and item.symbol == violation.symbol
-        and item.rule == violation.rule
-        for item in ALLOWLIST
-    )
 
 
 def _iter_python_files(paths: Iterable[Path]) -> Iterable[Path]:

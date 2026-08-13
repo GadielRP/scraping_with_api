@@ -420,10 +420,6 @@ def test_oddsportal_opening_and_oddspapi_current_are_order_independent(
     references = _oddsportal_references(bookie_id)
 
     def save_oddspapi():
-        # Production Oddspapi ingestion converges on save_canonical_bookmaker_batches
-        # (docs/refactors/db-schema-odds-refactor.md, Fase 2) - that is what
-        # is the production boundary. The maintenance-only facade now shares
-        # the same quote-only price-state contract.
         return MarketRepository.save_canonical_bookmaker_batches(
             event_id,
             [{"bookie_id": bookie_id, "markets": _oddspapi_market_response()["markets"]}],
@@ -476,10 +472,16 @@ def test_market_not_covered_by_oddsportal_keeps_oddspapi_initial(tmp_path):
         "infrastructure.persistence.repositories.market_repository.db_manager",
         manager,
     ):
-        MarketRepository.save_markets_from_response_with_stats(
+        MarketRepository.save_canonical_bookmaker_batches(
             event_id,
-            _oddspapi_market_response(include_uncovered_market=True),
-            bookie_id,
+            [
+                {
+                    "bookie_id": bookie_id,
+                    "markets": _oddspapi_market_response(
+                        include_uncovered_market=True
+                    )["markets"],
+                }
+            ],
             source="oddspapi",
         )
         MarketOddsIngestionService.save_from_oddsportal_data(
@@ -558,10 +560,6 @@ def test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current
         "infrastructure.persistence.repositories.market_repository.db_manager",
         manager,
     ):
-        # Production Oddspapi ingestion converges on save_canonical_bookmaker_batches
-        # (docs/refactors/db-schema-odds-refactor.md, Fase 2) - that is what
-        # populates MarketChoiceQuote, unlike the legacy
-        # save_markets_from_response_with_stats used only by scripts/legacy/*.
         MarketRepository.save_canonical_bookmaker_batches(
             event_id,
             [{"bookie_id": bookie_id, "markets": _oddspapi_market_response()["markets"]}],
@@ -595,58 +593,6 @@ def test_oddsportal_toggle_selects_opening_owner_without_losing_oddspapi_current
     assert float(oddspapi_quotes["2"].current_odds) == 2.85
     assert len(snapshots) == 3
     assert snapshot_sources == {"oddspapi"}
-
-
-def test_canonical_write_upgrades_unique_legacy_full_time_row(tmp_path):
-    manager = _make_manager(tmp_path)
-    event_id, bookie_id = _seed_event_and_bookie(manager)
-    with manager.get_session() as session:
-        session.add(
-            Market(
-                event_id=event_id,
-                bookie_id=bookie_id,
-                market_name="Full Time",
-                market_group="1X2",
-                market_period="Full Time",
-                choice_group=None,
-                is_live=False,
-            )
-        )
-
-    batches = [
-        {
-            "bookie_id": bookie_id,
-            "markets": [
-                {
-                    "marketName": "1X2 Full Time",
-                    "marketGroup": "1X2",
-                    "marketPeriod": "Full Time",
-                    "choiceGroup": None,
-                    "isLive": False,
-                    "choices": [
-                        {"name": "1", "initialOdds": "2.0", "currentOdds": "1.9"},
-                        {"name": "x", "initialOdds": "3.3", "currentOdds": "3.4"},
-                        {"name": "2", "initialOdds": "4.0", "currentOdds": "4.2"},
-                    ],
-                }
-            ],
-        }
-    ]
-
-    with patch(
-        "infrastructure.persistence.repositories.market_repository.db_manager",
-        manager,
-    ):
-        MarketRepository.save_canonical_bookmaker_batches(
-            event_id,
-            batches,
-            source="oddsportal",
-        )
-
-    with manager.get_session() as session:
-        markets = session.query(Market).all()
-    assert len(markets) == 1
-    assert markets[0].market_name == "1X2 Full Time"
 
 
 def test_oddsportal_candidates_use_configured_opening_capture_minute(monkeypatch):

@@ -24,6 +24,9 @@ from infrastructure.persistence.repositories import (
     MarketRepository,
     ResultRepository,
 )
+from modules.odds_ingestion.market_odds_ingestion_service import (
+    MarketOddsIngestionService,
+)
 from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.database import db_manager
 from shared.timezone_utils import get_local_now
@@ -454,13 +457,25 @@ def process_season(tournament_id: int, season_id: int):
                             final_odds_response = fetch_result.payload
 
                         if final_odds_response:
-                            # Save all markets using the new market-based flow
-                            saved_markets = MarketRepository.save_markets_from_response(event_id, final_odds_response, bookie_id=1)
-                            if saved_markets > 0:
+                            ingestion_result = (
+                                MarketOddsIngestionService.save_from_sofascore_response(
+                                    event_id,
+                                    final_odds_response,
+                                )
+                            )
+                            if ingestion_result.markets_saved > 0:
                                 markets_processed_count += 1
-                                logger.debug(f"Saved {saved_markets} markets for event {event_id}")
+                                logger.debug(
+                                    "Saved %s markets for event %s",
+                                    ingestion_result.markets_saved,
+                                    event_id,
+                                )
                             else:
-                                logger.debug(f"No markets saved for event {event_id}")
+                                logger.debug(
+                                    "No markets saved for event %s: %s",
+                                    event_id,
+                                    ingestion_result.reason,
+                                )
                         else:
                             logger.debug(f"No odds response for event {event_id}")
                     except Exception as e:

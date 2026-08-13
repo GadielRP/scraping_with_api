@@ -1,7 +1,7 @@
 # Refactor de schema de odds — separación de responsabilidades
 
 **Branch:** `refactor/db-schema-odds-refactor`
-**Estado:** Fases 1–7 implementadas en código. Fase 5/6 quedó cerrada en los commits
+**Estado:** Fases 1–8 implementadas en código. Fase 5/6 quedó cerrada en los commits
 `fa07c5b`, `5b27e46` y `9f2ce74`. Fase 4b/4c terminó en producción el 2026-08-12
 (`algorithm_version=4b.7`, `events_selected=0`) y los tres lectores públicos de
 la copia PostgreSQL local están en `quotes`. Fase 6 inició el 2026-08-12 sobre
@@ -53,6 +53,7 @@ Evidencia y runbook en
 - [12. Implementación de Fase 5: mapa y deuda de cleanup](#12-implementación-de-fase-5-mapa-y-deuda-de-cleanup)
 - [13. Implementación de Fase 6: snapshots slim](#13-implementación-de-fase-6-snapshots-slim)
 - [14. Implementación de Fase 7: `market_choices` como identidad pura](#14-implementación-de-fase-7-market_choices-como-identidad-pura)
+- [15. Implementación de Fase 8 y deuda propuesta para Fase 9](#15-implementación-de-fase-8-y-deuda-propuesta-para-fase-9)
 
 ---
 
@@ -116,6 +117,9 @@ Antes de tocar nada, esto es lo que confirmé leyendo `market_odds_ingestion_ser
 **Implicación clave para el diseño:** el hecho de que `save_canonical_bookmaker_batches` (la ruta "nueva"/canónica, usada por OddsPortal) **nunca recibió** la lógica de exchange quotes que sí tiene `save_markets_from_response_with_stats` (la ruta "vieja", usada por Oddspapi) es en sí mismo un segundo bug de diseño, independiente del de `choice_group`: son dos implementaciones casi paralelas de "upsert market+choice+snapshot" con funcionalidades distintas. Este refactor las converge en una sola.
 
 ### 3.1. Estado actual (post Fase 3)
+
+> Snapshot histórico posterior a Fase 3. Las fases que aquí aparecen como
+> pendientes ya se completaron; el cierre vigente está en [§15](#15-implementación-de-fase-8-y-deuda-propuesta-para-fase-9).
 
 **La ingesta en tiempo real (los 3 providers) ya corre 100% sobre la implementación nueva.** Verificado por búsqueda global de call sites (`MarketOddsIngestionService.*` y `MarketRepository.save_*`):
 
@@ -538,13 +542,13 @@ reescribir todavía las columnas legacy.
    `current_odds` sin comparar timestamps; antes de usarlo para histórico se
    agrega una política de merge temporal explícita y testeada.
 5. En exchange, una serie explícita Back/Lay domina a la quote redundante
-   `exchange_side=NULL` que Oddspapi conserva por compatibilidad. No se crean
+   `exchange_side=NULL` que Oddspapi conservaba por compatibilidad. No se crean
    snapshots side-agnostic cuando el payload contiene `exchangeQuotes`. **Dejar
    de escribir** esa quote `NULL` en la ingesta Oddspapi Betfair y/o borrarla
    del histórico es trabajo **diferido** (post Fase 5 / limpieza dedicada) —
    ver [§11.7 gotcha 10](#117-gotchas-operativos). El backfill (4b) debe
    *clasificar* filas `NULL` históricas, no eliminarlas ni decidir el corte
-   del writer live.
+   del writer live. Este trabajo diferido quedó resuelto finalmente en Fase 8.
 
 #### Checklist completado (PR 4a — expand schema + dual-write)
 
@@ -854,11 +858,12 @@ no desde columnas de DB.
 - Los consumidores actuales son top-of-book. Entre quotes con precio se elige
   el menor `exchange_level` por `(choice_id, source, exchange_side)`. El nivel
   elegido queda visible en el contrato; no se mezclan niveles en una serie.
-- Oddspapi conserva hoy una quote `exchange_side=NULL` además de Back/Lay para
-  exchange. Si existen sides explícitos para `(choice_id, source)`, los readers
-  de presentación/trajectory suprimen esa fila `NULL`; no se muestran tres
-  instrumentos para un mercado que realmente tiene dos. La fila se conserva
-  durante el rollout para rollback y se audita antes de borrarla.
+- Bases ingeridas antes del cierre de Fase 8 pueden conservar una quote
+  Oddspapi `exchange_side=NULL` además de Back/Lay. Si existen sides explícitos
+  para `(choice_id, source)`, los readers de presentación/trajectory suprimen
+  esa fila; no se muestran tres instrumentos para un mercado que realmente
+  tiene dos. El writer nuevo ya no la crea y el CLI dedicado audita/purga las
+  filas históricas seguras.
 - Nunca combinar opening de una fuente con current de otra. Un
   `(oddsportal, back)` y un `(oddspapi, back)` son series distintas aunque
   compartan market, choice y bookie.
@@ -1085,40 +1090,51 @@ en Fase 8).
 
 ### Fase 8 — Limpieza de código legacy
 
-**Objetivo:** eliminar en bloque todo lo marcado como legacy a lo largo de las
-fases anteriores. Esta fase es exclusivamente borrado + verificación, sin
-nueva funcionalidad.
+**Estado: implementada.** La fase mantiene su alcance de borrado y verificación,
+sin agregar funcionalidad ni aliases de compatibilidad.
 
-**A eliminar (lista verificada al momento del handoff):**
+Se migraron los tres callers versionados a
+`MarketOddsIngestionService.save_from_sofascore_response`, cuyo límite interno
+de persistencia es `save_canonical_bookmaker_batches`:
 
-| Símbolo | Ubicación aprox. | Call sites restantes |
-|---|---|---|
-| `save_markets_from_oddsportal` | `market_repository.py` | ninguno (muerto) |
-| `_save_oddsportal_market` | idem | ninguno |
-| `_build_choice_payload` | idem | ninguno |
-| `get_oddsportal_markets_for_event` | eliminado al cerrar Fase 5 | sin call sites |
-| `get_external_markets_for_event` | canónico quote-aware | alertas externas; delega a `MarketReadQueries` sin branches |
-| `save_markets_from_response_with_stats` | idem | solo vía `save_markets_from_response` + scripts abajo |
-| `save_markets_from_response` | idem | scripts de mantenimiento; migrar y eliminar, no conservar como compatibilidad |
-
-**Scripts que aún llaman la ruta legacy** (resolver uno a uno antes de borrar
-`save_markets_from_response*`):
 - `scripts/sport_seasons_processing.py`
 - `scripts/legacy/extract_historical_results_legacy_event_odds.py`
 - `scripts/legacy/process_null_seasons_legacy_event_odds.py`
-- `legacy/parse_telegram_odds.py`
-- `verify_snapshots.py` (raíz del repo)
 
-**También limpiar:** cualquier `# LEGACY_DEAD_CODE`,
-`# LEGACY_MAINTENANCE_ONLY` o `# LEGACY_ODDS_READ`. Convertir
-`market_repository.py` en fachada/orquestador puro sobre `market/*`; no se
-conservan aliases ni rutas de compatibilidad una vez migrados sus call sites.
+El inventario inicial incluía `legacy/parse_telegram_odds.py` y
+`verify_snapshots.py`. Ambos estaban fuera del índice de Git y llamaban APIs
+retiradas; se eliminaron con autorización explícita al cerrar la fase.
+
+Se eliminaron:
+
+- `save_markets_from_response`, `save_markets_from_response_with_stats`,
+  `_build_choice_payload`, `_save_oddsportal_market` y
+  `save_markets_from_oddsportal`;
+- los lectores sin call sites `get_markets_for_event` y
+  `delete_markets_for_event`;
+- el repositorio, servicio, CLI, configuración y tests del backfill retirado
+  de `market_choice_quotes`;
+- los dos backfills SofaScore incompatibles con el schema slim;
+- el wrapper `_choice_change`; sus tests ahora ejercitan directamente
+  `compute_movement`;
+- el puente `legacy_full_time_index` en `save_canonical_bookmaker_batches`
+  y su test de upgrade in-place: las filas `market_name/period = Full Time`
+  ya están en forma canónica y la ingesta nueva pasa por
+  `canonical_market_resolver`/`canonical_market_normalizer`;
+- todas las excepciones del guard asociadas a esos componentes retirados.
+
+Tras confirmar que local y servidor ya tienen Fases 6/7 desplegadas, también se
+retiraron sus migradores, CLI, postflight y tests. `initialize` conserva solo
+validadores fail-closed del schema final. Los usos de `LEGACY_` ajenos al schema
+de odds (event text shims, pipeline de alertas y cache parser) tampoco son
+autorización para borrarlos en esta fase.
 
 **Criterio de aceptación:**
-- Búsqueda global de `LEGACY_` sin resultados pendientes de esta lista.
-- Suite de tests completa en verde.
-- Los 5 scripts de arriba ya migraron a `save_canonical_bookmaker_batches` y
-  `save_markets_from_response*` fue eliminado, no conservado.
+
+- búsqueda sin hits de los marcadores específicos de Fase 8;
+- cero call sites versionados de las APIs y módulos eliminados;
+- guard de lecturas legacy y suite focalizada verdes;
+- reducción neta del codebase documentada en [§15](#15-implementación-de-fase-8-y-deuda-propuesta-para-fase-9).
 
 ---
 
@@ -1434,16 +1450,12 @@ ORDER BY b.name, m.market_name, m.choice_group NULLS FIRST,
    **No** hace SELECT extra. Antes solo miraba `exchange_side IS NULL`, lo que
    hacía que OddsPortal Betfair (solo back/lay) pareciera “primer opening” en
    cada re-ingest; era inocuo mientras `persist_opening_snapshots=False`.
-9. **Oddspapi Betfair aún escribe una quote `exchange_side=NULL` además de
-   back/lay** (eco del `decimalValue` plano del payload). Es compatibilidad,
-   no el modelo ideal. **No** copiar ese patrón en OddsPortal. Plan de retiro:
-   - Fase 5: readers suprimen `NULL` cuando existen sides explícitos (ya
-     documentado en política de lectura).
-   - Post cutover (PR propio, no 4b): dejar de upsertar la fila `NULL` cuando
-     `exchangeQuotes` viene poblado; auditar/borrar filas `NULL` huérfanas
-     solo cuando nada las lea.
-   - 4b: clasificar evidencia histórica `NULL` vs `back`/`lay` sin borrar;
-     nunca fusionar silenciosamente `NULL` con `back`.
+9. **Oddspapi Betfair ya no escribe una quote `exchange_side=NULL` cuando
+   existe un `back/0` explícito válido.** El top back reemplaza semánticamente
+   al `decimalValue` plano. Un payload anómalo con solo lay conserva el fallback
+   `NULL` para no perder el precio primario. Los readers siguen suprimiendo
+   duplicados históricos y la purga dedicada falla si precios o lineage no son
+   inequívocos; nunca fusiona `NULL` con back/lay.
 10. **El writer actual no es seguro para backfill temporal.** Siempre reemplaza
    current; agregar `backfill-fill-only` antes de reutilizarlo (Fase 4b).
 11. **Fase 5 es prioritaria** respecto a extracciones cosméticas
@@ -1519,17 +1531,17 @@ market_choice_quotes + snapshots(quote_id)
 
 | Pieza | Marca/estado | Por qué no se elimina ahora | Cleanup |
 |---|---|---|---|
-| `save_markets_from_response(_with_stats)` y scripts callers | `LEGACY_MAINTENANCE_ONLY` | Aún usados por scripts históricos; desde Fase 7 ya no escriben el mirror | Migrar scripts y borrar en Fase 8 |
-| `_save_oddsportal_market`, `_build_choice_payload`, `save_markets_from_oddsportal` | `LEGACY_DEAD_CODE` | Se preservaron fuera del cutover lector | Eliminación conjunta en Fase 8 |
-| Quotes exchange `exchange_side=NULL` redundantes de Oddspapi | compatibilidad de datos | Readers ya las suprimen; borrarlas durante rollout rompería rollback | Dejar de escribir y purgar en PR post-observación |
-| `market_repository.py` monolítico | deuda SRP | La fachada aún contiene orquestación y writers legacy | Extraer `MarketIdentityResolver`/`MarketChoiceWriter`; reducir a fachada |
-| DDL de reporting dentro de `models.py` | deuda SRP/modularidad | Cambio de ubicación junto al cutover aumentaría riesgo DDL | Mover a `infrastructure/persistence/views/` en Fase 8 |
+| `save_markets_from_response(_with_stats)` y scripts callers | retirado en Fase 8 | Los callers versionados usan el servicio canónico | Cerrado |
+| `_save_oddsportal_market`, `_build_choice_payload`, `save_markets_from_oddsportal` | retirado en Fase 8 | Cero call sites confirmados | Cerrado |
+| Quotes exchange `exchange_side=NULL` redundantes de Oddspapi | cerrado en Fase 8 | Writer usa `back/0`; auditor/purga rechaza snapshots, precios distintos o ausencia de top back | Ejecutar dry-run y luego purga confirmada en cada base desplegada |
+| `market_repository.py` monolítico | deuda SRP | La fachada aún contiene la orquestación canónica viva | Extraer `CanonicalMarketBatchWriter`/`MarketIdentityResolver` en Fase 9 |
+| DDL de reporting dentro de `models.py` | deuda SRP/modularidad | No es código muerto y moverlo exige caracterización DDL | Mover a `infrastructure/persistence/views/` en Fase 9 |
 | Dual view creado tanto en `create_or_replace_views` como en `create_or_replace_materialized_views` | redundancia | Garantiza dependencia hoy, pero duplica responsabilidad | Un único `rebuild_dual_process_dependencies()` transaccional |
 | `DROP VIEW ... CASCADE` para vistas basketball/season durante init | cleanup de seguridad | Preexistente y fuera de odds; puede ocultar dependencias nuevas | Inventariar y reemplazar por DDL fail-safe sin `CASCADE` |
 | `DatabaseManager.check_and_migrate_schema` monolítico | deuda SRP | Orquesta migraciones históricas de muchas áreas | Mover DDL versionado a Alembic/servicios de migración pequeños |
 | `initialize_system` continuaba después de un schema migration failure | `LEGACY_INCORRECT` corregido en Fase 6 | Permitía arrancar writers con contrato incompatible | Mantener el startup fail-closed y agregar healthcheck de schema por versión |
-| Allowlist del guard | temporal, por path+símbolo+motivo+fase | Backfill/readiness/modelos todavía necesitan columnas legacy | Expira en Fase 7/8; no admitir consumidores nuevos |
-| `.gitignore` ignora globalmente `tests/`, `*.json`, `*.md` y exige excepciones | deuda de tooling | Preexistente | Simplificar reglas para que tests/config/docs no queden fuera de git |
+| Allowlist del guard | reducida en Fase 8 | Solo conserva dos compatibilidades de migración para bases expandidas | Retirar cuando ya no se soporte ejecutar Fase 6 |
+| `.gitignore` ignora globalmente `tests/`, `*.json`, `*.md` y exige excepciones | deuda de tooling | Preexistente | Simplificar reglas en Fase 9 para que tests/config/docs no queden fuera de git |
 
 ### 12.4. Hallazgos fuera de alcance, marcados para cleanup
 
@@ -1538,11 +1550,10 @@ market_choice_quotes + snapshots(quote_id)
   `_is_active_signal`, módulo raíz `odds_alert`, API retirada
   `get_event_information`, y dependencia no declarada `loguru` en un test
   ignorado. No mezclar esa reparación con el schema refactor.
-- La suite versionada conserva 12 fallos ajenos al cutover (24 pruebas del
-  mismo grupo sí pasan): 11 contratos obsoletos de mapping/adapter en
-  `tests/oddspapi/test_market_adapter.py` y un test manual de extracción cuyo
-  binario Chromium de Playwright no está instalado en
-  `test_oddsportal_betfair_extraction.py`; requieren cleanup propio.
+- Los 11 contratos obsoletos de mapping/adapter en
+  `tests/oddspapi/test_market_adapter.py` se migraron a sus owners actuales al
+  cerrar Fase 8. El test manual async de extracción OddsPortal sigue siendo una
+  verificación dependiente de Playwright/Chromium, no del schema.
 - `modules/oddsportal/scraper_lookup.py` emite `SyntaxWarning` por una secuencia
   `\/` dentro de JavaScript embebido; convertir ese literal a raw/escape válido.
 - `shared/timezone_utils.py` usa `datetime.utcnow()` deprecado y
@@ -1664,82 +1675,39 @@ Los backfills históricos de Fase 4/canonicalización que aún contienen SQL del
 schema expandido ya estaban retirados por el preflight de Fase 6. No son rutas
 activas y se eliminarán en bloque en Fase 8; no se portaron dentro de este DDL.
 
-### 14.1.1. Inventario explícito para Fase 8
+### 14.1.1. Inventario explícito resuelto por Fase 8
 
-Todo hallazgo usa un marcador buscable; Fase 8 debe resolverlo sin introducir
-shims para columnas eliminadas:
+Fase 8 resolvió cada marcador sin introducir shims para columnas eliminadas:
 
-| Marcador/pieza | Estado confirmado en Fase 7 | Acción de Fase 8 |
+| Marcador/pieza | Estado confirmado en Fase 7 | Resultado de Fase 8 |
 |---|---|---|
-| `LEGACY_MAINTENANCE_ONLY` en `save_markets_from_response(_with_stats)` | Ya es quote-only, pero duplica la orquestación canónica y conserva cinco callers históricos | Migrar callers a `save_canonical_bookmaker_batches` y borrar ambos métodos |
-| `LEGACY_PHASE8_REMOVE` en `market_choice_quote_backfill_repository.py` y `backfill_market_choice_quotes.py` | Campaña Fase 4 cerrada; incompatible con snapshots slim y choices identity-only | Borrar repositorio, orchestrator/CLI y tests dedicados como una unidad |
-| `LEGACY_PHASE8_REMOVE_OR_PORT` en los dos backfills SofaScore | Sus ramas de merge requieren `snapshot.choice_id` y/o el mirror de precios | Portar a `quote_id`/`MarketChoiceQuote` si aún son operativamente necesarias; en caso contrario borrar script y tests |
-| `LEGACY_PHASE8_REMOVE` en `MarketRepository._choice_change` | Cero call sites de producción tras retirar el último mirror writer | Borrar wrapper y migrar sus tests a `compute_movement` |
-| `LEGACY_DEAD_CODE` de OddsPortal | Cero call sites | Borrar `_build_choice_payload`, `_save_oddsportal_market` y `save_markets_from_oddsportal` |
+| `LEGACY_MAINTENANCE_ONLY` en `save_markets_from_response(_with_stats)` | Duplicaba la orquestación canónica | Tres callers versionados migrados al servicio; métodos borrados |
+| `LEGACY_PHASE8_REMOVE` en `market_choice_quote_backfill_repository.py` y `backfill_market_choice_quotes.py` | Campaña Fase 4 cerrada e incompatible con schema slim | Repositorio, servicio, CLI, config y tests borrados como unidad |
+| `LEGACY_PHASE8_REMOVE_OR_PORT` en los dos backfills SofaScore | Dependían de `snapshot.choice_id` y/o del mirror de precios | Borrados: ya no eran operativamente válidos |
+| `LEGACY_PHASE8_REMOVE` en `MarketRepository._choice_change` | Cero call sites de producción | Wrapper borrado; tests apuntan a `compute_movement` |
+| `LEGACY_DEAD_CODE` de OddsPortal | Cero call sites | Tres métodos borrados |
+| `legacy_full_time_index` en `save_canonical_bookmaker_batches` | Upgrade in-place de filas `Full Time`/`Full Time` | Borrado: datos ya canónicos y writes nuevos resueltos aguas arriba |
 
-El criterio mecánico de cierre es buscar
+El criterio mecánico de cierre fue buscar
 `LEGACY_PHASE8_REMOVE|LEGACY_PHASE8_REMOVE_OR_PORT|LEGACY_MAINTENANCE_ONLY|LEGACY_DEAD_CODE`
-y resolver cada hit, incluidos sus tests.
+y resolver cada hit, incluidos sus tests. La búsqueda final no devuelve hits
+fuera de esta documentación histórica.
 
 ### 14.2. Migración y seguridad operativa
 
-La migración vive en
-`infrastructure/persistence/migrations/market_choice_price_state_drop.py` y se
-opera únicamente mediante:
+La migración destructiva se ejecutó y quedó auditada durante Fase 7. Tras
+confirmar que local y servidor usan el schema final, sus módulos, CLI,
+postflight y tests fueron retirados. El historial de comandos permanece en Git;
+la versión actual de la aplicación ya no soporta actualizar una base expandida.
 
-```bash
-python -m scripts.maintenance.migrate_market_choice_price_state
-python -m scripts.maintenance.migrate_market_choice_price_state \
-  --commit --confirm-destructive --compact \
-  --output-json exports/phase7-market-choices.json
-```
+El procedimiento ejecutado fue: detener jobs, construir la imagen que contenía
+el CLI, hacer dry-run, ejecutar el DROP explícito con backup confirmado, aplicar
+`VACUUM FULL` fuera de la transacción y validar identidad/readers. La evidencia
+antes/después se conserva en §14.3 y en el historial de Git.
 
-Con `compose.yaml`, el código está dentro de la imagen y no existe un bind
-mount del repositorio. Por tanto hay que reconstruir `app` antes de invocar un
-CLI recién agregado. `logs/` sí está montado y debe usarse para conservar el
-artefacto después de eliminar el contenedor one-off:
-
-```bash
-docker compose stop app
-docker compose build app
-docker compose run --rm app \
-  python -m scripts.maintenance.migrate_market_choice_price_state
-docker compose run --rm app \
-  python -m scripts.maintenance.migrate_market_choice_price_state \
-  --commit --confirm-destructive --compact \
-  --output-json logs/debug/phase7-market-choices.json
-docker compose up -d app
-```
-
-El primer `run` es el dry-run obligatorio. No iniciar `app` con la imagen de
-Fase 7 antes de completar el CLI: el startup fail-closed detectará las columnas
-legacy y se negará a arrancar. `docker compose run` por sí solo reutiliza la
-imagen existente; crear un contenedor nuevo no implica reconstruirla.
-
-El primer comando es dry-run. El segundo requiere jobs detenidos y backup
-confirmado. La migración:
-
-1. clasifica el schema como `expanded`, `slim` o `invalid`;
-2. exige que Fase 6 ya esté realmente en schema `slim`;
-3. bloquea ante dependencias desconocidas y reconstruye únicamente las dos
-   vistas canónicas quote-aware que administra el script;
-4. toma `ACCESS EXCLUSIVE`, con timeouts configurables;
-5. ejecuta un único `ALTER TABLE` sin `CASCADE`;
-6. comprueba filas, rango de IDs y checksum de identidad antes/después;
-7. con `--compact`, ejecuta `VACUUM (FULL, ANALYZE)` fuera de la transacción y
-   repite la verificación integral de identidad; el JSON reporta bytes de heap,
-   índices y total antes/después para cuantificar el espacio recuperado;
-8. refresca materialized views, ejecuta postflight de readers y es idempotente
-   si el schema ya está slim.
-
-El arranque de la aplicación es fail-closed: si detecta cualquiera de las
-columnas legacy, indica el comando exacto del CLI y no permite iniciar writers.
-El migrador genérico continúa siendo aditivo y no posee este DROP.
-
-El DROP y `VACUUM FULL` no forman una sola transacción porque PostgreSQL no
-permite ejecutar el vacuum dentro de ella. Si la compactación falla después de
-un DROP exitoso, el schema ya queda `slim`; se puede corregir la causa y repetir
-el mismo comando, que detectará el DDL como aplicado y reintentará `--compact`.
+En el código actual, `initialize` conserva validaciones estructurales
+fail-closed para `market_choice_snapshots` y `market_choices`, pero ya no
+contiene instrucciones ni entry points para migrar schemas expandidos.
 
 ### 14.3. Verificación local
 
@@ -1763,10 +1731,71 @@ el mismo comando, que detectará el DDL como aplicado y reintentará `--compact`
   197,410,816 → 174,170,112 bytes (-11.8%).
 - Artefacto archivado en `logs/debug/phase7-market-choices.json`.
 
-### 14.4. Pendiente operativo
+### 14.4. Cierre operativo
 
-La copia PostgreSQL local ya está migrada. Falta reiniciar la aplicación con la
-imagen de Fase 7 y confirmar su healthcheck/log de inicialización. Si existe un
-servidor real distinto de esta copia, no repetir allí el DROP hasta completar
-la misma ventana: despliegue previo, jobs detenidos, backup verificado y
-dry-run verde. Fase 8 puede borrar los métodos y scripts legacy bloqueados.
+La copia PostgreSQL local y el servidor están migrados a Fases 6/7. Esa
+confirmación habilitó retirar los migradores. Una base todavía expandida ya no
+es compatible con esta versión: debe restaurarse una revisión anterior que aún
+contenga los migradores antes de desplegar el código actual.
+
+---
+
+## 15. Implementación de Fase 8 y deuda propuesta para Fase 9
+
+### 15.1. Resultado de limpieza
+
+Fase 8 redujo el codebase versionado en más de 10,800 líneas netas,
+principalmente campañas de backfill ya cerradas e incompatibles con el schema
+slim. `market_repository.py` bajó de 1,646 a 907 líneas. La API pública de
+persistencia queda convergida en `save_canonical_bookmaker_batches`, accedida
+por los servicios de ingesta; no queda un writer alternativo de precios o
+snapshots. El match de mercados existentes queda solo por identidad canónica:
+se retiró el puente `legacy_full_time_index`.
+
+Con la confirmación de despliegue en servidor se retiraron además los
+migradores/CLI/postflight/tests de Fases 6/7, el `DROP TABLE IF EXISTS` ejecutado
+en cada initialize y los dos scripts locales ignorados que llamaban la API
+eliminada. Los validadores de startup permanecen como contrato fail-closed del
+schema final.
+
+El guard `check_no_legacy_odds_reads.py` ya no tiene allowlist de compatibilidad:
+toda lectura de identidad o precio del schema retirado es una violación.
+
+Oddspapi exchange deja de escribir la quote `NULL/0` redundante cuando el
+payload contiene un `back/0` válido. La limpieza histórica queda encapsulada en
+`purge_oddspapi_unsided_quotes`: dry-run por defecto y commit con doble
+confirmación. Solo elimina una candidata si sus precios initial/current
+coinciden de forma null-safe con `back/0` y no tiene snapshots; cualquier caso
+ambiguo bloquea toda la transacción. Procedimiento por base, después de construir
+la imagen actual:
+
+```powershell
+docker compose build app
+docker compose run --rm app python -m scripts.maintenance.purge_oddspapi_unsided_quotes --output-json logs/debug/oddspapi-unsided-quotes-audit.json
+docker compose run --rm app python -m scripts.maintenance.purge_oddspapi_unsided_quotes --commit --confirm-destructive --output-json logs/debug/oddspapi-unsided-quotes-purge.json
+```
+
+La migración de tests de Oddspapi reveló que `change` llegaba al payload
+canónico pero no al cálculo de `MarketChoiceQuote.movement`. El quote writer
+ahora acepta y propaga ese dato explícito, conservando el fallback por
+comparación de initial/current. La regresión amplia cerró con 262 tests
+verdes y 4 async excluidos por el runtime local. Los 11 contratos antiguos del
+adapter/resolver quedaron alineados a los módulos canónicos actuales.
+
+### 15.2. Fase 9 propuesta — modularidad y ubicación por responsabilidad
+
+Estos hallazgos son deuda real, pero no código muerto. Se difieren porque
+requieren mover comportamiento vivo y deben tener pruebas de caracterización
+propias:
+
+| Hallazgo | Problema de diseño | Acción propuesta |
+|---|---|---|
+| `MarketRepository.save_canonical_bookmaker_batches` concentra transacción, resolución de identidad, merge y coordinación de writers | SRP; método extenso y difícil de probar por unidad | Extraer `CanonicalMarketBatchWriter` y `MarketIdentityResolver`; dejar `MarketRepository` como fachada temporal y retirarla cuando migren sus callers |
+| `get_external_markets_for_event`, `has_external_markets_for_event` y `get_market_count` viven junto al writer | command/query mezclados | Mover los readers a `MarketReadQueries` y hacer que alertas/scripts dependan directamente de ese puerto |
+| DDL de reporting sigue dentro de `models.py` y el dual view tiene más de un punto de rebuild | responsabilidad y ubicación incorrectas | Crear `infrastructure/persistence/views/` con un único coordinador transaccional de dependencias |
+| `DatabaseManager.check_and_migrate_schema` coordina migraciones históricas de varias áreas | clase monolítica y orden implícito | Introducir registro versionado de migraciones o Alembic, manteniendo startup fail-closed |
+| `.gitignore` ignora globalmente `tests/`, `*.md` y `*.json` | tooling frágil; requiere allowlists crecientes | Cambiar a reglas específicas para artefactos generados y hacer que tests/docs/config sean trackeables por defecto |
+| Marcadores legacy ajenos a odds (`Event` text shims, alert pipeline y parser de cache OddsPortal) | contratos distintos sin evidencia de retiro en este refactor | Abrir inventarios independientes con preflight y criterios de eliminación propios; no borrarlos por coincidencia de nombre |
+
+La Fase 9 no debe reintroducir shims del schema anterior ni mezclar una nueva
+migración destructiva con los movimientos de módulos.

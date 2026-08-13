@@ -65,7 +65,6 @@ scratch/
 old/
 csv/
 verify_betfair_persistence.py
-parse_telegram_odds.py
 
 # databases backups/dumps
 *.db
@@ -106,7 +105,6 @@ odds_papi/*.json
 # Phase 1 OddsPapi offline ingestion verification
 !tests/
 tests/*
-!tests/test_backfill_sofascore_canonical_markets.py
 !tests/test_oddspapi_fixture_discovery_recovery.py
 !tests/test_pre_start_memory_limits.py
 !tests/test_runtime_observability.py
@@ -119,9 +117,6 @@ tests/*
 !tests/test_market_choice_quote_model.py
 !tests/test_market_choice_quote_writer.py
 !tests/test_market_choice_quote_temporal_merge.py
-!tests/test_market_choice_quote_backfill_classifier.py
-!tests/test_market_choice_quote_backfill_repository.py
-!tests/test_backfill_market_choice_quotes_cli.py
 !tests/test_sofascore_quote_timestamp_fallback.py
 !tests/test_market_choice_snapshot_writer.py
 !tests/test_odds_movement.py
@@ -129,19 +124,12 @@ tests/*
 !tests/test_market_read_queries.py
 !tests/test_market_quote_read_policy.py
 !tests/test_market_quote_readiness.py
+!tests/test_oddspapi_unsided_quote_cleanup.py
 !tests/test_external_odds_alert_quote_read.py
 !tests/test_odds_trajectory_repository.py
 !tests/test_odds_trajectory_quote_view.py
 !tests/test_dual_process_market_odds_read_migration.py
 !tests/test_no_legacy_odds_reads.py
-!tests/test_market_choice_snapshot_slim_migration.py
-!tests/test_market_choice_price_state_migration.py
-!config/backfills/
-config/backfills/**
-!config/backfills/market_choice_quotes/
-config/backfills/market_choice_quotes/**
-!config/backfills/market_choice_quotes/*.json
-!config/backfills/market_choice_quotes/.gitkeep
 !config/odds_read_priority.json
 !docs/refactors/db-schema-odds-refactor-phase-4c-runbook.md
 !docs/refactors/db-schema-odds-refactor-phase-5.md
@@ -173,7 +161,6 @@ cache_saved.logs
 create_view.py
 list_of_sports_theodds_api.py
 theoddsapi_test.py
-verify_snapshots.py
 pre_start_check_oddsportal_case.txt
 pre_start_check_oddsportal_case_only_oddsportal_logs.txt
 pg_to_sqlite_reduced.py

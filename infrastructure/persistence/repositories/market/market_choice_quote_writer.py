@@ -102,6 +102,7 @@ class MarketChoiceQuoteWriter:
         source_outcome_id: Optional[str] = None,
         bookmaker_outcome_id: Optional[str] = None,
         source_limit=None,
+        explicit_change=None,
         overwrite_initial: bool = False,
         mode: QuoteMergeMode = QuoteMergeMode.LIVE,
     ) -> Optional[QuoteUpsertResult]:
@@ -153,11 +154,20 @@ class MarketChoiceQuoteWriter:
             session.add(quote)
             quote_index[identity] = quote
 
-        MarketChoiceQuoteWriter._apply_decision(quote, decision)
+        MarketChoiceQuoteWriter._apply_decision(
+            quote,
+            decision,
+            explicit_change=explicit_change,
+        )
         return QuoteUpsertResult(quote=quote, decision=decision)
 
     @staticmethod
-    def _apply_decision(quote: "MarketChoiceQuote", decision: QuoteMergeDecision) -> None:
+    def _apply_decision(
+        quote: "MarketChoiceQuote",
+        decision: QuoteMergeDecision,
+        *,
+        explicit_change=None,
+    ) -> None:
         if decision.apply_initial:
             quote.initial_odds = decision.initial_odds
             quote.initial_captured_at = decision.initial_captured_at
@@ -176,7 +186,7 @@ class MarketChoiceQuoteWriter:
 
         if decision.recalculate_movement:
             quote.movement = compute_movement(
-                explicit_change=None,
+                explicit_change=explicit_change,
                 initial_odds=quote.initial_odds,
                 current_odds=quote.current_odds,
             )

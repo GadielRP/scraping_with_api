@@ -112,12 +112,6 @@ class MarketQuoteReadinessAuditor:
             return MarketQuoteReadinessReport(False, scope, schema_errors=schema_errors)
 
         scope_sql, params, binds = MarketQuoteReadinessAuditor._scope_sql(scope)
-        snapshot_columns = {
-            item["name"]
-            for item in inspect(session.get_bind()).get_columns(
-                "market_choice_snapshots"
-            )
-        }
         issues = []
         # A NULL quote has no path to an event.  This lineage invariant is
         # therefore deliberately global even when the rest of the audit is
@@ -173,27 +167,6 @@ class MarketQuoteReadinessAuditor:
                 None,
             ),
         ]
-        # This consistency check only exists during the expanded pre-Phase 6
-        # schema.  After the DROP, quote_id is the sole lineage identity.
-        if "choice_id" in snapshot_columns:
-            queries.insert(
-                0,
-                (
-                    "snapshot_quote_choice_mismatch",
-                    f"""
-                    SELECT mcs.snapshot_id AS sample_id, 1 AS row_count,
-                           COUNT(*) OVER () AS total_count
-                    FROM market_choice_snapshots mcs
-                    JOIN market_choice_quotes mcq ON mcq.quote_id = mcs.quote_id
-                    JOIN market_choices mc ON mc.choice_id = mcq.choice_id
-                    JOIN markets m ON m.market_id = mc.market_id
-                    WHERE mcs.choice_id <> mcq.choice_id {scope_sql}
-                    ORDER BY mcs.snapshot_id
-                    LIMIT 20
-                    """,
-                    None,
-                ),
-            )
         if not scope:
             queries.append(
                 (

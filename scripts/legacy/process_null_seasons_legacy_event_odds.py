@@ -25,7 +25,10 @@ from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 from infrastructure.persistence.repositories import EventSourceMappingRepository
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
-from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository, MarketRepository
+from infrastructure.persistence.repositories import EventRepository, OddsRepository, ResultRepository
+from modules.odds_ingestion.market_odds_ingestion_service import (
+    MarketOddsIngestionService,
+)
 from modules.observations import sport_observation_service
 from shared.timezone_utils import get_local_now
 
@@ -199,7 +202,10 @@ def process_event(event_id: int, slug: str):
                     
                     # Save all markets
                     try:
-                        MarketRepository.save_markets_from_response(event_id, final_odds_response)
+                        MarketOddsIngestionService.save_from_sofascore_response(
+                            event_id,
+                            final_odds_response,
+                        )
                         logger.info(f"💾 Markets saved for event {event_id}")
                     except Exception as e:
                         logger.warning(f"Error saving markets to DB for event {event_id}: {e}")

@@ -122,7 +122,7 @@ class DatabaseManager:
             self._migrate_bookie_source_mappings()
             self._migrate_market_period_not_null()
             self._migrate_market_choice_quotes()
-            self._migrate_market_choice_snapshot_lineage()
+            self._validate_market_choice_snapshot_schema()
             self._validate_market_choice_price_state_schema()
             self._migrate_event_source_resolution_queue()
             
@@ -224,8 +224,6 @@ class DatabaseManager:
             else:
                 logger.info("✅ Database schema is up to date with models")
 
-            self._drop_legacy_odds_tables()
-            
             return True
                     
         except Exception as e:
@@ -804,14 +802,8 @@ class DatabaseManager:
             logger.error(f"Market period not-null migration failed: {e}")
             logger.error(traceback.format_exc())
 
-    def _migrate_market_choice_snapshot_lineage(self):
-        """Validate snapshot lineage without mutating the Phase 6 table.
-
-        Phase 4 established ``quote_id`` and Phase 6 owns every subsequent
-        structural change through its explicit maintenance CLI.  In
-        particular, application startup must never recreate columns removed
-        by the slim migration.
-        """
+    def _validate_market_choice_snapshot_schema(self):
+        """Require the final quote-linked snapshot schema without mutating it."""
         try:
             from sqlalchemy import inspect
 
@@ -847,15 +839,12 @@ class DatabaseManager:
             }
             if redundant & db_columns:
                 raise RuntimeError(
-                    "Phase 6 application code requires the slim snapshot schema. "
-                    "Stop application jobs and run: python -m "
-                    "scripts.maintenance.migrate_market_choice_snapshots_slim "
-                    "--commit --confirm-destructive"
+                    "Unsupported expanded market_choice_snapshots schema; "
+                    "this release requires the final quote-linked schema"
                 )
 
             logger.debug(
-                "market_choice_snapshots lineage contract validated; "
-                "structural migration is script-owned"
+                "market_choice_snapshots final lineage contract validated"
             )
         except Exception as e:
             logger.error(f"Market choice snapshot lineage migration failed: {e}")
@@ -863,12 +852,7 @@ class DatabaseManager:
             raise
 
     def _validate_market_choice_price_state_schema(self):
-        """Require the Phase 7 identity-only ``market_choices`` schema.
-
-        The destructive DDL is deliberately owned by its maintenance CLI.
-        Startup validates only, so the generic additive migrator cannot hide a
-        partial or missed deployment.
-        """
+        """Require the final identity-only ``market_choices`` schema."""
         try:
             from sqlalchemy import inspect
 
@@ -893,17 +877,13 @@ class DatabaseManager:
             )
             if legacy:
                 raise RuntimeError(
-                    "Phase 7 application code requires identity-only "
-                    "market_choices. Stop application jobs, confirm a backup, "
-                    "and run: python -m scripts.maintenance."
-                    "migrate_market_choice_price_state --commit "
-                    "--confirm-destructive. Remaining columns: "
+                    "Unsupported expanded market_choices schema; this release "
+                    "requires identity-only rows. Remaining columns: "
                     + ", ".join(legacy)
                 )
 
             logger.debug(
-                "market_choices identity-only contract validated; "
-                "structural migration is script-owned"
+                "market_choices final identity-only contract validated"
             )
         except Exception as exc:
             logger.error(
@@ -1987,18 +1967,6 @@ class DatabaseManager:
             logger.error(traceback.format_exc())
             raise
 
-    def _drop_legacy_odds_tables(self):
-        """Drop legacy flat odds tables after the normalized market schema is in place."""
-        try:
-            with self.get_session() as session:
-                session.execute(text("DROP TABLE IF EXISTS odds_snapshot CASCADE;"))
-                session.execute(text("DROP TABLE IF EXISTS event_odds CASCADE;"))
-                session.commit()
-            logger.info("Dropped legacy odds tables if they existed")
-        except Exception as e:
-            logger.error(f"Failed to drop legacy odds tables: {e}")
-            logger.error(traceback.format_exc())
-    
     def _get_column_type_sql(self, col) -> str:
         """
         Convert SQLAlchemy column type to SQL type string.

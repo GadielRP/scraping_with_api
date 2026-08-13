@@ -157,6 +157,12 @@ def test_back_and_lay_quotes_become_current_state_at_t5(tmp_path):
         choice = session.query(MarketChoice).one()
         back = _quote(session, choice.choice_id, "oddspapi", "back")
         lay = _quote(session, choice.choice_id, "oddspapi", "lay")
+        assert (
+            session.query(MarketChoiceQuote)
+            .filter(MarketChoiceQuote.exchange_side.is_(None))
+            .count()
+            == 0
+        )
         snapshots = (
             session.query(MarketChoiceSnapshot)
             .order_by(MarketChoiceSnapshot.snapshot_id)
@@ -287,11 +293,22 @@ def test_existing_batch_uses_constant_select_budget_independent_of_choice_count(
 
 def test_opening_gate_side_and_level_prefers_explicit_exchange_side():
     assert MarketRepository._opening_gate_side_and_level(
-        {"exchangeSide": "lay", "exchangeQuotes": [{"side": "back", "level": 0}]}
+        {
+            "exchangeSide": "lay",
+            "exchangeQuotes": [{"side": "back", "level": 0, "price": 1.9}],
+        }
     ) == ("lay", 0)
     assert MarketRepository._opening_gate_side_and_level(
-        {"exchangeQuotes": [{"side": "lay", "level": 0}, {"side": "back", "level": 0}]}
+        {
+            "exchangeQuotes": [
+                {"side": "lay", "level": 0, "price": 2.0},
+                {"side": "back", "level": 0, "price": 1.9},
+            ]
+        }
     ) == ("back", 0)
+    assert MarketRepository._opening_gate_side_and_level(
+        {"exchangeQuotes": [{"side": "lay", "level": 0, "price": 2.0}]}
+    ) == (None, 0)
     assert MarketRepository._opening_gate_side_and_level({"name": "1"}) == (None, 0)
 
 

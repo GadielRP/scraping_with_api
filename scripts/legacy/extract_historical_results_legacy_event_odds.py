@@ -679,7 +679,10 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
         logger.info(f"{mode_text}📅 Processing {total} events for date {day_date.strftime('%Y-%m-%d')}...")
     
     # Import here to avoid circular imports
-    from infrastructure.persistence.repositories import OddsRepository, MarketRepository
+    from infrastructure.persistence.repositories import OddsRepository
+    from modules.odds_ingestion.market_odds_ingestion_service import (
+        MarketOddsIngestionService,
+    )
     
     for idx, event in enumerate(events[start_idx:], start_idx + 1):
         try:
@@ -739,7 +742,10 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
                                     # Save all markets to markets/market_choices tables (same as scheduler)
                                     # This runs for ALL sports using the existing odds response (no extra API call)
                                     try:
-                                        MarketRepository.save_markets_from_response(event.id, final_odds_response)
+                                        MarketOddsIngestionService.save_from_sofascore_response(
+                                            event.id,
+                                            final_odds_response,
+                                        )
                                     except Exception as market_error:
                                         logger.warning(f"  Error saving markets for event {event.id}: {market_error}")
                                 else:

@@ -80,7 +80,7 @@ def test_dry_run_performs_no_writes():
     ) as build_index, patch(
         f"{SERVICE}.OddspapiMarketAdapter.from_odds_response", return_value=ADAPTED
     ) as adapt, patch(f"{SERVICE}.BookieRepository.resolve_bookie_from_source") as resolve_bookie, patch(
-        f"{SERVICE}.MarketRepository.save_markets_from_response_with_stats"
+        f"{SERVICE}.MarketRepository.save_canonical_bookmaker_batches"
     ) as save:
         result = MarketOddsIngestionService.save_from_oddspapi_response({}, dry_run=True)
 
@@ -367,6 +367,14 @@ def _repository_response(choice):
     }
 
 
+def _save_repository_response(*, event_id, bookie_id, response_data):
+    return MarketRepository.save_canonical_bookmaker_batches(
+        event_id,
+        [{"bookie_id": bookie_id, "markets": response_data["markets"]}],
+        source="oddspapi",
+    )
+
+
 def test_repository_sportsbook_choice_keeps_single_null_exchange_snapshot(tmp_path):
     manager = _repository_manager(tmp_path)
     event_id, bookie_id = _seed_repository_entities(manager)
@@ -375,11 +383,10 @@ def test_repository_sportsbook_choice_keeps_single_null_exchange_snapshot(tmp_pa
     )
 
     with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
-        result = MarketRepository.save_markets_from_response_with_stats(
+        result = _save_repository_response(
             event_id=event_id,
-            odds_response=response_data,
             bookie_id=bookie_id,
-            source="oddspapi",
+            response_data=response_data,
         )
 
     assert result.snapshots_saved == 1
@@ -406,19 +413,18 @@ def test_repository_persists_historical_opening_and_final_odds(tmp_path):
     )
 
     with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
-        result = MarketRepository.save_markets_from_response_with_stats(
+        result = _save_repository_response(
             event_id=event_id,
-            odds_response=response_data,
             bookie_id=bookie_id,
-            source="oddspapi",
+            response_data=response_data,
         )
 
     assert result.snapshots_saved == 1
     with manager.get_session() as session:
-        choice = session.query(MarketChoice).one()
+        quote = session.query(MarketChoiceQuote).one()
         snapshot = session.query(MarketChoiceSnapshot).one()
-    assert float(choice.initial_odds) == 1.7
-    assert float(choice.current_odds) == 1.9
+    assert float(quote.initial_odds) == 1.7
+    assert float(quote.current_odds) == 1.9
     assert snapshot.source_collected_at == convert_utc_to_local(
         datetime.fromisoformat("2026-06-19T12:34:56+00:00")
     )
@@ -452,16 +458,16 @@ def test_repository_derives_change_from_initial_and_current_odds(
         "infrastructure.persistence.repositories.market_repository.db_manager",
         manager,
     ):
-        MarketRepository.save_markets_from_response(
+        _save_repository_response(
             event_id=event_id,
-            odds_response=response_data,
             bookie_id=bookie_id,
+            response_data=response_data,
         )
 
     with manager.get_session() as session:
-        choice = session.query(MarketChoice).one()
+        quote = session.query(MarketChoiceQuote).one()
 
-    assert choice.change == expected_change
+    assert quote.movement == expected_change
 
 
 def test_repository_preserves_explicit_change(tmp_path):
@@ -480,16 +486,16 @@ def test_repository_preserves_explicit_change(tmp_path):
         "infrastructure.persistence.repositories.market_repository.db_manager",
         manager,
     ):
-        MarketRepository.save_markets_from_response(
+        _save_repository_response(
             event_id=event_id,
-            odds_response=response_data,
             bookie_id=bookie_id,
+            response_data=response_data,
         )
 
     with manager.get_session() as session:
-        choice = session.query(MarketChoice).one()
+        quote = session.query(MarketChoiceQuote).one()
 
-    assert choice.change == -1
+    assert quote.movement == -1
 
 
 def test_repository_derives_change_from_persisted_initial_odds(tmp_path):
@@ -513,23 +519,23 @@ def test_repository_derives_change_from_persisted_initial_odds(tmp_path):
         "infrastructure.persistence.repositories.market_repository.db_manager",
         manager,
     ):
-        MarketRepository.save_markets_from_response(
+        _save_repository_response(
             event_id=event_id,
-            odds_response=opening_response,
             bookie_id=bookie_id,
+            response_data=opening_response,
         )
-        MarketRepository.save_markets_from_response(
+        _save_repository_response(
             event_id=event_id,
-            odds_response=current_response,
             bookie_id=bookie_id,
+            response_data=current_response,
         )
 
     with manager.get_session() as session:
-        choice = session.query(MarketChoice).one()
+        quote = session.query(MarketChoiceQuote).one()
 
-    assert float(choice.initial_odds) == 1.9
-    assert float(choice.current_odds) == 1.8
-    assert choice.change == -1
+    assert float(quote.initial_odds) == 1.9
+    assert float(quote.current_odds) == 1.8
+    assert quote.movement == -1
 
 
 def test_repository_persists_exchange_opening_as_back_without_initial_lay(
@@ -557,16 +563,14 @@ def test_repository_persists_exchange_opening_as_back_without_initial_lay(
         "infrastructure.persistence.repositories.market_repository.db_manager",
         manager,
     ):
-        result = MarketRepository.save_markets_from_response_with_stats(
+        result = _save_repository_response(
             event_id=event_id,
-            odds_response=response_data,
             bookie_id=bookie_id,
-            source="oddspapi",
+            response_data=response_data,
         )
 
     assert result.snapshots_saved == 3
     with manager.get_session() as session:
-        choice = session.query(MarketChoice).one()
         snapshots = (
             session.query(MarketChoiceSnapshot)
             .order_by(MarketChoiceSnapshot.snapshot_id)
@@ -574,8 +578,10 @@ def test_repository_persists_exchange_opening_as_back_without_initial_lay(
         )
         quotes = session.query(MarketChoiceQuote).all()
 
-    assert float(choice.initial_odds) == 1.7
     quotes_by_id = {quote.quote_id: quote for quote in quotes}
+    assert float(
+        next(quote for quote in quotes if quote.exchange_side == "back").initial_odds
+    ) == 1.7
     assert [
         (
             quotes_by_id[snapshot.quote_id].exchange_side,
@@ -622,11 +628,10 @@ def test_repository_exchange_choice_persists_ladder_and_best_back_current_odds(t
     )
 
     with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
-        result = MarketRepository.save_markets_from_response_with_stats(
+        result = _save_repository_response(
             event_id=event_id,
-            odds_response=response_data,
             bookie_id=bookie_id,
-            source="oddspapi",
+            response_data=response_data,
         )
 
     assert result.snapshots_saved == 4
@@ -640,7 +645,13 @@ def test_repository_exchange_choice_persists_ladder_and_best_back_current_odds(t
         quotes = session.query(MarketChoiceQuote).all()
 
     assert choice.choice_name == "2"
-    assert float(choice.current_odds) == 4.8
+    assert float(
+        next(
+            quote
+            for quote in quotes
+            if quote.exchange_side == "back" and quote.exchange_level == 0
+        ).current_odds
+    ) == 4.8
     quotes_by_id = {quote.quote_id: quote for quote in quotes}
     assert [
         (
