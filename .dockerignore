@@ -17,6 +17,8 @@
 !shared/**
 !scripts/
 !scripts/**
+!config/
+!config/odds_read_priority.json
 
 **/__pycache__/
 **/*.py[cod]
