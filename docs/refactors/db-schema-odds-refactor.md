@@ -862,8 +862,8 @@ no desde columnas de DB.
   Oddspapi `exchange_side=NULL` además de Back/Lay. Si existen sides explícitos
   para `(choice_id, source)`, los readers de presentación/trajectory suprimen
   esa fila; no se muestran tres instrumentos para un mercado que realmente
-  tiene dos. El writer nuevo ya no la crea y el CLI dedicado audita/purga las
-  filas históricas seguras.
+  tiene dos. El writer nuevo ya no la crea; la campaña de auditoría histórica
+  terminó sin candidatas en local y servidor, y su CLI temporal fue retirado.
 - Nunca combinar opening de una fuente con current de otra. Un
   `(oddsportal, back)` y un `(oddspapi, back)` son series distintas aunque
   compartan market, choice y bookie.
@@ -1454,8 +1454,8 @@ ORDER BY b.name, m.market_name, m.choice_group NULLS FIRST,
    existe un `back/0` explícito válido.** El top back reemplaza semánticamente
    al `decimalValue` plano. Un payload anómalo con solo lay conserva el fallback
    `NULL` para no perder el precio primario. Los readers siguen suprimiendo
-   duplicados históricos y la purga dedicada falla si precios o lineage no son
-   inequívocos; nunca fusiona `NULL` con back/lay.
+   duplicados históricos. La auditoría final no encontró candidatas en local ni
+   servidor; nunca se fusionó `NULL` con back/lay.
 10. **El writer actual no es seguro para backfill temporal.** Siempre reemplaza
    current; agregar `backfill-fill-only` antes de reutilizarlo (Fase 4b).
 11. **Fase 5 es prioritaria** respecto a extracciones cosméticas
@@ -1533,7 +1533,7 @@ market_choice_quotes + snapshots(quote_id)
 |---|---|---|---|
 | `save_markets_from_response(_with_stats)` y scripts callers | retirado en Fase 8 | Los callers versionados usan el servicio canónico | Cerrado |
 | `_save_oddsportal_market`, `_build_choice_payload`, `save_markets_from_oddsportal` | retirado en Fase 8 | Cero call sites confirmados | Cerrado |
-| Quotes exchange `exchange_side=NULL` redundantes de Oddspapi | cerrado en Fase 8 | Writer usa `back/0`; auditor/purga rechaza snapshots, precios distintos o ausencia de top back | Ejecutar dry-run y luego purga confirmada en cada base desplegada |
+| Quotes exchange `exchange_side=NULL` redundantes de Oddspapi | cerrado en Fase 8 | Writer usa `back/0`; auditoría local y servidor terminó con cero candidatas | CLI temporal retirado tras postflight verde |
 | `market_repository.py` monolítico | deuda SRP | La fachada aún contiene la orquestación canónica viva | Extraer `CanonicalMarketBatchWriter`/`MarketIdentityResolver` en Fase 9 |
 | DDL de reporting dentro de `models.py` | deuda SRP/modularidad | No es código muerto y moverlo exige caracterización DDL | Mover a `infrastructure/persistence/views/` en Fase 9 |
 | Dual view creado tanto en `create_or_replace_views` como en `create_or_replace_materialized_views` | redundancia | Garantiza dependencia hoy, pero duplica responsabilidad | Un único `rebuild_dual_process_dependencies()` transaccional |
@@ -1762,23 +1762,16 @@ El guard `check_no_legacy_odds_reads.py` ya no tiene allowlist de compatibilidad
 toda lectura de identidad o precio del schema retirado es una violación.
 
 Oddspapi exchange deja de escribir la quote `NULL/0` redundante cuando el
-payload contiene un `back/0` válido. La limpieza histórica queda encapsulada en
-`purge_oddspapi_unsided_quotes`: dry-run por defecto y commit con doble
-confirmación. Solo elimina una candidata si sus precios initial/current
-coinciden de forma null-safe con `back/0` y no tiene snapshots; cualquier caso
-ambiguo bloquea toda la transacción. Procedimiento por base, después de construir
-la imagen actual:
-
-```powershell
-docker compose build app
-docker compose run --rm app python -m scripts.maintenance.purge_oddspapi_unsided_quotes --output-json logs/debug/oddspapi-unsided-quotes-audit.json
-docker compose run --rm app python -m scripts.maintenance.purge_oddspapi_unsided_quotes --commit --confirm-destructive --output-json logs/debug/oddspapi-unsided-quotes-purge.json
-```
+payload contiene un `back/0` válido. La campaña histórica se ejecutó en local y
+servidor con doble confirmación y postflight verde; ambas bases reportaron cero
+candidatas, cero snapshots dependientes y cero blockers. Después de completar
+el despliegue se retiraron el auditor, el CLI y sus tests para no conservar otra
+migración de un solo uso en el codebase.
 
 La migración de tests de Oddspapi reveló que `change` llegaba al payload
 canónico pero no al cálculo de `MarketChoiceQuote.movement`. El quote writer
 ahora acepta y propaga ese dato explícito, conservando el fallback por
-comparación de initial/current. La regresión amplia cerró con 262 tests
+comparación de initial/current. La regresión amplia cerró con 260 tests
 verdes y 4 async excluidos por el runtime local. Los 11 contratos antiguos del
 adapter/resolver quedaron alineados a los módulos canónicos actuales.
 

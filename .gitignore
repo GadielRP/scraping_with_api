@@ -124,7 +124,6 @@ tests/*
 !tests/test_market_read_queries.py
 !tests/test_market_quote_read_policy.py
 !tests/test_market_quote_readiness.py
-!tests/test_oddspapi_unsided_quote_cleanup.py
 !tests/test_external_odds_alert_quote_read.py
 !tests/test_odds_trajectory_repository.py
 !tests/test_odds_trajectory_quote_view.py
