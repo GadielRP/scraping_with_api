@@ -13,20 +13,24 @@ logger = logging.getLogger(__name__)
 
 
 def run_midnight_sync_job() -> None:
-    logger.info("Starting Job D: Midnight results collection")
+    logger.info("Starting Midnight Sync")
     try:
-        logger.info("📊 Collecting results from finished events...")
+        logger.info("Midnight Sync: starting previous-day results collection")
         run_results_collection_previous_day()
 
-        logger.info("📊 Updating prediction logs with actual results...")
+        logger.info("Midnight Sync: updating prediction logs with actual results")
         stats = prediction_logger.update_predictions_with_results()
         if "error" in stats:
-            logger.error(f"Error updating prediction logs: {stats['error']}")
+            logger.error("Midnight Sync: prediction log update failed: %s", stats["error"])
         else:
-            logger.info(f"📊 Prediction logs updated: {stats['updated']} completed, {stats['cancelled']} cancelled")
+            logger.info(
+                "Midnight Sync: prediction logs updated: %s completed, %s cancelled",
+                stats["updated"],
+                stats["cancelled"],
+            )
 
-        logger.info("🔄 Refreshing alert materialized views...")
+        logger.info("Midnight Sync: refreshing alert materialized view")
         refresh_materialized_views(db_manager.engine)
-        logger.info("✅ Alert data refreshed")
+        logger.info("Midnight Sync: alert materialized view refreshed")
     except Exception as exc:
-        logger.error(f"Error in Job D: {exc}")
+        logger.exception("Midnight Sync failed: %s", exc)

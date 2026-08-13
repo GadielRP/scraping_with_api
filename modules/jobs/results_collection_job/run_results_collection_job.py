@@ -40,7 +40,7 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
                     f"Missing SofaScore source mapping for event_id={event.id}"
                 )
 
-            # Job E / date collection: stale not_started events are a minority
+            # Previous-day/date collection: stale not_started events are a minority
             # of zombie fixtures that never update on SofaScore. Policy lives
             # here (caller), not in the shared results parser.
             result_data = api_client.get_event_results(
@@ -91,7 +91,7 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
 
 
 def run_results_collection_previous_day() -> None:
-    logger.info("Starting Job E: Results collection for finished events")
+    logger.info("Starting Results Collection (previous day)")
     try:
         yesterday = datetime.now() - timedelta(days=1)
         events = EventRepository.get_events_by_date(yesterday)
@@ -100,20 +100,20 @@ def run_results_collection_previous_day() -> None:
             return
 
         logger.info("Processing %s events from previous day", len(events))
-        stats = _collect_results_for_events(events, "Job E")
+        stats = _collect_results_for_events(events, "Results Collection (previous day)")
         logger.info(
-            "Job E completed: %s updated, %s skipped, %s deleted, %s failed",
+            "Results Collection (previous day) completed: %s updated, %s skipped, %s deleted, %s failed",
             stats["updated"],
             stats["skipped"],
             stats["deleted"],
             stats["failed"],
         )
     except Exception as exc:
-        logger.error("Error in Job E: %s", exc)
+        logger.exception("Results Collection (previous day) failed: %s", exc)
 
 
 def run_results_collection_all_finished() -> None:
-    logger.info("Starting Job E2: Comprehensive results collection")
+    logger.info("Starting Results Collection (all finished)")
     try:
         events = EventRepository.get_all_finished_events()
         if not events:
@@ -121,16 +121,16 @@ def run_results_collection_all_finished() -> None:
             return
 
         logger.info("Processing %s finished events", len(events))
-        stats = _collect_results_for_events(events, "Job E2")
+        stats = _collect_results_for_events(events, "Results Collection (all finished)")
         logger.info(
-            "Job E2 completed: %s updated, %s skipped, %s deleted, %s failed",
+            "Results Collection (all finished) completed: %s updated, %s skipped, %s deleted, %s failed",
             stats["updated"],
             stats["skipped"],
             stats["deleted"],
             stats["failed"],
         )
     except Exception as exc:
-        logger.error("Error in Job E2: %s", exc)
+        logger.exception("Results Collection (all finished) failed: %s", exc)
 
 
 def run_results_collection_for_date(target_date) -> None:

@@ -218,18 +218,18 @@ class JobScheduler:
                 logger.exception(f"Error in Job C: {exc}")
 
     def job_results_collection(self):
-        logger.info("Starting Job E: Results collection for finished events")
+        logger.info("Starting scheduled Results Collection (previous day)")
         try:
             run_results_collection_previous_day()
         except Exception as exc:
-            logger.error(f"Error in Job E: {exc}")
+            logger.exception("Scheduled Results Collection (previous day) failed: %s", exc)
 
     def job_results_collection_all_finished(self):
-        logger.info("Starting Job E2: Comprehensive results collection")
+        logger.info("Starting scheduled Results Collection (all finished)")
         try:
             run_results_collection_all_finished()
         except Exception as exc:
-            logger.error(f"Error in Job E2: {exc}")
+            logger.exception("Scheduled Results Collection (all finished) failed: %s", exc)
 
     def job_results_collection_for_date(self, target_date):
         logger.info(f"Starting results collection for date: {target_date}")
@@ -239,18 +239,18 @@ class JobScheduler:
             logger.error(f"Error in results collection for {target_date}: {exc}")
 
     def job_midnight_sync(self):
-        logger.info("Starting Job D: Midnight results collection")
+        logger.info("Starting scheduled Midnight Sync")
         try:
             run_midnight_sync_job()
         except Exception as exc:
-            logger.error(f"Error in Job D: {exc}")
+            logger.exception("Scheduled Midnight Sync failed: %s", exc)
 
     def job_daily_discovery(self):
-        logger.info("Starting Job E: Daily discovery heartbeat")
+        logger.info("Starting scheduled Daily Discovery")
         try:
             run_daily_discovery_job()
         except Exception as exc:
-            logger.error(f"Error in Job E (Daily Discovery): {exc}")
+            logger.exception("Scheduled Daily Discovery failed: %s", exc)
             return
 
         # Keep discovery and MV refresh as separate scheduler steps: discovery
@@ -260,17 +260,17 @@ class JobScheduler:
 
     def job_refresh_alert_materialized_views(self):
         """Refresh mv_alert_events after discovery so historical matching stays current."""
-        logger.info("🔄 Starting Job E-follow-up: refresh mv_alert_events")
+        logger.info("Starting Alert Materialized View Refresh after Daily Discovery")
         started = time.monotonic()
         try:
             refresh_materialized_views(db_manager.engine)
             logger.info(
-                "✅ mv_alert_events refresh completed duration_s=%.1f",
+                "Alert Materialized View Refresh completed duration_s=%.1f",
                 time.monotonic() - started,
             )
         except Exception as exc:
             logger.exception(
-                "Error refreshing mv_alert_events after daily discovery duration_s=%.1f: %s",
+                "Alert Materialized View Refresh after Daily Discovery failed duration_s=%.1f: %s",
                 time.monotonic() - started,
                 exc,
             )
@@ -546,11 +546,11 @@ class JobScheduler:
             logger.error(f"Error in Job F (Clean up OddsPortal league cache): {exc}")
 
     def job_daily_discovery_retry(self):
-        logger.info("Starting Job E_Retry: Delegating to slot-aware daily discovery heartbeat")
+        logger.info("Starting scheduled Daily Discovery retry heartbeat")
         try:
             run_daily_discovery_retry_job()
         except Exception as exc:
-            logger.error(f"Error in Job E_Retry: {exc}")
+            logger.exception("Scheduled Daily Discovery retry failed: %s", exc)
             return
 
         self.job_refresh_alert_materialized_views()
@@ -573,11 +573,11 @@ class JobScheduler:
             logger.info("✅ OddsPortal background worker finished.")
 
     def run_job_midnight_sync_now(self):
-        logger.info("Running Job D immediately")
+        logger.info("Running Midnight Sync manually")
         self.job_midnight_sync()
 
     def run_job_results_collection_now(self):
-        logger.info("Running Job E immediately")
+        logger.info("Running Results Collection (previous day) manually")
         self.job_results_collection()
 
     def run_job_results_collection_for_date_now(self, target_date):
@@ -585,11 +585,11 @@ class JobScheduler:
         self.job_results_collection_for_date(target_date)
 
     def run_job_results_collection_all_now(self):
-        logger.info("Running Job E2 immediately")
+        logger.info("Running Results Collection (all finished) manually")
         self.job_results_collection_all_finished()
 
     def run_job_daily_discovery_now(self):
-        logger.info("Running Job E (Daily Discovery) immediately")
+        logger.info("Running Daily Discovery manually")
         self.job_daily_discovery()
 
     def run_job_oddspapi_fixture_discovery_now(self, **kwargs):
