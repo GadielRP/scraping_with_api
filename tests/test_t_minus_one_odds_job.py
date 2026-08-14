@@ -76,6 +76,7 @@ def test_t_minus_one_job_queries_exact_slot_and_records_dispatch_lag(
     ]
     assert calls[0][1]["key_moments"] == (1,)
     assert calls[0][1]["timestamp_correction_enabled"] is False
+    assert calls[0][1]["evaluate_key_moments"] is False
     assert "dispatch_lag_ms=3000" in caplog.text
 
 
@@ -103,18 +104,18 @@ def test_t_minus_one_job_does_not_replay_after_event_start(monkeypatch):
     )
 
 
-def test_critical_scheduler_uses_minutes_immediately_before_five_minute_grid(
+def test_critical_scheduler_runs_every_minute_for_asymmetric_start_times(
     monkeypatch,
 ):
     scheduler = JobScheduler.__new__(JobScheduler)
     scheduler.critical_scheduler = schedule.Scheduler()
-    monkeypatch.setattr(Config, "POLL_INTERVAL_MINUTES", 5)
+    monkeypatch.setattr(Config, "PRE_START_T_MINUS_ONE_INTERVAL_MINUTES", 1)
     monkeypatch.setattr(Config, "PRE_START_CLOSING_ODDS_MINUTE", 1)
 
     scheduler._setup_t_minus_one_jobs()
 
     assert [job.at_time.minute for job in scheduler.critical_scheduler.jobs] == list(
-        range(4, 60, 5)
+        range(0, 60)
     )
 
 

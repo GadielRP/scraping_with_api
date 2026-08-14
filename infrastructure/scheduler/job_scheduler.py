@@ -7,8 +7,11 @@ import logging
 import schedule
 import threading
 import time
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List
+
+from sqlalchemy import text
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import refresh_materialized_views
@@ -99,6 +102,11 @@ class JobScheduler:
         logger.info(
             f"  - Pre-start check: every {Config.POLL_INTERVAL_MINUTES} minutes (includes tennis timestamp checks + NBA 4th quarter checks)"
         )
+        logger.info(
+            "  - Critical T-%s odds: every %s minute(s)",
+            Config.PRE_START_CLOSING_ODDS_MINUTE,
+            Config.PRE_START_T_MINUS_ONE_INTERVAL_MINUTES,
+        )
         logger.info("  - Midnight sync: daily at 04:00")
         logger.info(
             "  - Daily discovery: fixed trigger(s) at %s; retry heartbeat every %s minutes; "
@@ -123,21 +131,17 @@ class JobScheduler:
         )
 
     def _setup_t_minus_one_jobs(self):
-        interval = Config.POLL_INTERVAL_MINUTES
-        closing_minute = Config.PRE_START_CLOSING_ODDS_MINUTE
-        trigger_minutes = [
-            minute
-            for minute in range(60)
-            if (minute + closing_minute) % interval == 0
-        ]
+        interval = max(1, Config.PRE_START_T_MINUS_ONE_INTERVAL_MINUTES)
+        trigger_minutes = list(range(0, 60, interval))
         for minute in trigger_minutes:
             self.critical_scheduler.every().hour.at(f":{minute:02d}").do(
                 self.job_t_minus_one_odds,
                 scheduled_minute=minute,
             )
         logger.info(
-            "  - Critical T-%s odds scheduled at minute marks %s",
-            closing_minute,
+            "  - Critical T-%s odds scheduled every %s minute(s) at minute marks %s",
+            Config.PRE_START_CLOSING_ODDS_MINUTE,
+            interval,
             ",".join(f":{minute:02d}" for minute in trigger_minutes),
         )
 
@@ -162,12 +166,6 @@ class JobScheduler:
         )
         self.critical_thread.start()
         self._recover_missed_oddspapi_fixture_discovery_runs()
-
-        # Do startup work before the scheduler thread begins. The old order
-        # allowed an immediate pre-start check and a due scheduled check to
-        # overlap, multiplying memory use during restarts.
-        logger.info("Running immediate pre-start check for any games starting soon...")
-        self.job_pre_start_check()
 
         self.thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.thread.start()
@@ -279,12 +277,41 @@ class JobScheduler:
             return None
 
         try:
-            with observe_operation("pre_start_t_minus_one"):
-                return run_t_minus_one_odds_job(
-                    self,
-                    scheduled_at,
-                    debug_mode=Config.global_debug_mode,
-                )
+            # A PostgreSQL advisory lock prevents duplicate T-1 dispatches
+            # across containers without adding a table. The lock is scoped to
+            # the exact wall-clock slot, while the local lock above prevents
+            # overlapping T-1 runs inside this process.
+            lock_context = (
+                db_manager.get_session()
+                if db_manager.engine.dialect.name == "postgresql"
+                else nullcontext()
+            )
+            with lock_context as lock_session:
+                lock_key = int(scheduled_at.strftime("%Y%m%d%H%M"))
+                if lock_session is not None and not lock_session.execute(
+                    text("SELECT pg_try_advisory_lock(:lock_key)"),
+                    {"lock_key": lock_key},
+                ).scalar():
+                    logger.warning(
+                        "Skipping T-1 dispatch already claimed by another container "
+                        "scheduled_at=%s",
+                        scheduled_at,
+                    )
+                    return None
+
+                try:
+                    with observe_operation("pre_start_t_minus_one"):
+                        return run_t_minus_one_odds_job(
+                            self,
+                            scheduled_at,
+                            debug_mode=Config.global_debug_mode,
+                        )
+                finally:
+                    if lock_session is not None:
+                        lock_session.execute(
+                            text("SELECT pg_advisory_unlock(:lock_key)"),
+                            {"lock_key": lock_key},
+                        )
         finally:
             self._t_minus_one_lock.release()
 

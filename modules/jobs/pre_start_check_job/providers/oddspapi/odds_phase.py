@@ -106,6 +106,7 @@ def run_oddspapi_pre_start_odds(
     dry_run: bool = False,
 ) -> OddspapiPreStartOddsSummary:
     """Ingest mapped Oddspapi odds without affecting the main pre-start job."""
+    logger.info("🟡 Oddspapi pre-start odds starting...")
     if not getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", True):
         summary = OddspapiPreStartOddsSummary(disabled=True, skip_reason="oddspapi_pre_start_disabled")
         _log_summary(summary)

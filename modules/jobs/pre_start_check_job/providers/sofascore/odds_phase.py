@@ -25,6 +25,7 @@ def run_sofascore_pre_start_odds(
     odds_fetcher: SofaScoreOddsFetcher | None = None,
 ) -> ProviderOddsSummary:
     """Fetch eligible SofaScore odds and persist confirmed 404s in one update."""
+    logger.info("🔵 SofaScore pre-start odds starting...")
     fetcher = odds_fetcher or SofaScoreOddsFetcher(api_client)
 
     def _has_resolved_sofascore_id(candidate: dict) -> bool:

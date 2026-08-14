@@ -276,7 +276,8 @@ ODDSPAPI_KEY=replace_with_key_1,replace_with_key_2
 
 # The pre-start scheduler cadence and its shared timing moments.
 POLL_INTERVAL_MINUTES=5
-PRE_START_ODDS_MOMENTS=120,30,5,0,-5
+PRE_START_T_MINUS_ONE_INTERVAL_MINUTES=1
+PRE_START_ODDS_MOMENTS=120,30,5,1,-5
 PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES=3
 
 # Oddspapi pre-start ingestion.
@@ -320,13 +321,14 @@ warning and skips eligible events. The remaining values are optional because
 | `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` | no filter | Optional comma-separated periods to persist, e.g. `Full Time`. Blank means all mapped periods. |
 | `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` | `0` | Maximum mapped events to request in one pre-start pass. `0` means unlimited; extra candidates are skipped for that pass. |
 | `POLL_INTERVAL_MINUTES` | `5` | Frequency of the existing pre-start cycle. The job checks exact rounded minute values, so choose a cadence that lands on the configured key moments. |
-| `PRE_START_ODDS_MOMENTS` | `120,30,5,0,-5` | Exact rounded minutes before/after kickoff at which **both** SofaScore and Oddspapi are eligible to capture odds. |
+| `PRE_START_T_MINUS_ONE_INTERVAL_MINUTES` | `1` | Frequency of the isolated closing-odds scheduler. Keep it at `1` to cover events starting at any minute. |
+| `PRE_START_ODDS_MOMENTS` | `120,30,5,1,-5` | Exact rounded minutes before/after kickoff at which **both** SofaScore and Oddspapi are eligible to capture odds. The closing minute is owned by the isolated T-1 ingestion lane. |
 | `PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES` | `3` | Allowed distance from a configured moment when loading the downstream trajectory. |
 
 `/v4/odds` is never requested when `minutes_until_start <= 0`, even if an
-exchange bookmaker or the current-odds mode is enabled. When Historical mode
-is selected, regular bookmakers remain available at the configured `0` and
-`-5` moments.
+exchange bookmaker or the current-odds mode is enabled. The closing `1`
+minute is handled by the isolated T-1 odds lane; regular bookmakers remain
+available at the configured `-5` moment.
 
 Parallel pre-start ingestion is enabled only when at least two distinct API
 keys are configured and exchange bookmakers are disabled. Each worker owns one

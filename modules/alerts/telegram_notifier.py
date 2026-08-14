@@ -109,7 +109,7 @@ class PreStartNotification:
             logger.warning("Telegram notifications not configured - cannot send alert message")
             return False
 
-        logger.info("Sending alert message via Telegram...")
+        logger.info("📲 Sending alert message via Telegram...")
         return self._send_telegram_notification(message)
 
 

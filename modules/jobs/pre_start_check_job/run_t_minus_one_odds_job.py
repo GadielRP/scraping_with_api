@@ -22,13 +22,13 @@ def run_t_minus_one_odds_job(
     *,
     debug_mode: bool = False,
 ):
-    """Start the closing-odds flow for the event slot one minute ahead."""
+    """Ingest provider odds for the closing event slot one minute ahead."""
     now = datetime.now()
     closing_minute = Config.PRE_START_CLOSING_ODDS_MINUTE
     target_start = scheduled_at + timedelta(minutes=closing_minute)
     dispatch_lag_ms = max(0, int((now - scheduled_at).total_seconds() * 1000))
     logger.info(
-        "T-1 odds dispatch scheduled_at=%s target_start=%s dispatch_lag_ms=%s",
+        "🕛1️⃣ T-1 odds dispatch scheduled_at=%s target_start=%s dispatch_lag_ms=%s",
         scheduled_at.isoformat(),
         target_start.isoformat(),
         dispatch_lag_ms,
@@ -59,6 +59,7 @@ def run_t_minus_one_odds_job(
         oddsportal_context=OddsPortalScrapeContext({}, set(), {}),
         debug_mode=debug_mode,
         timestamp_correction_enabled=False,
+        evaluate_key_moments=False,
     )
 
 
