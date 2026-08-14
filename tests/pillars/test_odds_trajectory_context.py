@@ -26,8 +26,8 @@ def _make_rows() -> list[dict[str, object]]:
             "odds_value": "1.850",
             "snapshot_id": 1001,
             "collected_at": "2026-01-01T10:00:00",
-            "minutes_before_start": 0,
-            "target_minute": 0,
+            "minutes_before_start": 1,
+            "target_minute": 1,
             "distance_from_target": 0,
         },
         {
@@ -49,20 +49,20 @@ def _make_rows() -> list[dict[str, object]]:
             "odds_value": "1.860",
             "snapshot_id": 2001,
             "collected_at": "2026-01-01T10:00:00",
-            "minutes_before_start": 0,
-            "target_minute": 0,
+            "minutes_before_start": 1,
+            "target_minute": 1,
             "distance_from_target": 0,
         },
     ]
 
 
 def test_filter_by_bookie_ids_keeps_only_requested_bookie() -> None:
-    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[0])
+    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
 
     filtered = context.filter_by_bookie_ids({1})
 
     assert filtered.available is True
-    assert filtered.target_minutes_present == [0]
+    assert filtered.target_minutes_present == [1]
     assert filtered.missing_target_minutes == []
 
     original_bookies = (
@@ -85,14 +85,14 @@ def test_filter_by_bookie_ids_keeps_only_requested_bookie() -> None:
 
 
 def test_filter_by_bookie_ids_returns_unavailable_context_when_no_bookie_matches() -> None:
-    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[0])
+    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
 
     filtered = context.filter_by_bookie_ids({999})
 
     assert filtered.available is False
     assert filtered.markets == {}
     assert filtered.target_minutes_present == []
-    assert filtered.missing_target_minutes == [0]
+    assert filtered.missing_target_minutes == [1]
 
 
 def test_market_group_and_period_filters_still_preserve_shape_and_availability() -> None:
@@ -116,8 +116,8 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
             "odds_value": "1.970",
             "snapshot_id": 3001,
             "collected_at": "2026-01-01T10:00:00",
-            "minutes_before_start": 0,
-            "target_minute": 0,
+            "minutes_before_start": 1,
+            "target_minute": 1,
             "distance_from_target": 0,
         },
         {
@@ -139,20 +139,20 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
             "odds_value": "1.720",
             "snapshot_id": 4001,
             "collected_at": "2026-01-01T10:00:00",
-            "minutes_before_start": 0,
-            "target_minute": 0,
+            "minutes_before_start": 1,
+            "target_minute": 1,
             "distance_from_target": 0,
         },
     ]
 
-    context = build_odds_trajectory_context(rows, target_minutes_expected=[0])
+    context = build_odds_trajectory_context(rows, target_minutes_expected=[1])
 
     filtered = context.filter_by_market_groups({"1X2"}).filter_by_market_period({"Full Time"})
 
     assert filtered.available is True
     assert set(filtered.markets.keys()) == {"1X2"}
     assert set(filtered.markets["1X2"].keys()) == {"Full Time"}
-    assert set(filtered.target_minutes_present) == {0}
+    assert set(filtered.target_minutes_present) == {1}
     assert filtered.missing_target_minutes == []
 
 
@@ -176,7 +176,7 @@ def test_multi_source_exchange_series_do_not_collide() -> None:
             )
             quote_id += 1
 
-    context = build_odds_trajectory_context(rows, target_minutes_expected=[0])
+    context = build_odds_trajectory_context(rows, target_minutes_expected=[1])
     bookies = context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"].bookies
 
     assert set(bookies) == {
@@ -192,6 +192,6 @@ def test_multi_source_exchange_series_do_not_collide() -> None:
         503,
     }
     assert {
-        bookie.choices["1"].meta_by_minute[0].quote_id
+        bookie.choices["1"].meta_by_minute[1].quote_id
         for bookie in bookies.values()
     } == {500, 501, 502, 503}

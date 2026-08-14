@@ -23,6 +23,7 @@ from modules.jobs.pre_start_check_job.key_moment_evaluation import (
     evaluate_pre_start_key_moments,
     flush_missing_standings_endpoints as _flush_missing_standings_endpoints,
 )
+from modules.jobs.pre_start_check_job.moment_policy import regular_pre_start_moments
 from modules.jobs.pre_start_check_job.odds_source_state import (
     PreStartOddsSourceStates,
     load_pre_start_odds_source_states,
@@ -210,13 +211,55 @@ def _load_upcoming_events(scheduler, tracked_competition_ids) -> list[dict]:
 def _count_key_moment_events(
     upcoming_events: list[dict],
     timings: dict[int, int],
+    key_moments,
 ) -> int:
-    key_moments = Config.PRE_START_ODDS_MOMENTS
     return sum(
         1
         for event in upcoming_events
         if timings.get(event["id"]) in key_moments
     )
+
+
+def run_pre_start_odds_moments(
+    scheduler,
+    upcoming_events: list[dict],
+    timings: dict[int, int],
+    *,
+    key_moments,
+    oddsportal_context: OddsPortalScrapeContext,
+    debug_mode: bool = False,
+    timestamp_correction_enabled: bool | None = None,
+) -> PreStartEventPlan:
+    """Run candidate selection, provider ingestion, and downstream evaluation."""
+    source_states = load_pre_start_odds_source_states(upcoming_events)
+    event_plan = build_pre_start_event_candidates(
+        scheduler,
+        upcoming_events,
+        timings,
+        source_states,
+        key_moments=key_moments,
+        timestamp_correction_enabled=timestamp_correction_enabled,
+    )
+    _ingest_provider_odds(
+        event_plan,
+        source_states,
+        debug_mode=debug_mode,
+    )
+    logger.info(
+        "Provider odds ingestion completed for %s candidates",
+        sum(
+            1
+            for candidate in event_plan.candidates
+            if candidate.get("should_extract_odds")
+        ),
+    )
+    evaluate_pre_start_key_moments(
+        scheduler,
+        event_plan,
+        oddsportal_context,
+        debug_mode=debug_mode,
+    )
+    return event_plan
 
 
 def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
@@ -277,42 +320,26 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             logger.warning("No upcoming events found after maintenance checks")
             return
 
-        key_moment_count = _count_key_moment_events(upcoming_events, timings)
+        key_moments = regular_pre_start_moments()
+        key_moment_count = _count_key_moment_events(
+            upcoming_events,
+            timings,
+            key_moments,
+        )
         logger.info(
             "🎯 Starting key-moment candidate build: %s/%s upcoming events "
             "at key minutes_until_start %s",
             key_moment_count,
             len(upcoming_events),
-            Config.PRE_START_ODDS_MOMENTS,
+            key_moments,
         )
 
-        # Load once, after filtering rescheduled events, and share the result
-        # between both provider processors.
-        source_states = load_pre_start_odds_source_states(upcoming_events)
-        event_plan = build_pre_start_event_candidates(
+        run_pre_start_odds_moments(
             scheduler,
             upcoming_events,
             timings,
-            source_states,
-        )
-        _ingest_provider_odds(
-            event_plan,
-            source_states,
-            debug_mode=global_debug_mode,
-        )
-        active_count = sum(
-            1 for c in event_plan.candidates if c.get("should_extract_odds")
-        )
-        logger.info(
-            "💰✅ Provider odds ingestion completed for %s candidates",
-            active_count,
-        )
-
-        logger.info("🔔 Starting key-moment alert/pillar evaluation")
-        evaluate_pre_start_key_moments(
-            scheduler,
-            event_plan,
-            oddsportal_context,
+            key_moments=key_moments,
+            oddsportal_context=oddsportal_context,
             debug_mode=global_debug_mode,
         )
         logger.info("✅ Pre-start check phases completed")
@@ -323,4 +350,4 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             api_client.set_challenge_evidence_enabled(previous_evidence_mode)
 
 
-__all__ = ["run_pre_start_check_job"]
+__all__ = ["run_pre_start_check_job", "run_pre_start_odds_moments"]

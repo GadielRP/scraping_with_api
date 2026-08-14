@@ -11,6 +11,7 @@ from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
+from modules.jobs.pre_start_check_job.moment_policy import dual_process_moments
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
             logger.warning("Could not find event %s after time update", event_id)
             return
 
-        if minutes_until_start not in [30, 0] and minutes_until_start >= 0:
+        if minutes_until_start not in dual_process_moments() and minutes_until_start >= 0:
             return
 
         source_states = EventSourceMappingRepository.get_odds_source_states(

@@ -32,8 +32,8 @@ def _point(quote_id):
         odds_value=Decimal("1.9"),
         snapshot_id=4,
         collected_at=None,
-        minutes_before_start=0,
-        target_minute=0,
+        minutes_before_start=1,
+        target_minute=1,
         distance_from_target=0,
     )
 
@@ -82,7 +82,7 @@ def test_quote_ranking_partitions_by_quote_not_choice(monkeypatch):
 
     result = OddsTrajectoryRepository._load_pre_start_trajectory_map(
         event_ids=[1],
-        target_minutes=[120, 0],
+        target_minutes=[120, 1],
         tolerance_minutes=5,
     )
 

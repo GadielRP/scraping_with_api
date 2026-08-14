@@ -75,6 +75,12 @@ def _parse_env_int_list(env_name, default_value):
         return [int(item.strip()) for item in value.split(',') if item.strip()]
 
 
+def _replace_zero_with_closing_moment(values, closing_moment):
+    return list(dict.fromkeys(
+        closing_moment if moment == 0 else moment for moment in values
+    ))
+
+
 def _parse_env_list_alias(primary_name, alias_name, default_value):
     if os.getenv(primary_name):
         return _parse_env_list(primary_name, default_value)
@@ -209,9 +215,16 @@ class Config:
     PRE_START_WORKERS = int(os.getenv('PRE_START_WORKERS', '5'))  # Number of parallel workers for pre-start checks
     INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES", "390"))
     INTRADAY_RESULT_FRESHNESS_WORKERS = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WORKERS", str(PRE_START_WORKERS)))
-    PRE_START_ODDS_MOMENTS = _parse_env_int_list(
+    PRE_START_CLOSING_ODDS_MINUTE = int(
+        os.getenv("PRE_START_CLOSING_ODDS_MINUTE", "1")
+    )
+    _CONFIGURED_PRE_START_ODDS_MOMENTS = _parse_env_int_list(
         "PRE_START_ODDS_MOMENTS",
-        [120, 30, 5, 0, -5],
+        [120, 30, 5, PRE_START_CLOSING_ODDS_MINUTE, -5],
+    )
+    PRE_START_ODDS_MOMENTS = _replace_zero_with_closing_moment(
+        _CONFIGURED_PRE_START_ODDS_MOMENTS,
+        PRE_START_CLOSING_ODDS_MINUTE,
     )
     PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES = int(
         os.getenv("PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", "3")

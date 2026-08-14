@@ -9,6 +9,10 @@ from typing import Dict, List, Optional, Tuple
 
 from infrastructure.persistence.repositories import MarketRepository
 from infrastructure.settings import Config
+from modules.jobs.pre_start_check_job.moment_policy import (
+    dual_process_moments,
+    is_closing_odds_moment,
+)
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
 from modules.alerts.alerts_formatter.odds_alert import send_odds_alert
@@ -244,7 +248,7 @@ class EventAlertProcessor:
 
         if (
             is_selected_source or tracked_competition
-        ) and minutes_until_start in {30, 0}:
+        ) and minutes_until_start in dual_process_moments():
             try:
                 return prediction_engine.evaluate_dual_process(
                     event_obj,
@@ -293,7 +297,7 @@ class EventAlertProcessor:
             or dual_report.process2_prediction
             or (dual_report.process1_report and dual_report.process1_status in ["partial", "no_match", "no_candidates"])
         ):
-            if minutes_until_start in {30, 0}:
+            if minutes_until_start in dual_process_moments():
                 
                 prediction_engine.send_alerts(pre_start_notifier, [dual_report])
 
@@ -301,7 +305,7 @@ class EventAlertProcessor:
                 if (
                     dual_report.process1_report
                     and dual_report.process1_report.get("status") == "success"
-                    and minutes_until_start == 0
+                    and is_closing_odds_moment(minutes_until_start)
                 ):
                     prediction_engine.log_process1_prediction_if_needed(
                         event_obj,

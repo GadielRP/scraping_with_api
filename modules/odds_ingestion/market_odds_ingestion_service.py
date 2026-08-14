@@ -422,6 +422,7 @@ class MarketOddsIngestionService:
         require_active_quotes: bool = True,
         use_mainline_cache: bool | None = None,
         mainline_outcome_ids: set[str] | None = None,
+        debug_mode: bool = False,
     ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "oddspapi_odds")
         if dry_run:
@@ -438,6 +439,7 @@ class MarketOddsIngestionService:
                 source=source,
                 skipped=True,
                 reason=resolution.skipped_reason,
+                event_mappings_created=len(resolution.created_mappings),
             )
 
         if market_mapping_index is None:
@@ -501,7 +503,7 @@ class MarketOddsIngestionService:
         skipped_incomplete_markets_detected = len(
             diagnostics.get("skipped_incomplete_markets") or []
         )
-        if diagnostics:
+        if diagnostics and debug_mode:
             logger.info("OddsPapi market mapping diagnostics: %s", diagnostics)
         bookmakers = adapted.get("bookmakers", [])
         markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in bookmakers)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Collection
 
 from infrastructure.settings import Config
 from shared.timezone_utils import get_local_now_aware, TIMEZONE
@@ -31,7 +32,15 @@ def minutes_since_start(start_time_utc) -> int:
     return minutes_until_start(start_time_utc)
 
 
-def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start_time: datetime = None, sofascore_event_id: int | None = None):
+def should_extract_odds_for_event(
+    event_id: int,
+    minutes_until: int,
+    event_start_time: datetime = None,
+    sofascore_event_id: int | None = None,
+    *,
+    key_moments: Collection[int] | None = None,
+    timestamp_correction_enabled: bool | None = None,
+):
     """Determine whether odds should be extracted at this moment.
     Returns:
         should_extract_odds (bool)
@@ -52,14 +61,19 @@ def should_extract_odds_for_event(event_id: int, minutes_until: int, event_start
             logger.warning("Unable to resolve sofascore_event_id for canonical event %s: %s", event_id, exc)
             return False, None, False, None
 
-    key_moments = Config.PRE_START_ODDS_MOMENTS
+    key_moments = Config.PRE_START_ODDS_MOMENTS if key_moments is None else key_moments
     if minutes_until not in key_moments:
         logger.debug(
             f"⏭️ Not a key moment for event {event_id}: {minutes_until} minutes until start - SKIPPING API CALL AND ODDS EXTRACTION"
         )
         return False, None, False, sofascore_event_id
 
-    if not Config.ENABLE_TIMESTAMP_CORRECTION:
+    timestamp_correction_enabled = (
+        Config.ENABLE_TIMESTAMP_CORRECTION
+        if timestamp_correction_enabled is None
+        else timestamp_correction_enabled
+    )
+    if not timestamp_correction_enabled:
         
         if minutes_until == 30:
             logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - WILL EXTRACT ODDS (Running timestamp flow to fetch alert metadata)")

@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, Optional
 
+from infrastructure.settings import Config
 from modules.pillars.context import EventContext
 from modules.pillars.odds_trajectory_context import (
     BookieOddsTrajectory,
@@ -91,7 +92,7 @@ _REQUIRED_INPUT_LABELS = (
     "t5_odds",
     "kickoff_odds",
 )
-_META_MINUTES = (120, 30, 5, 0, -5)
+_META_MINUTES = (120, 30, 5, Config.PRE_START_CLOSING_ODDS_MINUTE, -5)
 
 
 def _format_decimal(value: Any) -> Any:
@@ -200,7 +201,9 @@ def _get_required_inputs(choice: ChoiceOddsTrajectory) -> Dict[str, Optional[Dec
         "t120_odds": _to_decimal_or_none(choice.odds_values.get(120)),
         "t30_odds": _to_decimal_or_none(choice.odds_values.get(30)),
         "t5_odds": _to_decimal_or_none(choice.odds_values.get(5)),
-        "kickoff_odds": _to_decimal_or_none(choice.odds_values.get(0)),
+        "kickoff_odds": _to_decimal_or_none(
+            choice.odds_values.get(Config.PRE_START_CLOSING_ODDS_MINUTE)
+        ),
     }
     return required_inputs
 

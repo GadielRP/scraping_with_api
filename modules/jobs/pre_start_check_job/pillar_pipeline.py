@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from infrastructure.settings import Config
+from modules.competition.tracked_competitions import is_tracked_competition
 from modules.pillars.context import (
     build_event_context,
     summarize_number_of_teams_from_streak_analysis,
@@ -54,6 +55,35 @@ def _resolve_event_payload_value(event_payload: dict, key: str, default=None):
         return event_data.get(key), "event_data"
 
     return default, "missing"
+
+
+def _resolve_pillar_competition_id(event_payload: dict, event_obj=None):
+    """Resolve the canonical competition ID used by the pillar scope policy."""
+    event_context = event_payload.get("event_context")
+    competition = getattr(event_context, "competition", None)
+    competition_id = getattr(competition, "competition_id", None)
+    if competition_id is None and isinstance(event_context, dict):
+        competition_id = event_context.get("competition_id")
+        competition = event_context.get("competition")
+        if competition_id is None and isinstance(competition, dict):
+            competition_id = competition.get("competition_id")
+    if competition_id is None and event_obj is not None:
+        competition_id = getattr(event_obj, "competition_id", None)
+
+    if competition_id is None:
+        event_data = event_payload.get("event_data")
+        if isinstance(event_data, dict):
+            competition_id = event_data.get("competition_id")
+
+    return competition_id
+
+
+def _is_pillar_competition_in_scope(competition_id) -> bool:
+    """Return whether the competition is inside the configured pillar scope."""
+    return (
+        not Config.FILTER_PIPELINES_BY_TRACKED_COMPETITIONS
+        or is_tracked_competition(competition_id)
+    )
 
 
 def _build_p4_error_result(event_context, odds_trajectory_context, exc: Exception) -> dict:
@@ -238,6 +268,15 @@ class EventPillarProcessor:
 
         if event_obj is None:
             logger.warning(f"☢️ Pillar pipeline: event obj is empty for {event_id}, skipping pillar calculation")
+            return None
+
+        competition_id = _resolve_pillar_competition_id(event_payload, event_obj)
+        if not _is_pillar_competition_in_scope(competition_id):
+            logger.info(
+                "🚫 Pillar pipeline: competition_id=%s is outside the configured scope for event %s; skipping pillar calculation",
+                competition_id,
+                event_id,
+            )
             return None
 
         logger.info(f"🏛️ Started pillars processing for event {event_id}")
@@ -787,9 +826,26 @@ def evaluate_and_calculate_pillars_batch(
     if not events_for_pillars:
         return
 
+    allowed_events = [
+        payload
+        for payload in events_for_pillars
+        if _is_pillar_competition_in_scope(
+            _resolve_pillar_competition_id(payload)
+        )
+    ]
+    skipped_count = len(events_for_pillars) - len(allowed_events)
+    if skipped_count:
+        logger.info(
+            "🚫 Pillar pipeline competition filter skipped %s/%s events",
+            skipped_count,
+            len(events_for_pillars),
+        )
+    if not allowed_events:
+        return
+
     logger.info(
         "Evaluating pillar modules for %d events...",
-        len(events_for_pillars),
+        len(allowed_events),
     )
 
     processor = EventPillarProcessor(
@@ -797,14 +853,14 @@ def evaluate_and_calculate_pillars_batch(
         debug_mode=debug_mode,
     )
 
-    max_workers = min(Config.PILLAR_PIPELINE_WORKERS, len(events_for_pillars))
+    max_workers = min(Config.PILLAR_PIPELINE_WORKERS, len(allowed_events))
     logger.info(
         "Pillar pipeline concurrency events=%s workers=%s",
-        len(events_for_pillars),
+        len(allowed_events),
         max_workers,
     )
     if max_workers == 1:
-        for payload in events_for_pillars:
+        for payload in allowed_events:
             try:
                 processor.process_event(payload)
             except Exception as exc:
@@ -814,7 +870,7 @@ def evaluate_and_calculate_pillars_batch(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(processor.process_event, payload)
-            for payload in events_for_pillars
+            for payload in allowed_events
         ]
         for future in futures:
             try:

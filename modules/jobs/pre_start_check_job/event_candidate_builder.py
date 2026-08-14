@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+from typing import Collection
 
 from infrastructure.settings import Config
 
@@ -31,8 +32,12 @@ def build_pre_start_event_candidates(
     upcoming_events: list[dict],
     pre_calculated_timings: dict[int, int],
     source_states: PreStartOddsSourceStates,
+    *,
+    key_moments: Collection[int] | None = None,
+    timestamp_correction_enabled: bool | None = None,
 ) -> PreStartEventPlan:
     """Apply timing decisions and return the shared provider work payloads."""
+    key_moments = Config.PRE_START_ODDS_MOMENTS if key_moments is None else key_moments
     events_to_process: list[dict] = []
     event_meta_lookup: dict[int, dict] = {}
 
@@ -57,11 +62,13 @@ def build_pre_start_event_candidates(
                 minutes,
                 event_data.get("start_time_utc"),
                 sofascore_event_id=preloaded_sofascore_event_id,
+                key_moments=key_moments,
+                timestamp_correction_enabled=timestamp_correction_enabled,
             )
 
             if (
                 Config.ENABLE_ODDS_EXTRACTION
-                and minutes in Config.PRE_START_ODDS_MOMENTS
+                and minutes in key_moments
                 and not should_extract_odds
                 and not timing_changed
                 and metadata_snapshot is None

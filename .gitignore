@@ -110,6 +110,7 @@ tests/*
 !tests/test_runtime_observability.py
 !tests/test_event_odds_availability.py
 !tests/test_odds_endpoint_404_handling.py
+!tests/test_t_minus_one_odds_job.py
 !tests/test_oddsportal_hover_parser.py
 !tests/test_oddsportal_logging.py
 !tests/test_oddsportal_canonical_ingestion.py

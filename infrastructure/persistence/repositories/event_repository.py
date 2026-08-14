@@ -590,47 +590,65 @@ class EventRepository:
             return 0
 
     @staticmethod
-    def get_events_starting_soon(
-        window_minutes: int = 30,
+    def get_events_starting_between(
+        window_start: datetime,
+        window_end: datetime,
         competition_ids: Optional[List[int]] = None,
     ) -> List[Dict]:
-        """Get events starting soon.
-        
-        Modern pre_start_check_job flow should use this method as it returns 
-        the event payloads without querying latest odds.
-
-        When ``competition_ids`` is provided, filtering is pushed into the
-        database so unrelated events are never materialized in Python.
-        """
+        """Load canonical events in an indexed half-open start-time window."""
         try:
             with db_manager.get_session() as session:
-                now = datetime.now()
-                window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=5)
-                window_end = now + timedelta(minutes=window_minutes)
-                
                 query = session.query(Event).options(
                     joinedload(Event.home_participant),
                     joinedload(Event.away_participant),
                     joinedload(Event.competition_ref),
                 ).filter(
-                    and_(Event.start_time_utc >= window_start, Event.start_time_utc <= window_end)
+                    and_(
+                        Event.start_time_utc >= window_start,
+                        Event.start_time_utc < window_end,
+                    )
                 )
-                
                 if competition_ids:
                     query = query.filter(Event.competition_id.in_(competition_ids))
-                
-                events = query.all()
+
                 result = []
-                for event_obj in events:
+                for event_obj in query.all():
                     try:
-                        event_data = EventRepository._build_event_data_with_legacy_fallback(event_obj)
-                        result.append(event_data)
+                        result.append(
+                            EventRepository._build_event_data_with_legacy_fallback(
+                                event_obj
+                            )
+                        )
                     except ValueError as exc:
-                        logger.warning("Skipping event %s in starting-soon query: %s", event_obj.id, exc)
+                        logger.warning(
+                            "Skipping event %s in start-time query: %s",
+                            event_obj.id,
+                            exc,
+                        )
                 return result
-        except Exception as e:
-            logger.error(f"Error getting events starting soon: {e}")
+        except Exception as exc:
+            logger.error("Error getting events by start-time window: %s", exc)
             return []
+
+    @staticmethod
+    def get_events_starting_soon(
+        window_minutes: int = 30,
+        competition_ids: Optional[List[int]] = None,
+    ) -> List[Dict]:
+        """Get events starting soon.
+
+        Modern pre_start_check_job flow should use this method as it returns
+        the event payloads without querying latest odds.
+
+        When ``competition_ids`` is provided, filtering is pushed into the
+        database so unrelated events are never materialized in Python.
+        """
+        now = datetime.now()
+        return EventRepository.get_events_starting_between(
+            now.replace(second=0, microsecond=0) - timedelta(minutes=5),
+            now + timedelta(minutes=window_minutes, microseconds=1),
+            competition_ids=competition_ids,
+        )
 
     @staticmethod
     def get_events_starting_soon_with_odds(window_minutes: int = 30, season_ids: Optional[List[int]] = None) -> List[Dict]:

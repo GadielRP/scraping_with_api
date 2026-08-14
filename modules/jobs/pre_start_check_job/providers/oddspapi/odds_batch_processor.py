@@ -472,9 +472,19 @@ class OddspapiPreStartOddsBatchProcessor:
 
         unique_api_keys = self._unique_api_keys(api_keys)
         bounded_workers = max(1, int(max_workers or 1))
+        historical_moments = set(exchange_historical_moments or [120])
+        requires_exchange_history = (
+            bool(exchange_bookmakers)
+            and enable_exchange_historical
+            and any(
+                self._is_live_candidate(candidate)
+                or candidate.minutes_until_start in historical_moments
+                for candidate in requestable_candidates
+            )
+        )
         can_run_parallel = (
             not self._custom_pipeline
-            and not exchange_bookmakers
+            and not requires_exchange_history
             and requested_limit is None
             and bounded_workers > 1
             and len(unique_api_keys) > 1
@@ -494,7 +504,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     "allowed_market_periods": allowed_market_periods,
                     "max_events": None,
                     "endpoint": selected_endpoint,
-                    "exchange_bookmakers": None,
+                    "exchange_bookmakers": exchange_bookmakers,
                     "exchange_market_keys": exchange_market_keys,
                     "exchange_main_line_only": exchange_main_line_only,
                     "exchange_include_player_props": (
@@ -537,6 +547,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     ),
                 ],
             )
+
 
         acquisition_service = (
             self._serial_acquisition_service()
@@ -698,6 +709,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     persist_main_line_only=persist_main_line_only,
                     require_active_quotes=require_active_quotes,
                     use_mainline_cache=is_live,
+                    debug_mode=debug_mode,
                 )
                 self._copy_ingestion_stats(event_result, ingestion_result)
                 self._accumulate(summary, event_result)

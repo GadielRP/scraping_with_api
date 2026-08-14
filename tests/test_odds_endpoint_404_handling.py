@@ -117,6 +117,7 @@ def test_candidate_builder_reuses_bulk_mapping_without_event_requery(monkeypatch
         start_time,
         *,
         sofascore_event_id,
+        **_kwargs,
     ):
         assert (event_id, minutes, start_time, sofascore_event_id) == (
             101,
@@ -240,7 +241,7 @@ def test_orchestrator_loads_odds_state_after_event_filtering(monkeypatch):
     monkeypatch.setattr(
         pre_start_job_runner,
         "build_pre_start_event_candidates",
-        lambda _scheduler, events, _timings, _states: (
+        lambda _scheduler, events, _timings, _states, **_kwargs: (
             event_candidate_builder.PreStartEventPlan(
                 candidates=[],
                 by_event_id={},

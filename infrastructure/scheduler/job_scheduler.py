@@ -26,6 +26,9 @@ from modules.jobs.midnight_sync_job import run_midnight_sync_job
 from modules.jobs.oddspapi.fixture_discovery.constants import DISCOVERY_SPORT_IDS
 from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import run_fixture_discovery_job
 from modules.jobs.pre_start_check_job.run_pre_start_check_job import run_pre_start_check_job
+from modules.jobs.pre_start_check_job.run_t_minus_one_odds_job import (
+    run_t_minus_one_odds_job,
+)
 from modules.jobs.results_collection_job import (
     run_results_collection_all_finished,
     run_results_collection_for_date,
@@ -43,6 +46,9 @@ class JobScheduler:
     def __init__(self):
         self.running = False
         self.thread = None
+        self.critical_thread = None
+        self.critical_scheduler = schedule.Scheduler()
+        self._t_minus_one_lock = threading.Lock()
         self.event_repo = EventRepository()
         self.result_repo = ResultRepository()
         self.recently_rescheduled = set()
@@ -59,6 +65,7 @@ class JobScheduler:
             schedule.every().day.at(time_str).do(self.job_discovery2)
 
         self._setup_pre_start_jobs()
+        self._setup_t_minus_one_jobs()
 
         schedule.every().day.at("04:00").do(self.job_midnight_sync)
         schedule.every(3).days.at("05:00").do(self.job_clean_league_cache)
@@ -115,6 +122,25 @@ class JobScheduler:
             f"  - Pre-start check scheduled every {interval_minutes} minutes at exact minute marks (upcoming events + tennis/NBA in-game checks)"
         )
 
+    def _setup_t_minus_one_jobs(self):
+        interval = Config.POLL_INTERVAL_MINUTES
+        closing_minute = Config.PRE_START_CLOSING_ODDS_MINUTE
+        trigger_minutes = [
+            minute
+            for minute in range(60)
+            if (minute + closing_minute) % interval == 0
+        ]
+        for minute in trigger_minutes:
+            self.critical_scheduler.every().hour.at(f":{minute:02d}").do(
+                self.job_t_minus_one_odds,
+                scheduled_minute=minute,
+            )
+        logger.info(
+            "  - Critical T-%s odds scheduled at minute marks %s",
+            closing_minute,
+            ",".join(f":{minute:02d}" for minute in trigger_minutes),
+        )
+
     def _cleanup_recently_rescheduled(self):
         current_time = time.time()
         if current_time - self.last_cleanup_time > 600:
@@ -129,6 +155,12 @@ class JobScheduler:
             return
 
         self.running = True
+        self.critical_thread = threading.Thread(
+            target=self._run_critical_scheduler,
+            daemon=True,
+            name="pre-start-critical-scheduler",
+        )
+        self.critical_thread.start()
         self._recover_missed_oddspapi_fixture_discovery_runs()
 
         # Do startup work before the scheduler thread begins. The old order
@@ -146,6 +178,8 @@ class JobScheduler:
         self.running = False
         if self.thread:
             self.thread.join()
+        if self.critical_thread:
+            self.critical_thread.join()
         logger.info("Job scheduler stopped")
 
     def _run_scheduler(self):
@@ -186,6 +220,16 @@ class JobScheduler:
                 logger.exception(f"Error in scheduler loop: {exc}")
                 time.sleep(5)
 
+    def _run_critical_scheduler(self):
+        logger.info("Critical T-1 scheduler loop started")
+        while self.running:
+            try:
+                self.critical_scheduler.run_pending()
+                time.sleep(0.25)
+            except Exception:
+                logger.exception("Error in critical T-1 scheduler loop")
+                time.sleep(1)
+
     def job_discovery(self):
         logger.info("Starting Job A: Event Discovery with Odds Processing")
         try:
@@ -216,6 +260,33 @@ class JobScheduler:
                 run_pre_start_check_job(self, debug_mode)
             except Exception as exc:
                 logger.exception(f"Error in Job C: {exc}")
+
+    def job_t_minus_one_odds(self, *, scheduled_minute: int):
+        now = datetime.now()
+        scheduled_at = now.replace(
+            minute=scheduled_minute,
+            second=0,
+            microsecond=0,
+        )
+        if scheduled_at > now:
+            scheduled_at -= timedelta(hours=1)
+
+        if not self._t_minus_one_lock.acquire(blocking=False):
+            logger.error(
+                "Skipping overlapping T-1 odds run scheduled_at=%s",
+                scheduled_at,
+            )
+            return None
+
+        try:
+            with observe_operation("pre_start_t_minus_one"):
+                return run_t_minus_one_odds_job(
+                    self,
+                    scheduled_at,
+                    debug_mode=Config.global_debug_mode,
+                )
+        finally:
+            self._t_minus_one_lock.release()
 
     def job_results_collection(self):
         logger.info("Starting scheduled Results Collection (previous day)")

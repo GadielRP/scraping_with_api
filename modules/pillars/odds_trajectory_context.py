@@ -416,7 +416,7 @@ def build_odds_trajectory_context(
     {
     "available": bool,
     "event_id": event_id,
-    "target_minutes_expected": List[int] ex. [120, 30, 5, 0, -5],
+    "target_minutes_expected": List[int] ex. [120, 30, 5, 1, -5],
     "target_minutes_present": [...],
     "missing_target_minutes": [...],
     "markets": {
