@@ -28,36 +28,77 @@ class SportObservationService:
             logger.warning("Error checking observations for event %s: %s", event_id, exc)
             return False
 
+    def _observation_rows(
+        self,
+        event_id: int,
+        observations: list[dict],
+        fallback_sport: str | None = None,
+    ) -> list[dict]:
+        rows: list[dict] = []
+        for observation in observations or []:
+            observation_type = observation.get("type")
+            observation_value = observation.get("value")
+            sport = observation.get("sport") or fallback_sport or "Unknown"
+            if not observation_type or observation_value is None:
+                logger.warning("Invalid observation data: %s", observation)
+                continue
+            rows.append(
+                {
+                    "event_id": event_id,
+                    "sport": sport,
+                    "observation_type": observation_type,
+                    "observation_value": observation_value,
+                }
+            )
+        return rows
+
     def save_observations_for_event(
         self,
         event_id: int,
         observations: list[dict],
         fallback_sport: str | None = None,
     ) -> str | None:
-        extracted_ground_type = None
-
         try:
-            for observation in observations or []:
-                observation_type = observation.get("type")
-                observation_value = observation.get("value")
-                sport = observation.get("sport") or fallback_sport or "Unknown"
-
-                if not observation_type or observation_value is None:
-                    logger.warning("Invalid observation data: %s", observation)
-                    continue
-
-                saved_observation = self.observation_repo.upsert_observation(
-                    event_id=event_id,
-                    sport=sport,
-                    observation_type=observation_type,
-                    observation_value=observation_value,
-                )
-                if saved_observation and observation_type == "ground_type":
-                    extracted_ground_type = observation_value
+            rows = self._observation_rows(event_id, observations, fallback_sport)
+            if not rows:
+                return None
+            saved = self.observation_repo.upsert_observations(rows)
+            if not saved:
+                return None
+            return next(
+                (
+                    row["observation_value"]
+                    for row in rows
+                    if row["observation_type"] == "ground_type"
+                ),
+                None,
+            )
         except Exception as exc:
             logger.warning("Error saving observations for event %s: %s", event_id, exc)
+            return None
 
-        return extracted_ground_type
+    def save_observations_for_events(
+        self,
+        events: list[tuple[int, list[dict], str | None]],
+    ) -> int:
+        rows: list[dict] = []
+        try:
+            for event_id, observations, fallback_sport in events:
+                rows.extend(
+                    self._observation_rows(event_id, observations, fallback_sport)
+                )
+            if not rows:
+                return 0
+            return self.observation_repo.upsert_observations(rows) or 0
+        except Exception as exc:
+            logger.warning("Error saving observations for %s events: %s", len(events), exc)
+            return 0
+
+    def observations_for_events(
+        self,
+        event_ids: list[int],
+    ) -> dict[int, list[dict]]:
+        return self.observation_repo.get_observations_for_events(event_ids)
 
     def extract_and_save_tennis_ground_type(self, event_id: int, api_response: dict) -> str | None:
         try:

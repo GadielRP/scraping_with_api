@@ -38,6 +38,10 @@ from modules.jobs.pre_start_check_job.providers.oddspapi.odds_phase import (
 from modules.jobs.pre_start_check_job.providers.sofascore.odds_phase import (
     run_sofascore_pre_start_odds,
 )
+from modules.jobs.pre_start_check_job.providers.sofascore.tennis_observations import (
+    attach_stored_observations,
+    persist_snapshot_observations,
+)
 from modules.jobs.pre_start_check_job.timestamp_corrections import (
     check_recently_started_events_for_timestamp_corrections,
 )
@@ -229,8 +233,9 @@ def run_pre_start_odds_moments(
     oddsportal_context: OddsPortalScrapeContext,
     debug_mode: bool = False,
     timestamp_correction_enabled: bool | None = None,
+    evaluate_key_moments: bool = True,
 ) -> PreStartEventPlan:
-    """Run candidate selection, provider ingestion, and downstream evaluation."""
+    """Run candidate selection and provider ingestion, optionally evaluating downstream flows."""
     source_states = load_pre_start_odds_source_states(upcoming_events)
     event_plan = build_pre_start_event_candidates(
         scheduler,
@@ -240,6 +245,8 @@ def run_pre_start_odds_moments(
         key_moments=key_moments,
         timestamp_correction_enabled=timestamp_correction_enabled,
     )
+    attach_stored_observations(event_plan.candidates)
+    persist_snapshot_observations(event_plan.candidates)
     _ingest_provider_odds(
         event_plan,
         source_states,
@@ -253,12 +260,13 @@ def run_pre_start_odds_moments(
             if candidate.get("should_extract_odds")
         ),
     )
-    evaluate_pre_start_key_moments(
-        scheduler,
-        event_plan,
-        oddsportal_context,
-        debug_mode=debug_mode,
-    )
+    if evaluate_key_moments:
+        evaluate_pre_start_key_moments(
+            scheduler,
+            event_plan,
+            oddsportal_context,
+            debug_mode=debug_mode,
+        )
     return event_plan
 
 

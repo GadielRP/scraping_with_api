@@ -209,9 +209,12 @@ class Config:
     
     # Scheduler Configuration
     POLL_INTERVAL_MINUTES = int(os.getenv('POLL_INTERVAL_MINUTES', '5'))
+    PRE_START_T_MINUS_ONE_INTERVAL_MINUTES = int(
+        os.getenv("PRE_START_T_MINUS_ONE_INTERVAL_MINUTES", "1")
+    )
     DISCOVERY_INTERVAL_HOURS = int(os.getenv('DISCOVERY_INTERVAL_HOURS', '6'))
     DISCOVERY2_INTERVAL_HOURS = int(os.getenv('DISCOVERY2_INTERVAL_HOURS', '6'))  # Separate interval for Discovery2
-    PRE_START_WINDOW_MINUTES = int(os.getenv('PRE_START_WINDOW_MINUTES', '30'))
+    PRE_START_WINDOW_MINUTES = int(os.getenv('PRE_START_WINDOW_MINUTES', '120'))
     PRE_START_WORKERS = int(os.getenv('PRE_START_WORKERS', '5'))  # Number of parallel workers for pre-start checks
     INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES", "390"))
     INTRADAY_RESULT_FRESHNESS_WORKERS = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WORKERS", str(PRE_START_WORKERS)))
