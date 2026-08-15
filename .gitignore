@@ -96,6 +96,7 @@ copies/
 *.md
 !docs/refactors/db-schema-odds-refactor.md
 !docs/refactors/db-schema-odds-refactor-phase-4b.md
+!docs/pre-start-closing-minute-contract-mismatch.md
 
 test_*.py
 *.json
@@ -107,6 +108,7 @@ odds_papi/*.json
 tests/*
 !tests/test_oddspapi_fixture_discovery_recovery.py
 !tests/test_pre_start_memory_limits.py
+!tests/test_key_moment_trajectory_loading.py
 !tests/test_runtime_observability.py
 !tests/test_event_odds_availability.py
 !tests/test_odds_endpoint_404_handling.py
@@ -128,7 +130,6 @@ tests/*
 !tests/test_market_quote_readiness.py
 !tests/test_external_odds_alert_quote_read.py
 !tests/test_odds_trajectory_repository.py
-!tests/test_odds_trajectory_quote_view.py
 !tests/test_dual_process_market_odds_read_migration.py
 !tests/test_no_legacy_odds_reads.py
 !config/odds_read_priority.json

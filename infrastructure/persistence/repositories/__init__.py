@@ -10,7 +10,11 @@ from .season_repository import SeasonRepository
 from .participant_repository import ParticipantRepository
 from .competition_repository import CompetitionRepository
 from .dual_process_odds_repository import DualProcessOdds, DualProcessOddsRepository
-from .odds_trajectory_repository import OddsTrajectoryRepository, OddsTrajectoryPoint
+from .odds_trajectory_repository import (
+    OddsTrajectoryLoadError,
+    OddsTrajectoryPoint,
+    OddsTrajectoryRepository,
+)
 from .result_repository import ResultRepository
 from .observation_repository import ObservationRepository
 from .market_repository import MarketRepository
@@ -44,6 +48,7 @@ __all__ = [
     'DualProcessOddsRepository',
     'OddsTrajectoryRepository',
     'OddsTrajectoryPoint',
+    'OddsTrajectoryLoadError',
     'ResultRepository',
     'ObservationRepository',
     'MarketRepository',

@@ -8,6 +8,7 @@ import pprint
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories import (
     CompetitionRepository,
+    OddsTrajectoryLoadError,
     OddsTrajectoryRepository,
 )
 from infrastructure.settings import Config
@@ -260,14 +261,21 @@ def _load_trajectory_payloads(
     event_ids: set[int],
     key_moments: list[int],
 ) -> dict[int, list[dict]]:
-    # Trajectory reads the live view v_pre_start_odds_trajectory (no MV refresh
-    # needed here). mv_alert_events is refreshed after daily discovery in the
-    # scheduler, not on every pre-start check.
-    trajectory_by_event_id = OddsTrajectoryRepository.get_pre_start_trajectory_map(
-        event_ids=list(event_ids),
-        target_minutes=key_moments,
-        tolerance_minutes=Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES,
-    )
+    """Load pillar trajectory inputs while keeping persistence failures explicit."""
+    try:
+        trajectory_by_event_id = OddsTrajectoryRepository.get_pre_start_trajectory_map(
+            event_ids=list(event_ids),
+            target_minutes=key_moments,
+            tolerance_minutes=Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES,
+        )
+    except OddsTrajectoryLoadError:
+        logger.warning(
+            "Pillar evaluation will continue without odds trajectory for "
+            "%s event(s) after a persistence failure",
+            len(event_ids),
+        )
+        return {}
+
     logger.info(
         "Loaded odds trajectory for %s/%s key-moment events",
         len(trajectory_by_event_id),
@@ -283,7 +291,6 @@ def _build_evaluation_payloads(
     scheduler,
     event_plan: PreStartEventPlan,
     key_event_ids: set[int],
-    trajectory_payloads: dict[int, list[dict]],
     missing_competition_ids: set[int],
 ) -> list[dict]:
     """Build EventContext, enrich competition metadata, then assemble payloads.
@@ -385,11 +392,14 @@ def _build_evaluation_payloads(
         )
         payloads.append(
             {
+                "event_id": event_id,
                 "event_obj": event_obj,
                 "initial_minutes": initial_minutes,
                 "observations": candidate.get("observations"),
                 "odds_response": candidate.get("odds_response"),
-                "odds_trajectory": trajectory_payloads.get(event_id, []),
+                # Populated only when the pillar pipeline is enabled. Alerts do
+                # not consume trajectory data.
+                "odds_trajectory": [],
                 "metadata_snapshot": candidate.get("metadata_snapshot"),
                 "event_context": event_context,
                 "season_id": getattr(event_obj, "season_id", None),
@@ -510,13 +520,11 @@ def evaluate_pre_start_key_moments(
         "Evaluating %s events at key moments for alert and pillar pipelines",
         len(key_event_ids),
     )
-    trajectory_payloads = _load_trajectory_payloads(key_event_ids, key_moments)
     missing_competition_ids: set[int] = set()
     payloads = _build_evaluation_payloads(
         scheduler,
         event_plan,
         key_event_ids,
-        trajectory_payloads,
         missing_competition_ids,
     )
     if not payloads:
@@ -536,6 +544,21 @@ def evaluate_pre_start_key_moments(
     flush_missing_standings_endpoints(missing_competition_ids)
 
     if Config.ENABLE_PILLAR_PIPELINE:
+        validated_event_ids = {int(payload["event_id"]) for payload in payloads}
+        logger.info(
+            "Loading odds trajectory for %s validated pillar event(s)",
+            len(validated_event_ids),
+        )
+        trajectory_payloads = _load_trajectory_payloads(
+            validated_event_ids,
+            key_moments,
+        )
+        for payload in payloads:
+            payload["odds_trajectory"] = trajectory_payloads.get(
+                int(payload["event_id"]),
+                [],
+            )
+
         if debug_mode:
             _log_debug_payloads(payloads)
         evaluate_and_calculate_pillars_batch(

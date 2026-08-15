@@ -1107,7 +1107,7 @@ DUAL_PROCESS_MARKET_INDEXES_SQL = [
        WHERE source = 'sofascore' AND exchange_side IS NULL AND exchange_level = 0;""",
 ]
 
-PRE_START_ODDS_TRAJECTORY_INDEXES_SQL = [
+EVENT_ODDS_HISTORY_INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_events_start_time_utc ON events (start_time_utc);",
     "CREATE INDEX IF NOT EXISTS idx_events_sport_start_time_utc ON events (sport, start_time_utc);",
     "CREATE INDEX IF NOT EXISTS idx_events_season_start_time_utc ON events (season_id, start_time_utc);",
@@ -1159,178 +1159,14 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
 )
 
 
-def build_pre_start_odds_trajectory_view_sql() -> str:
-    """Build the canonical quote-aware pre-start trajectory view."""
-    eligibility_cte = """
-        eligible_quotes AS (
-            SELECT ranked.*
-            FROM (
-                SELECT
-                    mcq.*,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY mcq.choice_id, mcq.source, mcq.exchange_side
-                        ORDER BY mcq.exchange_level, mcq.quote_id
-                    ) AS depth_rank
-                FROM market_choice_quotes mcq
-                WHERE EXISTS (
-                    SELECT 1 FROM market_choice_snapshots history
-                    WHERE history.quote_id = mcq.quote_id
-                )
-                  AND NOT (
-                    mcq.exchange_side IS NULL
-                    AND EXISTS (
-                        SELECT 1
-                        FROM market_choice_quotes explicit_q
-                        WHERE explicit_q.choice_id = mcq.choice_id
-                          AND explicit_q.source = mcq.source
-                          AND explicit_q.exchange_side IN ('back', 'lay')
-                          AND EXISTS (
-                              SELECT 1 FROM market_choice_snapshots explicit_history
-                              WHERE explicit_history.quote_id = explicit_q.quote_id
-                          )
-                    )
-                  )
-            ) ranked
-            WHERE ranked.depth_rank = 1
-        ),
-        """
-    quote_join = """
-        JOIN eligible_quotes mcq
-          ON mcq.quote_id = mcs.quote_id
-        JOIN market_choices mc ON mc.choice_id = mcq.choice_id
-        """
-
-    return f"""
-    CREATE OR REPLACE VIEW v_pre_start_odds_trajectory AS
-    WITH
-    {eligibility_cte}
-    snapshot_context AS (
-        SELECT
-            e.id AS event_id,
-            e.start_time_utc,
-            m.market_id,
-            m.market_name,
-            m.market_group,
-            m.market_period,
-            m.choice_group,
-            m.bookie_id,
-            b.name AS bookie_name,
-            mc.choice_id,
-            mc.choice_name,
-            mcq.initial_odds AS initial_odds,
-            mcs.snapshot_id,
-            mcq.source AS source,
-            mcs.source_collected_at,
-            mcq.source_market_id AS source_market_id,
-            mcq.source_outcome_id AS source_outcome_id,
-            mcq.bookmaker_outcome_id AS bookmaker_outcome_id,
-            mcq.main_line AS main_line,
-            mcs.source_limit,
-            mcs.odds_value,
-            mcs.collected_at,
-            esm.source_sport_id AS event_source_sport_id,
-            ROUND(EXTRACT(EPOCH FROM (e.start_time_utc - mcs.collected_at)) / 60)::int AS minutes_before_start,
-            mcq.quote_id AS quote_id,
-            mcq.exchange_side AS exchange_side,
-            mcq.exchange_level AS exchange_level
-        FROM market_choice_snapshots mcs
-        {quote_join}
-        JOIN markets m ON m.market_id = mc.market_id
-        JOIN events e ON e.id = m.event_id
-        JOIN bookies b ON b.bookie_id = m.bookie_id
-        LEFT JOIN event_source_mappings esm
-            ON esm.event_id = e.id
-           AND esm.source = mcq.source
-        WHERE m.is_live = false
-    ),
-    source_mapped AS (
-        SELECT
-            sc.*,
-            COALESCE(msm_exact.mapping_id, msm_fallback.mapping_id) AS market_source_mapping_id,
-            COALESCE(msm_exact.canonical_market_key, msm_fallback.canonical_market_key) AS mapped_canonical_market_key
-        FROM snapshot_context sc
-        LEFT JOIN market_source_mappings msm_exact
-            ON msm_exact.source = sc.source
-           AND msm_exact.source_market_id = sc.source_market_id
-           AND msm_exact.source_sport_id = sc.event_source_sport_id
-        LEFT JOIN market_source_mappings msm_fallback
-            ON msm_fallback.source = sc.source
-           AND msm_fallback.source_market_id = sc.source_market_id
-           AND msm_fallback.source_sport_id IS NULL
-    ),
-    textual_canonical_match AS (
-        SELECT
-            sm.*,
-            cmt.canonical_market_key AS textual_canonical_market_key,
-            cmt.canonical_market_name AS textual_market_name,
-            cmt.canonical_market_group AS textual_market_group,
-            cmt.canonical_market_period AS textual_market_period,
-            cmt.market_family AS textual_market_family,
-            cmt.requires_choice_group AS textual_requires_choice_group,
-            cmt.enabled_for_trajectory AS textual_enabled_for_trajectory,
-            cmt.display_order AS textual_market_display_order
-        FROM source_mapped sm
-        LEFT JOIN canonical_market_types cmt
-            ON LOWER(REPLACE(REPLACE(REPLACE(COALESCE(sm.market_name, ''), '-', ''), '_', ''), ' ', '')) =
-               LOWER(REPLACE(REPLACE(REPLACE(cmt.canonical_market_name, '-', ''), '_', ''), ' ', ''))
-           AND LOWER(REPLACE(REPLACE(REPLACE(COALESCE(sm.market_group, ''), '-', ''), '_', ''), ' ', '')) =
-               LOWER(REPLACE(REPLACE(REPLACE(cmt.canonical_market_group, '-', ''), '_', ''), ' ', ''))
-           AND LOWER(REPLACE(REPLACE(REPLACE(COALESCE(sm.market_period, ''), '-', ''), '_', ''), ' ', '')) =
-               LOWER(REPLACE(REPLACE(REPLACE(cmt.canonical_market_period, '-', ''), '_', ''), ' ', ''))
-    )
-    SELECT
-        tcm.event_id,
-        tcm.start_time_utc,
-        tcm.market_id,
-        COALESCE(mapped_cmt.canonical_market_key, tcm.textual_canonical_market_key) AS canonical_market_key,
-        COALESCE(mapped_cmt.market_family, tcm.textual_market_family) AS market_family,
-        COALESCE(mapped_cmt.display_order, tcm.textual_market_display_order) AS market_display_order,
-        COALESCE(mapped_cmt.canonical_market_name, tcm.textual_market_name, tcm.market_name) AS market_name,
-        COALESCE(mapped_cmt.canonical_market_group, tcm.textual_market_group, tcm.market_group) AS market_group,
-        COALESCE(mapped_cmt.canonical_market_period, tcm.textual_market_period, tcm.market_period) AS market_period,
-        tcm.choice_group,
-        tcm.bookie_id,
-        tcm.bookie_name,
-        tcm.choice_id,
-        tcm.choice_name,
-        mo.display_order AS choice_display_order,
-        tcm.initial_odds,
-        tcm.snapshot_id,
-        tcm.source,
-        tcm.source_collected_at,
-        tcm.source_market_id,
-        tcm.source_outcome_id,
-        tcm.bookmaker_outcome_id,
-        tcm.main_line,
-        tcm.source_limit,
-        tcm.odds_value,
-        tcm.collected_at,
-        tcm.minutes_before_start,
-        tcm.quote_id,
-        tcm.exchange_side,
-        tcm.exchange_level
-    FROM textual_canonical_match tcm
-    LEFT JOIN canonical_market_types mapped_cmt
-        ON mapped_cmt.canonical_market_key = tcm.mapped_canonical_market_key
-    LEFT JOIN market_outcome_source_mappings mo
-        ON mo.market_source_mapping_id = tcm.market_source_mapping_id
-       AND mo.source_outcome_id = tcm.source_outcome_id
-    WHERE COALESCE(mapped_cmt.enabled_for_trajectory, tcm.textual_enabled_for_trajectory, false) = true
-      AND (
-          COALESCE(mapped_cmt.requires_choice_group, tcm.textual_requires_choice_group, false) = false
-          OR tcm.choice_group IS NOT NULL
-      );
-    """
-
-
-PRE_START_ODDS_TRAJECTORY_VIEW_SQL = build_pre_start_odds_trajectory_view_sql()
-
-
 def _create_or_replace_odds_read_views(connection, config) -> None:
     """Install only quote-lineage readers; safe before and after Phase 6 DDL."""
+    connection.exec_driver_sql(
+        "DROP VIEW IF EXISTS v_pre_start_odds_trajectory;"
+    )
     for index_sql in DUAL_PROCESS_MARKET_INDEXES_SQL:
         connection.exec_driver_sql(index_sql)
-    for index_sql in PRE_START_ODDS_TRAJECTORY_INDEXES_SQL:
+    for index_sql in EVENT_ODDS_HISTORY_INDEXES_SQL:
         connection.exec_driver_sql(index_sql)
     connection.exec_driver_sql(
         build_dual_process_event_odds_view_sql(
@@ -1339,7 +1175,6 @@ def _create_or_replace_odds_read_views(connection, config) -> None:
         )
     )
     connection.exec_driver_sql(EVENT_ALL_ODDS_VIEW_SQL)
-    connection.exec_driver_sql(PRE_START_ODDS_TRAJECTORY_VIEW_SQL)
 
 
 def create_or_replace_odds_read_views(engine) -> None:

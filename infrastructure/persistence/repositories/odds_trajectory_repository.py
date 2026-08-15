@@ -1,16 +1,23 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from time import perf_counter
 from typing import Dict, List, Optional
 
-from sqlalchemy import bindparam, text
+from sqlalchemy import text
 
 from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.repositories.odds_trajectory_query import (
+    build_pre_start_trajectory_query,
+)
 from infrastructure.settings import Config
 
-import logging
-
 logger = logging.getLogger(__name__)
+
+
+class OddsTrajectoryLoadError(RuntimeError):
+    """Raised when the trajectory read fails before producing a valid result."""
 
 
 @dataclass
@@ -109,23 +116,29 @@ class OddsTrajectoryRepository:
         target_minutes: Optional[List[int]] = None,
         tolerance_minutes: Optional[int] = None,
     ) -> Dict[int, List[OddsTrajectoryPoint]]:
-        if not event_ids:
+        normalized_event_ids = sorted({int(event_id) for event_id in event_ids})
+        if not normalized_event_ids:
             return {}
 
         target_minutes = Config.PRE_START_ODDS_MOMENTS if target_minutes is None else target_minutes
+        normalized_target_minutes = list(
+            dict.fromkeys(int(target_minute) for target_minute in target_minutes)
+        )
         tolerance_minutes = (
             Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES
             if tolerance_minutes is None
             else tolerance_minutes
         )
 
-        if not target_minutes:
+        if not normalized_target_minutes:
             return {}
+        if tolerance_minutes < 0:
+            raise ValueError("tolerance_minutes must be non-negative")
 
         return OddsTrajectoryRepository._load_pre_start_trajectory_map(
-            event_ids=event_ids,
-            target_minutes=target_minutes,
-            tolerance_minutes=tolerance_minutes,
+            event_ids=normalized_event_ids,
+            target_minutes=normalized_target_minutes,
+            tolerance_minutes=int(tolerance_minutes),
         )
 
     @staticmethod
@@ -135,87 +148,74 @@ class OddsTrajectoryRepository:
         target_minutes: List[int],
         tolerance_minutes: int,
     ) -> Dict[int, List[OddsTrajectoryPoint]]:
-        target_value_rows = ", ".join(
-            f"(:target_minute_{idx})" for idx, _ in enumerate(target_minutes)
-        )
         target_minute_params = {
             f"target_minute_{idx}": target_minute
             for idx, target_minute in enumerate(target_minutes)
         }
-
-        where_clauses = [
-            "traj.event_id IN :event_ids",
-            "ABS(traj.minutes_before_start - tm.target_minute) <= :tolerance_minutes",
-            "traj.quote_id IS NOT NULL",
-        ]
         query_params = {
             "event_ids": event_ids,
             "tolerance_minutes": tolerance_minutes,
             **target_minute_params,
         }
-        bind_params = [
-            bindparam("event_ids", expanding=True),
-        ]
-
-        query = text(
-            f"""
-            WITH target_moments AS (
-                SELECT target_minute
-                FROM (VALUES {target_value_rows}) AS tm(target_minute)
-            ),
-            candidate_rows AS (
-                SELECT
-                    traj.*,
-                    tm.target_minute,
-                    ABS(traj.minutes_before_start - tm.target_minute) AS distance_from_target
-                FROM v_pre_start_odds_trajectory traj
-                CROSS JOIN target_moments tm
-                WHERE {" AND ".join(where_clauses)}
-            ),
-            ranked AS (
-                SELECT
-                    *,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY event_id, quote_id, target_minute
-                        ORDER BY
-                            distance_from_target ASC,
-                            collected_at DESC,
-                            snapshot_id DESC
-                    ) AS rn
-                FROM candidate_rows
-            )
-            SELECT *
-            FROM ranked
-            WHERE rn = 1
-            ORDER BY
-                event_id,
-                market_display_order NULLS LAST,
-                market_group,
-                market_period,
-                choice_group NULLS FIRST,
-                bookie_name,
-                source,
-                CASE exchange_side WHEN 'back' THEN 1 WHEN 'lay' THEN 2 ELSE 0 END,
-                exchange_level,
-                quote_id,
-                target_minute DESC,
-                choice_display_order NULLS LAST,
-                choice_name;
-            """
-        ).bindparams(*bind_params)
+        query = build_pre_start_trajectory_query(target_minutes)
+        started_at = perf_counter()
 
         try:
             with db_manager.get_session() as session:
+                get_bind = getattr(session, "get_bind", None)
+                bind = get_bind() if callable(get_bind) else None
+                timeout_ms = Config.PRE_START_ODDS_TRAJECTORY_QUERY_TIMEOUT_MS
+                if (
+                    timeout_ms > 0
+                    and bind is not None
+                    and bind.dialect.name == "postgresql"
+                ):
+                    session.execute(
+                        text(
+                            "SELECT set_config("
+                            "'statement_timeout', :timeout_value, true)"
+                        ),
+                        {"timeout_value": f"{timeout_ms}ms"},
+                    )
                 rows = session.execute(
                     query,
                     query_params,
                 ).mappings().all()
-        except Exception as exc:
-            logger.warning("Failed to load pre-start odds trajectory: %s", exc, exc_info=True)
-            return {}
 
-        grouped: Dict[int, List[OddsTrajectoryPoint]] = {}
-        for row in rows:
-            point = OddsTrajectoryRepository._from_row(row)
-            grouped.setdefault(point.event_id, []).append(point)
+            grouped: Dict[int, List[OddsTrajectoryPoint]] = {}
+            for row in rows:
+                point = OddsTrajectoryRepository._from_row(row)
+                grouped.setdefault(point.event_id, []).append(point)
+        except Exception as exc:
+            duration_ms = (perf_counter() - started_at) * 1000
+            logger.exception(
+                "Failed to load event-scoped pre-start odds trajectory "
+                "events=%s targets=%s tolerance=%s duration_ms=%.1f",
+                len(event_ids),
+                len(target_minutes),
+                tolerance_minutes,
+                duration_ms,
+            )
+            raise OddsTrajectoryLoadError(
+                "Failed to load event-scoped pre-start odds trajectory"
+            ) from exc
+
+        duration_ms = (perf_counter() - started_at) * 1000
+        logger.info(
+            "Loaded event-scoped pre-start odds trajectory "
+            "events_requested=%s events_returned=%s targets=%s rows=%s "
+            "duration_ms=%.1f",
+            len(event_ids),
+            len(grouped),
+            len(target_minutes),
+            len(rows),
+            duration_ms,
+        )
         return grouped
+
+
+__all__ = [
+    "OddsTrajectoryLoadError",
+    "OddsTrajectoryPoint",
+    "OddsTrajectoryRepository",
+]
