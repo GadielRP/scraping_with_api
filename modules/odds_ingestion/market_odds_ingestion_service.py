@@ -478,6 +478,11 @@ class MarketOddsIngestionService:
                     resolution.canonical_event_id
                 )
             )
+            if not resolved_mainline_ids:
+                logger.info(
+                    "Oddspapi mainline cache empty event_id=%s",
+                    resolution.canonical_event_id,
+                )
 
         adapted = OddspapiMarketAdapter.from_odds_response(
             odds_response,

@@ -80,6 +80,29 @@ def test_cli_sport_subset_and_unknown_slug():
     assert build_parser().parse_args(["--chunk-size", "25"]).chunk_size == 25
 
 
+def test_fixture_summary_omits_missing_metadata():
+    fixture = OddspapiFixtureIdentity.from_payload({"fixtureId": "fixture-1"})
+
+    assert OddspapiEventResolver._fixture_summary(fixture) == "fixture_id=fixture-1"
+
+
+def test_fixture_summary_keeps_available_ids_when_names_are_missing():
+    fixture = OddspapiFixtureIdentity.from_payload(
+        {
+            "fixtureId": "fixture-1",
+            "participant1Id": "home-1",
+            "participant2Id": "away-1",
+            "sportId": 10,
+            "tournamentId": "tournament-1",
+        }
+    )
+
+    assert (
+        OddspapiEventResolver._fixture_summary(fixture)
+        == "fixture_id=fixture-1 participants=home-1 vs away-1 tournament=tournament-1 sport=10"
+    )
+
+
 def test_chunk_size_is_validated_and_forwarded_to_batch_processor():
     job = OddspapiFixtureDiscoveryJob(client=_Client(), chunk_size=25)
     assert job.batch_processor.chunk_size == 25

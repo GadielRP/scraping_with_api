@@ -76,14 +76,41 @@ class OddspapiEventResolver:
 
     @staticmethod
     def _fixture_summary(fixture: OddspapiFixtureIdentity) -> str:
-        return (
-            f"fixture_id={fixture.fixture_id} "
-            f"participants=({fixture.participant1_name} | {fixture.participant1_short_name} | {fixture.participant1_abbr}) vs "
-            f"({fixture.participant2_name} | {fixture.participant2_short_name} | {fixture.participant2_abbr}) "
-            f"tournament=({fixture.tournament_name} | {fixture.tournament_slug}) "
-            f"category=({fixture.category_name} | {fixture.category_slug}) "
-            f"start_utc={fixture.start_time_utc} start_local={fixture.start_time_local}"
+        summary = [f"fixture_id={fixture.fixture_id}"]
+        participant1 = (
+            fixture.participant1_name
+            or fixture.participant1_short_name
+            or fixture.participant1_abbr
+            or fixture.participant1_id
         )
+        participant2 = (
+            fixture.participant2_name
+            or fixture.participant2_short_name
+            or fixture.participant2_abbr
+            or fixture.participant2_id
+        )
+        if participant1 or participant2:
+            summary.append(
+                f"participants={participant1 or '?'} vs {participant2 or '?'}"
+            )
+        tournament = (
+            fixture.tournament_name
+            or fixture.tournament_slug
+            or fixture.tournament_id
+        )
+        if tournament:
+            summary.append(f"tournament={tournament}")
+        category = fixture.category_name or fixture.category_slug
+        if category:
+            summary.append(f"category={category}")
+        sport = fixture.sport_name or fixture.sport_id
+        if sport:
+            summary.append(f"sport={sport}")
+        if fixture.start_time_utc:
+            summary.append(f"start_utc={fixture.start_time_utc}")
+        if fixture.start_time_local:
+            summary.append(f"start_local={fixture.start_time_local}")
+        return " ".join(summary)
 
     @classmethod
     def _build_resolution(

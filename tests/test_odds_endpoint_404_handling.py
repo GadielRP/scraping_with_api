@@ -933,6 +933,86 @@ def test_historical_mode_ignores_current_endpoint_availability_flag(monkeypatch)
     assert marked == []
 
 
+def test_oddspapi_current_response_without_bookmaker_odds_marks_unavailable(monkeypatch):
+    marked = []
+    processor = OddspapiPreStartOddsBatchProcessor(
+        fetcher=SimpleNamespace(
+            fetch_odds=lambda *_args, **_kwargs: OddsFetchResult.from_payload(
+                {
+                    "fixtureId": "fixture-1",
+                    "participant1Id": 419353,
+                    "participant2Id": 419351,
+                    "sportId": 13,
+                    "hasOdds": False,
+                }
+            )
+        )
+    )
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "MarketMappingRepository.build_index",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "modules.odds_ingestion.provider_odds_phase.EventSourceMappingRepository."
+        "mark_odds_unavailable",
+        lambda event_ids, source: marked.append((set(event_ids), source)),
+    )
+    candidate = OddspapiPreStartCandidate(
+        event_id=101,
+        fixture_id="fixture-1",
+        minutes_until_start=1,
+    )
+
+    summary = processor.process([candidate], bookmakers=["pinnacle"])
+
+    assert summary.requests_attempted == 1
+    assert summary.events_skipped == 1
+    assert summary.results[0].skip_reason == "no_oddspapi_odds"
+    assert marked == [({101}, "oddspapi")]
+
+
+def test_oddspapi_historical_response_without_bookmaker_odds_does_not_mark_unavailable(
+    monkeypatch,
+):
+    marked = []
+    processor = OddspapiPreStartOddsBatchProcessor(
+        fetcher=SimpleNamespace(
+            fetch_odds=lambda *_args, **_kwargs: OddsFetchResult.from_payload(
+                {
+                    "fixtureId": "fixture-1",
+                    "sportId": "13",
+                    "bookmakerOdds": {},
+                }
+            )
+        ),
+        ingestion_service=_NoOpOddspapiIngestionService,
+    )
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "MarketMappingRepository.build_index",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "modules.odds_ingestion.provider_odds_phase.EventSourceMappingRepository."
+        "mark_odds_unavailable",
+        lambda event_ids, source: marked.append((set(event_ids), source)),
+    )
+    candidate = OddspapiPreStartCandidate(
+        event_id=101,
+        fixture_id="fixture-1",
+        minutes_until_start=-5,
+        has_odds=True,
+        source_sport_id="13",
+        is_live=True,
+    )
+
+    summary = processor.process([candidate], bookmakers=["pinnacle"])
+
+    assert summary.requests_attempted == 1
+    assert marked == []
+
+
 def test_oddspapi_missing_api_key_skips_mapping_query(monkeypatch):
     monkeypatch.setattr(
         oddspapi_odds_phase.Config,

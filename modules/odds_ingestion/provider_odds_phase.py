@@ -82,7 +82,7 @@ def select_candidates_for_source(
 
 
 def mark_missing_endpoints_unavailable(missing_event_ids: set[int], source: str) -> None:
-    """Persist confirmed 404s for one source in a single bulk update."""
+    """Persist source events known to have no available odds in one bulk update."""
     if not missing_event_ids:
         return
     EventSourceMappingRepository.mark_odds_unavailable(missing_event_ids, source)

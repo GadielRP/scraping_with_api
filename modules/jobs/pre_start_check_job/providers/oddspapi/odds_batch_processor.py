@@ -417,6 +417,23 @@ class OddspapiPreStartOddsBatchProcessor:
         minutes = candidate.minutes_until_start
         return minutes is not None and float(minutes) <= 0
 
+    @staticmethod
+    def _has_current_odds(payload: dict | None) -> bool:
+        bookmaker_odds = payload.get("bookmakerOdds") if isinstance(payload, dict) else None
+        if not isinstance(bookmaker_odds, dict):
+            return False
+        return any(
+            isinstance(bookmaker, dict)
+            and isinstance(bookmaker.get("markets"), dict)
+            and any(
+                isinstance(market, dict)
+                and isinstance(market.get("outcomes"), dict)
+                and bool(market.get("outcomes"))
+                for market in bookmaker["markets"].values()
+            )
+            for bookmaker in bookmaker_odds.values()
+        )
+
     def process(
         self,
         candidates: list[OddspapiPreStartCandidate],
@@ -576,7 +593,7 @@ class OddspapiPreStartOddsBatchProcessor:
             and int(exchange_max_requests_per_run) > 0
             else None
         )
-        odds_not_found_event_ids: set[int] = set()
+        odds_unavailable_event_ids: set[int] = set()
         for candidate in candidates or []:
             event_result = self._event_result(candidate)
             summary.results.append(event_result)
@@ -675,7 +692,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     )
                 if acquisition_result.endpoint_missing:
                     if not is_live:
-                        odds_not_found_event_ids.add(candidate.event_id)
+                        odds_unavailable_event_ids.add(candidate.event_id)
                         summary.missing_endpoints += 1
                     event_result.skipped = True
                     event_result.skip_reason = "oddspapi_odds_endpoint_not_found"
@@ -693,9 +710,22 @@ class OddspapiPreStartOddsBatchProcessor:
                     continue
                 odds_response = acquisition_result.payload
                 if not odds_response:
+                    if not is_live:
+                        odds_unavailable_event_ids.add(candidate.event_id)
                     event_result.skipped = True
                     event_result.skip_reason = "no_oddspapi_odds"
                     summary.events_skipped += 1
+                    continue
+                if not is_live and not self._has_current_odds(odds_response):
+                    odds_unavailable_event_ids.add(candidate.event_id)
+                    event_result.skipped = True
+                    event_result.skip_reason = "no_oddspapi_odds"
+                    summary.events_skipped += 1
+                    logger.info(
+                        "Oddspapi /odds returned no bookmaker odds event_id=%s fixture_id=%s",
+                        candidate.event_id,
+                        candidate.fixture_id,
+                    )
                     continue
                 summary.responses_received += 1
                 ingestion_result = self.ingestion_service.save_from_oddspapi_response(
@@ -763,5 +793,5 @@ class OddspapiPreStartOddsBatchProcessor:
                     ),
                 )
         if not dry_run:
-            mark_missing_endpoints_unavailable(odds_not_found_event_ids, ODDSPAPI_SOURCE)
+            mark_missing_endpoints_unavailable(odds_unavailable_event_ids, ODDSPAPI_SOURCE)
         return summary
