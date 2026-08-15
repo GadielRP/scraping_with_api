@@ -98,7 +98,7 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                     return result
 
                 if sport in ["Tennis", "Tennis Doubles"]:
-                    check_intervals = list(range(10, 70, 10))
+                    check_intervals = [15, 30, 45, 60]
                 else:
                     check_intervals = [15]
                     if minutes_ago > 15:

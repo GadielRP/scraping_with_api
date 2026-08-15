@@ -102,12 +102,12 @@ def _split_recently_started_events(
 def _maintain_recently_started_events(
     scheduler,
     upcoming_events: list[dict],
-    tracked_competition_ids: list[int] | None,
+    active_tracked_competition_ids: list[int] | None,
 ) -> list[dict]:
     """Run timestamp/result maintenance and remove newly rescheduled events."""
     started_events = scheduler.event_repo.get_events_started_recently(
         window_minutes=Config.INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES,
-        competition_ids=tracked_competition_ids,
+        competition_ids=active_tracked_competition_ids,
     )
     logger.info(
         "Found %s started events without results within the last %s minutes",
@@ -117,6 +117,14 @@ def _maintain_recently_started_events(
     timestamp_candidates, result_freshness_candidates = (
         _split_recently_started_events(started_events)
     )
+
+    if Config.TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY:
+        timestamp_tracked_ids = set(tracked_competition_ids())
+        timestamp_candidates = [
+            event
+            for event in timestamp_candidates
+            if event.get("competition_id") in timestamp_tracked_ids
+        ]
 
     logger.info(
         "⏱️ Starting recently-started timestamp corrections (%s candidates)",
@@ -142,6 +150,14 @@ def _maintain_recently_started_events(
         for event in upcoming_events
         if event["id"] not in scheduler.recently_rescheduled
     ]
+
+    if Config.INTRADAY_RESULT_FRESHNESS_TRACKED_COMPETITIONS_ONLY:
+        freshness_tracked_ids = set(tracked_competition_ids())
+        result_freshness_candidates = [
+            event
+            for event in result_freshness_candidates
+            if event.get("competition_id") in freshness_tracked_ids
+        ]
 
     logger.info(
         "🔄 Starting intraday result freshness (%s candidates)",
