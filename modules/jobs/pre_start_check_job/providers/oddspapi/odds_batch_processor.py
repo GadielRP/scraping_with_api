@@ -14,7 +14,9 @@ from infrastructure.persistence.repositories import (
 from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingIndex,
 )
+from infrastructure.settings import Config
 from modules.competition.tracked_competitions import is_tracked_competition
+from modules.jobs.pre_start_check_job.moment_policy import is_closing_odds_moment
 from modules.odds_ingestion import (
     MarketOddsIngestionService,
     ProviderOddsSummary,
@@ -36,6 +38,7 @@ from .exchange_historical_fetch_executor import (
 )
 from .odds_fetcher import OddspapiOddsFetcher
 from .odds_acquisition_service import OddspapiPreStartOddsAcquisitionService
+from .historical_odds_as_of_shadow import log_historical_odds_as_of_shadow
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +228,8 @@ class OddspapiPreStartOddsBatchProcessor:
                 result.skip_reason = "missing_oddspapi_mapping"
             elif OddspapiPreStartOddsBatchProcessor._is_live_candidate(candidate):
                 result.skip_reason = "missing_mainline_cache"
+            elif getattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False):
+                result.skip_reason = "oddspapi_closing_only"
             elif respects_stored_availability and not candidate.has_odds:
                 result.skip_reason = "oddspapi_odds_unavailable"
             else:
@@ -489,6 +494,7 @@ class OddspapiPreStartOddsBatchProcessor:
             if live_event_ids
             else set()
         )
+        closing_only = getattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False)
         requestable_candidates = [
             candidate
             for candidate in mapped_candidates
@@ -497,6 +503,11 @@ class OddspapiPreStartOddsBatchProcessor:
                 and (
                     not self._is_live_candidate(candidate)
                     or candidate.event_id in cached_live_event_ids
+                )
+                and (
+                    not closing_only
+                    or self._is_live_candidate(candidate)
+                    or is_closing_odds_moment(candidate.minutes_until_start)
                 )
             )
         ]
@@ -642,6 +653,16 @@ class OddspapiPreStartOddsBatchProcessor:
                     candidate.fixture_id,
                 )
                 continue
+            closing_only = getattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False)
+            if (
+                closing_only
+                and not is_live
+                and not is_closing_odds_moment(candidate.minutes_until_start)
+            ):
+                event_result.skipped = True
+                event_result.skip_reason = "oddspapi_closing_only"
+                summary.events_skipped += 1
+                continue
             if requested_limit is not None and requested_count >= requested_limit:
                 event_result.skipped = True
                 event_result.skip_reason = "max_events_per_run_reached"
@@ -697,6 +718,28 @@ class OddspapiPreStartOddsBatchProcessor:
                     require_active_quotes=require_active_quotes,
                     debug_mode=debug_mode,
                     exchange_fetch_executor=exchange_fetch_executor,
+                    start_time_utc=candidate.start_time_utc,
+                    as_of_moments=(
+                        list(Config.PRE_START_ODDS_MOMENTS)
+                        if (
+                            getattr(
+                                Config,
+                                "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW",
+                                False,
+                            )
+                            or getattr(
+                                Config,
+                                "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
+                                False,
+                            )
+                        )
+                        else None
+                    ),
+                    attach_as_of=getattr(
+                        Config,
+                        "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
+                        False,
+                    ),
                 )
                 if debug_mode and getattr(
                     acquisition_result,
@@ -743,6 +786,23 @@ class OddspapiPreStartOddsBatchProcessor:
                     )
                     continue
                 odds_response = acquisition_result.payload
+                if (
+                    is_live
+                    and getattr(Config, "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW", False)
+                ):
+                    log_historical_odds_as_of_shadow(
+                        event_id=candidate.event_id,
+                        fixture_id=candidate.fixture_id,
+                        as_of_quotes=getattr(
+                            acquisition_result, "as_of_quotes", None
+                        )
+                        or [],
+                        tolerance_minutes=getattr(
+                            Config,
+                            "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES",
+                            3,
+                        ),
+                    )
                 if not odds_response:
                     if not is_live:
                         odds_unavailable_event_ids.add(candidate.event_id)

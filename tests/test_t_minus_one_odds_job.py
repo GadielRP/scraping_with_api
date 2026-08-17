@@ -48,7 +48,7 @@ def test_t_minus_one_job_queries_exact_slot_and_records_dispatch_lag(
     calls = []
     scheduler = SimpleNamespace(
         event_repo=SimpleNamespace(
-            get_events_starting_between=lambda start, end: query_windows.append(
+            get_events_starting_between=lambda start, end, **kwargs: query_windows.append(
                 (start, end)
             )
             or [{"id": 101, "start_time_utc": datetime(2026, 8, 13, 19, 0)}]

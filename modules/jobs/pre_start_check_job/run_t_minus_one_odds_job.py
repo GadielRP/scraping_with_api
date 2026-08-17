@@ -42,9 +42,16 @@ def run_t_minus_one_odds_job(
         )
         return None
 
+    from modules.competition.tracked_competitions import tracked_competition_ids
+
+    tracked_ids = None
+    if Config.TRACKED_COMPETITIONS_ONLY:
+        tracked_ids = list(tracked_competition_ids())
+
     events = scheduler.event_repo.get_events_starting_between(
         target_start,
         target_start + timedelta(seconds=1),
+        competition_ids=tracked_ids,
     )
     if not events:
         logger.debug("No events found for T-1 target_start=%s", target_start)

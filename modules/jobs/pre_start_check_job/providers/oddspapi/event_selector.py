@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from infrastructure.persistence.repositories import EventOddsSourceState
 from modules.odds_ingestion import should_extract_odds
@@ -21,6 +22,7 @@ class OddspapiPreStartCandidate:
     source_sport_id: str | None = None
     is_live: bool = False
     competition_id: int | None = None
+    start_time_utc: datetime | None = None
 
 
 def _canonical_event_id(event_info: dict) -> int | None:
@@ -66,6 +68,7 @@ def select_oddspapi_pre_start_candidates(
                 source_sport_id=source_state.source_sport_id if source_state else None,
                 is_live=_is_live_moment(minutes_until_start),
                 competition_id=event_data.get("competition_id"),
+                start_time_utc=event_data.get("start_time_utc"),
             )
         )
     return candidates

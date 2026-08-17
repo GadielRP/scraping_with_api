@@ -258,6 +258,9 @@ class OddspapiMarketAdapter:
                             "mainLine": main_line,
                             "limit": player.get("limit"),
                         }
+                        moment_quotes = player.get("momentQuotes")
+                        if isinstance(moment_quotes, list) and moment_quotes:
+                            choice["momentQuotes"] = moment_quotes
                         exchange_meta = player.get("exchangeMeta")
                         if OddspapiMarketAdapter._is_exchange_bookmaker(
                             slug, exchange_meta

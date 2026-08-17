@@ -54,6 +54,10 @@ class OddspapiPreStartSettings:
     require_active_quotes: bool = True
     persist_main_line_only: bool = False
 
+    # Operational toggles for reconstructing key-moment prices from live
+    # /historical-odds (ENABLE_ODDSPAPI_HISTORICAL_AS_OF_*) and restricting
+    # paid /odds to T-1 (ODDSPAPI_PRE_START_CLOSING_ONLY) live in Config.
+
     # Optional allowlists; empty means "no extra filter".
     allowed_market_keys: tuple[str, ...] = ()
     allowed_market_groups: tuple[str, ...] = ()

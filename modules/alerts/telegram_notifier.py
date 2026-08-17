@@ -89,7 +89,7 @@ class PreStartNotification:
 
                 response = requests.post(url, data=data, timeout=10)
                 if response.status_code == 200:
-                    logger.info("Telegram notification chunk sent successfully (%s chars)", len(chunk))
+                    logger.info("📲 Telegram notification chunk sent successfully (%s chars)", len(chunk))
                 else:
                     logger.error(
                         "Telegram notification failed: %s - %s",
@@ -109,7 +109,6 @@ class PreStartNotification:
             logger.warning("Telegram notifications not configured - cannot send alert message")
             return False
 
-        logger.info("📲 Sending alert message via Telegram...")
         return self._send_telegram_notification(message)
 
 

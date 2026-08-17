@@ -385,3 +385,48 @@ def test_opening_snapshot_gate_uses_exchange_side_quote_not_null_row(tmp_path):
         # Without the side-aware gate this would be 2 (every re-ingest looks
         # like a first opening because no NULL-side quote exists).
         assert opening_ticks == 1
+
+
+def test_moment_quotes_write_snapshots_with_their_collected_at_and_dedup(tmp_path):
+    manager = _make_manager(tmp_path, "moments.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    moment_at = datetime(2026, 6, 20, 10, 0, 0)
+    batches = _batch(current_odds=2.10)
+    batches[0]["markets"][0]["choices"][0]["momentQuotes"] = [
+        {
+            "minutesUntilStart": 120,
+            "price": 1.95,
+            "createdAt": "2026-06-20T16:00:00Z",
+            "collectedAt": moment_at,
+            "limit": None,
+        }
+    ]
+    batches[0]["bookie_id"] = bookie_id
+
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager",
+        manager,
+    ):
+        first = MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
+        second = MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
+
+    with manager.get_session() as session:
+        choice = session.query(MarketChoice).one()
+        quote = _quote(session, choice.choice_id, "oddspapi", None)
+        moment_ticks = (
+            session.query(MarketChoiceSnapshot)
+            .filter(
+                MarketChoiceSnapshot.quote_id == quote.quote_id,
+                MarketChoiceSnapshot.collected_at == moment_at,
+            )
+            .all()
+        )
+        assert len(moment_ticks) == 1
+        assert float(moment_ticks[0].odds_value) == 1.95
+    assert first.snapshots_saved >= 2
+    assert second.snapshots_saved == 1
+

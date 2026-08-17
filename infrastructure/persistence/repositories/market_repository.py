@@ -11,6 +11,7 @@ from infrastructure.persistence.models import (
     Market,
     MarketChoice,
     MarketChoiceQuote,
+    MarketChoiceSnapshot,
 )
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.market_write_policy import (
@@ -105,6 +106,43 @@ class MarketRepository:
     def _float_or_none(value):
         normalized = normalize_odds_value(value)
         return float(normalized) if normalized is not None else None
+
+    @staticmethod
+    def _snapshot_collected_at_key(collected_at: datetime) -> datetime:
+        if collected_at.tzinfo is not None:
+            return collected_at.replace(microsecond=0, tzinfo=None)
+        return collected_at.replace(microsecond=0)
+
+    @staticmethod
+    def _existing_snapshot_keys(session, *, event_id: int, source: str) -> set[tuple[int, datetime]]:
+        rows = (
+            session.query(
+                MarketChoiceSnapshot.quote_id,
+                MarketChoiceSnapshot.collected_at,
+            )
+            .join(
+                MarketChoiceQuote,
+                MarketChoiceSnapshot.quote_id == MarketChoiceQuote.quote_id,
+            )
+            .join(MarketChoice, MarketChoiceQuote.choice_id == MarketChoice.choice_id)
+            .join(Market, MarketChoice.market_id == Market.market_id)
+            .filter(
+                Market.event_id == int(event_id),
+                MarketChoiceQuote.source == source,
+            )
+            .all()
+        )
+        keys: set[tuple[int, datetime]] = set()
+        for quote_id, collected_at in rows:
+            if quote_id is None or collected_at is None:
+                continue
+            keys.add(
+                (
+                    int(quote_id),
+                    MarketRepository._snapshot_collected_at_key(collected_at),
+                )
+            )
+        return keys
 
     @staticmethod
     def save_canonical_bookmaker_batches(
@@ -460,6 +498,17 @@ class MarketRepository:
             uses_oddspapi_source_time = MarketRepository._uses_utc_source_timestamps(
                 source
             )
+            existing_snapshot_keys = set()
+            if any(
+                isinstance(choice_data.get("momentQuotes"), list)
+                and choice_data.get("momentQuotes")
+                for _, choice_data, _, _, _ in prepared_choices
+            ):
+                existing_snapshot_keys = MarketRepository._existing_snapshot_keys(
+                    session,
+                    event_id=event_id,
+                    source=source,
+                )
             for choice, choice_data, current_odds, initial_odds, initial_was_set in prepared_choices:
                 initial_source_collected_at = MarketRepository._parse_source_datetime(
                     choice_data.get("initialChangedAt"),
@@ -605,6 +654,79 @@ class MarketRepository:
                         ),
                     )
                     result.snapshots_saved += 1
+                    if current_quote.quote_id is not None:
+                        existing_snapshot_keys.add(
+                            (
+                                int(current_quote.quote_id),
+                                MarketRepository._snapshot_collected_at_key(
+                                    collected_at
+                                ),
+                            )
+                        )
+
+                moment_quotes = choice_data.get("momentQuotes")
+                if (
+                    write_policy.persist_current_snapshots
+                    and isinstance(moment_quotes, list)
+                    and moment_quotes
+                ):
+                    moment_quote_row = quotes_by_identity.get(primary_identity)
+                    if moment_quote_row is None:
+                        raise ValueError(
+                            "Moment snapshot has no matching quote for "
+                            f"choice_id={choice.choice_id}, identity={primary_identity}"
+                        )
+                    if moment_quote_row.quote_id is None:
+                        session.flush()
+                    for moment_quote in moment_quotes:
+                        if not isinstance(moment_quote, dict):
+                            continue
+                        moment_odds = MarketRepository._float_or_none(
+                            moment_quote.get("price")
+                            or moment_quote.get("decimalValue")
+                        )
+                        moment_collected_at = moment_quote.get("collectedAt")
+                        if not isinstance(moment_collected_at, datetime):
+                            moment_collected_at = (
+                                MarketRepository._parse_source_datetime(
+                                    moment_collected_at,
+                                    convert_to_project_timezone=False,
+                                )
+                            )
+                        if moment_odds is None or moment_collected_at is None:
+                            continue
+                        snapshot_key = (
+                            int(moment_quote_row.quote_id),
+                            MarketRepository._snapshot_collected_at_key(
+                                moment_collected_at
+                            ),
+                        )
+                        if snapshot_key in existing_snapshot_keys:
+                            continue
+                        MarketChoiceSnapshotWriter.append(
+                            session,
+                            quote=moment_quote_row,
+                            odds_value=moment_odds,
+                            collected_at=moment_collected_at,
+                            source_collected_at=(
+                                MarketRepository._parse_source_datetime(
+                                    moment_quote.get("createdAt"),
+                                    convert_to_project_timezone=uses_oddspapi_source_time,
+                                )
+                            ),
+                            source_limit=MarketRepository._numeric_or_none(
+                                moment_quote.get("limit")
+                            ),
+                            exchange_size=(
+                                MarketRepository._numeric_or_none(
+                                    moment_quote.get("limit")
+                                )
+                                if moment_quote_row.exchange_side is not None
+                                else None
+                            ),
+                        )
+                        existing_snapshot_keys.add(snapshot_key)
+                        result.snapshots_saved += 1
 
             # Persist the complete quote/snapshot graph in one flush. Snapshot
             # relationships can reference pending quotes; SQLAlchemy orders the

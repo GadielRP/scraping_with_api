@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Sequence
+
 from modules.odds_ingestion.fetch_result import OddsFetchResult
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.exceptions import OddsPapiHttpError
-from modules.oddspapi.historical_odds_normalizer import (
-    OddspapiHistoricalOddsNormalizer,
-)
+from modules.oddspapi.historical_odds_reader import OddspapiHistoricalOddsReader
 
 from .constants import (
     ODDSPAPI_CURRENT_ODDS_ENDPOINT,
@@ -35,6 +36,7 @@ class OddspapiOddsFetcher:
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
         capture_raw_response: bool = False,
+        as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
     ) -> OddsFetchResult:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -45,6 +47,7 @@ class OddspapiOddsFetcher:
             )
 
         raw_payload = None
+        as_of_quotes: tuple = ()
         try:
             if selected_endpoint == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT:
                 historical_payload = self.client.get_historical_odds(
@@ -54,12 +57,15 @@ class OddspapiOddsFetcher:
                 )
                 if capture_raw_response:
                     raw_payload = historical_payload
-                payload = OddspapiHistoricalOddsNormalizer.normalize(
+                read_result = OddspapiHistoricalOddsReader.read(
                     historical_payload,
                     source_sport_id=source_sport_id,
+                    as_of_targets=as_of_targets or (),
                     minimum_initial_span_minutes=minimum_initial_span_minutes,
                     require_active_quotes=require_active_quotes,
                 )
+                payload = read_result.normalized_payload
+                as_of_quotes = read_result.as_of_quotes
             else:
                 payload = self.client.get_odds(
                     fixture_id=fixture_id,
@@ -79,4 +85,5 @@ class OddspapiOddsFetcher:
         return OddsFetchResult.from_payload(
             payload,
             raw_payload=raw_payload,
+            as_of_quotes=as_of_quotes,
         )

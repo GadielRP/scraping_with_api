@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Sequence
 
 
 class OddspapiHistoricalOddsNormalizer:
@@ -56,34 +56,33 @@ class OddspapiHistoricalOddsNormalizer:
         return [item for _, item in indexed]
 
     @classmethod
-    def _normalize_player_history(
+    def ordered_priced_ticks(cls, value: Any) -> list[tuple[datetime, dict]]:
+        """Return priced quotes ordered by ``createdAt``, with parsed timestamps."""
+        ticks: list[tuple[datetime, dict]] = []
+        for quote in cls._ordered_quotes(value):
+            if not cls._has_valid_price(quote):
+                continue
+            created_at = cls._parse_timestamp(quote.get("createdAt"))
+            if created_at is None:
+                continue
+            ticks.append((created_at, quote))
+        return ticks
+
+    @classmethod
+    def from_ordered_ticks(
         cls,
-        value: Any,
+        ticks: Sequence[tuple[datetime, dict]],
         *,
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
     ) -> dict | None:
-        quotes = [
-            quote
-            for quote in cls._ordered_quotes(value)
-            if (
-                cls._has_valid_price(quote)
-                and cls._parse_timestamp(quote.get("createdAt")) is not None
-            )
-        ]
-        if not quotes:
-            return None
-
-        # ``require_active_quotes`` mirrors ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES:
-        # when True, both opening and current come from the active timeline;
-        # when False, use every priced observation (needed for suspended lines
-        # that still publish prices with active=false).
+        """Reduce an already-ordered tick series to opening + latest."""
         if require_active_quotes:
             candidate_quotes = [
-                quote for quote in quotes if quote.get("active") is not False
+                quote for _, quote in ticks if quote.get("active") is not False
             ]
         else:
-            candidate_quotes = quotes
+            candidate_quotes = [quote for _, quote in ticks]
         if not candidate_quotes:
             return None
 
@@ -120,66 +119,12 @@ class OddspapiHistoricalOddsNormalizer:
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
     ) -> dict:
-        payload = historical_response if isinstance(historical_response, dict) else {}
-        normalized_bookmakers: dict[str, dict] = {}
-        bookmakers = payload.get("bookmakers")
-        if not isinstance(bookmakers, dict):
-            bookmakers = {}
+        from modules.oddspapi.historical_odds_reader import OddspapiHistoricalOddsReader
 
-        for bookmaker_slug, bookmaker_data in bookmakers.items():
-            if not isinstance(bookmaker_data, dict):
-                continue
-            markets = bookmaker_data.get("markets")
-            if not isinstance(markets, dict):
-                continue
-            normalized_markets: dict[str, dict] = {}
-
-            for market_id, market_data in markets.items():
-                if not isinstance(market_data, dict):
-                    continue
-                outcomes = market_data.get("outcomes")
-                if not isinstance(outcomes, dict):
-                    continue
-                normalized_outcomes: dict[str, dict] = {}
-
-                for outcome_id, outcome_data in outcomes.items():
-                    if not isinstance(outcome_data, dict):
-                        continue
-                    players = outcome_data.get("players")
-                    if not isinstance(players, dict):
-                        continue
-                    normalized_players = {
-                        str(player_id): normalized
-                        for player_id, history in players.items()
-                        if (
-                            normalized := cls._normalize_player_history(
-                                history,
-                                minimum_initial_span_minutes=(
-                                    minimum_initial_span_minutes
-                                ),
-                                require_active_quotes=require_active_quotes,
-                            )
-                        )
-                        is not None
-                    }
-                    if normalized_players:
-                        normalized_outcomes[str(outcome_id)] = {
-                            "players": normalized_players
-                        }
-
-                if normalized_outcomes:
-                    normalized_markets[str(market_id)] = {
-                        "marketActive": True,
-                        "outcomes": normalized_outcomes,
-                    }
-
-            if normalized_markets:
-                normalized_bookmakers[str(bookmaker_slug)] = {
-                    "markets": normalized_markets
-                }
-
-        return {
-            "fixtureId": payload.get("fixtureId"),
-            "sportId": source_sport_id,
-            "bookmakerOdds": normalized_bookmakers,
-        }
+        return OddspapiHistoricalOddsReader.read(
+            historical_response,
+            source_sport_id=source_sport_id,
+            as_of_targets=(),
+            minimum_initial_span_minutes=minimum_initial_span_minutes,
+            require_active_quotes=require_active_quotes,
+        ).normalized_payload

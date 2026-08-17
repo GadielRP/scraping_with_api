@@ -75,12 +75,12 @@ def _log_pipeline_eligibility(event_obj) -> bool:
     tracked_competition = is_tracked_competition(competition_id)
 
     if (
-        Config.PRE_START_TRACKED_COMPETITIONS_ONLY
+        Config.TRACKED_COMPETITIONS_ONLY
         and not tracked_competition
     ):
         logger.warning(
             "PRODUCTION FLOW STOPS BEFORE INGESTION: competition_id=%s is "
-            "not tracked and PRE_START_TRACKED_COMPETITIONS_ONLY=True.",
+            "not tracked and TRACKED_COMPETITIONS_ONLY=True.",
             competition_id,
         )
         return False
@@ -93,7 +93,7 @@ def _log_pipeline_eligibility(event_obj) -> bool:
             "ALERT AND PILLAR PIPELINES WILL SKIP: competition_id=%s is "
             "not tracked and FILTER_PIPELINES_BY_TRACKED_COMPETITIONS=True. "
             "Provider odds can still be ingested because "
-            "PRE_START_TRACKED_COMPETITIONS_ONLY=False.",
+            "TRACKED_COMPETITIONS_ONLY=False.",
             competition_id,
         )
     else:

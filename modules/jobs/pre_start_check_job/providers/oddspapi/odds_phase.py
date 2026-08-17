@@ -8,6 +8,7 @@ from collections import Counter
 from infrastructure.persistence.repositories import (
     EventOddsSourceState,
     EventSourceMappingRepository,
+    OddspapiMainlineCacheRepository,
 )
 from infrastructure.settings import Config
 
@@ -136,6 +137,10 @@ def run_oddspapi_pre_start_odds(
         summary = _skipped_summary(candidates, "missing_oddspapi_api_key")
         _log_summary(summary)
         return summary
+
+    retention_days = int(getattr(Config, "ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS", 2) or 0)
+    if retention_days > 0:
+        OddspapiMainlineCacheRepository.purge_stale_cache(days=retention_days)
 
     if source_states is None:
         try:

@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 
 def _tracked_competition_ids() -> list[int] | None:
-    if not Config.PRE_START_TRACKED_COMPETITIONS_ONLY:
+    if not Config.TRACKED_COMPETITIONS_ONLY:
         return None
 
     competition_ids = list(tracked_competition_ids())
@@ -253,14 +253,50 @@ def run_pre_start_odds_moments(
 ) -> PreStartEventPlan:
     """Run candidate selection and provider ingestion, optionally evaluating downstream flows."""
     source_states = load_pre_start_odds_source_states(upcoming_events)
-    event_plan = build_pre_start_event_candidates(
+
+    global_ts_correction = (
+        Config.ENABLE_TIMESTAMP_CORRECTION
+        if timestamp_correction_enabled is None
+        else timestamp_correction_enabled
+    )
+
+    if global_ts_correction and Config.TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY:
+        tracked_ids = set(tracked_competition_ids())
+        ts_events = [e for e in upcoming_events if e.get("competition_id") in tracked_ids]
+        no_ts_events = [e for e in upcoming_events if e.get("competition_id") not in tracked_ids]
+    else:
+        ts_events = upcoming_events
+        no_ts_events = []
+
+    plan_ts = build_pre_start_event_candidates(
         scheduler,
-        upcoming_events,
+        ts_events,
         timings,
         source_states,
         key_moments=key_moments,
-        timestamp_correction_enabled=timestamp_correction_enabled,
+        timestamp_correction_enabled=global_ts_correction,
     )
+
+    if no_ts_events:
+        logger.info(
+            "🚫 Skipping timestamp corrections for %s events from untracked competitions",
+            len(no_ts_events),
+        )
+        plan_no_ts = build_pre_start_event_candidates(
+            scheduler,
+            no_ts_events,
+            timings,
+            source_states,
+            key_moments=key_moments,
+            timestamp_correction_enabled=False,
+        )
+        event_plan = PreStartEventPlan(
+            candidates=plan_ts.candidates + plan_no_ts.candidates,
+            by_event_id={**plan_ts.by_event_id, **plan_no_ts.by_event_id},
+        )
+    else:
+        event_plan = plan_ts
+
     attach_stored_observations(event_plan.candidates)
     persist_snapshot_observations(event_plan.candidates)
     _ingest_provider_odds(

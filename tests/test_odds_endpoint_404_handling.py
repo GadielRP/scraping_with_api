@@ -915,6 +915,39 @@ def test_oddspapi_false_state_skips_request_and_mapping_index(monkeypatch):
     assert summary.results[0].skip_reason == "oddspapi_odds_unavailable"
 
 
+def test_closing_only_skips_non_closing_pre_start_moments(monkeypatch):
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor.Config.ODDSPAPI_PRE_START_CLOSING_ONLY",
+        True,
+    )
+    processor = OddspapiPreStartOddsBatchProcessor(
+        fetcher=SimpleNamespace(
+            fetch_odds=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("HTTP request must be skipped")
+            )
+        )
+    )
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "MarketMappingRepository.build_index",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("mapping index must not be loaded")
+        ),
+    )
+    candidate = OddspapiPreStartCandidate(
+        event_id=101,
+        fixture_id="fixture-1",
+        minutes_until_start=30,
+        has_odds=True,
+    )
+
+    summary = processor.process([candidate], bookmakers=["pinnacle"])
+
+    assert summary.requests_attempted == 0
+    assert summary.events_skipped == 1
+    assert summary.results[0].skip_reason == "oddspapi_closing_only"
+
+
 def test_historical_mode_ignores_current_endpoint_availability_flag(monkeypatch):
     requested = []
     marked = []
@@ -1102,6 +1135,8 @@ def test_oddspapi_missing_api_key_skips_mapping_query(monkeypatch):
 
 
 def test_oddspapi_404_is_persisted_once_for_provider(monkeypatch):
+    from infrastructure.settings import Config
+    monkeypatch.setattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False)
     marked = []
     processor = OddspapiPreStartOddsBatchProcessor(
         fetcher=SimpleNamespace(
@@ -1235,7 +1270,7 @@ def test_untracked_pipeline_gate_explains_ingestion_without_evaluation(
     event = SimpleNamespace(competition_id=999999)
     monkeypatch.setattr(
         simulate_pre_start_check.Config,
-        "PRE_START_TRACKED_COMPETITIONS_ONLY",
+        "TRACKED_COMPETITIONS_ONLY",
         False,
     )
     monkeypatch.setattr(

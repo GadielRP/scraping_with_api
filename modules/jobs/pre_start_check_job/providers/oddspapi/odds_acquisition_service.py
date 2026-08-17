@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 import logging
 
 from infrastructure.persistence.repositories.market_mapping_repository import (
@@ -11,6 +12,7 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
 from infrastructure.persistence.repositories.oddspapi_mainline_cache_repository import (
     OddspapiMainlineCacheRepository,
 )
+from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.odds_ingestion.fetch_result import OddsFetchResult
 
 from .constants import (
@@ -46,6 +48,7 @@ class OddspapiOddsAcquisitionResult:
     exchange_outcomes_skipped_budget: int = 0
     exchange_selection_diagnostics: dict[str, int] = field(default_factory=dict)
     mainline_outcomes_cached: int = 0
+    as_of_quotes: list = field(default_factory=list)
 
 
 class OddspapiPreStartOddsAcquisitionService:
@@ -118,6 +121,7 @@ class OddspapiPreStartOddsAcquisitionService:
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
         capture_raw_response: bool = False,
+        as_of_targets: list[tuple[int, datetime, datetime]] | None = None,
     ) -> OddsFetchResult:
         return self.fetcher.fetch_odds(
             fixture_id,
@@ -128,7 +132,17 @@ class OddspapiPreStartOddsAcquisitionService:
             minimum_initial_span_minutes=minimum_initial_span_minutes,
             require_active_quotes=require_active_quotes,
             capture_raw_response=capture_raw_response,
+            as_of_targets=as_of_targets,
         )
+
+    @staticmethod
+    def _record_as_of_quotes(
+        result: OddspapiOddsAcquisitionResult,
+        fetch_result: OddsFetchResult | None,
+    ) -> None:
+        quotes = getattr(fetch_result, "as_of_quotes", None) or ()
+        if quotes:
+            result.as_of_quotes.extend(quotes)
 
     def _selection_limit(
         self,
@@ -175,6 +189,7 @@ class OddspapiPreStartOddsAcquisitionService:
         if historical_result is None or historical_result.endpoint_missing:
             result.exchange_historical_requests_failed += 1
             return payload
+        self._record_as_of_quotes(result, historical_result)
         if not historical_result.payload:
             return payload
         if merge_full_bookmakers:
@@ -200,6 +215,8 @@ class OddspapiPreStartOddsAcquisitionService:
         requested_bookmakers: set[str],
         merge_full_bookmakers: bool,
         fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
+        capture_raw_response: bool = False,
+        as_of_targets: list[tuple[int, datetime, datetime]] | None = None,
     ) -> dict | None:
         for selection in selections:
             requested_bookmakers.add(selection.bookmaker_slug)
@@ -213,6 +230,8 @@ class OddspapiPreStartOddsAcquisitionService:
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
                 require_active_quotes=require_active_quotes,
+                capture_raw_response=capture_raw_response,
+                as_of_targets=as_of_targets,
             )
             for outcome in outcomes:
                 payload = self._apply_exchange_historical_result(
@@ -240,6 +259,8 @@ class OddspapiPreStartOddsAcquisitionService:
                     outcome_id=int(selection.source_outcome_id),
                     minimum_initial_span_minutes=minimum_initial_span_minutes,
                     require_active_quotes=require_active_quotes,
+                    capture_raw_response=capture_raw_response,
+                    as_of_targets=as_of_targets,
                 )
             except Exception as exc:
                 error = exc
@@ -271,6 +292,9 @@ class OddspapiPreStartOddsAcquisitionService:
         result: OddspapiOddsAcquisitionResult,
         requested_bookmakers: set[str],
         fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
+        start_time_utc: datetime | None = None,
+        as_of_moments: list[int] | None = None,
+        attach_as_of: bool = False,
     ) -> OddspapiOddsAcquisitionResult:
         payload: dict | None = None
         historical_missing = False
@@ -292,6 +316,11 @@ class OddspapiPreStartOddsAcquisitionService:
             result.payload = None
             return result
 
+        as_of_targets = OddspapiHistoricalOddsAsOf.targets_from_start(
+            start_time_utc,
+            as_of_moments or [],
+        )
+        capture_raw = debug_mode
         if regular:
             requested_bookmakers.update(regular)
             result.http_requests_attempted += 1
@@ -302,12 +331,14 @@ class OddspapiPreStartOddsAcquisitionService:
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
                 require_active_quotes=require_active_quotes,
-                capture_raw_response=debug_mode,
+                capture_raw_response=capture_raw,
+                as_of_targets=as_of_targets,
             )
             historical_missing = historical_result.endpoint_missing
             payload = historical_result.payload
             result.debug_raw_payload = historical_result.raw_payload
             result.debug_bookmakers = list(regular)
+            self._record_as_of_quotes(result, historical_result)
 
         if exchange and enable_exchange_historical:
             cached_rows = self.mainline_cache_repository.get_exchange_mainline_selections(
@@ -358,6 +389,14 @@ class OddspapiPreStartOddsAcquisitionService:
                 requested_bookmakers=requested_bookmakers,
                 merge_full_bookmakers=True,
                 fetch_executor=fetch_executor,
+                capture_raw_response=capture_raw,
+                as_of_targets=as_of_targets,
+            )
+
+        if attach_as_of and result.as_of_quotes:
+            payload = OddspapiHistoricalOddsAsOf.attach_to_normalized_payload(
+                payload,
+                result.as_of_quotes,
             )
 
         result.bookies_requested = len(requested_bookmakers)
@@ -542,6 +581,9 @@ class OddspapiPreStartOddsAcquisitionService:
         require_active_quotes: bool = True,
         debug_mode: bool = False,
         exchange_fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
+        start_time_utc: datetime | None = None,
+        as_of_moments: list[int] | None = None,
+        attach_as_of: bool = False,
     ) -> OddspapiOddsAcquisitionResult:
         regular = self._unique_bookmakers(regular_bookmakers)
         exchange = self._unique_bookmakers(exchange_bookmakers)
@@ -565,6 +607,9 @@ class OddspapiPreStartOddsAcquisitionService:
                 result=result,
                 requested_bookmakers=requested_bookmakers,
                 fetch_executor=exchange_fetch_executor,
+                start_time_utc=start_time_utc,
+                as_of_moments=as_of_moments,
+                attach_as_of=attach_as_of,
             )
 
         return self._acquire_pre_start(

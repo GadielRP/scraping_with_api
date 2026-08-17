@@ -403,6 +403,25 @@ class Config:
     ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN = int(
         os.getenv('ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN', '0')
     )
+    # When true, Oddspapi /odds is requested only at the closing minute (T-1).
+    # Live (minutes <= 0) still uses /historical-odds. Earlier moments skip.
+    ODDSPAPI_PRE_START_CLOSING_ONLY = _parse_env_bool(
+        'ODDSPAPI_PRE_START_CLOSING_ONLY',
+        False,
+    )
+    # Reconstruct T-120/T-30/T-5/T-1 from the same live /historical-odds
+    # read that produces opening/latest. Shadow compares; persist writes.
+    ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW = _parse_env_bool(
+        'ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW',
+        False,
+    )
+    ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST = _parse_env_bool(
+        'ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST',
+        False,
+    )
+    ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS = int(
+        os.getenv('ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS', '2')
+    )
     
     # Notification Configuration
     NOTIFICATIONS_ENABLED = os.getenv('NOTIFICATIONS_ENABLED', 'true').lower() == 'true'
@@ -444,9 +463,9 @@ class Config:
 
     # Scope pre-start work by canonical competition, independent of providers.
     # Legacy aliases are temporary deployment compatibility fallbacks.
-    PRE_START_TRACKED_COMPETITIONS_ONLY = _parse_env_bool_alias(
+    TRACKED_COMPETITIONS_ONLY = _parse_env_bool_alias(
+        'TRACKED_COMPETITIONS_ONLY',
         'PRE_START_TRACKED_COMPETITIONS_ONLY',
-        'TRACKED_SEASONS_TOGGLE',
         True,
     )
     FILTER_PIPELINES_BY_TRACKED_COMPETITIONS = _parse_env_bool_alias(

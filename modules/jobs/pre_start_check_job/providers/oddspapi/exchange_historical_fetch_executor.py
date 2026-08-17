@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 import logging
 from typing import Callable, Sequence
 
@@ -71,6 +72,8 @@ class OddspapiExchangeHistoricalFetchExecutor:
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float,
         require_active_quotes: bool = True,
+        capture_raw_response: bool = False,
+        as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         if not selections:
             return []
@@ -87,6 +90,8 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
                 require_active_quotes=require_active_quotes,
+                capture_raw_response=capture_raw_response,
+                as_of_targets=as_of_targets,
             )
         return self._fetch_with_worker_pool(
             fixture_id,
@@ -94,7 +99,9 @@ class OddspapiExchangeHistoricalFetchExecutor:
             source_sport_id=source_sport_id,
             minimum_initial_span_minutes=minimum_initial_span_minutes,
             require_active_quotes=require_active_quotes,
+            capture_raw_response=capture_raw_response,
             worker_count=worker_count,
+            as_of_targets=as_of_targets,
         )
 
     def _fetch_one(
@@ -106,6 +113,8 @@ class OddspapiExchangeHistoricalFetchExecutor:
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float,
         require_active_quotes: bool,
+        capture_raw_response: bool = False,
+        as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
     ) -> ExchangeHistoricalFetchOutcome:
         try:
             result = fetcher.fetch_odds(
@@ -116,6 +125,8 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 outcome_id=int(selection.source_outcome_id),
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
                 require_active_quotes=require_active_quotes,
+                capture_raw_response=capture_raw_response,
+                as_of_targets=as_of_targets,
             )
             return ExchangeHistoricalFetchOutcome(selection=selection, result=result)
         except Exception as exc:  # noqa: BLE001 - surfaced for caller bookkeeping/logging
@@ -131,6 +142,8 @@ class OddspapiExchangeHistoricalFetchExecutor:
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float,
         require_active_quotes: bool,
+        capture_raw_response: bool = False,
+        as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         api_key = self._api_keys[0] if self._api_keys else None
         client = self._client_factory(api_key=api_key)
@@ -144,6 +157,8 @@ class OddspapiExchangeHistoricalFetchExecutor:
                     source_sport_id=source_sport_id,
                     minimum_initial_span_minutes=minimum_initial_span_minutes,
                     require_active_quotes=require_active_quotes,
+                    capture_raw_response=capture_raw_response,
+                    as_of_targets=as_of_targets,
                 )
                 for selection in selections
             ]
@@ -161,6 +176,8 @@ class OddspapiExchangeHistoricalFetchExecutor:
         minimum_initial_span_minutes: float,
         require_active_quotes: bool,
         worker_count: int,
+        capture_raw_response: bool = False,
+        as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         chunks = [selections[index::worker_count] for index in range(worker_count)]
 
@@ -176,6 +193,8 @@ class OddspapiExchangeHistoricalFetchExecutor:
                         source_sport_id=source_sport_id,
                         minimum_initial_span_minutes=minimum_initial_span_minutes,
                         require_active_quotes=require_active_quotes,
+                        capture_raw_response=capture_raw_response,
+                        as_of_targets=as_of_targets,
                     )
                     for selection in chunks[worker_index]
                 ]
