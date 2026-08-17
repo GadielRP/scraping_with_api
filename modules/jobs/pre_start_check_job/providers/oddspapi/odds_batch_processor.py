@@ -7,7 +7,10 @@ from dataclasses import dataclass, field
 import logging
 from typing import Callable
 
-from infrastructure.persistence.repositories import MarketMappingRepository
+from infrastructure.persistence.repositories import (
+    MarketMappingRepository,
+    OddspapiMainlineCacheRepository,
+)
 from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingIndex,
 )
@@ -220,6 +223,8 @@ class OddspapiPreStartOddsBatchProcessor:
             result.skipped = True
             if not candidate.fixture_id:
                 result.skip_reason = "missing_oddspapi_mapping"
+            elif OddspapiPreStartOddsBatchProcessor._is_live_candidate(candidate):
+                result.skip_reason = "missing_mainline_cache"
             elif respects_stored_availability and not candidate.has_odds:
                 result.skip_reason = "oddspapi_odds_unavailable"
             else:
@@ -472,10 +477,28 @@ class OddspapiPreStartOddsBatchProcessor:
         summary = OddspapiPreStartOddsSummary(candidates_seen=len(candidates or []))
         mapped_candidates = [candidate for candidate in candidates or [] if candidate.fixture_id]
         summary.candidates_with_mapping = len(mapped_candidates)
+        live_event_ids = [
+            candidate.event_id
+            for candidate in mapped_candidates
+            if self._is_live_candidate(candidate)
+        ]
+        # /historical-odds has no mainLine flags. Live/in-play quotes cannot be
+        # parsed unless /odds previously populated oddspapi_mainline_outcome_cache.
+        cached_live_event_ids = (
+            OddspapiMainlineCacheRepository.event_ids_with_cache(live_event_ids)
+            if live_event_ids
+            else set()
+        )
         requestable_candidates = [
             candidate
             for candidate in mapped_candidates
-            if candidate.has_odds or self._is_live_candidate(candidate)
+            if (
+                (candidate.has_odds or self._is_live_candidate(candidate))
+                and (
+                    not self._is_live_candidate(candidate)
+                    or candidate.event_id in cached_live_event_ids
+                )
+            )
         ]
         requested_limit = max_events if max_events and max_events > 0 else None
 
@@ -607,6 +630,17 @@ class OddspapiPreStartOddsBatchProcessor:
                 event_result.skipped = True
                 event_result.skip_reason = "oddspapi_odds_unavailable"
                 summary.events_skipped += 1
+                continue
+            if is_live and candidate.event_id not in cached_live_event_ids:
+                event_result.skipped = True
+                event_result.skip_reason = "missing_mainline_cache"
+                summary.events_skipped += 1
+                logger.info(
+                    "🚫 Oddspapi historical-odds skipped: empty mainline cache "
+                    "event_id=%s fixture_id=%s",
+                    candidate.event_id,
+                    candidate.fixture_id,
+                )
                 continue
             if requested_limit is not None and requested_count >= requested_limit:
                 event_result.skipped = True

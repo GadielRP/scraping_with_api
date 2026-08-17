@@ -275,6 +275,23 @@ class OddspapiPreStartOddsAcquisitionService:
         payload: dict | None = None
         historical_missing = False
 
+        # Safety net: /historical-odds cannot be parsed without cached mainLine
+        # outcome ids captured earlier from /odds.
+        cached_event_ids = self.mainline_cache_repository.event_ids_with_cache(
+            [event_id]
+        )
+        if event_id not in cached_event_ids:
+            logger.info(
+                "🚫 Oddspapi live historical skipped: empty mainline cache "
+                "fixture_id=%s event_id=%s",
+                fixture_id,
+                event_id,
+            )
+            result.bookies_requested = len(requested_bookmakers)
+            result.bookmaker_slugs_requested = sorted(requested_bookmakers)
+            result.payload = None
+            return result
+
         if regular:
             requested_bookmakers.update(regular)
             result.http_requests_attempted += 1

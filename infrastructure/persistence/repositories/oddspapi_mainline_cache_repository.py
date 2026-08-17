@@ -150,6 +150,37 @@ class OddspapiMainlineCacheRepository:
             return 0
 
     @staticmethod
+    def event_ids_with_cache(event_ids: list[int] | set[int] | tuple[int, ...]) -> set[int]:
+        """Return event ids that already have at least one cached mainline outcome."""
+        ids = {
+            int(event_id)
+            for event_id in (event_ids or [])
+            if event_id is not None
+        }
+        if not ids:
+            return set()
+        try:
+            with db_manager.get_session() as session:
+                rows = (
+                    session.query(OddspapiMainlineOutcomeCache.event_id)
+                    .filter(OddspapiMainlineOutcomeCache.event_id.in_(sorted(ids)))
+                    .distinct()
+                    .all()
+                )
+            return {
+                int(row[0])
+                for row in rows
+                if row and row[0] is not None
+            }
+        except Exception as exc:
+            logger.error(
+                "Error checking Oddspapi mainline cache event_ids=%s: %s",
+                sorted(ids),
+                exc,
+            )
+            return set()
+
+    @staticmethod
     def get_mainline_outcome_ids(event_id: int) -> set[str]:
         """Return set of source_outcome_id strings stored as mainline for an event."""
         try:
