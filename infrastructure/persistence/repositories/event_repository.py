@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy import and_, or_, event, DDL
 from sqlalchemy.orm import Session, joinedload
@@ -468,24 +468,32 @@ class EventRepository:
             return []
 
     @staticmethod
-    def update_event_starting_time(event_id: int, new_start_time: datetime) -> bool:
-        """Update the starting time of an event"""
+    def batch_update_starting_times(corrections: List[Tuple[int, datetime]]) -> int:
+        """Batch update starting times of events in a single transaction/session."""
+        if not corrections:
+            return 0
         try:
+            event_id_to_time = {event_id: new_time for event_id, new_time in corrections}
             with db_manager.get_session() as session:
-                event_obj = session.query(Event).filter(Event.id == event_id).first()
-                if event_obj:
-                    event_obj.start_time_utc = new_start_time
-                    event_obj.updated_at = get_local_now()
-                    session.commit()
-                    logger.info(f"Updated starting time for event {event_id} to {new_start_time}")
-                    return True
-                else:
-                    logger.warning(f"Event {event_id} not found for starting time update")
-                    return False
+                events = (
+                    session.query(Event)
+                    .filter(Event.id.in_(list(event_id_to_time.keys())))
+                    .all()
+                )
+                now_utc = get_local_now()
+                updated_count = 0
+                for event in events:
+                    if event.id in event_id_to_time:
+                        event.start_time_utc = event_id_to_time[event.id]
+                        event.updated_at = now_utc
+                        updated_count += 1
+                session.commit()
+                logger.info(f"Batch updated starting times for {updated_count} event(s)")
+                return updated_count
         except Exception as e:
-            logger.error(f"Error updating starting time for event {event_id}: {e}")
-            return False
-    
+            logger.error(f"Error in batch_update_starting_times: {e}")
+            return 0
+
     @staticmethod
     def delete_event(event_id: int) -> bool:
         """Delete an event and all its related data (odds, results, observations)"""

@@ -63,7 +63,7 @@ def send_time_correction_message(
         if message.startswith("Missing normalized participants/competition for event_id"):
             logger.warning("Skipping time correction alert for event %s because normalized context is missing", event_id)
             return False
-        logger.info("Sending time correction message for event %s", event_id)
+        logger.info("🕐 Sending time correction message for event %s", event_id)
         return notifier.send_telegram_message(message)
     except Exception as e:
         logger.error("Error creating time correction message for event %s: %s", event_id, e)

@@ -274,7 +274,8 @@ def process_event(event, stats: dict, events_to_delete: List[int]) -> str:
     
     # Step 2: Save results
     if result_data:
-        saved = ResultRepository.upsert_result(event_id, result_data)
+        count = ResultRepository.batch_upsert_results([(event_id, result_data)])
+        saved = count > 0
         if saved:
             print(f"      ✅ Result: {result_data['home_score']}-{result_data['away_score']}, Winner: {result_data['winner']}")
         else:

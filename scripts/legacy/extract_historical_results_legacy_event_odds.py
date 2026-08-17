@@ -818,7 +818,7 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
                 logger.info(f"  🔍 [TEST] Would {action_text} result for Event {event.id}: {event.home_team} vs {event.away_team} = {result_data['home_score']}-{result_data['away_score']}, Winner: {result_data['winner']}")
             else:
                 # Store/update result in database (upsert always updates if exists)
-                if ResultRepository.upsert_result(event.id, result_data):
+                if ResultRepository.batch_upsert_results([(event.id, result_data)]) > 0:
                     stats['updated'] += 1
                     reset_failure_counter()  # Reset on success
                     action_text = "UPDATED" if is_update else "CREATED"

@@ -127,13 +127,9 @@ def update_event_information_from_response(response: Dict) -> bool:
         return False
 
 
-def _extract_observations_from_response(response: Dict) -> Optional[List[Dict]]:
-    return extract_observations_from_sofascore_response(response)
-
-
 def extract_observations_from_response(response: Dict) -> Optional[List[Dict]]:
-    """Public wrapper for observation extraction."""
-    return _extract_observations_from_response(response)
+    """Extract observations directly using sofascore_extractor."""
+    return extract_observations_from_sofascore_response(response)
 
 
 def _extract_metadata_snapshot(response: Dict) -> Optional[Dict]:
@@ -151,7 +147,7 @@ def _extract_metadata_snapshot(response: Dict) -> Optional[Dict]:
         season_year_raw = season_data.get("year")
         season_year = SeasonRepository._parse_year(season_year_raw) if season_year_raw is not None else None
 
-        observations = _extract_observations_from_response(response) or []
+        observations = extract_observations_from_response(response) or []
         if not any(observation.get("type") == "rankings" for observation in observations):
             home_ranking = home_team.get("ranking")
             away_ranking = away_team.get("ranking")
@@ -196,6 +192,7 @@ def get_event_results(
     canonical_event_id: int | None = None,
     deferred_deletion_event_ids: set[int] | None = None,
     on_not_started: str = "ignore",
+    also_parse_result: bool = False,
 ) -> EventResultsResponse:
     def _empty_response() -> EventResultsResponse:
         return (None, None) if return_snapshot else None
@@ -288,6 +285,10 @@ def get_event_results(
                 send_alert=True,
                 current_starting_time=current_start_time,
             )
+
+            if also_parse_result:
+                parsed = parse_event_result(response)
+                return timing_result, parsed
 
             if return_snapshot:
                 return timing_result, _extract_metadata_snapshot(response)

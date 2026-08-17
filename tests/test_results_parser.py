@@ -82,3 +82,25 @@ def test_real_walkover_tennis_doubles_payload_is_queued_for_deletion(monkeypatch
     assert result is None
     assert deferred_deletion_event_ids == {170220}
     assert queued_reasons == ["walkover"]
+
+
+def test_get_event_results_update_time_with_also_parse_result():
+    response = _load_walkover_doubles_response()
+    client = SimpleNamespace(
+        request_json=lambda *_args, **_kwargs: response,
+        check_and_update_starting_time=lambda *_args, **_kwargs: True,
+    )
+
+    timing_result, parsed = event_details.get_event_results(
+        client,
+        16782259,
+        update_time=True,
+        update_event_info=False,
+        canonical_event_id=170220,
+        also_parse_result=True,
+    )
+
+    assert timing_result is True
+    assert parsed.is_canceled is True
+    assert parsed.status_code == 91
+

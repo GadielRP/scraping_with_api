@@ -256,7 +256,7 @@ def reconcile_existing_season_events(
                 continue
 
             if result_data:
-                if ResultRepository.upsert_result(event_id, result_data):
+                if ResultRepository.batch_upsert_results([(event_id, result_data)]) > 0:
                     results_inserted_or_updated += 1
             else:
                 still_pending += 1
@@ -497,7 +497,7 @@ def process_season(tournament_id: int, season_id: int):
                             continue
 
                         if result_data:
-                            if ResultRepository.upsert_result(event_id, result_data):
+                            if ResultRepository.batch_upsert_results([(event_id, result_data)]) > 0:
                                 results_processed_count += 1
                                 logger.debug(
                                     "Results upserted for event %s: %s-%s",

@@ -501,8 +501,8 @@ class SofaScoreAPI:
     def update_event_information_from_response(self, response: Dict) -> bool:
         return update_event_information_from_response(response)
 
-    def _extract_observations_from_response(self, response: Dict):
-        from .event_details import _extract_observations_from_response as _extract
+    def extract_observations_from_response(self, response: Dict):
+        from .event_details import extract_observations_from_response as _extract
 
         return _extract(response)
 
@@ -523,6 +523,7 @@ class SofaScoreAPI:
         canonical_event_id: int | None = None,
         deferred_deletion_event_ids: set[int] | None = None,
         on_not_started: str = "ignore",
+        also_parse_result: bool = False,
     ) -> Optional[Dict]:
         return get_event_results(
             self,
@@ -536,6 +537,7 @@ class SofaScoreAPI:
             current_start_time=current_start_time,
             deferred_deletion_event_ids=deferred_deletion_event_ids,
             on_not_started=on_not_started,
+            also_parse_result=also_parse_result,
         )
 
     def extract_results_from_response(
@@ -577,16 +579,6 @@ class SofaScoreAPI:
             send_alert=send_alert,
             current_starting_time=current_starting_time,
         )
-
-    def convert_timestamp_to_datetime(self, timestamp: int) -> datetime:
-        from modules.jobs.pre_start_check_job.timestamp_corrections import convert_timestamp_to_datetime as _convert
-
-        return _convert(timestamp)
-
-    def is_event_starting_soon(self, start_timestamp: int, window_minutes: int = 30) -> bool:
-        from modules.jobs.pre_start_check_job.timestamp_corrections import is_event_starting_soon as _is_soon
-
-        return _is_soon(start_timestamp, window_minutes=window_minutes)
 
 
 api_client = SofaScoreAPI()

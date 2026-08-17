@@ -70,6 +70,26 @@ def _state(event_id, source, source_event_id, has_odds):
     )
 
 
+def _stub_mainline_cache(monkeypatch, event_ids=None):
+    """Treat listed event ids (or every queried id) as having mainline cache."""
+    def event_ids_with_cache(ids):
+        requested = {int(event_id) for event_id in (ids or []) if event_id is not None}
+        if event_ids is None:
+            return requested
+        return requested.intersection({int(event_id) for event_id in event_ids})
+
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "OddspapiMainlineCacheRepository.event_ids_with_cache",
+        event_ids_with_cache,
+    )
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_acquisition_service."
+        "OddspapiMainlineCacheRepository.event_ids_with_cache",
+        event_ids_with_cache,
+    )
+
+
 def test_sofascore_false_state_skips_entire_odds_flow(monkeypatch):
     fetcher = SimpleNamespace(
         fetch_odds=lambda *args, **kwargs: (_ for _ in ()).throw(
@@ -898,6 +918,7 @@ def test_oddspapi_false_state_skips_request_and_mapping_index(monkeypatch):
 def test_historical_mode_ignores_current_endpoint_availability_flag(monkeypatch):
     requested = []
     marked = []
+    _stub_mainline_cache(monkeypatch)
     processor = OddspapiPreStartOddsBatchProcessor(
         fetcher=SimpleNamespace(
             fetch_odds=lambda *_args, **kwargs: requested.append(kwargs)
@@ -931,6 +952,47 @@ def test_historical_mode_ignores_current_endpoint_availability_flag(monkeypatch)
     assert summary.requests_attempted == 1
     assert requested[0]["endpoint"] == "historical-odds"
     assert marked == []
+
+
+def test_live_historical_skips_request_when_mainline_cache_empty(monkeypatch):
+    requested = []
+    _stub_mainline_cache(monkeypatch, event_ids=())
+    processor = OddspapiPreStartOddsBatchProcessor(
+        fetcher=SimpleNamespace(
+            fetch_odds=lambda *_args, **kwargs: requested.append(kwargs)
+            or (_ for _ in ()).throw(
+                AssertionError("historical-odds must not be requested without mainline cache")
+            )
+        )
+    )
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "MarketMappingRepository.build_index",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("mapping index must not be loaded without mainline cache")
+        ),
+    )
+    candidate = OddspapiPreStartCandidate(
+        event_id=183537,
+        fixture_id="id1000211071802252",
+        minutes_until_start=-5,
+        has_odds=True,
+        source_sport_id="10",
+        is_live=True,
+    )
+
+    summary = processor.process(
+        [candidate],
+        bookmakers=["pinnacle", "bet365"],
+        endpoint="historical-odds",
+    )
+
+    assert requested == []
+    assert summary.requests_attempted == 0
+    assert summary.http_requests_attempted == 0
+    assert summary.events_skipped == 1
+    assert summary.results[0].requested is False
+    assert summary.results[0].skip_reason == "missing_mainline_cache"
 
 
 def test_oddspapi_current_response_without_bookmaker_odds_marks_unavailable(monkeypatch):
@@ -976,6 +1038,7 @@ def test_oddspapi_historical_response_without_bookmaker_odds_does_not_mark_unava
     monkeypatch,
 ):
     marked = []
+    _stub_mainline_cache(monkeypatch)
     processor = OddspapiPreStartOddsBatchProcessor(
         fetcher=SimpleNamespace(
             fetch_odds=lambda *_args, **_kwargs: OddsFetchResult.from_payload(
@@ -1362,6 +1425,7 @@ def _raw_oddspapi_historical_payload():
 
 
 def test_debug_mode_saves_raw_oddspapi_response(tmp_path, monkeypatch):
+    _stub_mainline_cache(monkeypatch)
     raw_payload = _raw_oddspapi_historical_payload()
     client = SimpleNamespace(
         get_historical_odds=lambda **_kwargs: raw_payload,
@@ -1419,7 +1483,8 @@ def test_fetcher_does_not_retain_raw_response_when_debug_capture_is_disabled():
     assert result.raw_payload is None
 
 
-def test_oddspapi_warns_when_requested_and_detected_bookie_counts_differ(caplog):
+def test_oddspapi_warns_when_requested_and_detected_bookie_counts_differ(caplog, monkeypatch):
+    _stub_mainline_cache(monkeypatch)
     raw_payload = _raw_oddspapi_historical_payload()
     client = SimpleNamespace(
         get_historical_odds=lambda **_kwargs: raw_payload,
@@ -1461,7 +1526,8 @@ def test_oddspapi_warns_when_requested_and_detected_bookie_counts_differ(caplog)
     )
 
 
-def test_oddspapi_does_not_warn_when_requested_and_detected_counts_match(caplog):
+def test_oddspapi_does_not_warn_when_requested_and_detected_counts_match(caplog, monkeypatch):
+    _stub_mainline_cache(monkeypatch)
     raw_payload = _raw_oddspapi_historical_payload()
     client = SimpleNamespace(
         get_historical_odds=lambda **_kwargs: raw_payload,

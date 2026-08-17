@@ -95,6 +95,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
         return stats
 
     delete_event_ids: Set[int] = set()
+    results_to_upsert: List[Tuple[int, Dict]] = []
 
     def _process_single_event(event_data: Dict) -> Dict:
         event_id = event_data["id"]
@@ -163,15 +164,10 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
                 return {"api_checked": 1, "not_finished": 1}
 
             result_data = parsed.result
-            upserted = ResultRepository.upsert_result(event_id, result_data)
-            if upserted:
-                logger.info(
-                    "Intraday result freshness: upserted result for event %s",
-                    event_id,
-                )
-                return {"api_checked": 1, "results_upserted": 1}
-
-            return {"api_checked": 1, "failed": 1}
+            return {
+                "api_checked": 1,
+                "upsert_data": (event_id, result_data),
+            }
         except Exception as exc:
             logger.exception(
                 "Intraday result freshness: failed processing event %s: %s",
@@ -200,9 +196,21 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             stats["queued_for_deletion"] += outcome.get("queued_for_deletion", 0)
             stats["failed"] += outcome.get("failed", 0)
 
+            upsert_data = outcome.get("upsert_data")
+            if upsert_data is not None:
+                results_to_upsert.append(upsert_data)
+
             delete_event_id = outcome.get("delete_event_id")
             if delete_event_id is not None:
                 delete_event_ids.add(delete_event_id)
+
+    if results_to_upsert:
+        upserted_count = ResultRepository.batch_upsert_results(results_to_upsert)
+        stats["results_upserted"] = upserted_count
+        logger.info(
+            "Intraday result freshness: batch upserted %s result(s)",
+            upserted_count,
+        )
 
     if delete_event_ids:
         deleted_count = EventRepository.batch_delete_events(sorted(delete_event_ids))

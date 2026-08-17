@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from infrastructure.persistence.repositories import (
     EventRepository,
@@ -26,6 +26,8 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
         "sofascore",
     )
     deferred_deletion_event_ids: set[int] = set()
+    results_to_upsert: List[Tuple[int, Dict]] = []
+    events_for_observations: List[Tuple[object, Dict]] = []
 
     for event in events:
         try:
@@ -54,20 +56,25 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
                     stats["failed"] += 1
                 continue
 
-            if ResultRepository.upsert_result(event.id, result_data):
-                stats["updated"] += 1
-                logger.info(
-                    "%s: %s = %s-%s, Winner: %s",
-                    job_name,
-                    event.id,
-                    result_data["home_score"],
-                    result_data["away_score"],
-                    result_data["winner"],
-                )
-                sport_observation_service.process_result_observations(event, result_data)
+            results_to_upsert.append((event.id, result_data))
+            events_for_observations.append((event, result_data))
         except Exception as exc:
             logger.error("Error in %s for event %s: %s", job_name, event.id, exc)
             stats["failed"] += 1
+
+    if results_to_upsert:
+        upserted_count = ResultRepository.batch_upsert_results(results_to_upsert)
+        stats["updated"] = upserted_count
+        logger.info(
+            "%s: batch upserted %s result(s)",
+            job_name,
+            upserted_count,
+        )
+        for event, r_data in events_for_observations:
+            try:
+                sport_observation_service.process_result_observations(event, r_data)
+            except Exception as obs_exc:
+                logger.error("Error processing observations for event %s: %s", event.id, obs_exc)
 
     if deferred_deletion_event_ids:
         requested_deletions = len(deferred_deletion_event_ids)

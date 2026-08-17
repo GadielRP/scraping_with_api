@@ -224,7 +224,7 @@ def process_event(event_id: int, slug: str):
         else:
             result_data = api_client.get_event_results(event_id)
             if result_data:
-                if ResultRepository.upsert_result(event_id, result_data):
+                if ResultRepository.batch_upsert_results([(event_id, result_data)]) > 0:
                     logger.info(f"✅ Result updated for event {event_id}: {result_data['home_score']}-{result_data['away_score']}")
                     
                     # Process observations
