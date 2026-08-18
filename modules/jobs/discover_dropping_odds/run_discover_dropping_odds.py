@@ -31,7 +31,6 @@ def run_discover_dropping_odds() -> None:
         "volleyball",
         "american-football",
         "ice-hockey",
-        "darts",
         "baseball",
         "rugby",
     ]

@@ -35,11 +35,13 @@ def build_pre_start_event_candidates(
     *,
     key_moments: Collection[int] | None = None,
     timestamp_correction_enabled: bool | None = None,
+    odds_extraction_competition_ids: Collection[int] | None = None,
 ) -> PreStartEventPlan:
     """Apply timing decisions and return the shared provider work payloads."""
     key_moments = Config.PRE_START_ODDS_MOMENTS if key_moments is None else key_moments
     events_to_process: list[dict] = []
     event_meta_lookup: dict[int, dict] = {}
+    skipped_untracked_odds = 0
 
     for event_data in upcoming_events:
         try:
@@ -96,6 +98,14 @@ def build_pre_start_event_candidates(
                     event_data["season_id"] = refreshed_event.season_id
                     event_data["start_time_utc"] = refreshed_event.start_time_utc
 
+            if (
+                should_extract_odds
+                and odds_extraction_competition_ids is not None
+                and event_data["competition_id"] not in odds_extraction_competition_ids
+            ):
+                should_extract_odds = False
+                skipped_untracked_odds += 1
+
             candidate = {
                 "event_id": event_id,
                 "event_data": event_data,
@@ -113,6 +123,12 @@ def build_pre_start_event_candidates(
                 event_data.get("id", "unknown"),
                 exc,
             )
+
+    if skipped_untracked_odds:
+        logger.info(
+            "🚫 Skipping odds extraction for %s events from untracked competitions",
+            skipped_untracked_odds,
+        )
 
     return PreStartEventPlan(
         candidates=events_to_process,

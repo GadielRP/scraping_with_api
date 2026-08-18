@@ -260,13 +260,29 @@ def run_pre_start_odds_moments(
         else timestamp_correction_enabled
     )
 
-    if global_ts_correction and Config.TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY:
-        tracked_ids = set(tracked_competition_ids())
+    restrict_timestamp_corrections = (
+        global_ts_correction
+        and Config.TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY
+    )
+    tracked_ids = (
+        set(tracked_competition_ids())
+        if (
+            restrict_timestamp_corrections
+            or Config.ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY
+        )
+        else None
+    )
+
+    if restrict_timestamp_corrections:
         ts_events = [e for e in upcoming_events if e.get("competition_id") in tracked_ids]
         no_ts_events = [e for e in upcoming_events if e.get("competition_id") not in tracked_ids]
     else:
         ts_events = upcoming_events
         no_ts_events = []
+
+    odds_extraction_competition_ids = (
+        tracked_ids if Config.ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY else None
+    )
 
     plan_ts = build_pre_start_event_candidates(
         scheduler,
@@ -275,6 +291,7 @@ def run_pre_start_odds_moments(
         source_states,
         key_moments=key_moments,
         timestamp_correction_enabled=global_ts_correction,
+        odds_extraction_competition_ids=odds_extraction_competition_ids,
     )
 
     if no_ts_events:
@@ -289,6 +306,7 @@ def run_pre_start_odds_moments(
             source_states,
             key_moments=key_moments,
             timestamp_correction_enabled=False,
+            odds_extraction_competition_ids=odds_extraction_competition_ids,
         )
         event_plan = PreStartEventPlan(
             candidates=plan_ts.candidates + plan_no_ts.candidates,

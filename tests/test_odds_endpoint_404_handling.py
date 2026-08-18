@@ -1290,12 +1290,118 @@ def test_untracked_pipeline_gate_explains_ingestion_without_evaluation(
         "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS",
         True,
     )
+    monkeypatch.setattr(
+        simulate_pre_start_check.Config,
+        "ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY",
+        True,
+    )
 
     should_continue = simulate_pre_start_check._log_pipeline_eligibility(event)
 
     assert should_continue is True
     assert "ALERT AND PILLAR PIPELINES WILL SKIP" in caplog.text
-    assert "Provider odds can still be ingested" in caplog.text
+    assert "PROVIDER ODDS EXTRACTION WILL SKIP" in caplog.text
+
+
+def test_odds_extraction_gate_uses_competition_id_already_on_event(
+    monkeypatch,
+    caplog,
+):
+    scheduler = SimpleNamespace(
+        recently_rescheduled=set(),
+        event_repo=SimpleNamespace(),
+    )
+    tracked_event = {
+        "id": 101,
+        "competition_id": 176,
+        "slug": "tracked",
+        "sport": "Basketball",
+        "start_time_utc": None,
+    }
+    untracked_event = {
+        "id": 102,
+        "competition_id": 999999,
+        "slug": "untracked",
+        "sport": "Football",
+        "start_time_utc": None,
+    }
+    monkeypatch.setattr(
+        event_candidate_builder,
+        "should_extract_odds_for_event",
+        lambda *_args, **_kwargs: (True, None, False, 9001),
+    )
+
+    with caplog.at_level(logging.INFO):
+        plan = event_candidate_builder.build_pre_start_event_candidates(
+            scheduler,
+            [tracked_event, untracked_event],
+            {101: 30, 102: 30},
+            {},
+            odds_extraction_competition_ids={176},
+        )
+
+    assert plan.by_event_id[101]["should_extract_odds"] is True
+    assert plan.by_event_id[102]["should_extract_odds"] is False
+    assert "Skipping odds extraction for 1 events from untracked competitions" in caplog.text
+
+
+def test_odds_moments_forwards_in_memory_tracked_ids_to_builder(monkeypatch):
+    captured = []
+
+    monkeypatch.setattr(
+        pre_start_job_runner,
+        "load_pre_start_odds_source_states",
+        lambda _events: {},
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner,
+        "build_pre_start_event_candidates",
+        lambda *_args, **kwargs: captured.append(kwargs)
+        or event_candidate_builder.PreStartEventPlan(candidates=[], by_event_id={}),
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner,
+        "attach_stored_observations",
+        lambda _candidates: None,
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner,
+        "persist_snapshot_observations",
+        lambda _candidates: None,
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner,
+        "_ingest_provider_odds",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner,
+        "evaluate_pre_start_key_moments",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner.Config,
+        "ENABLE_TIMESTAMP_CORRECTION",
+        False,
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner.Config,
+        "ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY",
+        True,
+    )
+
+    pre_start_job_runner.run_pre_start_odds_moments(
+        scheduler=SimpleNamespace(),
+        upcoming_events=[],
+        timings={},
+        key_moments=(30,),
+        oddsportal_context=SimpleNamespace(),
+    )
+
+    assert captured
+    assert captured[0]["odds_extraction_competition_ids"] == set(
+        pre_start_job_runner.tracked_competition_ids()
+    )
 
 
 def test_single_event_simulator_uses_production_op_and_evaluation_flow(

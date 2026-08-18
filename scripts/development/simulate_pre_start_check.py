@@ -86,14 +86,22 @@ def _log_pipeline_eligibility(event_obj) -> bool:
         return False
 
     if (
+        Config.ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY
+        and not tracked_competition
+    ):
+        logger.warning(
+            "PROVIDER ODDS EXTRACTION WILL SKIP: competition_id=%s is "
+            "not tracked and ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY=True.",
+            competition_id,
+        )
+
+    if (
         Config.FILTER_PIPELINES_BY_TRACKED_COMPETITIONS
         and not tracked_competition
     ):
         logger.warning(
             "ALERT AND PILLAR PIPELINES WILL SKIP: competition_id=%s is "
-            "not tracked and FILTER_PIPELINES_BY_TRACKED_COMPETITIONS=True. "
-            "Provider odds can still be ingested because "
-            "TRACKED_COMPETITIONS_ONLY=False.",
+            "not tracked and FILTER_PIPELINES_BY_TRACKED_COMPETITIONS=True.",
             competition_id,
         )
     else:

@@ -479,6 +479,10 @@ class Config:
         'FILTER_ALERTS_BY_TRACKED_COMPETITION',
         False,
     )
+    ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY = _parse_env_bool(
+        'ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY',
+        True,
+    )
     
     # Telegram Settings
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
