@@ -78,20 +78,40 @@ def _log_pipeline_eligibility(event_obj) -> bool:
         Config.TRACKED_COMPETITIONS_ONLY
         and not tracked_competition
     ):
-        logger.warning(
-            "PRODUCTION FLOW STOPS BEFORE INGESTION: competition_id=%s is "
+        logger.info(
+            "🚫 PRODUCTION FLOW STOPS BEFORE INGESTION: competition_id=%s is "
             "not tracked and TRACKED_COMPETITIONS_ONLY=True.",
             competition_id,
         )
         return False
 
     if (
-        Config.ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY
+        Config.ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY
         and not tracked_competition
     ):
         logger.warning(
-            "PROVIDER ODDS EXTRACTION WILL SKIP: competition_id=%s is "
-            "not tracked and ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY=True.",
+            "GENERAL PROVIDER ODDS EXTRACTION WILL SKIP: competition_id=%s is "
+            "not tracked and ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY=True.",
+            competition_id,
+        )
+
+    if (
+        Config.ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY
+        and not tracked_competition
+    ):
+        logger.warning(
+            "SOFASCORE ODDS EXTRACTION WILL SKIP: competition_id=%s is "
+            "not tracked and ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY=True.",
+            competition_id,
+        )
+
+    if (
+        Config.ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY
+        and not tracked_competition
+    ):
+        logger.warning(
+            "ODDSPAPI ODDS EXTRACTION WILL SKIP: competition_id=%s is "
+            "not tracked and ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY=True.",
             competition_id,
         )
 

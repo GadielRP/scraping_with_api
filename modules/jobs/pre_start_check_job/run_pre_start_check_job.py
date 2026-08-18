@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Callable
 
 from infrastructure.settings import Config
 from modules.alerts.matchup_streak_analysis.standings_engine import (
@@ -50,7 +49,6 @@ from modules.jobs.pre_start_check_job.timing import (
     minutes_until_start,
 )
 from modules.competition.tracked_competitions import tracked_competition_ids
-from modules.odds_ingestion import ProviderOddsSummary
 from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)
@@ -179,21 +177,12 @@ def _maintain_recently_started_events(
     return upcoming_events
 
 
-# Every provider phase shares the same call shape - (candidates, source_states,
-# *, debug_mode) -> ProviderOddsSummary - so adding a provider is one entry
-# here plus its own fetch/ingest implementation, not a new orchestration path.
-ProviderOddsPhase = Callable[..., ProviderOddsSummary]
-_PROVIDER_ODDS_PHASES: tuple[ProviderOddsPhase, ...] = (
-    run_sofascore_pre_start_odds,
-    run_oddspapi_pre_start_odds,
-)
-
-
 def _ingest_provider_odds(
     event_plan: PreStartEventPlan,
     source_states: PreStartOddsSourceStates,
     *,
     debug_mode: bool,
+    tracked_competition_ids: set[int] | None = None,
 ) -> None:
     """Execute independent provider phases using the same candidate plan."""
     active_count = sum(
@@ -203,10 +192,26 @@ def _ingest_provider_odds(
         "💰 Starting provider odds ingestion (%s candidates)",
         active_count,
     )
-    for phase in _PROVIDER_ODDS_PHASES:
+    for phase, restrict_to_tracked in (
+        (
+            run_sofascore_pre_start_odds,
+            Config.ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY,
+        ),
+        (
+            run_oddspapi_pre_start_odds,
+            Config.ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY,
+        ),
+    ):
         phase_name = getattr(phase, "__name__", repr(phase))
         try:
-            phase(event_plan.candidates, source_states, debug_mode=debug_mode)
+            phase(
+                event_plan.candidates,
+                source_states,
+                debug_mode=debug_mode,
+                tracked_competition_ids=(
+                    tracked_competition_ids if restrict_to_tracked else None
+                ),
+            )
         except Exception:
             logger.exception("%s odds ingestion failed", phase_name)
 
@@ -264,11 +269,22 @@ def run_pre_start_odds_moments(
         global_ts_correction
         and Config.TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY
     )
+    restrict_general_odds_extraction = (
+        Config.ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY
+    )
+    restrict_sofascore_odds_extraction = (
+        Config.ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY
+    )
+    restrict_oddspapi_odds_extraction = (
+        Config.ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY
+    )
     tracked_ids = (
         set(tracked_competition_ids())
         if (
             restrict_timestamp_corrections
-            or Config.ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY
+            or restrict_general_odds_extraction
+            or restrict_sofascore_odds_extraction
+            or restrict_oddspapi_odds_extraction
         )
         else None
     )
@@ -280,8 +296,8 @@ def run_pre_start_odds_moments(
         ts_events = upcoming_events
         no_ts_events = []
 
-    odds_extraction_competition_ids = (
-        tracked_ids if Config.ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY else None
+    general_odds_extraction_competition_ids = (
+        tracked_ids if restrict_general_odds_extraction else None
     )
 
     plan_ts = build_pre_start_event_candidates(
@@ -291,7 +307,7 @@ def run_pre_start_odds_moments(
         source_states,
         key_moments=key_moments,
         timestamp_correction_enabled=global_ts_correction,
-        odds_extraction_competition_ids=odds_extraction_competition_ids,
+        general_odds_extraction_competition_ids=general_odds_extraction_competition_ids,
     )
 
     if no_ts_events:
@@ -306,7 +322,7 @@ def run_pre_start_odds_moments(
             source_states,
             key_moments=key_moments,
             timestamp_correction_enabled=False,
-            odds_extraction_competition_ids=odds_extraction_competition_ids,
+            general_odds_extraction_competition_ids=general_odds_extraction_competition_ids,
         )
         event_plan = PreStartEventPlan(
             candidates=plan_ts.candidates + plan_no_ts.candidates,
@@ -321,6 +337,7 @@ def run_pre_start_odds_moments(
         event_plan,
         source_states,
         debug_mode=debug_mode,
+        tracked_competition_ids=tracked_ids,
     )
     logger.info(
         "Provider odds ingestion completed for %s candidates",

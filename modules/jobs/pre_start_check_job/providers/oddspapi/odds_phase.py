@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Collection
 
 from infrastructure.persistence.repositories import (
     EventOddsSourceState,
@@ -11,6 +12,7 @@ from infrastructure.persistence.repositories import (
     OddspapiMainlineCacheRepository,
 )
 from infrastructure.settings import Config
+from modules.odds_ingestion import restrict_candidates_to_tracked_competitions
 from modules.oddspapi.api_keys import configured_api_keys
 
 from .event_selector import _canonical_event_id, select_oddspapi_pre_start_candidates
@@ -106,9 +108,15 @@ def run_oddspapi_pre_start_odds(
     *,
     debug_mode: bool = False,
     dry_run: bool = False,
+    tracked_competition_ids: Collection[int] | None = None,
 ) -> OddspapiPreStartOddsSummary:
     """Ingest mapped Oddspapi odds without affecting the main pre-start job."""
     logger.info("🟡 Oddspapi pre-start odds starting...")
+    events_to_process = restrict_candidates_to_tracked_competitions(
+        events_to_process,
+        tracked_competition_ids,
+        provider="Oddspapi",
+    )
     if not getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", True):
         summary = OddspapiPreStartOddsSummary(disabled=True, skip_reason="oddspapi_pre_start_disabled")
         _log_summary(summary)

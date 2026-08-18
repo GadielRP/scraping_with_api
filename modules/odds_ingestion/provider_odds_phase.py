@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
-from typing import Callable, Protocol
+from typing import Callable, Collection, Protocol
 
 from infrastructure.persistence.repositories import EventSourceMappingRepository
 
@@ -51,6 +51,37 @@ class IngestionOutcome(Protocol):
 def should_extract_odds(candidate: dict) -> bool:
     """Timing-only eligibility, already decided once by the shared candidate plan."""
     return candidate.get("should_extract_odds") is True
+
+
+def restrict_candidates_to_tracked_competitions(
+    candidates: list[dict],
+    tracked_competition_ids: Collection[int] | None,
+    *,
+    provider: str,
+) -> list[dict]:
+    """Keep extractable untracked events out of one provider's local work list.
+
+    ``None`` means this provider gate is off. The shared candidate plan is not
+    mutated, so the other provider and key-moment evaluation are unaffected.
+    """
+    if tracked_competition_ids is None:
+        return candidates
+
+    eligible: list[dict] = []
+    skipped = 0
+    for candidate in candidates:
+        if candidate["event_data"]["competition_id"] in tracked_competition_ids:
+            eligible.append(candidate)
+            continue
+        if should_extract_odds(candidate):
+            skipped += 1
+    if skipped:
+        logger.info(
+            "🚫 Skipping %s %s odds extraction for untracked competitions",
+            skipped,
+            provider,
+        )
+    return eligible
 
 
 def is_eligible_for_source(candidate: dict, source_states: dict, source: str) -> bool:

@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 import logging
 
 from modules.jobs.pre_start_check_job.odds_source_state import (
     SOFASCORE_SOURCE,
     PreStartOddsSourceStates,
 )
-from modules.odds_ingestion import MarketOddsIngestionService, ProviderOddsSummary, run_provider_odds_phase
+from modules.odds_ingestion import (
+    MarketOddsIngestionService,
+    ProviderOddsSummary,
+    restrict_candidates_to_tracked_competitions,
+    run_provider_odds_phase,
+)
 from modules.sofascore import api_client
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 
@@ -23,9 +29,15 @@ def run_sofascore_pre_start_odds(
     *,
     debug_mode: bool = False,
     odds_fetcher: SofaScoreOddsFetcher | None = None,
+    tracked_competition_ids: Collection[int] | None = None,
 ) -> ProviderOddsSummary:
     """Fetch eligible SofaScore odds and persist confirmed 404s in one update."""
     logger.info("🔵 SofaScore pre-start odds starting...")
+    events_to_process = restrict_candidates_to_tracked_competitions(
+        events_to_process,
+        tracked_competition_ids,
+        provider="SofaScore",
+    )
     fetcher = odds_fetcher or SofaScoreOddsFetcher(api_client)
 
     def _has_resolved_sofascore_id(candidate: dict) -> bool:

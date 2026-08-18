@@ -1292,7 +1292,17 @@ def test_untracked_pipeline_gate_explains_ingestion_without_evaluation(
     )
     monkeypatch.setattr(
         simulate_pre_start_check.Config,
-        "ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY",
+        "ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY",
+        True,
+    )
+    monkeypatch.setattr(
+        simulate_pre_start_check.Config,
+        "ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY",
+        True,
+    )
+    monkeypatch.setattr(
+        simulate_pre_start_check.Config,
+        "ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY",
         True,
     )
 
@@ -1300,7 +1310,9 @@ def test_untracked_pipeline_gate_explains_ingestion_without_evaluation(
 
     assert should_continue is True
     assert "ALERT AND PILLAR PIPELINES WILL SKIP" in caplog.text
-    assert "PROVIDER ODDS EXTRACTION WILL SKIP" in caplog.text
+    assert "GENERAL PROVIDER ODDS EXTRACTION WILL SKIP" in caplog.text
+    assert "SOFASCORE ODDS EXTRACTION WILL SKIP" in caplog.text
+    assert "ODDSPAPI ODDS EXTRACTION WILL SKIP" in caplog.text
 
 
 def test_odds_extraction_gate_uses_competition_id_already_on_event(
@@ -1337,12 +1349,12 @@ def test_odds_extraction_gate_uses_competition_id_already_on_event(
             [tracked_event, untracked_event],
             {101: 30, 102: 30},
             {},
-            odds_extraction_competition_ids={176},
+            general_odds_extraction_competition_ids={176},
         )
 
     assert plan.by_event_id[101]["should_extract_odds"] is True
     assert plan.by_event_id[102]["should_extract_odds"] is False
-    assert "Skipping odds extraction for 1 events from untracked competitions" in caplog.text
+    assert "Skipping general odds extraction for 1 events from untracked competitions" in caplog.text
 
 
 def test_odds_moments_forwards_in_memory_tracked_ids_to_builder(monkeypatch):
@@ -1386,7 +1398,7 @@ def test_odds_moments_forwards_in_memory_tracked_ids_to_builder(monkeypatch):
     )
     monkeypatch.setattr(
         pre_start_job_runner.Config,
-        "ODDS_EXTRACTION_TRACKED_COMPETITIONS_ONLY",
+        "ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY",
         True,
     )
 
@@ -1399,9 +1411,98 @@ def test_odds_moments_forwards_in_memory_tracked_ids_to_builder(monkeypatch):
     )
 
     assert captured
-    assert captured[0]["odds_extraction_competition_ids"] == set(
+    assert captured[0]["general_odds_extraction_competition_ids"] == set(
         pre_start_job_runner.tracked_competition_ids()
     )
+
+
+def test_sofascore_entry_skips_untracked_competition(monkeypatch, caplog):
+    fetched = []
+    tracked = _event_info(101)
+    tracked["event_data"]["competition_id"] = 176
+    untracked = _event_info(102)
+    untracked["event_data"]["competition_id"] = 999999
+    untracked["sofascore_event_id"] = 9002
+    fetcher = SimpleNamespace(
+        fetch_odds=lambda sofascore_event_id, _slug: (
+            fetched.append(sofascore_event_id)
+            or OddsFetchResult.from_payload(None)
+        )
+    )
+
+    with caplog.at_level(logging.INFO):
+        sofascore_odds_phase.run_sofascore_pre_start_odds(
+            [tracked, untracked],
+            {},
+            odds_fetcher=fetcher,
+            tracked_competition_ids={176},
+        )
+
+    assert fetched == [9001]
+    assert "Skipping 1 SofaScore odds extraction for untracked competitions" in caplog.text
+
+
+def test_oddspapi_entry_skips_untracked_competition(monkeypatch, caplog):
+    seen = []
+    tracked = _event_info(101)
+    tracked["event_data"]["competition_id"] = 176
+    untracked = _event_info(102)
+    untracked["event_data"]["competition_id"] = 999999
+    monkeypatch.setattr(
+        oddspapi_odds_phase.Config,
+        "ENABLE_ODDSPAPI_PRE_START_ODDS",
+        True,
+    )
+    monkeypatch.setattr(
+        oddspapi_odds_phase,
+        "select_oddspapi_pre_start_candidates",
+        lambda events, source_states=None: seen.append(events) or [],
+    )
+
+    with caplog.at_level(logging.INFO):
+        oddspapi_odds_phase.run_oddspapi_pre_start_odds(
+            [tracked, untracked],
+            {},
+            tracked_competition_ids={176},
+        )
+
+    assert seen == [[tracked]]
+    assert "Skipping 1 Oddspapi odds extraction for untracked competitions" in caplog.text
+
+
+def test_ingest_forwards_tracked_ids_only_to_gated_providers(monkeypatch):
+    sofascore_kwargs = []
+    oddspapi_kwargs = []
+    monkeypatch.setattr(
+        pre_start_job_runner,
+        "run_sofascore_pre_start_odds",
+        lambda *_args, **kwargs: sofascore_kwargs.append(kwargs),
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner,
+        "run_oddspapi_pre_start_odds",
+        lambda *_args, **kwargs: oddspapi_kwargs.append(kwargs),
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner.Config,
+        "ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY",
+        True,
+    )
+    monkeypatch.setattr(
+        pre_start_job_runner.Config,
+        "ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY",
+        False,
+    )
+
+    pre_start_job_runner._ingest_provider_odds(
+        SimpleNamespace(candidates=[{"should_extract_odds": True}]),
+        {},
+        debug_mode=False,
+        tracked_competition_ids={176},
+    )
+
+    assert sofascore_kwargs[0]["tracked_competition_ids"] == {176}
+    assert oddspapi_kwargs[0]["tracked_competition_ids"] is None
 
 
 def test_single_event_simulator_uses_production_op_and_evaluation_flow(
