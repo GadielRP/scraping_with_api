@@ -399,12 +399,18 @@ class Config:
         'ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY',
         False,
     )
-    # When false, inactive OddsPapi quotes may still be selected for current and
-    # historical opening/current (adapter + historical normalizer + exchange
-    # selector). When true, active=false ticks are skipped.
+    # When false, inactive OddsPapi quotes AND markets (player active=false or
+    # marketActive=false) may still be selected for current/historical persist
+    # and mainline cache extraction. When true, both are skipped.
     ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES = _parse_env_bool(
         'ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES',
         True,
+    )
+    # Bookmakers used as mainLine outcome-id donors when a book has no own
+    # cache rows. First match wins. Own-cache always wins over this list.
+    ODDSPAPI_MAINLINE_CACHE_FALLBACK_BOOKMAKERS = _parse_env_list(
+        'ODDSPAPI_MAINLINE_CACHE_FALLBACK_BOOKMAKERS',
+        ['pinnacle', 'bet365', 'betfair-ex'],
     )
     ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN = int(
         os.getenv('ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN', '0')

@@ -457,6 +457,7 @@ class OddspapiPreStartOddsAcquisitionService:
             mainline_outcomes = OddspapiMainlineOutcomeExtractor.extract(
                 current_payload,
                 exchange_bookmakers=exchange,
+                require_active_quotes=require_active_quotes,
             )
             if mainline_outcomes:
                 result.mainline_outcomes_cached = (

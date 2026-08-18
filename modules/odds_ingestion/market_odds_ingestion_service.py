@@ -6,7 +6,7 @@ import logging
 import pprint
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Dict, Mapping, Optional
+from typing import Collection, Dict, Mapping, Optional, Sequence
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.market_write_policy import (
@@ -422,6 +422,8 @@ class MarketOddsIngestionService:
         require_active_quotes: bool = True,
         use_mainline_cache: bool | None = None,
         mainline_outcome_ids: set[str] | None = None,
+        mainline_outcome_ids_by_bookmaker: Mapping[str, Collection[str]] | None = None,
+        mainline_fallback_bookmakers: Sequence[str] | None = None,
         debug_mode: bool = False,
     ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "oddspapi_odds")
@@ -463,6 +465,11 @@ class MarketOddsIngestionService:
             )
 
         resolved_mainline_ids = mainline_outcome_ids
+        cache_by_bookmaker = (
+            dict(mainline_outcome_ids_by_bookmaker)
+            if mainline_outcome_ids_by_bookmaker is not None
+            else None
+        )
         should_use_cache = use_mainline_cache
         if should_use_cache is None:
             should_use_cache = not MarketOddsIngestionService._payload_has_main_line_flags(
@@ -470,15 +477,16 @@ class MarketOddsIngestionService:
             )
         if (
             resolved_mainline_ids is None
+            and cache_by_bookmaker is None
             and should_use_cache
             and resolution.canonical_event_id is not None
         ):
-            resolved_mainline_ids = (
-                OddspapiMainlineCacheRepository.get_mainline_outcome_ids(
+            cache_by_bookmaker = (
+                OddspapiMainlineCacheRepository.get_mainline_outcome_ids_by_bookmaker(
                     resolution.canonical_event_id
                 )
             )
-            if not resolved_mainline_ids:
+            if not cache_by_bookmaker:
                 logger.info(
                     "Oddspapi mainline cache empty event_id=%s",
                     resolution.canonical_event_id,
@@ -490,6 +498,9 @@ class MarketOddsIngestionService:
             market_mapping_index=market_mapping_index,
             source="oddspapi",
             mainline_outcome_ids=resolved_mainline_ids,
+            mainline_outcome_ids_by_bookmaker=cache_by_bookmaker,
+            mainline_fallback_bookmakers=mainline_fallback_bookmakers,
+            use_mainline_cache=bool(should_use_cache),
             persist_main_line_only=persist_main_line_only,
             require_active_quotes=require_active_quotes,
         )
@@ -508,6 +519,24 @@ class MarketOddsIngestionService:
         skipped_incomplete_markets_detected = len(
             diagnostics.get("skipped_incomplete_markets") or []
         )
+        for skipped_bookmaker in diagnostics.get("skipped_missing_mainline_cache") or []:
+            logger.warning(
+                "Oddspapi historical persist skipped bookmaker without mainline cache "
+                "event_id=%s fixture_id=%s bookmaker=%s fallback_priority=%s",
+                resolution.canonical_event_id,
+                odds_response.get("fixtureId"),
+                skipped_bookmaker.get("bookmakerSlug"),
+                skipped_bookmaker.get("fallbackPriority"),
+            )
+        for fallback_used in diagnostics.get("mainline_cache_fallbacks_used") or []:
+            logger.info(
+                "Oddspapi historical persist using fallback mainline cache "
+                "event_id=%s fixture_id=%s bookmaker=%s cache_source=%s",
+                resolution.canonical_event_id,
+                odds_response.get("fixtureId"),
+                fallback_used.get("bookmakerSlug"),
+                fallback_used.get("cacheSourceSlug"),
+            )
         #if diagnostics and debug_mode:
         #    logger.info("OddsPapi market mapping diagnostics: %s", diagnostics)
         bookmakers = adapted.get("bookmakers", [])

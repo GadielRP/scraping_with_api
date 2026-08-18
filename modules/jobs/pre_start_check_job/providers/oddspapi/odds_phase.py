@@ -199,6 +199,14 @@ def run_oddspapi_pre_start_odds(
             "ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES",
             ODDSPAPI_PRE_START_SETTINGS.require_active_quotes,
         ),
+        mainline_fallback_bookmakers=list(
+            getattr(
+                Config,
+                "ODDSPAPI_MAINLINE_CACHE_FALLBACK_BOOKMAKERS",
+                None,
+            )
+            or ODDSPAPI_PRE_START_SETTINGS.mainline_cache_fallback_bookmakers
+        ),
         minimum_initial_span_minutes=(
             ODDSPAPI_PRE_START_SETTINGS.initial_odds_min_span_minutes
         ),

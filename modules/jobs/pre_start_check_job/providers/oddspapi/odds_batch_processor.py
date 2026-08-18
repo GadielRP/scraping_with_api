@@ -490,6 +490,7 @@ class OddspapiPreStartOddsBatchProcessor:
         enable_exchange_historical: bool = True,
         persist_main_line_only: bool = False,
         require_active_quotes: bool = True,
+        mainline_fallback_bookmakers: list[str] | tuple[str, ...] | None = None,
         minimum_initial_span_minutes: float = 60.0,
         api_keys: list[str] | None = None,
         max_workers: int = 1,
@@ -622,6 +623,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     "enable_exchange_historical": enable_exchange_historical,
                     "persist_main_line_only": persist_main_line_only,
                     "require_active_quotes": require_active_quotes,
+                    "mainline_fallback_bookmakers": mainline_fallback_bookmakers,
                     "minimum_initial_span_minutes": (
                         minimum_initial_span_minutes
                     ),
@@ -886,6 +888,7 @@ class OddspapiPreStartOddsBatchProcessor:
                         persist_main_line_only=persist_main_line_only,
                         require_active_quotes=require_active_quotes,
                         use_mainline_cache=is_live,
+                        mainline_fallback_bookmakers=mainline_fallback_bookmakers,
                         debug_mode=debug_mode,
                     )
                     self._copy_ingestion_stats(event_result, ingestion_result)

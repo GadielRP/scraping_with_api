@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any, Iterable
 
 from infrastructure.persistence.repositories.market_mapping_repository import (
@@ -10,6 +11,8 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
 )
 from modules.oddspapi.exchange_quotes import best_exchange_quotes
 from modules.oddspapi.format_utils import format_line, normalize_source_id
+from modules.oddspapi.mainline_cache_ids import resolve_mainline_outcome_ids
+from modules.oddspapi.quote_activity import should_skip_inactive_market
 
 
 class OddspapiMarketAdapter:
@@ -96,6 +99,9 @@ class OddspapiMarketAdapter:
         market_mapping_index: MarketMappingIndex | None = None,
         source: str = "oddspapi",
         mainline_outcome_ids: set[str] | None = None,
+        mainline_outcome_ids_by_bookmaker: Mapping[str, Collection[str]] | None = None,
+        mainline_fallback_bookmakers: Sequence[str] | None = None,
+        use_mainline_cache: bool = False,
         persist_main_line_only: bool = False,
         require_active_quotes: bool = True,
     ) -> dict:
@@ -105,16 +111,23 @@ class OddspapiMarketAdapter:
         payload = odds_response if isinstance(odds_response, dict) else {}
         fixture_id = payload.get("fixtureId")
         source_sport_id = payload.get("sportId")
-        cached_mainline_ids = {
+        global_mainline_ids = {
             str(outcome_id).strip()
             for outcome_id in (mainline_outcome_ids or set())
             if str(outcome_id).strip()
         }
+        fallback_priority = tuple(
+            str(slug).strip()
+            for slug in (mainline_fallback_bookmakers or ())
+            if str(slug).strip()
+        )
         diagnostics = {
             "unmapped_markets": [],
             "unmapped_outcomes": [],
             "skipped_missing_handicap": [],
             "skipped_incomplete_markets": [],
+            "skipped_missing_mainline_cache": [],
+            "mainline_cache_fallbacks_used": [],
         }
 
         bookmaker_items = OddspapiMarketAdapter._catalog_items(bookmaker_catalog, "bookmakers")
@@ -133,9 +146,41 @@ class OddspapiMarketAdapter:
             if not slug or not markets_data:
                 continue
 
+            cached_mainline_ids = set(global_mainline_ids)
+            cache_source_slug = None
+            if use_mainline_cache and mainline_outcome_ids_by_bookmaker is not None:
+                cached_mainline_ids, cache_source_slug = resolve_mainline_outcome_ids(
+                    slug,
+                    mainline_outcome_ids_by_bookmaker,
+                    fallback_priority,
+                )
+                if not cached_mainline_ids:
+                    OddspapiMarketAdapter._append_diagnostic(
+                        diagnostics,
+                        "skipped_missing_mainline_cache",
+                        {
+                            "bookmakerSlug": slug,
+                            "fallbackPriority": list(fallback_priority),
+                            "reason": "no_mainline_cache_or_fallback",
+                        },
+                    )
+                    continue
+                if cache_source_slug and cache_source_slug != slug:
+                    OddspapiMarketAdapter._append_diagnostic(
+                        diagnostics,
+                        "mainline_cache_fallbacks_used",
+                        {
+                            "bookmakerSlug": slug,
+                            "cacheSourceSlug": cache_source_slug,
+                        },
+                    )
+
             grouped_markets: dict[tuple, dict] = {}
             for source_market_id, market_data in OddspapiMarketAdapter._entries(markets_data):
-                if market_data.get("marketActive") is False:
+                if should_skip_inactive_market(
+                    market_data,
+                    require_active_quotes=require_active_quotes,
+                ):
                     continue
 
                 market_resolution = MarketMappingRepository.resolve_market(

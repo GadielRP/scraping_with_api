@@ -181,27 +181,47 @@ class OddspapiMainlineCacheRepository:
             return set()
 
     @staticmethod
-    def get_mainline_outcome_ids(event_id: int) -> set[str]:
-        """Return set of source_outcome_id strings stored as mainline for an event."""
+    def get_mainline_outcome_ids_by_bookmaker(
+        event_id: int,
+    ) -> dict[str, set[str]]:
+        """Return mainline source_outcome_id sets keyed by bookmaker_slug."""
         try:
             with db_manager.get_session() as session:
                 rows = (
-                    session.query(OddspapiMainlineOutcomeCache.source_outcome_id)
+                    session.query(
+                        OddspapiMainlineOutcomeCache.bookmaker_slug,
+                        OddspapiMainlineOutcomeCache.source_outcome_id,
+                    )
                     .filter(OddspapiMainlineOutcomeCache.event_id == int(event_id))
                     .all()
                 )
-            return {
-                str(row[0]).strip()
-                for row in rows
-                if row and row[0] is not None and str(row[0]).strip()
-            }
+            grouped: dict[str, set[str]] = {}
+            for slug, outcome_id in rows:
+                bookmaker = str(slug or "").strip().lower()
+                normalized_outcome_id = str(outcome_id).strip() if outcome_id is not None else ""
+                if not bookmaker or not normalized_outcome_id:
+                    continue
+                grouped.setdefault(bookmaker, set()).add(normalized_outcome_id)
+            return grouped
         except Exception as exc:
             logger.error(
-                "Error loading Oddspapi mainline outcome ids event_id=%s: %s",
+                "Error loading Oddspapi mainline outcome ids by bookmaker event_id=%s: %s",
                 event_id,
                 exc,
             )
-            return set()
+            return {}
+
+    @staticmethod
+    def get_mainline_outcome_ids(event_id: int) -> set[str]:
+        """Return set of source_outcome_id strings stored as mainline for an event."""
+        grouped = OddspapiMainlineCacheRepository.get_mainline_outcome_ids_by_bookmaker(
+            event_id
+        )
+        return {
+            outcome_id
+            for outcome_ids in grouped.values()
+            for outcome_id in outcome_ids
+        }
 
     @staticmethod
     def get_exchange_mainline_selections(

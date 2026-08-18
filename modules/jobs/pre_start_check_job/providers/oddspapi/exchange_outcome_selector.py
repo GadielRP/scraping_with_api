@@ -10,6 +10,7 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingRepository,
 )
 from modules.oddspapi.format_utils import normalize_source_id
+from modules.oddspapi.quote_activity import should_skip_inactive_market
 
 from .constants import ODDSPAPI_SOURCE
 
@@ -122,7 +123,10 @@ class OddspapiExchangeOutcomeSelector:
             for source_market_id, market_data in cls._entries(
                 bookmaker_data.get("markets", {})
             ):
-                if market_data.get("marketActive") is False:
+                if should_skip_inactive_market(
+                    market_data,
+                    require_active_quotes=require_active_quotes,
+                ):
                     continue
                 market_resolution = MarketMappingRepository.resolve_market(
                     market_mapping_index,

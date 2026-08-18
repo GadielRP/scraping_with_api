@@ -47,12 +47,20 @@ class OddspapiPreStartSettings:
     exchange_max_requests_per_run: int = 40
 
     # Persistence/normalization policy.
-    # When False, quotes with active=false are still eligible for current and
-    # historical opening/current selection (needed when a bookmaker marks
-    # suspended/stale lines inactive but still publishes prices). Driven by
-    # Config.ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES at runtime.
+    # When False, player active=false ticks and marketActive=false markets are
+    # still eligible (adapter, mainline cache extract, historical reader,
+    # exchange selector). Driven by Config.ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES.
     require_active_quotes: bool = True
     persist_main_line_only: bool = False
+
+    # Donor order when a bookmaker has no cached mainLine outcome ids of its
+    # own. Historical persist uses the first donor that has rows. Own-cache
+    # always wins. Empty after this walk skips that bookmaker.
+    mainline_cache_fallback_bookmakers: tuple[str, ...] = (
+        "pinnacle",
+        "bet365",
+        "betfair-ex",
+    )
 
     # Operational toggles for reconstructing key-moment prices from live
     # /historical-odds (ENABLE_ODDSPAPI_HISTORICAL_AS_OF_*) and restricting

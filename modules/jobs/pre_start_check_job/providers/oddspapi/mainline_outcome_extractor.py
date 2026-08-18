@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from modules.oddspapi.format_utils import normalize_source_id
+from modules.oddspapi.quote_activity import should_skip_inactive_market
 
 
 class OddspapiMainlineOutcomeExtractor:
@@ -41,6 +42,7 @@ class OddspapiMainlineOutcomeExtractor:
         odds_response: dict,
         *,
         exchange_bookmakers: list[str] | None = None,
+        require_active_quotes: bool = True,
     ) -> list[dict]:
         payload = odds_response if isinstance(odds_response, dict) else {}
         exchange_slugs = {
@@ -62,7 +64,10 @@ class OddspapiMainlineOutcomeExtractor:
             for source_market_id, market_data in cls._entries(
                 bookmaker_data.get("markets", {})
             ):
-                if market_data.get("marketActive") is False:
+                if should_skip_inactive_market(
+                    market_data,
+                    require_active_quotes=require_active_quotes,
+                ):
                     continue
                 normalized_market_id = normalize_source_id(source_market_id)
                 if normalized_market_id is None:
