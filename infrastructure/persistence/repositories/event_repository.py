@@ -126,6 +126,42 @@ class EventRepository:
         }
     
     @staticmethod
+    def _source_mapping_fields(
+        *,
+        event_id: int,
+        source: str,
+        source_event_id: str,
+        match_method: str,
+        confidence: float,
+        event_payload: Dict,
+        home_participant,
+        away_participant,
+        competition,
+    ) -> Dict:
+        """Build EventSourceMapping fields from the normalized SofaScore payload.
+
+        Event.id is canonical. Provider IDs belong on the mapping row, including
+        tournament/season and the canonical participant FKs used by later
+        cross-source matching.
+        """
+        source_season_id = event_payload.get("season_id")
+        source_tournament_id = None
+        if competition is not None and competition.source_tournament_id is not None:
+            source_tournament_id = str(competition.source_tournament_id)
+
+        return {
+            "event_id": event_id,
+            "source": source,
+            "source_event_id": source_event_id,
+            "source_tournament_id": source_tournament_id,
+            "source_season_id": str(source_season_id) if source_season_id is not None else None,
+            "participant_home_id": home_participant.participant_id if home_participant else None,
+            "participant_away_id": away_participant.participant_id if away_participant else None,
+            "match_method": match_method,
+            "confidence": confidence,
+        }
+
+    @staticmethod
     def upsert_event(
         event_data: Dict,
         source: str = "sofascore",
@@ -286,12 +322,18 @@ class EventRepository:
 
                     event_obj.updated_at = get_local_now()
                     EventSourceMappingRepository.upsert_mapping(
-                        event_id=event_obj.id,
-                        source=source,
-                        source_event_id=source_event_id,
-                        match_method=match_method,
-                        confidence=confidence,
                         session=session,
+                        **EventRepository._source_mapping_fields(
+                            event_id=event_obj.id,
+                            source=source,
+                            source_event_id=source_event_id,
+                            match_method=match_method,
+                            confidence=confidence,
+                            event_payload=event_payload,
+                            home_participant=home_participant,
+                            away_participant=away_participant,
+                            competition=competition,
+                        ),
                     )
                     logger.info(
                         "Updated event %s from source=%s source_event_id=%s",
@@ -326,12 +368,18 @@ class EventRepository:
                     session.add(event_obj)
                     session.flush()
                     EventSourceMappingRepository.upsert_mapping(
-                        event_id=event_obj.id,
-                        source=source,
-                        source_event_id=source_event_id,
-                        match_method=match_method,
-                        confidence=confidence,
                         session=session,
+                        **EventRepository._source_mapping_fields(
+                            event_id=event_obj.id,
+                            source=source,
+                            source_event_id=source_event_id,
+                            match_method=match_method,
+                            confidence=confidence,
+                            event_payload=event_payload,
+                            home_participant=home_participant,
+                            away_participant=away_participant,
+                            competition=competition,
+                        ),
                     )
                     logger.info(
                         "Created new event %s from source=%s source_event_id=%s",

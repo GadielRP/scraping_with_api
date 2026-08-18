@@ -8,10 +8,15 @@ Example:
     python sport_seasons_processing.py 65360 --tournament 132  # NBA 2024/2025
     python sport_seasons_processing.py 58766 --tournament 17   # Premier League 2024/2025
     
-The script fetches all events for a given season and:
-1. Creates/updates events in the database
-2. Saves all available betting markets (using MarketRepository)
-3. Extracts and saves results for finished events
+The script uses the SofaScore client to fetch all events for a unique
+tournament/season and:
+1. Upserts canonical Event rows plus Participant/Competition FKs
+2. Writes the SofaScore source mapping (source_event_id, tournament, season)
+3. Saves all available betting markets (MarketOddsIngestionService), unless --skip-odds
+4. Extracts and saves results for finished events
+
+Event.id is the internal canonical ID. SofaScore's event ID lives on
+event_source_mappings.source_event_id for source='sofascore'.
 """
 
 from modules.sofascore import api_client
@@ -83,6 +88,7 @@ season_to_process = [
     {"season_name": "LPF Argentina Apertura 2026", "tournament_id": 155, "season_id": 87913},
     {"season_name": "LPF Argentina Clausura 2025", "tournament_id": 155, "season_id": 77826},
     {"season_name": "LPF Argentina Apertura 2025", "tournament_id": 155, "season_id": 70268},
+    {"season_name": "Brasileirão Betano 2026", "tournament_id": 325, "season_id": 87678},
     
 ]
 
@@ -198,7 +204,7 @@ def get_season_events_missing_from_view(
 
 def reconcile_existing_season_events(
     season_ids: tuple[int, ...],
-    fetched_event_ids: set[int],
+    fetched_canonical_event_ids: set[int],
     canceled_event_ids_to_delete: set[int],
     cutoff_time=None,
 ) -> dict:
@@ -226,7 +232,7 @@ def reconcile_existing_season_events(
 
     for event_id in candidate_ids:
         try:
-            if event_id not in fetched_event_ids:
+            if event_id not in fetched_canonical_event_ids:
                 logger.info("Reconciling season event %s not returned by current season endpoint", event_id)
 
             sofascore_event_id = resolve_sofascore_event_id(event_id)
@@ -338,20 +344,22 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
     logger.info(f"Fetching complete. Total events extracted: {len(all_events)}")
     return all_events
 
-def process_season(tournament_id: int, season_id: int):
+def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
     """
     Fetch and process all events for a given season.
     Works for any sport/competition.
     
     Uses the new market-based odds flow (MarketRepository) to save ALL available
-    betting markets, not just 1X2 odds.
+    betting markets, not just 1X2 odds, unless fetch_odds is False.
     
     Args:
         tournament_id: The SofaScore unique tournament ID
         season_id: The SofaScore season ID
+        fetch_odds: When False, skip SofaScore odds fetch/ingestion
     """
     logger.info("=" * 80)
     logger.info(f"Processing Season: Tournament {tournament_id}, Season {season_id}")
+    logger.info("fetch_odds: %s", fetch_odds)
     logger.info("=" * 80)
 
     # In this script, tournament_id is the SofaScore uniqueTournament.id used by /unique-tournament/{id}/...
@@ -400,11 +408,7 @@ def process_season(tournament_id: int, season_id: int):
     events.sort(key=lambda x: x.get('event', x)['startTimestamp'])
     logger.info("Events sorted by start timestamp (oldest to newest)")
 
-    fetched_event_ids = {
-        event_data.get("event", event_data).get("id")
-        for event_data in events
-        if event_data.get("event", event_data).get("id")
-    }
+    fetched_canonical_event_ids: set[int] = set()
 
     # Step 3: Process events individually and fetch odds for each
     logger.info(f"Starting to process {len(events)} events with discovery_source='scraping_on_command'")
@@ -416,7 +420,7 @@ def process_season(tournament_id: int, season_id: int):
     results_processed_count = 0
     canceled_event_ids_to_delete = set()
     missing_odds_event_ids = set()
-    odds_fetcher = SofaScoreOddsFetcher(api_client)
+    odds_fetcher = SofaScoreOddsFetcher(api_client) if fetch_odds else None
 
     for event_data in events:
         try:
@@ -428,58 +432,62 @@ def process_season(tournament_id: int, season_id: int):
                 event_payload = event_data.get('event', event_data)
                 sofascore_event_id = event_payload['id']
                 event_id = event.id
+                fetched_canonical_event_ids.add(event_id)
                 logger.debug(
                     f"Event sofascore_event_id={sofascore_event_id} upserted as canonical_event_id={event_id}: {event_payload.get('homeTeam')} vs {event_payload.get('awayTeam')}"
                 )
 
-                # Check if event already has markets stored before fetching odds
-                existing_market_count = MarketRepository.get_market_count(event_id)
-
-                if existing_market_count > 0:
-                    # Event already has markets stored, skip odds fetching
-                    markets_skipped_count += 1
-                    logger.debug(f"Event {event_id} already has {existing_market_count} markets stored, skipping odds fetch")
+                if not fetch_odds:
+                    logger.debug("Skipping odds fetch for event %s (--skip-odds)", event_id)
                 else:
-                    # Fetch and save ALL markets using MarketRepository (new flow)
-                    try:
-                        fetch_result = odds_fetcher.fetch_odds(
-                            sofascore_event_id,
-                            event_payload.get('slug'),
-                        )
-                        if fetch_result.endpoint_missing:
-                            missing_odds_event_ids.add(event_id)
-                            logger.info(
-                                "🚫 SofaScore odds endpoint missing for event %s",
-                                event_id,
-                            )
-                            final_odds_response = None
-                        else:
-                            final_odds_response = fetch_result.payload
+                    # Check if event already has markets stored before fetching odds
+                    existing_market_count = MarketRepository.get_market_count(event_id)
 
-                        if final_odds_response:
-                            ingestion_result = (
-                                MarketOddsIngestionService.save_from_sofascore_response(
-                                    event_id,
-                                    final_odds_response,
-                                )
+                    if existing_market_count > 0:
+                        # Event already has markets stored, skip odds fetching
+                        markets_skipped_count += 1
+                        logger.debug(f"Event {event_id} already has {existing_market_count} markets stored, skipping odds fetch")
+                    else:
+                        # Fetch and save ALL markets using MarketRepository (new flow)
+                        try:
+                            fetch_result = odds_fetcher.fetch_odds(
+                                sofascore_event_id,
+                                event_payload.get('slug'),
                             )
-                            if ingestion_result.markets_saved > 0:
-                                markets_processed_count += 1
-                                logger.debug(
-                                    "Saved %s markets for event %s",
-                                    ingestion_result.markets_saved,
+                            if fetch_result.endpoint_missing:
+                                missing_odds_event_ids.add(event_id)
+                                logger.info(
+                                    "🚫 SofaScore odds endpoint missing for event %s",
                                     event_id,
                                 )
+                                final_odds_response = None
                             else:
-                                logger.debug(
-                                    "No markets saved for event %s: %s",
-                                    event_id,
-                                    ingestion_result.reason,
+                                final_odds_response = fetch_result.payload
+
+                            if final_odds_response:
+                                ingestion_result = (
+                                    MarketOddsIngestionService.save_from_sofascore_response(
+                                        event_id,
+                                        final_odds_response,
+                                    )
                                 )
-                        else:
-                            logger.debug(f"No odds response for event {event_id}")
-                    except Exception as e:
-                        logger.error(f"Error processing markets for event {event_id}: {e}")
+                                if ingestion_result.markets_saved > 0:
+                                    markets_processed_count += 1
+                                    logger.debug(
+                                        "Saved %s markets for event %s",
+                                        ingestion_result.markets_saved,
+                                        event_id,
+                                    )
+                                else:
+                                    logger.debug(
+                                        "No markets saved for event %s: %s",
+                                        event_id,
+                                        ingestion_result.reason,
+                                    )
+                            else:
+                                logger.debug(f"No odds response for event {event_id}")
+                        except Exception as e:
+                            logger.error(f"Error processing markets for event {event_id}: {e}")
 
                 # Extract and upsert results for this event (using already-fetched data)
                 try:
@@ -525,13 +533,14 @@ def process_season(tournament_id: int, season_id: int):
             continue
 
     reconciliation_cutoff_time = get_local_now()
-    EventSourceMappingRepository.mark_odds_unavailable(
-        missing_odds_event_ids,
-        "sofascore",
-    )
+    if fetch_odds:
+        EventSourceMappingRepository.mark_odds_unavailable(
+            missing_odds_event_ids,
+            "sofascore",
+        )
     reconciliation_stats = reconcile_existing_season_events(
         season_ids=processing_season_ids,
-        fetched_event_ids=fetched_event_ids,
+        fetched_canonical_event_ids=fetched_canonical_event_ids,
         canceled_event_ids_to_delete=canceled_event_ids_to_delete,
         cutoff_time=reconciliation_cutoff_time,
     )
@@ -555,6 +564,7 @@ def process_season(tournament_id: int, season_id: int):
     logger.info("duplicate_entries_removed: %s", len(duplicate_ids))
     logger.info("processed_count: %s", processed_count)
     logger.info("skipped_count: %s", skipped_count)
+    logger.info("fetch_odds: %s", fetch_odds)
     logger.info("markets_processed_count: %s", markets_processed_count)
     logger.info("markets_skipped_count: %s", markets_skipped_count)
     logger.info("results_processed_count: %s", results_processed_count)
@@ -624,6 +634,11 @@ Common tournament IDs:
         help='Process a specific season by name from the season_to_process list'
     )
     parser.add_argument(
+        '--skip-odds',
+        action='store_true',
+        help='Skip SofaScore odds fetch and market ingestion (events and results only)'
+    )
+    parser.add_argument(
         '--skip-db-init',
         action='store_true',
         help='Skip database initialization (use only if schema is up to date)'
@@ -648,7 +663,7 @@ Common tournament IDs:
             s_name = season['season_name']
             
             logger.info(f"[{i+1}/{len(season_to_process)}] Auto-processing: {s_name} (ID: {s_id}, Tournament: {t_id})")
-            process_season(t_id, s_id)
+            process_season(t_id, s_id, fetch_odds=not args.skip_odds)
             
             if i < len(season_to_process) - 1:
                 logger.info("Waiting 60 seconds before next season to avoid detection...")
@@ -662,7 +677,11 @@ Common tournament IDs:
         
         if matched_season:
             logger.info(f"Found match for season name: {matched_season['season_name']}")
-            process_season(matched_season['tournament_id'], matched_season['season_id'])
+            process_season(
+                matched_season['tournament_id'],
+                matched_season['season_id'],
+                fetch_odds=not args.skip_odds,
+            )
         else:
             logger.error(f"❌ No season found with name: '{args.season_name}' in season_to_process list.")
             logger.info("Available seasons:")
@@ -671,7 +690,7 @@ Common tournament IDs:
     
     elif args.season_id and args.tournament:
         # Process the single season provided via CLI
-        process_season(args.tournament, args.season_id)
+        process_season(args.tournament, args.season_id, fetch_odds=not args.skip_odds)
     
     else:
         logger.error("❌ Missing arguments. Provide EITHER (--auto) OR (--season_name NAME) OR (season_id -t tournament_id)")
