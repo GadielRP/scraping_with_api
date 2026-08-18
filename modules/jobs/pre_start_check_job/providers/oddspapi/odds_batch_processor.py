@@ -755,6 +755,11 @@ class OddspapiPreStartOddsBatchProcessor:
                             None,
                         ) or bookmakers,
                         payload=acquisition_result.debug_raw_payload,
+                        endpoint=getattr(
+                            acquisition_result,
+                            "debug_endpoint",
+                            None,
+                        ),
                     )
                 self._copy_acquisition_stats(
                     event_result,

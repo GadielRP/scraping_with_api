@@ -508,8 +508,8 @@ class MarketOddsIngestionService:
         skipped_incomplete_markets_detected = len(
             diagnostics.get("skipped_incomplete_markets") or []
         )
-        if diagnostics and debug_mode:
-            logger.info("OddsPapi market mapping diagnostics: %s", diagnostics)
+        #if diagnostics and debug_mode:
+        #    logger.info("OddsPapi market mapping diagnostics: %s", diagnostics)
         bookmakers = adapted.get("bookmakers", [])
         markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in bookmakers)
         choices_detected = sum(

@@ -45,19 +45,34 @@ def test_newer_timestamp_wins_in_both_modes():
         assert decision.current_odds == 1.8
 
 
-def test_older_timestamp_is_stale_in_both_modes():
+def test_live_applies_current_without_timestamp_order():
+    existing = QuoteExistingState(
+        exists=True,
+        current_odds=1.483,
+        current_updated_at=T2,
+    )
+    candidate = QuoteCandidateState(current_price=1.628, current_captured_at=T0)
+    decision = decide_quote_merge(
+        existing=existing, candidate=candidate, mode=QuoteMergeMode.LIVE
+    )
+    assert decision.apply_current is True
+    assert decision.current_odds == 1.628
+
+
+def test_older_timestamp_is_stale_in_backfill():
     existing = QuoteExistingState(
         exists=True,
         current_odds=2.0,
         current_updated_at=T2,
     )
     candidate = QuoteCandidateState(current_price=1.1, current_captured_at=T0)
-    for mode in (QuoteMergeMode.LIVE, QuoteMergeMode.BACKFILL_FILL_ONLY):
-        decision = decide_quote_merge(
-            existing=existing, candidate=candidate, mode=mode
-        )
-        assert decision.apply_current is False
-        assert "current" in decision.stale_fields
+    decision = decide_quote_merge(
+        existing=existing,
+        candidate=candidate,
+        mode=QuoteMergeMode.BACKFILL_FILL_ONLY,
+    )
+    assert decision.apply_current is False
+    assert "current" in decision.stale_fields
 
 
 def test_equal_timestamp_same_value_is_noop():
@@ -75,7 +90,7 @@ def test_equal_timestamp_same_value_is_noop():
     assert decision.stale_fields == ()
 
 
-def test_equal_timestamp_different_value_is_conflict():
+def test_equal_timestamp_different_value_is_applied_in_live():
     existing = QuoteExistingState(
         exists=True,
         current_odds=2.0,
@@ -85,11 +100,11 @@ def test_equal_timestamp_different_value_is_conflict():
     decision = decide_quote_merge(
         existing=existing, candidate=candidate, mode=QuoteMergeMode.LIVE
     )
-    assert decision.apply_current is False
-    assert "current" in decision.conflicts
+    assert decision.apply_current is True
+    assert decision.current_odds == 2.5
 
 
-def test_candidate_without_timestamp_does_not_overwrite_timestamped_current():
+def test_live_applies_current_without_candidate_timestamp():
     existing = QuoteExistingState(
         exists=True,
         current_odds=2.0,
@@ -99,8 +114,8 @@ def test_candidate_without_timestamp_does_not_overwrite_timestamped_current():
     decision = decide_quote_merge(
         existing=existing, candidate=candidate, mode=QuoteMergeMode.LIVE
     )
-    assert decision.apply_current is False
-    assert "current" in decision.stale_fields
+    assert decision.apply_current is True
+    assert decision.current_odds == 9.0
 
 
 def test_live_applies_timestamped_current_over_untimestamped_existing():
@@ -203,7 +218,9 @@ def test_source_limit_fills_null_without_current_change():
         source_limit=40,
     )
     decision = decide_quote_merge(
-        existing=existing, candidate=candidate, mode=QuoteMergeMode.LIVE
+        existing=existing,
+        candidate=candidate,
+        mode=QuoteMergeMode.BACKFILL_FILL_ONLY,
     )
     assert decision.apply_current is False
     assert decision.apply_source_limit is True
@@ -245,7 +262,7 @@ def seed_choice(manager):
         return choice.choice_id
 
 
-def test_writer_live_rejects_stale_current(tmp_path):
+def test_writer_live_applies_current_from_this_ingest(tmp_path):
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
 
@@ -259,7 +276,7 @@ def test_writer_live_rejects_stale_current(tmp_path):
             current_price=3.0,
             current_captured_at=T2,
         )
-        stale = MarketChoiceQuoteWriter.upsert(
+        refreshed = MarketChoiceQuoteWriter.upsert(
             session,
             quote_index=quote_index,
             choice_id=choice_id,
@@ -268,11 +285,10 @@ def test_writer_live_rejects_stale_current(tmp_path):
             current_captured_at=T0,
         )
         session.flush()
-        assert stale is not None
-        assert stale.decision.apply_current is False
-        assert "current" in stale.decision.stale_fields
+        assert refreshed is not None
+        assert refreshed.decision.apply_current is True
         quote = session.query(MarketChoiceQuote).one()
-        assert float(quote.current_odds) == 3.0
+        assert float(quote.current_odds) == 1.0
 
 
 def test_writer_backfill_fill_only_does_not_overwrite_stronger_current(tmp_path):

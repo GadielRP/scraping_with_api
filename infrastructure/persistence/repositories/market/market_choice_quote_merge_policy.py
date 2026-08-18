@@ -98,11 +98,21 @@ def _decide_current(
     candidate: QuoteCandidateState,
     mode: QuoteMergeMode,
 ) -> tuple[bool, Any, Optional[datetime], str | None, str | None]:
-    """Return (apply, value, timestamp, stale_reason, conflict_reason)."""
+    """Return (apply, value, timestamp, stale_reason, conflict_reason).
+
+    Live writes the current from this ingest. ``current_updated_at`` is persist
+    time, not OddsPapi ``changedAt``; those clocks are not compared here.
+    Backfill still orders by timestamp so it cannot clobber a live current.
+    """
     if candidate.current_price is None:
         return False, None, None, None, None
 
     if existing.current_odds is None:
+        return True, candidate.current_price, candidate.current_captured_at, None, None
+
+    if mode is QuoteMergeMode.LIVE:
+        if _values_equal(existing.current_odds, candidate.current_price):
+            return False, None, None, None, None
         return True, candidate.current_price, candidate.current_captured_at, None, None
 
     existing_ts = existing.current_updated_at
@@ -112,15 +122,11 @@ def _decide_current(
         return False, None, None, "current", None
 
     if existing_ts is None and candidate_ts is not None:
-        if mode is QuoteMergeMode.LIVE:
-            return True, candidate.current_price, candidate_ts, None, None
         return False, None, None, "current", None
 
     if existing_ts is None and candidate_ts is None:
         if _values_equal(existing.current_odds, candidate.current_price):
             return False, None, None, None, None
-        if mode is QuoteMergeMode.LIVE:
-            return True, candidate.current_price, None, None, None
         return False, None, None, None, "current"
 
     assert existing_ts is not None and candidate_ts is not None

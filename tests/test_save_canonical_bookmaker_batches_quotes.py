@@ -430,3 +430,76 @@ def test_moment_quotes_write_snapshots_with_their_collected_at_and_dedup(tmp_pat
     assert first.snapshots_saved >= 2
     assert second.snapshots_saved == 1
 
+
+def test_oddspapi_missing_changed_at_still_writes_live_current(tmp_path):
+    manager = _make_manager(tmp_path, "no-changed-at.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    unclocked = [
+        {
+            "bookie_id": bookie_id,
+            "markets": [
+                {
+                    "marketName": "1X2 Full Time",
+                    "marketGroup": "1X2",
+                    "marketPeriod": "Full Time",
+                    "choiceGroup": None,
+                    "isLive": False,
+                    "choices": [{"name": "1", "decimalValue": 1.483}],
+                }
+            ],
+        }
+    ]
+    clocked = _batch(current_odds=1.628)
+    clocked[0]["bookie_id"] = bookie_id
+
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager",
+        manager,
+    ):
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, unclocked, source="oddspapi"
+        )
+        with manager.get_session() as session:
+            quote = session.query(MarketChoiceQuote).one()
+            assert float(quote.current_odds) == 1.483
+            assert quote.current_updated_at is not None
+
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, clocked, source="oddspapi"
+        )
+
+    with manager.get_session() as session:
+        quote = session.query(MarketChoiceQuote).one()
+        assert float(quote.current_odds) == 1.628
+        assert quote.current_updated_at is not None
+
+
+def test_oddspapi_live_current_uses_this_ingest_not_source_clock_order(tmp_path):
+    manager = _make_manager(tmp_path, "keep-newer-source.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    newer = _batch(current_odds=1.645)
+    newer[0]["bookie_id"] = bookie_id
+    newer[0]["markets"][0]["choices"][0]["sourceCollectedAt"] = (
+        "2026-08-17T23:14:00.000Z"
+    )
+    older = _batch(current_odds=1.628)
+    older[0]["bookie_id"] = bookie_id
+    older[0]["markets"][0]["choices"][0]["sourceCollectedAt"] = (
+        "2026-08-17T23:03:08.245Z"
+    )
+
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager",
+        manager,
+    ):
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, newer, source="oddspapi"
+        )
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, older, source="oddspapi"
+        )
+
+    with manager.get_session() as session:
+        quote = session.query(MarketChoiceQuote).one()
+        assert float(quote.current_odds) == 1.628
+

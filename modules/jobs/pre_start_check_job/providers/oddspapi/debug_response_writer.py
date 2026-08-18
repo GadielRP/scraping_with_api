@@ -16,11 +16,25 @@ class OddspapiDebugResponseWriter:
     """Write one deterministic raw-response artifact per regular request."""
 
     OUTPUT_DIRECTORY = Path("debug") / "oddspapi_odds_responses"
+    ENDPOINT_FILENAME_LABELS = {
+        "historical-odds": "historical",
+        "odds": "odds",
+    }
 
     @staticmethod
     def _filename_token(value: object, *, fallback: str) -> str:
         token = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip())
         return token.strip("._-") or fallback
+
+    @classmethod
+    def _endpoint_token(cls, endpoint: str | None) -> str | None:
+        if endpoint is None:
+            return None
+        normalized = str(endpoint).strip().lower()
+        if not normalized:
+            return None
+        label = cls.ENDPOINT_FILENAME_LABELS.get(normalized, normalized)
+        return cls._filename_token(label, fallback="endpoint")
 
     @classmethod
     def save(
@@ -30,6 +44,7 @@ class OddspapiDebugResponseWriter:
         fixture_id: str,
         bookmakers: Iterable[str] | None,
         payload: dict,
+        endpoint: str | None = None,
     ) -> Path | None:
         """Save the raw provider JSON without affecting ingestion on failure."""
 
@@ -41,13 +56,15 @@ class OddspapiDebugResponseWriter:
             for bookmaker in bookmakers or []
         ]
         bookmakers_token = "_".join(bookmaker_tokens) or "all"
-        filename = "_".join(
-            (
-                cls._filename_token(event_id, fallback="event"),
-                cls._filename_token(fixture_id, fallback="fixture"),
-                bookmakers_token,
-            )
-        ) + ".json"
+        endpoint_token = cls._endpoint_token(endpoint)
+        filename_parts = [
+            cls._filename_token(event_id, fallback="event"),
+            cls._filename_token(fixture_id, fallback="fixture"),
+        ]
+        if endpoint_token:
+            filename_parts.append(endpoint_token)
+        filename_parts.append(bookmakers_token)
+        filename = "_".join(filename_parts) + ".json"
         path = cls.OUTPUT_DIRECTORY / filename
 
         try:
@@ -75,9 +92,10 @@ class OddspapiDebugResponseWriter:
 
         logger.info(
             "Saved raw OddsPAPI response event_id=%s fixture_id=%s "
-            "bookmakers=%s path=%s",
+            "endpoint=%s bookmakers=%s path=%s",
             event_id,
             fixture_id,
+            endpoint_token or "unspecified",
             ",".join(str(value) for value in bookmakers or []) or "all",
             path,
         )

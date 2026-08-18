@@ -12,6 +12,7 @@ from typing import Sequence
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import (
+    Bookie,
     Market,
     MarketChoice,
     MarketChoiceQuote,
@@ -45,6 +46,7 @@ def log_historical_odds_as_of_shadow(
     for quote in as_of_quotes:
         stored = _closest_price(
             existing,
+            bookmaker_slug=quote.bookmaker_slug,
             source_outcome_id=quote.source_outcome_id,
             collected_at=quote.collected_at,
             tolerance_minutes=tolerance_minutes,
@@ -58,9 +60,10 @@ def log_historical_odds_as_of_shadow(
         else:
             mismatched += 1
             logger.info(
-                "Oddspapi historical as-of mismatch event_id=%s outcome=%s "
-                "moment=%s reconstructed=%s stored=%s",
+                "Oddspapi historical as-of mismatch event_id=%s bookmaker=%s "
+                "outcome=%s moment=%s reconstructed=%s stored=%s",
                 event_id,
+                quote.bookmaker_slug,
                 quote.source_outcome_id,
                 quote.minutes_until_start,
                 quote.price,
@@ -79,11 +82,12 @@ def log_historical_odds_as_of_shadow(
     )
 
 
-def _load_existing_prices(event_id: int) -> list[tuple[str, datetime, float]]:
+def _load_existing_prices(event_id: int) -> list[tuple[str, str, datetime, float]]:
     try:
         with db_manager.get_session() as session:
             rows = (
                 session.query(
+                    Bookie.slug,
                     MarketChoiceQuote.source_outcome_id,
                     MarketChoiceSnapshot.collected_at,
                     MarketChoiceSnapshot.odds_value,
@@ -97,6 +101,7 @@ def _load_existing_prices(event_id: int) -> list[tuple[str, datetime, float]]:
                     MarketChoiceQuote.choice_id == MarketChoice.choice_id,
                 )
                 .join(Market, MarketChoice.market_id == Market.market_id)
+                .join(Bookie, Market.bookie_id == Bookie.bookie_id)
                 .filter(
                     Market.event_id == int(event_id),
                     MarketChoiceQuote.source == "oddspapi",
@@ -110,25 +115,40 @@ def _load_existing_prices(event_id: int) -> list[tuple[str, datetime, float]]:
             exc,
         )
         return []
-    loaded: list[tuple[str, datetime, float]] = []
-    for outcome_id, collected_at, odds_value in rows:
-        if outcome_id is None or collected_at is None or odds_value is None:
+    loaded: list[tuple[str, str, datetime, float]] = []
+    for bookmaker_slug, outcome_id, collected_at, odds_value in rows:
+        if (
+            bookmaker_slug is None
+            or outcome_id is None
+            or collected_at is None
+            or odds_value is None
+        ):
             continue
-        loaded.append((str(outcome_id).strip(), collected_at, float(odds_value)))
+        loaded.append(
+            (
+                str(bookmaker_slug).strip().lower(),
+                str(outcome_id).strip(),
+                collected_at,
+                float(odds_value),
+            )
+        )
     return loaded
 
 
 def _closest_price(
-    existing: list[tuple[str, datetime, float]],
+    existing: list[tuple[str, str, datetime, float]],
     *,
+    bookmaker_slug: str,
     source_outcome_id: str,
     collected_at: datetime,
     tolerance_minutes: int,
 ) -> float | None:
     window = timedelta(minutes=max(0, int(tolerance_minutes)))
+    wanted_bookmaker = str(bookmaker_slug or "").strip().lower()
+    wanted_outcome = str(source_outcome_id or "").strip()
     best: tuple[timedelta, float] | None = None
-    for outcome_id, stored_at, price in existing:
-        if outcome_id != source_outcome_id:
+    for stored_bookmaker, outcome_id, stored_at, price in existing:
+        if stored_bookmaker != wanted_bookmaker or outcome_id != wanted_outcome:
             continue
         distance = abs(stored_at - collected_at)
         if distance > window:

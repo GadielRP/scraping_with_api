@@ -1491,7 +1491,7 @@ def test_debug_mode_saves_raw_oddspapi_response(tmp_path, monkeypatch):
         tmp_path
         / "debug"
         / "oddspapi_odds_responses"
-        / "156608_fixture-raw-1_pinnacle_bet365.json"
+        / "156608_fixture-raw-1_historical_pinnacle_bet365.json"
     )
     stored_payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert summary.events_ingested == 1

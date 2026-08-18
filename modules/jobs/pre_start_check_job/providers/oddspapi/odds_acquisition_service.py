@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 class OddspapiOddsAcquisitionResult:
     payload: dict | None = None
     debug_raw_payload: dict | None = None
+    debug_endpoint: str | None = None
     debug_bookmakers: list[str] = field(default_factory=list)
     bookies_requested: int = 0
     bookmaker_slugs_requested: list[str] = field(default_factory=list)
@@ -337,6 +338,7 @@ class OddspapiPreStartOddsAcquisitionService:
             historical_missing = historical_result.endpoint_missing
             payload = historical_result.payload
             result.debug_raw_payload = historical_result.raw_payload
+            result.debug_endpoint = ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
             result.debug_bookmakers = list(regular)
             self._record_as_of_quotes(result, historical_result)
 
@@ -447,6 +449,7 @@ class OddspapiPreStartOddsAcquisitionService:
             current_missing = current_result.endpoint_missing
             current_payload = current_result.payload
             result.debug_raw_payload = current_result.raw_payload
+            result.debug_endpoint = ODDSPAPI_CURRENT_ODDS_ENDPOINT
             result.debug_bookmakers = list(combined)
 
         payload = current_payload

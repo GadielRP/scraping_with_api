@@ -518,10 +518,10 @@ class MarketRepository:
                     choice_data.get("sourceCollectedAt") or choice_data.get("changedAt"),
                     convert_to_project_timezone=uses_oddspapi_source_time,
                 )
-                # Providers without a source clock (SofaScore) use extraction
-                # time. Matches the quote contract: current_updated_at prefers
-                # source time and falls back to collected_at.
-                if current_source_collected_at is None:
+                if (
+                    current_source_collected_at is None
+                    and not uses_oddspapi_source_time
+                ):
                     current_source_collected_at = collected_at
                 quotes_by_identity = MarketRepository._upsert_choice_quotes(
                     session,
@@ -533,7 +533,7 @@ class MarketRepository:
                     initial_odds=initial_odds,
                     initial_captured_at=initial_source_collected_at,
                     current_odds=current_odds,
-                    current_captured_at=current_source_collected_at,
+                    current_captured_at=collected_at,
                 )
 
                 exchange_quotes = choice_data.get("exchangeQuotes")
