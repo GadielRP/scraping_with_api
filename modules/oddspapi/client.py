@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import random
 import threading
 import time
 from contextlib import contextmanager
@@ -12,6 +11,7 @@ from typing import Any
 import requests
 
 from infrastructure.settings import Config
+from modules.oddspapi.api_keys import api_key_for_slot, free_endpoint_api_keys
 from modules.oddspapi.exceptions import OddsPapiError, OddsPapiHttpError
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 class OddsPapiClient:
     TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
+    _key_endpoint_locks_guard = threading.Lock()
+    _key_endpoint_locks: dict[tuple[str, str], threading.Lock] = {}
+    _last_request_completed_at: dict[tuple[str, str], float] = {}
 
     def __init__(
         self,
@@ -32,8 +35,9 @@ class OddsPapiClient:
     ) -> None:
         self.base_url = (base_url or Config.ODDSPAPI_BASE_URL).rstrip("/")
         if api_key is None:
-            keys = getattr(Config, "ODDSPAPI_KEYS", [])
-            self.api_key = random.choice(keys) if keys else Config.ODDSPAPI_KEY
+            # Callers should pass api_key. Default is a free-endpoint key so
+            # OddsPapiClient() does not spend the paid /odds key.
+            self.api_key = api_key_for_slot(0, free_endpoint_api_keys())
         else:
             self.api_key = api_key
         self.timeout = Config.ODDSPAPI_TIMEOUT_SECONDS if timeout is None else timeout
@@ -58,9 +62,6 @@ class OddsPapiClient:
             self.endpoint_cooldowns.update(
                 self._normalize_endpoint_cooldowns(endpoint_cooldowns)
             )
-        self._last_request_completed_at: dict[str, float] = {}
-        self._endpoint_locks: dict[str, threading.Lock] = {}
-        self._endpoint_locks_guard = threading.Lock()
         self.session = requests.Session()
         # OddsPapi must never inherit HTTP(S)_PROXY or other request settings from env.
         self.session.trust_env = False
@@ -103,9 +104,15 @@ class OddsPapiClient:
                 )
         return normalized
 
+    def _cooldown_identity(self, endpoint: str) -> tuple[str, str]:
+        return (str(self.api_key or ""), endpoint)
+
     def _endpoint_lock(self, endpoint: str) -> threading.Lock:
-        with self._endpoint_locks_guard:
-            return self._endpoint_locks.setdefault(endpoint, threading.Lock())
+        identity = self._cooldown_identity(endpoint)
+        with OddsPapiClient._key_endpoint_locks_guard:
+            return OddsPapiClient._key_endpoint_locks.setdefault(
+                identity, threading.Lock()
+            )
 
     @contextmanager
     def _endpoint_request_slot(self, endpoint: str):
@@ -117,7 +124,10 @@ class OddsPapiClient:
 
         with self._endpoint_lock(endpoint):
             now = time.monotonic()
-            last_completed_at = self._last_request_completed_at.get(endpoint)
+            identity = self._cooldown_identity(endpoint)
+            last_completed_at = OddsPapiClient._last_request_completed_at.get(
+                identity
+            )
             if last_completed_at is not None:
                 remaining = cooldown_seconds - (
                     now - last_completed_at
@@ -129,7 +139,9 @@ class OddsPapiClient:
             finally:
                 # OddsPapi's documented cooldown is effectively response-to-next
                 # request for sequential calls, so record completion, not start.
-                self._last_request_completed_at[endpoint] = time.monotonic()
+                OddsPapiClient._last_request_completed_at[identity] = (
+                    time.monotonic()
+                )
 
     @staticmethod
     def _retry_after_seconds(response) -> float | None:

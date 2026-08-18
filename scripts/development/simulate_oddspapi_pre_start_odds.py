@@ -27,6 +27,7 @@ from infrastructure.persistence.models import (
 )
 from infrastructure.persistence.repositories import EventRepository, EventSourceMappingRepository
 from infrastructure.settings import Config
+from modules.oddspapi.api_keys import configured_api_keys
 from modules.jobs.pre_start_check_job.providers.oddspapi.odds_phase import (
     run_oddspapi_pre_start_odds,
 )
@@ -115,8 +116,8 @@ def run_for_event(event_id: int, *, dry_run: bool = False) -> int:
             "ENABLE_ODDSPAPI_PRE_START_ODDS=false; enable it to run this simulation."
         )
         return 1
-    if not str(Config.ODDSPAPI_KEY or "").strip():
-        logger.error("ODDSPAPI_KEY is not configured; no HTTP request will be made.")
+    if not configured_api_keys():
+        logger.error("ODDSPAPI_FREE_KEYS is not configured; no HTTP request will be made.")
         return 1
     if not fixture_id:
         logger.error(

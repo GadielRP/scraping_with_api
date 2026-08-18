@@ -821,6 +821,7 @@ def test_oddspapi_client_builds_historical_request_and_enforces_bookmaker_limit(
 
 
 def test_oddspapi_historical_endpoint_observes_five_second_cooldown(monkeypatch):
+    OddsPapiClient._last_request_completed_at.clear()
     responses = iter(
         [
             SimpleNamespace(
@@ -1117,6 +1118,8 @@ def test_oddspapi_missing_api_key_skips_mapping_query(monkeypatch):
     )
     monkeypatch.setattr(oddspapi_odds_phase.Config, "ODDSPAPI_KEY", "")
     monkeypatch.setattr(oddspapi_odds_phase.Config, "ODDSPAPI_KEYS", [])
+    monkeypatch.setattr(oddspapi_odds_phase.Config, "ODDSPAPI_PAID_KEY", "")
+    monkeypatch.setattr(oddspapi_odds_phase.Config, "ODDSPAPI_FREE_KEYS", [])
     monkeypatch.setattr(
         oddspapi_odds_phase.EventSourceMappingRepository,
         "get_odds_source_states",
@@ -1168,21 +1171,30 @@ def test_oddspapi_404_is_persisted_once_for_provider(monkeypatch):
     assert marked == [({101}, "oddspapi")]
 
 
-def test_oddspapi_client_random_api_key(monkeypatch):
-    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEYS", ["key1", "key2", "key3"])
-    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEY", "key1")
+def test_oddspapi_client_defaults_to_first_configured_api_key(monkeypatch):
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_PAID_KEY", "")
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_FREE_KEYS", ["free-a", "free-b"])
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEYS", [])
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEY", "")
 
-    keys_used = set()
-    for _ in range(100):
-        client = OddsPapiClient()
-        keys_used.add(client.api_key)
-        client.close()
-
-    assert keys_used == {"key1", "key2", "key3"}
+    client = OddsPapiClient()
+    assert client.api_key == "free-a"
+    client.close()
 
     client_explicit = OddsPapiClient(api_key="explicit_key")
     assert client_explicit.api_key == "explicit_key"
     client_explicit.close()
+
+
+def test_oddspapi_client_defaults_to_free_key_when_paid_is_set(monkeypatch):
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_PAID_KEY", "paid-key")
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_FREE_KEYS", ["free-a", "free-b"])
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEYS", [])
+    monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEY", "")
+
+    client = OddsPapiClient()
+    assert client.api_key == "free-a"
+    client.close()
 
 
 def test_manual_simulator_uses_production_provider_processors(monkeypatch):

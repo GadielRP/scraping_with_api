@@ -22,6 +22,7 @@ from typing import Callable, Sequence
 
 from modules.odds_ingestion.fetch_result import OddsFetchResult
 from modules.oddspapi.client import OddsPapiClient
+from modules.oddspapi.api_keys import parallel_worker_count
 
 from .constants import ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
 from .exchange_outcome_selector import ExchangeHistoricalSelection
@@ -40,11 +41,11 @@ class ExchangeHistoricalFetchOutcome:
 
 
 class OddspapiExchangeHistoricalFetchExecutor:
-    """Fan out exchange historical-odds requests across a pool of API keys.
+    """Fan out exchange historical-odds requests across the API key pool.
 
     Each worker owns one dedicated ``OddsPapiClient`` (and therefore its own
-    cooldown state) so concurrency here can never make two requests race for
-    the same key's cooldown slot.
+    cooldown slot) so concurrency never races two requests on the same key.
+    Worker count is ``min(max_workers, key_count, selection_count)``.
     """
 
     def __init__(
@@ -78,10 +79,10 @@ class OddspapiExchangeHistoricalFetchExecutor:
         if not selections:
             return []
 
-        worker_count = min(
-            len(self._api_keys) or 1,
-            self._max_workers or len(selections),
-            len(selections),
+        worker_count = parallel_worker_count(
+            max_workers=self._max_workers or len(selections),
+            api_key_count=len(self._api_keys),
+            item_count=len(selections),
         )
         if worker_count <= 1 or len(self._api_keys) <= 1:
             return self._fetch_with_one_client(

@@ -119,7 +119,80 @@ def test_critical_scheduler_runs_every_minute_for_asymmetric_start_times(
     )
 
 
-def test_current_only_exchange_batch_can_use_all_api_key_workers(monkeypatch):
+def test_t_minus_one_batch_fans_out_across_all_keys(monkeypatch):
+    processor = OddspapiPreStartOddsBatchProcessor()
+    captured = {}
+
+    def process_parallel(selected, **kwargs):
+        captured["selected"] = selected
+        captured.update(kwargs)
+        return SimpleNamespace(results=[])
+
+    monkeypatch.setattr(processor, "_process_parallel_workers", process_parallel)
+
+    candidates = [
+        OddspapiPreStartCandidate(
+            event_id=event_id,
+            fixture_id=f"fixture-{event_id}",
+            minutes_until_start=1,
+        )
+        for event_id in (1, 2, 3)
+    ]
+    processor.process(
+        candidates,
+        bookmakers=["pinnacle"],
+        api_keys=["k1", "k2", "k3"],
+        max_workers=3,
+        market_mapping_index={},
+        enable_exchange_historical=False,
+    )
+
+    assert captured["api_keys"] == ["k1", "k2", "k3"]
+    assert captured["selected"] == candidates
+
+
+def test_t_minus_one_stays_serial_when_paid_key_owns_odds(monkeypatch):
+    processor = OddspapiPreStartOddsBatchProcessor()
+    captured = {}
+
+    def process_parallel(selected, **kwargs):
+        captured["selected"] = selected
+        captured.update(kwargs)
+        return SimpleNamespace(results=[])
+
+    monkeypatch.setattr(processor, "_process_parallel_workers", process_parallel)
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "odds_endpoint_api_keys",
+        lambda: ["paid"],
+    )
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "free_endpoint_api_keys",
+        lambda: ["k1", "k2", "k3"],
+    )
+
+    processor.process(
+        [
+            OddspapiPreStartCandidate(
+                event_id=event_id,
+                fixture_id=f"fixture-{event_id}",
+                minutes_until_start=1,
+            )
+            for event_id in (1, 2, 3)
+        ],
+        bookmakers=["pinnacle"],
+        max_workers=3,
+        market_mapping_index={},
+        enable_exchange_historical=False,
+    )
+
+    assert captured == {}
+
+
+def test_live_historical_batch_fans_out_across_free_keys_when_paid_owns_odds(
+    monkeypatch,
+):
     processor = OddspapiPreStartOddsBatchProcessor()
     captured = {}
     sentinel = SimpleNamespace(results=[])
@@ -127,7 +200,8 @@ def test_current_only_exchange_batch_can_use_all_api_key_workers(monkeypatch):
         OddspapiPreStartCandidate(
             event_id=event_id,
             fixture_id=f"fixture-{event_id}",
-            minutes_until_start=1,
+            minutes_until_start=-5,
+            is_live=True,
         )
         for event_id in (1, 2, 3)
     ]
@@ -138,20 +212,74 @@ def test_current_only_exchange_batch_can_use_all_api_key_workers(monkeypatch):
         return sentinel
 
     monkeypatch.setattr(processor, "_process_parallel_workers", process_parallel)
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "OddspapiMainlineCacheRepository.event_ids_with_cache",
+        lambda event_ids: set(event_ids),
+    )
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "odds_endpoint_api_keys",
+        lambda: ["paid"],
+    )
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "free_endpoint_api_keys",
+        lambda: ["k1", "k2", "k3"],
+    )
 
     result = processor.process(
         candidates,
         bookmakers=["pinnacle"],
-        exchange_bookmakers=["betfair-ex"],
-        exchange_historical_moments=[120],
-        api_keys=["key-1", "key-2", "key-3"],
         max_workers=3,
         market_mapping_index={},
+        enable_exchange_historical=False,
     )
 
     assert result is sentinel
+    assert captured["api_keys"] == ["k1", "k2", "k3"]
+    assert captured["selected"] == candidates
+
+
+def test_live_historical_batch_fans_out_across_all_keys(monkeypatch):
+    processor = OddspapiPreStartOddsBatchProcessor()
+    captured = {}
+    sentinel = SimpleNamespace(results=[])
+    candidates = [
+        OddspapiPreStartCandidate(
+            event_id=event_id,
+            fixture_id=f"fixture-{event_id}",
+            minutes_until_start=-5,
+            is_live=True,
+        )
+        for event_id in (1, 2, 3)
+    ]
+
+    def process_parallel(selected, **kwargs):
+        captured["selected"] = selected
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(processor, "_process_parallel_workers", process_parallel)
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "OddspapiMainlineCacheRepository.event_ids_with_cache",
+        lambda event_ids: set(event_ids),
+    )
+
+    result = processor.process(
+        candidates,
+        bookmakers=["pinnacle"],
+        api_keys=["k1", "k2", "k3"],
+        max_workers=3,
+        market_mapping_index={},
+        enable_exchange_historical=False,
+    )
+
+    assert result is sentinel
+    assert captured["api_keys"] == ["k1", "k2", "k3"]
     assert captured["max_workers"] == 3
-    assert captured["process_kwargs"]["exchange_bookmakers"] == ["betfair-ex"]
+    assert captured["selected"] == candidates
 
 
 def test_oddspapi_t_minus_one_uses_only_current_odds_endpoint():

@@ -33,7 +33,7 @@ _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
     TrackedCompetition(172, "Ligue 1", "Football"),
     TrackedCompetition(2192, "Liga MX Clausura", "Football"),
     TrackedCompetition(328, "Liga MX Apertura", "Football"),
-    TrackedCompetition(8597, "test", "test"),
+    TrackedCompetition(9580, "WTA", "Tennis"),
 )
 
 TRACKED_COMPETITIONS_BY_ID: Final[Mapping[int, TrackedCompetition]] = (

@@ -23,6 +23,13 @@ from modules.odds_ingestion import (
     mark_missing_endpoints_unavailable,
 )
 from modules.oddspapi.client import OddsPapiClient
+from modules.oddspapi.api_keys import (
+    api_key_for_slot,
+    free_endpoint_api_keys,
+    odds_endpoint_api_keys,
+    parallel_worker_count,
+    unique_api_keys,
+)
 
 from .constants import (
     ODDSPAPI_CURRENT_ODDS_ENDPOINT,
@@ -138,27 +145,41 @@ class OddspapiPreStartOddsBatchProcessor:
         self._custom_pipeline = (
             fetcher is not None or acquisition_service is not None
         )
+        self._clients_by_key: dict[str, OddsPapiClient] = {}
 
-    def _serial_acquisition_service(
+    def _client_for_key(self, api_key: str) -> OddsPapiClient:
+        client = self._clients_by_key.get(api_key)
+        if client is None:
+            client = self.client_factory(api_key=api_key)
+            self._clients_by_key[api_key] = client
+        return client
+
+    def _close_owned_clients(self) -> None:
+        for client in self._clients_by_key.values():
+            close = getattr(client, "close", None)
+            if callable(close):
+                close()
+        self._clients_by_key = {}
+
+    def _acquisition_service_for_slot(
         self,
+        slot: int,
+        *,
+        odds_api_keys: list[str],
+        historical_api_keys: list[str],
     ) -> OddspapiPreStartOddsAcquisitionService:
-        if self.acquisition_service is None:
-            self.fetcher = OddspapiOddsFetcher()
-            self.acquisition_service = OddspapiPreStartOddsAcquisitionService(
-                fetcher=self.fetcher
-            )
-        return self.acquisition_service
-
-    @staticmethod
-    def _unique_api_keys(api_keys: list[str] | None) -> list[str]:
-        unique = []
-        seen = set()
-        for value in api_keys or []:
-            api_key = str(value or "").strip()
-            if api_key and api_key not in seen:
-                seen.add(api_key)
-                unique.append(api_key)
-        return unique
+        if self.acquisition_service is not None:
+            return self.acquisition_service
+        odds_key = api_key_for_slot(slot, odds_api_keys)
+        historical_key = api_key_for_slot(
+            slot if odds_api_keys != historical_api_keys else slot + 1,
+            historical_api_keys,
+        )
+        self.fetcher = OddspapiOddsFetcher(
+            odds_client=self._client_for_key(odds_key),
+            historical_client=self._client_for_key(historical_key),
+        )
+        return OddspapiPreStartOddsAcquisitionService(fetcher=self.fetcher)
 
     @classmethod
     def _merge_worker_summaries(
@@ -247,7 +268,11 @@ class OddspapiPreStartOddsBatchProcessor:
         market_mapping_index,
         process_kwargs: dict,
     ) -> OddspapiPreStartOddsSummary:
-        worker_count = min(max_workers, len(api_keys), len(candidates))
+        worker_count = parallel_worker_count(
+            max_workers=max_workers,
+            api_key_count=len(api_keys),
+            item_count=len(candidates),
+        )
         chunks = [
             candidates[index::worker_count]
             for index in range(worker_count)
@@ -521,7 +546,13 @@ class OddspapiPreStartOddsBatchProcessor:
                 enabled_only=True,
             )
 
-        unique_api_keys = self._unique_api_keys(api_keys)
+        keys = unique_api_keys(api_keys)
+        if keys:
+            odds_api_keys = list(keys)
+            historical_api_keys = list(keys)
+        else:
+            odds_api_keys = odds_endpoint_api_keys()
+            historical_api_keys = free_endpoint_api_keys()
         bounded_workers = max(1, int(max_workers or 1))
         historical_moments = set(exchange_historical_moments or [120])
         requires_exchange_history = (
@@ -533,18 +564,36 @@ class OddspapiPreStartOddsBatchProcessor:
                 for candidate in requestable_candidates
             )
         )
+        live_requestable = [
+            candidate
+            for candidate in requestable_candidates
+            if self._is_live_candidate(candidate)
+        ]
+        odds_requestable = [
+            candidate
+            for candidate in requestable_candidates
+            if not self._is_live_candidate(candidate)
+        ]
+        paid_owns_odds = odds_api_keys != historical_api_keys
         can_run_parallel = (
             not self._custom_pipeline
             and not requires_exchange_history
             and requested_limit is None
             and bounded_workers > 1
-            and len(unique_api_keys) > 1
-            and len(requestable_candidates) > 1
+            and len(historical_api_keys) > 1
+            and (
+                (not paid_owns_odds and len(requestable_candidates) > 1)
+                or (
+                    paid_owns_odds
+                    and len(live_requestable) > 1
+                    and not odds_requestable
+                )
+            )
         )
         if can_run_parallel:
             worker_summary = self._process_parallel_workers(
-                requestable_candidates,
-                api_keys=unique_api_keys,
+                live_requestable if paid_owns_odds else requestable_candidates,
+                api_keys=historical_api_keys,
                 max_workers=bounded_workers,
                 market_mapping_index=market_mapping_index,
                 process_kwargs={
@@ -600,187 +649,253 @@ class OddspapiPreStartOddsBatchProcessor:
             )
 
 
-        acquisition_service = (
-            self._serial_acquisition_service()
-            if requestable_candidates
-            else None
-        )
-        # Exchange outcome fan-out is intra-fixture: it parallelizes the N
-        # historical-odds requests for one event's exchange selections across
-        # the available API keys, so it helps even when there is only one
-        # candidate (unlike the event-level worker pool above).
-        exchange_fetch_executor = (
-            OddspapiExchangeHistoricalFetchExecutor(
-                api_keys=unique_api_keys,
-                max_workers=bounded_workers,
-                client_factory=self.client_factory,
+        try:
+            # Exchange outcome fan-out is intra-fixture: N historical-odds
+            # requests for one event, one worker per API key.
+            exchange_fetch_executor = (
+                OddspapiExchangeHistoricalFetchExecutor(
+                    api_keys=historical_api_keys,
+                    max_workers=bounded_workers,
+                    client_factory=self.client_factory,
+                )
+                if not self._custom_pipeline
+                and len(historical_api_keys) > 1
+                and requestable_candidates
+                else None
             )
-            if not self._custom_pipeline
-            and len(unique_api_keys) > 1
-            and requestable_candidates
-            else None
-        )
-        requested_count = 0
-        exchange_requests_remaining = (
-            int(exchange_max_requests_per_run)
-            if exchange_max_requests_per_run
-            and int(exchange_max_requests_per_run) > 0
-            else None
-        )
-        odds_unavailable_event_ids: set[int] = set()
-        for candidate in candidates or []:
-            event_result = self._event_result(candidate)
-            summary.results.append(event_result)
-            is_live = self._is_live_candidate(candidate)
-            if not candidate.fixture_id:
-                event_result.skipped = True
-                event_result.skip_reason = "missing_oddspapi_mapping"
-                summary.events_skipped += 1
-                continue
-            if not candidate.has_odds and not is_live:
-                event_result.skipped = True
-                event_result.skip_reason = "oddspapi_odds_unavailable"
-                summary.events_skipped += 1
-                continue
-            if is_live and candidate.event_id not in cached_live_event_ids:
-                event_result.skipped = True
-                event_result.skip_reason = "missing_mainline_cache"
-                summary.events_skipped += 1
-                logger.info(
-                    "🚫 Oddspapi historical-odds skipped: empty mainline cache "
-                    "event_id=%s fixture_id=%s",
-                    candidate.event_id,
-                    candidate.fixture_id,
-                )
-                continue
-            closing_only = getattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False)
-            if (
-                closing_only
-                and not is_live
-                and not is_closing_odds_moment(candidate.minutes_until_start)
-            ):
-                event_result.skipped = True
-                event_result.skip_reason = "oddspapi_closing_only"
-                summary.events_skipped += 1
-                continue
-            if requested_limit is not None and requested_count >= requested_limit:
-                event_result.skipped = True
-                event_result.skip_reason = "max_events_per_run_reached"
-                summary.events_skipped += 1
-                continue
+            requested_count = 0
+            exchange_requests_remaining = (
+                int(exchange_max_requests_per_run)
+                if exchange_max_requests_per_run
+                and int(exchange_max_requests_per_run) > 0
+                else None
+            )
+            odds_unavailable_event_ids: set[int] = set()
+            for candidate in candidates or []:
+                event_result = self._event_result(candidate)
+                summary.results.append(event_result)
+                is_live = self._is_live_candidate(candidate)
+                if not candidate.fixture_id:
+                    event_result.skipped = True
+                    event_result.skip_reason = "missing_oddspapi_mapping"
+                    summary.events_skipped += 1
+                    continue
+                if not candidate.has_odds and not is_live:
+                    event_result.skipped = True
+                    event_result.skip_reason = "oddspapi_odds_unavailable"
+                    summary.events_skipped += 1
+                    continue
+                if is_live and candidate.event_id not in cached_live_event_ids:
+                    event_result.skipped = True
+                    event_result.skip_reason = "missing_mainline_cache"
+                    summary.events_skipped += 1
+                    logger.info(
+                        "🚫 Oddspapi historical-odds skipped: empty mainline cache "
+                        "event_id=%s fixture_id=%s",
+                        candidate.event_id,
+                        candidate.fixture_id,
+                    )
+                    continue
+                closing_only = getattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False)
+                if (
+                    closing_only
+                    and not is_live
+                    and not is_closing_odds_moment(candidate.minutes_until_start)
+                ):
+                    event_result.skipped = True
+                    event_result.skip_reason = "oddspapi_closing_only"
+                    summary.events_skipped += 1
+                    continue
+                if requested_limit is not None and requested_count >= requested_limit:
+                    event_result.skipped = True
+                    event_result.skip_reason = "max_events_per_run_reached"
+                    summary.events_skipped += 1
+                    continue
 
-            event_result.requested = True
-            requested_count += 1
-            summary.requests_attempted += 1
-            try:
-                # Tracked leagues get openings via OddsPortal at T-120; skip
-                # exchange historical only at that opening moment. Live still
-                # uses the mainline cache for exchange outcome fetches.
-                at_opening_moment = candidate.minutes_until_start in set(
-                    exchange_historical_moments
-                    if exchange_historical_moments is not None
-                    else [120]
+                event_result.requested = True
+                requested_count += 1
+                summary.requests_attempted += 1
+                acquisition_service = self._acquisition_service_for_slot(
+                    requested_count - 1,
+                    odds_api_keys=odds_api_keys,
+                    historical_api_keys=historical_api_keys,
                 )
-                acquisition_result = acquisition_service.acquire(
-                    candidate.fixture_id,
-                    event_id=candidate.event_id,
-                    source_sport_id=candidate.source_sport_id,
-                    minutes_until_start=candidate.minutes_until_start,
-                    is_live=is_live,
-                    enable_exchange_historical=(
-                        enable_exchange_historical
-                        and not (
-                            at_opening_moment
-                            and is_tracked_competition(candidate.competition_id)
-                        )
-                    ),
-                    regular_bookmakers=bookmakers,
-                    exchange_bookmakers=exchange_bookmakers,
-                    market_mapping_index=market_mapping_index,
-                    exchange_market_keys=exchange_market_keys,
-                    exchange_main_line_only=exchange_main_line_only,
-                    exchange_include_player_props=(
-                        exchange_include_player_props
-                    ),
-                    exchange_historical_moments=(
+                try:
+                    # Tracked leagues get openings via OddsPortal at T-120; skip
+                    # exchange historical only at that opening moment. Live still
+                    # uses the mainline cache for exchange outcome fetches.
+                    at_opening_moment = candidate.minutes_until_start in set(
                         exchange_historical_moments
                         if exchange_historical_moments is not None
                         else [120]
-                    ),
-                    exchange_max_outcomes_per_event=(
-                        exchange_max_outcomes_per_event
-                    ),
-                    exchange_request_budget=exchange_requests_remaining,
-                    minimum_initial_span_minutes=(
-                        minimum_initial_span_minutes
-                    ),
-                    current_odds_available=candidate.has_odds,
-                    require_active_quotes=require_active_quotes,
-                    debug_mode=debug_mode,
-                    exchange_fetch_executor=exchange_fetch_executor,
-                    start_time_utc=candidate.start_time_utc,
-                    as_of_moments=(
-                        list(Config.PRE_START_ODDS_MOMENTS)
-                        if (
-                            getattr(
-                                Config,
-                                "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW",
-                                False,
-                            )
-                            or getattr(
-                                Config,
-                                "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
-                                False,
-                            )
-                        )
-                        else None
-                    ),
-                    attach_as_of=getattr(
-                        Config,
-                        "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
-                        False,
-                    ),
-                )
-                if debug_mode and getattr(
-                    acquisition_result,
-                    "debug_raw_payload",
-                    None,
-                ) is not None:
-                    OddspapiDebugResponseWriter.save(
+                    )
+                    acquisition_result = acquisition_service.acquire(
+                        candidate.fixture_id,
                         event_id=candidate.event_id,
-                        fixture_id=candidate.fixture_id,
-                        bookmakers=getattr(
-                            acquisition_result,
-                            "debug_bookmakers",
-                            None,
-                        ) or bookmakers,
-                        payload=acquisition_result.debug_raw_payload,
-                        endpoint=getattr(
-                            acquisition_result,
-                            "debug_endpoint",
-                            None,
+                        source_sport_id=candidate.source_sport_id,
+                        minutes_until_start=candidate.minutes_until_start,
+                        is_live=is_live,
+                        enable_exchange_historical=(
+                            enable_exchange_historical
+                            and not (
+                                at_opening_moment
+                                and is_tracked_competition(candidate.competition_id)
+                            )
+                        ),
+                        regular_bookmakers=bookmakers,
+                        exchange_bookmakers=exchange_bookmakers,
+                        market_mapping_index=market_mapping_index,
+                        exchange_market_keys=exchange_market_keys,
+                        exchange_main_line_only=exchange_main_line_only,
+                        exchange_include_player_props=(
+                            exchange_include_player_props
+                        ),
+                        exchange_historical_moments=(
+                            exchange_historical_moments
+                            if exchange_historical_moments is not None
+                            else [120]
+                        ),
+                        exchange_max_outcomes_per_event=(
+                            exchange_max_outcomes_per_event
+                        ),
+                        exchange_request_budget=exchange_requests_remaining,
+                        minimum_initial_span_minutes=(
+                            minimum_initial_span_minutes
+                        ),
+                        current_odds_available=candidate.has_odds,
+                        require_active_quotes=require_active_quotes,
+                        debug_mode=debug_mode,
+                        exchange_fetch_executor=exchange_fetch_executor,
+                        start_time_utc=candidate.start_time_utc,
+                        as_of_moments=(
+                            list(Config.PRE_START_ODDS_MOMENTS)
+                            if (
+                                getattr(
+                                    Config,
+                                    "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW",
+                                    False,
+                                )
+                                or getattr(
+                                    Config,
+                                    "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
+                                    False,
+                                )
+                            )
+                            else None
+                        ),
+                        attach_as_of=getattr(
+                            Config,
+                            "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
+                            False,
                         ),
                     )
-                self._copy_acquisition_stats(
-                    event_result,
-                    acquisition_result,
-                )
-                self._accumulate_acquisition(summary, event_result)
-                if exchange_requests_remaining is not None:
-                    exchange_requests_remaining = max(
-                        0,
-                        exchange_requests_remaining
-                        - event_result.exchange_historical_requests_attempted,
+                    if debug_mode and getattr(
+                        acquisition_result,
+                        "debug_raw_payload",
+                        None,
+                    ) is not None:
+                        OddspapiDebugResponseWriter.save(
+                            event_id=candidate.event_id,
+                            fixture_id=candidate.fixture_id,
+                            bookmakers=getattr(
+                                acquisition_result,
+                                "debug_bookmakers",
+                                None,
+                            ) or bookmakers,
+                            payload=acquisition_result.debug_raw_payload,
+                            endpoint=getattr(
+                                acquisition_result,
+                                "debug_endpoint",
+                                None,
+                            ),
+                        )
+                    self._copy_acquisition_stats(
+                        event_result,
+                        acquisition_result,
                     )
-                if acquisition_result.endpoint_missing:
-                    if not is_live:
+                    self._accumulate_acquisition(summary, event_result)
+                    if exchange_requests_remaining is not None:
+                        exchange_requests_remaining = max(
+                            0,
+                            exchange_requests_remaining
+                            - event_result.exchange_historical_requests_attempted,
+                        )
+                    if acquisition_result.endpoint_missing:
+                        if not is_live:
+                            odds_unavailable_event_ids.add(candidate.event_id)
+                            summary.missing_endpoints += 1
+                        event_result.skipped = True
+                        event_result.skip_reason = "oddspapi_odds_endpoint_not_found"
+                        summary.events_skipped += 1
+                        logger.info(
+                            "Oddspapi odds endpoint missing endpoint=%s event_id=%s fixture_id=%s",
+                            (
+                                ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
+                                if is_live
+                                else ODDSPAPI_CURRENT_ODDS_ENDPOINT
+                            ),
+                            candidate.event_id,
+                            candidate.fixture_id,
+                        )
+                        continue
+                    odds_response = acquisition_result.payload
+                    if (
+                        is_live
+                        and getattr(Config, "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW", False)
+                    ):
+                        log_historical_odds_as_of_shadow(
+                            event_id=candidate.event_id,
+                            fixture_id=candidate.fixture_id,
+                            as_of_quotes=getattr(
+                                acquisition_result, "as_of_quotes", None
+                            )
+                            or [],
+                            tolerance_minutes=getattr(
+                                Config,
+                                "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES",
+                                3,
+                            ),
+                        )
+                    if not odds_response:
+                        if not is_live:
+                            odds_unavailable_event_ids.add(candidate.event_id)
+                        event_result.skipped = True
+                        event_result.skip_reason = "no_oddspapi_odds"
+                        summary.events_skipped += 1
+                        continue
+                    if not is_live and not self._has_current_odds(odds_response):
                         odds_unavailable_event_ids.add(candidate.event_id)
-                        summary.missing_endpoints += 1
-                    event_result.skipped = True
-                    event_result.skip_reason = "oddspapi_odds_endpoint_not_found"
-                    summary.events_skipped += 1
+                        event_result.skipped = True
+                        event_result.skip_reason = "no_oddspapi_odds"
+                        summary.events_skipped += 1
+                        logger.info(
+                            "Oddspapi /odds returned no bookmaker odds event_id=%s fixture_id=%s",
+                            candidate.event_id,
+                            candidate.fixture_id,
+                        )
+                        continue
+                    summary.responses_received += 1
+                    ingestion_result = self.ingestion_service.save_from_oddspapi_response(
+                        odds_response,
+                        source=ODDSPAPI_INGESTION_SOURCE,
+                        dry_run=dry_run,
+                        allowed_market_keys=allowed_market_keys,
+                        allowed_market_groups=allowed_market_groups,
+                        allowed_market_periods=allowed_market_periods,
+                        market_mapping_index=market_mapping_index,
+                        persist_main_line_only=persist_main_line_only,
+                        require_active_quotes=require_active_quotes,
+                        use_mainline_cache=is_live,
+                        debug_mode=debug_mode,
+                    )
+                    self._copy_ingestion_stats(event_result, ingestion_result)
+                    self._accumulate(summary, event_result)
                     logger.info(
-                        "Oddspapi odds endpoint missing endpoint=%s event_id=%s fixture_id=%s",
+                        "Oddspapi pre-start response processed endpoint=%s event_id=%s fixture_id=%s "
+                        "markets_detected=%s choices_detected=%s bookies_detected=%s "
+                        "markets_saved=%s choices_saved=%s snapshots_saved=%s "
+                        "unmapped_markets=%s unmapped_outcomes=%s "
+                        "incomplete_markets=%s skipped=%s reason=%s",
                         (
                             ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
                             if is_live
@@ -788,109 +903,44 @@ class OddspapiPreStartOddsBatchProcessor:
                         ),
                         candidate.event_id,
                         candidate.fixture_id,
+                        event_result.markets_detected,
+                        event_result.choices_detected,
+                        event_result.bookies_detected,
+                        event_result.markets_saved,
+                        event_result.choices_saved,
+                        event_result.snapshots_saved,
+                        event_result.unmapped_markets_detected,
+                        event_result.unmapped_outcomes_detected,
+                        event_result.skipped_incomplete_markets_detected,
+                        getattr(ingestion_result, "skipped", False),
+                        getattr(ingestion_result, "reason", None),
                     )
-                    continue
-                odds_response = acquisition_result.payload
-                if (
-                    is_live
-                    and getattr(Config, "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW", False)
-                ):
-                    log_historical_odds_as_of_shadow(
-                        event_id=candidate.event_id,
-                        fixture_id=candidate.fixture_id,
-                        as_of_quotes=getattr(
-                            acquisition_result, "as_of_quotes", None
-                        )
-                        or [],
-                        tolerance_minutes=getattr(
-                            Config,
-                            "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES",
-                            3,
-                        ),
-                    )
-                if not odds_response:
-                    if not is_live:
-                        odds_unavailable_event_ids.add(candidate.event_id)
-                    event_result.skipped = True
-                    event_result.skip_reason = "no_oddspapi_odds"
-                    summary.events_skipped += 1
-                    continue
-                if not is_live and not self._has_current_odds(odds_response):
-                    odds_unavailable_event_ids.add(candidate.event_id)
-                    event_result.skipped = True
-                    event_result.skip_reason = "no_oddspapi_odds"
-                    summary.events_skipped += 1
-                    logger.info(
-                        "Oddspapi /odds returned no bookmaker odds event_id=%s fixture_id=%s",
+                    if getattr(ingestion_result, "skipped", False):
+                        event_result.skipped = True
+                        event_result.skip_reason = getattr(ingestion_result, "reason", None) or "ingestion_skipped"
+                        summary.events_skipped += 1
+                    else:
+                        summary.events_ingested += 1
+                except Exception as exc:
+                    event_result.error = str(exc)
+                    summary.events_failed += 1
+                    logger.warning(
+                        "Oddspapi pre-start odds processing failed event_id=%s fixture_id=%s: %s",
                         candidate.event_id,
                         candidate.fixture_id,
+                        exc,
                     )
-                    continue
-                summary.responses_received += 1
-                ingestion_result = self.ingestion_service.save_from_oddspapi_response(
-                    odds_response,
-                    source=ODDSPAPI_INGESTION_SOURCE,
-                    dry_run=dry_run,
-                    allowed_market_keys=allowed_market_keys,
-                    allowed_market_groups=allowed_market_groups,
-                    allowed_market_periods=allowed_market_periods,
-                    market_mapping_index=market_mapping_index,
-                    persist_main_line_only=persist_main_line_only,
-                    require_active_quotes=require_active_quotes,
-                    use_mainline_cache=is_live,
-                    debug_mode=debug_mode,
-                )
-                self._copy_ingestion_stats(event_result, ingestion_result)
-                self._accumulate(summary, event_result)
-                logger.info(
-                    "Oddspapi pre-start response processed endpoint=%s event_id=%s fixture_id=%s "
-                    "markets_detected=%s choices_detected=%s bookies_detected=%s "
-                    "markets_saved=%s choices_saved=%s snapshots_saved=%s "
-                    "unmapped_markets=%s unmapped_outcomes=%s "
-                    "incomplete_markets=%s skipped=%s reason=%s",
-                    (
-                        ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
-                        if is_live
-                        else ODDSPAPI_CURRENT_ODDS_ENDPOINT
-                    ),
-                    candidate.event_id,
-                    candidate.fixture_id,
-                    event_result.markets_detected,
-                    event_result.choices_detected,
-                    event_result.bookies_detected,
-                    event_result.markets_saved,
-                    event_result.choices_saved,
-                    event_result.snapshots_saved,
-                    event_result.unmapped_markets_detected,
-                    event_result.unmapped_outcomes_detected,
-                    event_result.skipped_incomplete_markets_detected,
-                    getattr(ingestion_result, "skipped", False),
-                    getattr(ingestion_result, "reason", None),
-                )
-                if getattr(ingestion_result, "skipped", False):
-                    event_result.skipped = True
-                    event_result.skip_reason = getattr(ingestion_result, "reason", None) or "ingestion_skipped"
-                    summary.events_skipped += 1
-                else:
-                    summary.events_ingested += 1
-            except Exception as exc:
-                event_result.error = str(exc)
-                summary.events_failed += 1
-                logger.warning(
-                    "Oddspapi pre-start odds processing failed event_id=%s fixture_id=%s: %s",
-                    candidate.event_id,
-                    candidate.fixture_id,
-                    exc,
-                )
-            finally:
-                self._warn_if_bookmaker_coverage_gap(
-                    event_result,
-                    endpoint=(
-                        ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
-                        if is_live
-                        else ODDSPAPI_CURRENT_ODDS_ENDPOINT
-                    ),
-                )
-        if not dry_run:
-            mark_missing_endpoints_unavailable(odds_unavailable_event_ids, ODDSPAPI_SOURCE)
-        return summary
+                finally:
+                    self._warn_if_bookmaker_coverage_gap(
+                        event_result,
+                        endpoint=(
+                            ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
+                            if is_live
+                            else ODDSPAPI_CURRENT_ODDS_ENDPOINT
+                        ),
+                    )
+            if not dry_run:
+                mark_missing_endpoints_unavailable(odds_unavailable_event_ids, ODDSPAPI_SOURCE)
+            return summary
+        finally:
+            self._close_owned_clients()

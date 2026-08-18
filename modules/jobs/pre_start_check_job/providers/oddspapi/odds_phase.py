@@ -11,6 +11,7 @@ from infrastructure.persistence.repositories import (
     OddspapiMainlineCacheRepository,
 )
 from infrastructure.settings import Config
+from modules.oddspapi.api_keys import configured_api_keys
 
 from .event_selector import _canonical_event_id, select_oddspapi_pre_start_candidates
 from .odds_batch_processor import (
@@ -121,18 +122,11 @@ def run_oddspapi_pre_start_odds(
         _log_summary(summary)
         return summary
 
-    api_keys = [
-        str(value).strip()
-        for value in (
-            getattr(Config, "ODDSPAPI_KEYS", None)
-            or [getattr(Config, "ODDSPAPI_KEY", "")]
-        )
-        if str(value or "").strip()
-    ]
+    api_keys = configured_api_keys()
     if not api_keys:
         logger.warning(
-            "Oddspapi pre-start odds ingestion skipped because ODDSPAPI_KEY "
-            "is not configured"
+            "Oddspapi pre-start odds ingestion skipped because "
+            "ODDSPAPI_FREE_KEYS / ODDSPAPI_PAID_KEY is not configured"
         )
         summary = _skipped_summary(candidates, "missing_oddspapi_api_key")
         _log_summary(summary)
@@ -211,7 +205,6 @@ def run_oddspapi_pre_start_odds(
             ODDSPAPI_PRE_START_SETTINGS.allowed_market_periods
         ),
         max_events=getattr(Config, "ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN", 0),
-        api_keys=api_keys,
         max_workers=getattr(Config, "ODDSPAPI_PRE_START_WORKERS", 1),
         debug_mode=debug_mode,
     )

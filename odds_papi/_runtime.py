@@ -18,6 +18,7 @@ if project_root_text not in sys.path:
 
 
 from infrastructure.settings import Config
+from modules.oddspapi.api_keys import configured_api_keys
 
 
 def get_api_key() -> str:
@@ -26,10 +27,10 @@ def get_api_key() -> str:
     Scripts use the first key by default. Set ODDSPAPI_SCRIPT_KEY_INDEX=2 to
     diagnose the second key without copying a secret into a command.
     """
-    api_keys = list(getattr(Config, "ODDSPAPI_KEYS", []) or [])
+    api_keys = configured_api_keys()
     if not api_keys:
         raise RuntimeError(
-            "ODDSPAPI_KEY is not configured. Expected one or more "
+            "ODDSPAPI_FREE_KEYS is not configured. Expected one or more "
             "comma-separated API keys."
         )
 

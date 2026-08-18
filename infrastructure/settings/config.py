@@ -333,8 +333,14 @@ class Config:
 
     # OddsPapi API Configuration
     ODDSPAPI_BASE_URL = os.getenv('ODDSPAPI_BASE_URL', 'https://api.oddspapi.io').rstrip('/')
+    # When set, this key owns /odds. FREE_KEYS keep historical/fixtures.
+    # When empty, FREE_KEYS may call every v4 endpoint including /odds.
+    # See modules.oddspapi.api_keys.
+    ODDSPAPI_PAID_KEY = str(os.getenv('ODDSPAPI_PAID_KEY', '') or '').strip()
+    ODDSPAPI_FREE_KEYS = _parse_env_secret_list('ODDSPAPI_FREE_KEYS')
+    # Leftover env name. Prefer ODDSPAPI_FREE_KEYS. Used only when both
+    # PAID_KEY and FREE_KEYS are empty.
     ODDSPAPI_KEYS = _parse_env_secret_list('ODDSPAPI_KEY', 'ODDSpapi_KEY')
-    # Backward compatibility for discovery scripts and single-client callers.
     ODDSPAPI_KEY = ODDSPAPI_KEYS[0] if ODDSPAPI_KEYS else ''
     ODDSPAPI_TIMEOUT_SECONDS = float(os.getenv('ODDSPAPI_TIMEOUT_SECONDS', '15'))
     ODDSPAPI_MAX_RETRIES = int(os.getenv('ODDSPAPI_MAX_RETRIES', str(MAX_RETRIES)))

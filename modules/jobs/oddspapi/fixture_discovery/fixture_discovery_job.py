@@ -9,6 +9,7 @@ from time import monotonic
 
 from infrastructure.persistence.database import db_manager
 from modules.oddspapi.client import OddsPapiClient
+from modules.oddspapi.api_keys import api_key_for_slot, free_endpoint_api_keys
 from modules.oddspapi.exceptions import OddsPapiError, OddsPapiHttpError
 
 from .constants import (
@@ -114,7 +115,7 @@ class OddspapiFixtureDiscoveryJob:
         chunk_size: int = DEFAULT_PERSISTENCE_CHUNK_SIZE,
         batch_processor: OddspapiFixtureBatchProcessor | None = None,
     ) -> None:
-        self.client = client or OddsPapiClient()
+        self.client = client
         self.sports = dict(sports or DISCOVERY_SPORT_IDS)
         self.create_mappings = create_mappings
         self.persist_queue = persist_queue
@@ -150,6 +151,11 @@ class OddspapiFixtureDiscoveryJob:
             and error.error_code == "FIXTURE_NOT_FOUND"
         )
 
+    def _client_for_sport(self, sport_index: int) -> tuple[OddsPapiClient, bool]:
+        if self.client is not None:
+            return self.client, False
+        return OddsPapiClient(api_key=api_key_for_slot(sport_index, free_endpoint_api_keys())), True
+
     def run(self, from_date: datetime, to_date: datetime) -> OddspapiFixtureDiscoverySummary:
         from_date, to_date = self._validate_window(from_date, to_date)
         started_at = datetime.now(timezone.utc)
@@ -161,115 +167,126 @@ class OddspapiFixtureDiscoveryJob:
             persist_queue=self.persist_queue,
         )
         chunks = split_time_window(from_date, to_date, DEFAULT_MAX_REQUEST_WINDOW_HOURS)
+        owned_clients: list[OddsPapiClient] = []
 
-        for sport_slug, sport_id in self.sports.items():
-            sport_started = monotonic()
-            sport_summary = SportFixtureDiscoverySummary(
-                sport_slug=sport_slug,
-                sport_id=int(sport_id),
-                requested_from=to_oddspapi_iso(from_date),
-                requested_to=to_oddspapi_iso(to_date),
-            )
-            summary.sports.append(sport_summary)
-            logger.info(
-                "Oddspapi fixture discovery started sport=%s sport_id=%s from=%s to=%s",
-                sport_slug,
-                sport_id,
-                sport_summary.requested_from,
-                sport_summary.requested_to,
-            )
+        try:
+            for sport_index, (sport_slug, sport_id) in enumerate(self.sports.items()):
+                client, owned = self._client_for_sport(sport_index)
+                if owned:
+                    owned_clients.append(client)
+                sport_started = monotonic()
+                sport_summary = SportFixtureDiscoverySummary(
+                    sport_slug=sport_slug,
+                    sport_id=int(sport_id),
+                    requested_from=to_oddspapi_iso(from_date),
+                    requested_to=to_oddspapi_iso(to_date),
+                )
+                summary.sports.append(sport_summary)
+                logger.info(
+                    "Oddspapi fixture discovery started sport=%s sport_id=%s from=%s to=%s",
+                    sport_slug,
+                    sport_id,
+                    sport_summary.requested_from,
+                    sport_summary.requested_to,
+                )
 
-            seen_fixture_ids: set[str] = set()
-            processed_count = 0
-            sport_metrics = OddspapiFixtureBatchResult()
-            try:
-                for chunk_from, chunk_to in chunks:
-                    if (
-                        self.max_fixtures_per_sport is not None
-                        and processed_count >= self.max_fixtures_per_sport
-                    ):
-                        break
-                    try:
-                        payload = self.client.get_fixtures(
-                            sport_id=sport_id,
-                            from_date=to_oddspapi_iso(chunk_from),
-                            to_date=to_oddspapi_iso(chunk_to),
-                            status_id=self.status_id,
-                            language=DEFAULT_LANGUAGE,
-                            has_odds=DEFAULT_HAS_ODDS,
-                        )
-                    except OddsPapiError as exc:
-                        if not self._is_fixture_not_found_error(exc):
-                            raise
+                seen_fixture_ids: set[str] = set()
+                processed_count = 0
+                sport_metrics = OddspapiFixtureBatchResult()
+                try:
+                    for chunk_from, chunk_to in chunks:
+                        if (
+                            self.max_fixtures_per_sport is not None
+                            and processed_count >= self.max_fixtures_per_sport
+                        ):
+                            break
+                        try:
+                            payload = client.get_fixtures(
+                                sport_id=sport_id,
+                                from_date=to_oddspapi_iso(chunk_from),
+                                to_date=to_oddspapi_iso(chunk_to),
+                                status_id=self.status_id,
+                                language=DEFAULT_LANGUAGE,
+                                has_odds=DEFAULT_HAS_ODDS,
+                            )
+                        except OddsPapiError as exc:
+                            if not self._is_fixture_not_found_error(exc):
+                                raise
+                            logger.info(
+                                "No Oddspapi fixtures found sport=%s from=%s to=%s",
+                                sport_slug,
+                                to_oddspapi_iso(chunk_from),
+                                to_oddspapi_iso(chunk_to),
+                            )
+                            payload = []
+                        fixtures = extract_fixture_list(payload)
+                        sport_summary.fixtures_fetched += len(fixtures)
                         logger.info(
-                            "No Oddspapi fixtures found sport=%s from=%s to=%s",
+                            "Oddspapi fixtures fetched sport=%s count=%s",
                             sport_slug,
-                            to_oddspapi_iso(chunk_from),
-                            to_oddspapi_iso(chunk_to),
+                            len(fixtures),
                         )
-                        payload = []
-                    fixtures = extract_fixture_list(payload)
-                    sport_summary.fixtures_fetched += len(fixtures)
+
+                        unique_fixtures: list[dict] = []
+                        for fixture in fixtures:
+                            fixture_id = str(fixture.get("fixtureId") or "").strip()
+                            if fixture_id and fixture_id in seen_fixture_ids:
+                                sport_summary.fixtures_deduplicated += 1
+                                continue
+                            if fixture_id:
+                                seen_fixture_ids.add(fixture_id)
+                            unique_fixtures.append(fixture)
+
+                        if self.max_fixtures_per_sport is not None:
+                            remaining = max(self.max_fixtures_per_sport - processed_count, 0)
+                            unique_fixtures = unique_fixtures[:remaining]
+                        if not unique_fixtures:
+                            continue
+
+                        with db_manager.get_session() as session:
+                            batch_result = self.batch_processor.process_batch(
+                                fixture_payloads=unique_fixtures,
+                                create_mappings=self.create_mappings,
+                                persist_queue=self.persist_queue,
+                                session=session,
+                            )
+                        processed_count += len(unique_fixtures)
+                        sport_summary.fixtures_valid += batch_result.fixtures_valid
+                        sport_summary.fixtures_deduplicated += batch_result.fixtures_deduplicated
+                        sport_summary.invalid_payloads += batch_result.invalid_payloads
+                        sport_summary.resolved_existing_oddspapi += batch_result.resolved_existing_oddspapi
+                        sport_summary.resolved_external_sofascore += batch_result.resolved_external_sofascore
+                        sport_summary.resolved_candidate_match += batch_result.resolved_candidate_match
+                        sport_summary.mappings_created += batch_result.mappings_created
+                        sport_summary.unresolved_no_candidates += batch_result.unresolved_no_candidates
+                        sport_summary.needs_review += batch_result.needs_review
+                        sport_summary.queue_rows_written += batch_result.queue_rows_written
+                        sport_metrics.merge_metrics_from(batch_result)
+
+                except Exception:
+                    sport_summary.errors += 1
+                    logger.exception("Oddspapi fixture discovery failed sport=%s", sport_slug)
+                finally:
+                    sport_summary.duration_seconds = round(monotonic() - sport_started, 3)
                     logger.info(
-                        "Oddspapi fixtures fetched sport=%s count=%s",
+                        "Oddspapi fixture batch processed sport=%s resolved_existing=%s resolved_sofascore=%s "
+                        "resolved_candidate=%s unresolved=%s mappings_created=%s queue_rows=%s duration_s=%s %s",
                         sport_slug,
-                        len(fixtures),
+                        sport_summary.resolved_existing_oddspapi,
+                        sport_summary.resolved_external_sofascore,
+                        sport_summary.resolved_candidate_match,
+                        sport_summary.unresolved_no_candidates + sport_summary.needs_review,
+                        sport_summary.mappings_created,
+                        sport_summary.queue_rows_written,
+                        sport_summary.duration_seconds,
+                        format_batch_metrics(sport_metrics),
                     )
 
-                    unique_fixtures: list[dict] = []
-                    for fixture in fixtures:
-                        fixture_id = str(fixture.get("fixtureId") or "").strip()
-                        if fixture_id and fixture_id in seen_fixture_ids:
-                            sport_summary.fixtures_deduplicated += 1
-                            continue
-                        if fixture_id:
-                            seen_fixture_ids.add(fixture_id)
-                        unique_fixtures.append(fixture)
-
-                    if self.max_fixtures_per_sport is not None:
-                        remaining = max(self.max_fixtures_per_sport - processed_count, 0)
-                        unique_fixtures = unique_fixtures[:remaining]
-                    if not unique_fixtures:
-                        continue
-
-                    with db_manager.get_session() as session:
-                        batch_result = self.batch_processor.process_batch(
-                            fixture_payloads=unique_fixtures,
-                            create_mappings=self.create_mappings,
-                            persist_queue=self.persist_queue,
-                            session=session,
-                        )
-                    processed_count += len(unique_fixtures)
-                    sport_summary.fixtures_valid += batch_result.fixtures_valid
-                    sport_summary.fixtures_deduplicated += batch_result.fixtures_deduplicated
-                    sport_summary.invalid_payloads += batch_result.invalid_payloads
-                    sport_summary.resolved_existing_oddspapi += batch_result.resolved_existing_oddspapi
-                    sport_summary.resolved_external_sofascore += batch_result.resolved_external_sofascore
-                    sport_summary.resolved_candidate_match += batch_result.resolved_candidate_match
-                    sport_summary.mappings_created += batch_result.mappings_created
-                    sport_summary.unresolved_no_candidates += batch_result.unresolved_no_candidates
-                    sport_summary.needs_review += batch_result.needs_review
-                    sport_summary.queue_rows_written += batch_result.queue_rows_written
-                    sport_metrics.merge_metrics_from(batch_result)
-
-            except Exception:
-                sport_summary.errors += 1
-                logger.exception("Oddspapi fixture discovery failed sport=%s", sport_slug)
-            finally:
-                sport_summary.duration_seconds = round(monotonic() - sport_started, 3)
-                logger.info(
-                    "Oddspapi fixture batch processed sport=%s resolved_existing=%s resolved_sofascore=%s "
-                    "resolved_candidate=%s unresolved=%s mappings_created=%s queue_rows=%s duration_s=%s %s",
-                    sport_slug,
-                    sport_summary.resolved_existing_oddspapi,
-                    sport_summary.resolved_external_sofascore,
-                    sport_summary.resolved_candidate_match,
-                    sport_summary.unresolved_no_candidates + sport_summary.needs_review,
-                    sport_summary.mappings_created,
-                    sport_summary.queue_rows_written,
-                    sport_summary.duration_seconds,
-                    format_batch_metrics(sport_metrics),
-                )
+        finally:
+            for owned_client in owned_clients:
+                close = getattr(owned_client, "close", None)
+                if callable(close):
+                    close()
 
         summary.finished_at = datetime.now(timezone.utc)
         return summary
