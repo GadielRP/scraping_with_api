@@ -77,6 +77,7 @@ season_to_process = [
     {"season_name": "MLB 2025", "tournament_id": 11205, "season_id": 68611},
     {"season_name": "MLB 2026", "tournament_id": 11205, "season_id": 84695},
     {"season_name": "MLB 2024", "tournament_id": 11205, "season_id": 57577},
+    {"season_name": "MLB 2026", "tournament_id": 11205, "season_id": 84695},
     {"season_name": "NHL 2025", "tournament_id": 234, "season_id": 78476},
     {"season_name": "Serie A 2025", "tournament_id": 23, "season_id": 76457},
     {"season_name": "Bundesliga 2025", "tournament_id": 35, "season_id": 77333},

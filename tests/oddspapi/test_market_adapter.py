@@ -991,7 +991,7 @@ def test_groups_markets_under_each_bookmaker():
     assert [bookmaker["slug"] for bookmaker in adapted["bookmakers"]] == ["pinnacle", "bet365"]
 
 
-def test_sportsbook_choice_does_not_include_exchange_quotes():
+def test_exchange_without_meta_is_back_only():
     adapted = OddspapiMarketAdapter.from_odds_response(
         response({"100": market([player("home", 1.8)])}),
         market_mapping_index=mapped_index(
@@ -1011,7 +1011,55 @@ def test_sportsbook_choice_does_not_include_exchange_quotes():
         ),
     )
     exchange_choice = exchange_without_meta["bookmakers"][0]["markets"][0]["choices"][0]
-    assert "exchangeQuotes" not in exchange_choice
+    assert exchange_choice["exchangeQuotes"] == [
+        {"side": "back", "level": 0, "price": 1.8, "size": 100.0}
+    ]
+
+
+def test_historical_exchange_initial_is_attached_to_back_without_lay():
+    historical = {
+        "fixtureId": "fixture-1",
+        "sportId": "10",
+        "bookmakerOdds": {
+            "betfair-ex": {
+                "markets": {
+                    "100": {
+                        "marketActive": True,
+                        "outcomes": {
+                            "1": {
+                                "players": {
+                                    "0": {
+                                        "price": 1.9,
+                                        "initialPrice": 1.7,
+                                        "initialChangedAt": "2026-06-19T10:00:00Z",
+                                        "initialLimit": 25,
+                                        "changedAt": "2026-06-19T12:34:56Z",
+                                        "limit": 10,
+                                        "active": True,
+                                        "exchangeMeta": None,
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        },
+    }
+
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        historical,
+        market_mapping_index=mapped_index(
+            source_market_id="100",
+            outcome_pairs=(("1", "1"),),
+        ),
+    )
+
+    choice = adapted["bookmakers"][0]["markets"][0]["choices"][0]
+    assert choice["initialDecimalValue"] == 1.7
+    assert choice["exchangeQuotes"] == [
+        {"side": "back", "level": 0, "price": 1.9, "size": 10}
+    ]
 
 
 def test_exchange_choice_keeps_only_top_back_and_lay_quotes():

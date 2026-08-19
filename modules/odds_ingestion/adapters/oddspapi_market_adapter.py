@@ -309,13 +309,28 @@ class OddspapiMarketAdapter:
                         exchange_meta = player.get("exchangeMeta")
                         if OddspapiMarketAdapter._is_exchange_bookmaker(
                             slug, exchange_meta
-                        ) and isinstance(exchange_meta, dict):
-                            # Persist only top-of-book back + best lay.
-                            choice["exchangeQuotes"] = best_exchange_quotes(
-                                back_price=decimal_value,
-                                back_size=player.get("limit"),
-                                exchange_meta=exchange_meta,
-                            )
+                        ):
+                            if isinstance(exchange_meta, dict):
+                                # Persist only top-of-book back + best lay.
+                                choice["exchangeQuotes"] = best_exchange_quotes(
+                                    back_price=decimal_value,
+                                    back_size=player.get("limit"),
+                                    exchange_meta=exchange_meta,
+                                )
+                            elif slug in OddspapiMarketAdapter._EXCHANGE_BOOKMAKER_SLUGS:
+                                # /historical-odds identifies the exchange bookmaker
+                                # but deliberately omits exchangeMeta. Its single
+                                # price can therefore only represent the back
+                                # instrument; never create a side-agnostic quote or
+                                # infer a lay opening price from it.
+                                choice["exchangeQuotes"] = [
+                                    {
+                                        "side": "back",
+                                        "level": 0,
+                                        "price": decimal_value,
+                                        "size": player.get("limit"),
+                                    }
+                                ]
                         source_market_choices.append(choice)
 
                 expected_choice_names = OddspapiMarketAdapter._expected_choice_names(
