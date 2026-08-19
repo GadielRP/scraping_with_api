@@ -18,7 +18,7 @@ from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_st
 from modules.alerts.alerts_formatter.odds_alert import send_odds_alert
 from modules.alerts.dual_process.run_dual_process import prediction_engine
 from modules.competition.tracked_competitions import is_tracked_competition
-from modules.pillars.context import build_event_context
+from modules.pillars.context import EventContext, build_event_context
 
 logger = logging.getLogger(__name__)
 
@@ -40,63 +40,58 @@ class EventAlertProcessor:
         self.op_data_cache = op_data_cache
         self.debug_mode = debug_mode
 
-    def process_event(self, event_payload: dict) -> None:
+    def process_event(self, event_context: EventContext | dict) -> None:
         """
-        Main execution flow for a single event.
+        Main execution flow for a single event context.
         Orchestrates synchronization, evaluation, and dispatching.
         """
-        if not event_payload.get("success"):
+        if isinstance(event_context, dict):
+            payload = event_context
+            event_context = payload.get("event_context")
+            if event_context is None:
+                event_obj = payload.get("event_obj")
+                minutes_until_start = payload.get("minutes_until_start")
+                metadata = payload.get("metadata_snapshot", {})
+                event_context = build_event_context(
+                    event_obj=event_obj,
+                    minutes_until_start=minutes_until_start,
+                    metadata_snapshot=metadata,
+                    observations=payload.get("observations"),
+                    odds_response=payload.get("odds_response"),
+                    odds_trajectory=payload.get("odds_trajectory"),
+                    success=payload.get("success", True),
+                )
+                if event_context is not None:
+                    event_context.dual_report = payload.get("dual_report")
+                    event_context.streak_analysis = payload.get("streak_analysis")
+                    event_context.should_send_streak_alert = payload.get("should_send_streak_alert", False)
+
+        if event_context is None or not getattr(event_context, "success", True):
             return
 
-        event_obj = event_payload.get("event_obj")
-
-        # debuggin prints
-        # print("event_obj:")
-        # for attr, value in event_obj.__dict__.items():
-        #     print(attr, value)
-
-        minutes_until_start = event_payload.get("minutes_until_start")
-        odds_response = event_payload.get("odds_response")
-        metadata = event_payload.get("metadata_snapshot", {})
-
-        event_context = event_payload.get("event_context")
-        if event_context is None:
-            event_context = build_event_context(
-                event_obj=event_obj,
-                minutes_until_start=minutes_until_start,
-                metadata_snapshot=metadata,
-            )
-        if event_context is None:
-            logger.warning(
-                "Alert pipeline missing_normalized_context for event %s; skipping new-runtime alerts",
-                event_obj.id,
-            )
-            return
+        event_obj = getattr(event_context, "event_obj", None)
+        event_id = getattr(event_context, "event_id", getattr(event_obj, "id", "?"))
+        minutes_until_start = getattr(event_context, "minutes_until_start", None)
+        odds_response = getattr(event_context, "odds_response", None)
 
         season_id = event_context.season_id
         competition_id = event_context.competition.competition_id
-        discovery_source = getattr(event_obj, "discovery_source", None)
-
-        #debugging prints:
-        # print("metadata:")
-        # print(metadata)
+        discovery_source = event_context.discovery_source or getattr(event_obj, "discovery_source", None)
 
         # Centralized 'Gating' Logic (Calculate once, reuse everywhere)
         tracked_competition = is_tracked_competition(competition_id)
         is_selected_source = discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
 
         # 1. Synchronization (Wait for external data providers if necessary)
-        self._sync_oddsportal_data(event_obj, odds_response)
+        if event_obj is not None:
+            self._sync_oddsportal_data(event_obj, odds_response)
 
         # 2. Evaluation (Perform analysis and generate prediction reports)
         streak_analysis = None
         should_send_streak = False
         if is_selected_source:
-            streak_analysis, should_send_streak = self._ensure_matchup_streak_analysis(
-                event_payload, event_obj, event_context, season_id, minutes_until_start
-            )
+            streak_analysis, should_send_streak = self._ensure_matchup_streak_analysis(event_context)
 
-       
         if streak_analysis and self.debug_mode == True:
             import os
             import pprint
@@ -116,10 +111,7 @@ class EventAlertProcessor:
             except Exception as e:
                 logger.error(f"Failed to save streak_analysis debug file: {e}")
 
-
         dual_report = self._ensure_dual_process_evaluation(
-            event_payload,
-            event_obj,
             event_context,
             tracked_competition,
             is_selected_source,
@@ -212,7 +204,7 @@ class EventAlertProcessor:
             self.op_data_cache.pop(event_obj.id, None)
 
     def _ensure_matchup_streak_analysis(
-        self, event_payload: dict, event_obj, event_context, season_id, minutes_until_start: int
+        self, event_context: EventContext
     ) -> Tuple[Optional[dict], bool]:
         """Builds or retrieves matchup streak analysis.
 
@@ -224,48 +216,48 @@ class EventAlertProcessor:
         )
 
         return resolve_matchup_streak_analysis(
-            event_payload=event_payload,
-            event_obj=event_obj,
-            season_id=season_id,
-            minutes_until_start=minutes_until_start,
             event_context=event_context,
             debug_mode=self.debug_mode,
         )
 
     def _ensure_dual_process_evaluation(
         self,
-        event_payload: dict,
-        event_obj,
-        event_context,
+        event_context: EventContext,
         tracked_competition: bool,
         is_selected_source: bool,
-        minutes_until_start: int,
+        minutes_until_start: Optional[int],
     ):
         """Runs the dual process prediction engine if needed."""
-        dual_report = event_payload.get("dual_report")
+        dual_report = getattr(event_context, "dual_report", None)
         if dual_report is not None:
             return dual_report
 
+        event_obj = getattr(event_context, "event_obj", None)
         if (
-            is_selected_source or tracked_competition
-        ) and minutes_until_start in dual_process_moments():
+            (is_selected_source or tracked_competition)
+            and minutes_until_start is not None
+            and minutes_until_start in dual_process_moments()
+        ):
             try:
-                return prediction_engine.evaluate_dual_process(
+                report = prediction_engine.evaluate_dual_process(
                     event_obj,
                     minutes_until_start,
                     event_context=event_context,
                 )
+                event_context.dual_report = report
+                return report
             except Exception as exc:
-                logger.error(f"Error running dual process evaluation for event {event_obj.id}: {exc}")
+                event_id = getattr(event_context, "event_id", getattr(event_obj, "id", "?"))
+                logger.error(f"Error running dual process evaluation for event {event_id}: {exc}")
 
         return None
 
     def _dispatch_alerts(
         self,
         event_obj,
-        event_context,
+        event_context: EventContext,
         season_id,
-        minutes_until_start: int,
+        minutes_until_start: Optional[int],
         odds_response: Optional[dict],
         streak_analysis: Optional[dict],
         should_send_streak: bool,
@@ -273,7 +265,7 @@ class EventAlertProcessor:
     ) -> None:
         """Sends the appropriate alerts to the notifier."""
         # 1. Odds Alerts
-        if odds_response:
+        if odds_response and minutes_until_start is not None and event_obj is not None:
             event_data_for_odds = {
                 "id": event_obj.id,
                 "home_team": event_context.home.name,
@@ -297,8 +289,7 @@ class EventAlertProcessor:
             or dual_report.process2_prediction
             or (dual_report.process1_report and dual_report.process1_status in ["partial", "no_match", "no_candidates"])
         ):
-            if minutes_until_start in dual_process_moments():
-                
+            if minutes_until_start is not None and minutes_until_start in dual_process_moments():
                 prediction_engine.send_alerts(pre_start_notifier, [dual_report])
 
                 # Log Process 1 prediction if it's kick-off time
@@ -306,6 +297,7 @@ class EventAlertProcessor:
                     dual_report.process1_report
                     and dual_report.process1_report.get("status") == "success"
                     and is_closing_odds_moment(minutes_until_start)
+                    and event_obj is not None
                 ):
                     prediction_engine.log_process1_prediction_if_needed(
                         event_obj,

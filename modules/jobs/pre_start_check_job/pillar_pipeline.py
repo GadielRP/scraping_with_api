@@ -57,25 +57,35 @@ def _resolve_event_payload_value(event_payload: dict, key: str, default=None):
     return default, "missing"
 
 
-def _resolve_pillar_competition_id(event_payload: dict, event_obj=None):
+def _resolve_pillar_competition_id(event_payload: Any, event_obj=None):
     """Resolve the canonical competition ID used by the pillar scope policy."""
-    event_context = event_payload.get("event_context")
-    competition = getattr(event_context, "competition", None)
-    competition_id = getattr(competition, "competition_id", None)
-    if competition_id is None and isinstance(event_context, dict):
-        competition_id = event_context.get("competition_id")
-        competition = event_context.get("competition")
-        if competition_id is None and isinstance(competition, dict):
-            competition_id = competition.get("competition_id")
-    if competition_id is None and event_obj is not None:
-        competition_id = getattr(event_obj, "competition_id", None)
+    if hasattr(event_payload, "competition"):
+        competition = getattr(event_payload, "competition", None)
+        if competition is not None:
+            return getattr(competition, "competition_id", None)
 
-    if competition_id is None:
+    if isinstance(event_payload, dict):
+        event_context = event_payload.get("event_context")
+        competition = getattr(event_context, "competition", None)
+        competition_id = getattr(competition, "competition_id", None)
+        if competition_id is None and isinstance(event_context, dict):
+            competition_id = event_context.get("competition_id")
+            competition = event_context.get("competition")
+            if competition_id is None and isinstance(competition, dict):
+                competition_id = competition.get("competition_id")
+        if competition_id is not None:
+            return competition_id
+
         event_data = event_payload.get("event_data")
         if isinstance(event_data, dict):
             competition_id = event_data.get("competition_id")
+            if competition_id is not None:
+                return competition_id
 
-    return competition_id
+    if event_obj is not None:
+        return getattr(event_obj, "competition_id", None)
+
+    return None
 
 
 def _is_pillar_competition_in_scope(competition_id) -> bool:
@@ -231,6 +241,7 @@ def _save_pillar_debug_snapshots(
         _write_debug_json(debug_dir / f"{event_id}_event_context.json", event_context)
         _write_debug_json(debug_dir / f"{event_id}_odds_trajectory.json", odds_trajectory_context)
 
+
         logger.info(
             "Pillar debug snapshots saved for event %s at %s",
             event_id,
@@ -254,23 +265,45 @@ class EventPillarProcessor:
         self.event_repo = event_repo
         self.debug_mode = debug_mode
 
-    def process_event(self, event_payload: dict) -> Optional[dict]:
-        """Calculate pillar modules for a single event.
+    def process_event(self, event_context: EventContext | dict) -> Optional[dict]:
+        """Calculate pillar modules for a single event context.
 
         Returns a dictionary with pillar results or ``None`` on failure.
         """
-        event_obj, event_obj_source = _resolve_event_payload_value(event_payload, "event_obj")
-        event_id = getattr(event_obj, "id", event_payload.get("event_id", "?"))
+        payload = event_context if isinstance(event_context, dict) else None
+        if isinstance(event_context, dict):
+            event_context = payload.get("event_context")
+            if event_context is None:
+                event_obj = payload.get("event_obj")
+                minutes_until_start = payload.get("minutes_until_start")
+                metadata_snapshot = payload.get("metadata_snapshot")
+                event_context = build_event_context(
+                    event_obj=event_obj,
+                    minutes_until_start=minutes_until_start,
+                    metadata_snapshot=metadata_snapshot,
+                    observations=payload.get("observations"),
+                    odds_response=payload.get("odds_response"),
+                    odds_trajectory=payload.get("odds_trajectory"),
+                    success=payload.get("success", True),
+                )
+                if event_context is not None:
+                    event_context.streak_analysis = payload.get("streak_analysis")
+                    event_context.should_send_streak_alert = payload.get("should_send_streak_alert", False)
+                    event_context.competition_metadata_resolved = payload.get("competition_metadata_resolved", False)
 
-        if not event_payload.get("success"):
+        if event_context is None or not getattr(event_context, "success", True):
+            event_id = getattr(event_context, "event_id", "?")
             logger.warning(f"☢️ Pillar pipeline: success is false for event {event_id}, skipping pillar calculation")
             return None
+
+        event_obj = getattr(event_context, "event_obj", None)
+        event_id = getattr(event_context, "event_id", getattr(event_obj, "id", "?"))
 
         if event_obj is None:
             logger.warning(f"☢️ Pillar pipeline: event obj is empty for {event_id}, skipping pillar calculation")
             return None
 
-        competition_id = _resolve_pillar_competition_id(event_payload, event_obj)
+        competition_id = event_context.competition.competition_id
         if not _is_pillar_competition_in_scope(competition_id):
             logger.info(
                 "🚫 Pillar pipeline: competition_id=%s is outside the configured scope for event %s; skipping pillar calculation",
@@ -280,7 +313,7 @@ class EventPillarProcessor:
             return None
 
         logger.info(f"🏛️ Started pillars processing for event {event_id}")
-        round_value = event_obj.round
+        round_value = getattr(event_obj, "round", None)
         if round_value != "regular_season":
             logger.info(
                 "🚫 Pillar pipeline: round is %s for event_id %s, skipping pillar calculation",
@@ -289,32 +322,9 @@ class EventPillarProcessor:
             )
             return None
 
-        minutes_until_start, minutes_source = _resolve_event_payload_value(event_payload, "minutes_until_start")
-        metadata_snapshot, metadata_source = _resolve_event_payload_value(event_payload, "metadata_snapshot")
-        event_context, event_context_source = _resolve_event_payload_value(event_payload, "event_context")
-        odds_trajectory, odds_trajectory_source = _resolve_event_payload_value(event_payload, "odds_trajectory")
+        minutes_until_start = getattr(event_context, "minutes_until_start", None)
+        odds_trajectory = getattr(event_context, "odds_trajectory", [])
         odds_trajectory_context = build_odds_trajectory_context(odds_trajectory)
-        logger.info(
-            "Pillar payload resolution for event %s: event_obj=%s minutes_until_start=%s metadata_snapshot=%s event_context=%s odds_trajectory=%s",
-            event_id,
-            event_obj_source,
-            minutes_source,
-            metadata_source,
-            event_context_source,
-            odds_trajectory_source,
-        )
-        if event_context is None:
-            event_context = build_event_context(
-                event_obj=event_obj,
-                minutes_until_start=minutes_until_start,
-                metadata_snapshot=metadata_snapshot,
-            )
-        if event_context is None:
-            logger.warning(
-                "☢️ Pillar pipeline: missing_normalized_context for event %s; skipping pillar calculation",
-                event_obj.id,
-            )
-            return None
 
         logger.info(
             "Pillar odds trajectory context for event %s: available=%s market_groups=%s present_minutes=%s missing_minutes=%s",
@@ -478,11 +488,8 @@ class EventPillarProcessor:
             missing_fields.append("total_regular_season_games")
         if getattr(event_context.competition, "standings_grouping", None) is None:
             missing_fields.append("standings_grouping")
-        
-        if missing_fields and event_payload.get("competition_metadata_resolved"):
-            # The pre-start payload builder already ran the resolver for this
-            # exact context; a second run would hit the already-attempted guard
-            # and return the same values, so skip the redundant work.
+
+        if missing_fields and (getattr(event_context, "competition_metadata_resolved", False) or (payload and payload.get("competition_metadata_resolved"))):
             logger.info(
                 "Pillar pipeline metadata enrichment skipped for event %s; resolver already ran during payload build (missing fields: %s)",
                 event_id,
@@ -512,10 +519,6 @@ class EventPillarProcessor:
 
         # --- Resolve streak analysis (shared with alert pipeline) ---
         streak_analysis, _should_send = resolve_matchup_streak_analysis(
-            event_payload=event_payload,
-            event_obj=event_obj,
-            season_id=season_id,
-            minutes_until_start=minutes_until_start,
             event_context=event_context,
             debug_mode=self.debug_mode,
         )
@@ -590,7 +593,6 @@ class EventPillarProcessor:
         p1_result.setdefault("raw", {}).update({
             "odds_trajectory_available": odds_trajectory_context.available,
             "odds_trajectory_target_minutes_present": odds_trajectory_context.target_minutes_present,
-            "odds_trajectory_missing_target_minutes": odds_trajectory_context.missing_target_minutes,
         })
 
         # Log the M1 result.

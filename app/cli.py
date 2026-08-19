@@ -146,7 +146,7 @@ def start_scheduler():
 
     job_scheduler.start()
 
-    print("\nSofaScore Odds System Started Successfully!")
+    print("\n🟢 SofaScore Odds System Started Successfully!")
     print("=" * 50)
     print("Scheduled Jobs:")
     print(f"  - Discovery (dropping odds): Daily at {', '.join(Config.DISCOVERY_TIMES)}")

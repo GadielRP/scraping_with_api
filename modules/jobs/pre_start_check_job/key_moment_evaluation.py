@@ -292,8 +292,8 @@ def _build_evaluation_payloads(
     event_plan: PreStartEventPlan,
     key_event_ids: set[int],
     missing_competition_ids: set[int],
-) -> list[dict]:
-    """Build EventContext, enrich competition metadata, then assemble payloads.
+) -> list[EventContext]:
+    """Build EventContext, enrich competition metadata, then return typed EventContexts.
 
     Two explicit phases (logged separately):
     1. EventContext construction from DB event + optional tennis snapshot
@@ -335,6 +335,10 @@ def _build_evaluation_payloads(
             event_obj=event_obj,
             minutes_until_start=initial_minutes,
             metadata_snapshot=candidate.get("metadata_snapshot"),
+            observations=candidate.get("observations"),
+            odds_response=candidate.get("odds_response"),
+            odds_trajectory=[],
+            success=True,
         )
         if event_context is None:
             skipped_context_build += 1
@@ -377,76 +381,46 @@ def _build_evaluation_payloads(
         "(contexts=%s)",
         len(prepared),
     )
-    payloads: list[dict] = []
+    contexts: list[EventContext] = []
     for item in prepared:
-        candidate = item["candidate"]
         event_obj = item["event_obj"]
         event_context = item["event_context"]
-        initial_minutes = item["initial_minutes"]
-        event_id = candidate["event_id"]
 
         enrich_event_context_competition_metadata(
             event_context,
             event_obj,
             missing_competition_ids,
         )
-        payloads.append(
-            {
-                "event_id": event_id,
-                "event_obj": event_obj,
-                "initial_minutes": initial_minutes,
-                "observations": candidate.get("observations"),
-                "odds_response": candidate.get("odds_response"),
-                # Populated only when the pillar pipeline is enabled. Alerts do
-                # not consume trajectory data.
-                "odds_trajectory": [],
-                "metadata_snapshot": candidate.get("metadata_snapshot"),
-                "event_context": event_context,
-                "season_id": getattr(event_obj, "season_id", None),
-                "should_send_streak_alert": False,
-                "streak_analysis": None,
-                "dual_report": None,
-                "minutes_until_start": initial_minutes,
-                "success": True,
-                # Competition metadata was already resolved above; downstream
-                # pipelines can skip re-running the resolver for this payload.
-                "competition_metadata_resolved": True,
-            }
-        )
+        event_context.competition_metadata_resolved = True
+        contexts.append(event_context)
 
     logger.info(
         "🏟️ END competition metadata enrichment "
-        "(enriched=%s payloads=%s missing_standings_competitions=%s)",
-        len(payloads),
-        len(payloads),
+        "(enriched=%s contexts=%s missing_standings_competitions=%s)",
+        len(contexts),
+        len(contexts),
         len(missing_competition_ids),
     )
-    return payloads
+    return contexts
 
 
-def _log_debug_payloads(payloads: list[dict]) -> None:
+def _log_debug_payloads(contexts: list[EventContext]) -> None:
     logger.info("EVENTS FOR PILLARS (DEBUG MODE)")
-    for index, payload in enumerate(payloads, 1):
-        context = payload.get("event_context")
+    for index, context in enumerate(contexts, 1):
         label = (
             context.participants_label
             if context
-            else f"Event {payload.get('event_obj').id}"
+            else f"Event {getattr(context, 'event_id', '?')}"
         )
         sport = context.sport if context else "Unknown"
-        filtered_payload = {
-            key: value
-            for key, value in payload.items()
-            if key not in {"odds_response", "odds_trajectory"}
-        }
         logger.info(
             "[%s/%s] %s | sport=%s | minutes=%s\n%s",
             index,
-            len(payloads),
+            len(contexts),
             label,
             sport,
-            payload.get("minutes_until_start"),
-            pprint.pformat(filtered_payload, indent=2, width=120),
+            context.minutes_until_start,
+            pprint.pformat(context, indent=2, width=120),
         )
 
 
@@ -521,18 +495,18 @@ def evaluate_pre_start_key_moments(
         len(key_event_ids),
     )
     missing_competition_ids: set[int] = set()
-    payloads = _build_evaluation_payloads(
+    contexts = _build_evaluation_payloads(
         scheduler,
         event_plan,
         key_event_ids,
         missing_competition_ids,
     )
-    if not payloads:
+    if not contexts:
         return
 
     if Config.ENABLE_LEGACY_ALERT_PIPELINE:
         evaluate_and_dispatch_alerts_batch(
-            payloads,
+            contexts,
             key_moments,
             scheduler.event_repo,
             op_event_states=oddsportal_context.event_states,
@@ -544,7 +518,7 @@ def evaluate_pre_start_key_moments(
     flush_missing_standings_endpoints(missing_competition_ids)
 
     if Config.ENABLE_PILLAR_PIPELINE:
-        validated_event_ids = {int(payload["event_id"]) for payload in payloads}
+        validated_event_ids = {int(context.event_id) for context in contexts}
         logger.info(
             "Loading odds trajectory for %s validated pillar event(s)",
             len(validated_event_ids),
@@ -553,16 +527,16 @@ def evaluate_pre_start_key_moments(
             validated_event_ids,
             key_moments,
         )
-        for payload in payloads:
-            payload["odds_trajectory"] = trajectory_payloads.get(
-                int(payload["event_id"]),
+        for context in contexts:
+            context.odds_trajectory = trajectory_payloads.get(
+                int(context.event_id),
                 [],
             )
 
         if debug_mode:
-            _log_debug_payloads(payloads)
+            _log_debug_payloads(contexts)
         evaluate_and_calculate_pillars_batch(
-            events_for_pillars=payloads,
+            events_for_pillars=contexts,
             key_moments=key_moments,
             event_repo=scheduler.event_repo,
             op_event_states=oddsportal_context.event_states,

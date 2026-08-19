@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from infrastructure.persistence.repositories import DualProcessOddsRepository
 from infrastructure.settings import Config
@@ -50,10 +50,11 @@ def _normalized_context_is_complete(event_context: EventContext) -> Tuple[bool, 
     return len(missing) == 0, missing
 
 
-def _resolve_preloaded_standings_response(event_payload: dict, event_context: EventContext):
-    preloaded = event_payload.get("competition_standings_response")
-    if preloaded is not None:
-        return preloaded
+def _resolve_preloaded_standings_response(event_context: Optional[EventContext], event_payload: Optional[dict] = None):
+    if event_payload is not None:
+        preloaded = event_payload.get("competition_standings_response")
+        if preloaded is not None:
+            return preloaded
     competition = getattr(event_context, "competition", None)
     if competition is not None:
         return getattr(competition, "standings_response", None)
@@ -61,47 +62,63 @@ def _resolve_preloaded_standings_response(event_payload: dict, event_context: Ev
 
 
 def resolve_matchup_streak_analysis(
-    event_payload: dict,
-    event_obj,
-    season_id: Optional[int],
-    minutes_until_start: int,
     event_context: EventContext,
     debug_mode: bool = False,
+    *,
+    event_payload: Optional[dict] = None,
+    event_obj: Any = None,
+    season_id: Optional[int] = None,
+    minutes_until_start: Optional[int] = None,
 ) -> Tuple[Optional[MatchupStreakContext], bool]:
-    """Build or retrieve a strict ``MatchupStreakContext`` for *event_obj*."""
-    streak_analysis = event_payload.get("streak_analysis")
-    should_send = event_payload.get("should_send_streak_alert", False)
+    """Build or retrieve a strict ``MatchupStreakContext`` for *event_context*."""
+    if isinstance(event_context, dict) and event_payload is None:
+        event_payload = event_context
+        event_context = event_payload.get("event_context")
+
+    if event_context is None:
+        logger.warning("missing_normalized_context_field: event_context is None for event_id=%s", getattr(event_obj, "id", "?"))
+        return None, False
+
+    event_obj = event_obj or getattr(event_context, "event_obj", None)
+    event_id = getattr(event_context, "event_id", getattr(event_obj, "id", None))
+    custom_id = getattr(event_context, "custom_id", getattr(event_obj, "custom_id", None))
+    minutes = minutes_until_start if minutes_until_start is not None else getattr(event_context, "minutes_until_start", None)
+    effective_season_id = getattr(event_context, "season_id", None) if getattr(event_context, "season_id", None) is not None else season_id
+
+    streak_analysis = getattr(event_context, "streak_analysis", None)
+    if streak_analysis is None and event_payload:
+        streak_analysis = event_payload.get("streak_analysis")
+
+    should_send = getattr(event_context, "should_send_streak_alert", False)
+    if not should_send and event_payload:
+        should_send = event_payload.get("should_send_streak_alert", False)
 
     if streak_analysis is not None:
         logger.info(
             "Reusing precomputed streak analysis for event %s",
-            getattr(event_obj, "id", "?"),
+            event_id,
         )
         return streak_analysis, should_send
 
-    if minutes_until_start != 30 or not getattr(event_obj, "custom_id", None):
-        logger.info(f"🚫 Skipping streak analysis for event {event_obj.id} with {minutes_until_start} minutes until start")
-        return None, False
-
-    if event_context is None:
-        logger.warning("missing_normalized_context_field: event_context is None for event_id=%s", getattr(event_obj, "id", "?"))
+    if minutes != 30 or not custom_id:
+        logger.info(f"🚫 Skipping streak analysis for event {event_id} with {minutes} minutes until start")
         return None, False
 
     is_complete, missing = _normalized_context_is_complete(event_context)
     if not is_complete:
         logger.info(
             "Skipping streak analysis for event %s due to incomplete normalized context",
-            getattr(event_obj, "id", "?"),
+            event_id,
         )
         logger.warning(
             "missing_normalized_context_field: event_id=%s missing=%s",
-            getattr(event_obj, "id", "?"),
+            event_id,
             ",".join(missing),
         )
         return None, False
 
     try:
-        matchup_response = api_client.get_h2h_events_for_event(event_obj.custom_id)
+        matchup_response = api_client.get_h2h_events_for_event(custom_id)
         matchup_events = matchup_response.get("events", []) if matchup_response else []
         raw_matchup_count = len(matchup_events)
         max_h2h_events = Config.MATCHUP_H2H_MAX_EVENTS
@@ -115,16 +132,16 @@ def resolve_matchup_streak_analysis(
             del matchup_events[max_h2h_events:]
             logger.info(
                 "Bounded H2H payload for event %s from %s to %s newest events",
-                event_obj.id,
+                event_id,
                 raw_matchup_count,
                 len(matchup_events),
             )
         matchup_response = None
-        dual_process_odds = DualProcessOddsRepository.get_event_odds(event_obj.id)
+        dual_process_odds = DualProcessOddsRepository.get_event_odds(event_id) if event_id is not None else None
 
         logger.debug(
             "normalized_context_audit: event_id=%s participants=%s competition_id=%s unique_tournament_id=%s home_team_id=%s away_team_id=%s season_id=%s",
-            event_obj.id,
+            event_id,
             event_context.participants_label,
             event_context.competition.competition_id,
             event_context.competition.source_unique_tournament_id,
@@ -133,9 +150,13 @@ def resolve_matchup_streak_analysis(
             event_context.season_id,
         )
 
+        observations = getattr(event_context, "observations", None)
+        if not observations and event_payload:
+            observations = event_payload.get("observations")
+
         streak_analysis = build_matchup_streak_context(
-            event_id=event_obj.id,
-            event_custom_id=event_obj.custom_id,
+            event_id=event_id,
+            event_custom_id=custom_id,
             event_start_time=event_context.start_time_utc,
             sport=event_context.sport,
             discovery_source=event_context.discovery_source,
@@ -149,25 +170,27 @@ def resolve_matchup_streak_analysis(
                 event_context.competition.slug
                 or event_context.competition.unique_slug
             ),
-            season_id=event_context.season_id if event_context.season_id is not None else season_id,
+            season_id=effective_season_id,
             season_name=event_context.season_name,
             season_year=event_context.season_year,
             participants=event_context.participants_label,
             home_team_name=event_context.home.name,
             away_team_name=event_context.away.name,
             matchup_events=matchup_events,
-            minutes_until_start=minutes_until_start,
-            observations=event_payload.get("observations"),
+            minutes_until_start=minutes,
+            observations=observations,
             home_team_id=event_context.home.source_participant_id,
             away_team_id=event_context.away.source_participant_id,
-            standings_response=_resolve_preloaded_standings_response(event_payload, event_context),
+            standings_response=_resolve_preloaded_standings_response(event_context, event_payload),
             competition_context=event_context.competition,
             event_odds=dual_process_odds,
             debug_mode=debug_mode,
         )
         should_send = bool(streak_analysis and should_send_streak_alert(streak_analysis))
+        event_context.streak_analysis = streak_analysis
+        event_context.should_send_streak_alert = should_send
     except Exception as exc:
-        logger.error("Error generating matchup streak analysis for event %s: %s", event_obj.id, exc)
+        logger.error("Error generating matchup streak analysis for event %s: %s", event_id, exc)
         return None, False
 
     return streak_analysis, should_send

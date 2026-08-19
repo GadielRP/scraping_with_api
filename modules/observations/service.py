@@ -37,10 +37,15 @@ class SportObservationService:
         rows: list[dict] = []
         for observation in observations or []:
             observation_type = observation.get("type")
+            
+            # Skip in-memory-only observations that are not persisted to database.
+            if observation_type == "rankings":
+                continue
+                
             observation_value = observation.get("value")
             sport = observation.get("sport") or fallback_sport or "Unknown"
             if not observation_type or observation_value is None:
-                logger.warning("Invalid observation data: %s", observation)
+                logger.info("Invalid observation data: %s", observation)
                 continue
             rows.append(
                 {

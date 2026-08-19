@@ -32,6 +32,7 @@ root_dir/
     jobs/                      # scheduled and ad‑hoc jobs
     observations/              # observations & sport‑specific enrichments
     oddsportal/                # Playwright scraper & models for OddsPortal
+    pillars/                   # modular prediction pillars (P1, P4, P5) and normalized event context
     prediction/                # prediction logging & utilities
     sofascore/                 # SofaScore API client & helpers
   infrastructure/              # cross‑cutting concerns: networking, persistence, scheduling, settings
@@ -87,7 +88,7 @@ daily_discovery/ – fetches today’s events and odds across sports. It maintai
 discover_dropping_odds/ & discover_secondary_sources/ – run the A and B discovery paths. Secondary sources include high‑value streaks, team streaks, H2H, winning odds and optimisation filters.
 midnight_sync_job/ – runs after midnight to collect match results, update prediction logs and refresh materialised views.
 parallelism/ – utilities for job parallelisation, event filtering and recommendation generation.
-pre_start_check_job/ – executes the core alert pipeline. It orchestrates three phases: 1) synchronise with OddsPortal to fetch supplemental odds, 2) evaluate dual process and matchup streak candidates, 3) dispatch formatted alerts. Additional modules handle in‑game checks, odds extraction, rescheduled events and time correction.
+pre_start_check_job/ – executes the core alert and pillar pipeline. It orchestrates three phases: 1) synchronise with OddsPortal & Oddspapi to fetch supplemental odds, 2) evaluate dual process, matchup streak candidates and modular pillars via the unified `EventContext`, 3) dispatch formatted alerts. Additional modules handle in‑game checks, odds extraction, rescheduled events and time correction.
 results_collection_job/ – collects finished match results and updates prediction logs.
 
 Jobs are scheduled through the infrastructure/scheduler using the schedule
@@ -95,7 +96,18 @@ Jobs are scheduled through the infrastructure/scheduler using the schedule
 
 ### Observations (modules/observations)
 
-The observations package extracts additional metadata about events. For example, the sofascore_extractor.py module scrapes details such as court surface, player gender and venue; tennis.py adds tennis‑specific observations; and service.py coordinates persistence. These enrichments are persisted in the event_observations table and used by alert engines.
+The observations package extracts additional metadata about events. For example, the sofascore_extractor.py module scrapes details such as court surface, player gender and venue; tennis.py adds tennis‑specific observations; and service.py coordinates persistence. These enrichments are persisted in the event_observations table and used by alert and pillar engines.
+
+### Pillars (modules/pillars)
+
+The pillars package implements specialized analytical and statistical signal engines:
+
+* `context.py`: Defines the typed lifecycle data model (`EventContext`). It encapsulates normalized participants, competition data, trajectory contexts, observations, and prediction reports without relying on unstructured dictionaries.
+* `streak_analysis_resolver.py`: Centralized resolver that coordinates matchup streak evaluation and form analysis across alert and pillar pipelines.
+* `competition_metadata_resolver.py`: Enriches and caches league structure details (e.g. number of teams, total regular season games, standings groupings).
+* `pillar_1_team_structure/`: Multilayer side and totals engine (Base Strength, Offensive Profile, Direct Matchup, Quality-Adjusted Immediate State, Structural Drift, Opponent Expectation, etc.).
+* `pillar_4_temporal_market_drift/`: Evaluates market velocity and temporal drift across opening and closing odds.
+* `pillar_5_exact_price_memory/`: Analyzes price memory, stability and exact quote distribution across bookmakers.
 
 ### OddsPortal Scraping (modules/oddsportal)
 

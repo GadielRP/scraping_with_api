@@ -57,6 +57,17 @@ class EventContext:
     competition: CompetitionContext
     participants_label: str
     context_status: str
+    event_obj: Any = None
+    observations: list[dict] = field(default_factory=list)
+    odds_response: Optional[dict] = None
+    odds_trajectory: list[dict] = field(default_factory=list)
+    odds_trajectory_context: Optional[Any] = None
+    metadata_snapshot: Optional[dict] = None
+    streak_analysis: Optional[Any] = None
+    should_send_streak_alert: bool = False
+    dual_report: Optional[Any] = None
+    competition_metadata_resolved: bool = False
+    success: bool = True
 
 
 def _missing_context_message(event_obj, missing: list[str]) -> str:
@@ -75,9 +86,13 @@ def build_event_context(
     event_obj,
     minutes_until_start: Optional[int] = None,
     metadata_snapshot: Optional[dict] = None,
+    observations: Optional[list[dict]] = None,
+    odds_response: Optional[dict] = None,
+    odds_trajectory: Optional[list[dict]] = None,
+    success: bool = True,
 ) -> Optional[EventContext]:
     """Build EventContext, preferring normalized relations with temporary legacy fallback."""
-    metadata_snapshot = metadata_snapshot or {}
+    raw_metadata = metadata_snapshot or {}
 
     missing: list[str] = []
     legacy_fallback_used = False
@@ -258,6 +273,12 @@ def build_event_context(
         competition=competition,
         participants_label=f"{home_name} vs {away_name}",
         context_status=context_status,
+        event_obj=event_obj,
+        observations=observations or [],
+        odds_response=odds_response,
+        odds_trajectory=odds_trajectory or [],
+        metadata_snapshot=metadata_snapshot,
+        success=success,
     )
 
 
