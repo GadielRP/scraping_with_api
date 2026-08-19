@@ -40,32 +40,11 @@ class EventAlertProcessor:
         self.op_data_cache = op_data_cache
         self.debug_mode = debug_mode
 
-    def process_event(self, event_context: EventContext | dict) -> None:
+    def process_event(self, event_context: EventContext) -> None:
         """
         Main execution flow for a single event context.
         Orchestrates synchronization, evaluation, and dispatching.
         """
-        if isinstance(event_context, dict):
-            payload = event_context
-            event_context = payload.get("event_context")
-            if event_context is None:
-                event_obj = payload.get("event_obj")
-                minutes_until_start = payload.get("minutes_until_start")
-                metadata = payload.get("metadata_snapshot", {})
-                event_context = build_event_context(
-                    event_obj=event_obj,
-                    minutes_until_start=minutes_until_start,
-                    metadata_snapshot=metadata,
-                    observations=payload.get("observations"),
-                    odds_response=payload.get("odds_response"),
-                    odds_trajectory=payload.get("odds_trajectory"),
-                    success=payload.get("success", True),
-                )
-                if event_context is not None:
-                    event_context.dual_report = payload.get("dual_report")
-                    event_context.streak_analysis = payload.get("streak_analysis")
-                    event_context.should_send_streak_alert = payload.get("should_send_streak_alert", False)
-
         if event_context is None or not getattr(event_context, "success", True):
             return
 
@@ -91,6 +70,14 @@ class EventAlertProcessor:
         should_send_streak = False
         if is_selected_source:
             streak_analysis, should_send_streak = self._ensure_matchup_streak_analysis(event_context)
+        else:
+            logger.info(
+                "🚫 Skipping streak analysis for event %s (%s): discovery_source=%r not in DISCOVERY_SOURCES_FOR_ALERTS (%s)",
+                event_id,
+                getattr(event_context, "participants_label", f"{event_context.home.name} vs {event_context.away.name}"),
+                discovery_source,
+                Config.DISCOVERY_SOURCES_FOR_ALERTS,
+            )
 
         if streak_analysis and self.debug_mode == True:
             import os
@@ -307,7 +294,7 @@ class EventAlertProcessor:
 
 
 def evaluate_and_dispatch_alerts_batch(
-    events_for_alerts: list,
+    events_for_alerts: list[EventContext],
     key_moments: list,
     event_repo,
     op_event_states=None,
@@ -338,15 +325,15 @@ def evaluate_and_dispatch_alerts_batch(
         max_workers,
     )
     if max_workers == 1:
-        for payload in events_for_alerts:
+        for event_context in events_for_alerts:
             try:
-                processor.process_event(payload)
+                processor.process_event(event_context)
             except Exception as exc:
                 logger.error(f"Critical failure in alert processing: {exc}")
         return
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(processor.process_event, payload) for payload in events_for_alerts]
+        futures = [executor.submit(processor.process_event, event_context) for event_context in events_for_alerts]
         for future in futures:
             try:
                 future.result()

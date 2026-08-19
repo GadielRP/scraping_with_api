@@ -102,10 +102,10 @@ def build_event_context(
     legacy_home_name = _clean_text(getattr(event_obj, "home_team", None))
     legacy_away_name = _clean_text(getattr(event_obj, "away_team", None))
     legacy_competition_name = _clean_text(getattr(event_obj, "competition", None))
-    snapshot_home_team_id = metadata_snapshot.get("home_team_id")
-    snapshot_away_team_id = metadata_snapshot.get("away_team_id")
-    snapshot_competition_slug = _clean_text(metadata_snapshot.get("competition_slug"))
-    snapshot_unique_tournament_id = metadata_snapshot.get("unique_tournament_id")
+    snapshot_home_team_id = raw_metadata.get("home_team_id")
+    snapshot_away_team_id = raw_metadata.get("away_team_id")
+    snapshot_competition_slug = _clean_text(raw_metadata.get("competition_slug"))
+    snapshot_unique_tournament_id = raw_metadata.get("unique_tournament_id")
 
     if home_participant is None and legacy_home_name is None:
         missing.append("home_participant")

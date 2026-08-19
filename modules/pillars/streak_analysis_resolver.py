@@ -50,11 +50,9 @@ def _normalized_context_is_complete(event_context: EventContext) -> Tuple[bool, 
     return len(missing) == 0, missing
 
 
-def _resolve_preloaded_standings_response(event_context: Optional[EventContext], event_payload: Optional[dict] = None):
-    if event_payload is not None:
-        preloaded = event_payload.get("competition_standings_response")
-        if preloaded is not None:
-            return preloaded
+def _resolve_preloaded_standings_response(event_context: Optional[EventContext]):
+    if event_context is None:
+        return None
     competition = getattr(event_context, "competition", None)
     if competition is not None:
         return getattr(competition, "standings_response", None)
@@ -64,34 +62,20 @@ def _resolve_preloaded_standings_response(event_context: Optional[EventContext],
 def resolve_matchup_streak_analysis(
     event_context: EventContext,
     debug_mode: bool = False,
-    *,
-    event_payload: Optional[dict] = None,
-    event_obj: Any = None,
-    season_id: Optional[int] = None,
-    minutes_until_start: Optional[int] = None,
 ) -> Tuple[Optional[MatchupStreakContext], bool]:
     """Build or retrieve a strict ``MatchupStreakContext`` for *event_context*."""
-    if isinstance(event_context, dict) and event_payload is None:
-        event_payload = event_context
-        event_context = event_payload.get("event_context")
-
     if event_context is None:
-        logger.warning("missing_normalized_context_field: event_context is None for event_id=%s", getattr(event_obj, "id", "?"))
+        logger.warning("missing_normalized_context_field: event_context is None")
         return None, False
 
-    event_obj = event_obj or getattr(event_context, "event_obj", None)
+    event_obj = getattr(event_context, "event_obj", None)
     event_id = getattr(event_context, "event_id", getattr(event_obj, "id", None))
     custom_id = getattr(event_context, "custom_id", getattr(event_obj, "custom_id", None))
-    minutes = minutes_until_start if minutes_until_start is not None else getattr(event_context, "minutes_until_start", None)
-    effective_season_id = getattr(event_context, "season_id", None) if getattr(event_context, "season_id", None) is not None else season_id
+    minutes = getattr(event_context, "minutes_until_start", None)
+    effective_season_id = getattr(event_context, "season_id", None)
 
     streak_analysis = getattr(event_context, "streak_analysis", None)
-    if streak_analysis is None and event_payload:
-        streak_analysis = event_payload.get("streak_analysis")
-
     should_send = getattr(event_context, "should_send_streak_alert", False)
-    if not should_send and event_payload:
-        should_send = event_payload.get("should_send_streak_alert", False)
 
     if streak_analysis is not None:
         logger.info(
@@ -151,8 +135,6 @@ def resolve_matchup_streak_analysis(
         )
 
         observations = getattr(event_context, "observations", None)
-        if not observations and event_payload:
-            observations = event_payload.get("observations")
 
         streak_analysis = build_matchup_streak_context(
             event_id=event_id,
@@ -181,7 +163,7 @@ def resolve_matchup_streak_analysis(
             observations=observations,
             home_team_id=event_context.home.source_participant_id,
             away_team_id=event_context.away.source_participant_id,
-            standings_response=_resolve_preloaded_standings_response(event_context, event_payload),
+            standings_response=_resolve_preloaded_standings_response(event_context),
             competition_context=event_context.competition,
             event_odds=dual_process_odds,
             debug_mode=debug_mode,

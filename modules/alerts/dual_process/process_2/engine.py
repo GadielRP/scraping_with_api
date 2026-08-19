@@ -91,7 +91,7 @@ class Process2Engine:
             )
 
             if sport == "football":
-                return self._evaluate_football(event)
+                return self._evaluate_football(event, event_context=event_context)
 
             logger.info("[PROCESS2] Sport '%s' not supported yet, skipping", sport)
             return None
@@ -99,9 +99,12 @@ class Process2Engine:
             logger.error("[PROCESS2] Error evaluating event %s: %s", getattr(event, "id", "?"), e)
             return None
 
-    def _evaluate_football(self, event) -> Process2Report:
+    def _evaluate_football(self, event, event_context=None) -> Process2Report:
         """Evaluate football event using football-specific formulas."""
         try:
+            home_team, away_team, _competition_name = self._get_normalized_event_parts(
+                event, event_context=event_context
+            )
             event_odds = self._ensure_dual_process_odds_loaded(event)
             if not event_odds:
                 logger.warning(

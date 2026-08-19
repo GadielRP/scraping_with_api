@@ -19,6 +19,7 @@ from typing import Any, Optional
 from infrastructure.settings import Config
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.pillars.context import (
+    EventContext,
     build_event_context,
     summarize_number_of_teams_from_streak_analysis,
 )
@@ -46,41 +47,23 @@ def _serialize_p1_totals_output(output: P1TotalsOutput) -> dict:
     return asdict(output)
 
 
-def _resolve_event_payload_value(event_payload: dict, key: str, default=None):
-    if key in event_payload:
-        return event_payload.get(key), "top_level"
-
-    event_data = event_payload.get("event_data")
-    if isinstance(event_data, dict) and key in event_data:
-        return event_data.get(key), "event_data"
-
-    return default, "missing"
-
-
-def _resolve_pillar_competition_id(event_payload: Any, event_obj=None):
+def _resolve_pillar_competition_id(event_context: Any, event_obj=None):
     """Resolve the canonical competition ID used by the pillar scope policy."""
-    if hasattr(event_payload, "competition"):
-        competition = getattr(event_payload, "competition", None)
+    if hasattr(event_context, "competition"):
+        competition = getattr(event_context, "competition", None)
         if competition is not None:
             return getattr(competition, "competition_id", None)
 
-    if isinstance(event_payload, dict):
-        event_context = event_payload.get("event_context")
-        competition = getattr(event_context, "competition", None)
-        competition_id = getattr(competition, "competition_id", None)
-        if competition_id is None and isinstance(event_context, dict):
-            competition_id = event_context.get("competition_id")
-            competition = event_context.get("competition")
-            if competition_id is None and isinstance(competition, dict):
-                competition_id = competition.get("competition_id")
+    if isinstance(event_context, dict):
+        ctx = event_context.get("event_context")
+        if ctx and hasattr(ctx, "competition"):
+            return getattr(ctx.competition, "competition_id", None)
+        competition_id = event_context.get("competition_id")
         if competition_id is not None:
             return competition_id
-
-        event_data = event_payload.get("event_data")
+        event_data = event_context.get("event_data")
         if isinstance(event_data, dict):
-            competition_id = event_data.get("competition_id")
-            if competition_id is not None:
-                return competition_id
+            return event_data.get("competition_id")
 
     if event_obj is not None:
         return getattr(event_obj, "competition_id", None)
@@ -265,32 +248,11 @@ class EventPillarProcessor:
         self.event_repo = event_repo
         self.debug_mode = debug_mode
 
-    def process_event(self, event_context: EventContext | dict) -> Optional[dict]:
+    def process_event(self, event_context: EventContext) -> Optional[dict]:
         """Calculate pillar modules for a single event context.
 
         Returns a dictionary with pillar results or ``None`` on failure.
         """
-        payload = event_context if isinstance(event_context, dict) else None
-        if isinstance(event_context, dict):
-            event_context = payload.get("event_context")
-            if event_context is None:
-                event_obj = payload.get("event_obj")
-                minutes_until_start = payload.get("minutes_until_start")
-                metadata_snapshot = payload.get("metadata_snapshot")
-                event_context = build_event_context(
-                    event_obj=event_obj,
-                    minutes_until_start=minutes_until_start,
-                    metadata_snapshot=metadata_snapshot,
-                    observations=payload.get("observations"),
-                    odds_response=payload.get("odds_response"),
-                    odds_trajectory=payload.get("odds_trajectory"),
-                    success=payload.get("success", True),
-                )
-                if event_context is not None:
-                    event_context.streak_analysis = payload.get("streak_analysis")
-                    event_context.should_send_streak_alert = payload.get("should_send_streak_alert", False)
-                    event_context.competition_metadata_resolved = payload.get("competition_metadata_resolved", False)
-
         if event_context is None or not getattr(event_context, "success", True):
             event_id = getattr(event_context, "event_id", "?")
             logger.warning(f"☢️ Pillar pipeline: success is false for event {event_id}, skipping pillar calculation")
@@ -489,7 +451,7 @@ class EventPillarProcessor:
         if getattr(event_context.competition, "standings_grouping", None) is None:
             missing_fields.append("standings_grouping")
 
-        if missing_fields and (getattr(event_context, "competition_metadata_resolved", False) or (payload and payload.get("competition_metadata_resolved"))):
+        if missing_fields and getattr(event_context, "competition_metadata_resolved", False):
             logger.info(
                 "Pillar pipeline metadata enrichment skipped for event %s; resolver already ran during payload build (missing fields: %s)",
                 event_id,
@@ -816,23 +778,23 @@ class EventPillarProcessor:
 
 
 def evaluate_and_calculate_pillars_batch(
-    events_for_pillars: list,
+    events_for_pillars: list[EventContext],
     key_moments: list,
     event_repo,
     op_event_states=None,
     op_event_ids=None,
     op_data_cache=None,
     debug_mode: bool = False,
-) -> None:
-    """Entry point to evaluate pillar modules for a batch of events."""
+):
+    """Entry point to evaluate and calculate pillar modules for a batch of events."""
     if not events_for_pillars:
         return
 
     allowed_events = [
-        payload
-        for payload in events_for_pillars
+        event_context
+        for event_context in events_for_pillars
         if _is_pillar_competition_in_scope(
-            _resolve_pillar_competition_id(payload)
+            _resolve_pillar_competition_id(event_context)
         )
     ]
     skipped_count = len(events_for_pillars) - len(allowed_events)
@@ -862,17 +824,17 @@ def evaluate_and_calculate_pillars_batch(
         max_workers,
     )
     if max_workers == 1:
-        for payload in allowed_events:
+        for event_context in allowed_events:
             try:
-                processor.process_event(payload)
+                processor.process_event(event_context)
             except Exception as exc:
                 logger.error("Critical failure in pillar processing: %s", exc)
         return
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
-            executor.submit(processor.process_event, payload)
-            for payload in allowed_events
+            executor.submit(processor.process_event, event_context)
+            for event_context in allowed_events
         ]
         for future in futures:
             try:
