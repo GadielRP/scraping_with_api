@@ -88,7 +88,33 @@ daily_discovery/ – fetches today’s events and odds across sports. It maintai
 discover_dropping_odds/ & discover_secondary_sources/ – run the A and B discovery paths. Secondary sources include high‑value streaks, team streaks, H2H, winning odds and optimisation filters.
 midnight_sync_job/ – runs after midnight to collect match results, update prediction logs and refresh materialised views.
 parallelism/ – utilities for job parallelisation, event filtering and recommendation generation.
-pre_start_check_job/ – executes the core alert and pillar pipeline. It orchestrates three phases: 1) synchronise with OddsPortal & Oddspapi to fetch supplemental odds, 2) evaluate dual process, matchup streak candidates and modular pillars via the unified `EventContext`, 3) dispatch formatted alerts. Additional modules handle in‑game checks, odds extraction, rescheduled events and time correction.
+pre_start_check_job/ – executes the core pre-start lifecycle, provider odds ingestion, and prediction pipelines.
+
+#### Pre-Start Candidate Building & Lifecycle
+
+The pre-start check runs repeatedly (every `POLL_INTERVAL_MINUTES`, default 5m) and constructs a structured `PreStartEventPlan` to govern all provider extraction and prediction evaluations:
+
+1. **Upcoming Event Ingestion (`_load_upcoming_events`)**:
+   - Queries upcoming events from the canonical database starting within the configured lookahead window.
+   - When `PRE_START_TRACKED_COMPETITIONS_ONLY=true`, initial candidate loading is scoped strictly to tracked competition IDs. When `false`, all upcoming events enter the pre-start evaluation pool.
+
+2. **Recently Started Maintenance & Intraday Freshness (`_maintain_recently_started_events`)**:
+   - Inspects matches that recently passed kickoff to detect late-breaking timestamp delays or rain delays.
+   - Triggers intraday result freshness to finalize finished events early and invalidate standings caches when necessary.
+   - Filters out events stored in `scheduler.recently_rescheduled` to avoid querying stale schedules.
+
+3. **Candidate Plan Generation (`build_pre_start_event_candidates`)**:
+   - Computes exact `minutes_until_start` for each event against UTC clock time.
+   - Evaluates whether the event aligns with key operational moments (`PRE_START_ODDS_MOMENTS`, e.g. `120, 30, 5, 1, -5`).
+   - Runs `should_extract_odds_for_event`: calls the SofaScore `/event/{id}` endpoint when timestamp correction is enabled, ingests court surface / ground observations, captures rankings into `metadata_snapshot`, and handles rescheduled events.
+   - Applies provider-specific competition gating (`ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY`, `ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY`) to set the `should_extract_odds` decision flag.
+   - Yields a unified `PreStartEventPlan` containing the active candidate list and an `event_id` index lookup.
+
+4. **Multi-Provider Ingestion & Prediction Handoff**:
+   - **SofaScore & Oddspapi Odds**: Ingests fresh bookmaker odds and temporal snapshots using the candidate plan's `should_extract_odds` flags.
+   - **OddsPortal Scraping**: Concurrently queries external markets for candidates matching opening capture moments.
+   - **Alerts & Pillars**: Transforms candidate records into typed `EventContext` instances via `_build_evaluation_payloads`, executing matchup streak rules, dual process algorithms, and statistical pillars (P1, P4, P5).
+
 results_collection_job/ – collects finished match results and updates prediction logs.
 
 Jobs are scheduled through the infrastructure/scheduler using the schedule
