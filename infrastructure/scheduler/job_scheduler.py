@@ -37,6 +37,7 @@ from modules.jobs.results_collection_job import (
     run_results_collection_for_date,
     run_results_collection_previous_day,
 )
+from modules.oddspapi.runtime import refresh_oddspapi_account_usage_if_due
 from shared.runtime_observability import observe_operation
 from shared.timezone_utils import TIMEZONE, get_local_now
 
@@ -96,6 +97,10 @@ class JobScheduler:
                 _scheduled_time=time_str,
             )
 
+        schedule.every(
+            Config.ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS
+        ).hours.do(self.job_oddspapi_account_usage_refresh)
+
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
         logger.info(f"  - Discovery 2: daily at {', '.join(Config.DISCOVERY2_TIMES)}")
@@ -119,6 +124,10 @@ class JobScheduler:
         logger.info(
             "  - Oddspapi fixture discovery: daily at %s (UTC calendar day)",
             ", ".join(oddspapi_fixture_discovery_times),
+        )
+        logger.info(
+            "  - Oddspapi account usage refresh: every %s hour(s)",
+            Config.ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS,
         )
         logger.info("  - League cache cleanup: every 3 days at 05:00")
 
@@ -253,6 +262,7 @@ class JobScheduler:
         with observe_operation("pre_start_check"):
             debug_mode = Config.global_debug_mode
             try:
+                self.job_oddspapi_account_usage_refresh()
                 if debug_mode:
                     logger.info(f"Global debug mode set for pre start check to {debug_mode}")
                 run_pre_start_check_job(self, debug_mode)
@@ -277,6 +287,7 @@ class JobScheduler:
             return None
 
         try:
+            self.job_oddspapi_account_usage_refresh()
             # A PostgreSQL advisory lock prevents duplicate T-1 dispatches
             # across containers without adding a table. The lock is scoped to
             # the exact wall-clock slot, while the local lock above prevents
@@ -374,6 +385,7 @@ class JobScheduler:
             )
 
     def job_oddspapi_fixture_discovery(self, **kwargs):
+        self.job_oddspapi_account_usage_refresh()
         trigger = kwargs.pop("_trigger", "scheduled")
         scheduled_local_date = kwargs.pop("_scheduled_local_date", None)
         scheduled_time = kwargs.pop("_scheduled_time", None)
@@ -506,6 +518,18 @@ class JobScheduler:
             )
             logger.exception(f"Error in Oddspapi fixture discovery: {exc}")
             raise
+
+    def job_oddspapi_account_usage_refresh(self):
+        """Refresh key quotas only when the durable snapshot is due."""
+        if not getattr(Config, "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH", True):
+            return False
+        try:
+            return refresh_oddspapi_account_usage_if_due()
+        except Exception:
+            # Quota observation must never stop odds ingestion. The scheduler
+            # continues from its persisted estimate and retries next time.
+            logger.exception("Oddspapi account usage preflight failed")
+            return False
 
     @staticmethod
     def _send_fixture_discovery_ops_alert(

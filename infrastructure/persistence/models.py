@@ -753,6 +753,40 @@ class OddspapiFixtureDiscoveryRun(Base):
     )
 
 
+class OddspapiApiKeyUsage(Base):
+    """Durable quota snapshot keyed by a non-secret API-key fingerprint."""
+
+    __tablename__ = 'oddspapi_api_key_usage'
+
+    key_fingerprint = Column(String(64), primary_key=True)
+    subscription_id = Column(String(255))
+    subscription_valid_from = Column(DateTime)
+    subscription_valid_until = Column(DateTime)
+    request_limit = Column(Integer)
+    reported_request_count = Column(Integer)
+    estimated_request_count = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    status = Column(
+        String(32),
+        nullable=False,
+        default='unknown',
+        server_default='unknown',
+    )
+    account_refreshed_at = Column(DateTime)
+    last_error_code = Column(String(100))
+    last_error_at = Column(DateTime)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=get_local_now,
+        onupdate=get_local_now,
+    )
+
+
 class OddspapiMainlineOutcomeCache(Base):
     """Cached mainLine=true outcomes from OddsPapi /odds for live enrichment."""
 

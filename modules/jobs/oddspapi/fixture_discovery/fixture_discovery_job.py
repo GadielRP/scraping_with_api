@@ -9,7 +9,6 @@ from time import monotonic
 
 from infrastructure.persistence.database import db_manager
 from modules.oddspapi.client import OddsPapiClient
-from modules.oddspapi.api_keys import api_key_for_slot, free_endpoint_api_keys
 from modules.oddspapi.exceptions import OddsPapiError, OddsPapiHttpError
 
 from .constants import (
@@ -151,11 +150,6 @@ class OddspapiFixtureDiscoveryJob:
             and error.error_code == "FIXTURE_NOT_FOUND"
         )
 
-    def _client_for_sport(self, sport_index: int) -> tuple[OddsPapiClient, bool]:
-        if self.client is not None:
-            return self.client, False
-        return OddsPapiClient(api_key=api_key_for_slot(sport_index, free_endpoint_api_keys())), True
-
     def run(self, from_date: datetime, to_date: datetime) -> OddspapiFixtureDiscoverySummary:
         from_date, to_date = self._validate_window(from_date, to_date)
         started_at = datetime.now(timezone.utc)
@@ -167,13 +161,11 @@ class OddspapiFixtureDiscoveryJob:
             persist_queue=self.persist_queue,
         )
         chunks = split_time_window(from_date, to_date, DEFAULT_MAX_REQUEST_WINDOW_HOURS)
-        owned_clients: list[OddsPapiClient] = []
+        runtime_client = self.client or OddsPapiClient()
+        owns_runtime_client = self.client is None
 
         try:
-            for sport_index, (sport_slug, sport_id) in enumerate(self.sports.items()):
-                client, owned = self._client_for_sport(sport_index)
-                if owned:
-                    owned_clients.append(client)
+            for sport_slug, sport_id in self.sports.items():
                 sport_started = monotonic()
                 sport_summary = SportFixtureDiscoverySummary(
                     sport_slug=sport_slug,
@@ -201,7 +193,7 @@ class OddspapiFixtureDiscoveryJob:
                         ):
                             break
                         try:
-                            payload = client.get_fixtures(
+                            payload = runtime_client.get_fixtures(
                                 sport_id=sport_id,
                                 from_date=to_oddspapi_iso(chunk_from),
                                 to_date=to_oddspapi_iso(chunk_to),
@@ -283,8 +275,8 @@ class OddspapiFixtureDiscoveryJob:
                     )
 
         finally:
-            for owned_client in owned_clients:
-                close = getattr(owned_client, "close", None)
+            if owns_runtime_client:
+                close = getattr(runtime_client, "close", None)
                 if callable(close):
                     close()
 

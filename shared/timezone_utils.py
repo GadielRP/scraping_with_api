@@ -11,6 +11,7 @@ from infrastructure.settings import Config
 # Get the configured timezone
 TIMEZONE = pytz.timezone(Config.TIMEZONE)
 
+
 def get_local_now():
     """
     Get current time in Mexico City timezone.
@@ -18,12 +19,8 @@ def get_local_now():
     Returns:
         datetime: Current time in local timezone (naive, for database storage)
     """
-    # Get current UTC time
-    utc_now = datetime.utcnow()
-    # Convert to Mexico City timezone
-    local_now = utc_now.replace(tzinfo=pytz.UTC).astimezone(TIMEZONE)
-    # Return naive datetime (without timezone info) for database storage
-    return local_now.replace(tzinfo=None)
+    return datetime.now(TIMEZONE).replace(tzinfo=None)
+
 
 def get_local_now_aware():
     """
@@ -32,10 +29,8 @@ def get_local_now_aware():
     Returns:
         datetime: Current time in local timezone (with timezone info)
     """
-    # Get current UTC time
-    utc_now = datetime.utcnow()
-    # Convert to Mexico City timezone
-    return utc_now.replace(tzinfo=pytz.UTC).astimezone(TIMEZONE)
+    return datetime.now(TIMEZONE)
+
 
 def get_local_now_iso():
     """
@@ -45,6 +40,7 @@ def get_local_now_iso():
         str: Current time in ISO format
     """
     return get_local_now_aware().isoformat()
+
 
 def convert_utc_to_local(utc_dt, keep_tzinfo=False):
     """
@@ -58,15 +54,12 @@ def convert_utc_to_local(utc_dt, keep_tzinfo=False):
         datetime: Local timezone datetime (naive or aware depending on keep_tzinfo)
     """
     if utc_dt.tzinfo is None:
-        # Assume it's UTC if no timezone info
         utc_dt = utc_dt.replace(tzinfo=pytz.UTC)
-    
     local_dt = utc_dt.astimezone(TIMEZONE)
-    
     if keep_tzinfo:
-        return local_dt  # Return timezone-aware datetime
-    else:
-        return local_dt.replace(tzinfo=None)  # Return naive datetime
+        return local_dt
+    return local_dt.replace(tzinfo=None)
+
 
 def convert_local_to_utc(local_dt):
     """

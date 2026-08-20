@@ -14,6 +14,10 @@ from infrastructure.persistence.repositories import (
 from infrastructure.settings import Config
 from modules.odds_ingestion import restrict_candidates_to_tracked_competitions
 from modules.oddspapi.api_keys import configured_api_keys
+from modules.oddspapi.runtime import (
+    get_oddspapi_key_scheduler,
+    refresh_oddspapi_account_usage_if_due,
+)
 
 from .event_selector import _canonical_event_id, select_oddspapi_pre_start_candidates
 from .odds_batch_processor import (
@@ -64,7 +68,8 @@ def _log_summary(summary: OddspapiPreStartOddsSummary) -> None:
         "http_requests_attempted=%s exchange_outcomes_selected=%s "
         "exchange_historical_requests_attempted=%s "
         "exchange_historical_requests_failed=%s "
-        "exchange_outcomes_skipped_budget=%s skip_reasons=%s",
+        "exchange_outcomes_skipped_budget=%s api_key_assignments=%s "
+        "api_key_diagnostics=%s skip_reasons=%s",
         summary.candidates_seen,
         summary.candidates_with_mapping,
         summary.requests_attempted,
@@ -83,6 +88,8 @@ def _log_summary(summary: OddspapiPreStartOddsSummary) -> None:
         summary.exchange_historical_requests_attempted,
         summary.exchange_historical_requests_failed,
         summary.exchange_outcomes_skipped_budget,
+        summary.api_key_assignments,
+        summary.api_key_diagnostics,
         dict(skip_reasons),
     )
 
@@ -140,6 +147,17 @@ def run_oddspapi_pre_start_odds(
         _log_summary(summary)
         return summary
 
+    key_scheduler = get_oddspapi_key_scheduler()
+    if getattr(Config, "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH", True):
+        try:
+            refresh_oddspapi_account_usage_if_due()
+        except Exception:
+            logger.exception(
+                "Oddspapi account usage preflight failed; using persisted estimates"
+            )
+    assignments_before = key_scheduler.assignment_counts()
+    diagnostics_before = key_scheduler.diagnostic_counts()
+
     retention_days = int(getattr(Config, "ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS", 2) or 0)
     if retention_days > 0:
         OddspapiMainlineCacheRepository.purge_stale_cache(days=retention_days)
@@ -154,7 +172,9 @@ def run_oddspapi_pre_start_odds(
             return summary
         candidates = select_oddspapi_pre_start_candidates(events_to_process, source_states=source_states)
 
-    summary = OddspapiPreStartOddsBatchProcessor().process(
+    summary = OddspapiPreStartOddsBatchProcessor(
+        key_scheduler=key_scheduler,
+    ).process(
         candidates,
         endpoint=ODDSPAPI_PRE_START_SETTINGS.default_endpoint,
         bookmakers=(
@@ -224,6 +244,18 @@ def run_oddspapi_pre_start_odds(
         max_workers=getattr(Config, "ODDSPAPI_PRE_START_WORKERS", 1),
         debug_mode=debug_mode,
     )
+    assignments_after = key_scheduler.assignment_counts()
+    summary.api_key_assignments = {
+        key_id: count - assignments_before.get(key_id, 0)
+        for key_id, count in assignments_after.items()
+        if count - assignments_before.get(key_id, 0) > 0
+    }
+    diagnostics_after = key_scheduler.diagnostic_counts()
+    summary.api_key_diagnostics = {
+        diagnostic: count - diagnostics_before.get(diagnostic, 0)
+        for diagnostic, count in diagnostics_after.items()
+        if count - diagnostics_before.get(diagnostic, 0) > 0
+    }
     _log_summary(summary)
     if debug_mode:
         for result in summary.results:

@@ -94,6 +94,7 @@ logs_for_observations_refactor.txt
 
 copies/
 *.md
+!pre_start_odds_ingestion.md
 !docs/refactors/db-schema-odds-refactor.md
 !docs/refactors/db-schema-odds-refactor-phase-4b.md
 !docs/pre-start-closing-minute-contract-mismatch.md
@@ -113,6 +114,7 @@ tests/*
 !tests/test_event_odds_availability.py
 !tests/test_odds_endpoint_404_handling.py
 !tests/test_t_minus_one_odds_job.py
+!tests/test_oddspapi_api_keys.py
 !tests/test_tennis_snapshot_observations.py
 !tests/test_oddsportal_hover_parser.py
 !tests/test_oddsportal_logging.py
@@ -145,6 +147,8 @@ tests/pillars/*.pyc
 !tests/oddspapi/test_fixture_discovery_job.py
 !tests/oddspapi/test_pre_start_odds_job.py
 !tests/oddspapi/test_pre_start_odds_batch_processor.py
+!tests/oddspapi/test_api_key_scheduler.py
+!tests/oddspapi/test_api_key_usage_repository.py
 
 
 !scripts/maintenance/test_oddspapi_local_ingestion.py

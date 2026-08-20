@@ -195,11 +195,6 @@ class OddspapiEventResolver:
             session=session,
         )
         if canonical_event_id is not None:
-            logger.info(
-                "Found existing Oddspapi mapping for fixture %s -> event %s",
-                fixture.fixture_id,
-                canonical_event_id,
-            )
             if create_mappings and (fixture.participant1_id or fixture.participant2_id):
                 cls._persist_oddspapi_mapping(
                     canonical_event_id=canonical_event_id,

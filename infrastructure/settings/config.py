@@ -356,10 +356,23 @@ class Config:
     ODDSPAPI_ENDPOINT_COOLDOWNS = _parse_env_float_map(
         'ODDSPAPI_ENDPOINT_COOLDOWNS',
         {
+            'account': 1.0,
             'fixtures': ODDSPAPI_FIXTURES_COOLDOWN_SECONDS,
             'odds': 0.5,
             'historical-odds': 5.0,
         },
+    )
+    ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS = max(
+        1,
+        int(os.getenv('ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS', '24')),
+    )
+    ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES = max(
+        1,
+        int(os.getenv('ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES', '60')),
+    )
+    ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH = _parse_env_bool(
+        'ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH',
+        True,
     )
     ODDSPAPI_DEFAULT_BOOKMAKERS = _parse_optional_env_list(
         'ODDSPAPI_DEFAULT_BOOKMAKERS',
@@ -381,7 +394,7 @@ class Config:
     )
     ODDSPAPI_PRE_START_WORKERS = max(
         1,
-        int(os.getenv('ODDSPAPI_PRE_START_WORKERS', '3')),
+        int(os.getenv('ODDSPAPI_PRE_START_WORKERS', '4')),
     )
     ODDSPAPI_PRE_START_BOOKMAKERS = _parse_optional_env_list(
         'ODDSPAPI_PRE_START_BOOKMAKERS',

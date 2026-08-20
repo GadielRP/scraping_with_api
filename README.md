@@ -309,8 +309,11 @@ creates events, or calls `/v4/fixtures`.
 Add the following to `.env` (the same defaults are present in `.env.example`):
 
 ```dotenv
-# One key keeps serial behavior. Two keys enable two bounded event workers.
-ODDSPAPI_KEY=replace_with_key_1,replace_with_key_2
+# Keys are leased per request and balanced by normalized account usage.
+ODDSPAPI_FREE_KEYS=replace_with_key_1,replace_with_key_2,replace_with_key_3,replace_with_key_4
+ODDSPAPI_PAID_KEY=
+ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS=24
+ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES=60
 
 # The pre-start scheduler cadence and its shared timing moments.
 POLL_INTERVAL_MINUTES=5
@@ -321,7 +324,7 @@ PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES=3
 # Oddspapi pre-start ingestion.
 ENABLE_ODDSPAPI_PRE_START_ODDS=true
 ODDSPAPI_PRE_START_ODDS_ENDPOINT=historical-odds
-ODDSPAPI_PRE_START_WORKERS=2
+ODDSPAPI_PRE_START_WORKERS=4
 ODDSPAPI_PRE_START_BOOKMAKERS=pinnacle,bet365
 ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS=
 ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS=1x2_full_time,over_under_full_time,asian_handicap_full_time
@@ -335,16 +338,19 @@ ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS=
 ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN=0
 ```
 
-`ODDSPAPI_KEY` is the only Oddspapi pre-start value that must contain secrets.
-It accepts one key or two comma-separated keys; without a key the flow logs one
-warning and skips eligible events. The remaining values are optional because
+`ODDSPAPI_FREE_KEYS` and the optional `ODDSPAPI_PAID_KEY` are the only
+Oddspapi pre-start values containing secrets. Free keys are comma-separated;
+without a key the flow logs one warning and skips eligible events. The legacy
+`ODDSPAPI_KEY` remains a fallback. The remaining values are optional because
 `infrastructure/settings/config.py` supplies the shown defaults:
 
 | Setting | Default | Effect |
 | :--- | :--- | :--- |
 | `ENABLE_ODDSPAPI_PRE_START_ODDS` | `true` | Set to `false` to disable only the Oddspapi subflow; SofaScore pre-start ingestion, views, alerts and pillars continue normally. |
 | `ODDSPAPI_PRE_START_ODDS_ENDPOINT` | `historical-odds` | Selects the regular-bookmaker source. Historical mode uses the latest historical observation as current odds and the earliest credible observation as initial odds, without calling `/v4/odds` unless an exchange bookmaker is enabled. |
-| `ODDSPAPI_PRE_START_WORKERS` | `2` | Maximum concurrent pre-start event workers. It is hard-capped at two and also limited by the number of configured API keys. One key always means serial execution. |
+| `ODDSPAPI_PRE_START_WORKERS` | `4` | Maximum concurrent pre-start workers. Effective concurrency is bounded by work items and eligible endpoint keys. Workers own HTTP sessions, while keys are dynamically leased per request. |
+| `ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS` | `24` | Durable `/v4/account` refresh interval used to reconcile reported and locally estimated quota usage. |
+| `ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES` | `60` | Backoff after an account refresh failure; ingestion continues from persisted estimates. |
 | `ODDSPAPI_PRE_START_BOOKMAKERS` | `ODDSPAPI_DEFAULT_BOOKMAKERS` (normally `pinnacle`) | Regular sportsbook slugs requested together from the selected endpoint. The recommended Historical configuration uses `pinnacle,bet365`. |
 | `ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS` | none | Optional exchange slugs such as `betfair-ex`. Enabling one also enables the pre-start `/v4/odds` discovery request; Historical Odds is then called separately once per selected exchange outcome. A slug cannot belong to both bookmaker lists. |
 | `ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS` | `ODDSPAPI_DEFAULT_MARKET_KEYS` | Canonical market keys eligible for exchange historical requests. Filtering happens after resolving the fixture-specific `marketId`. |
@@ -368,12 +374,11 @@ exchange bookmaker or the current-odds mode is enabled. The closing `1`
 minute is handled by the isolated T-1 odds lane; regular bookmakers remain
 available at the configured `-5` moment.
 
-Parallel pre-start ingestion is enabled only when at least two distinct API
-keys are configured and exchange bookmakers are disabled. Each worker owns one
-HTTP client, one connection pool and one endpoint cooldown. Events are ingested
-immediately after each response, so the batch retains at most two large odds
-payloads at once. Exchange mode deliberately falls back to the existing serial
-path to preserve its shared request budget and outcome-scoped behavior.
+Parallel pre-start ingestion uses at most four workers and never more workers
+than eligible keys or work items. Each worker owns one HTTP client/connection
+pool, but requests acquire keys from the shared quota-aware scheduler. Exchange
+mode preserves the serial per-event budget while outcome-scoped historical
+requests fan out through at most four scheduler-backed workers.
 
 Oddspapi `createdAt` values are interpreted as UTC and converted through
 `shared.timezone_utils.convert_utc_to_local` before being stored as the naive

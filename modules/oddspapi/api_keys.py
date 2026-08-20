@@ -2,8 +2,8 @@
 
 ``ODDSPAPI_PAID_KEY`` empty: every configured key may call any v4 endpoint.
 ``ODDSPAPI_PAID_KEY`` set: that key owns ``/odds``; free keys own fixtures
-and ``/historical-odds``. Callers construct one ``OddsPapiClient`` per key;
-this module only answers which keys belong on which endpoint.
+and ``/historical-odds``. The runtime scheduler consumes these pools and
+leases credentials per physical request.
 """
 
 from __future__ import annotations
@@ -72,10 +72,10 @@ def parallel_worker_count(
     api_key_count: int,
     item_count: int,
 ) -> int:
-    """One worker per key, never more workers than keys or items."""
+    """Bound OddsPapi concurrency by four, eligible keys, and work items."""
     if api_key_count <= 0 or item_count <= 0:
         return 1
-    return min(max(1, int(max_workers or 1)), api_key_count, item_count)
+    return min(4, max(1, int(max_workers or 1)), api_key_count, item_count)
 
 
 def unique_api_keys(keys) -> list[str]:

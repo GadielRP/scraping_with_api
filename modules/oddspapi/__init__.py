@@ -1,5 +1,9 @@
 from .client import OddsPapiClient
-from .exceptions import OddsPapiError, OddsPapiHttpError
+from .exceptions import (
+    OddsPapiError,
+    OddsPapiHttpError,
+    OddsPapiQuotaExhaustedError,
+)
 from .event_candidate_matcher import EventCandidateScore, MatchDecision, OddspapiEventCandidateMatcher
 from .event_resolver import OddspapiEventResolution, OddspapiEventResolver
 from .fixture_normalizer import OddspapiFixtureIdentity
@@ -17,6 +21,7 @@ __all__ = [
     "OddsPapiClient",
     "OddsPapiError",
     "OddsPapiHttpError",
+    "OddsPapiQuotaExhaustedError",
     "OddspapiEventResolver",
     "OddspapiEventResolution",
     "OddspapiFixtureIdentity",

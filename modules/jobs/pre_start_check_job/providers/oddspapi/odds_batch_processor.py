@@ -24,12 +24,14 @@ from modules.odds_ingestion import (
 )
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.api_keys import (
-    api_key_for_slot,
     free_endpoint_api_keys,
     odds_endpoint_api_keys,
     parallel_worker_count,
     unique_api_keys,
 )
+from modules.oddspapi.api_key_scheduler import OddsPapiApiKeyScheduler
+from modules.oddspapi.runtime import get_oddspapi_key_scheduler
+from modules.oddspapi.exceptions import OddsPapiQuotaExhaustedError
 
 from .constants import (
     ODDSPAPI_CURRENT_ODDS_ENDPOINT,
@@ -98,6 +100,8 @@ class OddspapiPreStartOddsSummary(ProviderOddsSummary):
     exchange_historical_requests_attempted: int = 0
     exchange_historical_requests_failed: int = 0
     exchange_outcomes_skipped_budget: int = 0
+    api_key_assignments: dict[str, int] = field(default_factory=dict)
+    api_key_diagnostics: dict[str, int] = field(default_factory=dict)
     disabled: bool = False
     skip_reason: str | None = None
     results: list[OddspapiPreStartOddsEventResult] = field(default_factory=list)
@@ -133,6 +137,7 @@ class OddspapiPreStartOddsBatchProcessor:
         ingestion_service: type[MarketOddsIngestionService] = MarketOddsIngestionService,
         acquisition_service: OddspapiPreStartOddsAcquisitionService | None = None,
         client_factory: Callable[..., OddsPapiClient] = OddsPapiClient,
+        key_scheduler: OddsPapiApiKeyScheduler | None = None,
     ):
         self.fetcher = fetcher
         self.acquisition_service = acquisition_service
@@ -142,43 +147,34 @@ class OddspapiPreStartOddsBatchProcessor:
             )
         self.ingestion_service = ingestion_service
         self.client_factory = client_factory
+        self.key_scheduler = key_scheduler
         self._custom_pipeline = (
             fetcher is not None or acquisition_service is not None
         )
-        self._clients_by_key: dict[str, OddsPapiClient] = {}
+        self._clients_by_slot: dict[int, OddsPapiClient] = {}
 
-    def _client_for_key(self, api_key: str) -> OddsPapiClient:
-        client = self._clients_by_key.get(api_key)
+    def _client_for_slot(self, slot: int) -> OddsPapiClient:
+        client = self._clients_by_slot.get(slot)
         if client is None:
-            client = self.client_factory(api_key=api_key)
-            self._clients_by_key[api_key] = client
+            scheduler = self.key_scheduler or get_oddspapi_key_scheduler()
+            client = self.client_factory(key_scheduler=scheduler)
+            self._clients_by_slot[slot] = client
         return client
 
     def _close_owned_clients(self) -> None:
-        for client in self._clients_by_key.values():
+        for client in self._clients_by_slot.values():
             close = getattr(client, "close", None)
             if callable(close):
                 close()
-        self._clients_by_key = {}
+        self._clients_by_slot = {}
 
     def _acquisition_service_for_slot(
         self,
         slot: int,
-        *,
-        odds_api_keys: list[str],
-        historical_api_keys: list[str],
     ) -> OddspapiPreStartOddsAcquisitionService:
         if self.acquisition_service is not None:
             return self.acquisition_service
-        odds_key = api_key_for_slot(slot, odds_api_keys)
-        historical_key = api_key_for_slot(
-            slot if odds_api_keys != historical_api_keys else slot + 1,
-            historical_api_keys,
-        )
-        self.fetcher = OddspapiOddsFetcher(
-            odds_client=self._client_for_key(odds_key),
-            historical_client=self._client_for_key(historical_key),
-        )
+        self.fetcher = OddspapiOddsFetcher(client=self._client_for_slot(slot))
         return OddspapiPreStartOddsAcquisitionService(fetcher=self.fetcher)
 
     @classmethod
@@ -279,12 +275,14 @@ class OddspapiPreStartOddsBatchProcessor:
         ]
 
         def run_worker(worker_index: int):
-            client = self.client_factory(api_key=api_keys[worker_index])
+            scheduler = self.key_scheduler or get_oddspapi_key_scheduler()
+            client = self.client_factory(key_scheduler=scheduler)
             try:
                 processor = OddspapiPreStartOddsBatchProcessor(
                     fetcher=OddspapiOddsFetcher(client=client),
                     ingestion_service=self.ingestion_service,
                     client_factory=self.client_factory,
+                    key_scheduler=scheduler,
                 )
                 return processor.process(
                     chunks[worker_index],
@@ -554,6 +552,19 @@ class OddspapiPreStartOddsBatchProcessor:
         else:
             odds_api_keys = odds_endpoint_api_keys()
             historical_api_keys = free_endpoint_api_keys()
+        scheduler = self.key_scheduler
+        if scheduler is None and not self._custom_pipeline:
+            scheduler = get_oddspapi_key_scheduler()
+        odds_key_count = (
+            len(odds_api_keys)
+            if keys or scheduler is None
+            else scheduler.available_key_count(ODDSPAPI_CURRENT_ODDS_ENDPOINT)
+        )
+        historical_key_count = (
+            len(historical_api_keys)
+            if keys or scheduler is None
+            else scheduler.available_key_count(ODDSPAPI_HISTORICAL_ODDS_ENDPOINT)
+        )
         bounded_workers = max(1, int(max_workers or 1))
         historical_moments = set(exchange_historical_moments or [120])
         requires_exchange_history = (
@@ -581,9 +592,13 @@ class OddspapiPreStartOddsBatchProcessor:
             and not requires_exchange_history
             and requested_limit is None
             and bounded_workers > 1
-            and len(historical_api_keys) > 1
+            and historical_key_count > 1
             and (
-                (not paid_owns_odds and len(requestable_candidates) > 1)
+                (
+                    not paid_owns_odds
+                    and odds_key_count > 1
+                    and len(requestable_candidates) > 1
+                )
                 or (
                     paid_owns_odds
                     and len(live_requestable) > 1
@@ -594,7 +609,11 @@ class OddspapiPreStartOddsBatchProcessor:
         if can_run_parallel:
             worker_summary = self._process_parallel_workers(
                 live_requestable if paid_owns_odds else requestable_candidates,
-                api_keys=historical_api_keys,
+                api_keys=(
+                    historical_api_keys[:historical_key_count]
+                    if paid_owns_odds
+                    else odds_api_keys[:odds_key_count]
+                ),
                 max_workers=bounded_workers,
                 market_mapping_index=market_mapping_index,
                 process_kwargs={
@@ -659,9 +678,10 @@ class OddspapiPreStartOddsBatchProcessor:
                     api_keys=historical_api_keys,
                     max_workers=bounded_workers,
                     client_factory=self.client_factory,
+                    key_scheduler=scheduler,
                 )
                 if not self._custom_pipeline
-                and len(historical_api_keys) > 1
+                and historical_key_count > 1
                 and requestable_candidates
                 else None
             )
@@ -718,9 +738,7 @@ class OddspapiPreStartOddsBatchProcessor:
                 requested_count += 1
                 summary.requests_attempted += 1
                 acquisition_service = self._acquisition_service_for_slot(
-                    requested_count - 1,
-                    odds_api_keys=odds_api_keys,
-                    historical_api_keys=historical_api_keys,
+                    0,
                 )
                 try:
                     # Tracked leagues get openings via OddsPortal at T-120; skip
@@ -924,6 +942,17 @@ class OddspapiPreStartOddsBatchProcessor:
                         summary.events_skipped += 1
                     else:
                         summary.events_ingested += 1
+                except OddsPapiQuotaExhaustedError as exc:
+                    event_result.skipped = True
+                    event_result.skip_reason = "oddspapi_quota_exhausted"
+                    event_result.error = str(exc)
+                    summary.events_skipped += 1
+                    logger.warning(
+                        "Oddspapi odds skipped because every eligible key is exhausted "
+                        "event_id=%s fixture_id=%s",
+                        candidate.event_id,
+                        candidate.fixture_id,
+                    )
                 except Exception as exc:
                     event_result.error = str(exc)
                     summary.events_failed += 1

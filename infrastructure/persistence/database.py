@@ -143,6 +143,7 @@ class DatabaseManager:
 
             EventSourceMappingRepository.ensure_participant_link_schema()
             OddspapiFixtureDiscoveryRunRepository.ensure_run_scope_schema()
+            self._migrate_oddspapi_api_key_usage()
             self._migrate_oddspapi_mainline_outcome_cache()
             
             # Re-create inspector after manual migrations may have changed schema
@@ -613,6 +614,71 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Event source resolution queue migration failed: {e}")
             logger.error(traceback.format_exc())
+
+    def _migrate_oddspapi_api_key_usage(self):
+        """Store OddsPapi account timestamps in configured local DB time."""
+        try:
+            from infrastructure.persistence.models import OddspapiApiKeyUsage
+
+            self._create_table_and_indexes(OddspapiApiKeyUsage, [])
+            if self.engine.dialect.name != "postgresql":
+                return
+
+            timestamp_columns = (
+                "subscription_valid_from",
+                "subscription_valid_until",
+                "account_refreshed_at",
+                "last_error_at",
+                "updated_at",
+            )
+            with self.get_session() as session:
+                # PostgreSQL cannot resolve a bind parameter embedded in the
+                # USING expression of ALTER COLUMN TYPE, even when CAST as
+                # TEXT. Set the transaction-local timezone through a regular
+                # function call, then let the DDL read the typed setting.
+                session.execute(
+                    text(
+                        "SELECT set_config('TimeZone', "
+                        "CAST(:configured_timezone AS TEXT), true)"
+                    ),
+                    {"configured_timezone": Config.TIMEZONE},
+                )
+                for column_name in timestamp_columns:
+                    data_type = session.execute(
+                        text(
+                            """
+                            SELECT data_type
+                            FROM information_schema.columns
+                            WHERE table_schema = current_schema()
+                              AND table_name = 'oddspapi_api_key_usage'
+                              AND column_name = :column_name
+                            """
+                        ),
+                        {"column_name": column_name},
+                    ).scalar()
+                    if data_type != "timestamp with time zone":
+                        continue
+                    session.execute(
+                        text(
+                            f"""
+                            ALTER TABLE oddspapi_api_key_usage
+                            ALTER COLUMN {column_name}
+                            TYPE TIMESTAMP WITHOUT TIME ZONE
+                            USING {column_name} AT TIME ZONE
+                                  current_setting('TimeZone')
+                            """
+                        )
+                    )
+                    logger.info(
+                        "Converted oddspapi_api_key_usage.%s to configured "
+                        "local time (%s)",
+                        column_name,
+                        Config.TIMEZONE,
+                    )
+        except Exception as e:
+            logger.error("Oddspapi API key usage migration failed: %s", e)
+            logger.error(traceback.format_exc())
+            raise
 
     def _migrate_oddspapi_mainline_outcome_cache(self):
         """Ensure the OddsPapi mainLine outcome cache table exists with indexes."""

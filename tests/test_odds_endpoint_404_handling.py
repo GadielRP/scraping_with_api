@@ -1171,14 +1171,15 @@ def test_oddspapi_404_is_persisted_once_for_provider(monkeypatch):
     assert marked == [({101}, "oddspapi")]
 
 
-def test_oddspapi_client_defaults_to_first_configured_api_key(monkeypatch):
+def test_oddspapi_client_without_explicit_key_uses_dynamic_scheduler(monkeypatch):
     monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_PAID_KEY", "")
     monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_FREE_KEYS", ["free-a", "free-b"])
     monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEYS", [])
     monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEY", "")
 
     client = OddsPapiClient()
-    assert client.api_key == "free-a"
+    assert client.api_key is None
+    assert client._uses_dynamic_key is True
     client.close()
 
     client_explicit = OddsPapiClient(api_key="explicit_key")
@@ -1186,14 +1187,15 @@ def test_oddspapi_client_defaults_to_first_configured_api_key(monkeypatch):
     client_explicit.close()
 
 
-def test_oddspapi_client_defaults_to_free_key_when_paid_is_set(monkeypatch):
+def test_oddspapi_client_explicit_key_still_bypasses_scheduler(monkeypatch):
     monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_PAID_KEY", "paid-key")
     monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_FREE_KEYS", ["free-a", "free-b"])
     monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEYS", [])
     monkeypatch.setattr(oddspapi_client_module.Config, "ODDSPAPI_KEY", "")
 
-    client = OddsPapiClient()
+    client = OddsPapiClient(api_key="free-a")
     assert client.api_key == "free-a"
+    assert client._uses_dynamic_key is False
     client.close()
 
 

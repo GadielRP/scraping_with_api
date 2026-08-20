@@ -6,11 +6,6 @@ from datetime import datetime
 from typing import Sequence
 
 from modules.odds_ingestion.fetch_result import OddsFetchResult
-from modules.oddspapi.api_keys import (
-    api_key_for_slot,
-    free_endpoint_api_keys,
-    odds_endpoint_api_keys,
-)
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.exceptions import OddsPapiHttpError
 from modules.oddspapi.historical_odds_reader import OddspapiHistoricalOddsReader
@@ -39,14 +34,10 @@ class OddspapiOddsFetcher:
             )
         shared = client
         if shared is None and odds_client is None and historical_client is None:
-            odds_key = api_key_for_slot(0, odds_endpoint_api_keys())
-            historical_key = api_key_for_slot(0, free_endpoint_api_keys())
-            odds_client = OddsPapiClient(api_key=odds_key)
-            historical_client = (
-                odds_client
-                if historical_key == odds_key
-                else OddsPapiClient(api_key=historical_key)
-            )
+            # One session may use different keys per request. Endpoint pool
+            # membership is owned by the shared scheduler, not this adapter.
+            odds_client = OddsPapiClient()
+            historical_client = odds_client
             shared = odds_client
         self.odds_client = odds_client or shared
         self.historical_client = historical_client or shared or self.odds_client

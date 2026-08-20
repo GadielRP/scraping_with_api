@@ -282,8 +282,13 @@ def test_live_historical_batch_fans_out_across_all_keys(monkeypatch):
     assert captured["selected"] == candidates
 
 
-def test_oddspapi_t_minus_one_uses_only_current_odds_endpoint():
+def test_oddspapi_t_minus_one_uses_only_current_odds_endpoint(monkeypatch):
     requests = []
+    monkeypatch.setattr(
+        "modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor."
+        "mark_missing_endpoints_unavailable",
+        lambda *_args, **_kwargs: 0,
+    )
     processor = OddspapiPreStartOddsBatchProcessor(
         fetcher=SimpleNamespace(
             fetch_odds=lambda *_args, **kwargs: requests.append(kwargs)

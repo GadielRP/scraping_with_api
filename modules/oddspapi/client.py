@@ -11,7 +11,13 @@ from typing import Any
 import requests
 
 from infrastructure.settings import Config
-from modules.oddspapi.api_keys import api_key_for_slot, free_endpoint_api_keys
+from modules.oddspapi.api_key_inventory import api_key_fingerprint
+from modules.oddspapi.api_key_scheduler import (
+    ApiKeyLease,
+    OddsPapiApiKeyScheduler,
+    RequestOutcome,
+)
+from modules.oddspapi.endpoint_policy import EndpointPolicyRegistry
 from modules.oddspapi.exceptions import OddsPapiError, OddsPapiHttpError
 
 logger = logging.getLogger(__name__)
@@ -32,14 +38,12 @@ class OddsPapiClient:
         request_delay_seconds: float | None = None,
         fixtures_cooldown_seconds: float | None = None,
         endpoint_cooldowns: dict[str, float] | None = None,
+        key_scheduler: OddsPapiApiKeyScheduler | None = None,
     ) -> None:
         self.base_url = (base_url or Config.ODDSPAPI_BASE_URL).rstrip("/")
-        if api_key is None:
-            # Callers should pass api_key. Default is a free-endpoint key so
-            # OddsPapiClient() does not spend the paid /odds key.
-            self.api_key = api_key_for_slot(0, free_endpoint_api_keys())
-        else:
-            self.api_key = api_key
+        self.api_key = api_key
+        self._key_scheduler = key_scheduler
+        self._uses_dynamic_key = api_key is None
         self.timeout = Config.ODDSPAPI_TIMEOUT_SECONDS if timeout is None else timeout
         self.max_retries = Config.ODDSPAPI_MAX_RETRIES if max_retries is None else max_retries
         self.request_delay_seconds = (
@@ -104,27 +108,34 @@ class OddsPapiClient:
                 )
         return normalized
 
-    def _cooldown_identity(self, endpoint: str) -> tuple[str, str]:
-        return (str(self.api_key or ""), endpoint)
+    def _scheduler(self) -> OddsPapiApiKeyScheduler:
+        if self._key_scheduler is None:
+            from modules.oddspapi.runtime import get_oddspapi_key_scheduler
 
-    def _endpoint_lock(self, endpoint: str) -> threading.Lock:
-        identity = self._cooldown_identity(endpoint)
+            self._key_scheduler = get_oddspapi_key_scheduler()
+        return self._key_scheduler
+
+    def _cooldown_identity(self, endpoint: str, api_key: str) -> tuple[str, str]:
+        return (api_key_fingerprint(api_key), endpoint)
+
+    def _endpoint_lock(self, endpoint: str, api_key: str) -> threading.Lock:
+        identity = self._cooldown_identity(endpoint, api_key)
         with OddsPapiClient._key_endpoint_locks_guard:
             return OddsPapiClient._key_endpoint_locks.setdefault(
                 identity, threading.Lock()
             )
 
     @contextmanager
-    def _endpoint_request_slot(self, endpoint: str):
+    def _endpoint_request_slot(self, endpoint: str, api_key: str):
         """Serialize requests per endpoint and enforce completion-to-start spacing."""
         cooldown_seconds = self.endpoint_cooldowns.get(endpoint, 0.0)
         if cooldown_seconds <= 0:
             yield
             return
 
-        with self._endpoint_lock(endpoint):
+        with self._endpoint_lock(endpoint, api_key):
             now = time.monotonic()
-            identity = self._cooldown_identity(endpoint)
+            identity = self._cooldown_identity(endpoint, api_key)
             last_completed_at = OddsPapiClient._last_request_completed_at.get(
                 identity
             )
@@ -182,8 +193,71 @@ class OddsPapiClient:
         code = error.get("code") or error.get("errorCode")
         return str(code).strip().upper() if code else None
 
+    def _execute_http_attempt(
+        self,
+        *,
+        endpoint: str,
+        url: str,
+        base_request_params: dict,
+        safe_params: dict,
+    ):
+        """Execute one physical request and always return its lease."""
+        lease = self._acquire_lease(endpoint)
+        outcome = RequestOutcome()
+        try:
+            request_params = dict(base_request_params)
+            request_params["apiKey"] = lease.api_key
+            logger.info(
+                "✈️ OddsPapi GET /v4/%s key_id=%s params=%s",
+                endpoint,
+                lease.key_id,
+                safe_params,
+            )
+            if lease.wait_seconds > 0:
+                time.sleep(lease.wait_seconds)
+
+            # Do not add a proxies argument: trust_env=False is the single
+            # source of truth for the proxy-free OddsPapi session.
+            with self._endpoint_request_slot(endpoint, lease.api_key):
+                response = self.session.get(
+                    url,
+                    params=request_params,
+                    timeout=self.timeout,
+                )
+
+            status_code = int(response.status_code)
+            # Successful odds payloads can be large. Decode them only once in
+            # the normal return path; error metadata is relevant only for a
+            # non-2xx response and those bodies are small.
+            if 200 <= status_code < 300:
+                error_code = None
+                retry_after_seconds = None
+            else:
+                error_code = self._error_code(response)
+                retry_after_seconds = self._retry_after_seconds(response)
+            outcome = RequestOutcome(
+                status_code=status_code,
+                error_code=error_code,
+                response_received=True,
+                retry_after_seconds=retry_after_seconds,
+            )
+            return (
+                lease,
+                response,
+                status_code,
+                error_code,
+                retry_after_seconds,
+            )
+        except requests.RequestException:
+            # Conservatively count network ambiguity for metered endpoints:
+            # the server may have completed the call before the disconnect.
+            outcome = RequestOutcome(network_error=True)
+            raise
+        finally:
+            self._complete_lease(lease, outcome)
+
     def _request(self, endpoint: str, params: dict | None = None) -> dict | list:
-        if not str(self.api_key or "").strip():
+        if not self._uses_dynamic_key and not str(self.api_key or "").strip():
             raise ValueError("ODDSPAPI_KEY is required to make an OddsPapi request")
 
         normalized_endpoint = self._normalize_endpoint(endpoint)
@@ -191,35 +265,46 @@ class OddsPapiClient:
             raise ValueError("OddsPapi endpoint is required")
 
         url = f"{self.base_url}/v4/{normalized_endpoint}"
-        request_params = {
+        base_request_params = {
             key: value
             for key, value in (params or {}).items()
             if value is not None and str(key).lower() != "apikey"
         }
-        safe_params = dict(request_params)
-        request_params["apiKey"] = self.api_key
-        logger.info("✈️ OddsPapi GET /v4/%s params=%s", normalized_endpoint, safe_params)
+        safe_params = dict(base_request_params)
 
         attempts = max(1, int(self.max_retries))
+        transient_attempt = 0
+        credential_failovers = 0
+        max_credential_failovers = (
+            self._scheduler().available_key_count(normalized_endpoint)
+            if self._uses_dynamic_key
+            else 0
+        )
         retry_delay_seconds = self.request_delay_seconds
-        for attempt in range(attempts):
-            if attempt and self.request_delay_seconds > 0:
+        while transient_attempt < attempts:
+            if transient_attempt and self.request_delay_seconds > 0:
                 time.sleep(retry_delay_seconds)
 
             try:
-                # Do not add a proxies argument: trust_env=False is the single source of truth.
-                with self._endpoint_request_slot(normalized_endpoint):
-                    response = self.session.get(
-                        url,
-                        params=request_params,
-                        timeout=self.timeout,
-                    )
+                (
+                    lease,
+                    response,
+                    status_code,
+                    error_code,
+                    retry_after_seconds,
+                ) = self._execute_http_attempt(
+                    endpoint=normalized_endpoint,
+                    url=url,
+                    base_request_params=base_request_params,
+                    safe_params=safe_params,
+                )
             except requests.RequestException as exc:
-                if attempt < attempts - 1:
+                transient_attempt += 1
+                if transient_attempt < attempts:
                     logger.warning(
                         "Transient OddsPapi request error for /v4/%s (attempt %s/%s): %s",
                         normalized_endpoint,
-                        attempt + 1,
+                        transient_attempt,
                         attempts,
                         type(exc).__name__,
                     )
@@ -229,9 +314,28 @@ class OddsPapiClient:
                     f"error={type(exc).__name__}"
                 ) from exc
 
-            status_code = response.status_code
-            if status_code in self.TRANSIENT_STATUS_CODES and attempt < attempts - 1:
-                retry_after_seconds = self._retry_after_seconds(response)
+            rejected_credential = (
+                error_code == "REQUEST_LIMIT_EXCEEDED"
+                or status_code == 401
+                or error_code in {"INVALID_API_KEY", "INVALID_KEY", "UNAUTHORIZED"}
+            )
+            if (
+                self._uses_dynamic_key
+                and rejected_credential
+                and credential_failovers < max_credential_failovers
+            ):
+                credential_failovers += 1
+                logger.warning(
+                    "OddsPapi credential rejected endpoint=/v4/%s key_id=%s "
+                    "error_code=%s; selecting another key",
+                    normalized_endpoint,
+                    lease.key_id,
+                    error_code or f"HTTP_{status_code}",
+                )
+                continue
+
+            transient_attempt += 1
+            if status_code in self.TRANSIENT_STATUS_CODES and transient_attempt < attempts:
                 retry_delay_seconds = max(
                     self.request_delay_seconds,
                     retry_after_seconds or 0.0,
@@ -240,19 +344,19 @@ class OddsPapiClient:
                     "Transient OddsPapi HTTP %s for /v4/%s (attempt %s/%s)",
                     status_code,
                     normalized_endpoint,
-                    attempt + 1,
+                    transient_attempt,
                     attempts,
                 )
                 continue
 
             if status_code < 200 or status_code >= 300:
                 response_text = str(getattr(response, "text", "") or "").replace("\n", " ")[:500]
-                response_text = response_text.replace(str(self.api_key), "***")
+                response_text = response_text.replace(str(lease.api_key), "***")
                 raise OddsPapiHttpError(
                     status_code=status_code,
                     endpoint=f"/v4/{normalized_endpoint}",
                     response_text=response_text,
-                    error_code=self._error_code(response),
+                    error_code=error_code,
                 )
 
             try:
@@ -272,8 +376,30 @@ class OddsPapiClient:
 
         raise OddsPapiError(f"OddsPapi request exhausted retries endpoint=/v4/{normalized_endpoint}")
 
+    def _acquire_lease(self, endpoint: str) -> ApiKeyLease:
+        if self._uses_dynamic_key:
+            return self._scheduler().acquire(endpoint)
+        api_key = str(self.api_key or "").strip()
+        return ApiKeyLease(
+            api_key=api_key,
+            key_fingerprint=api_key_fingerprint(api_key),
+            endpoint=endpoint,
+            quota_policy=EndpointPolicyRegistry().policy_for(endpoint),
+            sequence=0,
+        )
+
+    def _complete_lease(self, lease: ApiKeyLease, outcome: RequestOutcome) -> None:
+        if self._uses_dynamic_key:
+            self._scheduler().complete(lease, outcome)
+
     def get_fixture(self, fixture_id: str, language: str | None = None) -> dict:
         return self._request("fixture", {"fixtureId": fixture_id, "language": language})
+
+    def get_account(self) -> dict:
+        payload = self._request("account")
+        if not isinstance(payload, dict):
+            raise OddsPapiError("OddsPapi /v4/account response must be an object")
+        return payload
 
     def get_fixtures(
         self,

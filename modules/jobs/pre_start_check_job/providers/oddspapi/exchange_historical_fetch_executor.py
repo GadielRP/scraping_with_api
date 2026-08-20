@@ -6,10 +6,9 @@ single :class:`OddsPapiClient`, those calls are intentionally serialized by
 that client's per-endpoint cooldown (see ``modules.oddspapi.client``).
 
 This executor removes that serialization when more than one OddsPapi API key
-is available by giving each worker its own client, so each worker paces its
-own requests against its own key's cooldown instead of all workers queueing
-behind one client's lock. It never touches or bypasses the per-endpoint
-cooldown itself; every worker still respects it independently.
+is available by giving each worker its own HTTP session. Keys are leased for
+each physical request, so workers do not own credentials and the scheduler
+can balance both quota and endpoint cooldown availability.
 """
 
 from __future__ import annotations
@@ -23,6 +22,8 @@ from typing import Callable, Sequence
 from modules.odds_ingestion.fetch_result import OddsFetchResult
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.api_keys import parallel_worker_count
+from modules.oddspapi.api_key_scheduler import OddsPapiApiKeyScheduler
+from modules.oddspapi.runtime import get_oddspapi_key_scheduler
 
 from .constants import ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
 from .exchange_outcome_selector import ExchangeHistoricalSelection
@@ -43,9 +44,8 @@ class ExchangeHistoricalFetchOutcome:
 class OddspapiExchangeHistoricalFetchExecutor:
     """Fan out exchange historical-odds requests across the API key pool.
 
-    Each worker owns one dedicated ``OddsPapiClient`` (and therefore its own
-    cooldown slot) so concurrency never races two requests on the same key.
-    Worker count is ``min(max_workers, key_count, selection_count)``.
+    Each worker owns one HTTP session, while every request gets a dynamic key
+    lease. Worker count is ``min(max_workers, eligible keys, selections)``.
     """
 
     def __init__(
@@ -57,6 +57,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         fetcher_factory: Callable[[OddsPapiClient], OddspapiOddsFetcher] = (
             lambda client: OddspapiOddsFetcher(client=client)
         ),
+        key_scheduler: OddsPapiApiKeyScheduler | None = None,
     ) -> None:
         self._api_keys = [
             str(key).strip() for key in (api_keys or []) if str(key).strip()
@@ -64,6 +65,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
         self._max_workers = max(1, int(max_workers)) if max_workers else None
         self._client_factory = client_factory
         self._fetcher_factory = fetcher_factory
+        self._key_scheduler = key_scheduler
+
+    def _scheduler(self) -> OddsPapiApiKeyScheduler:
+        if self._key_scheduler is None:
+            self._key_scheduler = get_oddspapi_key_scheduler()
+        return self._key_scheduler
 
     def fetch_all(
         self,
@@ -79,9 +86,15 @@ class OddspapiExchangeHistoricalFetchExecutor:
         if not selections:
             return []
 
+        eligible_key_count = min(
+            len(self._api_keys),
+            self._scheduler().available_key_count(
+                ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
+            ),
+        )
         worker_count = parallel_worker_count(
             max_workers=self._max_workers or len(selections),
-            api_key_count=len(self._api_keys),
+            api_key_count=eligible_key_count,
             item_count=len(selections),
         )
         if worker_count <= 1 or len(self._api_keys) <= 1:
@@ -146,8 +159,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
-        api_key = self._api_keys[0] if self._api_keys else None
-        client = self._client_factory(api_key=api_key)
+        client = self._client_factory(key_scheduler=self._scheduler())
         fetcher = self._fetcher_factory(client)
         try:
             return [
@@ -183,7 +195,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         chunks = [selections[index::worker_count] for index in range(worker_count)]
 
         def run_worker(worker_index: int) -> list[ExchangeHistoricalFetchOutcome]:
-            client = self._client_factory(api_key=self._api_keys[worker_index])
+            client = self._client_factory(key_scheduler=self._scheduler())
             fetcher = self._fetcher_factory(client)
             try:
                 return [

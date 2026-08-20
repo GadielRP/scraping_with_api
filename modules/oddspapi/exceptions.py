@@ -7,6 +7,16 @@ class OddsPapiError(RuntimeError):
     """Base exception for unusable OddsPapi responses."""
 
 
+class OddsPapiQuotaExhaustedError(OddsPapiError):
+    """No configured credential can call the requested endpoint."""
+
+    def __init__(self, endpoint: str):
+        self.endpoint = endpoint
+        super().__init__(
+            f"No eligible OddsPapi API key remains for endpoint={endpoint}"
+        )
+
+
 class OddsPapiHttpError(OddsPapiError):
     """Non-successful HTTP response with machine-readable context."""
 
