@@ -227,6 +227,7 @@ class OddspapiMainlineCacheRepository:
     def get_exchange_mainline_selections(
         event_id: int,
         exchange_bookmakers: list[str] | None,
+        allowed_market_keys: list[str] | set[str] | tuple[str, ...] | None = None,
     ) -> list[dict]:
         """Return cached exchange mainline rows for historical outcome requests."""
         requested = {
@@ -237,9 +238,15 @@ class OddspapiMainlineCacheRepository:
         if not requested:
             return []
 
+        normalized_allowed_keys = {
+            str(key).strip()
+            for key in (allowed_market_keys or [])
+            if str(key).strip()
+        }
+
         try:
             with db_manager.get_session() as session:
-                rows = (
+                query = (
                     session.query(OddspapiMainlineOutcomeCache)
                     .filter(
                         OddspapiMainlineOutcomeCache.event_id == int(event_id),
@@ -248,7 +255,15 @@ class OddspapiMainlineCacheRepository:
                             sorted(requested)
                         ),
                     )
-                    .order_by(
+                )
+                if normalized_allowed_keys:
+                    query = query.filter(
+                        OddspapiMainlineOutcomeCache.canonical_market_key.in_(
+                            sorted(normalized_allowed_keys)
+                        )
+                    )
+                rows = (
+                    query.order_by(
                         OddspapiMainlineOutcomeCache.bookmaker_slug,
                         OddspapiMainlineOutcomeCache.source_market_id,
                         OddspapiMainlineOutcomeCache.source_outcome_id,

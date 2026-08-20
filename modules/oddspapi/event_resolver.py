@@ -291,7 +291,7 @@ class OddspapiEventResolver:
             return cls.invalid_resolution()
 
         with db_manager.get_session() as session:
-            logger.info("Resolving OddsPapi fixture payload: %s", cls._fixture_summary(fixture))
+            #logger.info("Resolving OddsPapi fixture payload: %s", cls._fixture_summary(fixture))
             resolution = cls._resolve_via_existing_mappings(
                 fixture=fixture,
                 session=session,

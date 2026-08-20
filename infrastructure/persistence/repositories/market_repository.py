@@ -734,7 +734,7 @@ class MarketRepository:
             session.flush()
 
         operation_logger.info(
-            "Saved canonical event batch: event=%s input_bookies=%s "
+            "✅ Saved canonical event batch: event=%s input_bookies=%s "
             "persisted_bookies=%s markets=%s choices=%s snapshots=%s "
             "skipped_markets=%s skipped_choices=%s policy=%s",
             event_id,

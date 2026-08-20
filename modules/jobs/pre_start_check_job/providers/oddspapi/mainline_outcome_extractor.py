@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from infrastructure.persistence.repositories.market_mapping_repository import (
+    MarketMappingIndex,
+    MarketMappingRepository,
+)
 from modules.oddspapi.format_utils import normalize_source_id
 from modules.oddspapi.quote_activity import should_skip_inactive_market
 
@@ -43,8 +47,12 @@ class OddspapiMainlineOutcomeExtractor:
         *,
         exchange_bookmakers: list[str] | None = None,
         require_active_quotes: bool = True,
+        market_mapping_index: MarketMappingIndex | None = None,
+        source_sport_id: str | int | None = None,
     ) -> list[dict]:
         payload = odds_response if isinstance(odds_response, dict) else {}
+        if source_sport_id is None:
+            source_sport_id = payload.get("sportId")
         exchange_slugs = {
             str(slug).strip().lower()
             for slug in exchange_bookmakers or []
@@ -73,6 +81,18 @@ class OddspapiMainlineOutcomeExtractor:
                 if normalized_market_id is None:
                     continue
 
+                canonical_market_key = None
+                if market_mapping_index is not None:
+                    market_resolution = MarketMappingRepository.resolve_market(
+                        market_mapping_index,
+                        source="oddspapi",
+                        source_sport_id=source_sport_id,
+                        source_market_id=normalized_market_id,
+                    )
+                    if not market_resolution.resolved or not market_resolution.canonical_market_key:
+                        continue
+                    canonical_market_key = market_resolution.canonical_market_key
+
                 for source_outcome_id, outcome_data in cls._entries(
                     market_data.get("outcomes", {})
                 ):
@@ -91,7 +111,7 @@ class OddspapiMainlineOutcomeExtractor:
                             "bookmaker_slug": slug,
                             "source_market_id": normalized_market_id,
                             "source_outcome_id": normalized_outcome_id,
-                            "canonical_market_key": None,
+                            "canonical_market_key": canonical_market_key,
                             "is_exchange": is_exchange,
                         }
                     )

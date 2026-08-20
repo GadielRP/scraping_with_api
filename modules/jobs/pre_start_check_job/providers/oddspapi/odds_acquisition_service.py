@@ -285,6 +285,7 @@ class OddspapiPreStartOddsAcquisitionService:
         enable_exchange_historical: bool,
         regular: list[str],
         exchange: list[str],
+        exchange_market_keys: Sequence[str] | None = None,
         exchange_max_outcomes_per_event: int,
         exchange_request_budget: int | None,
         minimum_initial_span_minutes: float,
@@ -346,6 +347,7 @@ class OddspapiPreStartOddsAcquisitionService:
             cached_rows = self.mainline_cache_repository.get_exchange_mainline_selections(
                 event_id,
                 exchange,
+                allowed_market_keys=exchange_market_keys,
             )
             selections = [
                 ExchangeHistoricalSelection(
@@ -458,6 +460,8 @@ class OddspapiPreStartOddsAcquisitionService:
                 current_payload,
                 exchange_bookmakers=exchange,
                 require_active_quotes=require_active_quotes,
+                market_mapping_index=market_mapping_index,
+                source_sport_id=source_sport_id,
             )
             if mainline_outcomes:
                 result.mainline_outcomes_cached = (
@@ -603,6 +607,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 enable_exchange_historical=enable_exchange_historical,
                 regular=regular,
                 exchange=exchange,
+                exchange_market_keys=exchange_market_keys,
                 exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
                 exchange_request_budget=exchange_request_budget,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
