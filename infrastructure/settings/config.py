@@ -419,6 +419,12 @@ class Config:
         'ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES',
         True,
     )
+    # When true, /historical-odds ticks after the event kickoff cannot become
+    # the canonical pre-match opening/current quote.
+    ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS = _parse_env_bool(
+        'ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS',
+        True,
+    )
     # Bookmakers used as mainLine outcome-id donors when a book has no own
     # cache rows. First match wins. Own-cache always wins over this list.
     ODDSPAPI_MAINLINE_CACHE_FALLBACK_BOOKMAKERS = _parse_env_list(

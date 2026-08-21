@@ -75,14 +75,28 @@ class OddspapiHistoricalOddsNormalizer:
         *,
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
+        current_cutoff_utc: datetime | None = None,
     ) -> dict | None:
-        """Reduce an already-ordered tick series to opening + latest."""
+        """Reduce an ordered series to opening + latest pre-cutoff quote.
+
+        ``current_cutoff_utc`` is inclusive. Historical responses may contain
+        in-play ticks when requested shortly after kickoff; those ticks must
+        not become the canonical pre-match ``current`` price.
+        """
+        cutoff_utc = cls._parse_timestamp(current_cutoff_utc)
+        eligible_ticks = [
+            (created_at, quote)
+            for created_at, quote in ticks
+            if cutoff_utc is None or created_at <= cutoff_utc
+        ]
         if require_active_quotes:
             candidate_quotes = [
-                quote for _, quote in ticks if quote.get("active") is not False
+                quote
+                for _, quote in eligible_ticks
+                if quote.get("active") is not False
             ]
         else:
-            candidate_quotes = [quote for _, quote in ticks]
+            candidate_quotes = [quote for _, quote in eligible_ticks]
         if not candidate_quotes:
             return None
 
@@ -118,6 +132,7 @@ class OddspapiHistoricalOddsNormalizer:
         source_sport_id: str | int | None,
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
+        current_cutoff_utc: datetime | None = None,
     ) -> dict:
         from modules.oddspapi.historical_odds_reader import OddspapiHistoricalOddsReader
 
@@ -127,4 +142,5 @@ class OddspapiHistoricalOddsNormalizer:
             as_of_targets=(),
             minimum_initial_span_minutes=minimum_initial_span_minutes,
             require_active_quotes=require_active_quotes,
+            current_cutoff_utc=current_cutoff_utc,
         ).normalized_payload

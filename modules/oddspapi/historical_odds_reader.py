@@ -35,6 +35,7 @@ class OddspapiHistoricalOddsReader:
         as_of_targets: Sequence[tuple[int, datetime, datetime]] = (),
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
+        current_cutoff_utc: datetime | None = None,
     ) -> HistoricalOddsReadResult:
         payload = historical_response if isinstance(historical_response, dict) else {}
         bookmakers = payload.get("bookmakers")
@@ -85,6 +86,7 @@ class OddspapiHistoricalOddsReader:
                                     minimum_initial_span_minutes
                                 ),
                                 require_active_quotes=require_active_quotes,
+                                current_cutoff_utc=current_cutoff_utc,
                             )
                         )
                         if normalized is not None:

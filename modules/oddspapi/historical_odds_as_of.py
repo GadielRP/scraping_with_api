@@ -33,6 +33,20 @@ class HistoricalOddsAsOfQuote:
 class OddspapiHistoricalOddsAsOf:
     """Select last-in-force quotes from already-ordered tick series."""
 
+    @staticmethod
+    def start_time_as_utc(start_time: datetime | None) -> datetime | None:
+        """Normalize the canonical event start to an aware UTC boundary.
+
+        Canonical event datetimes are stored as local-naive values despite the
+        legacy ``start_time_utc`` field name. A timezone-aware value is treated
+        according to its own offset.
+        """
+        if start_time is None:
+            return None
+        if start_time.tzinfo is None:
+            return convert_local_to_utc(start_time).replace(tzinfo=timezone.utc)
+        return start_time.astimezone(timezone.utc)
+
     @classmethod
     def targets_from_start(
         cls,
@@ -42,11 +56,12 @@ class OddspapiHistoricalOddsAsOf:
         """Return ``(minutes, target_utc, collected_at_local)`` for positive moments."""
         if start_time is None:
             return []
+        start_utc = cls.start_time_as_utc(start_time)
+        if start_utc is None:
+            return []
         if start_time.tzinfo is None:
-            start_utc = convert_local_to_utc(start_time).replace(tzinfo=timezone.utc)
             start_local = start_time
         else:
-            start_utc = start_time.astimezone(timezone.utc)
             start_local = convert_utc_to_local(start_time)
         targets: list[tuple[int, datetime, datetime]] = []
         for moment in moments:

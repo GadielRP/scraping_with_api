@@ -82,6 +82,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         require_active_quotes: bool = True,
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
+        current_cutoff_utc: datetime | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         if not selections:
             return []
@@ -106,6 +107,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 require_active_quotes=require_active_quotes,
                 capture_raw_response=capture_raw_response,
                 as_of_targets=as_of_targets,
+                current_cutoff_utc=current_cutoff_utc,
             )
         return self._fetch_with_worker_pool(
             fixture_id,
@@ -116,6 +118,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
             capture_raw_response=capture_raw_response,
             worker_count=worker_count,
             as_of_targets=as_of_targets,
+            current_cutoff_utc=current_cutoff_utc,
         )
 
     def _fetch_one(
@@ -129,6 +132,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         require_active_quotes: bool,
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
+        current_cutoff_utc: datetime | None = None,
     ) -> ExchangeHistoricalFetchOutcome:
         try:
             result = fetcher.fetch_odds(
@@ -141,6 +145,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 require_active_quotes=require_active_quotes,
                 capture_raw_response=capture_raw_response,
                 as_of_targets=as_of_targets,
+                current_cutoff_utc=current_cutoff_utc,
             )
             return ExchangeHistoricalFetchOutcome(selection=selection, result=result)
         except Exception as exc:  # noqa: BLE001 - surfaced for caller bookkeeping/logging
@@ -158,6 +163,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         require_active_quotes: bool,
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
+        current_cutoff_utc: datetime | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         client = self._client_factory(key_scheduler=self._scheduler())
         fetcher = self._fetcher_factory(client)
@@ -172,6 +178,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                     require_active_quotes=require_active_quotes,
                     capture_raw_response=capture_raw_response,
                     as_of_targets=as_of_targets,
+                    current_cutoff_utc=current_cutoff_utc,
                 )
                 for selection in selections
             ]
@@ -191,6 +198,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         worker_count: int,
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
+        current_cutoff_utc: datetime | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         chunks = [selections[index::worker_count] for index in range(worker_count)]
 
@@ -208,6 +216,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                         require_active_quotes=require_active_quotes,
                         capture_raw_response=capture_raw_response,
                         as_of_targets=as_of_targets,
+                        current_cutoff_utc=current_cutoff_utc,
                     )
                     for selection in chunks[worker_index]
                 ]

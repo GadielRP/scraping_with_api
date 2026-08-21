@@ -558,8 +558,9 @@ Independent of `CLOSING_ONLY` (the skip does not apply to live).
 
 1. Refuse the request if the event has no mainline cache (`missing_mainline_cache`).
 2. Call `/historical-odds` only (no live `/odds`).
-3. Ingest with `use_mainline_cache=True` so choices can be tagged `mainLine` from cache.
-4. If `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` is on, reconstructed key-moment prices travel as `momentQuotes` and become extra snapshot rows.
+3. When `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS=true` (default), convert the canonical event start (stored as Mexico-local naive time despite the legacy `start_time_utc` name) to UTC and pass it as the inclusive historical-current cutoff. Opening/current normalization ignores every tick with `createdAt > kickoff`. With the toggle disabled, no cutoff is passed and selection returns to the unbounded latest tick.
+4. Ingest with `use_mainline_cache=True` so choices can be tagged `mainLine` from cache.
+5. If `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` is on, reconstructed key-moment prices travel as `momentQuotes` and become extra snapshot rows. Their own per-moment `as-of` targets remain independent from the kickoff cutoff.
 
 Other OddspAPI skips: `ENABLE_ODDSPAPI_PRE_START_ODDS`, missing API key, missing fixture mapping, `has_odds=False`, `max_events`, 404 / empty payload, tracked-competition provider gate.
 
@@ -590,6 +591,7 @@ Not persisted as OddspAPI prices:
 - Quotes with empty/`null` `price`.
 - Non-main-line outcomes when `ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY=true` (current local env).
 - Inactive player ticks when `ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES=true` (local env is `false`, so inactive ticks **are** eligible).
+- Post-kickoff ticks when `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS=true` (default and local env). Setting it to `false` restores latest-tick selection without a kickoff cutoff.
 - Bookmakers without a pre-existing `bookie_source_mappings` row (`allow_create=False`).
 - Extra Betfair depth: adapter keeps only top-of-book **back** + best **lay**.
 
@@ -615,7 +617,7 @@ Exchange historical **planning** is narrower: `exchange_market_keys` in `setting
 | Adapter field | Source in OddsPapi payload | Becomes |
 |---|---|---|
 | `name` | catalog `canonical_choice_name` | `market_choices.choice_name` |
-| `decimalValue` | `player.price` rounded to 3 dp | quote `current_odds` + current snapshot `odds_value` |
+| `decimalValue` | `player.price` rounded to 3 dp; when the post-kickoff filter is enabled, historical live reads first restrict candidates to `createdAt <= kickoff` | quote `current_odds` + current snapshot `odds_value` |
 | `initialDecimalValue` | `player.initialPrice` (from `/odds` or merged `/historical-odds`) | quote `initial_odds` + opening snapshot |
 | `initialChangedAt` | `player.initialChangedAt` (UTC, converted) | quote `initial_captured_at` + opening snapshot `source_collected_at` |
 | `changedAt` | `player.changedAt` | current snapshot `source_collected_at` |
@@ -786,6 +788,7 @@ The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a calle
 | `ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS` | `betfair-ex` | Exchange book requested; stored as back/lay quotes. |
 | `ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY` | `true` | Drop every choice whose `mainLine` is not `true`. |
 | `ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES` | `false` | `false` = persist even if `active=false`. |
+| `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS` | `true` | `true` = opening/current from `/historical-odds` only consider ticks whose `createdAt <= kickoff UTC`; `false` restores unbounded latest-tick selection. |
 | `ODDSPAPI_PRE_START_CLOSING_ONLY` | `true` | `/odds` only at T-1. T-120/T-30/T-5 skip. Live `-5` still uses `/historical-odds`. |
 | `ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS` | `true` | Extra Betfair historical at T-120 **if** that moment actually requests. With `CLOSING_ONLY=true` it does not. Skipped for tracked competitions. |
 | `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | `true` | Extra snapshot ticks from reconstructed moments. |

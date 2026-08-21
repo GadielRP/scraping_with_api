@@ -57,6 +57,7 @@ class OddspapiOddsFetcher:
         require_active_quotes: bool = True,
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
+        current_cutoff_utc: datetime | None = None,
     ) -> OddsFetchResult:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -83,6 +84,7 @@ class OddspapiOddsFetcher:
                     as_of_targets=as_of_targets or (),
                     minimum_initial_span_minutes=minimum_initial_span_minutes,
                     require_active_quotes=require_active_quotes,
+                    current_cutoff_utc=current_cutoff_utc,
                 )
                 payload = read_result.normalized_payload
                 as_of_quotes = read_result.as_of_quotes

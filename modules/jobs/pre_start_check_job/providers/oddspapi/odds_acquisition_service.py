@@ -123,6 +123,7 @@ class OddspapiPreStartOddsAcquisitionService:
         require_active_quotes: bool = True,
         capture_raw_response: bool = False,
         as_of_targets: list[tuple[int, datetime, datetime]] | None = None,
+        current_cutoff_utc: datetime | None = None,
     ) -> OddsFetchResult:
         return self.fetcher.fetch_odds(
             fixture_id,
@@ -134,6 +135,7 @@ class OddspapiPreStartOddsAcquisitionService:
             require_active_quotes=require_active_quotes,
             capture_raw_response=capture_raw_response,
             as_of_targets=as_of_targets,
+            current_cutoff_utc=current_cutoff_utc,
         )
 
     @staticmethod
@@ -218,6 +220,7 @@ class OddspapiPreStartOddsAcquisitionService:
         fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
         capture_raw_response: bool = False,
         as_of_targets: list[tuple[int, datetime, datetime]] | None = None,
+        current_cutoff_utc: datetime | None = None,
     ) -> dict | None:
         for selection in selections:
             requested_bookmakers.add(selection.bookmaker_slug)
@@ -233,6 +236,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 require_active_quotes=require_active_quotes,
                 capture_raw_response=capture_raw_response,
                 as_of_targets=as_of_targets,
+                current_cutoff_utc=current_cutoff_utc,
             )
             for outcome in outcomes:
                 payload = self._apply_exchange_historical_result(
@@ -262,6 +266,7 @@ class OddspapiPreStartOddsAcquisitionService:
                     require_active_quotes=require_active_quotes,
                     capture_raw_response=capture_raw_response,
                     as_of_targets=as_of_targets,
+                    current_cutoff_utc=current_cutoff_utc,
                 )
             except Exception as exc:
                 error = exc
@@ -290,6 +295,7 @@ class OddspapiPreStartOddsAcquisitionService:
         exchange_request_budget: int | None,
         minimum_initial_span_minutes: float,
         require_active_quotes: bool = True,
+        filter_post_kickoff_ticks: bool = True,
         debug_mode: bool,
         result: OddspapiOddsAcquisitionResult,
         requested_bookmakers: set[str],
@@ -322,6 +328,11 @@ class OddspapiPreStartOddsAcquisitionService:
             start_time_utc,
             as_of_moments or [],
         )
+        current_cutoff_utc = (
+            OddspapiHistoricalOddsAsOf.start_time_as_utc(start_time_utc)
+            if filter_post_kickoff_ticks
+            else None
+        )
         capture_raw = debug_mode
         if regular:
             requested_bookmakers.update(regular)
@@ -335,6 +346,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 require_active_quotes=require_active_quotes,
                 capture_raw_response=capture_raw,
                 as_of_targets=as_of_targets,
+                current_cutoff_utc=current_cutoff_utc,
             )
             historical_missing = historical_result.endpoint_missing
             payload = historical_result.payload
@@ -395,6 +407,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 fetch_executor=fetch_executor,
                 capture_raw_response=capture_raw,
                 as_of_targets=as_of_targets,
+                current_cutoff_utc=current_cutoff_utc,
             )
 
         if attach_as_of and result.as_of_quotes:
@@ -587,6 +600,7 @@ class OddspapiPreStartOddsAcquisitionService:
         minimum_initial_span_minutes: float,
         current_odds_available: bool,
         require_active_quotes: bool = True,
+        filter_post_kickoff_ticks: bool = True,
         debug_mode: bool = False,
         exchange_fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
         start_time_utc: datetime | None = None,
@@ -612,6 +626,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 exchange_request_budget=exchange_request_budget,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
                 require_active_quotes=require_active_quotes,
+                filter_post_kickoff_ticks=filter_post_kickoff_ticks,
                 debug_mode=debug_mode,
                 result=result,
                 requested_bookmakers=requested_bookmakers,

@@ -488,6 +488,7 @@ class OddspapiPreStartOddsBatchProcessor:
         enable_exchange_historical: bool = True,
         persist_main_line_only: bool = False,
         require_active_quotes: bool = True,
+        filter_post_kickoff_ticks: bool = True,
         mainline_fallback_bookmakers: list[str] | tuple[str, ...] | None = None,
         minimum_initial_span_minutes: float = 60.0,
         api_keys: list[str] | None = None,
@@ -642,6 +643,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     "enable_exchange_historical": enable_exchange_historical,
                     "persist_main_line_only": persist_main_line_only,
                     "require_active_quotes": require_active_quotes,
+                    "filter_post_kickoff_ticks": filter_post_kickoff_ticks,
                     "mainline_fallback_bookmakers": mainline_fallback_bookmakers,
                     "minimum_initial_span_minutes": (
                         minimum_initial_span_minutes
@@ -784,6 +786,7 @@ class OddspapiPreStartOddsBatchProcessor:
                         ),
                         current_odds_available=candidate.has_odds,
                         require_active_quotes=require_active_quotes,
+                        filter_post_kickoff_ticks=filter_post_kickoff_ticks,
                         debug_mode=debug_mode,
                         exchange_fetch_executor=exchange_fetch_executor,
                         start_time_utc=candidate.start_time_utc,

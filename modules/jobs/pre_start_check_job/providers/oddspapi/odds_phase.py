@@ -219,6 +219,11 @@ def run_oddspapi_pre_start_odds(
             "ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES",
             ODDSPAPI_PRE_START_SETTINGS.require_active_quotes,
         ),
+        filter_post_kickoff_ticks=getattr(
+            Config,
+            "ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS",
+            True,
+        ),
         mainline_fallback_bookmakers=list(
             getattr(
                 Config,

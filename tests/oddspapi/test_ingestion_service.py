@@ -14,6 +14,18 @@ from infrastructure.persistence.models import (
 from infrastructure.persistence.repositories.market_repository import MarketRepository
 from modules.oddspapi import OddspapiEventResolution
 from modules.odds_ingestion.market_odds_ingestion_service import MarketOddsIngestionService
+from modules.odds_ingestion.fetch_result import OddsFetchResult
+from modules.jobs.pre_start_check_job.providers.oddspapi.constants import (
+    ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
+)
+from modules.jobs.pre_start_check_job.providers.oddspapi.odds_acquisition_service import (
+    OddspapiPreStartOddsAcquisitionService,
+)
+from modules.jobs.pre_start_check_job.providers.oddspapi.odds_fetcher import (
+    OddspapiOddsFetcher,
+)
+from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
+from modules.oddspapi.historical_odds_reader import OddspapiHistoricalOddsReader
 from infrastructure.persistence.repositories.bookie_repository import BookieResolution
 from shared.timezone_utils import TIMEZONE, convert_utc_to_local
 
@@ -677,3 +689,263 @@ def test_repository_exchange_choice_persists_ladder_and_best_back_current_odds(t
         quote_ids[("lay", 0)],
         quote_ids[("lay", 1)],
     ]
+
+
+def _historical_payload(ticks: list[dict]) -> dict:
+    return {
+        "fixtureId": "fixture-1",
+        "bookmakers": {
+            "pinnacle": {
+                "markets": {
+                    "111": {
+                        "outcomes": {
+                            "111": {
+                                "players": {
+                                    "0": ticks,
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+
+
+def _normalized_historical_player(result) -> dict:
+    return result.normalized_payload["bookmakerOdds"]["pinnacle"]["markets"][
+        "111"
+    ]["outcomes"]["111"]["players"]["0"]
+
+
+def test_historical_reader_uses_last_tick_at_or_before_kickoff_for_current():
+    payload = _historical_payload(
+        [
+            {
+                "createdAt": "2026-08-21T01:40:00Z",
+                "price": 1.8,
+                "active": True,
+            },
+            {
+                "createdAt": "2026-08-21T02:00:00Z",
+                "price": 2.0,
+                "active": False,
+            },
+            {
+                "createdAt": "2026-08-21T02:01:00Z",
+                "price": 3.0,
+                "active": True,
+            },
+        ]
+    )
+
+    result = OddspapiHistoricalOddsReader.read(
+        payload,
+        source_sport_id="11",
+        require_active_quotes=False,
+        current_cutoff_utc=datetime(2026, 8, 21, 2, 0, tzinfo=timezone.utc),
+    )
+
+    player = _normalized_historical_player(result)
+    assert player["price"] == 2.0
+    assert player["changedAt"] == "2026-08-21T02:00:00Z"
+    assert player["active"] is False
+    assert player["initialPrice"] == 1.8
+    assert player["initialChangedAt"] == "2026-08-21T01:40:00Z"
+
+
+def test_historical_reader_drops_player_when_only_live_ticks_exist():
+    payload = _historical_payload(
+        [
+            {
+                "createdAt": "2026-08-21T02:00:01Z",
+                "price": 2.5,
+                "active": True,
+            }
+        ]
+    )
+
+    result = OddspapiHistoricalOddsReader.read(
+        payload,
+        source_sport_id="11",
+        require_active_quotes=False,
+        current_cutoff_utc=datetime(2026, 8, 21, 2, 0, tzinfo=timezone.utc),
+    )
+
+    assert result.normalized_payload["bookmakerOdds"] == {}
+
+
+def test_historical_current_cutoff_keeps_as_of_targets_independent():
+    payload = _historical_payload(
+        [
+            {
+                "createdAt": "2026-08-21T01:54:00Z",
+                "price": 1.9,
+                "active": True,
+            },
+            {
+                "createdAt": "2026-08-21T02:00:00Z",
+                "price": 2.0,
+                "active": True,
+            },
+            {
+                "createdAt": "2026-08-21T02:01:00Z",
+                "price": 3.0,
+                "active": True,
+            },
+        ]
+    )
+
+    result = OddspapiHistoricalOddsReader.read(
+        payload,
+        source_sport_id="11",
+        as_of_targets=[
+            (
+                5,
+                datetime(2026, 8, 21, 1, 55, tzinfo=timezone.utc),
+                datetime(2026, 8, 20, 19, 55),
+            )
+        ],
+        current_cutoff_utc=datetime(2026, 8, 21, 2, 0, tzinfo=timezone.utc),
+    )
+
+    assert _normalized_historical_player(result)["price"] == 2.0
+    assert len(result.as_of_quotes) == 1
+    assert result.as_of_quotes[0].price == 1.9
+    assert result.as_of_quotes[0].created_at == "2026-08-21T01:54:00Z"
+
+
+def test_historical_cutoff_converts_local_naive_event_start_to_utc():
+    assert OddspapiHistoricalOddsAsOf.start_time_as_utc(
+        datetime(2026, 8, 20, 20, 0)
+    ) == datetime(2026, 8, 21, 2, 0, tzinfo=timezone.utc)
+
+
+def test_historical_fetcher_applies_explicit_current_cutoff():
+    payload = _historical_payload(
+        [
+            {
+                "createdAt": "2026-08-21T01:59:00Z",
+                "price": 2.1,
+                "active": True,
+            },
+            {
+                "createdAt": "2026-08-21T02:01:00Z",
+                "price": 4.1,
+                "active": True,
+            },
+        ]
+    )
+
+    class Client:
+        def get_historical_odds(self, **_kwargs):
+            return payload
+
+    result = OddspapiOddsFetcher(client=Client()).fetch_odds(
+        "fixture-1",
+        bookmakers=["pinnacle"],
+        endpoint=ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
+        source_sport_id="11",
+        current_cutoff_utc=datetime(2026, 8, 21, 2, 0, tzinfo=timezone.utc),
+    )
+
+    player = result.payload["bookmakerOdds"]["pinnacle"]["markets"]["111"][
+        "outcomes"
+    ]["111"]["players"]["0"]
+    assert player["price"] == 2.1
+    assert player["changedAt"] == "2026-08-21T01:59:00Z"
+
+
+def test_live_acquisition_passes_event_start_as_historical_current_cutoff():
+    captured = {}
+
+    class Fetcher:
+        def fetch_odds(self, _fixture_id, **kwargs):
+            captured.update(kwargs)
+            return OddsFetchResult.from_payload({"bookmakerOdds": {}})
+
+    class MainlineCache:
+        @staticmethod
+        def event_ids_with_cache(event_ids):
+            return set(event_ids)
+
+    service = OddspapiPreStartOddsAcquisitionService(
+        fetcher=Fetcher(),
+        mainline_cache_repository=MainlineCache,
+    )
+
+    service.acquire(
+        "fixture-1",
+        event_id=189263,
+        source_sport_id="11",
+        minutes_until_start=-5,
+        is_live=True,
+        enable_exchange_historical=False,
+        regular_bookmakers=["pinnacle"],
+        exchange_bookmakers=[],
+        market_mapping_index={},
+        exchange_market_keys=[],
+        exchange_main_line_only=True,
+        exchange_include_player_props=False,
+        exchange_historical_moments=[120],
+        exchange_max_outcomes_per_event=8,
+        exchange_request_budget=None,
+        minimum_initial_span_minutes=60,
+        current_odds_available=True,
+        start_time_utc=datetime(2026, 8, 20, 20, 0),
+    )
+
+    assert captured["endpoint"] == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
+    assert captured["current_cutoff_utc"] == datetime(
+        2026,
+        8,
+        21,
+        2,
+        0,
+        tzinfo=timezone.utc,
+    )
+
+
+def test_live_acquisition_can_disable_post_kickoff_tick_filter():
+    captured = {}
+
+    class Fetcher:
+        def fetch_odds(self, _fixture_id, **kwargs):
+            captured.update(kwargs)
+            return OddsFetchResult.from_payload({"bookmakerOdds": {}})
+
+    class MainlineCache:
+        @staticmethod
+        def event_ids_with_cache(event_ids):
+            return set(event_ids)
+
+    service = OddspapiPreStartOddsAcquisitionService(
+        fetcher=Fetcher(),
+        mainline_cache_repository=MainlineCache,
+    )
+
+    service.acquire(
+        "fixture-1",
+        event_id=189263,
+        source_sport_id="11",
+        minutes_until_start=-10,
+        is_live=True,
+        enable_exchange_historical=False,
+        regular_bookmakers=["pinnacle"],
+        exchange_bookmakers=[],
+        market_mapping_index={},
+        exchange_market_keys=[],
+        exchange_main_line_only=True,
+        exchange_include_player_props=False,
+        exchange_historical_moments=[120],
+        exchange_max_outcomes_per_event=8,
+        exchange_request_budget=None,
+        minimum_initial_span_minutes=60,
+        current_odds_available=True,
+        require_active_quotes=False,
+        filter_post_kickoff_ticks=False,
+        start_time_utc=datetime(2026, 8, 20, 20, 0),
+    )
+
+    assert captured["endpoint"] == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
+    assert captured["current_cutoff_utc"] is None
