@@ -44,7 +44,7 @@ from scripts.development.pre_start_odds_simulation import (
 )
 from shared.runtime_observability import observe_operation
 
-SHOW_MARKET_PERSISTENCE_REPORT = True
+SHOW_MARKET_PERSISTENCE_REPORT = False
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -189,6 +189,9 @@ def _log_persisted_market_odds(
     adapted_response: dict | None = None,
 ) -> None:
     """Report the exact market state persisted by the production processor."""
+    if not SHOW_MARKET_PERSISTENCE_REPORT:
+        return
+
     with db_manager.get_session() as session:
         markets = (
             session.query(Market)

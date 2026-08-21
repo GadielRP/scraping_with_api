@@ -95,33 +95,25 @@ def _bundle(
 NBA_CONFIG = LeagueConfig(
     code="nba",
     display_name="NBA",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=132),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=132,
+        source_tournament_id=177,
+    ),
     collected=True,
     standings_method="win_pct",
     grouping_method="nba_conference",
     number_of_teams=30,
     total_regular_season_games=82,
     standings_grouping="split_tables",
-    season_bundles=(
-        _bundle(
-            80229,
-            (80229, 84238),
-        ),
-        _bundle(
-            65360,
-            (65360, 69143),
-        ),
-        _bundle(
-            54105,
-            (54105, 56094),
-        ),
-    ),
 )
 
 LALIGA_CONFIG = LeagueConfig(
     code="laliga",
     display_name="LaLiga",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=8),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=8,
+        source_tournament_id=36,
+    ),
     collected=True,
     standings_method="football_3_1_0_h2h",
     grouping_method="league_wide",
@@ -133,7 +125,10 @@ LALIGA_CONFIG = LeagueConfig(
 PREMIER_LEAGUE_CONFIG = LeagueConfig(
     code="premier_league",
     display_name="Premier League",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=17),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=17,
+        source_tournament_id=1,
+    ),
     collected=True,
     standings_method="football_3_1_0",
     grouping_method="league_wide",
@@ -145,7 +140,10 @@ PREMIER_LEAGUE_CONFIG = LeagueConfig(
 NFL_CONFIG = LeagueConfig(
     code="nfl",
     display_name="NFL",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=9464),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=9464,
+        source_tournament_id=108947,
+    ),
     collected=True,
     standings_method="win_pct_half_tie",
     grouping_method="nfl_conference",
@@ -157,7 +155,10 @@ NFL_CONFIG = LeagueConfig(
 MLB_CONFIG = LeagueConfig(
     code="mlb",
     display_name="MLB",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=11205),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=11205,
+        source_tournament_id=108806,
+    ),
     collected=True,
     standings_method="win_pct",
     grouping_method="mlb_league",
@@ -169,7 +170,10 @@ MLB_CONFIG = LeagueConfig(
 NHL_CONFIG = LeagueConfig(
     code="nhl",
     display_name="NHL",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=234),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=234,
+        source_tournament_id=142,
+    ),
     collected=True,
     standings_method="nhl_2_1_0_otl",
     grouping_method="nhl_conference",
@@ -182,7 +186,10 @@ NHL_CONFIG = LeagueConfig(
 SERIE_A_CONFIG = LeagueConfig(
     code="serie_a",
     display_name="Serie A",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=23),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=23,
+        source_tournament_id=33,
+    ),
     collected=True,
     standings_method="football_3_1_0_h2h",
     grouping_method="league_wide",
@@ -194,7 +201,10 @@ SERIE_A_CONFIG = LeagueConfig(
 BUNDESLIGA_CONFIG = LeagueConfig(
     code="bundesliga",
     display_name="Bundesliga",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=35),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=35,
+        source_tournament_id=42,
+    ),
     collected=True,
     standings_method="football_3_1_0",
     grouping_method="league_wide",
@@ -206,7 +216,10 @@ BUNDESLIGA_CONFIG = LeagueConfig(
 LIGUE_1_CONFIG = LeagueConfig(
     code="ligue_1",
     display_name="Ligue 1",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=34),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=34,
+        source_tournament_id=4,
+    ),
     collected=True,
     standings_method="football_3_1_0",
     grouping_method="league_wide",
@@ -218,7 +231,10 @@ LIGUE_1_CONFIG = LeagueConfig(
 SAUDI_PRO_LEAGUE_CONFIG = LeagueConfig(
     code="saudi_pro_league",
     display_name="Saudi Pro League",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=955),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=955,
+        source_tournament_id=3708,
+    ),
     collected=True,
     standings_method="football_3_1_0",
     grouping_method="league_wide",
@@ -230,7 +246,10 @@ SAUDI_PRO_LEAGUE_CONFIG = LeagueConfig(
 SHL_CONFIG = LeagueConfig(
     code="shl",
     display_name="SHL",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=261),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=261,
+        source_tournament_id=115,
+    ),
     collected=True,
     standings_method="hockey_3_2_1_0",
     grouping_method="league_wide",
@@ -239,10 +258,28 @@ SHL_CONFIG = LeagueConfig(
     standings_grouping="single_table",
 )
 
+WNBA_CONFIG = LeagueConfig(
+    code="wnba",
+    display_name="WNBA",
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=486,
+        source_tournament_id=591,
+    ),
+    collected=True,
+    standings_method="win_pct",
+    grouping_method="league_wide",
+    number_of_teams=15,
+    total_regular_season_games=40,
+    standings_grouping="split_tables",
+)
+
 PFL_CONFIG = LeagueConfig(
     code="pfl",
     display_name="PFL",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=1654),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=1654,
+        source_tournament_id=19822,
+    ),
     collected=True,
     standings_method="football_3_1_0",
     grouping_method="league_wide",
@@ -254,7 +291,10 @@ PFL_CONFIG = LeagueConfig(
 CBA_CONFIG = LeagueConfig(
     code="cba",
     display_name="CBA",
-    primary_identity=CompetitionIdentity(source_unique_tournament_id=1566),
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=1566,
+        source_tournament_id=10233,
+    ),
     collected=True,
     standings_method="win_pct",
     grouping_method="league_wide",
@@ -275,6 +315,7 @@ LEAGUE_CONFIGS: Tuple[LeagueConfig, ...] = (
     LIGUE_1_CONFIG,
     SAUDI_PRO_LEAGUE_CONFIG,
     SHL_CONFIG,
+    WNBA_CONFIG,
     PFL_CONFIG,
     CBA_CONFIG,
 )

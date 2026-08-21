@@ -452,7 +452,7 @@ class HistoricalStandingsCalculator:
     """Compute standings at any point in time for a collected season."""
 
     def __init__(self):
-        self._cache: Dict[Tuple[int, float, str, Optional[int], Optional[int]], Dict[str, Any]] = {}
+        self._cache: Dict[Tuple[int, float, str, Optional[int], Optional[int], Optional[int], Optional[int]], Dict[str, Any]] = {}
 
     def _get_cache_key(
         self,
@@ -461,13 +461,17 @@ class HistoricalStandingsCalculator:
         sport: Optional[str],
         source_unique_tournament_id: Optional[int],
         source_tournament_id: Optional[int],
-    ) -> Tuple[int, float, str, Optional[int], Optional[int]]:
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
+    ) -> Tuple[int, float, str, Optional[int], Optional[int], Optional[int], Optional[int]]:
         return (
             canonical_season_id,
             cutoff_timestamp,
             sport or "",
             source_unique_tournament_id,
             source_tournament_id,
+            competition_id,
+            season_year,
         )
 
     def _fetch_match_records_before_cutoff(
@@ -477,6 +481,8 @@ class HistoricalStandingsCalculator:
         sport: str,
         source_unique_tournament_id: Optional[int],
         source_tournament_id: Optional[int],
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         cutoff_dt = datetime.fromtimestamp(cutoff_timestamp)
         all_season_ids = get_included_season_ids(
@@ -509,20 +515,29 @@ class HistoricalStandingsCalculator:
                 winner,
                 result_subtype
             FROM season_events_with_results
-            WHERE season_id = ANY(:season_ids)
-              AND round = 'regular_season'
+            WHERE round = 'regular_season'
               AND start_time_utc < :cutoff_dt
         """
         query_params: Dict[str, Any] = {
-            "season_ids": list(all_season_ids),
             "cutoff_dt": cutoff_dt,
         }
-        if source_unique_tournament_id is not None:
+        if competition_id is not None:
+            query_sql += " AND competition_id = :competition_id"
+            query_params["competition_id"] = int(competition_id)
+        elif source_unique_tournament_id is not None:
             query_sql += " AND source_unique_tournament_id = :source_unique_tournament_id"
             query_params["source_unique_tournament_id"] = source_unique_tournament_id
-        if tournament_ids:
-            query_sql += " AND source_tournament_id = ANY(:source_tournament_ids)"
-            query_params["source_tournament_ids"] = list(tournament_ids)
+            if tournament_ids:
+                query_sql += " AND source_tournament_id = ANY(:source_tournament_ids)"
+                query_params["source_tournament_ids"] = list(tournament_ids)
+
+        if season_year is not None:
+            query_sql += " AND season_year = :season_year"
+            query_params["season_year"] = int(season_year)
+        else:
+            query_sql += " AND season_id = ANY(:season_ids)"
+            query_params["season_ids"] = list(all_season_ids)
+
         query_sql += "\n            ORDER BY start_time_utc\n            "
 
         query = text(query_sql)
@@ -561,6 +576,8 @@ class HistoricalStandingsCalculator:
         sport: str = None,
         source_unique_tournament_id: Optional[int] = None,
         source_tournament_id: Optional[int] = None,
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
         send_debug_standings: bool = False,
     ) -> Dict[str, Dict]:
         bundle = self.calculate_standings_bundle_at(
@@ -569,6 +586,8 @@ class HistoricalStandingsCalculator:
             sport=sport,
             source_unique_tournament_id=source_unique_tournament_id,
             source_tournament_id=source_tournament_id,
+            competition_id=competition_id,
+            season_year=season_year,
             send_debug_standings=send_debug_standings,
         )
         return bundle.get("standings", {})
@@ -580,6 +599,8 @@ class HistoricalStandingsCalculator:
         sport: str = None,
         source_unique_tournament_id: Optional[int] = None,
         source_tournament_id: Optional[int] = None,
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
         send_debug_standings: bool = False,
     ) -> Dict[str, Any]:
         canonical_season_id = get_canonical_season_id(
@@ -593,6 +614,8 @@ class HistoricalStandingsCalculator:
             sport,
             source_unique_tournament_id,
             source_tournament_id,
+            competition_id,
+            season_year,
         )
         if cache_key in self._cache:
             cached_bundle = self._cache[cache_key]
@@ -610,6 +633,8 @@ class HistoricalStandingsCalculator:
                 sport=sport,
                 source_unique_tournament_id=source_unique_tournament_id,
                 source_tournament_id=source_tournament_id,
+                competition_id=competition_id,
+                season_year=season_year,
                 send_debug_standings=send_debug_standings,
             )
             bundle = {
@@ -635,6 +660,8 @@ class HistoricalStandingsCalculator:
         sport: str = None,
         source_unique_tournament_id: Optional[int] = None,
         source_tournament_id: Optional[int] = None,
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
         send_debug_standings: bool = False,
     ) -> Dict[str, Dict]:
         """Backward-compatible alias for older callers."""
@@ -644,6 +671,8 @@ class HistoricalStandingsCalculator:
             sport=sport,
             source_unique_tournament_id=source_unique_tournament_id,
             source_tournament_id=source_tournament_id,
+            competition_id=competition_id,
+            season_year=season_year,
             send_debug_standings=send_debug_standings,
         )
 
@@ -674,6 +703,8 @@ class HistoricalStandingsCalculator:
         sport: str = None,
         source_unique_tournament_id: Optional[int] = None,
         source_tournament_id: Optional[int] = None,
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
     ) -> Dict[float, Dict[str, Dict]]:
         """Compute standings snapshots for many cutoffs with one league fetch.
 
@@ -694,6 +725,8 @@ class HistoricalStandingsCalculator:
                 sport=sport,
                 source_unique_tournament_id=source_unique_tournament_id,
                 source_tournament_id=source_tournament_id,
+                competition_id=competition_id,
+                season_year=season_year,
             )
         except Exception as exc:
             logger.error("Error computing standings timeline for season %s: %s", season_id, exc)
@@ -706,6 +739,8 @@ class HistoricalStandingsCalculator:
         sport: Optional[str],
         source_unique_tournament_id: Optional[int],
         source_tournament_id: Optional[int],
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
     ) -> Dict[float, Dict[str, Dict]]:
         standings_method, grouping_method = self._resolve_methods(
             sport,
@@ -721,6 +756,8 @@ class HistoricalStandingsCalculator:
             sport=sport,
             source_unique_tournament_id=source_unique_tournament_id,
             source_tournament_id=source_tournament_id,
+            competition_id=competition_id,
+            season_year=season_year,
         )
         record_timestamps = [record["start_time_utc"].timestamp() for record in match_records]
         needs_h2h_records = standings_method == "football_3_1_0_h2h"
@@ -758,6 +795,8 @@ class HistoricalStandingsCalculator:
         sport: str,
         source_unique_tournament_id: Optional[int] = None,
         source_tournament_id: Optional[int] = None,
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
         send_debug_standings: bool = False,
     ) -> Dict[str, Any]:
         standings_method, grouping_method = self._resolve_methods(
@@ -777,6 +816,8 @@ class HistoricalStandingsCalculator:
             sport=sport,
             source_unique_tournament_id=source_unique_tournament_id,
             source_tournament_id=source_tournament_id,
+            competition_id=competition_id,
+            season_year=season_year,
         )
         team_stats: Dict[str, Dict[str, object]] = {}
         warned_unknown_group_teams: Set[str] = set()

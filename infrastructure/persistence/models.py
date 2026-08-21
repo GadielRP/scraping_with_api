@@ -1159,6 +1159,7 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
     SELECT
         e.id AS event_id,
         e.season_id,
+        s.year AS season_year,
         e.start_time_utc,
         e.competition_id,
         hp.name AS home_team,
@@ -1186,6 +1187,7 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
     JOIN participants hp ON hp.participant_id = e.home_participant_id
     JOIN participants ap ON ap.participant_id = e.away_participant_id
     JOIN competitions c ON c.competition_id = e.competition_id
+    JOIN seasons s ON s.id = e.season_id
     WHERE e.season_id IS NOT NULL
       AND r.home_score IS NOT NULL
       AND r.away_score IS NOT NULL;

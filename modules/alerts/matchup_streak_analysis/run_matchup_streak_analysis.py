@@ -306,6 +306,7 @@ def build_matchup_streak_context(
             logger.info(f"📅 Using season year filtering: {target_season_year} (fallback enabled: {ENABLE_SEASON_YEAR_FILTERING})")
 
         event_start_ts = event_start_time.timestamp() if event_start_time else None
+        resolved_competition_id = getattr(competition_context, "competition_id", None)
 
         def _load_team_results(team_id, team_name):
             return get_team_last_results_by_id(
@@ -316,6 +317,7 @@ def build_matchup_streak_context(
                 season_id=season_id,
                 source_unique_tournament_id=source_unique_tournament_id,
                 source_tournament_id=source_tournament_id,
+                competition_id=resolved_competition_id,
                 season_year=target_season_year,
                 observations=observations,
                 exclude_event_id=event_id,

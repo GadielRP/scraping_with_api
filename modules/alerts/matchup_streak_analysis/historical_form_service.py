@@ -101,6 +101,8 @@ class HistoricalFormService:
         included_season_ids: Tuple[int, ...],
         source_unique_tournament_id: Optional[int],
         tournament_ids: Tuple[int, ...],
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
     ) -> List:
         """Fetch the team's regular-season games, most recent first."""
         # Imported lazily to avoid import cycles at module load time.
@@ -116,18 +118,28 @@ class HistoricalFormService:
                 winner,
                 start_time_utc
             FROM season_events_with_results
-            WHERE season_id = ANY(:season_ids)
-              AND round = 'regular_season'
-              AND source_unique_tournament_id = :source_unique_tournament_id
+            WHERE round = 'regular_season'
         """
-        query_params = {
-            "season_ids": list(included_season_ids),
-            "source_unique_tournament_id": source_unique_tournament_id,
+        query_params: Dict[str, Any] = {
             "team_name": team_name,
         }
-        if tournament_ids:
-            query_sql += " AND source_tournament_id = ANY(:source_tournament_ids)"
-            query_params["source_tournament_ids"] = list(tournament_ids)
+        if competition_id is not None:
+            query_sql += " AND competition_id = :competition_id"
+            query_params["competition_id"] = int(competition_id)
+        elif source_unique_tournament_id is not None:
+            query_sql += " AND source_unique_tournament_id = :source_unique_tournament_id"
+            query_params["source_unique_tournament_id"] = source_unique_tournament_id
+            if tournament_ids:
+                query_sql += " AND source_tournament_id = ANY(:source_tournament_ids)"
+                query_params["source_tournament_ids"] = list(tournament_ids)
+
+        if season_year is not None:
+            query_sql += " AND season_year = :season_year"
+            query_params["season_year"] = int(season_year)
+        else:
+            query_sql += " AND season_id = ANY(:season_ids)"
+            query_params["season_ids"] = list(included_season_ids)
+
         query_sql += " AND (home_team = :team_name OR away_team = :team_name) ORDER BY start_time_utc DESC"
 
         with db_manager.get_session() as session:
@@ -232,6 +244,8 @@ class HistoricalFormService:
         sport: str,
         source_unique_tournament_id: Optional[int] = None,
         source_tournament_id: Optional[int] = None,
+        competition_id: Optional[int] = None,
+        season_year: Optional[int] = None,
         exclude_event_id: int = None,
         current_event_timestamp: float = None,
         send_debug_standings: bool = True,
@@ -258,9 +272,11 @@ class HistoricalFormService:
             )
 
             logger.info(
-                "DB historical form scope for %s: season_id=%s included_season_ids=%s source_unique_tournament_id=%s source_tournament_id=%s standings_method=%s grouping_method=%s",
+                "DB historical form scope for %s: competition_id=%s season_id=%s season_year=%s included_season_ids=%s source_unique_tournament_id=%s source_tournament_id=%s standings_method=%s grouping_method=%s",
                 team_name,
+                competition_id,
                 season_id,
+                season_year,
                 included_season_ids,
                 source_unique_tournament_id,
                 source_tournament_id,
@@ -273,12 +289,15 @@ class HistoricalFormService:
                 included_season_ids,
                 source_unique_tournament_id,
                 tournament_ids,
+                competition_id=competition_id,
+                season_year=season_year,
             )
             logger.info(
-                "DB query returned %s events for %s in seasons %s",
+                "DB query returned %s events for %s in competition %s (year=%s)",
                 len(all_rows),
                 team_name,
-                included_season_ids,
+                competition_id or source_unique_tournament_id,
+                season_year,
             )
 
             applicable_rows = [
@@ -299,6 +318,8 @@ class HistoricalFormService:
                 sport,
                 source_unique_tournament_id=source_unique_tournament_id,
                 source_tournament_id=source_tournament_id,
+                competition_id=competition_id,
+                season_year=season_year,
             )
 
             results = [

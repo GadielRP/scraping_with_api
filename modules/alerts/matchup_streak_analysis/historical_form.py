@@ -568,6 +568,7 @@ def get_team_last_results_by_id(
     season_id: Optional[int] = None,
     source_unique_tournament_id: Optional[int] = None,
     source_tournament_id: Optional[int] = None,
+    competition_id: Optional[int] = None,
     season_year: Optional[int] = None,
     observations: Optional[List[Dict]] = None,
     exclude_event_id: Optional[int] = None,
@@ -628,8 +629,9 @@ def get_team_last_results_by_id(
             source_tournament_id,
         )
         logger.info(
-            "📊 Using DB-based form retrieval for %s (season_id=%s, included_season_ids=%s, source_unique_tournament_id=%s, source_tournament_id=%s, standings_method=%s, grouping_method=%s)",
+            "📊 Using DB-based form retrieval for %s (competition_id=%s, season_id=%s, included_season_ids=%s, source_unique_tournament_id=%s, source_tournament_id=%s, standings_method=%s, grouping_method=%s)",
             team_name,
+            competition_id,
             season_id,
             included_season_ids,
             source_unique_tournament_id,
@@ -643,6 +645,8 @@ def get_team_last_results_by_id(
             sport=sport,
             source_unique_tournament_id=source_unique_tournament_id,
             source_tournament_id=source_tournament_id,
+            competition_id=competition_id,
+            season_year=season_year,
             exclude_event_id=exclude_event_id,
             current_event_timestamp=event_start_timestamp,
             send_debug_standings=debug_mode,  # Toggle: via .env global_debug_mode
