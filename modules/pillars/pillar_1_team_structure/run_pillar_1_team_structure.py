@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 def calculate_pillar_1_team_structure(
-    streak_analysis: Any,
-    event_context: EventContext,
+    streak_analysis: Any = None,
+    event_context: EventContext | None = None,
     debug_mode: bool = False,
 ) -> Dict[str, Any]:
     """Calculate Pillar 1 - Team Structure (Side and Totals) for an event.
@@ -28,6 +28,12 @@ def calculate_pillar_1_team_structure(
     Returns:
         A dictionary containing both the side and totals results.
     """
+    if event_context is None:
+        raise ValueError("EventContext is required for Pillar 1")
+    streak_analysis = getattr(event_context, "streak_analysis", None)
+    if streak_analysis is None:
+        raise ValueError("EventContext is missing streak_analysis for Pillar 1")
+
     # 1. Calculate side component (Modules M1-M7 aggregated)
     side_result = calculate_p1_side(
         streak_analysis,
@@ -45,7 +51,7 @@ def calculate_pillar_1_team_structure(
     except Exception as exc:
         logger.error(
             "Error calculating P1_TOTALS for event %s: %s",
-            getattr(streak_analysis, "event_id", getattr(event_context, "event_id", "?")),
+            event_context.event_id,
             exc,
         )
         totals_result = None

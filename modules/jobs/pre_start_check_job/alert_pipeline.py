@@ -48,22 +48,25 @@ class EventAlertProcessor:
         if event_context is None or not getattr(event_context, "success", True):
             return
 
-        event_obj = getattr(event_context, "event_obj", None)
-        event_id = getattr(event_context, "event_id", getattr(event_obj, "id", "?"))
+        event_id = getattr(event_context, "event_id", "?")
+        event_obj = (
+            self.event_repo.get_event_by_id(event_id)
+            if self.event_repo is not None and event_id != "?"
+            else None
+        )
         minutes_until_start = getattr(event_context, "minutes_until_start", None)
         odds_response = getattr(event_context, "odds_response", None)
 
         season_id = event_context.season_id
         competition_id = event_context.competition.competition_id
-        discovery_source = event_context.discovery_source or getattr(event_obj, "discovery_source", None)
+        discovery_source = event_context.discovery_source
 
         # Centralized 'Gating' Logic (Calculate once, reuse everywhere)
         tracked_competition = is_tracked_competition(competition_id)
         is_selected_source = discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
 
         # 1. Synchronization (Wait for external data providers if necessary)
-        if event_obj is not None:
-            self._sync_oddsportal_data(event_obj, odds_response)
+        self._sync_oddsportal_data(event_id, odds_response)
 
         # 2. Evaluation (Perform analysis and generate prediction reports)
         streak_analysis = None
@@ -87,8 +90,11 @@ class EventAlertProcessor:
             os.makedirs(debug_dir, exist_ok=True)
             
             # Format participants for filename
-            safe_participants = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in streak_analysis.participants).replace(' ', '_')
-            filename = f"{streak_analysis.event_id}_{safe_participants}.txt"
+            safe_participants = "".join(
+                c if c.isalnum() or c in (' ', '-', '_') else '_'
+                for c in event_context.participants_label
+            ).replace(' ', '_')
+            filename = f"{event_context.event_id}_{safe_participants}.txt"
             filepath = os.path.join(debug_dir, filename)
             
             try:
@@ -117,12 +123,12 @@ class EventAlertProcessor:
             dual_report=dual_report,
         )
 
-    def _sync_oddsportal_data(self, event_obj, odds_response) -> None:
+    def _sync_oddsportal_data(self, event_id, odds_response) -> None:
         """Wait for OddsPortal persistence and release its cached payload."""
-        if not (odds_response and self.op_event_ids and event_obj.id in self.op_event_ids and self.op_event_states):
+        if not (odds_response and self.op_event_ids and event_id in self.op_event_ids and self.op_event_states):
             return
 
-        state = self.op_event_states.get(event_obj.id)
+        state = self.op_event_states.get(event_id)
         if not state:
             return
 
@@ -132,7 +138,7 @@ class EventAlertProcessor:
             while not state["started_event"].is_set() and not state["done_event"].is_set():
                 if not logged_queue:
                     logger.info(
-                        f"[OP] Event {event_obj.id} queued; waiting for worker claim...",
+                        f"[OP] Event {event_id} queued; waiting for worker claim...",
                         extra={"oddsportal": True},
                     )
                     logged_queue = True
@@ -148,47 +154,47 @@ class EventAlertProcessor:
 
                     if remaining > 0:
                         logger.info(
-                            f"[OP] Event {event_obj.id} started {elapsed:.1f}s ago; waiting up to {remaining:.1f}s...",
+                                f"[OP] Event {event_id} started {elapsed:.1f}s ago; waiting up to {remaining:.1f}s...",
                             extra={"oddsportal": True},
                         )
                         if state["done_event"].wait(timeout=remaining):
                             logger.info(
-                                f"[OP] Worker signaled completion for event {event_obj.id}.",
+                                f"[OP] Worker signaled completion for event {event_id}.",
                                 extra={"oddsportal": True},
                             )
                         else:
                             logger.warning(
-                                f"[OP] Timed out waiting for OddsPortal for event {event_obj.id}.",
+                                f"[OP] Timed out waiting for OddsPortal for event {event_id}.",
                                 extra={"oddsportal": True},
                             )
                     else:
                         logger.warning(
-                            f"[OP] Event {event_obj.id} exceeded timeout ({elapsed:.1f}s).",
+                            f"[OP] Event {event_id} exceeded timeout ({elapsed:.1f}s).",
                             extra={"oddsportal": True},
                         )
 
         # Verify DB availability
         try:
-            if MarketRepository.has_external_markets_for_event(event_obj.id):
+            if MarketRepository.has_external_markets_for_event(event_id):
                 logger.info(
-                    f"[OP] External markets data available for {event_obj.id}.",
+                    f"[OP] External markets data available for {event_id}.",
                     extra={"oddsportal": True},
                 )
             else:
                 logger.info(
-                    f"[OP] External markets data NOT available for {event_obj.id}.",
+                    f"[OP] External markets data NOT available for {event_id}.",
                     extra={"oddsportal": True},
                 )
         except Exception as exc:
             logger.warning(
-                f"[OP] Could not verify external markets availability for {event_obj.id}: {exc}",
+                f"[OP] Could not verify external markets availability for {event_id}: {exc}",
                 extra={"oddsportal": True},
             )
 
         # Transfer ownership to this evaluation so completed scrape trees do
         # not remain retained by the cycle context.
         if self.op_data_cache:
-            self.op_data_cache.pop(event_obj.id, None)
+            self.op_data_cache.pop(event_id, None)
 
     def _ensure_matchup_streak_analysis(
         self, event_context: EventContext
@@ -219,7 +225,11 @@ class EventAlertProcessor:
         if dual_report is not None:
             return dual_report
 
-        event_obj = getattr(event_context, "event_obj", None)
+        event_obj = (
+            self.event_repo.get_event_by_id(event_context.event_id)
+            if self.event_repo is not None
+            else None
+        )
         if (
             (is_selected_source or tracked_competition)
             and minutes_until_start is not None
@@ -234,7 +244,7 @@ class EventAlertProcessor:
                 event_context.dual_report = report
                 return report
             except Exception as exc:
-                event_id = getattr(event_context, "event_id", getattr(event_obj, "id", "?"))
+                event_id = getattr(event_context, "event_id", "?")
                 logger.error(f"Error running dual process evaluation for event {event_id}: {exc}")
 
         return None
@@ -252,15 +262,15 @@ class EventAlertProcessor:
     ) -> None:
         """Sends the appropriate alerts to the notifier."""
         # 1. Odds Alerts
-        if odds_response and minutes_until_start is not None and event_obj is not None:
+        if odds_response and minutes_until_start is not None:
             event_data_for_odds = {
-                "id": event_obj.id,
+                "id": event_context.event_id,
                 "home_team": event_context.home.name,
                 "away_team": event_context.away.name,
-                "sport": event_obj.sport,
+                "sport": event_context.sport,
                 "competition": event_context.competition.display_name,
-                "slug": event_obj.slug,
-                "discovery_source": getattr(event_obj, "discovery_source", ""),
+                "slug": event_context.slug,
+                "discovery_source": event_context.discovery_source or "",
                 "season_id": season_id,
                 "competition_id": event_context.competition.competition_id,
             }
@@ -268,7 +278,11 @@ class EventAlertProcessor:
 
         # 2. Matchup Streak Alerts
         if streak_analysis and should_send_streak:
-            send_matchup_streak_alerts(pre_start_notifier, [streak_analysis])
+            send_matchup_streak_alerts(
+                pre_start_notifier,
+                [streak_analysis],
+                event_context=event_context,
+            )
 
         # 3. Dual Process Alerts
         if dual_report and (
@@ -284,7 +298,6 @@ class EventAlertProcessor:
                     dual_report.process1_report
                     and dual_report.process1_report.get("status") == "success"
                     and is_closing_odds_moment(minutes_until_start)
-                    and event_obj is not None
                 ):
                     prediction_engine.log_process1_prediction_if_needed(
                         event_obj,

@@ -43,6 +43,7 @@ class OddsTrajectoryPoint:
     initial_odds: Optional[Decimal]
     odds_value: Optional[Decimal]
     snapshot_id: Optional[int]
+    source_collected_at: Optional[datetime]
     collected_at: Optional[datetime]
     minutes_before_start: Optional[int]
     target_minute: Optional[int]
@@ -71,6 +72,7 @@ class OddsTrajectoryPoint:
             "initial_odds": self.initial_odds,
             "odds_value": self.odds_value,
             "snapshot_id": self.snapshot_id,
+            "source_collected_at": self.source_collected_at,
             "collected_at": self.collected_at,
             "minutes_before_start": self.minutes_before_start,
             "target_minute": self.target_minute,
@@ -104,6 +106,7 @@ class OddsTrajectoryRepository:
             initial_odds=data.get("initial_odds"),
             odds_value=data.get("odds_value"),
             snapshot_id=data.get("snapshot_id"),
+            source_collected_at=data.get("source_collected_at"),
             collected_at=data.get("collected_at"),
             minutes_before_start=data.get("minutes_before_start"),
             target_minute=data.get("target_minute"),

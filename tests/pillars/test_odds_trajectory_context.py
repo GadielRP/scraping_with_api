@@ -25,6 +25,7 @@ def _make_rows() -> list[dict[str, object]]:
             "initial_odds": "1.900",
             "odds_value": "1.850",
             "snapshot_id": 1001,
+            "source_collected_at": "2026-01-01T09:59:30",
             "collected_at": "2026-01-01T10:00:00",
             "minutes_before_start": 1,
             "target_minute": 1,
@@ -82,6 +83,49 @@ def test_filter_by_bookie_ids_keeps_only_requested_bookie() -> None:
         "1:sofascore:single:0",
         "2:oddspapi:single:0",
     }
+
+
+def test_meta_by_minute_exposes_source_collected_at_as_changed_at() -> None:
+    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
+
+    meta = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+        .meta_by_minute[1]
+    )
+
+    assert meta.collected_at.isoformat() == "2026-01-01T10:00:00"
+    assert meta.changed_at.isoformat() == "2026-01-01T09:59:30"
+
+
+def test_minute_maps_are_serialized_in_descending_order() -> None:
+    rows = []
+    for minute in (1, 120, -5, 30, 5):
+        rows.append(
+            {
+                **_make_rows()[0],
+                "target_minute": minute,
+                "minutes_before_start": minute,
+                "snapshot_id": 2000 + minute,
+                "quote_id": 3000 + minute,
+                "choice_id": 4000 + minute,
+                "odds_value": f"{2 + minute / 1000:.3f}",
+            }
+        )
+
+    context = build_odds_trajectory_context(
+        rows,
+        target_minutes_expected=[120, 30, 5, 1, -5],
+    )
+    choice = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+    )
+
+    assert list(choice.meta_by_minute) == [120, 30, 5, 1, -5]
+    assert list(choice.odds_values) == [120, 30, 5, 1, -5]
 
 
 def test_filter_by_bookie_ids_returns_unavailable_context_when_no_bookie_matches() -> None:

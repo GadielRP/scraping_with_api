@@ -277,10 +277,10 @@ def calculate_structural_drift_engine(
 
     home_results: List[Dict[str, Any]] = getattr(streak_analysis, "home_team_results", None) or []
     away_results: List[Dict[str, Any]] = getattr(streak_analysis, "away_team_results", None) or []
-    home_team = getattr(streak_analysis, "home_team_name", None)
-    away_team = getattr(streak_analysis, "away_team_name", None)
-    event_id = getattr(streak_analysis, "event_id", 0)
-    participants = getattr(streak_analysis, "participants", "") or ""
+    home_team = event_context.home.name
+    away_team = event_context.away.name
+    event_id = event_context.event_id
+    participants = event_context.participants_label or ""
 
     if debug_mode:
         _debug_section("Propósito del módulo")

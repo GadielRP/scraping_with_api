@@ -17,10 +17,16 @@ logger = logging.getLogger(__name__)
 
 def calculate_pillar_4(
     event_context: EventContext,
-    odds_trajectory_context: OddsTrajectoryContext,
+    odds_trajectory_context: OddsTrajectoryContext | None = None,
     debug_mode: bool = False,
 ) -> Dict[str, Any]:
     """Calculate Pillar 4 and return a serializable pillar payload."""
+    odds_trajectory_context = (
+        odds_trajectory_context
+        or getattr(event_context, "odds_trajectory_context", None)
+    )
+    if odds_trajectory_context is None:
+        raise ValueError("EventContext is missing odds_trajectory_context for P4")
     logger.info(
         "P4 orchestrator start for event_id=%s participants=%s debug_mode=%s",
         event_context.event_id,

@@ -224,11 +224,11 @@ def _resolve_max_rank(streak_analysis: Any, event_context: EventContext, debug_m
     if isinstance(current_standings, dict) and len(current_standings) > 1:
         return len(current_standings), "streak_analysis.current_standings.len"
 
-    standings_response = getattr(streak_analysis, "standings_response", None)
+    standings_response = getattr(competition, "standings_response", None)
     if debug_mode:
         _debug_line("Intento 3: len de standings_response = %s", _fmt(len(standings_response) if isinstance(standings_response, list) else None))
     if isinstance(standings_response, list) and len(standings_response) > 1:
-        return len(standings_response), "streak_analysis.standings_response.len"
+        return len(standings_response), "event_context.competition.standings_response.len"
 
     max_rank = _max_rank_from_standings(current_standings)
     if debug_mode:
@@ -240,7 +240,7 @@ def _resolve_max_rank(streak_analysis: Any, event_context: EventContext, debug_m
     if debug_mode:
         _debug_line("Intento 5: max_rank de standings_response = %s", _fmt(max_rank))
     if max_rank is not None and max_rank > 1:
-        return max_rank, "streak_analysis.standings_response.max_rank"
+        return max_rank, "event_context.competition.standings_response.max_rank"
 
     if debug_mode:
         _debug_line("Intento 6: Usando fallback predeterminado = %d", _MAX_RANK_DEFAULT)
@@ -691,10 +691,10 @@ def calculate_m7_opponent_expectation_engine(
     event_context: EventContext,
     debug_mode: bool = False,
 ) -> ModuleResult:
-    event_id = getattr(streak_analysis, "event_id", 0)
-    participants = getattr(streak_analysis, "participants", "") or ""
-    home_team = getattr(streak_analysis, "home_team_name", None)
-    away_team = getattr(streak_analysis, "away_team_name", None)
+    event_id = event_context.event_id
+    participants = event_context.participants_label or ""
+    home_team = event_context.home.name
+    away_team = event_context.away.name
     home_results = getattr(streak_analysis, "home_team_results", None) or []
     away_results = getattr(streak_analysis, "away_team_results", None) or []
     current_standings = getattr(streak_analysis, "current_standings", None)

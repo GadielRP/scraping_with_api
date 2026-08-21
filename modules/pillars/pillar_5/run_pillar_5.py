@@ -17,10 +17,22 @@ logger = logging.getLogger(__name__)
 
 def calculate_pillar_5(
     event_context: EventContext,
-    ft_1x2_odds_trajectory: OddsTrajectoryContext,
+    ft_1x2_odds_trajectory: OddsTrajectoryContext | None = None,
     debug_mode: bool = False,
 ) -> Dict[str, Any]:
     """Calculate Pillar 5 and return a serializable pillar payload."""
+    ft_1x2_odds_trajectory = (
+        ft_1x2_odds_trajectory
+        or getattr(event_context, "ft_1x2_odds_trajectory_context", None)
+    )
+    if ft_1x2_odds_trajectory is None:
+        full_context = getattr(event_context, "odds_trajectory_context", None)
+        if full_context is not None:
+            ft_1x2_odds_trajectory = full_context.filter_by_market_groups(
+                allowed_groups={"1X2", "Home/Away"}
+            )
+    if ft_1x2_odds_trajectory is None:
+        raise ValueError("EventContext is missing ft_1x2_odds_trajectory_context for P5")
     logger.info(
         "P5 orchestrator start for event_id=%s participants=%s debug_mode=%s start_time=%s",
         event_context.event_id,

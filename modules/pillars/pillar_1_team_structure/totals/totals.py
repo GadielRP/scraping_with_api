@@ -771,17 +771,13 @@ def _abort(
 
 
 def _resolve_event_id(streak_analysis: Any, event_context: Optional[EventContext]) -> int:
-    event_id = getattr(streak_analysis, "event_id", None)
-    if event_id is None and event_context is not None:
-        event_id = getattr(event_context, "event_id", 0)
+    event_id = event_context.event_id if event_context is not None else 0
     resolved = _to_int(event_id)
     return resolved if resolved is not None else 0
 
 
 def _resolve_participants(streak_analysis: Any, event_context: Optional[EventContext]) -> str:
-    participants = getattr(streak_analysis, "participants", None)
-    if participants is None and event_context is not None:
-        participants = getattr(event_context, "participants_label", None)
+    participants = event_context.participants_label if event_context is not None else ""
     return str(participants or "")
 
 
@@ -803,8 +799,8 @@ def calculate_p1_totals(
     """Calculate P1_TOTALS v2.5 directional profile with trend-dominance composite layer."""
     event_id = _resolve_event_id(streak_analysis, event_context)
     participants = _resolve_participants(streak_analysis, event_context)
-    home_team_name = getattr(streak_analysis, "home_team_name", None)
-    away_team_name = getattr(streak_analysis, "away_team_name", None)
+    home_team_name = event_context.home.name if event_context is not None else None
+    away_team_name = event_context.away.name if event_context is not None else None
 
     competition = getattr(event_context, "competition", None)
     sport = getattr(event_context, "sport", None)

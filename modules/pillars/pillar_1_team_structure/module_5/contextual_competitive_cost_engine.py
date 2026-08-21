@@ -599,14 +599,14 @@ def calculate_contextual_competitive_cost_engine(
     event_context: EventContext,
     debug_mode: bool = False,
 ) -> ModuleResult:
-    event_id = getattr(streak_analysis, "event_id", getattr(event_context, "event_id", 0))
-    participants = getattr(streak_analysis, "participants", None) or getattr(event_context, "participants_label", "") or ""
-    home_team = getattr(streak_analysis, "home_team_name", None) or getattr(event_context.home, "name", None)
-    away_team = getattr(streak_analysis, "away_team_name", None) or getattr(event_context.away, "name", None)
-    competition_name = getattr(streak_analysis, "competition_name", None) or getattr(event_context.competition, "display_name", None) or getattr(event_context.competition, "canonical_name", None)
-    competition_slug = getattr(streak_analysis, "competition_slug", None) or getattr(event_context.competition, "slug", None) or getattr(event_context.competition, "unique_slug", None)
-    season_id = getattr(streak_analysis, "season_id", None) or getattr(event_context, "season_id", None)
-    season_name = getattr(streak_analysis, "season_name", None) or getattr(event_context, "season_name", None)
+    event_id = event_context.event_id
+    participants = event_context.participants_label or ""
+    home_team = event_context.home.name
+    away_team = event_context.away.name
+    competition_name = event_context.competition.display_name or event_context.competition.canonical_name
+    competition_slug = event_context.competition.slug or event_context.competition.unique_slug
+    season_id = event_context.season_id
+    season_name = event_context.season_name
     current_standings = getattr(streak_analysis, "current_standings", None)
 
     home_direct_standing = getattr(streak_analysis, "home_team_current_standing", None)

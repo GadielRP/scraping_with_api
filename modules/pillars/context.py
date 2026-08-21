@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,10 @@ class ParticipantContext:
     slug: Optional[str]
     short_name: Optional[str]
     source_status: str
+    code_name: Optional[str] = None
+    snapshot_ranking: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass
@@ -39,6 +43,10 @@ class CompetitionContext:
     has_standings_source_endpoint: Optional[bool]
     source_status: str
     standings_response: Optional[list] = field(default=None, repr=False)
+    source_tournament_name: Optional[str] = None
+    source_unique_tournament_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass
@@ -57,17 +65,23 @@ class EventContext:
     competition: CompetitionContext
     participants_label: str
     context_status: str
-    event_obj: Any = None
+    slug: Optional[str] = None
+    gender: Optional[str] = None
+    country: Optional[str] = None
+    round: Optional[str] = None
     observations: list[dict] = field(default_factory=list)
     odds_response: Optional[dict] = None
     odds_trajectory: list[dict] = field(default_factory=list)
     odds_trajectory_context: Optional[Any] = None
-    metadata_snapshot: Optional[dict] = None
+    ft_1x2_odds_trajectory_context: Optional[Any] = None
     streak_analysis: Optional[Any] = None
     should_send_streak_alert: bool = False
     dual_report: Optional[Any] = None
     competition_metadata_resolved: bool = False
     success: bool = True
+    alert_sent: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 def _missing_context_message(event_obj, missing: list[str]) -> str:
@@ -99,6 +113,7 @@ def build_event_context(
     home_participant = event_obj.__dict__.get("home_participant")
     away_participant = event_obj.__dict__.get("away_participant")
     competition_ref = event_obj.__dict__.get("competition_ref")
+    season = event_obj.__dict__.get("season")
     legacy_home_name = _clean_text(getattr(event_obj, "home_team", None))
     legacy_away_name = _clean_text(getattr(event_obj, "away_team", None))
     legacy_competition_name = _clean_text(getattr(event_obj, "competition", None))
@@ -204,6 +219,10 @@ def build_event_context(
         slug=getattr(home_participant, "slug", None),
         short_name=getattr(home_participant, "short_name", None),
         source_status="normalized" if home_participant is not None and home_name == _clean_text(getattr(home_participant, "name", None)) else "legacy_fallback",
+        code_name=getattr(home_participant, "code_name", None),
+        snapshot_ranking=raw_metadata.get("home_team_ranking"),
+        created_at=getattr(home_participant, "created_at", None),
+        updated_at=getattr(home_participant, "updated_at", None),
     )
     away = ParticipantContext(
         participant_id=away_participant_id,
@@ -213,6 +232,10 @@ def build_event_context(
         slug=getattr(away_participant, "slug", None),
         short_name=getattr(away_participant, "short_name", None),
         source_status="normalized" if away_participant is not None and away_name == _clean_text(getattr(away_participant, "name", None)) else "legacy_fallback",
+        code_name=getattr(away_participant, "code_name", None),
+        snapshot_ranking=raw_metadata.get("away_team_ranking"),
+        created_at=getattr(away_participant, "created_at", None),
+        updated_at=getattr(away_participant, "updated_at", None),
     )
     competition = CompetitionContext(
         competition_id=competition_id,
@@ -236,9 +259,12 @@ def build_event_context(
         source_status="normalized"
         if competition_ref is not None and competition_display_name == _clean_text(getattr(competition_ref, "display_name", None))
         else "legacy_fallback",
+        source_tournament_name=raw_metadata.get("tournament_name"),
+        source_unique_tournament_name=raw_metadata.get("unique_tournament_name"),
+        created_at=getattr(competition_ref, "created_at", None),
+        updated_at=getattr(competition_ref, "updated_at", None),
     )
 
-    season = event_obj.__dict__.get("season")
     context_status = "normalized"
     if legacy_fallback_used or any(
         value == "legacy_fallback" for value in (home.source_status, away.source_status, competition.source_status)
@@ -261,7 +287,11 @@ def build_event_context(
     return EventContext(
         event_id=getattr(event_obj, "id", 0),
         custom_id=getattr(event_obj, "custom_id", None),
+        slug=getattr(event_obj, "slug", None),
         sport=getattr(event_obj, "sport", None) or "Unknown",
+        gender=getattr(event_obj, "gender", None),
+        country=getattr(event_obj, "country", None),
+        round=getattr(event_obj, "round", None),
         season_id=getattr(event_obj, "season_id", None),
         season_name=season.name if season else None,
         season_year=season.year if season else None,
@@ -273,12 +303,13 @@ def build_event_context(
         competition=competition,
         participants_label=f"{home_name} vs {away_name}",
         context_status=context_status,
-        event_obj=event_obj,
         observations=observations or [],
         odds_response=odds_response,
         odds_trajectory=odds_trajectory or [],
-        metadata_snapshot=metadata_snapshot,
         success=success,
+        alert_sent=bool(getattr(event_obj, "alert_sent", False)),
+        created_at=getattr(event_obj, "created_at", None),
+        updated_at=getattr(event_obj, "updated_at", None),
     )
 
 
@@ -288,8 +319,11 @@ class NumberOfTeamsSummary:
     inferred_number_of_teams: Optional[int]
 
 
-def summarize_number_of_teams_from_streak_analysis(streak_analysis) -> NumberOfTeamsSummary:
-    sport = getattr(streak_analysis, "sport", None)
+def summarize_number_of_teams_from_streak_analysis(
+    streak_analysis,
+    event_context: Optional[EventContext] = None,
+) -> NumberOfTeamsSummary:
+    sport = getattr(event_context, "sport", None)
     unique_team_names = set()
 
     for results in (

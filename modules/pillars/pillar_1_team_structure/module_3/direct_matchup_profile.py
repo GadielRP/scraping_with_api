@@ -381,10 +381,10 @@ def calculate_direct_matchup_profile(
     debug_mode: bool = False,
 ) -> ModuleResult:
     """Calculate M3 - Matchup Engine for an event."""
-    home_team = getattr(streak_analysis, "home_team_name", None) or event_context.home.name
-    away_team = getattr(streak_analysis, "away_team_name", None) or event_context.away.name
-    participants = getattr(streak_analysis, "participants", None) or event_context.participants_label
-    event_id = getattr(streak_analysis, "event_id", 0)
+    home_team = event_context.home.name
+    away_team = event_context.away.name
+    participants = event_context.participants_label
+    event_id = event_context.event_id
     h2h_matchup_matches = getattr(streak_analysis, "h2h_matchup_matches", []) or []
     analyzed_total_h2h = getattr(streak_analysis, "h2h_matchup_matches_analyzed", None)
 

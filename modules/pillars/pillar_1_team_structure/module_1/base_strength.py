@@ -540,16 +540,17 @@ def _season_record_has_required_gd_data(record: Dict[str, Any]) -> bool:
 
 def _extract_team_season_record(
     streak_analysis: Any,
+    event_context: EventContext,
     side: str,
     fallback_results: List[Dict],
     debug_mode: bool = False,
 ) -> Dict[str, Any]:
     """Extract a season record from the best available source for one side."""
     direct_attr = f"{side}_team_current_standing"
-    team_name_attr = f"{side}_team_name"
 
     direct_current_standing = getattr(streak_analysis, direct_attr, None)
-    team_name = getattr(streak_analysis, team_name_attr, None) or _extract_team_name_from_results(fallback_results)
+    team = getattr(event_context, side, None)
+    team_name = getattr(team, "name", None) or _extract_team_name_from_results(fallback_results)
     current_standings = getattr(streak_analysis, "current_standings", None)
 
     candidates: List[Tuple[str, Optional[Dict[str, Any]]]] = [
@@ -591,6 +592,7 @@ def _resolve_gd_dynamic_scale(
     streak_analysis: Any,
     home_results: List[Dict],
     away_results: List[Dict],
+    competition_standings_response: Any = None,
     expected_league_size: Optional[int] = None,
 ) -> Tuple[Optional[float], str, int]:
     """Determine the GD dynamic scale using the official v4 chain."""
@@ -615,7 +617,7 @@ def _resolve_gd_dynamic_scale(
     if scale is not None:
         return scale, source, sample_size
 
-    standings_response = getattr(streak_analysis, "standings_response", None)
+    standings_response = competition_standings_response
     scale, source, sample_size = _resolve_from_payload(standings_response, "standings_response")
     if scale is not None:
         return scale, source, sample_size
@@ -762,6 +764,7 @@ def _calculate_gd_edge(
     streak_analysis: Any,
     home_results: List[Dict],
     away_results: List[Dict],
+    competition_standings_response: Any = None,
     expected_league_size: Optional[int] = None,
     debug_mode: bool = False,
 ) -> Tuple[float, Dict[str, Any]]:
@@ -785,6 +788,7 @@ def _calculate_gd_edge(
         streak_analysis,
         home_results,
         away_results,
+        competition_standings_response=competition_standings_response,
         expected_league_size=expected_league_size,
     )
 
@@ -801,7 +805,7 @@ def _calculate_gd_edge(
 
         current_standings = getattr(streak_analysis, "current_standings", None)
         if current_standings is None:
-            current_standings = getattr(streak_analysis, "standings_response", None)
+            current_standings = competition_standings_response
         if current_standings is not None:
             standings_list = _collect_unique_standings(current_standings)
         else:
@@ -1202,8 +1206,8 @@ def calculate_base_strength(
     """Calculate M1 - Base Strength for an event."""
     home_results: List[Dict] = getattr(streak_analysis, "home_team_results", None) or []
     away_results: List[Dict] = getattr(streak_analysis, "away_team_results", None) or []
-    event_id: int = getattr(streak_analysis, "event_id", 0)
-    participants: str = getattr(streak_analysis, "participants", "")
+    event_id: int = event_context.event_id
+    participants: str = event_context.participants_label
     competition_id = event_context.competition.competition_id
     competition_display_name = event_context.competition.display_name or event_context.competition.canonical_name
     competition_number_of_teams = event_context.competition.number_of_teams
@@ -1213,8 +1217,8 @@ def calculate_base_strength(
     league_config_source = getattr(event_context.competition, "league_config_source", None)
     expected_league_size = competition_number_of_teams
 
-    home_team_name = getattr(streak_analysis, "home_team_name", None)
-    away_team_name = getattr(streak_analysis, "away_team_name", None)
+    home_team_name = event_context.home.name
+    away_team_name = event_context.away.name
 
     if debug_mode:
         _debug_section("INICIO")
@@ -1229,9 +1233,8 @@ def calculate_base_strength(
         _debug_line("Esta es la tabla exacta que recibe y procesa el M1 para calcular el record de la temporada y la escala dinámica.")
         
         _event_ts = getattr(streak_analysis, "current_event_timestamp", None)
-        if _event_ts is None and getattr(event_context, "event", None):
-            _event = event_context.event
-            _event_ts = getattr(_event, "start_timestamp", None) or getattr(_event, "startTimestamp", None)
+        if _event_ts is None and event_context.start_time_utc:
+            _event_ts = event_context.start_time_utc.timestamp()
         if _event_ts:
             import datetime
             _event_date_str = datetime.datetime.fromtimestamp(_event_ts).strftime("%Y-%m-%d %H:%M:%S")
@@ -1242,7 +1245,11 @@ def calculate_base_strength(
             _debug_line("Fuente utilizada: current_standings (Tabla dinámica generada al momento exacto del partido)")
             _standings_list = _collect_unique_standings(_current_standings)
         else:
-            _standings_response = getattr(streak_analysis, "standings_response", None)
+            _standings_response = getattr(
+                event_context.competition,
+                "standings_response",
+                None,
+            )
             if _standings_response is not None:
                 _debug_line("Fuente utilizada: standings_response (API Fallback)")
                 _standings_list = _collect_unique_standings(_standings_response)
@@ -1277,8 +1284,8 @@ def calculate_base_strength(
             _debug_line("  #%s %s: %spts (%sW-%sD-%sL, GP:%s) GF:%s GA:%s DIFF:%s", _pos, _name, _pts, _w, _d, _l, _gp, _gf, _ga, _gd_str)
         _debug_line("Total de equipos en la tabla procesada: %s", len(_standings_list))
 
-    home_record = _extract_team_season_record(streak_analysis, "home", home_results, debug_mode=debug_mode)
-    away_record = _extract_team_season_record(streak_analysis, "away", away_results, debug_mode=debug_mode)
+    home_record = _extract_team_season_record(streak_analysis, event_context, "home", home_results, debug_mode=debug_mode)
+    away_record = _extract_team_season_record(streak_analysis, event_context, "away", away_results, debug_mode=debug_mode)
 
     home_gd_series = _extract_game_gd_series(home_results, "HOME", debug_mode=debug_mode)
     away_gd_series = _extract_game_gd_series(away_results, "AWAY", debug_mode=debug_mode)
@@ -1299,6 +1306,11 @@ def calculate_base_strength(
         streak_analysis,
         home_results,
         away_results,
+        competition_standings_response=getattr(
+            event_context.competition,
+            "standings_response",
+            None,
+        ),
         expected_league_size=expected_league_size,
         debug_mode=debug_mode,
     )

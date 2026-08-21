@@ -68,9 +68,8 @@ def resolve_matchup_streak_analysis(
         logger.warning("missing_normalized_context_field: event_context is None")
         return None, False
 
-    event_obj = getattr(event_context, "event_obj", None)
-    event_id = getattr(event_context, "event_id", getattr(event_obj, "id", None))
-    custom_id = getattr(event_context, "custom_id", getattr(event_obj, "custom_id", None))
+    event_id = getattr(event_context, "event_id", None)
+    custom_id = getattr(event_context, "custom_id", None)
     minutes = getattr(event_context, "minutes_until_start", None)
     effective_season_id = getattr(event_context, "season_id", None)
 
@@ -168,7 +167,9 @@ def resolve_matchup_streak_analysis(
             event_odds=dual_process_odds,
             debug_mode=debug_mode,
         )
-        should_send = bool(streak_analysis and should_send_streak_alert(streak_analysis))
+        should_send = bool(
+            streak_analysis and should_send_streak_alert(streak_analysis, event_context)
+        )
         event_context.streak_analysis = streak_analysis
         event_context.should_send_streak_alert = should_send
     except Exception as exc:

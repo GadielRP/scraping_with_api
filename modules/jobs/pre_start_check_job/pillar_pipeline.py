@@ -47,7 +47,7 @@ def _serialize_p1_totals_output(output: P1TotalsOutput) -> dict:
     return asdict(output)
 
 
-def _resolve_pillar_competition_id(event_context: Any, event_obj=None):
+def _resolve_pillar_competition_id(event_context: Any):
     """Resolve the canonical competition ID used by the pillar scope policy."""
     if hasattr(event_context, "competition"):
         competition = getattr(event_context, "competition", None)
@@ -64,9 +64,6 @@ def _resolve_pillar_competition_id(event_context: Any, event_obj=None):
         event_data = event_context.get("event_data")
         if isinstance(event_data, dict):
             return event_data.get("competition_id")
-
-    if event_obj is not None:
-        return getattr(event_obj, "competition_id", None)
 
     return None
 
@@ -196,25 +193,8 @@ def _save_pillar_debug_snapshots(
     odds_trajectory_context: Any,
 ) -> None:
     try:
-        event_id = getattr(streak_analysis, "event_id", None)
-        if event_id is None and isinstance(streak_analysis, dict):
-            event_id = streak_analysis.get("event_id")
-        if event_id is None:
-            event_id = getattr(event_context, "event_id", None)
-        if event_id is None and isinstance(event_context, dict):
-            event_id = event_context.get("event_id")
-        if event_id is None:
-            event_id = "unknown_event"
-
-        participants = getattr(streak_analysis, "participants", None)
-        if participants is None and isinstance(streak_analysis, dict):
-            participants = streak_analysis.get("participants")
-        if participants is None:
-            participants = getattr(event_context, "participants_label", None)
-        if participants is None and isinstance(event_context, dict):
-            participants = event_context.get("participants_label")
-        if participants is None:
-            participants = "unknown_matchup"
+        event_id = getattr(event_context, "event_id", "unknown_event")
+        participants = getattr(event_context, "participants_label", "unknown_matchup")
 
         safe_participants = _safe_debug_name(participants)
         debug_dir = Path("debug") / "matchup_streak_analysis" / f"{event_id}_{safe_participants}"
@@ -253,17 +233,23 @@ class EventPillarProcessor:
 
         Returns a dictionary with pillar results or ``None`` on failure.
         """
+        # The pillar pipeline has one canonical input contract.  Do not
+        # silently reconstruct it from the legacy event payload here: doing
+        # so would bring back the duplicate objects this context refactor is
+        # intended to remove.
+        if event_context is not None and not isinstance(event_context, EventContext):
+            logger.warning(
+                "Pillar pipeline received a non-canonical event context (%s); skipping event",
+                type(event_context).__name__,
+            )
+            return None
+
         if event_context is None or not getattr(event_context, "success", True):
             event_id = getattr(event_context, "event_id", "?")
             logger.warning(f"☢️ Pillar pipeline: success is false for event {event_id}, skipping pillar calculation")
             return None
 
-        event_obj = getattr(event_context, "event_obj", None)
-        event_id = getattr(event_context, "event_id", getattr(event_obj, "id", "?"))
-
-        if event_obj is None:
-            logger.warning(f"☢️ Pillar pipeline: event obj is empty for {event_id}, skipping pillar calculation")
-            return None
+        event_id = getattr(event_context, "event_id", "?")
 
         competition_id = event_context.competition.competition_id
         if not _is_pillar_competition_in_scope(competition_id):
@@ -275,7 +261,7 @@ class EventPillarProcessor:
             return None
 
         logger.info(f"🏛️ Started pillars processing for event {event_id}")
-        round_value = getattr(event_obj, "round", None)
+        round_value = getattr(event_context, "round", None)
         if round_value != "regular_season":
             logger.info(
                 "🚫 Pillar pipeline: round is %s for event_id %s, skipping pillar calculation",
@@ -287,6 +273,7 @@ class EventPillarProcessor:
         minutes_until_start = getattr(event_context, "minutes_until_start", None)
         odds_trajectory = getattr(event_context, "odds_trajectory", [])
         odds_trajectory_context = build_odds_trajectory_context(odds_trajectory)
+        event_context.odds_trajectory_context = odds_trajectory_context
 
         logger.info(
             "Pillar odds trajectory context for event %s: available=%s market_groups=%s present_minutes=%s missing_minutes=%s",
@@ -311,13 +298,12 @@ class EventPillarProcessor:
             # calculate pillar 4 (p4)
             p4_result = calculate_pillar_4(
                 event_context=event_context,
-                odds_trajectory_context=odds_trajectory_context,
                 debug_mode=self.debug_mode,
             )
         except Exception as exc:
             logger.exception(
                 "Error calculating P4 for event %s (%s): %s",
-                event_obj.id,
+                event_id,
                 event_context.participants_label,
                 exc,
             )
@@ -343,7 +329,7 @@ class EventPillarProcessor:
             if self.debug_mode:
                 logger.info(
                     "P5: Context before filtering for event %s (%s): available=%s, markets=%s",
-                    event_obj.id,
+                    event_id,
                     event_context.participants_label,
                     odds_trajectory_context.available,
                     {group: list(periods.keys()) for group, periods in odds_trajectory_context.markets.items()}
@@ -353,11 +339,12 @@ class EventPillarProcessor:
             ft_1x2_odds_trajectory = odds_trajectory_context.filter_by_market_groups(
                 allowed_groups={"1X2", "Home/Away"}
             )
+            event_context.ft_1x2_odds_trajectory_context = ft_1x2_odds_trajectory
             
             if self.debug_mode:
                 logger.info(
                     "P5: Context after market group filtering for event %s (%s): available=%s, markets=%s",
-                    event_obj.id,
+                    event_id,
                     event_context.participants_label,
                     ft_1x2_odds_trajectory.available,
                     {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
@@ -371,7 +358,7 @@ class EventPillarProcessor:
             if self.debug_mode:
                 logger.info(
                     "P5: Context after period filtering for event %s (%s): available=%s, markets=%s",
-                    event_obj.id,
+                    event_id,
                     event_context.participants_label,
                     ft_1x2_odds_trajectory.available,
                     {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
@@ -394,7 +381,7 @@ class EventPillarProcessor:
                 })
                 logger.info(
                     "P5: Context after bookie filtering for event %s (%s): available=%s, markets=%s, bookie_ids=%s",
-                    event_obj.id,
+                    event_id,
                     event_context.participants_label,
                     ft_1x2_odds_trajectory.available,
                     {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
@@ -404,13 +391,12 @@ class EventPillarProcessor:
 
             p5_result = calculate_pillar_5(
                 event_context=event_context,
-                ft_1x2_odds_trajectory=ft_1x2_odds_trajectory,
                 debug_mode=self.debug_mode,
             )
         except Exception as exc:
             logger.exception(
                 "Error calculating P5 for event %s (%s): %s",
-                event_obj.id,
+                event_id,
                 event_context.participants_label,
                 exc,
             )
@@ -463,7 +449,7 @@ class EventPillarProcessor:
                 event_id,
                 ", ".join(missing_fields),
             )
-            resolution = resolve_competition_metadata(event_context, event_obj=event_obj)
+            resolution = resolve_competition_metadata(event_context)
             apply_competition_metadata_resolution(event_context, resolution)
             logger.info(
                 "Pillar pipeline metadata enrichment result for event %s: source=%s standings_called=%s should_persist=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s",
@@ -495,11 +481,11 @@ class EventPillarProcessor:
         if streak_analysis is None:
             logger.info(
                 "Pillar pipeline: no streak_analysis for event %s (%s), returning P4 and P5 only",
-                event_obj.id,
+                event_id,
                 participants,
             )
             return {
-                "event_id": event_obj.id,
+                "event_id": event_id,
                 "participants": participants,
                 "pillar_1": None,
                 "pillar_1_totals": None,
@@ -507,7 +493,10 @@ class EventPillarProcessor:
                 "pillar_5": p5_result,
             }
 
-        number_of_teams_summary = summarize_number_of_teams_from_streak_analysis(streak_analysis)
+        number_of_teams_summary = summarize_number_of_teams_from_streak_analysis(
+            streak_analysis,
+            event_context,
+        )
         inferred_number_of_teams = number_of_teams_summary.inferred_number_of_teams
         unique_team_count = number_of_teams_summary.unique_team_count
         inferred_number_of_teams_used = False
@@ -530,7 +519,6 @@ class EventPillarProcessor:
         # --- Calculate Pillar 1 (Orchestrated) ---
         try:
             p1_output = calculate_pillar_1_team_structure(
-                streak_analysis,
                 event_context=event_context,
                 debug_mode=self.debug_mode,
             )
@@ -539,12 +527,12 @@ class EventPillarProcessor:
         except Exception as exc:
             logger.error(
                 "Error calculating P1 for event %s (%s): %s",
-                event_obj.id,
+                event_id,
                 participants,
                 exc,
             )
             return {
-                "event_id": event_obj.id,
+                "event_id": event_id,
                 "participants": participants,
                 "pillar_1": None,
                 "pillar_1_totals": None,
@@ -764,7 +752,7 @@ class EventPillarProcessor:
         )
 
         return {
-            "event_id": event_obj.id,
+            "event_id": event_id,
             "participants": participants,
             "pillar_1": p1_result,
             "pillar_1_totals": (

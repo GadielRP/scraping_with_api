@@ -755,10 +755,10 @@ def calculate_quality_adjusted_immediate_state_engine(
 ) -> ModuleResult:
     home_results: List[Dict[str, Any]] = list(getattr(streak_analysis, "home_team_results", None) or [])
     away_results: List[Dict[str, Any]] = list(getattr(streak_analysis, "away_team_results", None) or [])
-    home_team = getattr(streak_analysis, "home_team_name", None) or getattr(event_context.home, "name", None) or ""
-    away_team = getattr(streak_analysis, "away_team_name", None) or getattr(event_context.away, "name", None) or ""
-    event_id = getattr(streak_analysis, "event_id", getattr(event_context, "event_id", 0)) or 0
-    participants = getattr(streak_analysis, "participants", None) or getattr(event_context, "participants_label", None) or f"{home_team} vs {away_team}"
+    home_team = event_context.home.name or ""
+    away_team = event_context.away.name or ""
+    event_id = event_context.event_id or 0
+    participants = event_context.participants_label or f"{home_team} vs {away_team}"
 
     if debug_mode:
         _debug_section("INICIO M4 IMMEDIATE STATE ENGINE")

@@ -122,6 +122,33 @@ def _normalize_expected_minutes(target_minutes_expected: Optional[List[int]]) ->
     return normalized
 
 
+def _sort_choice_minute_maps_descending(
+    markets: Dict[str, Dict[str, Dict[str, Dict[str, "MarketLineOddsTrajectory"]]]],
+) -> None:
+    """Keep per-choice minute maps deterministic for JSON/debug consumers."""
+    for market_groups in markets.values():
+        for market_periods in market_groups.values():
+            for market_names in market_periods.values():
+                for market_line in market_names.values():
+                    for bookie in market_line.bookies.values():
+                        for choice in bookie.choices.values():
+                            ordered_minutes = sorted(choice.meta_by_minute, reverse=True)
+                            ordered_meta = {
+                                minute: choice.meta_by_minute[minute]
+                                for minute in ordered_minutes
+                            }
+                            choice.meta_by_minute.clear()
+                            choice.meta_by_minute.update(ordered_meta)
+
+                            ordered_minutes = sorted(choice.odds_values, reverse=True)
+                            ordered_odds = {
+                                minute: choice.odds_values[minute]
+                                for minute in ordered_minutes
+                            }
+                            choice.odds_values.clear()
+                            choice.odds_values.update(ordered_odds)
+
+
 @dataclass(frozen=True)
 class OddsPointMeta:
     snapshot_id: Optional[int]
@@ -130,6 +157,7 @@ class OddsPointMeta:
     target_minute: int
     distance_from_target: Optional[int]
     quote_id: Optional[int] = None
+    changed_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
@@ -262,6 +290,7 @@ def _filter_market_tree(
         if filtered_periods:
             filtered_markets[group] = filtered_periods
 
+    _sort_choice_minute_maps_descending(filtered_markets)
     return filtered_markets
 
 
@@ -445,6 +474,7 @@ def build_odds_trajectory_context(
                                             target_minute: {
                                                 "snapshot_id": ...,
                                                 "collected_at": ...,
+                                                "changed_at": ...,
                                                 "minutes_before_start": ...,
                                                 "target_minute": ...,
                                                 "distance_from_target": ...
@@ -545,6 +575,7 @@ def build_odds_trajectory_context(
             quote_id=_coerce_int(row.get("quote_id")),
             snapshot_id=_coerce_int(row.get("snapshot_id")),
             collected_at=_coerce_datetime(row.get("collected_at")),
+            changed_at=_coerce_datetime(row.get("source_collected_at")),
             minutes_before_start=_coerce_int(row.get("minutes_before_start")),
             target_minute=target_minute,
             distance_from_target=_coerce_int(row.get("distance_from_target")),
@@ -557,6 +588,7 @@ def build_odds_trajectory_context(
             present_minutes.add(target_minute)
             available = True
 
+    _sort_choice_minute_maps_descending(markets)
     target_minutes_present = [minute for minute in expected_minutes if minute in present_minutes]
     missing_target_minutes = [minute for minute in expected_minutes if minute not in present_minutes]
 

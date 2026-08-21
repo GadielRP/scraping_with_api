@@ -54,7 +54,6 @@ def enrich_event_context_competition_metadata(
     )
     resolution = resolve_competition_metadata(
         event_context,
-        event_obj=event_obj,
         standings_endpoint_missing_competition_ids=missing_competition_ids,
     )
     apply_competition_metadata_resolution(event_context, resolution)

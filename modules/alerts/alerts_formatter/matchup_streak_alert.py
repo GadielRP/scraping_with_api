@@ -7,6 +7,46 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+class _CanonicalStreakView:
+    """Read-only bridge for legacy alert formatting.
+
+    Matchup analysis stores calculated evidence only.  The formatter still
+    expects attribute-style access, so this short-lived view resolves event
+    metadata from EventContext without copying it into the analysis object.
+    """
+
+    _EVENT_FIELDS = {
+        "event_id": "event_id",
+        "participants": "participants_label",
+        "discovery_source": "discovery_source",
+        "sport": "sport",
+        "home_team_name": "home.name",
+        "away_team_name": "away.name",
+        "competition_name": "competition.display_name",
+        "competition_slug": "competition.slug",
+        "season_id": "season_id",
+        "season_name": "season_name",
+        "minutes_until_start": "minutes_until_start",
+        "custom_id": "custom_id",
+        "competition_id": "competition.competition_id",
+    }
+
+    def __init__(self, analysis, event_context=None):
+        self._analysis = analysis
+        self._event_context = event_context
+
+    def __getattr__(self, name):
+        if self._event_context is not None and name in self._EVENT_FIELDS:
+            value = self._event_context
+            for part in self._EVENT_FIELDS[name].split("."):
+                value = getattr(value, part, None)
+                if value is None:
+                    break
+            if value is not None:
+                return value
+        return getattr(self._analysis, name)
+
+
 def _format_game_date(timestamp: int) -> str:
     """Format timestamp to date string (MM/DD/YYYY)."""
     if timestamp == 0:
@@ -120,8 +160,9 @@ def _format_compact_standing(
     return " ".join(parts)
 
 
-def create_matchup_streak_message(streak) -> str:
+def create_matchup_streak_message(streak, event_context=None) -> str:
     """Create Matchup streak alert message for Telegram."""
+    streak = _CanonicalStreakView(streak, event_context)
     try:
         away_total_games = (
             len(streak.away_team_results)
@@ -474,7 +515,11 @@ def create_matchup_streak_message(streak) -> str:
         return f"❌ Error creating matchup streak analysis message for event {streak.event_id}: {str(e)}"
 
 
-def send_matchup_streak_alerts(notifier: Any, streak_reports: List) -> bool:
+def send_matchup_streak_alerts(
+    notifier: Any,
+    streak_reports: List,
+    event_context=None,
+) -> bool:
     """Send Matchup streak alerts via Telegram."""
     if not streak_reports:
         return True
@@ -483,7 +528,7 @@ def send_matchup_streak_alerts(notifier: Any, streak_reports: List) -> bool:
 
     for streak in streak_reports:
         try:
-            message = create_matchup_streak_message(streak)
+            message = create_matchup_streak_message(streak, event_context)
             sent = notifier.send_telegram_message(message)
 
             if sent:

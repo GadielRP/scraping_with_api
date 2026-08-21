@@ -41,19 +41,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MatchupStreakContext:
-    """Represents Matchup streak analysis between two teams (relative to upcoming event)"""
-    event_id: int
-    custom_id: str
-    participants: str
-    discovery_source: str
-    competition_name: str
-    competition_slug: str
-    season_id: Optional[int]
-    season_name: Optional[str]
-    observations: Optional[List[Dict]]
-    sport: str
-    home_team_name: str  # Upcoming event home team
-    away_team_name: str  # Upcoming event away team
+    """Analysis-only results for an upcoming event.
+
+    Event identity, competition, participants, sport, timing and observations
+    belong to :class:`EventContext`.  Keeping them out of this result avoids
+    creating a second, stale copy of the event contract while preserving all
+    calculated matchup/form evidence here.
+    """
     sofascores_snapshot_home_team_ranking: Optional[int]  # Ranking of upcoming event's home team
     sofascores_snapshot_away_team_ranking: Optional[int]  # Ranking of upcoming event's away team
     raw_h2h_matchup_event_count: int
@@ -71,7 +65,6 @@ class MatchupStreakContext:
     h2h_matchup_streak_count: int
     h2h_matchup_avg_home_score: float  # Avg score for upcoming home team
     h2h_matchup_avg_away_score: float  # Avg score for upcoming away team
-    minutes_until_start: int
     # Team results data
     home_team_results: List[Dict]  # Last 10 results for home team
     away_team_results: List[Dict]  # Last 10 results for away team
@@ -160,8 +153,6 @@ class MatchupStreakContext:
     # Overall win streaks (unfiltered)
     home_current_win_streak: int = 0
     away_current_win_streak: int = 0
-    standings_response: Optional[List[Dict]] = None
-    competition_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -436,7 +427,6 @@ def build_matchup_streak_context(
         sofascores_snapshot_away_team_ranking = None
         home_team_standing = None
         away_team_standing = None
-        resolved_standings_response = standings_response
         current_standings = None
         league_totals_context = None
 
@@ -561,7 +551,6 @@ def build_matchup_streak_context(
                     "Using preloaded standings response for event %s from pre-start payload",
                     event_id,
                 )
-            resolved_standings_response = raw_standings
             home_team_standing, away_team_standing = api_client.process_standings_response(
                 raw_standings,
                 home_team_id,
@@ -622,19 +611,6 @@ def build_matchup_streak_context(
         # Assemble and return context
         # -----------------------------------------------------------------
         return MatchupStreakContext(
-            event_id=event_id,
-            competition_id=getattr(competition_context, "competition_id", None),
-            custom_id=event_custom_id,
-            participants=participants,
-            discovery_source=discovery_source,
-            competition_name=competition_name,
-            competition_slug=competition_slug,
-            season_id=season_id,
-            season_name=season_name,
-            observations=observations,
-            sport=sport,
-            home_team_name=home_team_name,
-            away_team_name=away_team_name,
             sofascores_snapshot_home_team_ranking=sofascores_snapshot_home_team_ranking,
             sofascores_snapshot_away_team_ranking=sofascores_snapshot_away_team_ranking,
             home_team_current_standing=home_team_current_standing,
@@ -660,7 +636,6 @@ def build_matchup_streak_context(
             h2h_matchup_streak_count=streak_count,
             h2h_matchup_avg_home_score=round(avg_home, 1),
             h2h_matchup_avg_away_score=round(avg_away, 1),
-            minutes_until_start=minutes_until_start,
             # Team results data
             home_team_results=home_team_results,
             away_team_results=away_team_results,
@@ -691,7 +666,6 @@ def build_matchup_streak_context(
             # Overall win streaks
             home_current_win_streak=home_overall_win_streak,
             away_current_win_streak=away_overall_win_streak,
-            standings_response=resolved_standings_response,
         )
 
     except Exception as e:
@@ -699,7 +673,10 @@ def build_matchup_streak_context(
         return None
 
 
-def should_send_streak_alert(streak: MatchupStreakContext) -> bool:
+def should_send_streak_alert(
+    streak: MatchupStreakContext,
+    event_context=None,
+) -> bool:
     """
     Determine if a streak alert should be sent.
 
@@ -717,6 +694,11 @@ def should_send_streak_alert(streak: MatchupStreakContext) -> bool:
     Returns:
         True if we have any meaningful data to show AND sufficient historical data
     """
+    participants = (
+        getattr(event_context, "participants_label", None)
+        or getattr(streak, "participants", "")
+    )
+
     # Calculate total games for each team
     home_total_games = len(streak.home_team_results) if hasattr(streak, 'home_team_results') and streak.home_team_results else 0
     away_total_games = len(streak.away_team_results) if hasattr(streak, 'away_team_results') and streak.away_team_results else 0
@@ -727,7 +709,7 @@ def should_send_streak_alert(streak: MatchupStreakContext) -> bool:
 
     if not has_sufficient_data:
         logger.info(
-            f"⏭️ Matchup streak alert skipped for {streak.participants}: "
+            f"⏭️ Matchup streak alert skipped for {participants}: "
             f"Insufficient data (home: {home_total_games}, away: {away_total_games}, need ≥{min_results_threshold})"
         )
         return False
@@ -755,12 +737,12 @@ def should_send_streak_alert(streak: MatchupStreakContext) -> bool:
         if has_winning_odds:
             reasons.append("winning odds data")
         logger.info(
-            f"✅ Matchup streak alert will send for {streak.participants}: "
+            f"✅ Matchup streak alert will send for {participants}: "
             f"{', '.join(reasons)} (data: home={home_total_games}, away={away_total_games})"
         )
     else:
         logger.info(
-            f"⏭️ Matchup streak alert skipped for {streak.participants}: "
+            f"⏭️ Matchup streak alert skipped for {participants}: "
             f"No meaningful data (Matchup: {streak.h2h_matchup_matches_analyzed}, "
             f"Home form: {streak.home_team_wins + streak.home_team_losses + streak.home_team_draws}, "
             f"Away form: {streak.away_team_wins + streak.away_team_losses + streak.away_team_draws}, "

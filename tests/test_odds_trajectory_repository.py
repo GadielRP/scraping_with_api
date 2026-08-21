@@ -34,6 +34,7 @@ def _point(quote_id):
         initial_odds=Decimal("2"),
         odds_value=Decimal("1.9"),
         snapshot_id=4,
+        source_collected_at=None,
         collected_at=None,
         minutes_before_start=1,
         target_minute=1,
@@ -47,6 +48,7 @@ def test_point_serialization_keeps_quote_identity():
     assert payload["source"] == "sofascore"
     assert payload["exchange_side"] is None
     assert payload["exchange_level"] == 0
+    assert payload["source_collected_at"] is None
 
 
 class _Rows:

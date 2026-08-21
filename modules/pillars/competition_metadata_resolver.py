@@ -72,8 +72,8 @@ def _clean_text(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
-def _is_regular_competition_scope(event_context: EventContext, event_obj=None) -> bool:
-    round_value = _clean_text(getattr(event_obj, "round", None))
+def _is_regular_competition_scope(event_context: EventContext) -> bool:
+    round_value = _clean_text(getattr(event_context, "round", None))
     if round_value and round_value != "regular_season":
         return False
 
@@ -169,7 +169,6 @@ def _has_critical_metadata_gap(
 
 def resolve_competition_metadata(
     event_context: EventContext,
-    event_obj=None,
     standings_endpoint_missing_competition_ids: Optional[set[int]] = None,
 ) -> CompetitionMetadataResolution:
     competition = event_context.competition
@@ -232,7 +231,7 @@ def resolve_competition_metadata(
             raw=raw,
         )
 
-    regular_scope = _is_regular_competition_scope(event_context, event_obj=event_obj)
+    regular_scope = _is_regular_competition_scope(event_context)
     raw["regular_competition_scope"] = regular_scope
     league_config = get_league_config(competition.source_unique_tournament_id, competition.source_tournament_id) if regular_scope else None
     raw["manual_config"] = asdict(league_config) if league_config else None

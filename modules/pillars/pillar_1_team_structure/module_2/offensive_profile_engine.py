@@ -301,18 +301,15 @@ def calculate_performance_profile(
     event_context: EventContext,
     debug_mode: bool = False,
 ) -> ModuleResult:
-    event_id = getattr(streak_analysis, "event_id", 0)
+    event_id = event_context.event_id
     participants = _first_text(
-        getattr(streak_analysis, "participants", None),
-        getattr(event_context, "participants_label", None) if event_context is not None else None,
+        event_context.participants_label,
     )
     home_team = _first_text(
-        getattr(streak_analysis, "home_team_name", None),
-        getattr(getattr(event_context, "home", None), "name", None) if event_context is not None else None,
+        event_context.home.name,
     )
     away_team = _first_text(
-        getattr(streak_analysis, "away_team_name", None),
-        getattr(getattr(event_context, "away", None), "name", None) if event_context is not None else None,
+        event_context.away.name,
     )
 
     if debug_mode:
