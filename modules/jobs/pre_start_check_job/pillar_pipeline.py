@@ -135,15 +135,15 @@ def _to_json_safe(value: Any):
         if isinstance(value, (datetime, date)):
             return value.isoformat()
 
-        if is_dataclass(value) and not isinstance(value, type):
-            return _to_json_safe(asdict(value))
-
         to_dict = getattr(value, "to_dict", None)
         if callable(to_dict):
             try:
                 return _to_json_safe(to_dict())
             except Exception:
                 pass
+
+        if is_dataclass(value) and not isinstance(value, type):
+            return _to_json_safe(asdict(value))
 
         if isinstance(value, dict):
             return {str(key): _to_json_safe(item) for key, item in value.items()}
@@ -202,7 +202,7 @@ def _save_pillar_debug_snapshots(
 
         _write_debug_json(debug_dir / f"{event_id}_streak_analysis.json", streak_analysis)
         _write_debug_json(debug_dir / f"{event_id}_event_context.json", event_context)
-        _write_debug_json(debug_dir / f"{event_id}_odds_trajectory.json", odds_trajectory_context)
+        _write_debug_json(debug_dir / f"{event_id}_odds_trajectory_context.json", odds_trajectory_context)
 
 
         logger.info(

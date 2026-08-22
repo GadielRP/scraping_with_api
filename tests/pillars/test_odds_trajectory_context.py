@@ -99,6 +99,34 @@ def test_meta_by_minute_exposes_source_collected_at_as_changed_at() -> None:
     assert meta.changed_at.isoformat() == "2026-01-01T09:59:30"
 
 
+def test_exchange_size_is_kept_in_exchange_snapshot_metadata_only() -> None:
+    rows = _make_rows() + [
+        {
+            **_make_rows()[0],
+            "bookie_id": 9,
+            "bookie_name": "Betfair Exchange",
+            "source": "oddspapi",
+            "exchange_side": "back",
+            "exchange_level": 0,
+            "quote_id": 900,
+            "snapshot_id": 9001,
+            "exchange_size": "25.500",
+        }
+    ]
+
+    context = build_odds_trajectory_context(rows, target_minutes_expected=[1])
+    market_line = context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+    regular = context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]["bookies"]["1:sofascore:single:0"]
+    exchange = context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]["bookies"]["9:oddspapi:back:0"]
+
+    assert market_line.bookies["9:oddspapi:back:0"].choices["1"].meta_by_minute[1].exchange_size == Decimal("25.500")
+    assert "exchange_side" not in regular
+    assert "exchange_level" not in regular
+    assert exchange["exchange_side"] == "back"
+    assert exchange["exchange_level"] == 0
+    assert exchange["choices"]["1"]["meta_by_minute"][1]["exchange_size"] == Decimal("25.500")
+
+
 def test_minute_maps_are_serialized_in_descending_order() -> None:
     rows = []
     for minute in (1, 120, -5, 30, 5):

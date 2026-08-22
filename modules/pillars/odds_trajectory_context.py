@@ -109,6 +109,11 @@ def _normalize_market_period_key(value: str) -> str:
     return " ".join(str(value).replace("-", " ").casefold().split())
 
 
+def _is_exchange_bookie(bookie_name: Optional[str], exchange_side: Optional[str]) -> bool:
+    """Identify exchange bookmakers from persisted quote/bookie references."""
+    return bool(exchange_side) or "exchange" in str(bookie_name or "").casefold()
+
+
 def _normalize_expected_minutes(target_minutes_expected: Optional[List[int]]) -> List[int]:
     source = Config.PRE_START_ODDS_MOMENTS if target_minutes_expected is None else target_minutes_expected
     normalized: List[int] = []
@@ -158,6 +163,7 @@ class OddsPointMeta:
     distance_from_target: Optional[int]
     quote_id: Optional[int] = None
     changed_at: Optional[datetime] = None
+    exchange_size: Optional[Decimal] = None
 
 
 @dataclass(frozen=True)
@@ -198,6 +204,29 @@ class OddsTrajectoryContext:
     target_minutes_present: List[int]
     missing_target_minutes: List[int]
     markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return a compact exchange-aware representation of this context."""
+        return {
+            "available": self.available,
+            "event_id": self.event_id,
+            "target_minutes_expected": list(self.target_minutes_expected),
+            "target_minutes_present": list(self.target_minutes_present),
+            "missing_target_minutes": list(self.missing_target_minutes),
+            "markets": {
+                market_group: {
+                    market_period: {
+                        market_name: {
+                            choice_group_key: _market_line_to_dict(market_line)
+                            for choice_group_key, market_line in choice_groups.items()
+                        }
+                        for market_name, choice_groups in market_names.items()
+                    }
+                    for market_period, market_names in periods.items()
+                }
+                for market_group, periods in self.markets.items()
+            },
+        }
 
     def filter_by_market_groups(
         self,
@@ -338,6 +367,66 @@ def _build_filtered_context(
     )
 
 
+def _market_line_to_dict(market_line: MarketLineOddsTrajectory) -> Dict[str, Any]:
+    return {
+        "market_id": market_line.market_id,
+        "market_name": market_line.market_name,
+        "market_group": market_line.market_group,
+        "market_period": market_line.market_period,
+        "choice_group": market_line.choice_group,
+        "bookies": {
+            bookie_key: _bookie_to_dict(bookie)
+            for bookie_key, bookie in market_line.bookies.items()
+        },
+    }
+
+
+def _bookie_to_dict(bookie: BookieOddsTrajectory) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "bookie_id": bookie.bookie_id,
+        "bookie_name": bookie.bookie_name,
+        "source": bookie.source,
+        "choices": {
+            choice_name: _choice_to_dict(choice)
+            for choice_name, choice in bookie.choices.items()
+        },
+    }
+    if _is_exchange_bookie(bookie.bookie_name, bookie.exchange_side):
+        if bookie.exchange_side is not None:
+            payload["exchange_side"] = bookie.exchange_side
+        payload["exchange_level"] = bookie.exchange_level
+    return payload
+
+
+def _choice_to_dict(choice: ChoiceOddsTrajectory) -> Dict[str, Any]:
+    return {
+        "choice_name": choice.choice_name,
+        "choice_id": choice.choice_id,
+        "initial_odds": choice.initial_odds,
+        "quote_id": choice.quote_id,
+        "odds_values": dict(choice.odds_values),
+        "meta_by_minute": {
+            minute: _meta_to_dict(meta)
+            for minute, meta in choice.meta_by_minute.items()
+        },
+    }
+
+
+def _meta_to_dict(meta: OddsPointMeta) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "snapshot_id": meta.snapshot_id,
+        "quote_id": meta.quote_id,
+        "collected_at": meta.collected_at,
+        "changed_at": meta.changed_at,
+        "minutes_before_start": meta.minutes_before_start,
+        "target_minute": meta.target_minute,
+        "distance_from_target": meta.distance_from_target,
+    }
+    if meta.exchange_size is not None:
+        payload["exchange_size"] = meta.exchange_size
+    return payload
+
+
 def _get_market_line_container(
     markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]],
     market_group: str,
@@ -475,6 +564,7 @@ def build_odds_trajectory_context(
                                                 "snapshot_id": ...,
                                                 "collected_at": ...,
                                                 "changed_at": ...,
+                                                "exchange_size": ...,
                                                 "minutes_before_start": ...,
                                                 "target_minute": ...,
                                                 "distance_from_target": ...
@@ -579,6 +669,11 @@ def build_odds_trajectory_context(
             minutes_before_start=_coerce_int(row.get("minutes_before_start")),
             target_minute=target_minute,
             distance_from_target=_coerce_int(row.get("distance_from_target")),
+            exchange_size=(
+                _coerce_decimal(row.get("exchange_size"))
+                if _is_exchange_bookie(bookie_name, exchange_side)
+                else None
+            ),
         )
 
         existing_meta = choice.meta_by_minute.get(target_minute)

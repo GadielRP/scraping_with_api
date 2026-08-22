@@ -48,6 +48,7 @@ def test_point_serialization_keeps_quote_identity():
     assert payload["source"] == "sofascore"
     assert payload["exchange_side"] is None
     assert payload["exchange_level"] == 0
+    assert payload["exchange_size"] is None
     assert payload["source_collected_at"] is None
 
 
@@ -102,6 +103,7 @@ def test_event_scope_precedes_quote_and_trajectory_ranking(monkeypatch):
     )
     assert "PARTITION BY event_id, quote_id, target_minute" in session.statement
     assert "trajectory.quote_id IS NOT NULL" in session.statement
+    assert "snapshots.exchange_size" in session.statement
     assert session.params["event_ids"] == [1]
     assert session.params["target_minute_0"] == 120
     assert session.params["target_minute_1"] == 1

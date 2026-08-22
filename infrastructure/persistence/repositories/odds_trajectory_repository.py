@@ -48,6 +48,7 @@ class OddsTrajectoryPoint:
     minutes_before_start: Optional[int]
     target_minute: Optional[int]
     distance_from_target: Optional[int]
+    exchange_size: Optional[Decimal] = None
 
     def to_dict(self) -> Dict:
         return {
@@ -71,6 +72,7 @@ class OddsTrajectoryPoint:
             "exchange_level": self.exchange_level,
             "initial_odds": self.initial_odds,
             "odds_value": self.odds_value,
+            "exchange_size": self.exchange_size,
             "snapshot_id": self.snapshot_id,
             "source_collected_at": self.source_collected_at,
             "collected_at": self.collected_at,
@@ -105,6 +107,7 @@ class OddsTrajectoryRepository:
             exchange_level=data.get("exchange_level"),
             initial_odds=data.get("initial_odds"),
             odds_value=data.get("odds_value"),
+            exchange_size=data.get("exchange_size"),
             snapshot_id=data.get("snapshot_id"),
             source_collected_at=data.get("source_collected_at"),
             collected_at=data.get("collected_at"),
