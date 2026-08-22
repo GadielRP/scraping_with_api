@@ -26,13 +26,39 @@ t_minus_one_module = import_module(
 )
 
 
-def test_closing_moment_replaces_zero_everywhere_in_policy():
+def test_zero_is_a_real_moment_and_closing_moment_remains_dedicated():
     assert Config.PRE_START_CLOSING_ODDS_MINUTE == 1
     assert is_closing_odds_moment(1)
     assert not is_closing_odds_moment(0)
     assert dual_process_moments() == {30, 1}
     assert 1 not in regular_pre_start_moments()
-    assert 0 not in Config.PRE_START_ODDS_MOMENTS
+    assert 0 in Config.PRE_START_ODDS_MOMENTS
+    assert 0 in regular_pre_start_moments()
+
+
+def test_oddspapi_endpoint_classification_uses_moment_sign():
+    assert not OddspapiPreStartOddsBatchProcessor._is_live_candidate(
+        OddspapiPreStartCandidate(
+            event_id=1,
+            fixture_id="fixture-1",
+            minutes_until_start=1,
+            is_live=True,
+        )
+    )
+    assert OddspapiPreStartOddsBatchProcessor._is_live_candidate(
+        OddspapiPreStartCandidate(
+            event_id=1,
+            fixture_id="fixture-1",
+            minutes_until_start=0,
+        )
+    )
+    assert OddspapiPreStartOddsBatchProcessor._is_live_candidate(
+        OddspapiPreStartCandidate(
+            event_id=1,
+            fixture_id="fixture-1",
+            minutes_until_start=-5,
+        )
+    )
 
 
 def test_t_minus_one_job_queries_exact_slot_and_records_dispatch_lag(
@@ -94,6 +120,25 @@ def test_t_minus_one_job_does_not_replay_after_event_start(monkeypatch):
         )
     )
     monkeypatch.setattr(t_minus_one_module, "datetime", FixedDateTime)
+
+    assert (
+        t_minus_one_module.run_t_minus_one_odds_job(
+            scheduler,
+            datetime(2026, 8, 13, 18, 59),
+        )
+        is None
+    )
+
+
+def test_t_minus_one_job_skips_when_closing_moment_is_not_configured(monkeypatch):
+    monkeypatch.setattr(Config, "PRE_START_ODDS_MOMENTS", [120, 30, 5, 0, -5])
+    scheduler = SimpleNamespace(
+        event_repo=SimpleNamespace(
+            get_events_starting_between=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("unconfigured closing moment must not query")
+            )
+        )
+    )
 
     assert (
         t_minus_one_module.run_t_minus_one_odds_job(

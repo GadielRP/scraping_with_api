@@ -75,12 +75,6 @@ def _parse_env_int_list(env_name, default_value):
         return [int(item.strip()) for item in value.split(',') if item.strip()]
 
 
-def _replace_zero_with_closing_moment(values, closing_moment):
-    return list(dict.fromkeys(
-        closing_moment if moment == 0 else moment for moment in values
-    ))
-
-
 def _parse_env_list_alias(primary_name, alias_name, default_value):
     if os.getenv(primary_name):
         return _parse_env_list(primary_name, default_value)
@@ -233,12 +227,12 @@ class Config:
     )
     _CONFIGURED_PRE_START_ODDS_MOMENTS = _parse_env_int_list(
         "PRE_START_ODDS_MOMENTS",
-        [120, 30, 5, PRE_START_CLOSING_ODDS_MINUTE, -5],
+        [120, 30, 5, PRE_START_CLOSING_ODDS_MINUTE, 0, -5],
     )
-    PRE_START_ODDS_MOMENTS = _replace_zero_with_closing_moment(
-        _CONFIGURED_PRE_START_ODDS_MOMENTS,
-        PRE_START_CLOSING_ODDS_MINUTE,
-    )
+    # Keep zero as a real configured moment. The sign of each moment is used
+    # by the provider policies: positive values are pre-kickoff, zero is the
+    # kickoff boundary, and negative values are post-kickoff.
+    PRE_START_ODDS_MOMENTS = list(dict.fromkeys(_CONFIGURED_PRE_START_ODDS_MOMENTS))
     PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES = int(
         os.getenv("PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", "3")
     )

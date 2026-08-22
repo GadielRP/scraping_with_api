@@ -9,6 +9,11 @@ def is_closing_odds_moment(minutes: int | float | None) -> bool:
     return minutes == Config.PRE_START_CLOSING_ODDS_MINUTE
 
 
+def is_live_odds_moment(minutes: int | float | None) -> bool:
+    """Return whether a moment is at or after kickoff."""
+    return minutes is not None and float(minutes) <= 0
+
+
 def dual_process_moments() -> frozenset[int]:
     return frozenset((30, Config.PRE_START_CLOSING_ODDS_MINUTE))
 
@@ -22,5 +27,6 @@ def regular_pre_start_moments() -> tuple[int, ...]:
 __all__ = [
     "dual_process_moments",
     "is_closing_odds_moment",
+    "is_live_odds_moment",
     "regular_pre_start_moments",
 ]

@@ -710,6 +710,64 @@ def test_sofascore_fetcher_translates_404_to_expected_result():
     assert result.payload is None
 
 
+def test_sofascore_fetcher_retains_raw_response_only_when_requested():
+    raw_payload = {"markets": [{"marketId": 1, "isLive": False}]}
+    client = SimpleNamespace(request_json=lambda *_args, **_kwargs: raw_payload)
+    fetcher = SofaScoreOddsFetcher(client)
+
+    without_debug = fetcher.fetch_odds(9001, "home-away")
+    with_debug = fetcher.fetch_odds(
+        9001,
+        "home-away",
+        capture_raw_response=True,
+    )
+
+    assert without_debug.raw_payload is None
+    assert with_debug.raw_payload == raw_payload
+    assert with_debug.payload == raw_payload
+
+
+def test_sofascore_debug_mode_saves_raw_response_by_event_and_moment(
+    tmp_path,
+    monkeypatch,
+):
+    raw_payload = {"markets": [{"marketId": 1, "isLive": False}]}
+    fetcher = SimpleNamespace(
+        fetch_odds=lambda _source_event_id, _slug, *, capture_raw_response=False: (
+            OddsFetchResult.from_payload(
+                raw_payload,
+                raw_payload=raw_payload if capture_raw_response else None,
+            )
+        )
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sofascore_odds_phase.MarketOddsIngestionService,
+        "save_from_sofascore_response",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            markets_saved=1,
+            dual_process_market_available=False,
+            reason=None,
+        ),
+    )
+
+    result = sofascore_odds_phase.run_sofascore_pre_start_odds(
+        [_event_info()],
+        {},
+        debug_mode=True,
+        odds_fetcher=fetcher,
+    )
+
+    output_path = (
+        tmp_path
+        / "debug"
+        / "sofascore_odds_responses"
+        / "101_9001_t_30.json"
+    )
+    assert result.events_ingested == 1
+    assert json.loads(output_path.read_text(encoding="utf-8")) == raw_payload
+
+
 def test_oddspapi_fetcher_uses_structured_404():
     client = SimpleNamespace(
         get_odds=lambda **_kwargs: (_ for _ in ()).throw(

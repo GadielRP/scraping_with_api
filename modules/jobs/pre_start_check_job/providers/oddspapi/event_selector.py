@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from infrastructure.persistence.repositories import EventOddsSourceState
+from modules.jobs.pre_start_check_job.moment_policy import is_live_odds_moment
 from modules.odds_ingestion import should_extract_odds
 
 from .constants import ODDSPAPI_SOURCE
@@ -39,9 +40,7 @@ def _canonical_event_id(event_info: dict) -> int | None:
 
 
 def _is_live_moment(minutes_until_start: int | float | None) -> bool:
-    return bool(
-        minutes_until_start is not None and float(minutes_until_start) <= 0
-    )
+    return is_live_odds_moment(minutes_until_start)
 
 
 def select_oddspapi_pre_start_candidates(

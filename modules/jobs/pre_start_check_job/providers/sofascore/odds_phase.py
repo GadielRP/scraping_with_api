@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection
+import inspect
 import logging
 
 from modules.jobs.pre_start_check_job.odds_source_state import (
@@ -18,6 +19,7 @@ from modules.odds_ingestion import (
 from modules.sofascore import api_client
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 
+from .debug_response_writer import SofaScoreDebugResponseWriter
 from .tennis_observations import enrich_tennis_observations
 
 logger = logging.getLogger(__name__)
@@ -51,7 +53,33 @@ def run_sofascore_pre_start_odds(
 
     def _fetch_sofascore_odds(candidate: dict):
         sofascore_event_id = candidate["sofascore_event_id"]
-        result = fetcher.fetch_odds(sofascore_event_id, candidate["event_data"].get("slug"))
+        fetch_odds = fetcher.fetch_odds
+        fetch_parameters = inspect.signature(fetch_odds).parameters
+        supports_raw_capture = (
+            "capture_raw_response" in fetch_parameters
+            or any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in fetch_parameters.values()
+            )
+        )
+        fetch_kwargs = (
+            {"capture_raw_response": debug_mode}
+            if supports_raw_capture
+            else {}
+        )
+        result = fetch_odds(
+            sofascore_event_id,
+            candidate["event_data"].get("slug"),
+            **fetch_kwargs,
+        )
+        raw_payload = getattr(result, "raw_payload", None)
+        if debug_mode and raw_payload is not None:
+            SofaScoreDebugResponseWriter.save(
+                event_id=candidate["event_id"],
+                source_event_id=sofascore_event_id,
+                minutes_until_start=candidate.get("minutes_until_start"),
+                payload=raw_payload,
+            )
         if result.endpoint_missing:
             logger.info(
                 "🚫 SofaScore odds endpoint missing for event_id=%s sofascore_event_id=%s",

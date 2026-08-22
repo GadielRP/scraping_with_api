@@ -34,6 +34,13 @@ def run_t_minus_one_odds_job(
         dispatch_lag_ms,
     )
 
+    if closing_minute not in Config.PRE_START_ODDS_MOMENTS:
+        logger.info(
+            "⏭️ Closing moment %s is not configured; skipping dedicated dispatch",
+            closing_minute,
+        )
+        return None
+
     if now >= target_start:
         logger.error(
             "T-1 odds dispatch missed target_start=%s dispatch_lag_ms=%s",

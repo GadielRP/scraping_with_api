@@ -18,7 +18,13 @@ class SofaScoreOddsFetcher:
     def __init__(self, client: SofaScoreAPI):
         self.client = client
 
-    def fetch_odds(self, source_event_id: int, slug: str | None = None) -> OddsFetchResult:
+    def fetch_odds(
+        self,
+        source_event_id: int,
+        slug: str | None = None,
+        *,
+        capture_raw_response: bool = False,
+    ) -> OddsFetchResult:
         if slug:
             logger.info(
                 "✈️ Fetching final SofaScore odds source_event_id=%s slug=%s",
@@ -29,4 +35,7 @@ class SofaScoreOddsFetcher:
             payload = self.client.request_json(f"/event/{source_event_id}/odds/1/all")
         except SofaScoreNotFoundException:
             return OddsFetchResult.endpoint_not_found()
-        return OddsFetchResult.from_payload(payload)
+        return OddsFetchResult.from_payload(
+            payload,
+            raw_payload=payload if capture_raw_response else None,
+        )

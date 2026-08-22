@@ -16,7 +16,10 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
 )
 from infrastructure.settings import Config
 from modules.competition.tracked_competitions import is_tracked_competition
-from modules.jobs.pre_start_check_job.moment_policy import is_closing_odds_moment
+from modules.jobs.pre_start_check_job.moment_policy import (
+    is_closing_odds_moment,
+    is_live_odds_moment,
+)
 from modules.odds_ingestion import (
     MarketOddsIngestionService,
     ProviderOddsSummary,
@@ -445,10 +448,9 @@ class OddspapiPreStartOddsBatchProcessor:
 
     @staticmethod
     def _is_live_candidate(candidate: OddspapiPreStartCandidate) -> bool:
-        if candidate.is_live:
-            return True
-        minutes = candidate.minutes_until_start
-        return minutes is not None and float(minutes) <= 0
+        if candidate.minutes_until_start is None:
+            return candidate.is_live
+        return is_live_odds_moment(candidate.minutes_until_start)
 
     @staticmethod
     def _has_current_odds(payload: dict | None) -> bool:
