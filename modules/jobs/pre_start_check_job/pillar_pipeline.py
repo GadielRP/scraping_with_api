@@ -34,6 +34,7 @@ from modules.pillars.streak_analysis_resolver import (
 from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import (
     calculate_pillar_1_team_structure,
 )
+from modules.pillars.pillar_2_side_market.run_pillar_2 import calculate_pillar_2
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
 from modules.pillars.pillar_1_team_structure.totals import (
@@ -92,6 +93,27 @@ def _build_p4_error_result(event_context, odds_trajectory_context, exc: Exceptio
         "error": str(exc),
         "raw": {
             "reason": "pillar_4_exception",
+            "odds_trajectory_available": getattr(odds_trajectory_context, "available", False),
+            "target_minutes_expected": getattr(odds_trajectory_context, "target_minutes_expected", []),
+            "target_minutes_present": getattr(odds_trajectory_context, "target_minutes_present", []),
+            "missing_target_minutes": getattr(odds_trajectory_context, "missing_target_minutes", []),
+        },
+    }
+
+
+def _build_p2_error_result(event_context, odds_trajectory_context, exc: Exception) -> dict:
+    return {
+        "pillar_id": "pillar_2_side_market",
+        "pillar_name": "Side Market RAW",
+        "event_id": getattr(event_context, "event_id", None),
+        "participants": getattr(event_context, "participants_label", None),
+        "P2_STATUS": "ERROR",
+        "status": "ERROR",
+        "P2_TARGET_MINUTE": None,
+        "modules": [],
+        "error": str(exc),
+        "raw": {
+            "reason": "pillar_2_exception",
             "odds_trajectory_available": getattr(odds_trajectory_context, "available", False),
             "target_minutes_expected": getattr(odds_trajectory_context, "target_minutes_expected", []),
             "target_minutes_present": getattr(odds_trajectory_context, "target_minutes_present", []),
@@ -224,9 +246,16 @@ class EventPillarProcessor:
         self,
         event_repo,
         debug_mode: bool = False,
+        enabled_pillars: Optional[dict[str, bool]] = None,
     ):
         self.event_repo = event_repo
         self.debug_mode = debug_mode
+        self.enabled_pillars = enabled_pillars or {}
+
+    def _is_pillar_enabled(self, pillar_key: str) -> bool:
+        if not self.enabled_pillars:
+            return True
+        return bool(self.enabled_pillars.get(pillar_key, True))
 
     def process_event(self, event_context: EventContext) -> Optional[dict]:
         """Calculate pillar modules for a single event context.
@@ -294,128 +323,177 @@ class EventPillarProcessor:
                 trajectory_keys[:10],
             )
 
-        try:
-            # calculate pillar 4 (p4)
-            p4_result = calculate_pillar_4(
-                event_context=event_context,
-                debug_mode=self.debug_mode,
-            )
-        except Exception as exc:
-            logger.exception(
-                "Error calculating P4 for event %s (%s): %s",
-                event_id,
-                event_context.participants_label,
-                exc,
-            )
-            p4_result = _build_p4_error_result(event_context, odds_trajectory_context, exc)
+        p2_result = None
+        if self._is_pillar_enabled("pillar_2"):
+            try:
+                p2_result = calculate_pillar_2(
+                    event_context=event_context,
+                    odds_trajectory_context=odds_trajectory_context,
+                    debug_mode=self.debug_mode,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Error calculating P2 for event %s (%s): %s",
+                    event_id,
+                    event_context.participants_label,
+                    exc,
+                )
+                p2_result = _build_p2_error_result(
+                    event_context,
+                    odds_trajectory_context,
+                    exc,
+                )
 
-        logger.info(
-            "P4 calculated for %s: status=%s market_periods=%s active=%s insufficient=%s",
-            event_context.participants_label,
-            p4_result.get("P4_STATUS"),
-            p4_result.get("market_period_count"),
-            p4_result.get("active_market_period_count"),
-            p4_result.get("insufficient_market_period_count"),
-        )
-        if self.debug_mode:
             logger.info(
-                "P4 debug summary for %s: trajectory_keys=%s",
+                "P2 calculated for %s: status=%s target_minute=%s direction=%s edge=%s",
                 event_context.participants_label,
-                list((p4_result.get("market_period_results") or {}).keys())[:10],
+                p2_result.get("P2_STATUS"),
+                p2_result.get("P2_TARGET_MINUTE"),
+                p2_result.get("P2_DIRECTION_RAW"),
+                p2_result.get("SIDE_MARKET_EDGE"),
             )
-
-        ft_1x2_odds_trajectory = odds_trajectory_context
-        try:
-            if self.debug_mode:
-                logger.info(
-                    "P5: Context before filtering for event %s (%s): available=%s, markets=%s",
-                    event_id,
-                    event_context.participants_label,
-                    odds_trajectory_context.available,
-                    {group: list(periods.keys()) for group, periods in odds_trajectory_context.markets.items()}
-                    if odds_trajectory_context.markets else "None",
-                )
-
-            ft_1x2_odds_trajectory = odds_trajectory_context.filter_by_market_groups(
-                allowed_groups={"1X2", "Home/Away"}
-            )
-            event_context.ft_1x2_odds_trajectory_context = ft_1x2_odds_trajectory
-            
-            if self.debug_mode:
-                logger.info(
-                    "P5: Context after market group filtering for event %s (%s): available=%s, markets=%s",
-                    event_id,
-                    event_context.participants_label,
-                    ft_1x2_odds_trajectory.available,
-                    {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
-                    if ft_1x2_odds_trajectory.markets else "None",
-                )
-
-            ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_market_period(
-                allowed_periods={"Full Time"}
-            )
-
-            if self.debug_mode:
-                logger.info(
-                    "P5: Context after period filtering for event %s (%s): available=%s, markets=%s",
-                    event_id,
-                    event_context.participants_label,
-                    ft_1x2_odds_trajectory.available,
-                    {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
-                    if ft_1x2_odds_trajectory.markets else "None",
-                )
-
-            ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_bookie_ids(
-                allowed_bookie_ids={1}
-            )
-
-            if self.debug_mode:
-                remaining_bookie_ids = sorted({
-                    bookie.bookie_id
-                    for periods in ft_1x2_odds_trajectory.markets.values()
-                    for market_period in periods.values()
-                    for market_name in market_period.values()
-                    for market_line in market_name.values()
-                    for bookie in market_line.bookies.values()
-                    if bookie.bookie_id is not None
-                })
-                logger.info(
-                    "P5: Context after bookie filtering for event %s (%s): available=%s, markets=%s, bookie_ids=%s",
-                    event_id,
-                    event_context.participants_label,
-                    ft_1x2_odds_trajectory.available,
-                    {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
-                    if ft_1x2_odds_trajectory.markets else "None",
-                    remaining_bookie_ids if remaining_bookie_ids else "None",
-                )
-
-            p5_result = calculate_pillar_5(
-                event_context=event_context,
-                debug_mode=self.debug_mode,
-            )
-        except Exception as exc:
-            logger.exception(
-                "Error calculating P5 for event %s (%s): %s",
-                event_id,
+        else:
+            logger.info(
+                "Pillar 2 (Side Market RAW) skipped for %s (disabled by toggle)",
                 event_context.participants_label,
-                exc,
-            )
-            p5_result = _build_p5_error_result(
-                event_context,
-                ft_1x2_odds_trajectory,
-                exc,
             )
 
-        logger.info(
-            "P5 calculated for %s: status=%s valid=%s direction=%s score=%.3f strength=%s sample_size=%s",
-            event_context.participants_label,
-            p5_result.get("P5_STATUS"),
-            p5_result.get("P5_VALID"),
-            p5_result.get("P5_DIRECTION"),
-            p5_result.get("P5", 0),
-            p5_result.get("P5_STRENGTH"),
-            p5_result.get("sample_size"),
-        )
+        p4_result = None
+        if self._is_pillar_enabled("pillar_4"):
+            try:
+                # calculate pillar 4 (p4)
+                p4_result = calculate_pillar_4(
+                    event_context=event_context,
+                    debug_mode=self.debug_mode,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Error calculating P4 for event %s (%s): %s",
+                    event_id,
+                    event_context.participants_label,
+                    exc,
+                )
+                p4_result = _build_p4_error_result(event_context, odds_trajectory_context, exc)
+
+            logger.info(
+                "P4 calculated for %s: status=%s market_periods=%s active=%s insufficient=%s",
+                event_context.participants_label,
+                p4_result.get("P4_STATUS"),
+                p4_result.get("market_period_count"),
+                p4_result.get("active_market_period_count"),
+                p4_result.get("insufficient_market_period_count"),
+            )
+            if self.debug_mode:
+                logger.info(
+                    "P4 debug summary for %s: trajectory_keys=%s",
+                    event_context.participants_label,
+                    list((p4_result.get("market_period_results") or {}).keys())[:10],
+                )
+        else:
+            logger.info(
+                "Pillar 4 (Temporal Market Drift) skipped for %s (disabled by toggle)",
+                event_context.participants_label,
+            )
+
+        p5_result = None
+        if self._is_pillar_enabled("pillar_5"):
+            ft_1x2_odds_trajectory = odds_trajectory_context
+            try:
+                if self.debug_mode:
+                    logger.info(
+                        "P5: Context before filtering for event %s (%s): available=%s, markets=%s",
+                        event_id,
+                        event_context.participants_label,
+                        odds_trajectory_context.available,
+                        {group: list(periods.keys()) for group, periods in odds_trajectory_context.markets.items()}
+                        if odds_trajectory_context.markets else "None",
+                    )
+
+                ft_1x2_odds_trajectory = odds_trajectory_context.filter_by_market_groups(
+                    allowed_groups={"1X2", "Home/Away"}
+                )
+                event_context.ft_1x2_odds_trajectory_context = ft_1x2_odds_trajectory
+                
+                if self.debug_mode:
+                    logger.info(
+                        "P5: Context after market group filtering for event %s (%s): available=%s, markets=%s",
+                        event_id,
+                        event_context.participants_label,
+                        ft_1x2_odds_trajectory.available,
+                        {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
+                        if ft_1x2_odds_trajectory.markets else "None",
+                    )
+
+                ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_market_period(
+                    allowed_periods={"Full Time"}
+                )
+
+                if self.debug_mode:
+                    logger.info(
+                        "P5: Context after period filtering for event %s (%s): available=%s, markets=%s",
+                        event_id,
+                        event_context.participants_label,
+                        ft_1x2_odds_trajectory.available,
+                        {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
+                        if ft_1x2_odds_trajectory.markets else "None",
+                    )
+
+                ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_bookie_ids(
+                    allowed_bookie_ids={1}
+                )
+
+                if self.debug_mode:
+                    remaining_bookie_ids = sorted({
+                        bookie.bookie_id
+                        for periods in ft_1x2_odds_trajectory.markets.values()
+                        for market_period in periods.values()
+                        for market_name in market_period.values()
+                        for market_line in market_name.values()
+                        for bookie in market_line.bookies.values()
+                        if bookie.bookie_id is not None
+                    })
+                    logger.info(
+                        "P5: Context after bookie filtering for event %s (%s): available=%s, markets=%s, bookie_ids=%s",
+                        event_id,
+                        event_context.participants_label,
+                        ft_1x2_odds_trajectory.available,
+                        {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
+                        if ft_1x2_odds_trajectory.markets else "None",
+                        remaining_bookie_ids if remaining_bookie_ids else "None",
+                    )
+
+                p5_result = calculate_pillar_5(
+                    event_context=event_context,
+                    debug_mode=self.debug_mode,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Error calculating P5 for event %s (%s): %s",
+                    event_id,
+                    event_context.participants_label,
+                    exc,
+                )
+                p5_result = _build_p5_error_result(
+                    event_context,
+                    ft_1x2_odds_trajectory,
+                    exc,
+                )
+
+            logger.info(
+                "P5 calculated for %s: status=%s valid=%s direction=%s score=%.3f strength=%s sample_size=%s",
+                event_context.participants_label,
+                p5_result.get("P5_STATUS"),
+                p5_result.get("P5_VALID"),
+                p5_result.get("P5_DIRECTION"),
+                p5_result.get("P5", 0),
+                p5_result.get("P5_STRENGTH"),
+                p5_result.get("sample_size"),
+            )
+        else:
+            logger.info(
+                "Pillar 5 (Exact Price Memory) skipped for %s (disabled by toggle)",
+                event_context.participants_label,
+            )
 
         logger.info(
             "Pillar pipeline metadata check for event %s: competition_id=%s source_unique_tournament_id=%s season_id=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
@@ -465,6 +543,22 @@ class EventPillarProcessor:
         season_id = event_context.season_id
         participants = event_context.participants_label
 
+        # If Pillar 1 is disabled, return results calculated so far
+        if not self._is_pillar_enabled("pillar_1"):
+            logger.info(
+                "Pillar 1 (Team Structure) skipped for %s (disabled by toggle)",
+                participants,
+            )
+            return {
+                "event_id": event_id,
+                "participants": participants,
+                "pillar_1": None,
+                "pillar_1_totals": None,
+                "pillar_2": p2_result,
+                "pillar_4": p4_result,
+                "pillar_5": p5_result,
+            }
+
         # --- Resolve streak analysis (shared with alert pipeline) ---
         streak_analysis, _should_send = resolve_matchup_streak_analysis(
             event_context=event_context,
@@ -480,7 +574,7 @@ class EventPillarProcessor:
 
         if streak_analysis is None:
             logger.info(
-                "Pillar pipeline: no streak_analysis for event %s (%s), returning P4 and P5 only",
+                "Pillar pipeline: no streak_analysis for event %s (%s), returning P2, P4 and P5 only",
                 event_id,
                 participants,
             )
@@ -489,6 +583,7 @@ class EventPillarProcessor:
                 "participants": participants,
                 "pillar_1": None,
                 "pillar_1_totals": None,
+                "pillar_2": p2_result,
                 "pillar_4": p4_result,
                 "pillar_5": p5_result,
             }
@@ -536,6 +631,7 @@ class EventPillarProcessor:
                 "participants": participants,
                 "pillar_1": None,
                 "pillar_1_totals": None,
+                "pillar_2": p2_result,
                 "pillar_4": p4_result,
                 "pillar_5": p5_result,
             }
@@ -760,6 +856,7 @@ class EventPillarProcessor:
                 if p1_totals_result is not None
                 else None
             ),
+            "pillar_2": p2_result,
             "pillar_4": p4_result,
             "pillar_5": p5_result,
         }
@@ -773,6 +870,7 @@ def evaluate_and_calculate_pillars_batch(
     op_event_ids=None,
     op_data_cache=None,
     debug_mode: bool = False,
+    enabled_pillars: Optional[dict[str, bool]] = None,
 ):
     """Entry point to evaluate and calculate pillar modules for a batch of events."""
     if not events_for_pillars:
@@ -803,6 +901,7 @@ def evaluate_and_calculate_pillars_batch(
     processor = EventPillarProcessor(
         event_repo=event_repo,
         debug_mode=debug_mode,
+        enabled_pillars=enabled_pillars,
     )
 
     max_workers = min(Config.PILLAR_PIPELINE_WORKERS, len(allowed_events))

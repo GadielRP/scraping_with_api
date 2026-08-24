@@ -15,6 +15,7 @@ from infrastructure.persistence.models import (
     MarketChoiceSnapshot,
 )
 from infrastructure.persistence.repositories import EventRepository
+from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.event_candidate_builder import (
     PreStartEventPlan,
     build_pre_start_event_candidates,
@@ -54,6 +55,8 @@ def run_production_odds_phase(
     show_persistence_report: bool,
     log_persisted_market_odds: Callable[[int, set[int], dict], None],
     scheduler=None,
+    enable_sofascore: bool = True,
+    enable_oddspapi: bool = True,
 ) -> SimulatedOddsOutcome:
     """Build the production candidate plan and run both provider processors."""
     event_id = int(event_obj.id)
@@ -112,60 +115,72 @@ def run_production_odds_phase(
                 )
             }
 
-    logger.info("  Running production SofaScore odds processor...")
-    run_sofascore_pre_start_odds(
-        event_plan.candidates,
-        source_states,
-        debug_mode=show_persistence_report,
-    )
-    odds_response = event_info.get("odds_response") if event_info else None
-    ingestion_result = event_info.get("ingestion_result") if event_info else None
-    if odds_response:
-        logger.info("  SofaScore odds fetched successfully")
-        if ingestion_result is not None:
+    odds_response = None
+    if enable_sofascore:
+        logger.info("  Running production SofaScore odds processor...")
+        run_sofascore_pre_start_odds(
+            event_plan.candidates,
+            source_states,
+            debug_mode=show_persistence_report,
+        )
+        odds_response = event_info.get("odds_response") if event_info else None
+        ingestion_result = event_info.get("ingestion_result") if event_info else None
+        if odds_response:
+            logger.info("  SofaScore odds fetched successfully")
+            if ingestion_result is not None:
+                logger.info(
+                    "  Ingestion result: markets_saved=%s, "
+                    "dual_process_available=%s, reason=%s",
+                    ingestion_result.markets_saved,
+                    ingestion_result.dual_process_market_available,
+                    ingestion_result.reason,
+                )
+            if show_persistence_report:
+                adapted_response = SofaScoreMarketAdapter.from_event_odds_response(
+                    odds_response,
+                    home_team=event_obj.home_team,
+                    away_team=event_obj.away_team,
+                )
+                log_persisted_market_odds(
+                    event_id,
+                    previous_snapshot_ids,
+                    adapted_response,
+                )
+        elif event_info and event_info.get("should_extract_odds"):
+            logger.warning(
+                "  No SofaScore odds response returned or endpoint is unavailable"
+            )
+        elif event_info:
             logger.info(
-                "  Ingestion result: markets_saved=%s, "
-                "dual_process_available=%s, reason=%s",
-                ingestion_result.markets_saved,
-                ingestion_result.dual_process_market_available,
-                ingestion_result.reason,
+                "  Not a key moment; skipping odds extraction "
+                "(minutes=%s not in %s)",
+                simulated_minutes,
+                key_moments,
             )
-        if show_persistence_report:
-            adapted_response = SofaScoreMarketAdapter.from_event_odds_response(
-                odds_response,
-                home_team=event_obj.home_team,
-                away_team=event_obj.away_team,
-            )
-            log_persisted_market_odds(
-                event_id,
-                previous_snapshot_ids,
-                adapted_response,
-            )
-    elif event_info and event_info.get("should_extract_odds"):
-        logger.warning(
-            "  No SofaScore odds response returned or endpoint is unavailable"
-        )
-    elif event_info:
-        logger.info(
-            "  Not a key moment; skipping odds extraction "
-            "(minutes=%s not in %s)",
-            simulated_minutes,
-            key_moments,
-        )
+    else:
+        logger.info("  SofaScore odds processor skipped (disabled by toggle)")
 
-    logger.info("  Running production Oddspapi odds processor...")
-    oddspapi_summary = run_oddspapi_pre_start_odds(
-        event_plan.candidates,
-        debug_mode=debug_mode,
-        source_states=source_states,
-    )
-    logger.info(
-        "  Oddspapi result: requests=%s ingested=%s skipped=%s failed=%s",
-        oddspapi_summary.requests_attempted,
-        oddspapi_summary.events_ingested,
-        oddspapi_summary.events_skipped,
-        oddspapi_summary.events_failed,
-    )
+    if enable_oddspapi:
+        logger.info("  Running production Oddspapi odds processor...")
+        previous_oddspapi_toggle = getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", False)
+        Config.ENABLE_ODDSPAPI_PRE_START_ODDS = True
+        try:
+            oddspapi_summary = run_oddspapi_pre_start_odds(
+                event_plan.candidates,
+                source_states,
+                debug_mode=debug_mode,
+            )
+        finally:
+            Config.ENABLE_ODDSPAPI_PRE_START_ODDS = previous_oddspapi_toggle
+        logger.info(
+            "  Oddspapi result: requests=%s ingested=%s skipped=%s failed=%s",
+            oddspapi_summary.requests_attempted,
+            oddspapi_summary.events_ingested,
+            oddspapi_summary.events_skipped,
+            oddspapi_summary.events_failed,
+        )
+    else:
+        logger.info("  Oddspapi odds processor skipped (disabled by toggle)")
 
     refreshed_states = load_pre_start_odds_source_states([event_data])
     refreshed_sofascore = refreshed_states.get(event_id, {}).get(SOFASCORE_SOURCE)

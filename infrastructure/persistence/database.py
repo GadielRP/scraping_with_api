@@ -382,12 +382,16 @@ class DatabaseManager:
             if 'markets' not in inspector.get_table_names():
                 return
             
-            db_columns = {col['name'] for col in inspector.get_columns('markets')}
+            db_column_details = {
+                col['name']: col
+                for col in inspector.get_columns('markets')
+            }
+            db_columns = set(db_column_details)
             
             # Check if we need to migrate from sofascore_market_id or if we just need to fix the constraint
             needs_sofascore_migration = 'sofascore_market_id' in db_columns
             
-            # Check existing constraint columns
+            # Check existing unique constraint columns
             needs_constraint_fix = True
             try:
                 # Use inspector to check unique constraint columns
@@ -400,7 +404,61 @@ class DatabaseManager:
             except Exception as e:
                 logger.debug(f"Error checking existing constraints: {e}")
 
-            if not needs_sofascore_migration and not needs_constraint_fix:
+            # A ForeignKey declared on the SQLAlchemy model may already have
+            # created ``markets_bookie_id_fkey``.  Older migrations also added
+            # the equivalent named ``fk_markets_bookie`` constraint manually.
+            # Treat either equivalent FK as sufficient and clean only the
+            # known redundant auto-generated constraint when the named FK is
+            # present too.
+            bookie_foreign_keys = []
+            try:
+                bookie_foreign_keys = [
+                    foreign_key
+                    for foreign_key in inspector.get_foreign_keys('markets')
+                    if foreign_key.get('constrained_columns') == ['bookie_id']
+                    and foreign_key.get('referred_table') == 'bookies'
+                    and foreign_key.get('referred_columns') == ['bookie_id']
+                ]
+            except Exception as e:
+                logger.debug(f"Error checking markets bookie foreign keys: {e}")
+
+            canonical_bookie_fk = next(
+                (
+                    foreign_key
+                    for foreign_key in bookie_foreign_keys
+                    if foreign_key.get('name') == 'fk_markets_bookie'
+                ),
+                None,
+            )
+            redundant_bookie_fk = next(
+                (
+                    foreign_key
+                    for foreign_key in bookie_foreign_keys
+                    if foreign_key.get('name') == 'markets_bookie_id_fkey'
+                ),
+                None,
+            )
+            same_bookie_fk_delete_action = (
+                canonical_bookie_fk is not None
+                and redundant_bookie_fk is not None
+                and str(
+                    (canonical_bookie_fk.get('options') or {}).get('ondelete') or ''
+                ).upper()
+                == str(
+                    (redundant_bookie_fk.get('options') or {}).get('ondelete') or ''
+                ).upper()
+            )
+            needs_bookie_fk_fix = not bookie_foreign_keys or (
+                canonical_bookie_fk is not None
+                and redundant_bookie_fk is not None
+                and same_bookie_fk_delete_action
+            )
+
+            if (
+                not needs_sofascore_migration
+                and not needs_constraint_fix
+                and not needs_bookie_fk_fix
+            ):
                 logger.debug("✅ Markets table already migrated and unique constraint is correct")
                 return
             
@@ -408,6 +466,8 @@ class DatabaseManager:
                 logger.info("🔄 Migrating markets table: removing sofascore_market_id, adding bookie support")
             elif needs_constraint_fix:
                 logger.info("🔄 Fixing markets table: updating unique_market_per_event_bookie constraint to include 'is_live'")
+            elif needs_bookie_fk_fix:
+                logger.info("🔄 Normalizing markets bookie foreign-key constraints")
             
             # Get the SofaScore bookie_id
             with self.get_session() as session:
@@ -416,14 +476,13 @@ class DatabaseManager:
                 ).fetchone()
                 sofascore_bookie_id = sofascore_bookie[0]
                 
-                # 1. Drop old unique constraint (if exists)
-                try:
+                # 1. Drop old unique constraint (if exists) only while doing
+                # the legacy column migration.  The statement is idempotent.
+                if needs_sofascore_migration:
                     session.execute(text(
                         "ALTER TABLE markets DROP CONSTRAINT IF EXISTS unique_market_per_event"
                     ))
                     logger.info("  🗑️ Dropped old constraint: unique_market_per_event")
-                except Exception as e:
-                    logger.debug(f"  Old constraint may not exist: {e}")
                 
                 # 2. Add bookie_id column if not present (auto-migration may have added it as nullable)
                 if 'bookie_id' not in db_columns:
@@ -432,42 +491,56 @@ class DatabaseManager:
                     ))
                     logger.info("  ➕ Added bookie_id column")
                 
-                # 3. Set all existing rows to SofaScore bookie
-                updated = session.execute(text(
-                    f"UPDATE markets SET bookie_id = {sofascore_bookie_id} WHERE bookie_id IS NULL"
-                ))
-                logger.info(f"  📝 Set bookie_id={sofascore_bookie_id} on {updated.rowcount} existing market(s)")
+                # 3. Set all existing rows to SofaScore bookie when the
+                # column was newly introduced or is still nullable.
+                bookie_column_is_nullable = (
+                    db_column_details.get('bookie_id', {}).get('nullable', True)
+                )
+                if needs_sofascore_migration or bookie_column_is_nullable:
+                    updated = session.execute(text(
+                        f"UPDATE markets SET bookie_id = {sofascore_bookie_id} WHERE bookie_id IS NULL"
+                    ))
+                    logger.info(f"  📝 Set bookie_id={sofascore_bookie_id} on {updated.rowcount} existing market(s)")
                 
                 # 4. Make bookie_id NOT NULL and add FK
-                try:
+                if needs_sofascore_migration or bookie_column_is_nullable:
                     session.execute(text(
                         "ALTER TABLE markets ALTER COLUMN bookie_id SET NOT NULL"
                     ))
                     logger.info("  🔒 Set bookie_id to NOT NULL")
-                except Exception as e:
-                    logger.warning(f"  Could not set NOT NULL (may already be set): {e}")
                 
-                try:
+                if not bookie_foreign_keys:
                     session.execute(text(
                         "ALTER TABLE markets ADD CONSTRAINT fk_markets_bookie "
                         "FOREIGN KEY (bookie_id) REFERENCES bookies(bookie_id) ON DELETE CASCADE"
                     ))
                     logger.info("  🔗 Added FK constraint: fk_markets_bookie")
-                except Exception as e:
-                    logger.debug(f"  FK may already exist: {e}")
+                else:
+                    logger.info(
+                        "  ✅ Existing equivalent bookie FK found; skipping duplicate creation"
+                    )
+
+                if (
+                    canonical_bookie_fk is not None
+                    and redundant_bookie_fk is not None
+                    and same_bookie_fk_delete_action
+                ):
+                    session.execute(text(
+                        "ALTER TABLE markets DROP CONSTRAINT IF EXISTS markets_bookie_id_fkey"
+                    ))
+                    logger.info(
+                        "  🧹 Removed redundant auto-generated FK: markets_bookie_id_fkey"
+                    )
                 
-                try:
-                    # 5. Drop sofascore_market_id column (only if it exists)
-                    if needs_sofascore_migration:
-                        session.execute(text(
-                            "ALTER TABLE markets DROP COLUMN sofascore_market_id"
-                        ))
-                        logger.info("  🗑️ Dropped column: sofascore_market_id")
-                except Exception as e:
-                    logger.debug(f"  Failed to drop sofascore_market_id: {e}")
+                # 5. Drop sofascore_market_id column (only if it exists)
+                if needs_sofascore_migration:
+                    session.execute(text(
+                        "ALTER TABLE markets DROP COLUMN sofascore_market_id"
+                    ))
+                    logger.info("  🗑️ Dropped column: sofascore_market_id")
                 
                 # 6. Add new unique constraint (updated to include is_live)
-                try:
+                if needs_sofascore_migration or needs_constraint_fix:
                     # Always try to drop it first if we are here for a fix
                     session.execute(text(
                         "ALTER TABLE markets DROP CONSTRAINT IF EXISTS unique_market_per_event_bookie"
@@ -478,8 +551,6 @@ class DatabaseManager:
                         "UNIQUE (event_id, bookie_id, market_name, market_period, choice_group, is_live)"
                     ))
                     logger.info("  ✅ Added new constraint: unique_market_per_event_bookie (includes is_live)")
-                except Exception as e:
-                    logger.warning(f"  Failed to update unique constraint: {e}")
                 
                 session.commit()
                 logger.info("✅ Markets→Bookies migration completed successfully")

@@ -459,12 +459,23 @@ def evaluate_pre_start_key_moments(
     oddsportal_context: OddsPortalScrapeContext,
     *,
     debug_mode: bool = False,
+    enable_alert_pipeline: bool | None = None,
+    enable_pillar_pipeline: bool | None = None,
+    enabled_pillars: dict[str, bool] | None = None,
 ) -> None:
     """Build shared evaluation payloads, then run enabled alert pipelines."""
-    if not (
+    legacy_alerts_enabled = (
         Config.ENABLE_LEGACY_ALERT_PIPELINE
-        or Config.ENABLE_PILLAR_PIPELINE
-    ):
+        if enable_alert_pipeline is None
+        else enable_alert_pipeline
+    )
+    pillars_enabled = (
+        Config.ENABLE_PILLAR_PIPELINE
+        if enable_pillar_pipeline is None
+        else enable_pillar_pipeline
+    )
+
+    if not (legacy_alerts_enabled or pillars_enabled):
         logger.debug("All pre-start evaluation pipelines are disabled")
         return
 
@@ -503,7 +514,7 @@ def evaluate_pre_start_key_moments(
     if not contexts:
         return
 
-    if Config.ENABLE_LEGACY_ALERT_PIPELINE:
+    if legacy_alerts_enabled:
         evaluate_and_dispatch_alerts_batch(
             contexts,
             key_moments,
@@ -516,7 +527,7 @@ def evaluate_pre_start_key_moments(
 
     flush_missing_standings_endpoints(missing_competition_ids)
 
-    if Config.ENABLE_PILLAR_PIPELINE:
+    if pillars_enabled:
         validated_event_ids = {int(context.event_id) for context in contexts}
         logger.info(
             "Loading odds trajectory for %s validated pillar event(s)",
@@ -542,6 +553,7 @@ def evaluate_pre_start_key_moments(
             op_event_ids=oddsportal_context.event_ids,
             op_data_cache=oddsportal_context.data_cache,
             debug_mode=debug_mode,
+            enabled_pillars=enabled_pillars,
         )
 
 

@@ -273,8 +273,6 @@ def calculate_structural_drift_engine(
     event_context: EventContext,
     debug_mode: bool = False,
 ) -> ModuleResult:
-    del event_context
-
     home_results: List[Dict[str, Any]] = getattr(streak_analysis, "home_team_results", None) or []
     away_results: List[Dict[str, Any]] = getattr(streak_analysis, "away_team_results", None) or []
     home_team = event_context.home.name

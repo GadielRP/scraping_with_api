@@ -28,10 +28,17 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceQuote
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
+from modules.jobs.pre_start_check_job.event_candidate_builder import (
+    build_pre_start_event_candidates,
+)
 from modules.jobs.pre_start_check_job.key_moment_evaluation import (
     evaluate_pre_start_key_moments,
 )
+from modules.jobs.pre_start_check_job.odds_source_state import (
+    load_pre_start_odds_source_states,
+)
 from modules.jobs.pre_start_check_job.oddsportal_worker import (
+    OddsPortalScrapeContext,
     start_oddsportal_scrape_for_events,
 )
 from modules.odds_ingestion.canonical_market_normalizer import (
@@ -44,7 +51,22 @@ from scripts.development.pre_start_odds_simulation import (
 )
 from shared.runtime_observability import observe_operation
 
+# Simulation toggles - Pipeline flows
+ENABLE_ODDS_INGESTION_SIMULATION = True
+ENABLE_ALERT_PIPELINE = True
+ENABLE_PILLAR_PIPELINE = True
 SHOW_MARKET_PERSISTENCE_REPORT = False
+
+# Simulation toggles - Providers (active when ENABLE_ODDS_INGESTION_SIMULATION = True)
+ENABLE_SOFASCORE_ODDS_SIMULATION = True
+ENABLE_ODDSPAPI_ODDS_SIMULATION = True
+ENABLE_ODDSPORTAL_ODDS_SIMULATION = True
+
+# Simulation toggles - Individual Pillars (active when ENABLE_PILLAR_PIPELINE = True)
+ENABLE_PILLAR_1 = False  # Pillar 1 - Team Structure (Side & Totals: M1-M7)
+ENABLE_PILLAR_2 = True  # Pillar 2 - Side Market RAW
+ENABLE_PILLAR_4 = False  # Pillar 4 - Temporal Market Drift
+ENABLE_PILLAR_5 = False  # Pillar 5 - Exact Price Memory
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -372,34 +394,82 @@ def _run_pre_start_check_simulation(
     event_data = EventRepository._build_event_data_with_legacy_fallback(
         event_obj
     )
-    logger.info("Step 2: Starting production OddsPortal candidate selection")
-    oddsportal_context = start_oddsportal_scrape_for_events(
-        scheduler,
-        [event_data],
-        {event_id: simulated_minutes},
-        debug_mode=debug_mode,
-    )
+    if ENABLE_ODDS_INGESTION_SIMULATION:
+        if ENABLE_ODDSPORTAL_ODDS_SIMULATION:
+            logger.info("Step 2: Starting production OddsPortal candidate selection")
+            oddsportal_context = start_oddsportal_scrape_for_events(
+                scheduler,
+                [event_data],
+                {event_id: simulated_minutes},
+                debug_mode=debug_mode,
+            )
+        else:
+            logger.info(
+                "Step 2: Skipping OddsPortal scrape (ENABLE_ODDSPORTAL_ODDS_SIMULATION=False)"
+            )
+            oddsportal_context = OddsPortalScrapeContext(
+                event_states={},
+                event_ids=set(),
+                data_cache={},
+            )
 
-    logger.info(
-        "Step 3: Running production candidate builder and provider ingestion"
-    )
-    odds_outcome = run_production_odds_phase(
-        event_obj,
-        simulated_minutes,
-        key_moments,
-        debug_mode=debug_mode,
-        show_persistence_report=SHOW_MARKET_PERSISTENCE_REPORT,
-        log_persisted_market_odds=_log_persisted_market_odds,
-        scheduler=scheduler,
-    )
+        logger.info(
+            "Step 3: Running production candidate builder and provider ingestion"
+        )
+        odds_outcome = run_production_odds_phase(
+            event_obj,
+            simulated_minutes,
+            key_moments,
+            debug_mode=debug_mode,
+            show_persistence_report=SHOW_MARKET_PERSISTENCE_REPORT,
+            log_persisted_market_odds=_log_persisted_market_odds,
+            scheduler=scheduler,
+            enable_sofascore=ENABLE_SOFASCORE_ODDS_SIMULATION,
+            enable_oddspapi=ENABLE_ODDSPAPI_ODDS_SIMULATION,
+        )
+        event_plan = odds_outcome.event_plan
+    else:
+        logger.info(
+            "Step 2: Skipping OddsPortal scrape (ENABLE_ODDS_INGESTION_SIMULATION=False)"
+        )
+        oddsportal_context = OddsPortalScrapeContext(
+            event_states={},
+            event_ids=set(),
+            data_cache={},
+        )
 
-    logger.info("Step 4: Running production key-moment evaluation")
-    evaluate_pre_start_key_moments(
-        scheduler,
-        odds_outcome.event_plan,
-        oddsportal_context,
-        debug_mode=debug_mode,
-    )
+        logger.info(
+            "Step 3: Skipping provider odds ingestion (ENABLE_ODDS_INGESTION_SIMULATION=False); building candidate plan only"
+        )
+        source_states = load_pre_start_odds_source_states([event_data])
+        event_plan = build_pre_start_event_candidates(
+            scheduler,
+            [event_data],
+            {event_id: simulated_minutes},
+            source_states,
+        )
+
+    if ENABLE_ALERT_PIPELINE or ENABLE_PILLAR_PIPELINE:
+        logger.info("Step 4: Running production key-moment evaluation")
+        evaluate_pre_start_key_moments(
+            scheduler,
+            event_plan,
+            oddsportal_context,
+            debug_mode=debug_mode,
+            enable_alert_pipeline=ENABLE_ALERT_PIPELINE,
+            enable_pillar_pipeline=ENABLE_PILLAR_PIPELINE,
+            enabled_pillars={
+                "pillar_1": ENABLE_PILLAR_1,
+                "pillar_2": ENABLE_PILLAR_2,
+                "pillar_4": ENABLE_PILLAR_4,
+                "pillar_5": ENABLE_PILLAR_5,
+            },
+        )
+    else:
+        logger.info(
+            "Step 4: Skipping pillar and alert evaluation "
+            "(both ENABLE_ALERT_PIPELINE and ENABLE_PILLAR_PIPELINE are False)"
+        )
 
     logger.info("=" * 80)
     logger.info(

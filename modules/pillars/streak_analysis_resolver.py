@@ -83,7 +83,7 @@ def resolve_matchup_streak_analysis(
         )
         return streak_analysis, should_send
 
-    if minutes != 30 or not custom_id:
+    if minutes != 0 or not custom_id:
         logger.info(f"🚫 Skipping streak analysis for event {event_id} with {minutes} minutes until start")
         return None, False
 
