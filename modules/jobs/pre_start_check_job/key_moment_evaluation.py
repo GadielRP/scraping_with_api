@@ -543,8 +543,6 @@ def evaluate_pre_start_key_moments(
                 [],
             )
 
-        if debug_mode:
-            _log_debug_payloads(contexts)
         evaluate_and_calculate_pillars_batch(
             events_for_pillars=contexts,
             key_moments=key_moments,

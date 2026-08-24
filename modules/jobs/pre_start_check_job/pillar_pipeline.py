@@ -210,27 +210,29 @@ def _write_debug_json(filepath: Path, payload: Any) -> None:
 
 def _save_pillar_debug_snapshots(
     *,
-    streak_analysis: Any,
     event_context: Any,
     odds_trajectory_context: Any,
+    streak_analysis: Any = None,
 ) -> None:
     try:
         event_id = getattr(event_context, "event_id", "unknown_event")
         participants = getattr(event_context, "participants_label", "unknown_matchup")
 
         safe_participants = _safe_debug_name(participants)
-        debug_dir = Path("debug") / "matchup_streak_analysis" / f"{event_id}_{safe_participants}"
+        debug_dir = Path("debug") / "pillar_pipeline_objects" / f"{event_id}_{safe_participants}"
         debug_dir.mkdir(parents=True, exist_ok=True)
 
-        _write_debug_json(debug_dir / f"{event_id}_streak_analysis.json", streak_analysis)
         _write_debug_json(debug_dir / f"{event_id}_event_context.json", event_context)
         _write_debug_json(debug_dir / f"{event_id}_odds_trajectory_context.json", odds_trajectory_context)
 
+        if streak_analysis is not None:
+            _write_debug_json(debug_dir / f"{event_id}_streak_analysis.json", streak_analysis)
 
         logger.info(
-            "Pillar debug snapshots saved for event %s at %s",
+            "Pillar debug snapshots saved for event %s at %s (streak_analysis_saved=%s)",
             event_id,
             debug_dir,
+            streak_analysis is not None,
         )
     except Exception:
         logger.exception(
@@ -321,6 +323,12 @@ class EventPillarProcessor:
                 "P4 pre-check trajectory sample for event %s: %s",
                 event_id,
                 trajectory_keys[:10],
+            )
+
+        if self.debug_mode:
+            _save_pillar_debug_snapshots(
+                event_context=event_context,
+                odds_trajectory_context=odds_trajectory_context,
             )
 
         p2_result = None
@@ -567,9 +575,9 @@ class EventPillarProcessor:
 
         if streak_analysis and self.debug_mode:
             _save_pillar_debug_snapshots(
-                streak_analysis=streak_analysis,
                 event_context=event_context,
                 odds_trajectory_context=odds_trajectory_context,
+                streak_analysis=streak_analysis,
             )
 
         if streak_analysis is None:
