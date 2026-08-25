@@ -40,6 +40,20 @@ def _coerce_int(value: Any) -> Optional[int]:
         return None
 
 
+def _coerce_bool(value: Any) -> Optional[bool]:
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+    return None
+
+
 def _coerce_decimal(value: Any) -> Optional[Decimal]:
     if value is None or isinstance(value, bool):
         return None
@@ -172,6 +186,7 @@ class ChoiceOddsTrajectory:
     choice_id: Optional[int]
     initial_odds: Optional[Decimal]
     quote_id: Optional[int] = None
+    main_line: Optional[bool] = None
     odds_values: Dict[int, Decimal] = field(default_factory=dict)
     meta_by_minute: Dict[int, OddsPointMeta] = field(default_factory=dict)
 
@@ -402,9 +417,10 @@ def _choice_to_dict(choice: ChoiceOddsTrajectory) -> Dict[str, Any]:
     return {
         "choice_name": choice.choice_name,
         "choice_id": choice.choice_id,
-        "initial_odds": choice.initial_odds,
-        "quote_id": choice.quote_id,
-        "odds_values": dict(choice.odds_values),
+            "initial_odds": choice.initial_odds,
+            "quote_id": choice.quote_id,
+            "main_line": choice.main_line,
+            "odds_values": dict(choice.odds_values),
         "meta_by_minute": {
             minute: _meta_to_dict(meta)
             for minute, meta in choice.meta_by_minute.items()
@@ -499,6 +515,7 @@ def _get_choice_container(
     choice_id: Optional[int],
     quote_id: Optional[int],
     initial_odds: Optional[Decimal],
+    main_line: Optional[bool],
 ) -> ChoiceOddsTrajectory:
     choice = bookie.choices.get(choice_name)
     if choice is None:
@@ -507,18 +524,21 @@ def _get_choice_container(
             choice_id=choice_id,
             quote_id=quote_id,
             initial_odds=initial_odds,
+            main_line=main_line,
         )
         bookie.choices[choice_name] = choice
     elif (
         (choice.choice_id is None and choice_id is not None)
         or (choice.quote_id is None and quote_id is not None)
         or (choice.initial_odds is None and initial_odds is not None)
+        or (choice.main_line is None and main_line is not None)
     ):
         choice = ChoiceOddsTrajectory(
             choice_name=choice.choice_name,
             choice_id=choice_id if choice.choice_id is None and choice_id is not None else choice.choice_id,
             quote_id=quote_id if choice.quote_id is None and quote_id is not None else choice.quote_id,
             initial_odds=initial_odds if choice.initial_odds is None and initial_odds is not None else choice.initial_odds,
+            main_line=main_line if choice.main_line is None and main_line is not None else choice.main_line,
             odds_values=choice.odds_values,
             meta_by_minute=choice.meta_by_minute,
         )
@@ -553,9 +573,10 @@ def build_odds_trajectory_context(
                                 "bookie_name": ...,
                                 "choices": {
                                     choice_name: {
-                                        "choice_id": ...,
-                                        "choice_name": ...,
-                                        "initial_odds": ...,
+                                         "choice_id": ...,
+                                         "choice_name": ...,
+                                         "main_line": ...,
+                                         "initial_odds": ...,
                                         "odds_values": {
                                             target_minute: odds_value
                                         },
@@ -659,6 +680,7 @@ def build_odds_trajectory_context(
             choice_id=_coerce_int(row.get("choice_id")),
             quote_id=_coerce_int(row.get("quote_id")),
             initial_odds=_coerce_decimal(row.get("initial_odds")),
+            main_line=_coerce_bool(row.get("main_line")),
         )
 
         meta = OddsPointMeta(

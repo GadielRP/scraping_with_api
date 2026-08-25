@@ -98,6 +98,7 @@ def test_event_scope_precedes_quote_and_trajectory_ranking(monkeypatch):
     assert "WITH requested_events AS" in session.statement
     assert "WHERE e.id IN" in session.statement
     assert "FROM requested_events requested" in session.statement
+    assert "WHERE mcq.main_line IS TRUE" in session.statement
     assert session.statement.index("JOIN markets m") < session.statement.index(
         "ROW_NUMBER() OVER"
     )

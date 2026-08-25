@@ -132,6 +132,8 @@ tests/*
 !tests/test_market_quote_readiness.py
 !tests/test_external_odds_alert_quote_read.py
 !tests/test_odds_trajectory_repository.py
+!tests/test_pillar_mining_repository.py
+!tests/test_pillar_mining_settings.py
 !tests/test_dual_process_market_odds_read_migration.py
 !tests/test_no_legacy_odds_reads.py
 !config/odds_read_priority.json
@@ -146,6 +148,9 @@ tests/pillars/*.pyc
 !tests/pillars/pillar_2_side_market/
 !tests/pillars/pillar_2_side_market/__init__.py
 !tests/pillars/pillar_2_side_market/test_pillar_2_raw.py
+!tests/pillars/mining/
+!tests/pillars/mining/__init__.py
+!tests/pillars/mining/test_pillar_2_mining.py
 !tests/oddspapi/
 !tests/oddspapi/test_fixture_discovery_job.py
 !tests/oddspapi/test_pre_start_odds_job.py

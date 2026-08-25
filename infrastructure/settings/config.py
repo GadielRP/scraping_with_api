@@ -97,6 +97,17 @@ def _parse_env_bool_alias(primary_name, alias_name, default_value=False):
     return _parse_env_bool(alias_name, default_value)
 
 
+def _parse_env_choice(env_name, default_value, allowed_values):
+    """Parse and validate a case-insensitive finite-choice setting."""
+    raw_value = os.getenv(env_name, default_value)
+    value = str(raw_value).strip().lower()
+    allowed = {str(item).strip().lower() for item in allowed_values}
+    if value not in allowed:
+        expected = ', '.join(sorted(allowed))
+        raise ValueError(f"{env_name} must be one of: {expected}; got {raw_value!r}")
+    return value
+
+
 def _parse_env_float_map(env_name, default_value=None):
     """Parse a comma-separated ``endpoint=seconds`` configuration map."""
     parsed = {
@@ -565,6 +576,12 @@ class Config:
     # Pipeline toggles
     ENABLE_PILLAR_PIPELINE = _parse_env_bool('ENABLE_PILLAR_PIPELINE', True)
     ENABLE_LEGACY_ALERT_PIPELINE = _parse_env_bool('ENABLE_LEGACY_ALERT_PIPELINE', True)
+    PILLAR_MINING_ENABLED = _parse_env_bool('PILLAR_MINING_ENABLED', True)
+    PILLAR_MINING_STATUS_MODE = _parse_env_choice(
+        'PILLAR_MINING_STATUS_MODE',
+        'all',
+        {'all', 'active_only'},
+    )
     ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT = _parse_env_bool(
         'ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT',
         True,

@@ -30,6 +30,9 @@ P2_HARDCODED_TARGET_MINUTE: int | None = 0
 P2_TARGET_MINUTES = frozenset({120, 30, 5, 1, 0, -5})
 FT_PERIODS = frozenset({"full time", "full time including overtime"})
 FIRST_HALF_PERIODS = frozenset({"1st half"})
+PINNACLE_BOOKIE_ID = 302
+BET365_BOOKIE_ID = 3
+BETFAIR_EXCHANGE_BOOKIE_ID = 4
 
 
 def _normalize(value: object) -> str:
@@ -40,9 +43,14 @@ def _bookie_matches(
     bookie: BookieOddsTrajectory,
     *,
     bookie_id: int,
-    accepted_names: frozenset[str],
 ) -> bool:
-    return bookie.bookie_id == bookie_id or _normalize(bookie.bookie_name) in accepted_names
+    """Match a bookmaker only by its canonical provider identifier.
+
+    Names are descriptive metadata and are intentionally not used as a
+    fallback: two providers can expose the same display name, while the
+    canonical IDs are the stable source identity required by P2.
+    """
+    return bookie.bookie_id == bookie_id
 
 
 def _iter_matching_bookies(
@@ -51,7 +59,6 @@ def _iter_matching_bookies(
     periods: frozenset[str],
     market_name: str,
     bookie_id: int,
-    accepted_names: frozenset[str],
     exchange_side: str | None = None,
 ) -> Iterable[tuple[MarketLineOddsTrajectory, BookieOddsTrajectory]]:
     normalized_market_name = _normalize(market_name)
@@ -67,7 +74,6 @@ def _iter_matching_bookies(
                         if not _bookie_matches(
                             bookie,
                             bookie_id=bookie_id,
-                            accepted_names=accepted_names,
                         ):
                             continue
                         if bookie.exchange_side != exchange_side:
@@ -144,7 +150,6 @@ def _extract_two_way(
     periods: frozenset[str],
     market_name: str,
     bookie_id: int,
-    accepted_names: frozenset[str],
     home_input: str,
     away_input: str,
     missing: set[str],
@@ -158,7 +163,6 @@ def _extract_two_way(
         periods=periods,
         market_name=market_name,
         bookie_id=bookie_id,
-        accepted_names=accepted_names,
     ):
         saw_matching_bookie = True
         home_choice = _choice(bookie, "1")
@@ -211,7 +215,6 @@ def _extract_ah(
     periods: frozenset[str],
     market_name: str,
     bookie_id: int,
-    accepted_names: frozenset[str],
     line_input: str,
     home_input: str,
     away_input: str,
@@ -226,7 +229,6 @@ def _extract_ah(
         periods=periods,
         market_name=market_name,
         bookie_id=bookie_id,
-        accepted_names=accepted_names,
     ):
         saw_matching_bookie = True
         try:
@@ -302,8 +304,7 @@ def _extract_exchange_side(
         context,
         periods=FT_PERIODS,
         market_name="1X2 Full Time",
-        bookie_id=4,
-        accepted_names=frozenset({"betfair", "betfair exchange"}),
+        bookie_id=BETFAIR_EXCHANGE_BOOKIE_ID,
         exchange_side=exchange_side,
     ):
         saw_matching_bookie = True
@@ -368,9 +369,6 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
     missing: set[str] = set()
     invalid: set[str] = set()
     ambiguous: set[str] = set()
-    pinnacle_names = frozenset({"pinnacle", "pinnacle sports"})
-    bet365_names = frozenset({"bet365"})
-
     common = {
         "context": context,
         "target_minute": target_minute,
@@ -382,8 +380,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
         **common,
         periods=FT_PERIODS,
         market_name="1X2 Full Time",
-        bookie_id=302,
-        accepted_names=pinnacle_names,
+        bookie_id=PINNACLE_BOOKIE_ID,
         home_input="PIN_HOME_1X2_FULL_TIME_ODDS_PRICE",
         away_input="PIN_AWAY_1X2_FULL_TIME_ODDS_PRICE",
     )
@@ -391,8 +388,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
         **common,
         periods=FT_PERIODS,
         market_name="1X2 Full Time",
-        bookie_id=3,
-        accepted_names=bet365_names,
+        bookie_id=BET365_BOOKIE_ID,
         home_input="B365_HOME_1X2_FULL_TIME_ODDS_PRICE",
         away_input="B365_AWAY_1X2_FULL_TIME_ODDS_PRICE",
     )
@@ -400,8 +396,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
         **common,
         periods=FT_PERIODS,
         market_name="Asian Handicap Full Time",
-        bookie_id=302,
-        accepted_names=pinnacle_names,
+        bookie_id=PINNACLE_BOOKIE_ID,
         line_input="PIN_AH_FULL_TIME_LINE",
         home_input="PIN_AH_HOME_FULL_TIME_ODDS_PRICE",
         away_input="PIN_AH_AWAY_FULL_TIME_ODDS_PRICE",
@@ -410,8 +405,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
         **common,
         periods=FT_PERIODS,
         market_name="Asian Handicap Full Time",
-        bookie_id=3,
-        accepted_names=bet365_names,
+        bookie_id=BET365_BOOKIE_ID,
         line_input="B365_AH_FULL_TIME_LINE",
         home_input="B365_AH_HOME_FULL_TIME_ODDS_PRICE",
         away_input="B365_AH_AWAY_FULL_TIME_ODDS_PRICE",
@@ -436,8 +430,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
         **common,
         periods=FIRST_HALF_PERIODS,
         market_name="1X2 First Half",
-        bookie_id=302,
-        accepted_names=pinnacle_names,
+        bookie_id=PINNACLE_BOOKIE_ID,
         home_input="PIN_HOME_1X2_1H_ODDS_PRICE",
         away_input="PIN_AWAY_1X2_1H_ODDS_PRICE",
     )
@@ -445,8 +438,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
         **common,
         periods=FIRST_HALF_PERIODS,
         market_name="1X2 First Half",
-        bookie_id=3,
-        accepted_names=bet365_names,
+        bookie_id=BET365_BOOKIE_ID,
         home_input="B365_HOME_1X2_1H_ODDS_PRICE",
         away_input="B365_AWAY_1X2_1H_ODDS_PRICE",
     )
@@ -454,8 +446,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
         **common,
         periods=FIRST_HALF_PERIODS,
         market_name="Asian Handicap First Half",
-        bookie_id=302,
-        accepted_names=pinnacle_names,
+        bookie_id=PINNACLE_BOOKIE_ID,
         line_input="PIN_AH_1H_LINE",
         home_input="PIN_AH_1H_HOME_PRICE",
         away_input="PIN_AH_1H_AWAY_PRICE",
@@ -464,8 +455,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
         **common,
         periods=FIRST_HALF_PERIODS,
         market_name="Asian Handicap First Half",
-        bookie_id=3,
-        accepted_names=bet365_names,
+        bookie_id=BET365_BOOKIE_ID,
         line_input="B365_AH_1H_LINE",
         home_input="B365_AH_1H_HOME_PRICE",
         away_input="B365_AH_1H_AWAY_PRICE",

@@ -235,6 +235,18 @@ def test_calculates_all_raw_blocks_from_one_canonical_minute() -> None:
         assert forbidden not in result
 
 
+def test_matches_bookmakers_by_canonical_id_not_display_name() -> None:
+    rows = _complete_rows()
+    for row in rows:
+        if row["bookie_id"] == 302:
+            row["bookie_id"] = 999
+
+    result = _calculate(rows)
+
+    assert result["P2_STATUS"] == "INSUFFICIENT_DATA"
+    assert "PIN_HOME_1X2_FULL_TIME_ODDS_PRICE" in result["MISSING_INPUTS"]
+
+
 def test_does_not_fallback_when_one_input_is_missing_at_latest_minute() -> None:
     rows = _complete_rows(minute=30) + _complete_rows(minute=5)
     rows = [
@@ -360,3 +372,60 @@ def test_pipeline_returns_p2_even_when_p1_history_is_unavailable(monkeypatch) ->
     assert result["pillar_1"] is None
     assert result["pillar_2"]["P2_STATUS"] == "ACTIVE"
     assert result["pillar_2"]["P2_TARGET_MINUTE"] == 5
+
+
+def test_mining_failure_does_not_prevent_later_pillars(monkeypatch, caplog) -> None:
+    event_context = _event_context()
+    event_context.odds_trajectory = []
+    p4_calls = []
+
+    class FailingMiningService:
+        def persist_p2(self, _event_context, _p2_result):
+            raise RuntimeError("mining database unavailable")
+
+    monkeypatch.setattr(
+        pillar_pipeline.Config,
+        "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS",
+        False,
+    )
+    monkeypatch.setattr(
+        pillar_pipeline,
+        "calculate_pillar_2",
+        lambda **_kwargs: {
+            "pillar_id": "pillar_2_side_market",
+            "engine_version": "p2_raw_v1",
+            "P2_STATUS": "ACTIVE",
+            "P2_TARGET_MINUTE": 5,
+            "P2_DIRECTION_RAW": "HOME",
+            "SIDE_MARKET_EDGE": 0.1,
+            "raw": {},
+        },
+    )
+    monkeypatch.setattr(
+        pillar_pipeline,
+        "calculate_pillar_4",
+        lambda **_kwargs: p4_calls.append(True) or {
+            "P4_STATUS": "INSUFFICIENT_DATA"
+        },
+    )
+    monkeypatch.setattr(
+        pillar_pipeline,
+        "calculate_pillar_5",
+        lambda **_kwargs: {
+            "P5_STATUS": "INSUFFICIENT_DATA",
+            "P5_VALID": False,
+            "P5_DIRECTION": "NONE",
+            "P5": 0.0,
+            "P5_STRENGTH": "NONE",
+        },
+    )
+
+    result = pillar_pipeline.EventPillarProcessor(
+        event_repo=object(),
+        enabled_pillars={"pillar_1": False},
+        mining_service=FailingMiningService(),
+    ).process_event(event_context)
+
+    assert result is not None
+    assert p4_calls == [True]
+    assert "P2 mining persistence failed" in caplog.text

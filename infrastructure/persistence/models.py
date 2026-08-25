@@ -99,6 +99,11 @@ class Event(Base):
     # Relationships
     result = relationship("Result", back_populates="event", uselist=False, cascade="all, delete-orphan")
     observations = relationship("EventObservation", back_populates="event", cascade="all, delete-orphan")
+    pillar_mining_observations = relationship(
+        "PillarMiningObservation",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
     prediction_logs = relationship("PredictionLog", back_populates="event", uselist=False, cascade="all, delete-orphan")
     season = relationship("Season", back_populates="events")
     markets = relationship("Market", back_populates="event", cascade="all, delete-orphan")
@@ -265,6 +270,127 @@ class EventObservation(Base):
 
     def __repr__(self):
         return f"<EventObservation(event_id={self.event_id}, type='{self.observation_type}', value='{self.observation_value}')>"
+
+
+class PillarMiningObservation(Base):
+    """Canonical, queryable observation produced by one pillar execution slot."""
+
+    __tablename__ = 'pillar_mining_observations'
+
+    id = Column(
+        BigInteger().with_variant(Integer(), 'sqlite'),
+        primary_key=True,
+        autoincrement=True,
+    )
+    event_id = Column(
+        Integer,
+        ForeignKey('events.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    pillar_id = Column(String(100), nullable=False)
+    result_scope = Column(String(100), nullable=False)
+    module_id = Column(String(100))
+    engine_version = Column(String(150), nullable=False)
+    payload_schema_version = Column(SmallInteger, nullable=False, default=1)
+
+    evaluation_minute = Column(SmallInteger)
+    target_minute = Column(SmallInteger)
+    observation_slot = Column(String(50), nullable=False)
+    calculated_at = Column(DateTime, nullable=False, default=get_local_now)
+
+    sport = Column(String(50), nullable=False)
+    competition_id = Column(
+        Integer,
+        ForeignKey('competitions.competition_id', ondelete='SET NULL'),
+    )
+    market_type = Column(String(100))
+
+    status = Column(String(50), nullable=False)
+    is_successful = Column(Boolean, nullable=False)
+    # Nullable by design: RAW pillars such as P2 must not invent a calibrated
+    # validity decision before mining has defined one.
+    is_valid = Column(Boolean)
+    score_name = Column(String(100))
+    score = Column(Numeric(24, 12))
+    direction = Column(String(50))
+    strength = Column(String(50))
+
+    metrics = Column(
+        JSONB().with_variant(JSON(), 'sqlite'),
+        nullable=False,
+        default=dict,
+    )
+    context = Column(
+        JSONB().with_variant(JSON(), 'sqlite'),
+        nullable=False,
+        default=dict,
+    )
+    inputs = Column(
+        JSONB().with_variant(JSON(), 'sqlite'),
+        nullable=False,
+        default=dict,
+    )
+    diagnostics = Column(
+        JSONB().with_variant(JSON(), 'sqlite'),
+        nullable=False,
+        default=dict,
+    )
+
+    created_at = Column(DateTime, nullable=False, default=get_local_now)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=get_local_now,
+        onupdate=get_local_now,
+    )
+
+    event = relationship("Event", back_populates="pillar_mining_observations")
+    competition = relationship("Competition", foreign_keys=[competition_id])
+
+    __table_args__ = (
+        CheckConstraint(
+            'payload_schema_version >= 1',
+            name='ck_pillar_mining_payload_schema_version_positive',
+        ),
+        UniqueConstraint(
+            'event_id',
+            'pillar_id',
+            'result_scope',
+            'observation_slot',
+            'engine_version',
+            name='uq_pillar_mining_observation_identity',
+        ),
+        Index(
+            'idx_pillar_mining_event_pillar_target',
+            'event_id',
+            'pillar_id',
+            'target_minute',
+        ),
+        Index(
+            'idx_pillar_mining_pillar_status_calculated',
+            'pillar_id',
+            'status',
+            'calculated_at',
+        ),
+        Index(
+            'idx_pillar_mining_sport_pillar',
+            'sport',
+            'pillar_id',
+        ),
+        Index(
+            'idx_pillar_mining_metrics_gin',
+            'metrics',
+            postgresql_using='gin',
+        ),
+    )
+
+    def __repr__(self):
+        return (
+            "<PillarMiningObservation("
+            f"event_id={self.event_id}, pillar_id='{self.pillar_id}', "
+            f"scope='{self.result_scope}', slot='{self.observation_slot}', "
+            f"status='{self.status}')>"
+        )
 
 
 class Bookie(Base):

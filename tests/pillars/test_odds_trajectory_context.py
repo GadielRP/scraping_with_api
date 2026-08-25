@@ -20,6 +20,7 @@ def _make_rows() -> list[dict[str, object]]:
             "exchange_side": None,
             "exchange_level": 0,
             "quote_id": 100,
+            "main_line": True,
             "choice_id": 101,
             "choice_name": "1",
             "initial_odds": "1.900",
@@ -44,6 +45,7 @@ def _make_rows() -> list[dict[str, object]]:
             "exchange_side": None,
             "exchange_level": 0,
             "quote_id": 200,
+            "main_line": True,
             "choice_id": 201,
             "choice_name": "1",
             "initial_odds": "1.910",
@@ -97,6 +99,23 @@ def test_meta_by_minute_exposes_source_collected_at_as_changed_at() -> None:
 
     assert meta.collected_at.isoformat() == "2026-01-01T10:00:00"
     assert meta.changed_at.isoformat() == "2026-01-01T09:59:30"
+
+
+def test_choice_context_preserves_main_line() -> None:
+    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
+
+    choice = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+    )
+
+    assert choice.main_line is True
+    assert (
+        context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"]
+        ["__default__"]["bookies"]["1:sofascore:single:0"]["choices"]["1"]["main_line"]
+        is True
+    )
 
 
 def test_exchange_size_is_kept_in_exchange_snapshot_metadata_only() -> None:

@@ -48,6 +48,7 @@ class OddsTrajectoryPoint:
     minutes_before_start: Optional[int]
     target_minute: Optional[int]
     distance_from_target: Optional[int]
+    main_line: Optional[bool] = None
     exchange_size: Optional[Decimal] = None
 
     def to_dict(self) -> Dict:
@@ -65,6 +66,7 @@ class OddsTrajectoryPoint:
             "bookie_name": self.bookie_name,
             "choice_id": self.choice_id,
             "choice_name": self.choice_name,
+            "main_line": self.main_line,
             "choice_display_order": self.choice_display_order,
             "quote_id": self.quote_id,
             "source": self.source,
@@ -100,6 +102,7 @@ class OddsTrajectoryRepository:
             bookie_name=data.get("bookie_name"),
             choice_id=data.get("choice_id"),
             choice_name=data.get("choice_name"),
+            main_line=data.get("main_line"),
             choice_display_order=data.get("choice_display_order"),
             quote_id=data.get("quote_id"),
             source=data.get("source"),

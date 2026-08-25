@@ -60,6 +60,7 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
               ON mc.market_id = m.market_id
             JOIN market_choice_quotes mcq
               ON mcq.choice_id = mc.choice_id
+            WHERE mcq.main_line IS TRUE
         ),
         eligible_quotes AS (
             SELECT ranked.*
@@ -220,12 +221,13 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
                     mapped_type.canonical_market_period,
                     textual.textual_market_period,
                     textual.market_period
-                ) AS market_period,
+                 ) AS market_period,
                 textual.choice_group,
                 textual.bookie_id,
                 textual.bookie_name,
                 textual.choice_id,
                 textual.choice_name,
+                textual.main_line,
                 outcome_mapping.display_order AS choice_display_order,
                 textual.initial_odds,
                 textual.odds_value,
@@ -304,6 +306,7 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
             bookie_name,
             choice_id,
             choice_name,
+            main_line,
             choice_display_order,
             quote_id,
             source,

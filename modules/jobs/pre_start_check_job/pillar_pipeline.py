@@ -17,6 +17,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 from infrastructure.settings import Config
+from infrastructure.persistence.repositories.pillar_mining_repository import (
+    PillarMiningObservationRepository,
+)
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.pillars.context import (
     EventContext,
@@ -34,7 +37,11 @@ from modules.pillars.streak_analysis_resolver import (
 from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import (
     calculate_pillar_1_team_structure,
 )
-from modules.pillars.pillar_2_side_market.run_pillar_2 import calculate_pillar_2
+from modules.pillars.pillar_2_side_market.run_pillar_2 import (
+    ENGINE_VERSION as P2_ENGINE_VERSION,
+    calculate_pillar_2,
+)
+from modules.pillars.mining.service import PillarMiningService
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
 from modules.pillars.pillar_1_team_structure.totals import (
@@ -105,6 +112,7 @@ def _build_p2_error_result(event_context, odds_trajectory_context, exc: Exceptio
     return {
         "pillar_id": "pillar_2_side_market",
         "pillar_name": "Side Market RAW",
+        "engine_version": P2_ENGINE_VERSION,
         "event_id": getattr(event_context, "event_id", None),
         "participants": getattr(event_context, "participants_label", None),
         "P2_STATUS": "ERROR",
@@ -249,15 +257,46 @@ class EventPillarProcessor:
         event_repo,
         debug_mode: bool = False,
         enabled_pillars: Optional[dict[str, bool]] = None,
+        mining_service: PillarMiningService | None = None,
     ):
         self.event_repo = event_repo
         self.debug_mode = debug_mode
         self.enabled_pillars = enabled_pillars or {}
+        self.mining_service = mining_service
 
     def _is_pillar_enabled(self, pillar_key: str) -> bool:
         if not self.enabled_pillars:
             return True
         return bool(self.enabled_pillars.get(pillar_key, True))
+
+    def _persist_p2_mining(
+        self,
+        event_context: EventContext,
+        p2_result: dict[str, Any],
+    ) -> None:
+        if self.mining_service is None:
+            return
+
+        try:
+            persisted = self.mining_service.persist_p2(event_context, p2_result)
+            if persisted:
+                logger.info(
+                    "P2 mining observation persisted event_id=%s status=%s target_minute=%s engine_version=%s",
+                    event_context.event_id,
+                    p2_result.get("P2_STATUS"),
+                    p2_result.get("P2_TARGET_MINUTE"),
+                    p2_result.get("engine_version"),
+                )
+        except Exception:
+            # Mining is an analytical side effect. Its failure must be visible,
+            # but must not prevent P4/P5 or the rest of the event from running.
+            logger.exception(
+                "P2 mining persistence failed event_id=%s status=%s target_minute=%s engine_version=%s",
+                event_context.event_id,
+                p2_result.get("P2_STATUS"),
+                p2_result.get("P2_TARGET_MINUTE"),
+                p2_result.get("engine_version"),
+            )
 
     def process_event(self, event_context: EventContext) -> Optional[dict]:
         """Calculate pillar modules for a single event context.
@@ -360,6 +399,7 @@ class EventPillarProcessor:
                 p2_result.get("P2_DIRECTION_RAW"),
                 p2_result.get("SIDE_MARKET_EDGE"),
             )
+            self._persist_p2_mining(event_context, p2_result)
         else:
             logger.info(
                 "Pillar 2 (Side Market RAW) skipped for %s (disabled by toggle)",
@@ -906,10 +946,16 @@ def evaluate_and_calculate_pillars_batch(
         len(allowed_events),
     )
 
+    mining_service = PillarMiningService(
+        PillarMiningObservationRepository(),
+        enabled=Config.PILLAR_MINING_ENABLED,
+        status_mode=Config.PILLAR_MINING_STATUS_MODE,
+    )
     processor = EventPillarProcessor(
         event_repo=event_repo,
         debug_mode=debug_mode,
         enabled_pillars=enabled_pillars,
+        mining_service=mining_service,
     )
 
     max_workers = min(Config.PILLAR_PIPELINE_WORKERS, len(allowed_events))

@@ -35,6 +35,7 @@ from .oddspapi_fixture_discovery_run_repository import (
     OddspapiFixtureDiscoveryRunRepository,
 )
 from .oddspapi_mainline_cache_repository import OddspapiMainlineCacheRepository
+from .pillar_mining_repository import PillarMiningObservationRepository
 
 __all__ = [
     'EventRepository',
@@ -64,4 +65,5 @@ __all__ = [
     'DailyDiscoveryRepository',
     'OddspapiFixtureDiscoveryRunRepository',
     'OddspapiMainlineCacheRepository',
+    'PillarMiningObservationRepository',
 ]
