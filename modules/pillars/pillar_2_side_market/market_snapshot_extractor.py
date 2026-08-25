@@ -429,7 +429,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
     pin_1h_1x2 = _extract_two_way(
         **common,
         periods=FIRST_HALF_PERIODS,
-        market_name="1X2 First Half",
+        market_name="1X2 1st Half",
         bookie_id=PINNACLE_BOOKIE_ID,
         home_input="PIN_HOME_1X2_1H_ODDS_PRICE",
         away_input="PIN_AWAY_1X2_1H_ODDS_PRICE",
@@ -437,7 +437,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
     b365_1h_1x2 = _extract_two_way(
         **common,
         periods=FIRST_HALF_PERIODS,
-        market_name="1X2 First Half",
+        market_name="1X2 1st Half",
         bookie_id=BET365_BOOKIE_ID,
         home_input="B365_HOME_1X2_1H_ODDS_PRICE",
         away_input="B365_AWAY_1X2_1H_ODDS_PRICE",
@@ -445,7 +445,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
     pin_1h_ah = _extract_ah(
         **common,
         periods=FIRST_HALF_PERIODS,
-        market_name="Asian Handicap First Half",
+        market_name="Asian Handicap 1st Half",
         bookie_id=PINNACLE_BOOKIE_ID,
         line_input="PIN_AH_1H_LINE",
         home_input="PIN_AH_1H_HOME_PRICE",
@@ -454,7 +454,7 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
     b365_1h_ah = _extract_ah(
         **common,
         periods=FIRST_HALF_PERIODS,
-        market_name="Asian Handicap First Half",
+        market_name="Asian Handicap 1st Half",
         bookie_id=BET365_BOOKIE_ID,
         line_input="B365_AH_1H_LINE",
         home_input="B365_AH_1H_HOME_PRICE",

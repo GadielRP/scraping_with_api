@@ -24,6 +24,48 @@ def _number(value: Decimal) -> float:
     return float(value)
 
 
+def _debug_section(title: str) -> None:
+    logger.info("========== P2_SIDE_MARKET DEBUG | %s =========", title)
+
+
+def _debug_line(message: str, *args: Any) -> None:
+    logger.info("P2_SIDE_MARKET DEBUG | " + message, *args)
+
+
+def _debug_input_assignments(snapshot) -> None:
+    """Log every canonical P2 input and its selected quote lineage."""
+    _debug_section("Asignación de inputs al snapshot canónico")
+    values = snapshot.input_values()
+    traces = snapshot.input_trace()
+    for name, value in values.items():
+        trace = traces.get(name, {})
+        source = trace.get("source") or "desconocido"
+        bookie = trace.get("bookie_name") or "desconocido"
+        market = trace.get("market_name") or "desconocido"
+        period = trace.get("market_period") or "desconocido"
+        choice = trace.get("choice_name") or "desconocido"
+        exchange_side = trace.get("exchange_side") or "single"
+        _debug_line(
+            "Asignación de input: %s = %s | fuente=%s | bookie=%s | mercado=%s | período=%s | choice=%s | lado_exchange=%s | snapshot_id=%s | target_minute=%s.",
+            name,
+            value,
+            source,
+            bookie,
+            market,
+            period,
+            choice,
+            exchange_side,
+            trace.get("snapshot_id"),
+            trace.get("target_minute"),
+        )
+
+
+def _debug_metric_assignments(metrics: dict[str, Any]) -> None:
+    _debug_section("Asignación de outputs RAW")
+    for name, value in metrics.items():
+        _debug_line("Asignación de output: %s = %s.", name, value)
+
+
 def _mining_context(
     event_context: EventContext,
     target_minute: int | None,
@@ -52,7 +94,26 @@ def calculate_pillar_2(
     if odds_trajectory_context is None:
         raise ValueError("EventContext is missing odds_trajectory_context for P2")
 
+    if debug_mode:
+        _debug_section("Inicio de Pillar 2 Side Market RAW")
+        _debug_line(
+            "Evento=%s (%s). El cálculo utiliza un único target_minute para todos los inputs FT y 1H.",
+            event_context.event_id,
+            event_context.participants_label,
+        )
+        _debug_line(
+            "Minutos esperados=%s | presentes=%s | faltantes=%s.",
+            odds_trajectory_context.target_minutes_expected,
+            odds_trajectory_context.target_minutes_present,
+            odds_trajectory_context.missing_target_minutes,
+        )
+
     extraction = extract_p2_market_snapshot(odds_trajectory_context)
+    if debug_mode:
+        _debug_line(
+            "Target minute seleccionado por P2 = %s.",
+            extraction.target_minute,
+        )
     base = {
         "pillar_id": "pillar_2_side_market",
         "pillar_name": "Side Market RAW",
@@ -62,6 +123,13 @@ def calculate_pillar_2(
         "P2_TARGET_MINUTE": extraction.target_minute,
     }
     if extraction.snapshot is None:
+        if debug_mode:
+            _debug_line(
+                "El gate universal de completitud no fue superado. Inputs faltantes=%s | inválidos=%s | ambiguos=%s.",
+                extraction.missing_inputs,
+                extraction.invalid_inputs,
+                extraction.ambiguous_inputs,
+            )
         logger.info(
             "P2 RAW aborted for event_id=%s target_minute=%s missing=%s invalid=%s ambiguous=%s",
             event_context.event_id,
@@ -94,11 +162,32 @@ def calculate_pillar_2(
             },
         }
 
-    metrics = calculate_p2_raw(extraction.snapshot)
+    if debug_mode:
+        _debug_line(
+            "El gate universal de completitud fue superado: se encontraron todos los inputs mínimos en target_minute=%s.",
+            extraction.target_minute,
+        )
+        _debug_input_assignments(extraction.snapshot)
+
+    metrics = calculate_p2_raw(extraction.snapshot, debug_mode=debug_mode)
+    if debug_mode:
+        _debug_metric_assignments(metrics)
+
     inputs = {
         name: _number(value)
         for name, value in extraction.snapshot.input_values().items()
     }
+    if debug_mode:
+        _debug_section("Asignación de pesos baseline RAW")
+        _debug_line("Asignación W_PIN = 0.50.")
+        _debug_line("Asignación W_B365 = 0.50.")
+        _debug_line("Asignación W_PIN_1H = 0.50.")
+        _debug_line("Asignación W_B365_1H = 0.50.")
+        _debug_line("Asignación W_BACK = 0.50.")
+        _debug_line("Asignación W_LAY = 0.50.")
+        _debug_line("Asignación W_BOOK = 0.50.")
+        _debug_line("Asignación W_EXCHANGE = 0.50.")
+
     engine_raw = {
         "baseline_weights": {
             "W_PIN": 0.5,

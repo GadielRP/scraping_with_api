@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 import pytest
@@ -12,6 +13,16 @@ from modules.pillars.pillar_2_side_market.run_pillar_2 import calculate_pillar_2
 
 
 TARGET_MINUTES = [120, 30, 5, 1, 0, -5]
+
+
+@pytest.fixture(autouse=True)
+def _use_default_target_selection_for_tests(monkeypatch) -> None:
+    """Keep unit tests independent from the production simulation override."""
+    monkeypatch.setattr(
+        market_snapshot_extractor,
+        "P2_HARDCODED_TARGET_MINUTE",
+        None,
+    )
 
 
 def _event_context() -> EventContext:
@@ -142,19 +153,19 @@ def _complete_rows(
             b365_ft_ah_line, 3, "bet365", {"1": 1.95, "2": 1.95},
         ),
         (
-            "1X2", "1st Half", "1X2 First Half", None,
+            "1X2", "1st Half", "1X2 1st Half", None,
             302, "Pinnacle Sports", {"1": pin_1h_prices[0], "2": pin_1h_prices[1]},
         ),
         (
-            "1X2", "1st Half", "1X2 First Half", None,
+            "1X2", "1st Half", "1X2 1st Half", None,
             3, "bet365", {"1": b365_1h_prices[0], "2": b365_1h_prices[1]},
         ),
         (
-            "Asian Handicap", "1st Half", "Asian Handicap First Half",
+            "Asian Handicap", "1st Half", "Asian Handicap 1st Half",
             pin_1h_ah_line, 302, "Pinnacle Sports", {"1": 1.92, "2": 1.98},
         ),
         (
-            "Asian Handicap", "1st Half", "Asian Handicap First Half",
+            "Asian Handicap", "1st Half", "Asian Handicap 1st Half",
             b365_1h_ah_line, 3, "bet365", {"1": 1.94, "2": 1.96},
         ),
     )
@@ -224,6 +235,8 @@ def test_calculates_all_raw_blocks_from_one_canonical_minute() -> None:
         0.5 * book_edge + 0.5 * exchange_edge
     )
     assert result["P2_DIRECTION_RAW"] == "HOME"
+
+
     assert result["Q_COMPLETE"] == 1.0
     assert result["BF_DRAW_LAY_FULL_TIME_EXCHANGE_SIZE"] == 70.0
     assert result["raw"]["p2_raw_engine"]["mining_context"]["market_type"] == "1X2"
@@ -233,6 +246,23 @@ def test_calculates_all_raw_blocks_from_one_canonical_minute() -> None:
     } == {5}
     for forbidden in ("P2_VALID", "P2_STRENGTH", "P2_CONFIDENCE", "P2_STATE"):
         assert forbidden not in result
+
+
+def test_formula_logging_is_enabled_only_in_debug_mode(caplog) -> None:
+    rows = _complete_rows()
+    context = build_odds_trajectory_context(
+        rows,
+        target_minutes_expected=TARGET_MINUTES,
+    )
+
+    caplog.set_level(logging.INFO)
+    calculate_pillar_2(_event_context(), context, debug_mode=False)
+    assert "P2_RAW_ENGINE DEBUG" not in caplog.text
+
+    caplog.clear()
+    calculate_pillar_2(_event_context(), context, debug_mode=True)
+    assert "P2_RAW_ENGINE DEBUG | PIN_SIDE_EDGE" in caplog.text
+    assert "P2_SIDE_MARKET DEBUG | Asignación de input:" in caplog.text
 
 
 def test_matches_bookmakers_by_canonical_id_not_display_name() -> None:
@@ -254,7 +284,7 @@ def test_does_not_fallback_when_one_input_is_missing_at_latest_minute() -> None:
         for row in rows
         if not (
             row["target_minute"] == 5
-            and row["market_name"] == "1X2 First Half"
+            and row["market_name"] == "1X2 1st Half"
             and row["bookie_id"] == 3
             and row["choice_name"] == "2"
         )
