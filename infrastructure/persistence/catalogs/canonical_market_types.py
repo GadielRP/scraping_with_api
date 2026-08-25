@@ -200,7 +200,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         period="Full Time Including Overtime",
         family="side_2way",
         requires_group=False,
-        trajectory=False,
+        trajectory=True,
         order=23,
         sofascore_match={
             "market_name": {"full time (including overtime)"},
@@ -532,7 +532,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         period="Full Time Including Overtime",
         family="spread_2way",
         requires_group=True,
-        trajectory=False,
+        trajectory=True,
         order=52,
         oddspapi_match={
             "market_type": {"spreads"},

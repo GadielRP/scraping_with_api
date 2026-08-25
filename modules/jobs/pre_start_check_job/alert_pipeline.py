@@ -82,28 +82,6 @@ class EventAlertProcessor:
                 Config.DISCOVERY_SOURCES_FOR_ALERTS,
             )
 
-        if streak_analysis and self.debug_mode == True:
-            import os
-            import pprint
-            
-            debug_dir = "debug/matchup_streak_analysis"
-            os.makedirs(debug_dir, exist_ok=True)
-            
-            # Format participants for filename
-            safe_participants = "".join(
-                c if c.isalnum() or c in (' ', '-', '_') else '_'
-                for c in event_context.participants_label
-            ).replace(' ', '_')
-            filename = f"{event_context.event_id}_{safe_participants}.txt"
-            filepath = os.path.join(debug_dir, filename)
-            
-            try:
-                with open(filepath, "w", encoding="utf-8") as f:
-                    for attr, value in streak_analysis.__dict__.items():
-                        f.write(f"{attr}:\n{pprint.pformat(value, width=120)}\n\n")
-            except Exception as e:
-                logger.error(f"Failed to save streak_analysis debug file: {e}")
-
         dual_report = self._ensure_dual_process_evaluation(
             event_context,
             tracked_competition,

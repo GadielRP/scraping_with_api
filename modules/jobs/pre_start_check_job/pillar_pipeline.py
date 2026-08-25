@@ -233,14 +233,19 @@ def _save_pillar_debug_snapshots(
         _write_debug_json(debug_dir / f"{event_id}_event_context.json", event_context)
         _write_debug_json(debug_dir / f"{event_id}_odds_trajectory_context.json", odds_trajectory_context)
 
-        if streak_analysis is not None:
-            _write_debug_json(debug_dir / f"{event_id}_streak_analysis.json", streak_analysis)
+        resolved_streak = (
+            streak_analysis
+            if streak_analysis is not None
+            else getattr(event_context, "streak_analysis", None)
+        )
+        if resolved_streak is not None:
+            _write_debug_json(debug_dir / f"{event_id}_streak_analysis.json", resolved_streak)
 
         logger.info(
             "Pillar debug snapshots saved for event %s at %s (streak_analysis_saved=%s)",
             event_id,
             debug_dir,
-            streak_analysis is not None,
+            resolved_streak is not None,
         )
     except Exception:
         logger.exception(

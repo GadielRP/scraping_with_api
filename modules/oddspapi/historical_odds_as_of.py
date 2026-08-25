@@ -53,7 +53,7 @@ class OddspapiHistoricalOddsAsOf:
         start_time: datetime | None,
         moments: Sequence[int],
     ) -> list[tuple[int, datetime, datetime]]:
-        """Return ``(minutes, target_utc, collected_at_local)`` for positive moments."""
+        """Return ``(minutes, target_utc, collected_at_local)`` for non-negative moments."""
         if start_time is None:
             return []
         start_utc = cls.start_time_as_utc(start_time)
@@ -69,7 +69,7 @@ class OddspapiHistoricalOddsAsOf:
                 minutes = int(moment)
             except (TypeError, ValueError):
                 continue
-            if minutes <= 0:
+            if minutes < 0:
                 continue
             delta = timedelta(minutes=minutes)
             targets.append(

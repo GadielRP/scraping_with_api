@@ -474,6 +474,201 @@ def create_matchup_streak_message(streak, event_context=None) -> str:
                         True,
                         streak.home_team_final_real_ranking,
                     )
+        message += f"Total Matches: {streak.h2h_matchup_matches_analyzed}\n"
+
+        if hasattr(streak, "h2h_matchup_matches") and streak.h2h_matchup_matches:
+            if streak.h2h_matchup_home_wins > 0:
+                home_team_home_net = 0
+                home_team_away_net = 0
+                for m in streak.h2h_matchup_matches:
+                    if m.get("winner") == "1":
+                        hist_home = m.get("hist_home")
+                        if streak.sport in ["Tennis", "Tennis Doubles"] and "hist_home_period1" in m:
+                            hs = _calculate_h2h_tennis_total_points(m, is_home=True)
+                            as_ = _calculate_h2h_tennis_total_points(m, is_home=False)
+                        else:
+                            hs = m.get("hist_home_score", 0)
+                            as_ = m.get("hist_away_score", 0)
+
+                        if hist_home == streak.home_team_name:
+                            home_team_home_net += hs - as_
+                        else:
+                            home_team_away_net += as_ - hs
+
+                home_net_str = f"+{home_team_home_net}" if home_team_home_net >= 0 else str(home_team_home_net)
+                away_net_str = f"+{home_team_away_net}" if home_team_away_net >= 0 else str(home_team_away_net)
+                message += (
+                    f"\n{streak.home_team_name}: {streak.h2h_matchup_home_wins} wins "
+                    f"({streak.h2h_matchup_home_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
+                )
+                for match in streak.h2h_matchup_matches:
+                    if match.get("winner") == "1":
+                        hist_home = match.get("hist_home", "Unknown")
+                        hist_away = match.get("hist_away", "Unknown")
+                        hist_home_score = match.get("hist_home_score", 0)
+                        hist_away_score = match.get("hist_away_score", 0)
+                        hist_home_penalties = match.get("hist_home_penalties", 0)
+                        hist_away_penalties = match.get("hist_away_penalties", 0)
+                        match_timestamp = match.get("startTimestamp", 0)
+                        match_date = _format_game_date(match_timestamp)
+                        date_prefix = f"{match_date} " if match_date else ""
+                        if hist_home_penalties or hist_away_penalties:
+                            message += (
+                                f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} "
+                                f"{hist_away} (P:{hist_home_penalties}-{hist_away_penalties})\n"
+                            )
+                        else:
+                            message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
+
+            if streak.h2h_matchup_away_wins > 0:
+                away_team_home_net = 0
+                away_team_away_net = 0
+                for m in streak.h2h_matchup_matches:
+                    if m.get("winner") == "2":
+                        hist_home = m.get("hist_home")
+                        if streak.sport in ["Tennis", "Tennis Doubles"] and "hist_home_period1" in m:
+                            hs = _calculate_h2h_tennis_total_points(m, is_home=True)
+                            as_ = _calculate_h2h_tennis_total_points(m, is_home=False)
+                        else:
+                            hs = m.get("hist_home_score", 0)
+                            as_ = m.get("hist_away_score", 0)
+
+                        if hist_home == streak.away_team_name:
+                            away_team_home_net += hs - as_
+                        else:
+                            away_team_away_net += as_ - hs
+
+                home_net_str = f"+{away_team_home_net}" if away_team_home_net >= 0 else str(away_team_home_net)
+                away_net_str = f"+{away_team_away_net}" if away_team_away_net >= 0 else str(away_team_away_net)
+                message += (
+                    f"\n{streak.away_team_name}: {streak.h2h_matchup_away_wins} wins "
+                    f"({streak.h2h_matchup_away_win_rate}%) [H:{home_net_str}, A:{away_net_str}]\n"
+                )
+                for match in streak.h2h_matchup_matches:
+                    if match.get("winner") == "2":
+                        hist_home = match.get("hist_home", "Unknown")
+                        hist_away = match.get("hist_away", "Unknown")
+                        hist_home_score = match.get("hist_home_score", 0)
+                        hist_away_score = match.get("hist_away_score", 0)
+                        match_timestamp = match.get("startTimestamp", 0)
+                        match_date = _format_game_date(match_timestamp)
+                        date_prefix = f"{match_date} " if match_date else ""
+                        message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
+
+            if streak.h2h_matchup_draws > 0:
+                message += f"\nDraws: {streak.h2h_matchup_draws} ({streak.h2h_matchup_draw_rate}%)\n"
+                for match in streak.h2h_matchup_matches:
+                    if match.get("winner") == "X":
+                        hist_home = match.get("hist_home", "Unknown")
+                        hist_away = match.get("hist_away", "Unknown")
+                        hist_home_score = match.get("hist_home_score", 0)
+                        hist_away_score = match.get("hist_away_score", 0)
+                        match_timestamp = match.get("startTimestamp", 0)
+                        match_date = _format_game_date(match_timestamp)
+                        date_prefix = f"{match_date} " if match_date else ""
+                        message += f"{date_prefix}{hist_home} {hist_home_score}-{hist_away_score} {hist_away}\n"
+        else:
+            message += f"{streak.home_team_name}: {streak.h2h_matchup_home_wins} wins ({streak.h2h_matchup_home_win_rate}%)\n"
+            message += f"{streak.away_team_name}: {streak.h2h_matchup_away_wins} wins ({streak.h2h_matchup_away_win_rate}%)\n"
+            if streak.h2h_matchup_draws > 0:
+                message += f"Draws: {streak.h2h_matchup_draws} ({streak.h2h_matchup_draw_rate}%)\n"
+
+        message += "\n"
+
+        if hasattr(streak, "home_team_wins") and hasattr(streak, "away_team_wins"):
+            message += "📊 Season Form:\n"
+            message += (
+                f"{streak.home_team_name}: {streak.home_team_wins}W-"
+                f"{streak.home_team_losses}L-{streak.home_team_draws}D ({home_total_games} games)\n"
+            )
+            message += (
+                f"{streak.away_team_name}: {streak.away_team_wins}W-"
+                f"{streak.away_team_losses}L-{streak.away_team_draws}D ({away_total_games} games)\n\n"
+            )
+
+            if hasattr(streak, "home_team_batches") and hasattr(streak, "away_team_batches"):
+                message += "📈 Historical Form:\n"
+
+                def _append_batches(team_name: str, batches: List[Dict], is_tennis: bool, final_real_ranking: int) -> None:
+                    nonlocal message
+                    if not batches:
+                        message += f"<b>{team_name}</b>: No recent form data\n"
+                        return
+
+                    final_ranking_str = f" (~{final_real_ranking})" if final_real_ranking > 0 else ""
+                    message += f"<b>{team_name}{final_ranking_str}</b>:\n"
+
+                    cumulative_home_net = 0
+                    cumulative_away_net = 0
+                    for i, batch in enumerate(batches):
+                        game_count = (i + 1) * 5
+                        batch_summary = (
+                            f"{game_count}: {batch['batch_wins']}W-{batch['batch_losses']}L-"
+                            f"{batch['batch_draws']}D"
+                        )
+                        if batch["batch_net_points"] > 0:
+                            batch_summary += f"(+{batch['batch_net_points']})"
+                        elif batch["batch_net_points"] < 0:
+                            batch_summary += f"({batch['batch_net_points']})"
+                        else:
+                            batch_summary += " (0)"
+
+                        home_net = batch.get("batch_home_net_points", 0)
+                        away_net = batch.get("batch_away_net_points", 0)
+                        home_net_str = f"+{home_net}" if home_net >= 0 else str(home_net)
+                        away_net_str = f"+{away_net}" if away_net >= 0 else str(away_net)
+                        batch_summary += f" [H:{home_net_str}, A:{away_net_str}]"
+
+                        if is_tennis:
+                            real_ranking = batch.get("batch_real_ranking", 0)
+                            if real_ranking > 0:
+                                batch_summary += f" [~{real_ranking}]"
+
+                        message += f"{batch_summary}\n"
+
+                        for game in batch["games"]:
+                            game_date = _format_game_date(game.get("startTimestamp", 0))
+                            date_prefix = f"{game_date} " if game_date else ""
+
+                            game_net_score = game.get("net_score", 0)
+                            game_role = game["team_role"]
+                            if game_role == "home":
+                                cumulative_home_net += game_net_score
+                            else:
+                                cumulative_away_net += game_net_score
+
+                            team_standing_display = _format_compact_standing(game["team_standing"])
+                            opponent_standing_display = _format_compact_standing(game["opponent_standing"])
+
+                            if is_tennis:
+                                team_prefix = f"[{team_standing_display}] " if team_standing_display else ""
+                                opponent_suffix = f" [{opponent_standing_display}]" if opponent_standing_display else ""
+                                message += (
+                                    f"{date_prefix}{team_prefix}{game['result']} vs "
+                                    f"{game['opponent']}{opponent_suffix} "
+                                    f"({game['team_score']}-{game['opponent_score']})\n"
+                                )
+                            else:
+                                role_indicator = "🏠" if game_role == "home" else "✈️"
+                                team_standings_str = f"[{team_standing_display}] " if team_standing_display else ""
+                                opponent_standings_str = f" [{opponent_standing_display}]" if opponent_standing_display else ""
+
+                                message += (
+                                    f"{date_prefix}{role_indicator}{team_standings_str}{game['result']} vs "
+                                    f"{game['opponent']} ({game['team_score']}-{game['opponent_score']})"
+                                    f"{opponent_standings_str}\n"
+                                )
+
+                        if i < len(batches) - 1:
+                            message += "\n"
+
+                if streak.sport in ["Tennis", "Tennis Doubles"]:
+                    _append_batches(
+                        streak.home_team_name,
+                        streak.home_team_batches,
+                        True,
+                        streak.home_team_final_real_ranking,
+                    )
                 else:
                     _append_batches(streak.home_team_name, streak.home_team_batches, False, 0)
 
@@ -496,7 +691,6 @@ def create_matchup_streak_message(streak, event_context=None) -> str:
             message += "🎯 Ranking Prediction:\n"
             message += f"Ranking Advantage: {ranking_prediction['ranking_advantage']}\n"
             message += f"<b>{ranking_prediction['best_team_name']}</b> (~{ranking_prediction['best_ranking']}):\n"
-            message += f"Total Points: {ranking_prediction['best_total_points']}\n\n"
             message += f"<b>{ranking_prediction['worst_team_name']}</b> (~{ranking_prediction['worst_ranking']}):\n"
             message += f"Total Points: {ranking_prediction['worst_total_points']}\n\n"
 
@@ -512,7 +706,8 @@ def create_matchup_streak_message(streak, event_context=None) -> str:
         return message
     except Exception as e:
         logger.error("Error creating matchup streak analysis message: %s", e)
-        return f"❌ Error creating matchup streak analysis message for event {streak.event_id}: {str(e)}"
+        event_id = getattr(streak, "event_id", getattr(event_context, "event_id", "unknown"))
+        return f"❌ Error creating matchup streak analysis message for event {event_id}: {str(e)}"
 
 
 def send_matchup_streak_alerts(
@@ -527,17 +722,18 @@ def send_matchup_streak_alerts(
     success_count = 0
 
     for streak in streak_reports:
+        event_id = getattr(streak, "event_id", getattr(event_context, "event_id", "unknown"))
         try:
             message = create_matchup_streak_message(streak, event_context)
             sent = notifier.send_telegram_message(message)
 
             if sent:
                 success_count += 1
-                logger.info("Matchup streak alert sent for event %s", streak.event_id)
+                logger.info("Matchup streak alert sent for event %s", event_id)
             else:
-                logger.warning("Failed to send Matchup streak alert for event %s", streak.event_id)
+                logger.warning("Failed to send Matchup streak alert for event %s", event_id)
         except Exception as e:
-            logger.error("Error sending Matchup streak alert for event %s: %s", streak.event_id, e)
+            logger.error("Error sending Matchup streak alert for event %s: %s", event_id, e)
             continue
 
     logger.info("Sent %s/%s Matchup streak alerts successfully", success_count, len(streak_reports))

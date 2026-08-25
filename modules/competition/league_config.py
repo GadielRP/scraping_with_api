@@ -236,7 +236,7 @@ SAUDI_PRO_LEAGUE_CONFIG = LeagueConfig(
         source_tournament_id=3708,
     ),
     collected=True,
-    standings_method="football_3_1_0",
+    standings_method="football_3_1_0_h2h",
     grouping_method="league_wide",
     number_of_teams=18,
     total_regular_season_games=34,
@@ -303,6 +303,51 @@ CBA_CONFIG = LeagueConfig(
     standings_grouping="single_table",
 )
 
+LIGA_MX_APERTURA_CONFIG = LeagueConfig(
+    code="liga_mx_apertura",
+    display_name="Liga MX Apertura",
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=11621,
+        source_tournament_id=28,
+    ),
+    collected=True,
+    standings_method="football_3_1_0",
+    grouping_method="league_wide",
+    number_of_teams=18,
+    total_regular_season_games=17,
+    standings_grouping="single_table",
+)
+
+LIGA_MX_CLAUSURA_CONFIG = LeagueConfig(
+    code="liga_mx_clausura",
+    display_name="Liga MX Clausura",
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=11620,
+        source_tournament_id=16753,
+    ),
+    collected=True,
+    standings_method="football_3_1_0",
+    grouping_method="league_wide",
+    number_of_teams=18,
+    total_regular_season_games=17,
+    standings_grouping="single_table",
+)
+
+BRASILEIRAO_CONFIG = LeagueConfig(
+    code="brasileirao",
+    display_name="Brasileirão",
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=325,
+        source_tournament_id=83,
+    ),
+    collected=True,
+    standings_method="football_3_1_0",
+    grouping_method="league_wide",
+    number_of_teams=20,
+    total_regular_season_games=38,
+    standings_grouping="single_table",
+)
+
 LEAGUE_CONFIGS: Tuple[LeagueConfig, ...] = (
     NBA_CONFIG,
     LALIGA_CONFIG,
@@ -318,6 +363,9 @@ LEAGUE_CONFIGS: Tuple[LeagueConfig, ...] = (
     WNBA_CONFIG,
     PFL_CONFIG,
     CBA_CONFIG,
+    LIGA_MX_APERTURA_CONFIG,
+    LIGA_MX_CLAUSURA_CONFIG,
+    BRASILEIRAO_CONFIG,
 )
 
 _LEAGUE_CONFIGS_BY_UNIQUE_TOURNAMENT_ID: Dict[int, list[LeagueConfig]] = {}

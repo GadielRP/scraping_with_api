@@ -528,9 +528,12 @@ def evaluate_pre_start_key_moments(
     flush_missing_standings_endpoints(missing_competition_ids)
 
     if pillars_enabled:
-        validated_event_ids = {int(context.event_id) for context in contexts}
+        validated_event_ids = {
+            int(context.event_id if hasattr(context, "event_id") else context["event_id"])
+            for context in contexts
+        }
         logger.info(
-            "Loading odds trajectory for %s validated pillar event(s)",
+            "📈 Loading odds trajectory for %s validated pillar event(s)",
             len(validated_event_ids),
         )
         trajectory_payloads = _load_trajectory_payloads(
@@ -538,10 +541,12 @@ def evaluate_pre_start_key_moments(
             key_moments,
         )
         for context in contexts:
-            context.odds_trajectory = trajectory_payloads.get(
-                int(context.event_id),
-                [],
-            )
+            event_id = int(context.event_id if hasattr(context, "event_id") else context["event_id"])
+            trajectory = trajectory_payloads.get(event_id, [])
+            if hasattr(context, "odds_trajectory"):
+                context.odds_trajectory = trajectory
+            elif isinstance(context, dict):
+                context["odds_trajectory"] = trajectory
 
         evaluate_and_calculate_pillars_batch(
             events_for_pillars=contexts,

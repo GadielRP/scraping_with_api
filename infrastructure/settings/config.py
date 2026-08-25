@@ -415,7 +415,7 @@ class Config:
     )
     ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY = _parse_env_bool(
         'ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY',
-        False,
+        True,
     )
     # When false, inactive OddsPapi quotes AND markets (player active=false or
     # marketActive=false) may still be selected for current/historical persist

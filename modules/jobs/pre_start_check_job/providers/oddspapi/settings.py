@@ -51,7 +51,7 @@ class OddspapiPreStartSettings:
     # still eligible (adapter, mainline cache extract, historical reader,
     # exchange selector). Driven by Config.ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES.
     require_active_quotes: bool = True
-    persist_main_line_only: bool = False
+    persist_main_line_only: bool = True
 
     # Donor order when a bookmaker has no cached mainLine outcome ids of its
     # own. Historical persist uses the first donor that has rows. Own-cache
