@@ -580,7 +580,7 @@ class Config:
     PILLAR_MINING_STATUS_MODE = _parse_env_choice(
         'PILLAR_MINING_STATUS_MODE',
         'all',
-        {'all', 'active_only'},
+        {'all', 'successful_only'},
     )
     ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT = _parse_env_bool(
         'ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT',

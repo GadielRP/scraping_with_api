@@ -98,6 +98,7 @@ copies/
 !docs/refactors/db-schema-odds-refactor.md
 !docs/refactors/db-schema-odds-refactor-phase-4b.md
 !docs/pre-start-closing-minute-contract-mismatch.md
+!docs/pillars/mining-persistence.md
 
 test_*.py
 *.json

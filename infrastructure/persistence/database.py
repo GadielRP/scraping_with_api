@@ -113,6 +113,7 @@ class DatabaseManager:
             # Run one-time manual migrations FIRST (before generic column migration)
             # This ensures complex migrations (e.g., backfilling NOT NULL columns) run
             # before the generic migration tries to add them with NOT NULL constraint.
+            self._migrate_pillar_mining_schema_v2()
             self._migrate_market_mapping_schema_cleanup()
             self._migrate_canonical_market_types()
             self._migrate_market_source_mappings()
@@ -238,6 +239,29 @@ class DatabaseManager:
             for statement in index_statements:
                 session.execute(text(statement))
             session.commit()
+
+    def _migrate_pillar_mining_schema_v2(self) -> None:
+        """Replace the undeployed single-row mining experiment with graph storage."""
+
+        from sqlalchemy import inspect
+        from infrastructure.persistence.models import (
+            PillarMiningMetricValue,
+            PillarMiningRun,
+            PillarMiningUnit,
+        )
+
+        old_table = "pillar_mining_observations"
+        had_old_table = old_table in inspect(self.engine).get_table_names()
+        with self.engine.begin() as connection:
+            connection.execute(text(f"DROP TABLE IF EXISTS {old_table}"))
+            PillarMiningRun.__table__.create(connection, checkfirst=True)
+            PillarMiningUnit.__table__.create(connection, checkfirst=True)
+            PillarMiningMetricValue.__table__.create(connection, checkfirst=True)
+        if had_old_table:
+            logger.warning(
+                "Removed undeployed experimental table %s and installed mining schema v2",
+                old_table,
+            )
 
     def _migrate_canonical_market_types(self):
         """Ensure canonical market catalog tables exist and sync seed catalog into DB.

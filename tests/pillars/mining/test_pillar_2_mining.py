@@ -6,9 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.pillars.mining.pillar_2_adapter import (
+from modules.pillars.mining.adapters.pillar_2 import (
     P2_RAW_METRIC_NAMES,
-    build_p2_mining_observation,
+    P2MiningAdapter,
+)
+from modules.pillars.mining.contracts import (
+    PillarMiningRun,
+    PillarMiningUnit,
+    validate_mining_run,
 )
 from modules.pillars.mining.service import PillarMiningService
 
@@ -21,18 +26,12 @@ def _event_context(*, evaluation_minute: int | None = 5):
         minutes_until_start=evaluation_minute,
         start_time_utc=datetime(2026, 8, 22, 18, 0),
         context_status="normalized",
-        competition=SimpleNamespace(
-            competition_id=99,
-            display_name="League",
-        ),
+        competition=SimpleNamespace(competition_id=99, display_name="League"),
     )
 
 
 def _active_result() -> dict:
-    metrics = {
-        name: index / 100
-        for index, name in enumerate(P2_RAW_METRIC_NAMES, start=1)
-    }
+    metrics = {name: index / 100 for index, name in enumerate(P2_RAW_METRIC_NAMES, 1)}
     metrics.update(
         {
             "P2_DIRECTION_RAW": "HOME",
@@ -62,15 +61,7 @@ def _active_result() -> dict:
             "module_ids": ["p2_raw_engine"],
             "p2_raw_engine": {
                 "baseline_weights": {"W_PIN": 0.5, "W_B365": 0.5},
-                "mining_context": {
-                    "event_id": 2002,
-                    "sport": "Football",
-                    "competition_id": 99,
-                    "competition": "League",
-                    "market_type": "1X2",
-                    "minutes_to_start": 5,
-                    "P2_TARGET_MINUTE": 5,
-                },
+                "mining_context": {"market_type": "1X2"},
                 "inputs": {"PIN_HOME_1X2_FULL_TIME_ODDS_PRICE": 2.0},
                 "input_trace": {
                     "PIN_HOME_1X2_FULL_TIME_ODDS_PRICE": {
@@ -85,53 +76,46 @@ def _active_result() -> dict:
 
 class _CollectingWriter:
     def __init__(self) -> None:
-        self.observations = []
+        self.runs = []
 
-    def upsert(self, observation) -> None:
-        self.observations.append(observation)
+    def replace_run(self, run) -> None:
+        self.runs.append(run)
 
 
-def test_active_p2_maps_every_raw_metric_and_trace() -> None:
-    observation = build_p2_mining_observation(_event_context(), _active_result())
+def test_active_p2_maps_hierarchy_all_metrics_and_liquidity() -> None:
+    run = P2MiningAdapter().build(_event_context(), _active_result())
+    validate_mining_run(run)
 
-    assert set(observation.metrics) == set(P2_RAW_METRIC_NAMES)
-    assert observation.score_name == "SIDE_MARKET_EDGE"
-    assert observation.score == Decimal("0.123456")
-    assert observation.direction == "HOME"
-    assert observation.status == "ACTIVE"
-    assert observation.is_successful is True
-    assert observation.is_valid is None
-    assert observation.observation_slot == "target:5"
-    assert observation.context["competition_id"] == 99
-    assert observation.inputs["PIN_HOME_1X2_FULL_TIME_ODDS_PRICE"] == 2.0
+    assert run.execution_slot == "evaluation:5"
+    assert run.target_minute == 5
+    assert run.canonical_status == "SUCCESS"
+    assert run.context["competition_id"] == 99
+    assert run.inputs["PIN_HOME_1X2_FULL_TIME_ODDS_PRICE"] == 2.0
+    assert run.output_payload["P2_STATUS"] == "ACTIVE"
+
+    summary, module = run.units
+    assert summary.unit_type == "summary"
+    assert summary.score == Decimal("0.123456")
+    assert summary.direction == "HOME"
+    assert summary.is_valid is None
+    assert module.parent_unit_key == "summary"
+    assert {metric.name for metric in module.metrics} == set(P2_RAW_METRIC_NAMES)
+    metric_values = {metric.name: metric.value for metric in module.metrics}
+    assert metric_values["BF_HOME_BACK_FULL_TIME_EXCHANGE_SIZE"] == Decimal("100.0")
+    assert metric_values["BF_HOME_LAY_FULL_TIME_EXCHANGE_SIZE"] == Decimal("90.0")
+    assert metric_values["BF_DRAW_BACK_FULL_TIME_EXCHANGE_SIZE"] == Decimal("80.0")
+    assert metric_values["BF_DRAW_LAY_FULL_TIME_EXCHANGE_SIZE"] == Decimal("70.0")
+    assert metric_values["BF_AWAY_BACK_FULL_TIME_EXCHANGE_SIZE"] == Decimal("120.0")
+    assert metric_values["BF_AWAY_LAY_FULL_TIME_EXCHANGE_SIZE"] == Decimal("110.0")
     assert (
-        observation.diagnostics["engine"]["input_trace"]
+        module.diagnostics["input_trace"]
         ["PIN_HOME_1X2_FULL_TIME_ODDS_PRICE"]["quote_id"]
         == 123
     )
-    assert observation.context["event_start_time_utc"] == "2026-08-22T18:00:00"
-    assert {
-        name: observation.metrics[name]
-        for name in (
-            "BF_HOME_BACK_FULL_TIME_EXCHANGE_SIZE",
-            "BF_HOME_LAY_FULL_TIME_EXCHANGE_SIZE",
-            "BF_DRAW_BACK_FULL_TIME_EXCHANGE_SIZE",
-            "BF_DRAW_LAY_FULL_TIME_EXCHANGE_SIZE",
-            "BF_AWAY_BACK_FULL_TIME_EXCHANGE_SIZE",
-            "BF_AWAY_LAY_FULL_TIME_EXCHANGE_SIZE",
-        )
-    } == {
-        "BF_HOME_BACK_FULL_TIME_EXCHANGE_SIZE": 100.0,
-        "BF_HOME_LAY_FULL_TIME_EXCHANGE_SIZE": 90.0,
-        "BF_DRAW_BACK_FULL_TIME_EXCHANGE_SIZE": 80.0,
-        "BF_DRAW_LAY_FULL_TIME_EXCHANGE_SIZE": 70.0,
-        "BF_AWAY_BACK_FULL_TIME_EXCHANGE_SIZE": 120.0,
-        "BF_AWAY_LAY_FULL_TIME_EXCHANGE_SIZE": 110.0,
-    }
 
 
 @pytest.mark.parametrize("status", ["INSUFFICIENT_DATA", "ERROR"])
-def test_non_active_p2_keeps_diagnostics_without_inventing_metrics(status) -> None:
+def test_non_success_p2_keeps_diagnostics_without_inventing_metrics(status) -> None:
     result = {
         "engine_version": "p2_raw_v1",
         "P2_STATUS": status,
@@ -142,31 +126,38 @@ def test_non_active_p2_keeps_diagnostics_without_inventing_metrics(status) -> No
         "INVALID_INPUTS": ["B365_SIDE"],
         "AMBIGUOUS_INPUTS": [],
         "error": "database unavailable" if status == "ERROR" else None,
-        "raw": {
-            "reason": "pillar_2_exception" if status == "ERROR" else "gate_failed",
-            "target_minutes_present": [],
-        },
+        "raw": {"reason": "pillar_2_exception" if status == "ERROR" else "gate_failed"},
     }
 
-    observation = build_p2_mining_observation(_event_context(), result)
+    run = P2MiningAdapter().build(_event_context(), result)
 
-    assert observation.metrics == {}
-    assert observation.score is None
-    assert observation.direction is None
-    assert observation.is_successful is False
-    assert observation.is_valid is None
-    assert observation.observation_slot == "evaluation:5"
-    assert observation.diagnostics["missing_inputs"] == ["PIN_SIDE"]
-    assert observation.diagnostics["invalid_inputs"] == ["B365_SIDE"]
-    assert observation.diagnostics["reason"] == result["raw"]["reason"]
+    assert len(run.units) == 1
+    assert run.units[0].metrics == ()
+    assert run.units[0].score is None
+    assert run.units[0].direction is None
+    assert run.units[0].is_valid is None
+    assert run.execution_slot == "evaluation:5"
+    assert run.diagnostics["missing_inputs"] == ["PIN_SIDE"]
+    assert run.diagnostics["invalid_inputs"] == ["B365_SIDE"]
+    assert run.diagnostics["reason"] == result["raw"]["reason"]
 
 
-def test_service_status_modes_and_disabled_toggle() -> None:
+def test_target_slot_is_fallback_only_when_evaluation_minute_is_unknown() -> None:
+    run = P2MiningAdapter().build(
+        _event_context(evaluation_minute=None),
+        _active_result(),
+    )
+    assert run.execution_slot == "target:5"
+
+
+def test_service_is_adapter_driven_and_applies_status_modes() -> None:
     writer = _CollectingWriter()
-    all_service = PillarMiningService(writer, status_mode="all")
-    active_service = PillarMiningService(writer, status_mode="active_only")
-    disabled_service = PillarMiningService(writer, enabled=False)
-
+    adapters = {"pillar_2_side_market": P2MiningAdapter()}
+    all_service = PillarMiningService(writer, adapters, status_mode="all")
+    successful_service = PillarMiningService(
+        writer, adapters, status_mode="successful_only"
+    )
+    disabled_service = PillarMiningService(writer, adapters, enabled=False)
     insufficient = {
         "engine_version": "p2_raw_v1",
         "P2_STATUS": "INSUFFICIENT_DATA",
@@ -174,16 +165,58 @@ def test_service_status_modes_and_disabled_toggle() -> None:
         "raw": {"reason": "gate_failed"},
     }
 
-    assert all_service.persist_p2(_event_context(), insufficient) is True
-    assert active_service.persist_p2(_event_context(), insufficient) is False
-    assert active_service.persist_p2(_event_context(), _active_result()) is True
-    assert disabled_service.persist_p2(_event_context(), _active_result()) is False
-    assert [item.status for item in writer.observations] == [
-        "INSUFFICIENT_DATA",
-        "ACTIVE",
-    ]
+    assert all_service.persist("pillar_2_side_market", _event_context(), insufficient)
+    assert not successful_service.persist(
+        "pillar_2_side_market", _event_context(), insufficient
+    )
+    assert successful_service.persist(
+        "pillar_2_side_market", _event_context(), _active_result()
+    )
+    assert not disabled_service.persist(
+        "pillar_2_side_market", _event_context(), _active_result()
+    )
+    assert [run.canonical_status for run in writer.runs] == ["INSUFFICIENT", "SUCCESS"]
 
 
-def test_service_rejects_unknown_status_mode() -> None:
+def test_service_rejects_unknown_mode_and_unregistered_pillar() -> None:
     with pytest.raises(ValueError, match="status_mode"):
-        PillarMiningService(_CollectingWriter(), status_mode="sometimes")
+        PillarMiningService(_CollectingWriter(), {}, status_mode="sometimes")
+    with pytest.raises(ValueError, match="no mining adapter"):
+        PillarMiningService(_CollectingWriter(), {}).persist(
+            "pillar_9", _event_context(), {}
+        )
+
+
+def test_contract_rejects_duplicate_units_and_unknown_parents() -> None:
+    base = P2MiningAdapter().build(_event_context(), _active_result())
+    with pytest.raises(ValueError, match="duplicate mining unit key"):
+        validate_mining_run(
+            PillarMiningRun(**{**base.__dict__, "units": (base.units[0], base.units[0])})
+        )
+
+    orphan = PillarMiningUnit(
+        unit_type="component",
+        unit_key="orphan",
+        parent_unit_key="missing",
+        producer_status="ACTIVE",
+        canonical_status="SUCCESS",
+    )
+    with pytest.raises(ValueError, match="unknown parent"):
+        validate_mining_run(
+            PillarMiningRun(**{**base.__dict__, "units": (orphan,)})
+        )
+
+
+def test_pipeline_mining_failure_is_non_blocking() -> None:
+    from modules.jobs.pre_start_check_job.pillar_pipeline import EventPillarProcessor
+
+    class _FailingService:
+        def persist(self, pillar_id, event_context, result):
+            raise RuntimeError("mining database unavailable")
+
+    processor = EventPillarProcessor(event_repo=None, mining_service=_FailingService())
+    processor._persist_mining_result(
+        "pillar_2_side_market",
+        _event_context(),
+        _active_result(),
+    )

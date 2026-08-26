@@ -410,7 +410,7 @@ def test_mining_failure_does_not_prevent_later_pillars(monkeypatch, caplog) -> N
     p4_calls = []
 
     class FailingMiningService:
-        def persist_p2(self, _event_context, _p2_result):
+        def persist(self, _pillar_id, _event_context, _p2_result):
             raise RuntimeError("mining database unavailable")
 
     monkeypatch.setattr(
@@ -458,4 +458,4 @@ def test_mining_failure_does_not_prevent_later_pillars(monkeypatch, caplog) -> N
 
     assert result is not None
     assert p4_calls == [True]
-    assert "P2 mining persistence failed" in caplog.text
+    assert "Pillar mining persistence failed" in caplog.text

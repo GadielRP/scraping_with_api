@@ -1,9 +1,11 @@
-"""Persistence-neutral public contracts for pillar mining outputs."""
+"""Persistence-neutral public API for pillar mining."""
 
-from .contracts import PillarMiningObservation
-from .ports import PillarMiningWriter
+from .contracts import PillarMiningMetric, PillarMiningRun, PillarMiningUnit
+from .service import PillarMiningService
 
 __all__ = [
-    "PillarMiningObservation",
-    "PillarMiningWriter",
+    "PillarMiningMetric",
+    "PillarMiningRun",
+    "PillarMiningService",
+    "PillarMiningUnit",
 ]

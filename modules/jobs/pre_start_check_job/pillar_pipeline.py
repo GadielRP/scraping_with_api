@@ -18,7 +18,7 @@ from typing import Any, Optional
 
 from infrastructure.settings import Config
 from infrastructure.persistence.repositories.pillar_mining_repository import (
-    PillarMiningObservationRepository,
+    PillarMiningRepository,
 )
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.pillars.context import (
@@ -41,6 +41,7 @@ from modules.pillars.pillar_2_side_market.run_pillar_2 import (
     ENGINE_VERSION as P2_ENGINE_VERSION,
     calculate_pillar_2,
 )
+from modules.pillars.mining.adapters import P2MiningAdapter
 from modules.pillars.mining.service import PillarMiningService
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
@@ -274,33 +275,40 @@ class EventPillarProcessor:
             return True
         return bool(self.enabled_pillars.get(pillar_key, True))
 
-    def _persist_p2_mining(
+    def _persist_mining_result(
         self,
+        pillar_id: str,
         event_context: EventContext,
-        p2_result: dict[str, Any],
+        result: dict[str, Any],
     ) -> None:
         if self.mining_service is None:
             return
 
         try:
-            persisted = self.mining_service.persist_p2(event_context, p2_result)
+            persisted = self.mining_service.persist(
+                pillar_id,
+                event_context,
+                result,
+            )
             if persisted:
                 logger.info(
-                    "P2 mining observation persisted event_id=%s status=%s target_minute=%s engine_version=%s",
+                    "Pillar mining run persisted pillar_id=%s event_id=%s status=%s target_minute=%s engine_version=%s",
+                    pillar_id,
                     event_context.event_id,
-                    p2_result.get("P2_STATUS"),
-                    p2_result.get("P2_TARGET_MINUTE"),
-                    p2_result.get("engine_version"),
+                    result.get("status"),
+                    result.get("P2_TARGET_MINUTE"),
+                    result.get("engine_version"),
                 )
         except Exception:
             # Mining is an analytical side effect. Its failure must be visible,
             # but must not prevent P4/P5 or the rest of the event from running.
             logger.exception(
-                "P2 mining persistence failed event_id=%s status=%s target_minute=%s engine_version=%s",
+                "Pillar mining persistence failed pillar_id=%s event_id=%s status=%s target_minute=%s engine_version=%s",
+                pillar_id,
                 event_context.event_id,
-                p2_result.get("P2_STATUS"),
-                p2_result.get("P2_TARGET_MINUTE"),
-                p2_result.get("engine_version"),
+                result.get("status"),
+                result.get("P2_TARGET_MINUTE"),
+                result.get("engine_version"),
             )
 
     def process_event(self, event_context: EventContext) -> Optional[dict]:
@@ -404,7 +412,11 @@ class EventPillarProcessor:
                 p2_result.get("P2_DIRECTION_RAW"),
                 p2_result.get("SIDE_MARKET_EDGE"),
             )
-            self._persist_p2_mining(event_context, p2_result)
+            self._persist_mining_result(
+                "pillar_2_side_market",
+                event_context,
+                p2_result,
+            )
         else:
             logger.info(
                 "Pillar 2 (Side Market RAW) skipped for %s (disabled by toggle)",
@@ -952,7 +964,8 @@ def evaluate_and_calculate_pillars_batch(
     )
 
     mining_service = PillarMiningService(
-        PillarMiningObservationRepository(),
+        PillarMiningRepository(),
+        adapters={"pillar_2_side_market": P2MiningAdapter()},
         enabled=Config.PILLAR_MINING_ENABLED,
         status_mode=Config.PILLAR_MINING_STATUS_MODE,
     )
