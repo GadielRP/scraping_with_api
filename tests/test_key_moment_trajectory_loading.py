@@ -45,6 +45,11 @@ def _configure_pipeline(monkeypatch, *, alerts: bool, pillars: bool) -> None:
         [30],
     )
     monkeypatch.setattr(
+        key_moment_evaluation.Config,
+        "PILLAR_PIPELINE_EXECUTION_MOMENTS",
+        [],
+    )
+    monkeypatch.setattr(
         key_moment_evaluation,
         "_hydrate_missing_tennis_metadata",
         lambda *_args: None,
@@ -140,4 +145,62 @@ def test_alert_only_pipeline_does_not_load_trajectory(monkeypatch):
     )
 
     assert calls == ["alerts"]
+
+
+def test_pillar_pipeline_execution_moments_gate(monkeypatch):
+    """Pillar pipeline runs only for events whose minutes match PILLAR_PIPELINE_EXECUTION_MOMENTS."""
+    _configure_pipeline(monkeypatch, alerts=False, pillars=True)
+    monkeypatch.setattr(
+        key_moment_evaluation.Config,
+        "PRE_START_ODDS_MOMENTS",
+        [30, 0],
+    )
+    monkeypatch.setattr(
+        key_moment_evaluation.Config,
+        "PILLAR_PIPELINE_EXECUTION_MOMENTS",
+        [0],  # only allow 0
+    )
+
+    calls = []
+    plan = SimpleNamespace(
+        candidates=[
+            {"event_id": 1, "minutes_until_start": 30, "event_data": {"competition_id": 176}},
+            {"event_id": 2, "minutes_until_start": 0, "event_data": {"competition_id": 176}},
+        ],
+        by_event_id={},
+    )
+
+    monkeypatch.setattr(
+        key_moment_evaluation,
+        "_build_evaluation_payloads",
+        lambda _scheduler, _plan, _event_ids, _missing_ids: [
+            SimpleNamespace(event_id=1, minutes_until_start=30, odds_trajectory=[]),
+            SimpleNamespace(event_id=2, minutes_until_start=0, odds_trajectory=[]),
+        ],
+    )
+    monkeypatch.setattr(
+        key_moment_evaluation,
+        "_load_trajectory_payloads",
+        lambda event_ids, _moments: calls.append(("trajectory", sorted(event_ids))) or {},
+    )
+    monkeypatch.setattr(
+        key_moment_evaluation,
+        "evaluate_and_calculate_pillars_batch",
+        lambda events_for_pillars, **_kwargs: calls.append(
+            ("pillars", [e.event_id for e in events_for_pillars])
+        ),
+    )
+
+    key_moment_evaluation.evaluate_pre_start_key_moments(
+        SimpleNamespace(event_repo=SimpleNamespace()),
+        plan,
+        _oddsportal_context(),
+    )
+
+    # Event 1 (at 30m) must be filtered out; only Event 2 (at 0m) should load trajectory and run pillars
+    assert calls == [
+        ("trajectory", [2]),
+        ("pillars", [2]),
+    ]
+
 

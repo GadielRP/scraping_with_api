@@ -528,36 +528,54 @@ def evaluate_pre_start_key_moments(
     flush_missing_standings_endpoints(missing_competition_ids)
 
     if pillars_enabled:
-        validated_event_ids = {
-            int(context.event_id if hasattr(context, "event_id") else context["event_id"])
-            for context in contexts
-        }
-        logger.info(
-            "📈 Loading odds trajectory for %s validated pillar event(s)",
-            len(validated_event_ids),
-        )
-        trajectory_payloads = _load_trajectory_payloads(
-            validated_event_ids,
-            key_moments,
-        )
-        for context in contexts:
-            event_id = int(context.event_id if hasattr(context, "event_id") else context["event_id"])
-            trajectory = trajectory_payloads.get(event_id, [])
-            if hasattr(context, "odds_trajectory"):
-                context.odds_trajectory = trajectory
-            elif isinstance(context, dict):
-                context["odds_trajectory"] = trajectory
+        pillar_contexts = contexts
+        allowed_pillar_moments = Config.PILLAR_PIPELINE_EXECUTION_MOMENTS
+        if allowed_pillar_moments:
+            pillar_contexts = [
+                context
+                for context in contexts
+                if getattr(context, "minutes_until_start", None) in allowed_pillar_moments
+            ]
+            skipped_moment_count = len(contexts) - len(pillar_contexts)
+            if skipped_moment_count:
+                logger.info(
+                    "🚫 Pillar pipeline key-moment filter skipped %s/%s events (allowed moments: %s)",
+                    skipped_moment_count,
+                    len(contexts),
+                    allowed_pillar_moments,
+                )
 
-        evaluate_and_calculate_pillars_batch(
-            events_for_pillars=contexts,
-            key_moments=key_moments,
-            event_repo=scheduler.event_repo,
-            op_event_states=oddsportal_context.event_states,
-            op_event_ids=oddsportal_context.event_ids,
-            op_data_cache=oddsportal_context.data_cache,
-            debug_mode=debug_mode,
-            enabled_pillars=enabled_pillars,
-        )
+        if pillar_contexts:
+            validated_event_ids = {
+                int(context.event_id if hasattr(context, "event_id") else context["event_id"])
+                for context in pillar_contexts
+            }
+            logger.info(
+                "📈 Loading odds trajectory for %s validated pillar event(s)",
+                len(validated_event_ids),
+            )
+            trajectory_payloads = _load_trajectory_payloads(
+                validated_event_ids,
+                key_moments,
+            )
+            for context in pillar_contexts:
+                event_id = int(context.event_id if hasattr(context, "event_id") else context["event_id"])
+                trajectory = trajectory_payloads.get(event_id, [])
+                if hasattr(context, "odds_trajectory"):
+                    context.odds_trajectory = trajectory
+                elif isinstance(context, dict):
+                    context["odds_trajectory"] = trajectory
+
+            evaluate_and_calculate_pillars_batch(
+                events_for_pillars=pillar_contexts,
+                key_moments=key_moments,
+                event_repo=scheduler.event_repo,
+                op_event_states=oddsportal_context.event_states,
+                op_event_ids=oddsportal_context.event_ids,
+                op_data_cache=oddsportal_context.data_cache,
+                debug_mode=debug_mode,
+                enabled_pillars=enabled_pillars,
+            )
 
 
 __all__ = [

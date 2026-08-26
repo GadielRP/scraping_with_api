@@ -39,7 +39,7 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
     try:
         # --- START: PRECISION ALERT GATE ---
         # Odds alerts only send at key moments 30 and -5
-        ALLOWED_ODDS_ALERT_MINUTES = {30, -5}
+        ALLOWED_ODDS_ALERT_MINUTES = {30, 5}
         if minutes_until_start not in ALLOWED_ODDS_ALERT_MINUTES:
             logger.info(f"📵 Skipping odds alert sending process for event {event_data.get('id')} at minute {minutes_until_start}; allowed minutes are {ALLOWED_ODDS_ALERT_MINUTES}")
             return False

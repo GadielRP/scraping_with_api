@@ -16,6 +16,7 @@ from infrastructure.persistence.models import (
 )
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
+from modules.competition.tracked_competitions import tracked_competition_ids
 from modules.jobs.pre_start_check_job.event_candidate_builder import (
     PreStartEventPlan,
     build_pre_start_event_candidates,
@@ -30,6 +31,10 @@ from modules.jobs.pre_start_check_job.providers.oddspapi.odds_phase import (
 )
 from modules.jobs.pre_start_check_job.providers.sofascore.odds_phase import (
     run_sofascore_pre_start_odds,
+)
+from modules.jobs.pre_start_check_job.providers.sofascore.tennis_observations import (
+    attach_stored_observations,
+    persist_snapshot_observations,
 )
 from modules.odds_ingestion.adapters.sofascore_market_adapter import (
     SofaScoreMarketAdapter,
@@ -76,11 +81,51 @@ def run_production_odds_phase(
         oddspapi_state.has_odds if oddspapi_state else "<missing mapping>",
     )
 
+    global_ts_correction = Config.ENABLE_TIMESTAMP_CORRECTION
+    restrict_timestamp_corrections = (
+        global_ts_correction
+        and Config.TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY
+    )
+    restrict_general_odds_extraction = (
+        Config.ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY
+    )
+    restrict_sofascore_odds_extraction = (
+        Config.ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY
+    )
+    restrict_oddspapi_odds_extraction = (
+        Config.ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY
+    )
+
+    tracked_ids = (
+        set(tracked_competition_ids())
+        if (
+            restrict_timestamp_corrections
+            or restrict_general_odds_extraction
+            or restrict_sofascore_odds_extraction
+            or restrict_oddspapi_odds_extraction
+        )
+        else None
+    )
+
+    event_competition_id = event_data.get("competition_id")
+    is_tracked = tracked_ids is not None and event_competition_id in tracked_ids
+
+    ts_correction_enabled = global_ts_correction
+    if restrict_timestamp_corrections and not is_tracked:
+        ts_correction_enabled = False
+
+    general_odds_extraction_competition_ids = (
+        tracked_ids if restrict_general_odds_extraction else None
+    )
+
     event_plan = build_pre_start_event_candidates(
         scheduler,
         [event_data],
         {event_id: simulated_minutes},
         source_states,
+        key_moments=key_moments,
+        timestamp_correction_enabled=ts_correction_enabled,
+        general_odds_extraction_competition_ids=general_odds_extraction_competition_ids,
     )
     event_info = event_plan.by_event_id.get(event_id)
     if event_info is None:
@@ -89,6 +134,10 @@ def run_production_odds_phase(
             "alert evaluation will receive no candidate",
             event_id,
         )
+
+    # Attach existing tennis observations and persist initial snapshot observations
+    attach_stored_observations(event_plan.candidates)
+    persist_snapshot_observations(event_plan.candidates)
 
     previous_snapshot_ids: set[int] = set()
     if (
@@ -122,6 +171,9 @@ def run_production_odds_phase(
             event_plan.candidates,
             source_states,
             debug_mode=show_persistence_report,
+            tracked_competition_ids=(
+                tracked_ids if restrict_sofascore_odds_extraction else None
+            ),
         )
         odds_response = event_info.get("odds_response") if event_info else None
         ingestion_result = event_info.get("ingestion_result") if event_info else None
@@ -162,16 +214,14 @@ def run_production_odds_phase(
 
     if enable_oddspapi:
         logger.info("  Running production Oddspapi odds processor...")
-        previous_oddspapi_toggle = getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", False)
-        Config.ENABLE_ODDSPAPI_PRE_START_ODDS = True
-        try:
-            oddspapi_summary = run_oddspapi_pre_start_odds(
-                event_plan.candidates,
-                source_states,
-                debug_mode=debug_mode,
-            )
-        finally:
-            Config.ENABLE_ODDSPAPI_PRE_START_ODDS = previous_oddspapi_toggle
+        oddspapi_summary = run_oddspapi_pre_start_odds(
+            event_plan.candidates,
+            source_states,
+            debug_mode=debug_mode,
+            tracked_competition_ids=(
+                tracked_ids if restrict_oddspapi_odds_extraction else None
+            ),
+        )
         logger.info(
             "  Oddspapi result: requests=%s ingested=%s skipped=%s failed=%s",
             oddspapi_summary.requests_attempted,
@@ -198,3 +248,4 @@ def run_production_odds_phase(
         observations=event_info.get("observations") if event_info else None,
         event_plan=event_plan,
     )
+

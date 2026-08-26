@@ -447,6 +447,7 @@ def _run_pre_start_check_simulation(
             [event_data],
             {event_id: simulated_minutes},
             source_states,
+            key_moments=key_moments,
         )
 
     if ENABLE_ALERT_PIPELINE or ENABLE_PILLAR_PIPELINE:

@@ -948,6 +948,12 @@ def evaluate_and_calculate_pillars_batch(
             _resolve_pillar_competition_id(event_context)
         )
     ]
+    if Config.PILLAR_PIPELINE_EXECUTION_MOMENTS:
+        allowed_events = [
+            event_context
+            for event_context in allowed_events
+            if getattr(event_context, "minutes_until_start", None) in Config.PILLAR_PIPELINE_EXECUTION_MOMENTS
+        ]
     skipped_count = len(events_for_pillars) - len(allowed_events)
     if skipped_count:
         logger.info(

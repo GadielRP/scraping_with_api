@@ -69,7 +69,14 @@ class JobScheduler:
             schedule.every().day.at(time_str).do(self.job_discovery2)
 
         self._setup_pre_start_jobs()
-        self._setup_t_minus_one_jobs()
+        if Config.ENABLE_PRE_START_T_MINUS_ONE_JOB:
+            self._setup_t_minus_one_jobs()
+        else:
+            logger.info(
+                "  - Critical T-%s odds job disabled via ENABLE_PRE_START_T_MINUS_ONE_JOB=false"
+                " (closing minute remains in PRE_START_ODDS_MOMENTS for as-of reconstruction)",
+                Config.PRE_START_CLOSING_ODDS_MINUTE,
+            )
 
         schedule.every().day.at("04:00").do(self.job_midnight_sync)
         schedule.every(3).days.at("05:00").do(self.job_clean_league_cache)

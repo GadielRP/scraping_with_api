@@ -92,7 +92,7 @@ class OddspapiDebugResponseWriter:
 
         logger.info(
             "Saved raw OddsPAPI response event_id=%s fixture_id=%s "
-            "endpoint=%s bookmakers=%s path=%s",
+            "endpoint=%s bookmakers=%s path= %s",
             event_id,
             fixture_id,
             endpoint_token or "unspecified",

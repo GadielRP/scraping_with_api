@@ -8,7 +8,7 @@
 
 ## 1. Runtime summary
 
-The pre-start job builds **one shared candidate plan**, then runs each provider phase independently against that plan. Shared timing eligibility is decided once by the job (`should_extract_odds`) and reused by every phase. OddspAPI can still refuse a request after that: `ODDSPAPI_PRE_START_CLOSING_ONLY` skips `/odds` at every positive minute except the closing slot (see §6.1).
+The pre-start job builds **one shared candidate plan**, then runs each provider phase independently against that plan. Shared timing eligibility is decided once by the job (`should_extract_odds`) and reused by every phase. With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` (default), OddspAPI extracts `/odds` across positive key moments ($T-120, T-30, T-5$), while the dedicated $T-1$ job is disabled via `ENABLE_PRE_START_T_MINUS_ONE_JOB=false` and its closing snapshot is reconstructed at $T-0$ via `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` (see §6.1).
 
 An event reaches a provider HTTP request only when all of these are true:
 
@@ -530,16 +530,20 @@ Security invariants:
 
 ### 6.1 Which moments actually fetch (this is the gate)
 
-Configured key moments are `PRE_START_ODDS_MOMENTS` (default `120, 30, 5, 1, 0, -5`). The main job runs `regular_pre_start_moments()` (`120, 30, 5, 0, -5`). Minute `1` is the closing slot and is ingested by `run_t_minus_one_odds_job`, not the 5-minute poll.
+Configured key moments are `PRE_START_ODDS_MOMENTS` (default `[120, 30, 5, 1, 0, -5]`). The main pre-start job runs `regular_pre_start_moments()` (`120, 30, 5, 0, -5`).
 
-`ODDSPAPI_PRE_START_CLOSING_ONLY` then decides whether OddspAPI is allowed to **request** at a given moment. Code (`odds_batch_processor.py`): skip with `oddspapi_closing_only` when the flag is on, the event is not live (`minutes > 0`), and `minutes != PRE_START_CLOSING_ODDS_MINUTE`.
+- **Minute 1 ($T-1$)**: The dedicated critical lane (`run_t_minus_one_odds_job`) is disabled by default via `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`. Minute `1` remains in `PRE_START_ODDS_MOMENTS` so that when the event reaches $T-0$, the live historical as-of engine reconstructs and persists the $T-1$ closing snapshot automatically.
+- **Positive moments ($T-120, T-30, T-5$)**: `ODDSPAPI_PRE_START_CLOSING_ONLY` (default `false`) controls positive-minute `/odds` acquisition.
 
-| Flag | T-120 / T-30 / T-5 (main job) | T-1 (T-1 job) | T-0 / T-minus-5 / live (`minutes <= 0`) |
+| Flag | T-120 / T-30 / T-5 (main job) | T-1 (critical job) | T-0 / T-minus-5 / live (`minutes <= 0`) |
 |---|---|---|---|
-| `true` (local `.env`) | **no request** (`oddspapi_closing_only`) | `/odds` via `_acquire_pre_start` | `/historical-odds` via `_acquire_live` |
-| `false` (Config default) | `/odds` via `_acquire_pre_start` at each of those moments | `/odds` via `_acquire_pre_start` | `/historical-odds` via `_acquire_live` |
+| `false` (Config default) | `/odds` via `_acquire_pre_start` at each positive moment | Skipped when `ENABLE_PRE_START_T_MINUS_ONE_JOB=false` | `/historical-odds` via `_acquire_live` + reconstructs $T-1$ and reconciles $T-120/30/5$ |
+| `true` | **no request** (`oddspapi_closing_only`) | `/odds` via `_acquire_pre_start` (if T-1 job enabled) | `/historical-odds` via `_acquire_live` |
 
-So with the flag on, OddspAPI does **not** walk the full pre-start ladder. The only positive-minute fetch is closing (T-1). Live still runs at `0`, `-5` (and any other `minutes <= 0` candidate), and still needs `oddspapi_mainline_outcome_cache` filled by that T-1 `/odds` (or an earlier `/odds` if the flag was off before).
+With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` and `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`:
+1. OddspAPI fetches `/odds` in live at $T-120, T-30, T-5$, populating `oddspapi_mainline_outcome_cache` and persisting canonical quotes and snapshots.
+2. $T-1$ is skipped in real time.
+3. At $T-0$, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs snapshots for `[120, 30, 5, 1, 0]`. Deduplication uses `source_collected_at` (the bookmaker's price change timestamp): $T-1$ is inserted for the first time, and earlier moments ($120, 30, 5$) are only appended if the bookmaker reported a price update.
 
 HTTP `/odds` is **not** filtered by market key. The client sends `fixtureId`, `bookmakers`, `oddsFormat=decimal`, `language`, `verbosity=3`. Which markets survive later is mapping + persist policy. `ODDSPAPI_DEFAULT_MARKET_KEYS` is a discovery default, not this persist allowlist.
 
@@ -560,7 +564,7 @@ Independent of `CLOSING_ONLY` (the skip does not apply to live).
 2. Call `/historical-odds` only (no live `/odds`).
 3. When `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS=true` (default), convert the canonical event start (stored as Mexico-local naive time despite the legacy `start_time_utc` name) to UTC and pass it as the inclusive historical-current cutoff. Opening/current normalization ignores every tick with `createdAt > kickoff`. With the toggle disabled, no cutoff is passed and selection returns to the unbounded latest tick.
 4. Ingest with `use_mainline_cache=True` so choices can be tagged `mainLine` from cache.
-5. If `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` is on, reconstructed key-moment prices for all configured non-negative moments (e.g. T-120, T-30, T-5, T-1, T-0) travel as `momentQuotes` and become extra snapshot rows with target `collected_at = start_time - moment`. Their own per-moment `as-of` targets remain independent from the kickoff cutoff.
+5. If `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` is on (default `true`), reconstructed key-moment prices for all configured non-negative moments (e.g. T-120, T-30, T-5, T-1, T-0) travel as `momentQuotes`. In `MarketRepository.save_canonical_bookmaker_batches`, snapshot deduplication checks `_existing_moment_snapshot_source_keys`: if a snapshot exists at that theoretical moment and its `source_collected_at` matches the bookmaker's `createdAt`, it is skipped; if the bookmaker changed the price, a new snapshot row is recorded.
 
 Other OddspAPI skips: `ENABLE_ODDSPAPI_PRE_START_ODDS`, missing API key, missing fixture mapping, `has_odds=False`, `max_events`, 404 / empty payload, tracked-competition provider gate.
 
@@ -789,9 +793,11 @@ The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a calle
 | `ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY` | `true` | Drop every choice whose `mainLine` is not `true`. |
 | `ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES` | `false` | `false` = persist even if `active=false`. |
 | `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS` | `true` | `true` = opening/current from `/historical-odds` only consider ticks whose `createdAt <= kickoff UTC`; `false` restores unbounded latest-tick selection. |
-| `ODDSPAPI_PRE_START_CLOSING_ONLY` | `true` | `/odds` only at T-1. T-120/T-30/T-5 skip. Live `-5` still uses `/historical-odds`. |
-| `ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS` | `true` | Extra Betfair historical at T-120 **if** that moment actually requests. With `CLOSING_ONLY=true` it does not. Skipped for tracked competitions. |
-| `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | `true` | Extra snapshot ticks from reconstructed moments. |
+| `ODDSPAPI_PRE_START_CLOSING_ONLY` | `false` | `false` = `/odds` runs at T-120, T-30, T-5. `true` skips them. |
+| `ENABLE_PRE_START_T_MINUS_ONE_JOB` | `false` | `false` = disables dedicated T-1 critical scheduler job. Minute 1 stays in `PRE_START_ODDS_MOMENTS` for T-0 as-of reconstruction. |
+| `ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS` | `true` | Extra Betfair historical at T-120 **if** that moment actually requests. Skipped for tracked competitions. |
+| `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | `true` | Reconstructs and persists key moments (T-1, T-0, and reconciles T-120/30/5) from live `/historical-odds`. |
+| `PILLAR_PIPELINE_EXECUTION_MOMENTS` | `[5]` | Only executes pillar calculations for events at the specified key moments (default: `[5]`). Empty = all configured moments. |
 | `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` | `0` | `0` = no cap. |
 | `ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY` | `true` | Skip untracked competitions at the OddspAPI entrypoint. |
 
@@ -845,7 +851,10 @@ Write ownership (`market_write_policy_for_source`):
 | `ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES` | Refresh-failure backoff while stale state remains active (default 60). |
 | `ODDSPAPI_ENDPOINT_COOLDOWNS` | Key/endpoint completion-to-next-request cooldown map. |
 | `ODDSPAPI_PRE_START_WORKERS` | Configured maximum; code hard-caps effective concurrency at four and by work/key counts. |
-| `ODDSPAPI_PRE_START_CLOSING_ONLY` | OddspAPI `/odds` only at the closing minute (live still uses `/historical-odds`). |
+| `ODDSPAPI_PRE_START_CLOSING_ONLY` | When `false` (default), OddspAPI fetches `/odds` at positive moments (T-120, T-30, T-5). |
+| `ENABLE_PRE_START_T_MINUS_ONE_JOB` | When `false` (default), disables the dedicated T-1 critical scheduler job. |
+| `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | When `true` (default), reconstructs and persists all non-negative key-moment snapshots at T-0 with source dedup. |
+| `PILLAR_PIPELINE_EXECUTION_MOMENTS` | Key moments at which the pillar pipeline is allowed to execute (default `[5]`). |
 | `ODDSPAPI_PRE_START_*` | Bookmakers, exchange budgets, workers, market filters, persist-main-line-only. |
 | `ODDSPORTAL_SCRAPING_ENABLED` | OddsPortal worker on/off. |
 

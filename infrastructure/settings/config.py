@@ -270,6 +270,13 @@ class Config:
     PRE_START_ODDS_TRAJECTORY_QUERY_TIMEOUT_MS = int(
         os.getenv("PRE_START_ODDS_TRAJECTORY_QUERY_TIMEOUT_MS", "5000")
     )
+    # When false, the dedicated critical-lane T-1 job is not registered in the
+    # scheduler. PRE_START_ODDS_MOMENTS can still contain the closing minute so
+    # that ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST reconstructs it at T-0.
+    ENABLE_PRE_START_T_MINUS_ONE_JOB = _parse_env_bool(
+        "ENABLE_PRE_START_T_MINUS_ONE_JOB",
+        False,
+    )
 
     # Daily Discovery Log/Queue Configuration
     DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES = int(os.getenv('DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES', '240'))
@@ -473,7 +480,7 @@ class Config:
     )
     ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST = _parse_env_bool(
         'ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST',
-        False,
+        True,
     )
     ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS = int(
         os.getenv('ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS', '2')
@@ -595,6 +602,13 @@ class Config:
 
     # Pipeline toggles
     ENABLE_PILLAR_PIPELINE = _parse_env_bool('ENABLE_PILLAR_PIPELINE', True)
+    # Configured key moments at which the pillar pipeline is allowed to execute.
+    # When empty, pillar calculations run at all configured key moments.
+    # Defaults to [5] so pillar calculations evaluate at T-5.
+    PILLAR_PIPELINE_EXECUTION_MOMENTS = _parse_env_int_list(
+        'PILLAR_PIPELINE_EXECUTION_MOMENTS',
+        [5],
+    )
     # Per-pillar rollout switches. The global toggle above remains the
     # kill-switch for the complete pipeline; this map controls individual
     # pillar calculations without coupling infrastructure to pillar code.
