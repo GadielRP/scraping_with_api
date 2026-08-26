@@ -26,7 +26,7 @@ from modules.pillars.pillar_2_side_market.models import (
 # Optional explicit target override for P2.  Keep this as ``None`` to retain
 # the default behavior: select the most recent available configured minute
 # (the numerically smallest minute, e.g. -5 when both 0 and -5 are present).
-P2_HARDCODED_TARGET_MINUTE: int | None = 0
+P2_HARDCODED_TARGET_MINUTE: int | None = None
 P2_TARGET_MINUTES = frozenset({120, 30, 5, 1, 0, -5})
 FT_PERIODS = frozenset({"full time", "full time including overtime"})
 FIRST_HALF_PERIODS = frozenset({"1st half"})
