@@ -108,6 +108,26 @@ def _parse_env_choice(env_name, default_value, allowed_values):
     return value
 
 
+def _parse_pillar_toggle_map(
+    env_prefix="PILLAR_PIPELINE",
+    pillar_keys=("pillar_1", "pillar_2", "pillar_4", "pillar_5"),
+):
+    """Build the enabled-pillar map from explicit environment toggles.
+
+    The public configuration remains centralized while the pipeline receives
+    a stable, extensible map instead of importing one setting per pillar.
+    Each key defaults to enabled so adding a new pillar does not silently
+    disable it until its rollout toggle is configured.
+    """
+    return {
+        pillar_key: _parse_env_bool(
+            f"{env_prefix}_{pillar_key.upper()}_ENABLED",
+            True,
+        )
+        for pillar_key in pillar_keys
+    }
+
+
 def _parse_env_float_map(env_name, default_value=None):
     """Parse a comma-separated ``endpoint=seconds`` configuration map."""
     parsed = {
@@ -575,6 +595,10 @@ class Config:
 
     # Pipeline toggles
     ENABLE_PILLAR_PIPELINE = _parse_env_bool('ENABLE_PILLAR_PIPELINE', True)
+    # Per-pillar rollout switches. The global toggle above remains the
+    # kill-switch for the complete pipeline; this map controls individual
+    # pillar calculations without coupling infrastructure to pillar code.
+    PILLAR_PIPELINE_ENABLED_PILLARS = _parse_pillar_toggle_map()
     ENABLE_LEGACY_ALERT_PIPELINE = _parse_env_bool('ENABLE_LEGACY_ALERT_PIPELINE', True)
     PILLAR_MINING_ENABLED = _parse_env_bool('PILLAR_MINING_ENABLED', True)
     PILLAR_MINING_STATUS_MODE = _parse_env_choice(

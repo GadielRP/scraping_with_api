@@ -459,3 +459,65 @@ def test_mining_failure_does_not_prevent_later_pillars(monkeypatch, caplog) -> N
     assert result is not None
     assert p4_calls == [True]
     assert "Pillar mining persistence failed" in caplog.text
+
+
+@pytest.mark.parametrize("disabled_pillar", ["pillar_2", "pillar_4", "pillar_5"])
+def test_individual_pillar_toggles_skip_only_selected_calculation(
+    monkeypatch,
+    disabled_pillar,
+) -> None:
+    event_context = _event_context()
+    event_context.odds_trajectory = []
+    calls = []
+
+    monkeypatch.setattr(
+        pillar_pipeline.Config,
+        "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS",
+        False,
+    )
+    monkeypatch.setattr(
+        pillar_pipeline,
+        "calculate_pillar_2",
+        lambda **_kwargs: calls.append("pillar_2") or {
+            "P2_STATUS": "INSUFFICIENT_DATA",
+            "P2_TARGET_MINUTE": 5,
+        },
+    )
+    monkeypatch.setattr(
+        pillar_pipeline,
+        "calculate_pillar_4",
+        lambda **_kwargs: calls.append("pillar_4") or {
+            "P4_STATUS": "INSUFFICIENT_DATA",
+        },
+    )
+    monkeypatch.setattr(
+        pillar_pipeline,
+        "calculate_pillar_5",
+        lambda **_kwargs: calls.append("pillar_5") or {
+            "P5_STATUS": "INSUFFICIENT_DATA",
+            "P5_VALID": False,
+            "P5_DIRECTION": "NONE",
+            "P5": 0.0,
+            "P5_STRENGTH": "NONE",
+        },
+    )
+
+    enabled_pillars = {
+        "pillar_1": False,
+        "pillar_2": disabled_pillar != "pillar_2",
+        "pillar_4": disabled_pillar != "pillar_4",
+        "pillar_5": disabled_pillar != "pillar_5",
+    }
+
+    result = pillar_pipeline.EventPillarProcessor(
+        event_repo=object(),
+        enabled_pillars=enabled_pillars,
+    ).process_event(event_context)
+
+    assert result is not None
+    assert calls == [
+        pillar_key
+        for pillar_key in ("pillar_2", "pillar_4", "pillar_5")
+        if pillar_key != disabled_pillar
+    ]
+    assert result[disabled_pillar] is None

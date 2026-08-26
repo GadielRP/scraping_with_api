@@ -58,6 +58,45 @@ def test_pillar_pipeline_uses_direct_serial_execution(monkeypatch):
     assert processed == [1, 2]
 
 
+def test_pillar_pipeline_uses_configured_individual_toggles(monkeypatch):
+    captured = {}
+
+    class CapturingProcessor:
+        def __init__(self, *, enabled_pillars, **_kwargs):
+            captured["enabled_pillars"] = enabled_pillars
+
+        def process_event(self, payload):
+            captured.setdefault("processed", []).append(payload["id"])
+
+    monkeypatch.setattr(Config, "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS", False)
+    monkeypatch.setattr(Config, "PILLAR_PIPELINE_WORKERS", 1)
+    monkeypatch.setattr(
+        Config,
+        "PILLAR_PIPELINE_ENABLED_PILLARS",
+        {
+            "pillar_1": True,
+            "pillar_2": False,
+            "pillar_4": True,
+            "pillar_5": False,
+        },
+    )
+    monkeypatch.setattr(pillar_pipeline, "EventPillarProcessor", CapturingProcessor)
+
+    pillar_pipeline.evaluate_and_calculate_pillars_batch(
+        [{"id": 1, "event_data": {"competition_id": 145}}],
+        [],
+        SimpleNamespace(),
+    )
+
+    assert captured["enabled_pillars"] == {
+        "pillar_1": True,
+        "pillar_2": False,
+        "pillar_4": True,
+        "pillar_5": False,
+    }
+    assert captured["processed"] == [1]
+
+
 def test_pillar_pipeline_skips_untracked_competition_before_pillar_flow(monkeypatch):
     monkeypatch.setattr(Config, "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS", True)
     processor = pillar_pipeline.EventPillarProcessor(event_repo=SimpleNamespace())

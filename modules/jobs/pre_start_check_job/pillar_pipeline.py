@@ -972,7 +972,11 @@ def evaluate_and_calculate_pillars_batch(
     processor = EventPillarProcessor(
         event_repo=event_repo,
         debug_mode=debug_mode,
-        enabled_pillars=enabled_pillars,
+        enabled_pillars=(
+            Config.PILLAR_PIPELINE_ENABLED_PILLARS
+            if enabled_pillars is None
+            else enabled_pillars
+        ),
         mining_service=mining_service,
     )
 
