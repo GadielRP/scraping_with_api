@@ -23,7 +23,7 @@ class TrackedCompetition:
 _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
     TrackedCompetition(176, "NBA", "Basketball"),
     TrackedCompetition(318, "Brasileirao Serie A", "Football"),
-    TrackedCompetition(129, "MLB", "Baseball"),
+    #TrackedCompetition(129, "MLB", "Baseball"),
     TrackedCompetition(167, "LaLiga", "Football"),
     TrackedCompetition(88, "Serie A", "Football"),
     TrackedCompetition(168, "Premier League", "Football"),
