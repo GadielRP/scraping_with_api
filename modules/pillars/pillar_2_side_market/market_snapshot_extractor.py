@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
+from infrastructure.settings import Config
 from modules.pillars.odds_trajectory_context import (
     BookieOddsTrajectory,
     ChoiceOddsTrajectory,
@@ -26,8 +27,14 @@ from modules.pillars.pillar_2_side_market.models import (
 # Optional explicit target override for P2.  Keep this as ``None`` to retain
 # the default behavior: select the most recent available configured minute
 # (the numerically smallest minute, e.g. -5 when both 0 and -5 are present).
-P2_HARDCODED_TARGET_MINUTE: int | None = None
-P2_TARGET_MINUTES = frozenset({120, 30, 5, 1, 0, -5})
+P2_HARDCODED_TARGET_MINUTE: int | None = 5
+
+
+def get_p2_target_minutes() -> frozenset[int]:
+    """Return the configured pre-start target minutes for P2 evaluation."""
+    return frozenset(Config.PRE_START_ODDS_MOMENTS)
+
+
 FT_PERIODS = frozenset({"full time", "full time including overtime"})
 FIRST_HALF_PERIODS = frozenset({"1st half"})
 PINNACLE_BOOKIE_ID = 302
@@ -357,10 +364,11 @@ def extract_p2_market_snapshot(context: OddsTrajectoryContext) -> P2ExtractionRe
         # back to another minute when the requested target is unavailable.
         target_minute = int(P2_HARDCODED_TARGET_MINUTE)
     else:
+        target_minutes = get_p2_target_minutes()
         configured_minutes = [
             minute
             for minute in context.target_minutes_present
-            if minute in P2_TARGET_MINUTES
+            if minute in target_minutes
         ]
         if not configured_minutes:
             return P2ExtractionResult(snapshot=None, target_minute=None)
