@@ -24,6 +24,9 @@ class OddspapiPreStartCandidate:
     is_live: bool = False
     competition_id: int | None = None
     start_time_utc: datetime | None = None
+    home_participant: str | None = None
+    away_participant: str | None = None
+    event_label: str | None = None
 
 
 def _canonical_event_id(event_info: dict) -> int | None:
@@ -58,6 +61,27 @@ def select_oddspapi_pre_start_candidates(
         source_state = (source_states or {}).get(event_id, {}).get(ODDSPAPI_SOURCE)
         minutes_until_start = event_info.get("minutes_until_start")
         event_data = event_info.get("event_data") or {}
+        home_participant = (
+            event_data.get("home_team")
+            or event_data.get("home_participant")
+            or event_info.get("home_team")
+            or event_info.get("home_participant")
+        )
+        away_participant = (
+            event_data.get("away_team")
+            or event_data.get("away_participant")
+            or event_info.get("away_team")
+            or event_info.get("away_participant")
+        )
+        event_label = (
+            event_data.get("label")
+            or event_data.get("slug")
+            or event_info.get("label")
+            or event_info.get("slug")
+        )
+        if not event_label and home_participant and away_participant:
+            event_label = f"{home_participant} vs {away_participant}"
+
         candidates.append(
             OddspapiPreStartCandidate(
                 event_id=event_id,
@@ -68,6 +92,9 @@ def select_oddspapi_pre_start_candidates(
                 is_live=_is_live_moment(minutes_until_start),
                 competition_id=event_data.get("competition_id"),
                 start_time_utc=event_data.get("start_time_utc"),
+                home_participant=home_participant,
+                away_participant=away_participant,
+                event_label=event_label,
             )
         )
     return candidates

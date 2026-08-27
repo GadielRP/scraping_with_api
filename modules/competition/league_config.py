@@ -348,6 +348,36 @@ BRASILEIRAO_CONFIG = LeagueConfig(
     standings_grouping="single_table",
 )
 
+LIGA_PROFESIONAL_DE_ARGENTINA_APERTURA_CONFIG = LeagueConfig(
+    code="liga_profesional_de_argentina_apertura",
+    display_name="Liga Profesional de Argentina Apertura",
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=155,
+        source_tournament_id=143625,
+    ),
+    collected=True,
+    standings_method="football_3_1_0",
+    grouping_method="league_wide",
+    number_of_teams=28,
+    total_regular_season_games=27,
+    standings_grouping="single_table",
+)
+
+LIGA_PROFESIONAL_DE_ARGENTINA_CLAUSURA_CONFIG = LeagueConfig(
+    code="liga_profesional_de_argentina_clausura",
+    display_name="Liga Profesional de Argentina Clausura",
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=155,
+        source_tournament_id=156467,
+    ),
+    collected=True,
+    standings_method="football_3_1_0",
+    grouping_method="league_wide",
+    number_of_teams=28,
+    total_regular_season_games=27,
+    standings_grouping="single_table",
+)
+
 LEAGUE_CONFIGS: Tuple[LeagueConfig, ...] = (
     NBA_CONFIG,
     LALIGA_CONFIG,

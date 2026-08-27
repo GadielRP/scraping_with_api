@@ -37,6 +37,23 @@ class OddspapiDebugResponseWriter:
         return cls._filename_token(label, fallback="endpoint")
 
     @classmethod
+    def _event_folder_token(
+        cls,
+        event_id: int,
+        *,
+        home_participant: str | None = None,
+        away_participant: str | None = None,
+        event_label: str | None = None,
+    ) -> str:
+        home_token = cls._filename_token(home_participant, fallback="") if home_participant else ""
+        away_token = cls._filename_token(away_participant, fallback="") if away_participant else ""
+        if home_token and away_token:
+            return f"{event_id}_{home_token}_{away_token}"
+        if event_label:
+            return f"{event_id}_{cls._filename_token(event_label, fallback='event')}"
+        return str(event_id)
+
+    @classmethod
     def save(
         cls,
         *,
@@ -46,11 +63,23 @@ class OddspapiDebugResponseWriter:
         payload: dict,
         endpoint: str | None = None,
         minutes_until_start: int | None = None,
+        home_participant: str | None = None,
+        away_participant: str | None = None,
+        event_label: str | None = None,
+        event_folder: str | None = None,
     ) -> Path | None:
         """Save the raw provider JSON without affecting ingestion on failure."""
 
         if not isinstance(payload, dict):
             return None
+
+        folder_name = event_folder or cls._event_folder_token(
+            event_id,
+            home_participant=home_participant,
+            away_participant=away_participant,
+            event_label=event_label,
+        )
+        target_directory = cls.OUTPUT_DIRECTORY / folder_name
 
         bookmaker_tokens = [
             cls._filename_token(bookmaker, fallback="bookmaker")
@@ -68,7 +97,7 @@ class OddspapiDebugResponseWriter:
             filename_parts.append(endpoint_token)
         filename_parts.append(bookmakers_token)
         filename = "_".join(filename_parts) + ".json"
-        path = cls.OUTPUT_DIRECTORY / filename
+        path = target_directory / filename
 
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

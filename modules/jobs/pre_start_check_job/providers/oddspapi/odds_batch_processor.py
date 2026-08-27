@@ -850,6 +850,9 @@ class OddspapiPreStartOddsBatchProcessor:
                                 None,
                             ),
                             minutes_until_start=candidate.minutes_until_start,
+                            home_participant=candidate.home_participant,
+                            away_participant=candidate.away_participant,
+                            event_label=candidate.event_label,
                         )
                     self._copy_acquisition_stats(
                         event_result,

@@ -61,6 +61,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
+      - ./debug:/app/debug
 
     # Chromium/Playwright processes share /dev/shm. This is independent from
     # PostgreSQL's limit above and also does not reserve 1 GB up front.
