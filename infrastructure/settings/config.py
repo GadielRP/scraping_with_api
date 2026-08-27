@@ -482,6 +482,13 @@ class Config:
         'ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST',
         True,
     )
+    # When true, saves /odds raw responses to debug/oddspapi_odds_responses
+    # for all non-live runs without requiring global_debug_mode and without
+    # storing /historical-odds responses.
+    ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES = _parse_env_bool(
+        'ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES',
+        True,
+    )
     ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS = int(
         os.getenv('ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS', '2')
     )

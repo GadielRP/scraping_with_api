@@ -27,7 +27,7 @@ from modules.pillars.pillar_2_side_market.models import (
 # Optional explicit target override for P2.  Keep this as ``None`` to retain
 # the default behavior: select the most recent available configured minute
 # (the numerically smallest minute, e.g. -5 when both 0 and -5 are present).
-P2_HARDCODED_TARGET_MINUTE: int | None = 5
+P2_HARDCODED_TARGET_MINUTE: int | None = None
 
 
 def get_p2_target_minutes() -> frozenset[int]:

@@ -45,6 +45,7 @@ class OddspapiDebugResponseWriter:
         bookmakers: Iterable[str] | None,
         payload: dict,
         endpoint: str | None = None,
+        minutes_until_start: int | None = None,
     ) -> Path | None:
         """Save the raw provider JSON without affecting ingestion on failure."""
 
@@ -61,6 +62,8 @@ class OddspapiDebugResponseWriter:
             cls._filename_token(event_id, fallback="event"),
             cls._filename_token(fixture_id, fallback="fixture"),
         ]
+        if minutes_until_start is not None:
+            filename_parts.append(f"t_{minutes_until_start}")
         if endpoint_token:
             filename_parts.append(endpoint_token)
         filename_parts.append(bookmakers_token)
@@ -91,10 +94,11 @@ class OddspapiDebugResponseWriter:
             return None
 
         logger.info(
-            "Saved raw OddsPAPI response event_id=%s fixture_id=%s "
-            "endpoint=%s bookmakers=%s path= %s",
+            "Saved raw OddsPAPI response event_id=%s fixture_id=%s minutes_until_start=%s "
+            "endpoint=%s bookmakers=%s path=%s",
             event_id,
             fixture_id,
+            minutes_until_start,
             endpoint_token or "unspecified",
             ",".join(str(value) for value in bookmakers or []) or "all",
             path,

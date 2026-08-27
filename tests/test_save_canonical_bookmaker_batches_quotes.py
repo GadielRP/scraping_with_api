@@ -503,3 +503,102 @@ def test_oddspapi_live_current_uses_this_ingest_not_source_clock_order(tmp_path)
         quote = session.query(MarketChoiceQuote).one()
         assert float(quote.current_odds) == 1.628
 
+
+def test_line_shift_demotes_superseded_mainline(tmp_path):
+    manager = _make_manager(tmp_path, "mainline-demotion.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+
+    batch_line_20 = [
+        {
+            "bookie_id": bookie_id,
+            "markets": [
+                {
+                    "marketName": "Asian Handicap Full Time",
+                    "marketGroup": "Asian Handicap",
+                    "marketPeriod": "Full Time",
+                    "choiceGroup": "-2.0",
+                    "choices": [
+                        {
+                            "name": "1",
+                            "initialOdds": 1.925,
+                            "currentOdds": 1.869,
+                            "mainLine": True,
+                        },
+                        {
+                            "name": "2",
+                            "initialOdds": 1.980,
+                            "currentOdds": 2.009,
+                            "mainLine": True,
+                        },
+                    ],
+                }
+            ],
+        }
+    ]
+
+    batch_line_225 = [
+        {
+            "bookie_id": bookie_id,
+            "markets": [
+                {
+                    "marketName": "Asian Handicap Full Time",
+                    "marketGroup": "Asian Handicap",
+                    "marketPeriod": "Full Time",
+                    "choiceGroup": "-2.25",
+                    "choices": [
+                        {
+                            "name": "1",
+                            "initialOdds": 2.160,
+                            "currentOdds": 2.140,
+                            "mainLine": True,
+                        },
+                        {
+                            "name": "2",
+                            "initialOdds": 1.746,
+                            "currentOdds": 1.800,
+                            "mainLine": True,
+                        },
+                    ],
+                }
+            ],
+        }
+    ]
+
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager",
+        manager,
+    ):
+        # 1. Ingest initial line at -2.0 (mainLine: True)
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batch_line_20, source="oddspapi"
+        )
+
+        with manager.get_session() as session:
+            quotes_20 = session.query(MarketChoiceQuote).all()
+            assert len(quotes_20) == 2
+            assert all(q.main_line is True for q in quotes_20)
+
+        # 2. Ingest line shift at -2.25 (mainLine: True)
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batch_line_225, source="oddspapi"
+        )
+
+        with manager.get_session() as session:
+            markets = session.query(Market).all()
+            assert len(markets) == 2
+
+            m_20 = next(m for m in markets if m.choice_group == "-2.0")
+            m_225 = next(m for m in markets if m.choice_group == "-2.25")
+
+            quotes_20 = [
+                q for c in m_20.choices for q in c.quotes if q.source == "oddspapi"
+            ]
+            quotes_225 = [
+                q for c in m_225.choices for q in c.quotes if q.source == "oddspapi"
+            ]
+
+            # Obsolete line -2.0 must be demoted
+            assert all(q.main_line is False for q in quotes_20)
+            # New active line -2.25 must be mainline True
+            assert all(q.main_line is True for q in quotes_225)
+

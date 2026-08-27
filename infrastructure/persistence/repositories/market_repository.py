@@ -434,7 +434,7 @@ class MarketRepository:
             # from a NULL-side-only map and not from the frozen choice mirror.
             existing_choice_ids = [
                 choice.choice_id
-                for market, _ in prepared_markets
+                for market in market_index.values()
                 for choice in market.choices
                 if choice.choice_id is not None
             ]
@@ -533,6 +533,7 @@ class MarketRepository:
 
                     prepared_choices.append(
                         (
+                            market,
                             choice,
                             choice_data,
                             current_odds,
@@ -553,7 +554,7 @@ class MarketRepository:
             has_moment_quotes = any(
                 isinstance(choice_data.get("momentQuotes"), list)
                 and choice_data.get("momentQuotes")
-                for _, choice_data, _, _, _ in prepared_choices
+                for _, _, choice_data, _, _, _ in prepared_choices
             )
             if has_moment_quotes:
                 existing_snapshot_keys = MarketRepository._existing_snapshot_keys(
@@ -568,7 +569,7 @@ class MarketRepository:
                         source=source,
                     )
                 )
-            for choice, choice_data, current_odds, initial_odds, initial_was_set in prepared_choices:
+            for market, choice, choice_data, current_odds, initial_odds, initial_was_set in prepared_choices:
                 initial_source_collected_at = MarketRepository._parse_source_datetime(
                     choice_data.get("initialChangedAt"),
                     convert_to_project_timezone=uses_oddspapi_source_time,
@@ -594,6 +595,14 @@ class MarketRepository:
                     current_odds=current_odds,
                     current_captured_at=collected_at,
                 )
+
+                if choice_data.get("mainLine") is True:
+                    MarketRepository._demote_superseded_mainlines(
+                        market=market,
+                        market_index=market_index,
+                        quote_index=quote_index,
+                        source=source,
+                    )
 
                 exchange_quotes = choice_data.get("exchangeQuotes")
                 explicit_exchange_quotes = {
@@ -839,6 +848,39 @@ class MarketRepository:
         if current_odds is None and initial_captured_at is not None:
             return initial_captured_at
         return current_captured_at
+
+    @staticmethod
+    def _demote_superseded_mainlines(
+        *,
+        market: Market,
+        market_index: dict,
+        quote_index: dict,
+        source: str,
+    ) -> None:
+        """Demote main_line to False on previous lines for the same bookie/market/period."""
+        if market.choice_group is None:
+            return
+
+        for other_market in market_index.values():
+            if other_market is market or (
+                other_market.market_id is not None
+                and other_market.market_id == market.market_id
+            ):
+                continue
+            if (
+                other_market.bookie_id == market.bookie_id
+                and other_market.market_name == market.market_name
+                and other_market.market_period == market.market_period
+                and other_market.is_live == market.is_live
+                and other_market.choice_group != market.choice_group
+            ):
+                for other_choice in other_market.choices:
+                    if other_choice.choice_id is None:
+                        continue
+                    for (c_id, src, _, _), quote in quote_index.items():
+                        if c_id == other_choice.choice_id and src == source:
+                            if getattr(quote, "main_line", None) is True:
+                                quote.main_line = False
 
     @staticmethod
     def _upsert_choice_quotes(

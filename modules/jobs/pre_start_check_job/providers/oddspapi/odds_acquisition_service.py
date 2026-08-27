@@ -12,6 +12,7 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
 from infrastructure.persistence.repositories.oddspapi_mainline_cache_repository import (
     OddspapiMainlineCacheRepository,
 )
+from infrastructure.settings.config import Config
 from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.odds_ingestion.fetch_result import OddsFetchResult
 
@@ -333,7 +334,10 @@ class OddspapiPreStartOddsAcquisitionService:
             if filter_post_kickoff_ticks
             else None
         )
-        capture_raw = debug_mode
+        save_odds_responses = getattr(
+            Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False
+        )
+        capture_raw = debug_mode and not save_odds_responses
         if regular:
             requested_bookmakers.update(regular)
             result.http_requests_attempted += 1
@@ -451,6 +455,11 @@ class OddspapiPreStartOddsAcquisitionService:
         current_payload: dict | None = None
         current_missing = False
 
+        save_odds_responses = getattr(
+            Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False
+        )
+        capture_current_raw = debug_mode or save_odds_responses
+
         if combined and current_odds_available:
             requested_bookmakers.update(combined)
             result.http_requests_attempted += 1
@@ -459,7 +468,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 bookmakers=combined,
                 endpoint=ODDSPAPI_CURRENT_ODDS_ENDPOINT,
                 source_sport_id=source_sport_id,
-                capture_raw_response=debug_mode,
+                capture_raw_response=capture_current_raw,
             )
             current_missing = current_result.endpoint_missing
             current_payload = current_result.payload

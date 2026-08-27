@@ -814,11 +814,27 @@ class OddspapiPreStartOddsBatchProcessor:
                             False,
                         ),
                     )
-                    if debug_mode and getattr(
+                    save_odds_responses = getattr(
+                        Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False
+                    )
+                    should_save_debug_response = False
+                    if getattr(
                         acquisition_result,
                         "debug_raw_payload",
                         None,
                     ) is not None:
+                        if save_odds_responses:
+                            endpoint = getattr(
+                                acquisition_result,
+                                "debug_endpoint",
+                                None,
+                            )
+                            if endpoint == ODDSPAPI_CURRENT_ODDS_ENDPOINT:
+                                should_save_debug_response = True
+                        elif debug_mode:
+                            should_save_debug_response = True
+
+                    if should_save_debug_response:
                         OddspapiDebugResponseWriter.save(
                             event_id=candidate.event_id,
                             fixture_id=candidate.fixture_id,
@@ -833,6 +849,7 @@ class OddspapiPreStartOddsBatchProcessor:
                                 "debug_endpoint",
                                 None,
                             ),
+                            minutes_until_start=candidate.minutes_until_start,
                         )
                     self._copy_acquisition_stats(
                         event_result,

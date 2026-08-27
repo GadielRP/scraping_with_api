@@ -94,51 +94,16 @@ class OddspapiMainlineCacheRepository:
         if not rows:
             return 0
 
+        bookmaker_slugs = {row["bookmaker_slug"] for row in rows}
+
         try:
             with db_manager.get_session() as session:
-                dialect_name = session.get_bind().dialect.name
-                if dialect_name in {"postgresql", "sqlite"}:
-                    if dialect_name == "postgresql":
-                        from sqlalchemy.dialects.postgresql import insert
-                    else:
-                        from sqlalchemy.dialects.sqlite import insert
+                session.query(OddspapiMainlineOutcomeCache).filter(
+                    OddspapiMainlineOutcomeCache.event_id == int(event_id),
+                    OddspapiMainlineOutcomeCache.bookmaker_slug.in_(list(bookmaker_slugs)),
+                ).delete(synchronize_session=False)
 
-                    statement = insert(OddspapiMainlineOutcomeCache).values(rows)
-                    statement = statement.on_conflict_do_update(
-                        index_elements=list(
-                            OddspapiMainlineCacheRepository._UNIQUE_INDEX_ELEMENTS
-                        ),
-                        set_={
-                            "fixture_id": statement.excluded.fixture_id,
-                            "source_sport_id": statement.excluded.source_sport_id,
-                            "canonical_market_key": (
-                                statement.excluded.canonical_market_key
-                            ),
-                            "is_exchange": statement.excluded.is_exchange,
-                            "captured_at": statement.excluded.captured_at,
-                        },
-                    )
-                    session.execute(statement)
-                else:
-                    for row in rows:
-                        existing = (
-                            session.query(OddspapiMainlineOutcomeCache)
-                            .filter_by(
-                                event_id=row["event_id"],
-                                bookmaker_slug=row["bookmaker_slug"],
-                                source_market_id=row["source_market_id"],
-                                source_outcome_id=row["source_outcome_id"],
-                            )
-                            .one_or_none()
-                        )
-                        if existing is None:
-                            session.add(OddspapiMainlineOutcomeCache(**row))
-                            continue
-                        existing.fixture_id = row["fixture_id"]
-                        existing.source_sport_id = row["source_sport_id"]
-                        existing.canonical_market_key = row["canonical_market_key"]
-                        existing.is_exchange = row["is_exchange"]
-                        existing.captured_at = row["captured_at"]
+                session.add_all([OddspapiMainlineOutcomeCache(**row) for row in rows])
             return len(rows)
         except Exception as exc:
             logger.error(
