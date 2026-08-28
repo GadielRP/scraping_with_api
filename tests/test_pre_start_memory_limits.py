@@ -32,7 +32,9 @@ def test_alert_pipeline_uses_direct_serial_execution(monkeypatch):
 
 def test_pillar_pipeline_uses_direct_serial_execution(monkeypatch):
     processed = []
+    monkeypatch.setattr(Config, "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS", False)
     monkeypatch.setattr(Config, "PILLAR_PIPELINE_WORKERS", 1)
+    monkeypatch.setattr(Config, "PILLAR_PIPELINE_EXECUTION_MOMENTS", [])
     monkeypatch.setattr(
         pillar_pipeline.EventPillarProcessor,
         "process_event",
@@ -70,12 +72,14 @@ def test_pillar_pipeline_uses_configured_individual_toggles(monkeypatch):
 
     monkeypatch.setattr(Config, "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS", False)
     monkeypatch.setattr(Config, "PILLAR_PIPELINE_WORKERS", 1)
+    monkeypatch.setattr(Config, "PILLAR_PIPELINE_EXECUTION_MOMENTS", [])
     monkeypatch.setattr(
         Config,
         "PILLAR_PIPELINE_ENABLED_PILLARS",
         {
             "pillar_1": True,
             "pillar_2": False,
+            "pillar_3": True,
             "pillar_4": True,
             "pillar_5": False,
         },
@@ -91,6 +95,7 @@ def test_pillar_pipeline_uses_configured_individual_toggles(monkeypatch):
     assert captured["enabled_pillars"] == {
         "pillar_1": True,
         "pillar_2": False,
+        "pillar_3": True,
         "pillar_4": True,
         "pillar_5": False,
     }
@@ -109,7 +114,14 @@ def test_pillar_pipeline_skips_untracked_competition_before_pillar_flow(monkeypa
 
 def test_pillar_pipeline_batch_filters_untracked_competitions(monkeypatch):
     processed = []
+    monkeypatch.setattr(Config, "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS", True)
+    monkeypatch.setattr(
+        pillar_pipeline,
+        "is_tracked_competition",
+        lambda competition_id: competition_id == 145,
+    )
     monkeypatch.setattr(Config, "PILLAR_PIPELINE_WORKERS", 1)
+    monkeypatch.setattr(Config, "PILLAR_PIPELINE_EXECUTION_MOMENTS", [])
     monkeypatch.setattr(
         pillar_pipeline.EventPillarProcessor,
         "process_event",

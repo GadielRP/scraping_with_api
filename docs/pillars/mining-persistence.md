@@ -199,6 +199,35 @@ GROUP BY r.sport, r.producer_status, r.diagnostics->>'reason'
 ORDER BY observations DESC;
 ```
 
+### 6.4 Distribución de `TOTALS_MARKET_FULL_TIME_EDGE` de P3
+
+P3 publica `PERIOD_SCOPE=FULL_TIME` para declarar el enfoque calculado y
+`PERIOD` para conservar el período canónico realmente resuelto. Sus métricas
+derivadas incorporan el token del scope, por ejemplo
+`PIN_TOTAL_FULL_TIME_EDGE`, `TOTAL_FULL_TIME_LINE_GAP` y
+`P3_FULL_TIME_DIRECTION_RAW`. Cada scope futuro genera su vocabulario desde la
+misma definición de período, por lo que las consultas deben filtrar el nombre
+periodizado y no una clave genérica.
+
+```sql
+SELECT
+    r.sport,
+    r.competition_id,
+    u.market_period,
+    r.target_minute,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY m.numeric_value) AS median_edge,
+    percentile_cont(0.9) WITHIN GROUP (ORDER BY m.numeric_value) AS p90_edge,
+    count(*) AS observations
+FROM pillar_mining_metric_values m
+JOIN pillar_mining_units u ON u.id = m.unit_id
+JOIN pillar_mining_runs r ON r.id = u.run_id
+WHERE r.pillar_id = 'pillar_3_totals_market_context'
+  AND u.unit_type = 'module'
+  AND m.metric_name = 'TOTALS_MARKET_FULL_TIME_EDGE'
+  AND r.canonical_status = 'SUCCESS'
+GROUP BY r.sport, r.competition_id, u.market_period, r.target_minute;
+```
+
 No se debe calcular hit rate de cualquier `direction` sin mirar `signal_axis`.
 `SIDE` puede contrastarse con ganador; `IMPLIED_PROBABILITY_MOVE` describe un
 movimiento de mercado y no es automáticamente una predicción del partido.
@@ -210,10 +239,11 @@ movimiento de mercado y no es automáticamente una predicción del partido.
 | P1 Side | `side` | summary → M1–M7 → components |
 | P1 Totals | `totals` | summary → structural/temporal/trend layers |
 | P2 | `side_market` | summary → `p2_raw_engine` |
+| P3 | `totals_market_context_<period_key>` | summary → `p3_raw_engine` |
 | P4 | `temporal_drift` | summary → market periods → choices |
 | P5 | `exact_price_memory` | summary → exact price memory module |
 
-Solamente P2 está registrado para escritura actualmente. P4 y P5 deben exponer
+P2 y P3 están registrados para escritura actualmente. P4 y P5 deben exponer
 `bookie_id` en sus outputs antes de activar sus adaptadores. El adaptador no debe
 resolver IDs por nombre. La misma regla aplica a cualquier identidad canónica:
 si no viene del productor o del contexto, no se adivina.

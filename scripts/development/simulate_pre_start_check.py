@@ -65,6 +65,7 @@ ENABLE_ODDSPORTAL_ODDS_SIMULATION = False
 # Simulation toggles - Individual Pillars (active when ENABLE_PILLAR_PIPELINE = True)
 ENABLE_PILLAR_1 = False  # Pillar 1 - Team Structure (Side & Totals: M1-M7)
 ENABLE_PILLAR_2 = True  # Pillar 2 - Side Market RAW
+ENABLE_PILLAR_3 = True  # Pillar 3 - Totals Market / Context RAW
 ENABLE_PILLAR_4 = False  # Pillar 4 - Temporal Market Drift
 ENABLE_PILLAR_5 = False  # Pillar 5 - Exact Price Memory
 
@@ -462,6 +463,7 @@ def _run_pre_start_check_simulation(
             enabled_pillars={
                 "pillar_1": ENABLE_PILLAR_1,
                 "pillar_2": ENABLE_PILLAR_2,
+                "pillar_3": ENABLE_PILLAR_3,
                 "pillar_4": ENABLE_PILLAR_4,
                 "pillar_5": ENABLE_PILLAR_5,
             },

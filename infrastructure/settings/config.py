@@ -110,7 +110,7 @@ def _parse_env_choice(env_name, default_value, allowed_values):
 
 def _parse_pillar_toggle_map(
     env_prefix="PILLAR_PIPELINE",
-    pillar_keys=("pillar_1", "pillar_2", "pillar_4", "pillar_5"),
+    pillar_keys=("pillar_1", "pillar_2", "pillar_3", "pillar_4", "pillar_5"),
 ):
     """Build the enabled-pillar map from explicit environment toggles.
 

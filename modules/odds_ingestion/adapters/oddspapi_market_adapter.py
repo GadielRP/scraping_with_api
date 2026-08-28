@@ -12,7 +12,10 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
 from modules.oddspapi.exchange_quotes import best_exchange_quotes
 from modules.oddspapi.format_utils import format_line, normalize_source_id
 from modules.oddspapi.mainline_cache_ids import resolve_mainline_outcome_ids
-from modules.oddspapi.quote_activity import should_skip_inactive_market
+from modules.oddspapi.quote_activity import (
+    find_stale_inactive_duplicate_mainline_market_ids,
+    should_skip_inactive_market,
+)
 
 
 class OddspapiMarketAdapter:
@@ -175,6 +178,13 @@ class OddspapiMarketAdapter:
                         },
                     )
 
+            stale_mainline_market_ids = find_stale_inactive_duplicate_mainline_market_ids(
+                markets_data,
+                market_mapping_index=market_mapping_index,
+                source_sport_id=source_sport_id,
+                source=source,
+            )
+
             grouped_markets: dict[tuple, dict] = {}
             for source_market_id, market_data in OddspapiMarketAdapter._entries(markets_data):
                 if should_skip_inactive_market(
@@ -282,7 +292,9 @@ class OddspapiMarketAdapter:
                             continue
 
                         main_line = player.get("mainLine")
-                        if (
+                        if normalized_market_id in stale_mainline_market_ids:
+                            main_line = False
+                        elif (
                             main_line is None
                             and normalized_outcome_id in cached_mainline_ids
                         ):

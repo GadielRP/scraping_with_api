@@ -54,6 +54,20 @@ def _active_result() -> dict:
         "P2_STATUS": "ACTIVE",
         "status": "ACTIVE",
         "P2_TARGET_MINUTE": 5,
+        "PERIODS": {
+            "full_time": {
+                "status": "COMPLETE",
+                "missing_inputs": [],
+                "invalid_inputs": [],
+                "ambiguous_inputs": [],
+            },
+            "first_half": {
+                "status": "COMPLETE",
+                "missing_inputs": [],
+                "invalid_inputs": [],
+                "ambiguous_inputs": [],
+            },
+        },
         "modules": [{"module_id": "p2_raw_engine"}],
         **metrics,
         "raw": {
@@ -98,6 +112,7 @@ def test_active_p2_maps_hierarchy_all_metrics_and_liquidity() -> None:
     assert summary.score == Decimal("0.123456")
     assert summary.direction == "HOME"
     assert summary.is_valid is None
+    assert summary.dimensions["market_periods"] == ["FULL_TIME", "FIRST_HALF"]
     assert module.parent_unit_key == "summary"
     assert {metric.name for metric in module.metrics} == set(P2_RAW_METRIC_NAMES)
     metric_values = {metric.name: metric.value for metric in module.metrics}
@@ -142,6 +157,120 @@ def test_non_success_p2_keeps_diagnostics_without_inventing_metrics(status) -> N
     assert run.diagnostics["reason"] == result["raw"]["reason"]
 
 
+def _partial_result() -> dict:
+    result = _active_result()
+    result["P2_STATUS"] = "PARTIAL"
+    result["status"] = "PARTIAL"
+    result["PIN_1H_SIDE_EDGE"] = None
+    result["B365_1H_SIDE_EDGE"] = None
+    result["BOOK_1H_GAP"] = None
+    result["BOOK_1H_EDGE"] = None
+    result["PIN_AH_1H_EDGE"] = None
+    result["B365_AH_1H_EDGE"] = None
+    result["AH_1H_LINE_GAP"] = None
+    result["AH_1H_PRICE_GAP"] = None
+    result["BOOK_DIRECTION_1H"] = None
+    result["FT_1H_GAP"] = None
+    result["FT_1H_SAME_DIRECTION"] = None
+    result["MISSING_INPUTS"] = ["PIN_AH_1H_LINE"]
+    result["AMBIGUOUS_INPUTS"] = ["PIN_AH_1H_LINE"]
+    result["PERIODS"] = {
+        "full_time": {
+            "status": "COMPLETE",
+            "missing_inputs": [],
+            "invalid_inputs": [],
+            "ambiguous_inputs": [],
+        },
+        "first_half": {
+            "status": "AMBIGUOUS",
+            "missing_inputs": [],
+            "invalid_inputs": [],
+            "ambiguous_inputs": ["PIN_AH_1H_LINE"],
+        },
+    }
+    result["raw"]["reason"] = "first_half_incomplete"
+    result["raw"]["periods"] = result["PERIODS"]
+    result["raw"]["excluded_metrics"] = {
+        "PIN_1H_SIDE_EDGE": "first_half_incomplete",
+        "FT_1H_GAP": "cross_period_requires_both_periods",
+    }
+    result["raw"]["p2_raw_engine"]["excluded_metrics"] = result["raw"]["excluded_metrics"]
+    result["raw"]["p2_raw_engine"]["periods"] = result["PERIODS"]
+    return result
+
+
+def test_partial_p2_persists_full_time_signal_and_period_diagnostics() -> None:
+    run = P2MiningAdapter().build(_event_context(), _partial_result())
+    validate_mining_run(run)
+
+    assert run.producer_status == "PARTIAL"
+    assert run.canonical_status == "PARTIAL"
+    assert run.units[0].score == Decimal("0.123456")
+    assert run.units[0].direction == "HOME"
+    assert run.units[0].dimensions["market_periods"] == ["FULL_TIME"]
+    assert run.diagnostics["periods"]["full_time"]["status"] == "COMPLETE"
+    assert run.diagnostics["periods"]["first_half"]["status"] == "AMBIGUOUS"
+    assert run.diagnostics["excluded_metrics"]["PIN_1H_SIDE_EDGE"] == (
+        "first_half_incomplete"
+    )
+    metric_names = {metric.name for metric in run.units[1].metrics}
+    assert "SIDE_MARKET_EDGE" in metric_names
+    assert "PIN_1H_SIDE_EDGE" not in metric_names
+    assert "FT_1H_GAP" not in metric_names
+
+
+def test_insufficient_full_time_persists_period_diagnostics_without_score() -> None:
+    result = {
+        "engine_version": "p2-raw-ft-1h-periodized-v2",
+        "P2_STATUS": "INSUFFICIENT_DATA",
+        "status": "INSUFFICIENT_DATA",
+        "P2_TARGET_MINUTE": 5,
+        "modules": [],
+        "MISSING_INPUTS": [],
+        "INVALID_INPUTS": [],
+        "AMBIGUOUS_INPUTS": ["PIN_AH_FULL_TIME_LINE"],
+        "PERIODS": {
+            "full_time": {
+                "status": "AMBIGUOUS",
+                "missing_inputs": [],
+                "invalid_inputs": [],
+                "ambiguous_inputs": ["PIN_AH_FULL_TIME_LINE"],
+            },
+            "first_half": {
+                "status": "COMPLETE",
+                "missing_inputs": [],
+                "invalid_inputs": [],
+                "ambiguous_inputs": [],
+            },
+        },
+        "raw": {
+            "reason": "full_time_completeness_gate_failed",
+            "periods": {
+                "full_time": {
+                    "status": "AMBIGUOUS",
+                    "missing_inputs": [],
+                    "invalid_inputs": [],
+                    "ambiguous_inputs": ["PIN_AH_FULL_TIME_LINE"],
+                },
+                "first_half": {
+                    "status": "COMPLETE",
+                    "missing_inputs": [],
+                    "invalid_inputs": [],
+                    "ambiguous_inputs": [],
+                },
+            },
+        },
+    }
+
+    run = P2MiningAdapter().build(_event_context(), result)
+
+    assert run.canonical_status == "INSUFFICIENT"
+    assert run.units[0].score is None
+    assert run.units[0].direction is None
+    assert run.diagnostics["periods"]["full_time"]["status"] == "AMBIGUOUS"
+    assert run.diagnostics["periods"]["first_half"]["status"] == "COMPLETE"
+
+
 def test_target_slot_is_fallback_only_when_evaluation_minute_is_unknown() -> None:
     run = P2MiningAdapter().build(
         _event_context(evaluation_minute=None),
@@ -172,10 +301,18 @@ def test_service_is_adapter_driven_and_applies_status_modes() -> None:
     assert successful_service.persist(
         "pillar_2_side_market", _event_context(), _active_result()
     )
+    assert all_service.persist("pillar_2_side_market", _event_context(), _partial_result())
+    assert not successful_service.persist(
+        "pillar_2_side_market", _event_context(), _partial_result()
+    )
     assert not disabled_service.persist(
         "pillar_2_side_market", _event_context(), _active_result()
     )
-    assert [run.canonical_status for run in writer.runs] == ["INSUFFICIENT", "SUCCESS"]
+    assert [run.canonical_status for run in writer.runs] == [
+        "INSUFFICIENT",
+        "SUCCESS",
+        "PARTIAL",
+    ]
 
 
 def test_service_rejects_unknown_mode_and_unregistered_pillar() -> None:

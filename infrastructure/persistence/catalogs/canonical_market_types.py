@@ -315,7 +315,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         period="Full Time Including Overtime",
         family="total",
         requires_group=True,
-        trajectory=False,
+        trajectory=True,
         order=31,
         oddspapi_match={
             "market_type": {"totals"},

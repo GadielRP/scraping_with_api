@@ -9,7 +9,10 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingRepository,
 )
 from modules.oddspapi.format_utils import normalize_source_id
-from modules.oddspapi.quote_activity import should_skip_inactive_market
+from modules.oddspapi.quote_activity import (
+    find_stale_inactive_duplicate_mainline_market_ids,
+    should_skip_inactive_market,
+)
 
 
 class OddspapiMainlineOutcomeExtractor:
@@ -68,18 +71,24 @@ class OddspapiMainlineOutcomeExtractor:
             if not slug:
                 continue
             is_exchange = slug in exchange_slugs
+            markets_data = bookmaker_data.get("markets", {})
+            stale_market_ids = find_stale_inactive_duplicate_mainline_market_ids(
+                markets_data,
+                market_mapping_index=market_mapping_index,
+                source_sport_id=source_sport_id,
+                source="oddspapi",
+            )
 
-            for source_market_id, market_data in cls._entries(
-                bookmaker_data.get("markets", {})
-            ):
+            for source_market_id, market_data in cls._entries(markets_data):
                 if should_skip_inactive_market(
                     market_data,
                     require_active_quotes=require_active_quotes,
                 ):
                     continue
                 normalized_market_id = normalize_source_id(source_market_id)
-                if normalized_market_id is None:
+                if normalized_market_id is None or normalized_market_id in stale_market_ids:
                     continue
+
 
                 canonical_market_key = None
                 if market_mapping_index is not None:

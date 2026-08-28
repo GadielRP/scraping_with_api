@@ -41,7 +41,16 @@ from modules.pillars.pillar_2_side_market.run_pillar_2 import (
     ENGINE_VERSION as P2_ENGINE_VERSION,
     calculate_pillar_2,
 )
-from modules.pillars.mining.adapters import P2MiningAdapter
+from modules.pillars.pillar_3_totals_market_context.run_pillar_3 import (
+    ENGINE_VERSION as P3_ENGINE_VERSION,
+    calculate_pillar_3,
+)
+from modules.pillars.pillar_3_totals_market_context.periods import (
+    DEFAULT_P3_TOTALS_PERIOD_SCOPE,
+    derived_metric_names,
+    period_scope_from_token,
+)
+from modules.pillars.mining.adapters import P2MiningAdapter, P3MiningAdapter
 from modules.pillars.mining.service import PillarMiningService
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
@@ -123,6 +132,31 @@ def _build_p2_error_result(event_context, odds_trajectory_context, exc: Exceptio
         "error": str(exc),
         "raw": {
             "reason": "pillar_2_exception",
+            "odds_trajectory_available": getattr(odds_trajectory_context, "available", False),
+            "target_minutes_expected": getattr(odds_trajectory_context, "target_minutes_expected", []),
+            "target_minutes_present": getattr(odds_trajectory_context, "target_minutes_present", []),
+            "missing_target_minutes": getattr(odds_trajectory_context, "missing_target_minutes", []),
+        },
+    }
+
+
+def _build_p3_error_result(event_context, odds_trajectory_context, exc: Exception) -> dict:
+    return {
+        "pillar_id": "pillar_3_totals_market_context",
+        "pillar_name": "Totals Market / Context RAW",
+        "engine_version": P3_ENGINE_VERSION,
+        "event_id": getattr(event_context, "event_id", None),
+        "participants": getattr(event_context, "participants_label", None),
+        "EVENT_ID": getattr(event_context, "event_id", None),
+        "PERIOD": None,
+        "PERIOD_SCOPE": DEFAULT_P3_TOTALS_PERIOD_SCOPE.metric_token,
+        "TARGET_MINUTE": None,
+        "P3_STATUS": "ERROR",
+        "status": "ERROR",
+        "modules": [],
+        "error": str(exc),
+        "raw": {
+            "reason": "pillar_3_exception",
             "odds_trajectory_available": getattr(odds_trajectory_context, "available", False),
             "target_minutes_expected": getattr(odds_trajectory_context, "target_minutes_expected", []),
             "target_minutes_present": getattr(odds_trajectory_context, "target_minutes_present", []),
@@ -284,6 +318,10 @@ class EventPillarProcessor:
         if self.mining_service is None:
             return
 
+        target_minute = result.get("TARGET_MINUTE")
+        if target_minute is None:
+            target_minute = result.get("P2_TARGET_MINUTE")
+
         try:
             persisted = self.mining_service.persist(
                 pillar_id,
@@ -296,7 +334,7 @@ class EventPillarProcessor:
                     pillar_id,
                     event_context.event_id,
                     result.get("status"),
-                    result.get("P2_TARGET_MINUTE"),
+                    target_minute,
                     result.get("engine_version"),
                 )
         except Exception:
@@ -307,7 +345,7 @@ class EventPillarProcessor:
                 pillar_id,
                 event_context.event_id,
                 result.get("status"),
-                result.get("P2_TARGET_MINUTE"),
+                target_minute,
                 result.get("engine_version"),
             )
 
@@ -420,6 +458,54 @@ class EventPillarProcessor:
         else:
             logger.info(
                 "Pillar 2 (Side Market RAW) skipped for %s (disabled by toggle)",
+                event_context.participants_label,
+            )
+
+        p3_result = None
+        if self._is_pillar_enabled("pillar_3"):
+            try:
+                p3_result = calculate_pillar_3(
+                    event_context=event_context,
+                    odds_trajectory_context=odds_trajectory_context,
+                    debug_mode=self.debug_mode,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Error calculating P3 for event %s (%s): %s",
+                    event_id,
+                    event_context.participants_label,
+                    exc,
+                )
+                p3_result = _build_p3_error_result(
+                    event_context,
+                    odds_trajectory_context,
+                    exc,
+                )
+
+            p3_period_scope = (
+                period_scope_from_token(p3_result.get("PERIOD_SCOPE"))
+                or DEFAULT_P3_TOTALS_PERIOD_SCOPE
+            )
+            p3_metric_names = derived_metric_names(p3_period_scope)
+            logger.info(
+                "P3 calculated for %s: status=%s target_minute=%s period_scope=%s period=%s direction=%s edge=%s completeness=%s",
+                event_context.participants_label,
+                p3_result.get("P3_STATUS"),
+                p3_result.get("TARGET_MINUTE"),
+                p3_period_scope.metric_token,
+                p3_result.get("PERIOD"),
+                p3_result.get(p3_metric_names.p3_direction),
+                p3_result.get(p3_metric_names.market_edge),
+                p3_result.get(p3_metric_names.completeness),
+            )
+            self._persist_mining_result(
+                "pillar_3_totals_market_context",
+                event_context,
+                p3_result,
+            )
+        else:
+            logger.info(
+                "Pillar 3 (Totals Market / Context RAW) skipped for %s (disabled by toggle)",
                 event_context.participants_label,
             )
 
@@ -620,6 +706,7 @@ class EventPillarProcessor:
                 "pillar_1": None,
                 "pillar_1_totals": None,
                 "pillar_2": p2_result,
+                "pillar_3": p3_result,
                 "pillar_4": p4_result,
                 "pillar_5": p5_result,
             }
@@ -639,7 +726,7 @@ class EventPillarProcessor:
 
         if streak_analysis is None:
             logger.info(
-                "Pillar pipeline: no streak_analysis for event %s (%s), returning P2, P4 and P5 only",
+                "Pillar pipeline: no streak_analysis for event %s (%s), returning P2, P3, P4 and P5 only",
                 event_id,
                 participants,
             )
@@ -649,6 +736,7 @@ class EventPillarProcessor:
                 "pillar_1": None,
                 "pillar_1_totals": None,
                 "pillar_2": p2_result,
+                "pillar_3": p3_result,
                 "pillar_4": p4_result,
                 "pillar_5": p5_result,
             }
@@ -697,6 +785,7 @@ class EventPillarProcessor:
                 "pillar_1": None,
                 "pillar_1_totals": None,
                 "pillar_2": p2_result,
+                "pillar_3": p3_result,
                 "pillar_4": p4_result,
                 "pillar_5": p5_result,
             }
@@ -922,6 +1011,7 @@ class EventPillarProcessor:
                 else None
             ),
             "pillar_2": p2_result,
+            "pillar_3": p3_result,
             "pillar_4": p4_result,
             "pillar_5": p5_result,
         }
@@ -971,7 +1061,10 @@ def evaluate_and_calculate_pillars_batch(
 
     mining_service = PillarMiningService(
         PillarMiningRepository(),
-        adapters={"pillar_2_side_market": P2MiningAdapter()},
+        adapters={
+            "pillar_2_side_market": P2MiningAdapter(),
+            "pillar_3_totals_market_context": P3MiningAdapter(),
+        },
         enabled=Config.PILLAR_MINING_ENABLED,
         status_mode=Config.PILLAR_MINING_STATUS_MODE,
     )
