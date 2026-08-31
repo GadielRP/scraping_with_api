@@ -101,10 +101,7 @@ def _exchange_request(exchange_side: str) -> MarketSnapshotRequest:
             ChoiceRequest(
                 key=choice_name,
                 choice_name=choice_name,
-                input_name=f"{prefix[choice_name]}_{exchange_side.upper()}_FULL_TIME_ODDS_PRICE",
-                exchange_size_input_name=(
-                    f"{prefix[choice_name]}_{exchange_side.upper()}_FULL_TIME_EXCHANGE_SIZE"
-                ),
+                input_name=f"{prefix[choice_name]}_{exchange_side.upper()}_1X2_FULL_TIME_ODDS_PRICE",
             )
             for choice_name in ("1", "x", "2")
         ),

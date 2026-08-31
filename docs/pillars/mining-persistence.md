@@ -146,44 +146,31 @@ canónica anterior.
 
 ## 6. Lectura y queries
 
-### 6.1 Distribución de `SIDE_MARKET_EDGE`
+### 6.1 Lectura del perfil estructural de P2
+
+P2 no publica un score escalar ni una dirección global. La unidad de minería
+conserva el perfil estructural completo en `payload->'P2_SIGNAL_PROFILE'`.
 
 ```sql
 SELECT
     r.sport,
     r.evaluation_minute,
-    percentile_cont(0.5) WITHIN GROUP (ORDER BY m.numeric_value) AS median_edge,
-    percentile_cont(0.9) WITHIN GROUP (ORDER BY m.numeric_value) AS p90_edge,
+    u.payload->'P2_SIGNAL_PROFILE' AS signal_profile,
     count(*) AS observations
-FROM pillar_mining_metric_values m
-JOIN pillar_mining_units u ON u.id = m.unit_id
+FROM pillar_mining_units u
 JOIN pillar_mining_runs r ON r.id = u.run_id
 WHERE r.pillar_id = 'pillar_2_side_market'
-  AND u.unit_type = 'module'
-  AND m.metric_name = 'SIDE_MARKET_EDGE'
+  AND u.unit_type = 'summary'
   AND r.canonical_status = 'SUCCESS'
-GROUP BY r.sport, r.evaluation_minute;
+GROUP BY r.sport, r.evaluation_minute, u.payload->'P2_SIGNAL_PROFILE';
 ```
 
-### 6.2 Hit rate HOME/AWAY de P2
+### 6.2 Evaluación posterior de P2
 
-```sql
-SELECT
-    r.engine_version,
-    count(*) FILTER (
-        WHERE (u.direction = 'HOME' AND result.winner = '1')
-           OR (u.direction = 'AWAY' AND result.winner = '2')
-    )::numeric / NULLIF(count(*), 0) AS hit_rate,
-    count(*) AS evaluated
-FROM pillar_mining_runs r
-JOIN pillar_mining_units u
-  ON u.run_id = r.id AND u.unit_type = 'summary'
-JOIN results result ON result.event_id = r.event_id
-WHERE r.pillar_id = 'pillar_2_side_market'
-  AND r.canonical_status = 'SUCCESS'
-  AND u.direction IN ('HOME', 'AWAY')
-GROUP BY r.engine_version;
-```
+P2 no debe evaluarse mediante un `hit_rate` directo de la unidad resumen,
+porque no produce una predicción global. Cualquier evaluación futura debe
+seleccionar explícitamente una señal y relación dentro de
+`P2_SIGNAL_PROFILE`, y definir primero el contrato de outcome correspondiente.
 
 ### 6.3 Diagnóstico de cobertura
 
@@ -238,15 +225,16 @@ movimiento de mercado y no es automáticamente una predicción del partido.
 |---|---|---|
 | P1 Side | `side` | summary → M1–M7 → components |
 | P1 Totals | `totals` | summary → structural/temporal/trend layers |
-| P2 | `side_market` | summary → `p2_raw_engine` |
+| P2 | `side_market` | summary → `p2_signal_engine` |
 | P3 | `totals_market_context_<period_key>` | summary → `p3_raw_engine` |
 | P4 | `temporal_drift` | summary → market periods → choices |
 | P5 | `exact_price_memory` | summary → exact price memory module |
 
-P2 y P3 están registrados para escritura actualmente. P4 y P5 deben exponer
-`bookie_id` en sus outputs antes de activar sus adaptadores. El adaptador no debe
-resolver IDs por nombre. La misma regla aplica a cualquier identidad canónica:
-si no viene del productor o del contexto, no se adivina.
+Solo P2 está registrado para escritura actualmente. P1, P3, P4 y P5 quedan
+pendientes. P4 y P5 deben exponer `bookie_id` en sus outputs antes de activar
+sus adaptadores. El adaptador no debe resolver IDs por nombre. La misma regla
+aplica a cualquier identidad canónica: si no viene del productor o del contexto,
+no se adivina.
 
 Los resultados FT pueden evaluarse con `results`. Una evaluación de primer
 tiempo o de una línea totals necesita una fuente de outcome apropiada; no debe

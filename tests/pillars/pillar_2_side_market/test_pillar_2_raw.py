@@ -5,16 +5,17 @@ from datetime import datetime, timezone
 
 import pytest
 
-from modules.jobs.pre_start_check_job import pillar_pipeline
 from modules.pillars import market_snapshot_extractor
 from modules.pillars.context import CompetitionContext, EventContext, ParticipantContext
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
+from modules.pillars.pillar_2_side_market.metrics import side_edge
 from modules.pillars.pillar_2_side_market.periods import (
+    EXCHANGE_ODDS_INPUT_NAMES,
+    EXCHANGE_SIZE_TRACE_INPUT_NAMES,
     FIRST_HALF_SIDE_SCOPE,
     FULL_TIME_SIDE_SCOPE,
-    P2_SIDE_PERIOD_SCOPES,
-    optional_metric_names,
 )
+from modules.pillars.pillar_2_side_market.relations import direction, relation
 from modules.pillars.pillar_2_side_market.run_pillar_2 import calculate_pillar_2
 
 
@@ -22,8 +23,7 @@ TARGET_MINUTES = [120, 30, 5, 1, 0, -5]
 
 
 @pytest.fixture(autouse=True)
-def _use_default_target_selection_for_tests(monkeypatch) -> None:
-    """Keep unit tests independent from the production simulation override."""
+def _default_target_selection(monkeypatch) -> None:
     monkeypatch.setitem(
         market_snapshot_extractor.HARDCODED_TARGET_MINUTE_BY_FLOW,
         "pillar_2",
@@ -94,7 +94,6 @@ def _add_market(
     market_name: str,
     choice_group: str | None,
     bookie_id: int,
-    bookie_name: str,
     prices: dict[str, float],
     exchange_side: str | None = None,
     exchange_sizes: dict[str, float | None] | None = None,
@@ -111,7 +110,7 @@ def _add_market(
                 "choice_name": choice_name,
                 "choice_id": index,
                 "bookie_id": bookie_id,
-                "bookie_name": bookie_name,
+                "bookie_name": {302: "Pinnacle", 3: "bet365", 4: "Betfair"}[bookie_id],
                 "source": "oddspapi",
                 "exchange_side": exchange_side,
                 "exchange_level": 0,
@@ -133,64 +132,54 @@ def _add_market(
 def _complete_rows(
     *,
     minute: int = 5,
-    pin_1h_prices: tuple[float, float] = (2.20, 3.50),
-    b365_1h_prices: tuple[float, float] = (2.30, 3.40),
+    include_first_half: bool = True,
+    pin_ft_1x2: tuple[float, float] = (2.0, 4.0),
+    b365_ft_1x2: tuple[float, float] = (2.2, 3.3),
+    pin_ft_ah: tuple[float, float] = (1.90, 2.00),
+    b365_ft_ah: tuple[float, float] = (1.95, 1.95),
     pin_ft_ah_line: str = "-0.5",
     b365_ft_ah_line: str = "-0.5",
+    pin_1h_1x2: tuple[float, float] = (2.20, 3.50),
+    b365_1h_1x2: tuple[float, float] = (2.30, 3.40),
+    pin_1h_ah: tuple[float, float] = (1.92, 1.98),
+    b365_1h_ah: tuple[float, float] = (1.94, 1.96),
     pin_1h_ah_line: str = "-0.25",
     b365_1h_ah_line: str = "-0.25",
-    ) -> list[dict]:
+    back_prices: tuple[float, float, float] = (2.40, 3.20, 3.00),
+    lay_prices: tuple[float, float, float] = (2.50, 3.30, 3.10),
+    back_sizes: tuple[float | None, float | None, float | None] = (100, 80, 120),
+    lay_sizes: tuple[float | None, float | None, float | None] = (90, 70, 110),
+) -> list[dict]:
     rows: list[dict] = []
-    regular_markets = (
-        (
-            "1X2", "Full Time", "1X2 Full Time", None,
-            302, "Pinnacle Sports", {"1": 2.0, "2": 4.0},
-        ),
-        (
-            "1X2", "Full Time", "1X2 Full Time", None,
-            3, "bet365", {"1": 2.2, "2": 3.3},
-        ),
-        (
-            "Asian Handicap", "Full Time", "Asian Handicap Full Time",
-            pin_ft_ah_line, 302, "Pinnacle Sports", {"1": 1.90, "2": 2.00},
-        ),
-        (
-            "Asian Handicap", "Full Time", "Asian Handicap Full Time",
-            b365_ft_ah_line, 3, "bet365", {"1": 1.95, "2": 1.95},
-        ),
-        (
-            "1X2", "1st Half", "1X2 1st Half", None,
-            302, "Pinnacle Sports", {"1": pin_1h_prices[0], "2": pin_1h_prices[1]},
-        ),
-        (
-            "1X2", "1st Half", "1X2 1st Half", None,
-            3, "bet365", {"1": b365_1h_prices[0], "2": b365_1h_prices[1]},
-        ),
-        (
-            "Asian Handicap", "1st Half", "Asian Handicap 1st Half",
-            pin_1h_ah_line, 302, "Pinnacle Sports", {"1": 1.92, "2": 1.98},
-        ),
-        (
-            "Asian Handicap", "1st Half", "Asian Handicap 1st Half",
-            b365_1h_ah_line, 3, "bet365", {"1": 1.94, "2": 1.96},
-        ),
-    )
-    for market_group, period, name, line, bookie_id, bookie_name, prices in regular_markets:
+    markets = [
+        ("1X2", "Full Time", "1X2 Full Time", None, 302, pin_ft_1x2),
+        ("1X2", "Full Time", "1X2 Full Time", None, 3, b365_ft_1x2),
+        ("Asian Handicap", "Full Time", "Asian Handicap Full Time", pin_ft_ah_line, 302, pin_ft_ah),
+        ("Asian Handicap", "Full Time", "Asian Handicap Full Time", b365_ft_ah_line, 3, b365_ft_ah),
+    ]
+    if include_first_half:
+        markets.extend(
+            [
+                ("1X2", "1st Half", "1X2 1st Half", None, 302, pin_1h_1x2),
+                ("1X2", "1st Half", "1X2 1st Half", None, 3, b365_1h_1x2),
+                ("Asian Handicap", "1st Half", "Asian Handicap 1st Half", pin_1h_ah_line, 302, pin_1h_ah),
+                ("Asian Handicap", "1st Half", "Asian Handicap 1st Half", b365_1h_ah_line, 3, b365_1h_ah),
+            ]
+        )
+    for group, period, name, line, bookie_id, prices in markets:
         _add_market(
             rows,
             minute=minute,
-            market_group=market_group,
+            market_group=group,
             market_period=period,
             market_name=name,
             choice_group=line,
             bookie_id=bookie_id,
-            bookie_name=bookie_name,
-            prices=prices,
+            prices={"1": prices[0], "2": prices[1]},
         )
-
     for exchange_side, prices, sizes in (
-        ("back", {"1": 2.40, "x": 3.20, "2": 3.00}, {"1": 100.0, "x": 80.0, "2": 120.0}),
-        ("lay", {"1": 2.50, "x": 3.30, "2": 3.10}, {"1": 90.0, "x": 70.0, "2": 110.0}),
+        ("back", back_prices, back_sizes),
+        ("lay", lay_prices, lay_sizes),
     ):
         _add_market(
             rows,
@@ -200,520 +189,252 @@ def _complete_rows(
             market_name="1X2 Full Time",
             choice_group=None,
             bookie_id=4,
-            bookie_name="Betfair",
-            prices=prices,
+            prices={"1": prices[0], "x": prices[1], "2": prices[2]},
             exchange_side=exchange_side,
-            exchange_sizes=sizes,
+            exchange_sizes={"1": sizes[0], "x": sizes[1], "2": sizes[2]},
         )
     return rows
 
 
-def _calculate(rows: list[dict]) -> dict:
-    context = build_odds_trajectory_context(
-        rows,
-        target_minutes_expected=TARGET_MINUTES,
-    )
-    return calculate_pillar_2(_event_context(), context)
+def _calculate(rows: list[dict], *, debug_mode: bool = False) -> dict:
+    context = build_odds_trajectory_context(rows, target_minutes_expected=TARGET_MINUTES)
+    return calculate_pillar_2(_event_context(), context, debug_mode=debug_mode)
 
 
-def _edge(home_price: float, away_price: float) -> float:
-    home_raw = 1 / home_price
-    away_raw = 1 / away_price
-    return (home_raw - away_raw) / (home_raw + away_raw)
+def _profile(result: dict) -> dict:
+    profile = result["P2_SIGNAL_PROFILE"]
+    assert profile is not None
+    return profile
 
 
-def test_calculates_all_raw_blocks_from_one_canonical_minute() -> None:
+def _all_keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        return set(value) | {key for child in value.values() for key in _all_keys(child)}
+    if isinstance(value, list):
+        return {key for child in value for key in _all_keys(child)}
+    return set()
+
+
+def test_full_time_and_first_half_complete_produce_exact_active_contract() -> None:
     result = _calculate(_complete_rows())
-
-    pin_edge = _edge(2.0, 4.0)
-    b365_edge = _edge(2.2, 3.3)
-    book_edge = 0.5 * pin_edge + 0.5 * b365_edge
-    back_edge = _edge(2.4, 3.0)
-    lay_edge = _edge(2.5, 3.1)
-    exchange_edge = 0.5 * back_edge + 0.5 * lay_edge
+    profile = _profile(result)
 
     assert result["P2_STATUS"] == "ACTIVE"
-    assert result["P2_TARGET_MINUTE"] == 5
+    assert result["engine_version"] == "p2-signal-profile-v1"
+    assert set(profile) == {"FT", "1H", "FT_1H", "EXCHANGE", "BOOK_EXCHANGE"}
+    assert set(profile["FT"]) == {"1X2", "AH", "CROSS_MARKET"}
+    assert set(profile["FT"]["1X2"]) == {
+        "PIN_EDGE", "PIN_DIRECTION", "B365_EDGE", "B365_DIRECTION",
+        "BOOK_RELATION", "BOOK_GAP", "REP_EDGE", "DIRECTION",
+    }
+    assert profile["1H"] is not None
+    assert profile["FT_1H"] is not None
+    assert result["modules"][0]["P2_SIGNAL_PROFILE"] is profile
+    assert result["raw"] is result["modules"][0]["raw"]
+
+
+def test_full_time_complete_first_half_missing_is_partial_without_null_metric_fanout() -> None:
+    result = _calculate(_complete_rows(include_first_half=False))
+    profile = _profile(result)
+
+    assert result["P2_STATUS"] == "PARTIAL"
     assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
-    assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
-    assert result["PIN_SIDE_EDGE"] == pytest.approx(pin_edge)
-    assert result["BOOK_EDGE"] == pytest.approx(book_edge)
-    assert result["EXCHANGE_EDGE"] == pytest.approx(exchange_edge)
-    assert result["SIDE_MARKET_EDGE"] == pytest.approx(
-        0.5 * book_edge + 0.5 * exchange_edge
-    )
-    assert result["P2_DIRECTION_RAW"] == "HOME"
+    assert result["PERIODS"]["first_half"]["status"] == "INCOMPLETE"
+    assert profile["FT"] is not None
+    assert profile["1H"] is None
+    assert profile["FT_1H"] is None
+    assert result["raw"]["reason"] == "first_half_incomplete"
 
 
-    assert result["Q_COMPLETE"] == 1.0
-    assert result["BF_DRAW_LAY_FULL_TIME_EXCHANGE_SIZE"] == 70.0
-    assert result["raw"]["p2_raw_engine"]["mining_context"]["market_type"] == "1X2"
-    assert {
-        trace["target_minute"]
-        for trace in result["raw"]["p2_raw_engine"]["input_trace"].values()
-    } == {5}
-    for forbidden in ("P2_VALID", "P2_STRENGTH", "P2_CONFIDENCE", "P2_STATE"):
-        assert forbidden not in result
-
-
-def test_period_scopes_declare_full_time_required_and_first_half_optional() -> None:
-    assert FULL_TIME_SIDE_SCOPE.required is True
-    assert FIRST_HALF_SIDE_SCOPE.required is False
-    assert [scope.key for scope in P2_SIDE_PERIOD_SCOPES] == ["full_time", "first_half"]
-    assert "SIDE_MARKET_EDGE" in FULL_TIME_SIDE_SCOPE.metric_names
-    assert "PIN_1H_SIDE_EDGE" in FIRST_HALF_SIDE_SCOPE.metric_names
-    assert "FT_1H_GAP" not in FIRST_HALF_SIDE_SCOPE.metric_names
-    assert "FT_1H_GAP" in optional_metric_names()
-
-
-def test_formula_logging_is_enabled_only_in_debug_mode(caplog) -> None:
-    rows = _complete_rows()
-    context = build_odds_trajectory_context(
-        rows,
-        target_minutes_expected=TARGET_MINUTES,
-    )
-
-    caplog.set_level(logging.INFO)
-    calculate_pillar_2(_event_context(), context, debug_mode=False)
-    assert "P2_RAW_ENGINE DEBUG" not in caplog.text
-
-    caplog.clear()
-    calculate_pillar_2(_event_context(), context, debug_mode=True)
-    assert "P2_RAW_ENGINE DEBUG | PIN_SIDE_EDGE" in caplog.text
-    assert "P2_SIDE_MARKET DEBUG | Asignación de input:" in caplog.text
-
-
-def test_matches_bookmakers_by_canonical_id_not_display_name() -> None:
-    rows = _complete_rows()
-    for row in rows:
-        if row["bookie_id"] == 302:
-            row["bookie_id"] = 999
-
+def test_full_time_incomplete_is_insufficient_even_with_complete_first_half() -> None:
+    rows = [
+        row for row in _complete_rows()
+        if not (row["market_period"] == "Full Time" and row["bookie_id"] == 302 and row["market_group"] == "1X2")
+    ]
     result = _calculate(rows)
 
     assert result["P2_STATUS"] == "INSUFFICIENT_DATA"
-    assert "PIN_HOME_1X2_FULL_TIME_ODDS_PRICE" in result["MISSING_INPUTS"]
-    assert result["PERIODS"]["full_time"]["status"] == "INCOMPLETE"
-    assert "SIDE_MARKET_EDGE" not in result
+    assert result["P2_SIGNAL_PROFILE"] is None
+    assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
+    assert result["modules"] == []
 
 
-def test_does_not_fallback_when_first_half_input_is_missing_at_latest_minute() -> None:
+@pytest.mark.parametrize(
+    ("back_sizes", "lay_sizes"),
+    [
+        ((None, None, None), (None, None, None)),
+        ((100, 50, 80), (None, None, 75)),
+    ],
+)
+def test_exchange_sizes_are_nullable_traceability_only(back_sizes, lay_sizes) -> None:
+    result = _calculate(_complete_rows(back_sizes=back_sizes, lay_sizes=lay_sizes))
+
+    assert result["P2_STATUS"] == "ACTIVE"
+    expected = dict(zip(EXCHANGE_SIZE_TRACE_INPUT_NAMES, (
+        back_sizes[0], lay_sizes[0], back_sizes[1], lay_sizes[1], back_sizes[2], lay_sizes[2]
+    )))
+    for name, value in expected.items():
+        assert result["raw"]["inputs"][name] == value
+        assert name not in result["MISSING_INPUTS"]
+    assert not (set(EXCHANGE_SIZE_TRACE_INPUT_NAMES) & _all_keys(_profile(result)))
+
+
+def test_exchange_sizes_do_not_change_signal_profile() -> None:
+    small = _calculate(_complete_rows(back_sizes=(1, 2, 3), lay_sizes=(4, 5, 6)))
+    large = _calculate(_complete_rows(back_sizes=(10_000, 20_000, 30_000), lay_sizes=(40_000, 50_000, 60_000)))
+
+    assert small["P2_SIGNAL_PROFILE"] == large["P2_SIGNAL_PROFILE"]
+    assert small["raw"]["inputs"] != large["raw"]["inputs"]
+
+
+@pytest.mark.parametrize(
+    ("pin_prices", "b365_prices", "expected"),
+    [
+        ((2.0, 4.0), (2.2, 3.3), "CONVERGENCE_HOME"),
+        ((4.0, 2.0), (3.3, 2.2), "CONVERGENCE_AWAY"),
+        ((2.0, 4.0), (4.0, 2.0), "DIVERGENCE"),
+        ((2.0, 2.0), (2.0, 4.0), "NEUTRAL"),
+    ],
+)
+def test_1x2_book_relations(pin_prices, b365_prices, expected) -> None:
+    signal = _profile(_calculate(_complete_rows(pin_ft_1x2=pin_prices, b365_ft_1x2=b365_prices)))["FT"]["1X2"]
+    assert signal["BOOK_RELATION"] == expected
+
+
+def test_neutral_is_a_calculated_direction_not_unavailability() -> None:
+    assert direction(side_edge(*map(__import__("decimal").Decimal, ("2", "2")))) == "NEUTRAL"
+    assert relation("NEUTRAL", "HOME") == "NEUTRAL"
+
+
+def test_ah_same_line_exposes_comparable_readings() -> None:
+    ah = _profile(_calculate(_complete_rows()))["FT"]["AH"]
+    assert ah["PIN_EDGE"] is not None
+    assert ah["B365_EDGE"] is not None
+    assert ah["BOOK_RELATION"] is not None
+    assert ah["PRICE_GAP"] is not None
+    assert ah["REP_EDGE"] is not None
+    assert ah["DIRECTION"] is not None
+
+
+def test_ah_different_lines_preserves_individuals_but_marks_comparison_unavailable() -> None:
+    profile = _profile(_calculate(_complete_rows(b365_ft_ah_line="-0.75")))
+    ah = profile["FT"]["AH"]
+
+    assert ah["PIN_EDGE"] is not None
+    assert ah["PIN_DIRECTION"] is not None
+    assert ah["B365_EDGE"] is not None
+    assert ah["B365_DIRECTION"] is not None
+    assert ah["LINE_GAP"] == pytest.approx(0.25)
+    assert ah["BOOK_RELATION"] is None
+    assert ah["PRICE_GAP"] is None
+    assert ah["REP_EDGE"] is None
+    assert ah["DIRECTION"] is None
+    assert profile["FT"]["CROSS_MARKET"] == {
+        "FT_1X2_AH_RELATION": None,
+        "FT_CROSS_MARKET_GAP": None,
+    }
+
+
+def test_ft_cross_market_divergence_is_preserved_without_global_score() -> None:
+    profile = _profile(_calculate(_complete_rows(
+        pin_ft_ah=(3.0, 2.0),
+        b365_ft_ah=(3.2, 2.1),
+    )))
+    assert profile["FT"]["1X2"]["DIRECTION"] == "HOME"
+    assert profile["FT"]["AH"]["DIRECTION"] == "AWAY"
+    assert profile["FT"]["CROSS_MARKET"]["FT_1X2_AH_RELATION"] == "DIVERGENCE"
+    assert profile["FT"]["CROSS_MARKET"]["FT_CROSS_MARKET_GAP"] > 0
+
+
+@pytest.mark.parametrize(
+    ("lay_prices", "expected"),
+    [((2.50, 3.30, 3.10), "CONVERGENCE_HOME"), ((4.0, 3.0, 2.0), "DIVERGENCE")],
+)
+def test_back_lay_relations(lay_prices, expected) -> None:
+    exchange = _profile(_calculate(_complete_rows(lay_prices=lay_prices)))["EXCHANGE"]
+    assert exchange["BACK_LAY_RELATION"] == expected
+
+
+@pytest.mark.parametrize(
+    ("back_prices", "lay_prices", "expected"),
+    [
+        ((2.4, 3.2, 3.0), (2.5, 3.3, 3.1), "CONVERGENCE_HOME"),
+        ((4.0, 3.0, 2.0), (4.2, 3.1, 2.1), "DIVERGENCE"),
+        ((2.0, 3.0, 2.0), (2.0, 3.0, 2.0), "NEUTRAL"),
+    ],
+)
+def test_book_exchange_relations(back_prices, lay_prices, expected) -> None:
+    block = _profile(_calculate(_complete_rows(back_prices=back_prices, lay_prices=lay_prices)))["BOOK_EXCHANGE"]
+    assert block["RELATION"] == expected
+    assert block["GAP"] >= 0
+
+
+@pytest.mark.parametrize(
+    ("pin_1h", "b365_1h", "expected"),
+    [
+        ((2.2, 3.5), (2.3, 3.4), "CONVERGENCE_HOME"),
+        ((4.0, 2.0), (3.8, 2.1), "DIVERGENCE"),
+    ],
+)
+def test_ft_first_half_compares_only_1x2(pin_1h, b365_1h, expected) -> None:
+    block = _profile(_calculate(_complete_rows(pin_1h_1x2=pin_1h, b365_1h_1x2=b365_1h)))["FT_1H"]
+    assert block["FT_1H_1X2_RELATION"] == expected
+    assert "FT_1H_AH_RELATION" not in block
+    assert "FT_1H_AH_GAP" not in block
+
+
+def test_one_strict_target_minute_has_no_per_market_fallback() -> None:
     rows = _complete_rows(minute=30) + _complete_rows(minute=5)
     rows = [
-        row
-        for row in rows
-        if not (
-            row["target_minute"] == 5
-            and row["market_name"] == "1X2 1st Half"
-            and row["bookie_id"] == 3
-            and row["choice_name"] == "2"
-        )
+        row for row in rows
+        if not (row["target_minute"] == 5 and row["market_period"] == "1st Half" and row["bookie_id"] == 3 and row["choice_name"] == "2")
     ]
-
     result = _calculate(rows)
 
-    assert result["P2_STATUS"] == "PARTIAL"
     assert result["P2_TARGET_MINUTE"] == 5
-    assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
-    assert result["PERIODS"]["first_half"]["status"] == "INCOMPLETE"
-    assert "B365_AWAY_1X2_1H_ODDS_PRICE" in result["MISSING_INPUTS"]
-    assert "B365_AWAY_1X2_1H_ODDS_PRICE" in result["PERIODS"]["first_half"]["missing_inputs"]
-    assert result["SIDE_MARKET_EDGE"] is not None
-    assert result["P2_DIRECTION_RAW"] == "HOME"
-    for name in optional_metric_names():
-        assert result[name] is None
-    assert result["raw"]["excluded_metrics"]["PIN_1H_SIDE_EDGE"] == "first_half_incomplete"
-    assert result["modules"]
+    assert result["P2_STATUS"] == "PARTIAL"
+    assert {trace["target_minute"] for trace in result["raw"]["input_trace"].values()} == {5}
 
 
-def test_hardcoded_target_minute_overrides_default_latest_selection(monkeypatch) -> None:
-    rows = _complete_rows(minute=5) + _complete_rows(minute=0)
-    monkeypatch.setitem(
-        market_snapshot_extractor.HARDCODED_TARGET_MINUTE_BY_FLOW,
-        "pillar_2",
-        0,
-    )
-
-    result = _calculate(rows)
-
-    assert result["P2_STATUS"] == "ACTIVE"
-    assert result["P2_TARGET_MINUTE"] == 0
-    assert {
-        trace["target_minute"]
-        for trace in result["raw"]["p2_raw_engine"]["input_trace"].values()
-    } == {0}
-
-
-def test_aborts_when_a_required_exchange_size_is_missing() -> None:
+def test_multiple_complete_ah_candidates_remain_ambiguous() -> None:
     rows = _complete_rows()
-    for row in rows:
-        if (
-            row["bookie_id"] == 4
-            and row["exchange_side"] == "lay"
-            and row["choice_name"] == "x"
-        ):
-            row["exchange_size"] = None
-
-    result = _calculate(rows)
-
-    assert result["P2_STATUS"] == "INSUFFICIENT_DATA"
-    assert "BF_DRAW_LAY_FULL_TIME_EXCHANGE_SIZE" in result["MISSING_INPUTS"]
-    assert result["PERIODS"]["full_time"]["status"] == "INCOMPLETE"
-    assert "Q_COMPLETE" not in result
-    assert "SIDE_MARKET_EDGE" not in result
-    assert "BF_DRAW_LAY_FULL_TIME_EXCHANGE_SIZE" not in result
-
-
-def test_keeps_ah_price_metrics_null_when_lines_are_different() -> None:
-    result = _calculate(
-        _complete_rows(
-            b365_ft_ah_line="-0.75",
-            b365_1h_ah_line="0",
-        )
-    )
-
-    assert result["P2_STATUS"] == "ACTIVE"
-    assert result["AH_LINE_GAP"] == pytest.approx(0.25)
-    assert result["PIN_AH_EDGE"] is None
-    assert result["B365_AH_EDGE"] is None
-    assert result["AH_PRICE_GAP"] is None
-    assert result["AH_1H_LINE_GAP"] == pytest.approx(0.25)
-    assert result["PIN_AH_1H_EDGE"] is None
-    assert result["B365_AH_1H_EDGE"] is None
-    assert result["AH_1H_PRICE_GAP"] is None
-
-
-def test_first_half_changes_diagnostics_but_not_the_ft_final_edge() -> None:
-    home_1h = _calculate(_complete_rows())
-    away_1h = _calculate(
-        _complete_rows(
-            pin_1h_prices=(4.0, 2.0),
-            b365_1h_prices=(3.8, 2.1),
-        )
-    )
-
-    assert home_1h["BOOK_1H_EDGE"] > 0
-    assert away_1h["BOOK_1H_EDGE"] < 0
-    assert home_1h["SIDE_MARKET_EDGE"] == pytest.approx(away_1h["SIDE_MARKET_EDGE"])
-    assert home_1h["P2_DIRECTION_RAW"] == away_1h["P2_DIRECTION_RAW"]
-
-
-def _add_extra_ah_line(
-    rows: list[dict],
-    *,
-    market_period: str,
-    market_name: str,
-    bookie_id: int,
-    line: str,
-    minute: int = 5,
-) -> None:
     _add_market(
         rows,
-        minute=minute,
+        minute=5,
         market_group="Asian Handicap",
-        market_period=market_period,
-        market_name=market_name,
-        choice_group=line,
-        bookie_id=bookie_id,
-        bookie_name="Pinnacle Sports" if bookie_id == 302 else "bet365",
-        prices={"1": 1.91, "2": 1.99},
-    )
-
-
-def test_ambiguous_first_half_keeps_full_time_partial_signal() -> None:
-    complete = _calculate(_complete_rows())
-    rows = _complete_rows()
-    _add_extra_ah_line(
-        rows,
-        market_period="1st Half",
-        market_name="Asian Handicap 1st Half",
-        bookie_id=302,
-        line="0",
-    )
-
-    result = _calculate(rows)
-
-    assert result["P2_STATUS"] == "PARTIAL"
-    assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
-    assert result["PERIODS"]["first_half"]["status"] == "AMBIGUOUS"
-    assert "PIN_AH_1H_LINE" in result["PERIODS"]["first_half"]["ambiguous_inputs"]
-    assert result["SIDE_MARKET_EDGE"] == pytest.approx(complete["SIDE_MARKET_EDGE"])
-    assert result["P2_DIRECTION_RAW"] == complete["P2_DIRECTION_RAW"]
-    assert result["BOOK_DIRECTION_FT"] == complete["BOOK_DIRECTION_FT"]
-    for name in optional_metric_names():
-        assert result[name] is None
-    assert result["raw"]["excluded_metrics"]["FT_1H_GAP"] == (
-        "cross_period_requires_both_periods"
-    )
-
-
-def test_missing_first_half_snapshot_at_target_minute_is_partial() -> None:
-    complete = _calculate(_complete_rows())
-    rows = _complete_rows(minute=30) + [
-        row
-        for row in _complete_rows(minute=5)
-        if row["market_period"] != "1st Half"
-    ]
-
-    result = _calculate(rows)
-
-    assert result["P2_STATUS"] == "PARTIAL"
-    assert result["P2_TARGET_MINUTE"] == 5
-    assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
-    assert result["PERIODS"]["first_half"]["status"] == "INCOMPLETE"
-    assert result["PERIODS"]["first_half"]["missing_inputs"]
-    assert result["SIDE_MARKET_EDGE"] == pytest.approx(complete["SIDE_MARKET_EDGE"])
-    assert result["P2_DIRECTION_RAW"] == "HOME"
-    for name in optional_metric_names():
-        assert result[name] is None
-
-
-def test_ambiguous_full_time_aborts_even_when_first_half_is_complete() -> None:
-    rows = _complete_rows()
-    _add_extra_ah_line(
-        rows,
         market_period="Full Time",
         market_name="Asian Handicap Full Time",
+        choice_group="-0.75",
         bookie_id=302,
-        line="-0.75",
+        prices={"1": 1.91, "2": 1.99},
     )
-
     result = _calculate(rows)
 
     assert result["P2_STATUS"] == "INSUFFICIENT_DATA"
     assert result["PERIODS"]["full_time"]["status"] == "AMBIGUOUS"
-    assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
-    assert "PIN_AH_FULL_TIME_LINE" in result["PERIODS"]["full_time"]["ambiguous_inputs"]
-    assert "SIDE_MARKET_EDGE" not in result
-    assert "P2_DIRECTION_RAW" not in result
-    assert result["modules"] == []
-    assert result["raw"]["first_half"]["note"] == (
-        "first_half_complete_but_unused_without_full_time"
-    )
-    assert result["raw"]["first_half"]["inputs"]["PIN_HOME_1X2_1H_ODDS_PRICE"] == 2.2
+    assert "PIN_AH_FULL_TIME_LINE" in result["AMBIGUOUS_INPUTS"]
 
 
-def test_pipeline_returns_p2_even_when_p1_history_is_unavailable(monkeypatch) -> None:
-    event_context = _event_context()
-    event_context.odds_trajectory = _complete_rows()
-    monkeypatch.setattr(
-        pillar_pipeline.Config,
-        "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS",
-        False,
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_4",
-        lambda **_kwargs: {"P4_STATUS": "INSUFFICIENT_DATA"},
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_5",
-        lambda **_kwargs: {
-            "P5_STATUS": "INSUFFICIENT_DATA",
-            "P5_VALID": False,
-            "P5_DIRECTION": "NONE",
-            "P5": 0.0,
-            "P5_STRENGTH": "NONE",
-        },
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "resolve_matchup_streak_analysis",
-        lambda **_kwargs: (None, False),
-    )
-
-    result = pillar_pipeline.EventPillarProcessor(event_repo=object()).process_event(
-        event_context
-    )
-
-    assert result is not None
-    assert result["pillar_1"] is None
-    assert result["pillar_2"]["P2_STATUS"] == "ACTIVE"
-    assert result["pillar_2"]["P2_TARGET_MINUTE"] == 5
-    assert result["pillar_3"]["P3_STATUS"] == "INSUFFICIENT_DATA"
+def test_period_scope_separates_required_inputs_from_trace_inputs() -> None:
+    assert FULL_TIME_SIDE_SCOPE.required is True
+    assert FIRST_HALF_SIDE_SCOPE.required is False
+    assert set(EXCHANGE_ODDS_INPUT_NAMES) <= set(FULL_TIME_SIDE_SCOPE.required_input_names())
+    assert set(EXCHANGE_SIZE_TRACE_INPUT_NAMES) == set(FULL_TIME_SIDE_SCOPE.trace_input_names())
+    assert not (set(EXCHANGE_SIZE_TRACE_INPUT_NAMES) & set(FULL_TIME_SIDE_SCOPE.required_input_names()))
+    assert not hasattr(FULL_TIME_SIDE_SCOPE, "metric_names")
 
 
-def test_mining_failure_does_not_prevent_later_pillars(monkeypatch, caplog) -> None:
-    event_context = _event_context()
-    event_context.odds_trajectory = []
-    p4_calls = []
+def test_debug_logging_reports_structural_blocks_only(caplog) -> None:
+    caplog.set_level(logging.INFO)
+    _calculate(_complete_rows(), debug_mode=True)
 
-    class FailingMiningService:
-        def persist(self, _pillar_id, _event_context, _p2_result):
-            raise RuntimeError("mining database unavailable")
-
-    monkeypatch.setattr(
-        pillar_pipeline.Config,
-        "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS",
-        False,
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_2",
-        lambda **_kwargs: {
-            "pillar_id": "pillar_2_side_market",
-            "engine_version": "p2_raw_v1",
-            "P2_STATUS": "ACTIVE",
-            "P2_TARGET_MINUTE": 5,
-            "P2_DIRECTION_RAW": "HOME",
-            "SIDE_MARKET_EDGE": 0.1,
-            "raw": {},
-        },
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_4",
-        lambda **_kwargs: p4_calls.append(True) or {
-            "P4_STATUS": "INSUFFICIENT_DATA"
-        },
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_5",
-        lambda **_kwargs: {
-            "P5_STATUS": "INSUFFICIENT_DATA",
-            "P5_VALID": False,
-            "P5_DIRECTION": "NONE",
-            "P5": 0.0,
-            "P5_STRENGTH": "NONE",
-        },
-    )
-
-    result = pillar_pipeline.EventPillarProcessor(
-        event_repo=object(),
-        enabled_pillars={"pillar_1": False},
-        mining_service=FailingMiningService(),
-    ).process_event(event_context)
-
-    assert result is not None
-    assert p4_calls == [True]
-    assert "Pillar mining persistence failed" in caplog.text
-
-
-def test_p3_exception_is_isolated_and_later_pillars_continue(monkeypatch) -> None:
-    event_context = _event_context()
-    event_context.odds_trajectory = []
-    later_calls = []
-
-    monkeypatch.setattr(
-        pillar_pipeline.Config,
-        "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS",
-        False,
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_2",
-        lambda **_kwargs: {
-            "P2_STATUS": "INSUFFICIENT_DATA",
-            "P2_TARGET_MINUTE": None,
-        },
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_3",
-        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("P3 exploded")),
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_4",
-        lambda **_kwargs: later_calls.append("pillar_4") or {
-            "P4_STATUS": "INSUFFICIENT_DATA",
-        },
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_5",
-        lambda **_kwargs: later_calls.append("pillar_5") or {
-            "P5_STATUS": "INSUFFICIENT_DATA",
-            "P5_VALID": False,
-            "P5_DIRECTION": "NONE",
-            "P5": 0.0,
-            "P5_STRENGTH": "NONE",
-        },
-    )
-
-    result = pillar_pipeline.EventPillarProcessor(
-        event_repo=object(),
-        enabled_pillars={"pillar_1": False},
-    ).process_event(event_context)
-
-    assert result is not None
-    assert result["pillar_3"]["P3_STATUS"] == "ERROR"
-    assert result["pillar_3"]["raw"]["reason"] == "pillar_3_exception"
-    assert later_calls == ["pillar_4", "pillar_5"]
-
-
-@pytest.mark.parametrize(
-    "disabled_pillar",
-    ["pillar_2", "pillar_3", "pillar_4", "pillar_5"],
-)
-def test_individual_pillar_toggles_skip_only_selected_calculation(
-    monkeypatch,
-    disabled_pillar,
-) -> None:
-    event_context = _event_context()
-    event_context.odds_trajectory = []
-    calls = []
-
-    monkeypatch.setattr(
-        pillar_pipeline.Config,
-        "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS",
-        False,
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_2",
-        lambda **_kwargs: calls.append("pillar_2") or {
-            "P2_STATUS": "INSUFFICIENT_DATA",
-            "P2_TARGET_MINUTE": 5,
-        },
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_3",
-        lambda **_kwargs: calls.append("pillar_3") or {
-            "P3_STATUS": "INSUFFICIENT_DATA",
-            "TARGET_MINUTE": 5,
-            "PERIOD": None,
-        },
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_4",
-        lambda **_kwargs: calls.append("pillar_4") or {
-            "P4_STATUS": "INSUFFICIENT_DATA",
-        },
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "calculate_pillar_5",
-        lambda **_kwargs: calls.append("pillar_5") or {
-            "P5_STATUS": "INSUFFICIENT_DATA",
-            "P5_VALID": False,
-            "P5_DIRECTION": "NONE",
-            "P5": 0.0,
-            "P5_STRENGTH": "NONE",
-        },
-    )
-
-    enabled_pillars = {
-        "pillar_1": False,
-        "pillar_2": disabled_pillar != "pillar_2",
-        "pillar_3": disabled_pillar != "pillar_3",
-        "pillar_4": disabled_pillar != "pillar_4",
-        "pillar_5": disabled_pillar != "pillar_5",
-    }
-
-    result = pillar_pipeline.EventPillarProcessor(
-        event_repo=object(),
-        enabled_pillars=enabled_pillars,
-    ).process_event(event_context)
-
-    assert result is not None
-    assert calls == [
-        pillar_key
-        for pillar_key in ("pillar_2", "pillar_3", "pillar_4", "pillar_5")
-        if pillar_key != disabled_pillar
-    ]
-    assert result[disabled_pillar] is None
+    assert "P2 SIGNAL | FT 1X2" in caplog.text
+    assert "P2 SIGNAL | EXCHANGE" in caplog.text
+    assert "P2 DEBUG | input assignment | name=PIN_HOME_1X2_FULL_TIME_ODDS_PRICE" in caplog.text
+    assert "P2 DEBUG | input lineage | name=PIN_HOME_1X2_FULL_TIME_ODDS_PRICE | market_group=1X2 | period=Full Time | market_name=1X2 Full Time" in caplog.text
+    assert "P2 DEBUG | input lineage | name=PIN_AH_HOME_FULL_TIME_ODDS_PRICE | market_group=Asian Handicap | period=Full Time | market_name=Asian Handicap Full Time" in caplog.text
+    assert "P2 FORMULA | FT.1X2.PIN_EDGE | formula=" in caplog.text
+    assert "P2 FORMULA | FT.1X2.PIN_EDGE | substitution=" in caplog.text
+    assert "P2 FORMULA | FT.1X2.PIN_EDGE | result=" in caplog.text
+    assert "P2 FORMULA | FT.CROSS_MARKET.RELATION" in caplog.text
+    assert "P2 FORMULA | FT.EXCHANGE.SIDE_SPREAD | substitution=" in caplog.text

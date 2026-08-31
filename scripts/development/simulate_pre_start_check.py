@@ -53,7 +53,7 @@ from shared.runtime_observability import observe_operation
 
 # Simulation toggles - Pipeline flows
 ENABLE_ODDS_INGESTION_SIMULATION = True
-ENABLE_ALERT_PIPELINE = True
+ENABLE_ALERT_PIPELINE = False
 ENABLE_PILLAR_PIPELINE = True
 SHOW_MARKET_PERSISTENCE_REPORT = False
 
@@ -64,8 +64,8 @@ ENABLE_ODDSPORTAL_ODDS_SIMULATION = False
 
 # Simulation toggles - Individual Pillars (active when ENABLE_PILLAR_PIPELINE = True)
 ENABLE_PILLAR_1 = False  # Pillar 1 - Team Structure (Side & Totals: M1-M7)
-ENABLE_PILLAR_2 = True  # Pillar 2 - Side Market RAW
-ENABLE_PILLAR_3 = True  # Pillar 3 - Totals Market / Context RAW
+ENABLE_PILLAR_2 = True  # Pillar 2 - Side Market Signal Profile
+ENABLE_PILLAR_3 = False  # Pillar 3 - Totals Market / Context RAW
 ENABLE_PILLAR_4 = False  # Pillar 4 - Temporal Market Drift
 ENABLE_PILLAR_5 = False  # Pillar 5 - Exact Price Memory
 

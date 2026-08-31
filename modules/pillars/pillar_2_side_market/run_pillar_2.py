@@ -1,4 +1,4 @@
-"""Pillar 2 - Side Market orchestrator."""
+"""Thin orchestrator for the Pillar 2 Side Market Signal Profile."""
 
 from __future__ import annotations
 
@@ -8,17 +8,10 @@ from typing import Any
 
 from modules.pillars.context import EventContext
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
-from modules.pillars.pillar_2_side_market.periods import (
-    optional_metric_exclusion_reasons,
-    resolve_pillar_status,
-)
-from modules.pillars.pillar_2_side_market.raw_engine import (
-    ENGINE_VERSION,
-    calculate_p2_raw,
-)
-from modules.pillars.pillar_2_side_market.snapshot_policy import (
-    extract_p2_market_snapshot,
-)
+
+from .periods import P2_SIDE_PERIOD_SCOPES, resolve_pillar_status
+from .signal_engine import ENGINE_VERSION, build_p2_signal_profile
+from .snapshot_policy import extract_p2_market_snapshot
 
 
 logger = logging.getLogger(__name__)
@@ -28,72 +21,122 @@ def _number(value: Decimal | None) -> float | None:
     return None if value is None else float(value)
 
 
-def _debug_section(title: str) -> None:
-    logger.info("========== P2_SIDE_MARKET DEBUG | %s =========", title)
+def _json_inputs(values: dict[str, Decimal | None]) -> dict[str, float | None]:
+    return {name: _number(value) for name, value in values.items()}
 
 
-def _debug_line(message: str, *args: Any) -> None:
-    logger.info("P2_SIDE_MARKET DEBUG | " + message, *args)
-
-
-def _debug_input_assignments(snapshot) -> None:
-    """Log every canonical P2 input and its selected quote lineage."""
-    _debug_section("Asignación de inputs al snapshot canónico")
-    values = snapshot.input_values()
-    traces = snapshot.input_trace()
-    for name, value in values.items():
-        trace = traces.get(name, {})
-        if not trace:
-            _debug_line(
-                "Asignación de input: %s = %s | excluido del período incompleto.",
-                name,
-                value,
-            )
-            continue
-        source = trace.get("source") or "desconocido"
-        bookie = trace.get("bookie_name") or "desconocido"
-        market = trace.get("market_name") or "desconocido"
-        period = trace.get("market_period") or "desconocido"
-        choice = trace.get("choice_name") or "desconocido"
-        exchange_side = trace.get("exchange_side") or "single"
-        _debug_line(
-            "Asignación de input: %s = %s | fuente=%s | bookie=%s | mercado=%s | período=%s | choice=%s | lado_exchange=%s | snapshot_id=%s | target_minute=%s.",
-            name,
-            value,
-            source,
-            bookie,
-            market,
-            period,
-            choice,
-            exchange_side,
-            trace.get("snapshot_id"),
-            trace.get("target_minute"),
-        )
-
-
-def _debug_metric_assignments(metrics: dict[str, Any]) -> None:
-    _debug_section("Asignación de outputs RAW")
-    for name, value in metrics.items():
-        _debug_line("Asignación de output: %s = %s.", name, value)
-
-
-def _mining_context(
-    event_context: EventContext,
-    target_minute: int | None,
-) -> dict[str, Any]:
+def _empty_inputs() -> dict[str, float | None]:
     return {
-        "event_id": event_context.event_id,
-        "sport": event_context.sport,
-        "competition_id": getattr(event_context.competition, "competition_id", None),
-        "competition": getattr(event_context.competition, "display_name", None),
-        "market_type": "1X2",
-        "minutes_to_start": event_context.minutes_until_start,
-        "P2_TARGET_MINUTE": target_minute,
+        name: None
+        for scope in P2_SIDE_PERIOD_SCOPES
+        for name in scope.input_names()
     }
 
 
-def _json_inputs(values: dict[str, Decimal | None]) -> dict[str, float | None]:
-    return {name: _number(value) for name, value in values.items()}
+def _raw_audit(
+    *,
+    odds_context: OddsTrajectoryContext | None,
+    periods: dict[str, Any],
+    inputs: dict[str, float | None],
+    input_trace: dict[str, dict[str, Any]],
+    reason: str | None = None,
+) -> dict[str, Any]:
+    raw = {
+        "inputs": inputs,
+        "input_trace": input_trace,
+        "periods": periods,
+        "target_minutes_expected": list(
+            getattr(odds_context, "target_minutes_expected", [])
+        ),
+        "target_minutes_present": list(
+            getattr(odds_context, "target_minutes_present", [])
+        ),
+    }
+    if reason is not None:
+        raw["reason"] = reason
+    return raw
+
+
+def _debug_snapshot_inputs(snapshot: Any) -> None:
+    """Log the complete selected input assignment and source lineage."""
+    values = snapshot.input_values()
+    traces = snapshot.input_trace()
+    logger.info("P2 DEBUG | snapshot | target_minute=%s", snapshot.target_minute)
+    for name, value in values.items():
+        trace = traces.get(name)
+        logger.info(
+            "P2 DEBUG | input assignment | name=%s | value=%s",
+            name,
+            value,
+        )
+        if not trace:
+            logger.info(
+                "P2 DEBUG | input lineage | name=%s | unavailable_optional_or_not_selected=true",
+                name,
+            )
+            continue
+        logger.info(
+            "P2 DEBUG | input lineage | name=%s | target=%s | snapshot=%s | quote=%s",
+            name,
+            trace.get("target_minute"),
+            trace.get("snapshot_id"),
+            trace.get("quote_id"),
+        )
+        logger.info(
+            "P2 DEBUG | input lineage | name=%s | bookie_id=%s | bookie=%s | source=%s",
+            name,
+            trace.get("bookie_id"),
+            trace.get("bookie_name"),
+            trace.get("source"),
+        )
+        logger.info(
+            "P2 DEBUG | input lineage | name=%s | market_group=%s | period=%s | market_name=%s",
+            name,
+            trace.get("market_group"),
+            trace.get("market_period"),
+            trace.get("market_name"),
+        )
+        logger.info(
+            "P2 DEBUG | input lineage | name=%s | choice=%s | choice_group=%s | exchange_side=%s | level=%s",
+            name,
+            trace.get("choice_name"),
+            trace.get("choice_group"),
+            trace.get("exchange_side"),
+            trace.get("exchange_level"),
+        )
+
+
+def _log_signal_profile(profile: dict[str, Any]) -> None:
+    def log_block(block_name: str, block: dict[str, Any]) -> None:
+        logger.info("P2 SIGNAL | %s | begin", block_name)
+        for field_name, value in block.items():
+            if isinstance(value, dict):
+                for nested_name, nested_value in value.items():
+                    logger.info(
+                        "P2 SIGNAL | %s | field=%s.%s | value=%s",
+                        block_name,
+                        field_name,
+                        nested_name,
+                        nested_value,
+                    )
+            else:
+                logger.info(
+                    "P2 SIGNAL | %s | field=%s | value=%s",
+                    block_name,
+                    field_name,
+                    value,
+                )
+
+    log_block("FT 1X2", profile["FT"]["1X2"])
+    log_block("FT AH", profile["FT"]["AH"])
+    log_block("FT CROSS MARKET", profile["FT"]["CROSS_MARKET"])
+    if profile["1H"] is not None:
+        log_block("1H 1X2", profile["1H"]["1X2"])
+        log_block("1H AH", profile["1H"]["AH"])
+        log_block("1H CROSS MARKET", profile["1H"]["CROSS_MARKET"])
+        log_block("FT_1H", profile["FT_1H"])
+    log_block("EXCHANGE", profile["EXCHANGE"])
+    log_block("BOOK_EXCHANGE", profile["BOOK_EXCHANGE"])
 
 
 def calculate_pillar_2(
@@ -101,203 +144,129 @@ def calculate_pillar_2(
     odds_trajectory_context: OddsTrajectoryContext | None = None,
     debug_mode: bool = False,
 ) -> dict[str, Any]:
-    """Calculate P2 RAW with independent Full Time and First Half gates."""
-    odds_trajectory_context = (
+    """Extract one canonical minute and return its structural signal profile.
+
+    The returned dict is the mining producer output. The pipeline persists it
+    through ``P2MiningAdapter`` immediately after this function returns.
+    """
+    odds_context = (
         odds_trajectory_context
         or getattr(event_context, "odds_trajectory_context", None)
     )
-
+    extraction = extract_p2_market_snapshot(event_context.event_id, odds_context)
+    periods = extraction.period_diagnostics()
     if debug_mode:
-        _debug_section("Inicio de Pillar 2 Side Market RAW")
-        _debug_line(
-            "Evento=%s (%s). Full Time es obligatorio; First Half se valida de forma independiente en el mismo target_minute.",
+        logger.info(
+            "P2 DEBUG | extraction | event_id=%s | target_minute=%s",
             event_context.event_id,
-            event_context.participants_label,
-        )
-        _debug_line(
-            "Minutos esperados=%s | presentes=%s | faltantes=%s.",
-            getattr(odds_trajectory_context, "target_minutes_expected", []),
-            getattr(odds_trajectory_context, "target_minutes_present", []),
-            getattr(odds_trajectory_context, "missing_target_minutes", []),
-        )
-
-    extraction = extract_p2_market_snapshot(
-        event_context.event_id,
-        odds_trajectory_context,
-    )
-    period_diagnostics = extraction.period_diagnostics()
-    if debug_mode:
-        _debug_line(
-            "Target minute seleccionado por P2 = %s.",
             extraction.target_minute,
         )
-        _debug_line(
-            "Gate Full Time=%s | gate First Half=%s.",
+        logger.info(
+            "P2 DEBUG | extraction | abort_reason=%s",
+            extraction.abort_reason,
+        )
+        logger.info(
+            "P2 DEBUG | period gates | full_time=%s | first_half=%s",
             extraction.full_time.status,
             extraction.first_half.status,
         )
-
+        logger.info(
+            "P2 DEBUG | period gates | missing=%s | invalid=%s",
+            extraction.missing_inputs,
+            extraction.invalid_inputs,
+        )
+        logger.info(
+            "P2 DEBUG | period gates | ambiguous=%s",
+            extraction.ambiguous_inputs,
+        )
     base = {
         "pillar_id": "pillar_2_side_market",
-        "pillar_name": "Side Market RAW",
+        "pillar_name": "Side Market Signal Profile",
         "engine_version": ENGINE_VERSION,
         "event_id": event_context.event_id,
         "participants": event_context.participants_label,
         "P2_TARGET_MINUTE": extraction.target_minute,
-        "PERIODS": period_diagnostics,
+        "PERIODS": periods,
         "MISSING_INPUTS": list(extraction.missing_inputs),
         "INVALID_INPUTS": list(extraction.invalid_inputs),
         "AMBIGUOUS_INPUTS": list(extraction.ambiguous_inputs),
     }
 
-    if extraction.snapshot is None:
-        first_half_technical: dict[str, Any] = {
-            "status": extraction.first_half.status,
-        }
+    snapshot = extraction.snapshot
+    if snapshot is None:
+        inputs = _empty_inputs()
+        traces: dict[str, dict[str, Any]] = {}
         if extraction.first_half_snapshot is not None:
-            first_half_technical.update(
-                {
-                    "note": "first_half_complete_but_unused_without_full_time",
-                    "inputs": _json_inputs(
-                        extraction.first_half_snapshot.input_values()
-                    ),
-                    "input_trace": extraction.first_half_snapshot.input_trace(),
-                }
-            )
-        if debug_mode:
-            _debug_line(
-                "Full Time no superó su gate. Inputs faltantes=%s | inválidos=%s | ambiguos=%s | First Half=%s.",
-                extraction.full_time.missing_inputs,
-                extraction.full_time.invalid_inputs,
-                extraction.full_time.ambiguous_inputs,
-                extraction.first_half.status,
-            )
+            inputs.update(_json_inputs(extraction.first_half_snapshot.input_values()))
+            traces.update(extraction.first_half_snapshot.input_trace())
+        raw = _raw_audit(
+            odds_context=odds_context,
+            periods=periods,
+            inputs=inputs,
+            input_trace=traces,
+            reason=extraction.abort_reason or "full_time_completeness_gate_failed",
+        )
         logger.info(
-            "P2 RAW aborted for event_id=%s target_minute=%s reason=%s missing=%s invalid=%s ambiguous=%s periods=%s",
+            "P2 signal profile unavailable for event_id=%s target_minute=%s missing=%s invalid=%s ambiguous=%s",
             event_context.event_id,
             extraction.target_minute,
-            extraction.abort_reason,
             extraction.missing_inputs,
             extraction.invalid_inputs,
             extraction.ambiguous_inputs,
-            period_diagnostics,
         )
         return {
             **base,
             "P2_STATUS": "INSUFFICIENT_DATA",
             "status": "INSUFFICIENT_DATA",
+            "P2_SIGNAL_PROFILE": None,
             "modules": [],
-            "raw": {
-                "reason": extraction.abort_reason or "full_time_completeness_gate_failed",
-                "mining_context": _mining_context(event_context, extraction.target_minute),
-                "periods": period_diagnostics,
-                "first_half": first_half_technical,
-                "target_minutes_expected": list(
-                    getattr(odds_trajectory_context, "target_minutes_expected", [])
-                ),
-                "target_minutes_present": list(
-                    getattr(odds_trajectory_context, "target_minutes_present", [])
-                ),
-            },
+            "raw": raw,
         }
 
-    snapshot = extraction.snapshot
-    first_half_complete = snapshot.first_half is not None
-    excluded_metrics = (
-        {} if first_half_complete else optional_metric_exclusion_reasons()
-    )
-
     if debug_mode:
-        _debug_line(
-            "Full Time completo en target_minute=%s. First Half=%s.",
-            extraction.target_minute,
-            extraction.first_half.status,
-        )
-        _debug_input_assignments(snapshot)
-
-    metrics = calculate_p2_raw(snapshot, debug_mode=debug_mode)
+        _debug_snapshot_inputs(snapshot)
+    profile_dto = build_p2_signal_profile(snapshot, debug_mode=debug_mode)
+    profile = profile_dto.to_dict()
+    optional_complete = snapshot.first_half is not None
     status = resolve_pillar_status(
         required_complete=True,
-        optional_complete=first_half_complete,
-        signal_present=metrics.get("SIDE_MARKET_EDGE") is not None,
+        optional_complete=optional_complete,
     )
-    if debug_mode:
-        _debug_metric_assignments(metrics)
-        _debug_section("Asignación de pesos baseline RAW")
-        _debug_line("Asignación W_PIN = 0.50.")
-        _debug_line("Asignación W_B365 = 0.50.")
-        _debug_line("Asignación W_BACK = 0.50.")
-        _debug_line("Asignación W_LAY = 0.50.")
-        _debug_line("Asignación W_BOOK = 0.50.")
-        _debug_line("Asignación W_EXCHANGE = 0.50.")
-        if first_half_complete:
-            _debug_line("Asignación W_PIN_1H = 0.50.")
-            _debug_line("Asignación W_B365_1H = 0.50.")
-        else:
-            _debug_line(
-                "Pesos W_PIN_1H y W_B365_1H no se aplican porque First Half fue excluido."
-            )
-
-    engine_raw = {
-        "baseline_weights": {
-            "W_PIN": 0.5,
-            "W_B365": 0.5,
-            "W_PIN_1H": 0.5,
-            "W_B365_1H": 0.5,
-            "W_BACK": 0.5,
-            "W_LAY": 0.5,
-            "W_BOOK": 0.5,
-            "W_EXCHANGE": 0.5,
-        },
-        "mining_context": _mining_context(event_context, extraction.target_minute),
-        "inputs": _json_inputs(snapshot.input_values()),
-        "input_trace": snapshot.input_trace(),
-        "periods": period_diagnostics,
-        "excluded_metrics": excluded_metrics,
-    }
+    raw = _raw_audit(
+        odds_context=odds_context,
+        periods=periods,
+        inputs=_json_inputs(snapshot.input_values()),
+        input_trace=snapshot.input_trace(),
+        reason=None if optional_complete else "first_half_incomplete",
+    )
     module = {
         "pillar_id": "pillar_2_side_market",
-        "module_id": "p2_raw_engine",
-        "module_name": "Side Market RAW Engine",
+        "module_id": "p2_signal_engine",
+        "module_name": "Side Market Signal Engine",
         "engine_version": ENGINE_VERSION,
         "P2_STATUS": status,
         "status": status,
         "P2_TARGET_MINUTE": extraction.target_minute,
-        "PERIODS": period_diagnostics,
-        **metrics,
-        "raw": engine_raw,
+        "PERIODS": periods,
+        "P2_SIGNAL_PROFILE": profile,
+        "raw": raw,
     }
-
+    if debug_mode:
+        _log_signal_profile(profile)
     logger.info(
-        "P2 RAW calculated for event_id=%s target_minute=%s status=%s direction=%s edge=%s first_half=%s debug_mode=%s",
+        "P2 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s",
         event_context.event_id,
         extraction.target_minute,
         status,
-        metrics["P2_DIRECTION_RAW"],
-        metrics["SIDE_MARKET_EDGE"],
         extraction.first_half.status,
-        debug_mode,
     )
     return {
         **base,
         "P2_STATUS": status,
         "status": status,
+        "P2_SIGNAL_PROFILE": profile,
         "modules": [module],
-        **metrics,
-        "raw": {
-            "module_count": 1,
-            "module_ids": ["p2_raw_engine"],
-            "periods": period_diagnostics,
-            "p2_raw_engine": engine_raw,
-            **(
-                {}
-                if first_half_complete
-                else {
-                    "reason": "first_half_incomplete",
-                    "excluded_metrics": excluded_metrics,
-                }
-            ),
-        },
+        "raw": raw,
     }
 
 

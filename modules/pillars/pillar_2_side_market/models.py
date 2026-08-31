@@ -1,4 +1,4 @@
-"""Typed contracts used by the Pillar 2 extractor and RAW engine."""
+"""Typed contracts used by the Pillar 2 snapshot policy."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from modules.pillars.market_snapshot_extractor import QuotePoint
 from .periods import FIRST_HALF_SIDE_SCOPE, resolve_period_status
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PeriodDiagnostics:
     """Local completeness outcome for one independently validated period."""
 
@@ -57,41 +57,41 @@ class PeriodDiagnostics:
         return cls.from_gate(snapshot=None)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class TwoWayMarketSnapshot:
     home: QuotePoint
     away: QuotePoint
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ThreeWayMarketSnapshot:
     home: QuotePoint
     draw: QuotePoint
     away: QuotePoint
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class AsianHandicapSnapshot(TwoWayMarketSnapshot):
     home_line: Decimal
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ExchangeSnapshot:
     back: ThreeWayMarketSnapshot
     lay: ThreeWayMarketSnapshot
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class P2FullTimeSnapshot:
     """Complete Full Time block required to produce the P2 signal."""
 
-    pinnacle_1x2: TwoWayMarketSnapshot
-    bet365_1x2: TwoWayMarketSnapshot
+    pinnacle_1x2: TwoWayMarketSnapshot # PIN
+    bet365_1x2: TwoWayMarketSnapshot # B365
     pinnacle_ah: AsianHandicapSnapshot
     bet365_ah: AsianHandicapSnapshot
-    betfair_1x2: ExchangeSnapshot
+    betfair_1x2: ExchangeSnapshot # BF
 
-    def input_values(self) -> dict[str, Decimal]:
+    def input_values(self) -> dict[str, Decimal | None]:
         bf_back = self.betfair_1x2.back
         bf_lay = self.betfair_1x2.lay
         values = {
@@ -105,23 +105,20 @@ class P2FullTimeSnapshot:
             "B365_AH_FULL_TIME_LINE": self.bet365_ah.home_line,
             "B365_AH_HOME_FULL_TIME_ODDS_PRICE": self.bet365_ah.home.odds_price,
             "B365_AH_AWAY_FULL_TIME_ODDS_PRICE": self.bet365_ah.away.odds_price,
-            "BF_HOME_BACK_FULL_TIME_ODDS_PRICE": bf_back.home.odds_price,
-            "BF_HOME_LAY_FULL_TIME_ODDS_PRICE": bf_lay.home.odds_price,
-            "BF_DRAW_BACK_FULL_TIME_ODDS_PRICE": bf_back.draw.odds_price,
-            "BF_DRAW_LAY_FULL_TIME_ODDS_PRICE": bf_lay.draw.odds_price,
-            "BF_AWAY_BACK_FULL_TIME_ODDS_PRICE": bf_back.away.odds_price,
-            "BF_AWAY_LAY_FULL_TIME_ODDS_PRICE": bf_lay.away.odds_price,
-            "BF_HOME_BACK_FULL_TIME_EXCHANGE_SIZE": bf_back.home.exchange_size,
-            "BF_HOME_LAY_FULL_TIME_EXCHANGE_SIZE": bf_lay.home.exchange_size,
-            "BF_DRAW_BACK_FULL_TIME_EXCHANGE_SIZE": bf_back.draw.exchange_size,
-            "BF_DRAW_LAY_FULL_TIME_EXCHANGE_SIZE": bf_lay.draw.exchange_size,
-            "BF_AWAY_BACK_FULL_TIME_EXCHANGE_SIZE": bf_back.away.exchange_size,
-            "BF_AWAY_LAY_FULL_TIME_EXCHANGE_SIZE": bf_lay.away.exchange_size,
+            "BF_HOME_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_back.home.odds_price,
+            "BF_HOME_LAY_1X2_FULL_TIME_ODDS_PRICE": bf_lay.home.odds_price,
+            "BF_DRAW_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_back.draw.odds_price,
+            "BF_DRAW_LAY_1X2_FULL_TIME_ODDS_PRICE": bf_lay.draw.odds_price,
+            "BF_AWAY_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_back.away.odds_price,
+            "BF_AWAY_LAY_1X2_FULL_TIME_ODDS_PRICE": bf_lay.away.odds_price,
+            "BF_HOME_BACK_1X2_FULL_TIME_EXCHANGE_SIZE": bf_back.home.exchange_size,
+            "BF_HOME_LAY_1X2_FULL_TIME_EXCHANGE_SIZE": bf_lay.home.exchange_size,
+            "BF_DRAW_BACK_1X2_FULL_TIME_EXCHANGE_SIZE": bf_back.draw.exchange_size,
+            "BF_DRAW_LAY_1X2_FULL_TIME_EXCHANGE_SIZE": bf_lay.draw.exchange_size,
+            "BF_AWAY_BACK_1X2_FULL_TIME_EXCHANGE_SIZE": bf_back.away.exchange_size,
+            "BF_AWAY_LAY_1X2_FULL_TIME_EXCHANGE_SIZE": bf_lay.away.exchange_size,
         }
-        # Exchange sizes have passed the Full Time completeness gate and cannot
-        # be None. The assertion narrows their type without inventing liquidity.
-        assert all(value is not None for value in values.values())
-        return values  # type: ignore[return-value]
+        return values
 
     def input_trace(self) -> dict[str, dict[str, Any]]:
         bf_back = self.betfair_1x2.back
@@ -137,23 +134,23 @@ class P2FullTimeSnapshot:
             "B365_AH_FULL_TIME_LINE": self.bet365_ah.home,
             "B365_AH_HOME_FULL_TIME_ODDS_PRICE": self.bet365_ah.home,
             "B365_AH_AWAY_FULL_TIME_ODDS_PRICE": self.bet365_ah.away,
-            "BF_HOME_BACK_FULL_TIME_ODDS_PRICE": bf_back.home,
-            "BF_HOME_LAY_FULL_TIME_ODDS_PRICE": bf_lay.home,
-            "BF_DRAW_BACK_FULL_TIME_ODDS_PRICE": bf_back.draw,
-            "BF_DRAW_LAY_FULL_TIME_ODDS_PRICE": bf_lay.draw,
-            "BF_AWAY_BACK_FULL_TIME_ODDS_PRICE": bf_back.away,
-            "BF_AWAY_LAY_FULL_TIME_ODDS_PRICE": bf_lay.away,
-            "BF_HOME_BACK_FULL_TIME_EXCHANGE_SIZE": bf_back.home,
-            "BF_HOME_LAY_FULL_TIME_EXCHANGE_SIZE": bf_lay.home,
-            "BF_DRAW_BACK_FULL_TIME_EXCHANGE_SIZE": bf_back.draw,
-            "BF_DRAW_LAY_FULL_TIME_EXCHANGE_SIZE": bf_lay.draw,
-            "BF_AWAY_BACK_FULL_TIME_EXCHANGE_SIZE": bf_back.away,
-            "BF_AWAY_LAY_FULL_TIME_EXCHANGE_SIZE": bf_lay.away,
+            "BF_HOME_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_back.home,
+            "BF_HOME_LAY_1X2_FULL_TIME_ODDS_PRICE": bf_lay.home,
+            "BF_DRAW_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_back.draw,
+            "BF_DRAW_LAY_1X2_FULL_TIME_ODDS_PRICE": bf_lay.draw,
+            "BF_AWAY_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_back.away,
+            "BF_AWAY_LAY_1X2_FULL_TIME_ODDS_PRICE": bf_lay.away,
+            "BF_HOME_BACK_1X2_FULL_TIME_EXCHANGE_SIZE": bf_back.home,
+            "BF_HOME_LAY_1X2_FULL_TIME_EXCHANGE_SIZE": bf_lay.home,
+            "BF_DRAW_BACK_1X2_FULL_TIME_EXCHANGE_SIZE": bf_back.draw,
+            "BF_DRAW_LAY_1X2_FULL_TIME_EXCHANGE_SIZE": bf_lay.draw,
+            "BF_AWAY_BACK_1X2_FULL_TIME_EXCHANGE_SIZE": bf_back.away,
+            "BF_AWAY_LAY_1X2_FULL_TIME_EXCHANGE_SIZE": bf_lay.away,
         }
         return {name: point.trace.to_dict() for name, point in points.items()}
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class P2FirstHalfSnapshot:
     """Complete First Half block used only to enrich a valid Full Time signal."""
 
@@ -192,7 +189,7 @@ class P2FirstHalfSnapshot:
         return {name: point.trace.to_dict() for name, point in points.items()}
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class P2MarketSnapshot:
     """Canonical P2 snapshot: Full Time is required, First Half is optional."""
 
@@ -216,7 +213,7 @@ class P2MarketSnapshot:
         return traces
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class P2ExtractionResult:
     """Outcome of the independent Full Time and First Half completeness gates."""
 

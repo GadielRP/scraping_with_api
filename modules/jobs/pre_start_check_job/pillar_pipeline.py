@@ -50,7 +50,7 @@ from modules.pillars.pillar_3_totals_market_context.periods import (
     derived_metric_names,
     period_scope_from_token,
 )
-from modules.pillars.mining.adapters import P2MiningAdapter, P3MiningAdapter
+from modules.pillars.mining.adapters import P2MiningAdapter
 from modules.pillars.mining.service import PillarMiningService
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
@@ -121,7 +121,7 @@ def _build_p4_error_result(event_context, odds_trajectory_context, exc: Exceptio
 def _build_p2_error_result(event_context, odds_trajectory_context, exc: Exception) -> dict:
     return {
         "pillar_id": "pillar_2_side_market",
-        "pillar_name": "Side Market RAW",
+        "pillar_name": "Side Market Signal Engine",
         "engine_version": P2_ENGINE_VERSION,
         "event_id": getattr(event_context, "event_id", None),
         "participants": getattr(event_context, "participants_label", None),
@@ -138,6 +138,104 @@ def _build_p2_error_result(event_context, odds_trajectory_context, exc: Exceptio
             "missing_target_minutes": getattr(odds_trajectory_context, "missing_target_minutes", []),
         },
     }
+
+
+def _p2_profile_value(profile: Any, *path: str) -> Any:
+    """Read a nested P2 profile field without leaking legacy fallbacks into logs."""
+    value = profile
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _log_p2_signal_profile_summary(participants: str, result: dict[str, Any]) -> None:
+    """Emit a compact, readable summary of the structural P2 signal profile."""
+    profile = result.get("P2_SIGNAL_PROFILE")
+    logger.info(
+        "P2 calculated for %s: status=%s target_minute=%s signal_profile=%s",
+        participants,
+        result.get("P2_STATUS"),
+        result.get("P2_TARGET_MINUTE"),
+        "AVAILABLE" if isinstance(profile, dict) else "UNAVAILABLE",
+    )
+    if not isinstance(profile, dict):
+        return
+
+    summaries = (
+        (
+            "FT.1X2",
+            ("FT", "1X2"),
+            ("direction", "DIRECTION"),
+            ("book_relation", "BOOK_RELATION"),
+            ("rep_edge", "REP_EDGE"),
+        ),
+        (
+            "FT.AH",
+            ("FT", "AH"),
+            ("direction", "DIRECTION"),
+            ("book_relation", "BOOK_RELATION"),
+            ("rep_edge", "REP_EDGE"),
+        ),
+        (
+            "FT.CROSS_MARKET",
+            ("FT", "CROSS_MARKET"),
+            ("relation", "FT_1X2_AH_RELATION"),
+            ("gap", "FT_CROSS_MARKET_GAP"),
+        ),
+        (
+            "1H.1X2",
+            ("1H", "1X2"),
+            ("direction", "DIRECTION"),
+            ("book_relation", "BOOK_RELATION"),
+            ("rep_edge", "REP_EDGE"),
+        ),
+        (
+            "1H.AH",
+            ("1H", "AH"),
+            ("direction", "DIRECTION"),
+            ("book_relation", "BOOK_RELATION"),
+            ("rep_edge", "REP_EDGE"),
+        ),
+        (
+            "1H.CROSS_MARKET",
+            ("1H", "CROSS_MARKET"),
+            ("relation", "1H_1X2_AH_RELATION"),
+            ("gap", "1H_CROSS_MARKET_GAP"),
+        ),
+        (
+            "FT_1H",
+            ("FT_1H",),
+            ("relation", "FT_1H_1X2_RELATION"),
+            ("gap", "FT_1H_1X2_GAP"),
+        ),
+        (
+            "EXCHANGE",
+            ("EXCHANGE",),
+            ("direction", "DIRECTION"),
+            ("relation", "BACK_LAY_RELATION"),
+            ("rep_edge", "REP_EDGE"),
+        ),
+        (
+            "BOOK_EXCHANGE",
+            ("BOOK_EXCHANGE",),
+            ("relation", "RELATION"),
+            ("gap", "GAP"),
+        ),
+    )
+    for section, section_path, *fields in summaries:
+        values = " ".join(
+            f"{label}={_p2_profile_value(profile, *section_path, key)}"
+            for label, key in fields
+        )
+        logger.info(
+            "P2 SIGNAL PROFILE | event_id=%s | participants=%s | section=%s | %s",
+            result.get("event_id"),
+            participants,
+            section,
+            values,
+        )
 
 
 def _build_p3_error_result(event_context, odds_trajectory_context, exc: Exception) -> dict:
@@ -442,13 +540,9 @@ class EventPillarProcessor:
                     exc,
                 )
 
-            logger.info(
-                "P2 calculated for %s: status=%s target_minute=%s direction=%s edge=%s",
+            _log_p2_signal_profile_summary(
                 event_context.participants_label,
-                p2_result.get("P2_STATUS"),
-                p2_result.get("P2_TARGET_MINUTE"),
-                p2_result.get("P2_DIRECTION_RAW"),
-                p2_result.get("SIDE_MARKET_EDGE"),
+                p2_result,
             )
             self._persist_mining_result(
                 "pillar_2_side_market",
@@ -457,7 +551,7 @@ class EventPillarProcessor:
             )
         else:
             logger.info(
-                "Pillar 2 (Side Market RAW) skipped for %s (disabled by toggle)",
+                "Pillar 2 (Side Market Signal Engine) skipped for %s (disabled by toggle)",
                 event_context.participants_label,
             )
 
@@ -498,11 +592,7 @@ class EventPillarProcessor:
                 p3_result.get(p3_metric_names.market_edge),
                 p3_result.get(p3_metric_names.completeness),
             )
-            self._persist_mining_result(
-                "pillar_3_totals_market_context",
-                event_context,
-                p3_result,
-            )
+            # Mining persistence for P3 is pending. Only P2 is registered.
         else:
             logger.info(
                 "Pillar 3 (Totals Market / Context RAW) skipped for %s (disabled by toggle)",
@@ -1017,6 +1107,17 @@ class EventPillarProcessor:
         }
 
 
+def _registered_mining_adapters() -> dict[str, P2MiningAdapter]:
+    """Composition root for mining writers.
+
+    Only P2 is registered. P1/P3/P4/P5 adapters stay pending until their
+    producer contracts expose the identities required by mining-persistence.md.
+    """
+    return {
+        "pillar_2_side_market": P2MiningAdapter(),
+    }
+
+
 def evaluate_and_calculate_pillars_batch(
     events_for_pillars: list[EventContext],
     key_moments: list,
@@ -1061,10 +1162,7 @@ def evaluate_and_calculate_pillars_batch(
 
     mining_service = PillarMiningService(
         PillarMiningRepository(),
-        adapters={
-            "pillar_2_side_market": P2MiningAdapter(),
-            "pillar_3_totals_market_context": P3MiningAdapter(),
-        },
+        adapters=_registered_mining_adapters(),
         enabled=Config.PILLAR_MINING_ENABLED,
         status_mode=Config.PILLAR_MINING_STATUS_MODE,
     )

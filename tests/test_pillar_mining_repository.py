@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime
-from decimal import Decimal
 
 from sqlalchemy import inspect, text
 from sqlalchemy.dialects import postgresql
@@ -20,7 +19,6 @@ from infrastructure.persistence.repositories.pillar_mining_repository import (
     PillarMiningRepository,
 )
 from modules.pillars.mining.contracts import (
-    PillarMiningMetric,
     PillarMiningRun as MiningRunContract,
     PillarMiningUnit as MiningUnitContract,
 )
@@ -33,42 +31,24 @@ def _run(**overrides) -> MiningRunContract:
         producer_status="ACTIVE",
         canonical_status="SUCCESS",
         signal_axis="SIDE",
-        score_name="SIDE_MARKET_EDGE",
-        score=Decimal("0.10"),
-        direction="HOME",
+        payload={"P2_SIGNAL_PROFILE": {"FT": {"1X2": {"DIRECTION": "HOME"}}}},
     )
     module = MiningUnitContract(
         unit_type="module",
-        unit_key="p2_raw_engine",
+        unit_key="p2_signal_engine",
         parent_unit_key="summary",
-        module_id="p2_raw_engine",
+        module_id="p2_signal_engine",
         producer_status="ACTIVE",
         canonical_status="SUCCESS",
         signal_axis="SIDE",
-        score_name="SIDE_MARKET_EDGE",
-        score=Decimal("0.10"),
-        direction="HOME",
-        metrics=(
-            PillarMiningMetric(
-                name="SIDE_MARKET_EDGE",
-                value_type="number",
-                value=Decimal("0.10"),
-                group="result",
-            ),
-            PillarMiningMetric(
-                name="P2_DIRECTION_RAW",
-                value_type="text",
-                value="HOME",
-                group="result",
-            ),
-        ),
+        payload={"P2_SIGNAL_PROFILE": {"FT": {"1X2": {"DIRECTION": "HOME"}}}},
     )
     values = {
         "event_id": 1,
         "pillar_id": "pillar_2_side_market",
         "result_scope": "side_market",
         "execution_slot": "evaluation:5",
-        "engine_version": "p2_raw_v1",
+        "engine_version": "p2-signal-profile-v1",
         "payload_schema_version": 2,
         "producer_status": "ACTIVE",
         "canonical_status": "SUCCESS",
@@ -78,7 +58,10 @@ def _run(**overrides) -> MiningRunContract:
         "context": {"minutes_to_start": 5},
         "inputs": {"PIN_HOME": 2.0},
         "diagnostics": {"input_trace": {"PIN_HOME": {"quote_id": 1}}},
-        "output_payload": {"P2_STATUS": "ACTIVE"},
+        "output_payload": {
+            "P2_STATUS": "ACTIVE",
+            "P2_SIGNAL_PROFILE": {"FT": {"1X2": {"DIRECTION": "HOME"}}},
+        },
         "units": (summary, module),
         "calculated_at": datetime(2026, 8, 22, 17, 55),
     }
@@ -119,20 +102,13 @@ def test_repository_replaces_graph_and_keeps_other_slots_and_versions(
     original = _run()
     PillarMiningRepository.replace_run(original)
 
+    replacement_profile = {"FT": {"1X2": {"DIRECTION": "AWAY"}}}
     replacement_summary = replace(
-        original.units[0], score=Decimal("0.25"), direction="AWAY"
+        original.units[0], payload={"P2_SIGNAL_PROFILE": replacement_profile}
     )
     replacement_module = replace(
         original.units[1],
-        score=Decimal("0.25"),
-        direction="AWAY",
-        metrics=(
-            PillarMiningMetric(
-                name="SIDE_MARKET_EDGE",
-                value_type="number",
-                value=Decimal("0.25"),
-            ),
-        ),
+        payload={"P2_SIGNAL_PROFILE": replacement_profile},
     )
     PillarMiningRepository.replace_run(
         replace(original, units=(replacement_summary, replacement_module))
@@ -141,27 +117,27 @@ def test_repository_replaces_graph_and_keeps_other_slots_and_versions(
         replace(original, execution_slot="evaluation:0", evaluation_minute=0)
     )
     PillarMiningRepository.replace_run(
-        replace(original, engine_version="p2_raw_v2")
+        replace(original, engine_version="p2-signal-profile-v2")
     )
 
     with manager.get_session() as session:
         assert session.query(PillarMiningRun).count() == 3
         canonical = (
             session.query(PillarMiningRun)
-            .filter_by(execution_slot="evaluation:5", engine_version="p2_raw_v1")
+            .filter_by(
+                execution_slot="evaluation:5",
+                engine_version="p2-signal-profile-v1",
+            )
             .one()
         )
         units = session.query(PillarMiningUnit).filter_by(run_id=canonical.id).all()
         assert len(units) == 2
         summary = next(unit for unit in units if unit.unit_type == "summary")
         module = next(unit for unit in units if unit.unit_type == "module")
-        assert summary.score == Decimal("0.250000000000")
-        assert summary.direction == "AWAY"
+        assert summary.score is None
+        assert summary.direction is None
         assert module.parent_unit_id == summary.id
-        metrics = session.query(PillarMiningMetricValue).filter_by(unit_id=module.id).all()
-        assert [(metric.metric_name, metric.numeric_value) for metric in metrics] == [
-            ("SIDE_MARKET_EDGE", Decimal("0.250000000000"))
-        ]
+        assert session.query(PillarMiningMetricValue).filter_by(unit_id=module.id).count() == 0
 
 
 def test_run_joins_results_and_event_delete_cascades_graph(
@@ -182,7 +158,7 @@ def test_run_joins_results_and_event_delete_cascades_graph(
             .filter(PillarMiningUnit.unit_type == "summary")
             .one()
         )
-        assert joined == ("HOME", "1")
+        assert joined == (None, "1")
         session.delete(session.query(Event).filter_by(id=1).one())
 
     with manager.get_session() as session:
