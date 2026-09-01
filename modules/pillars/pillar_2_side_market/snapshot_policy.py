@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from infrastructure.settings import Config
 from modules.pillars.market_snapshot_extractor import (
     ChoiceRequest,
     MarketCandidate,
     MarketSnapshotExtraction,
     MarketSnapshotRequest,
+    TargetMinuteSelection,
     extract_market_snapshot,
-    select_target_minute,
 )
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
@@ -21,6 +20,8 @@ from .models import (
     P2ExtractionResult,
     P2FirstHalfSnapshot,
     P2FullTimeSnapshot,
+    PartialAsianHandicapSnapshot,
+    PartialTwoWayMarketSnapshot,
     PeriodDiagnostics,
     ThreeWayMarketSnapshot,
     TwoWayMarketSnapshot,
@@ -49,13 +50,21 @@ class _PeriodGate:
         self.invalid.update(extraction.invalid_inputs)
         self.ambiguous.update(extraction.ambiguous_inputs)
 
-    def diagnostics(self, snapshot: object | None) -> PeriodDiagnostics:
+    def diagnostics(self, *, complete: bool) -> PeriodDiagnostics:
         return PeriodDiagnostics.from_gate(
-            snapshot=snapshot,
+            complete=complete,
             missing_inputs=self.missing,
             invalid_inputs=self.invalid,
             ambiguous_inputs=self.ambiguous,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _PartialSelection:
+    snapshot: PartialTwoWayMarketSnapshot | PartialAsianHandicapSnapshot | None
+    missing: frozenset[str]
+    invalid: frozenset[str]
+    ambiguous: frozenset[str]
 
 
 def _two_way_request(
@@ -108,7 +117,7 @@ def _exchange_request(exchange_side: str) -> MarketSnapshotRequest:
     )
 
 
-def _unique_complete_candidate(
+def _unique_required_candidate(
     extraction: MarketSnapshotExtraction,
     request: MarketSnapshotRequest,
     gate: _PeriodGate,
@@ -129,7 +138,135 @@ def _unique_complete_candidate(
     return complete[0] if complete else None
 
 
-def _extract_two_way(
+def _all_input_names(request: MarketSnapshotRequest) -> set[str]:
+    names = {choice.input_name for choice in request.choices}
+    if request.line_input_name is not None:
+        names.add(request.line_input_name)
+    return names
+
+
+def _has_any_candidate_input(candidate: MarketCandidate) -> bool:
+    return candidate.line is not None or any(
+        point is not None for point in candidate.choices.values()
+    )
+
+
+def _partial_snapshot(
+    candidate: MarketCandidate,
+    request: MarketSnapshotRequest,
+) -> PartialTwoWayMarketSnapshot | PartialAsianHandicapSnapshot:
+    home = candidate.choices.get("home")
+    away = candidate.choices.get("away")
+    if request.line_input_name is not None:
+        return PartialAsianHandicapSnapshot(
+            home=home,
+            away=away,
+            home_line=candidate.line,
+        )
+    return PartialTwoWayMarketSnapshot(home=home, away=away)
+
+
+def _selected_input_diagnostics(
+    candidate: MarketCandidate,
+    request: MarketSnapshotRequest,
+    extraction: MarketSnapshotExtraction,
+) -> tuple[set[str], set[str]]:
+    invalid = set(extraction.invalid_inputs) & _all_input_names(request)
+    missing: set[str] = set()
+    if request.line_input_name is not None and candidate.line is None:
+        if request.line_input_name not in invalid:
+            missing.add(request.line_input_name)
+    for choice in request.choices:
+        if candidate.choices.get(choice.key) is None and choice.input_name not in invalid:
+            missing.add(choice.input_name)
+    return missing, invalid
+
+
+def _select_partial_candidate(
+    extraction: MarketSnapshotExtraction,
+    request: MarketSnapshotRequest,
+) -> _PartialSelection:
+    names = _all_input_names(request)
+    extractor_ambiguities = set(extraction.ambiguous_inputs) & names
+    if extraction.container_ambiguities or extractor_ambiguities:
+        return _PartialSelection(
+            snapshot=None,
+            missing=frozenset(),
+            invalid=frozenset(),
+            ambiguous=frozenset(names | extractor_ambiguities),
+        )
+
+    complete = [
+        candidate for candidate in extraction.candidates if candidate.is_complete(request)
+    ]
+    if len(complete) > 1:
+        return _PartialSelection(
+            snapshot=None,
+            missing=frozenset(),
+            invalid=frozenset(),
+            ambiguous=frozenset(names),
+        )
+    if len(complete) == 1:
+        return _PartialSelection(
+            snapshot=_partial_snapshot(complete[0], request),
+            missing=frozenset(),
+            invalid=frozenset(),
+            ambiguous=frozenset(),
+        )
+
+    partial = [
+        candidate
+        for candidate in extraction.candidates
+        if _has_any_candidate_input(candidate)
+    ]
+    if len(partial) > 1:
+        return _PartialSelection(
+            snapshot=None,
+            missing=frozenset(),
+            invalid=frozenset(),
+            ambiguous=frozenset(names),
+        )
+    if len(partial) == 1:
+        missing, invalid = _selected_input_diagnostics(
+            partial[0],
+            request,
+            extraction,
+        )
+        return _PartialSelection(
+            snapshot=_partial_snapshot(partial[0], request),
+            missing=frozenset(missing),
+            invalid=frozenset(invalid),
+            ambiguous=frozenset(),
+        )
+
+    return _PartialSelection(
+        snapshot=None,
+        missing=frozenset(names),
+        invalid=frozenset(),
+        ambiguous=frozenset(),
+    )
+
+
+def _extract_partial_two_way(
+    context: OddsTrajectoryContext,
+    *,
+    target_minute: int,
+    request: MarketSnapshotRequest,
+    gate: _PeriodGate,
+) -> PartialTwoWayMarketSnapshot | PartialAsianHandicapSnapshot | None:
+    extraction = extract_market_snapshot(
+        context,
+        target_minute=target_minute,
+        request=request,
+    )
+    selection = _select_partial_candidate(extraction, request)
+    gate.missing.update(selection.missing)
+    gate.invalid.update(selection.invalid)
+    gate.ambiguous.update(selection.ambiguous)
+    return selection.snapshot
+
+
+def _extract_required_two_way(
     context: OddsTrajectoryContext,
     *,
     target_minute: int,
@@ -142,7 +279,7 @@ def _extract_two_way(
         request=request,
     )
     gate.merge(extraction)
-    candidate = _unique_complete_candidate(extraction, request, gate)
+    candidate = _unique_required_candidate(extraction, request, gate)
     if candidate is None:
         return None
     home = candidate.choices["home"]
@@ -158,7 +295,7 @@ def _extract_two_way(
     return TwoWayMarketSnapshot(home=home, away=away)
 
 
-def _extract_exchange(
+def _extract_required_exchange(
     context: OddsTrajectoryContext,
     *,
     target_minute: int,
@@ -171,7 +308,7 @@ def _extract_exchange(
         request=request,
     )
     gate.merge(extraction)
-    candidate = _unique_complete_candidate(extraction, request, gate)
+    candidate = _unique_required_candidate(extraction, request, gate)
     if candidate is None:
         return None
     home = candidate.choices["1"]
@@ -181,7 +318,10 @@ def _extract_exchange(
     return ThreeWayMarketSnapshot(home=home, draw=draw, away=away)
 
 
-def _is_complete(components: tuple[object, ...], gate: _PeriodGate) -> bool:
+def _required_full_time_is_complete(
+    components: tuple[object, ...],
+    gate: _PeriodGate,
+) -> bool:
     return (
         all(item is not None for item in components)
         and not gate.missing
@@ -190,7 +330,7 @@ def _is_complete(components: tuple[object, ...], gate: _PeriodGate) -> bool:
     )
 
 
-def _extract_book_pair(
+def _extract_required_book_pair(
     context: OddsTrajectoryContext,
     *,
     target_minute: int,
@@ -200,13 +340,13 @@ def _extract_book_pair(
     TwoWayMarketSnapshot | AsianHandicapSnapshot | None,
     TwoWayMarketSnapshot | AsianHandicapSnapshot | None,
 ]:
-    pinnacle = _extract_two_way(
+    pinnacle = _extract_required_two_way(
         context,
         target_minute=target_minute,
         request=_two_way_request(spec, bookie_id=PINNACLE_BOOKIE_ID),
         gate=gate,
     )
-    bet365 = _extract_two_way(
+    bet365 = _extract_required_two_way(
         context,
         target_minute=target_minute,
         request=_two_way_request(spec, bookie_id=BET365_BOOKIE_ID),
@@ -220,33 +360,33 @@ def _extract_full_time(
     target_minute: int,
 ) -> tuple[P2FullTimeSnapshot | None, PeriodDiagnostics]:
     gate = _PeriodGate()
-    pin_1x2, b365_1x2 = _extract_book_pair(
+    pin_1x2, b365_1x2 = _extract_required_book_pair(
         context,
         target_minute=target_minute,
         spec=FULL_TIME_SIDE_SCOPE.one_x_two,
         gate=gate,
     )
-    pin_ah, b365_ah = _extract_book_pair(
+    pin_ah, b365_ah = _extract_required_book_pair(
         context,
         target_minute=target_minute,
         spec=FULL_TIME_SIDE_SCOPE.asian_handicap,
         gate=gate,
     )
-    bf_back = _extract_exchange(
+    bf_back = _extract_required_exchange(
         context,
         target_minute=target_minute,
         request=_exchange_request("back"),
         gate=gate,
     )
-    bf_lay = _extract_exchange(
+    bf_lay = _extract_required_exchange(
         context,
         target_minute=target_minute,
         request=_exchange_request("lay"),
         gate=gate,
     )
     components = (pin_1x2, b365_1x2, pin_ah, b365_ah, bf_back, bf_lay)
-    if not _is_complete(components, gate):
-        return None, gate.diagnostics(None)
+    if not _required_full_time_is_complete(components, gate):
+        return None, gate.diagnostics(complete=False)
 
     assert isinstance(pin_1x2, TwoWayMarketSnapshot)
     assert isinstance(b365_1x2, TwoWayMarketSnapshot)
@@ -260,7 +400,7 @@ def _extract_full_time(
         bet365_ah=b365_ah,
         betfair_1x2=ExchangeSnapshot(back=bf_back, lay=bf_lay),
     )
-    return snapshot, gate.diagnostics(snapshot)
+    return snapshot, gate.diagnostics(complete=True)
 
 
 def _extract_first_half(
@@ -268,33 +408,58 @@ def _extract_first_half(
     target_minute: int,
 ) -> tuple[P2FirstHalfSnapshot | None, PeriodDiagnostics]:
     gate = _PeriodGate()
-    pin_1x2, b365_1x2 = _extract_book_pair(
+    pin_1x2 = _extract_partial_two_way(
         context,
         target_minute=target_minute,
-        spec=FIRST_HALF_SIDE_SCOPE.one_x_two,
+        request=_two_way_request(
+            FIRST_HALF_SIDE_SCOPE.one_x_two,
+            bookie_id=PINNACLE_BOOKIE_ID,
+        ),
         gate=gate,
     )
-    pin_ah, b365_ah = _extract_book_pair(
+    b365_1x2 = _extract_partial_two_way(
         context,
         target_minute=target_minute,
-        spec=FIRST_HALF_SIDE_SCOPE.asian_handicap,
+        request=_two_way_request(
+            FIRST_HALF_SIDE_SCOPE.one_x_two,
+            bookie_id=BET365_BOOKIE_ID,
+        ),
         gate=gate,
     )
-    components = (pin_1x2, b365_1x2, pin_ah, b365_ah)
-    if not _is_complete(components, gate):
-        return None, gate.diagnostics(None)
+    pin_ah = _extract_partial_two_way(
+        context,
+        target_minute=target_minute,
+        request=_two_way_request(
+            FIRST_HALF_SIDE_SCOPE.asian_handicap,
+            bookie_id=PINNACLE_BOOKIE_ID,
+        ),
+        gate=gate,
+    )
+    b365_ah = _extract_partial_two_way(
+        context,
+        target_minute=target_minute,
+        request=_two_way_request(
+            FIRST_HALF_SIDE_SCOPE.asian_handicap,
+            bookie_id=BET365_BOOKIE_ID,
+        ),
+        gate=gate,
+    )
+    if gate.ambiguous:
+        return None, gate.diagnostics(complete=False)
 
-    assert isinstance(pin_1x2, TwoWayMarketSnapshot)
-    assert isinstance(b365_1x2, TwoWayMarketSnapshot)
-    assert isinstance(pin_ah, AsianHandicapSnapshot)
-    assert isinstance(b365_ah, AsianHandicapSnapshot)
+    assert pin_1x2 is None or isinstance(pin_1x2, PartialTwoWayMarketSnapshot)
+    assert b365_1x2 is None or isinstance(b365_1x2, PartialTwoWayMarketSnapshot)
+    assert pin_ah is None or isinstance(pin_ah, PartialAsianHandicapSnapshot)
+    assert b365_ah is None or isinstance(b365_ah, PartialAsianHandicapSnapshot)
     snapshot = P2FirstHalfSnapshot(
         pinnacle_1x2=pin_1x2,
         bet365_1x2=b365_1x2,
         pinnacle_ah=pin_ah,
         bet365_ah=b365_ah,
     )
-    return snapshot, gate.diagnostics(snapshot)
+    if not snapshot.has_any_input():
+        return None, gate.diagnostics(complete=False)
+    return snapshot, gate.diagnostics(complete=snapshot.is_complete())
 
 
 def _empty_period_diagnostics() -> PeriodDiagnostics:
@@ -310,23 +475,18 @@ _PERIOD_EXTRACTORS = {
 def extract_p2_market_snapshot(
     event_id: int,
     context: OddsTrajectoryContext | None,
+    target_selection: TargetMinuteSelection,
 ) -> P2ExtractionResult:
     """Extract every registered P2 period independently over the shared extractor."""
-    selection = select_target_minute(
-        context,
-        flow_id="pillar_2",
-        expected_event_id=event_id,
-        allowed_target_minutes=Config.PRE_START_ODDS_MOMENTS,
-    )
-    if selection.target_minute is None or context is None:
+    if target_selection.target_minute is None or context is None:
         return P2ExtractionResult(
             target_minute=None,
             full_time=_empty_period_diagnostics(),
             first_half=_empty_period_diagnostics(),
-            abort_reason=selection.reason,
+            abort_reason=target_selection.reason,
         )
 
-    target_minute = selection.target_minute
+    target_minute = target_selection.target_minute
     extracted: dict[str, tuple[object | None, PeriodDiagnostics]] = {}
     for scope in P2_SIDE_PERIOD_SCOPES:
         extracted[scope.key] = _PERIOD_EXTRACTORS[scope.key](context, target_minute)

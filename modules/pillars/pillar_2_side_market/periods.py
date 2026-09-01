@@ -158,12 +158,12 @@ def period_scope_from_token(token: object) -> SidePeriodScope | None:
 
 def resolve_period_status(
     *,
-    snapshot: object | None,
+    complete: bool,
     missing_inputs: Iterable[str],
     invalid_inputs: Iterable[str],
     ambiguous_inputs: Iterable[str],
 ) -> str:
-    if snapshot is not None:
+    if complete:
         return PERIOD_STATUS_COMPLETE
     if any(ambiguous_inputs):
         return PERIOD_STATUS_AMBIGUOUS

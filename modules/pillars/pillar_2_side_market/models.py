@@ -32,7 +32,7 @@ class PeriodDiagnostics:
     def from_gate(
         cls,
         *,
-        snapshot: object | None,
+        complete: bool,
         missing_inputs: tuple[str, ...] | list[str] | set[str] = (),
         invalid_inputs: tuple[str, ...] | list[str] | set[str] = (),
         ambiguous_inputs: tuple[str, ...] | list[str] | set[str] = (),
@@ -42,7 +42,7 @@ class PeriodDiagnostics:
         ambiguous = tuple(sorted(ambiguous_inputs))
         return cls(
             status=resolve_period_status(
-                snapshot=snapshot,
+                complete=complete,
                 missing_inputs=missing,
                 invalid_inputs=invalid,
                 ambiguous_inputs=ambiguous,
@@ -54,7 +54,7 @@ class PeriodDiagnostics:
 
     @classmethod
     def empty(cls) -> "PeriodDiagnostics":
-        return cls.from_gate(snapshot=None)
+        return cls.from_gate(complete=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +73,31 @@ class ThreeWayMarketSnapshot:
 @dataclass(frozen=True, slots=True)
 class AsianHandicapSnapshot(TwoWayMarketSnapshot):
     home_line: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class PartialTwoWayMarketSnapshot:
+    """One bookmaker branch that may retain only one side of a 1H market."""
+
+    home: QuotePoint | None
+    away: QuotePoint | None
+
+    def is_complete(self) -> bool:
+        return self.home is not None and self.away is not None
+
+    def has_any_input(self) -> bool:
+        return self.home is not None or self.away is not None
+
+
+@dataclass(frozen=True, slots=True)
+class PartialAsianHandicapSnapshot(PartialTwoWayMarketSnapshot):
+    home_line: Decimal | None
+
+    def is_complete(self) -> bool:
+        return self.home is not None and self.away is not None and self.home_line is not None
+
+    def has_any_input(self) -> bool:
+        return self.home is not None or self.away is not None or self.home_line is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,41 +177,72 @@ class P2FullTimeSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class P2FirstHalfSnapshot:
-    """Complete First Half block used only to enrich a valid Full Time signal."""
+    """Granular First Half block used only to enrich a valid Full Time signal."""
 
-    pinnacle_1x2: TwoWayMarketSnapshot
-    bet365_1x2: TwoWayMarketSnapshot
-    pinnacle_ah: AsianHandicapSnapshot
-    bet365_ah: AsianHandicapSnapshot
+    pinnacle_1x2: PartialTwoWayMarketSnapshot | None
+    bet365_1x2: PartialTwoWayMarketSnapshot | None
+    pinnacle_ah: PartialAsianHandicapSnapshot | None
+    bet365_ah: PartialAsianHandicapSnapshot | None
 
-    def input_values(self) -> dict[str, Decimal]:
-        return {
-            "PIN_HOME_1X2_1H_ODDS_PRICE": self.pinnacle_1x2.home.odds_price,
-            "PIN_AWAY_1X2_1H_ODDS_PRICE": self.pinnacle_1x2.away.odds_price,
-            "B365_HOME_1X2_1H_ODDS_PRICE": self.bet365_1x2.home.odds_price,
-            "B365_AWAY_1X2_1H_ODDS_PRICE": self.bet365_1x2.away.odds_price,
-            "PIN_AH_1H_LINE": self.pinnacle_ah.home_line,
-            "PIN_AH_1H_HOME_PRICE": self.pinnacle_ah.home.odds_price,
-            "PIN_AH_1H_AWAY_PRICE": self.pinnacle_ah.away.odds_price,
-            "B365_AH_1H_LINE": self.bet365_ah.home_line,
-            "B365_AH_1H_HOME_PRICE": self.bet365_ah.home.odds_price,
-            "B365_AH_1H_AWAY_PRICE": self.bet365_ah.away.odds_price,
-        }
+    def is_complete(self) -> bool:
+        return all(
+            branch is not None and branch.is_complete()
+            for branch in (
+                self.pinnacle_1x2,
+                self.bet365_1x2,
+                self.pinnacle_ah,
+                self.bet365_ah,
+            )
+        )
+
+    def has_any_input(self) -> bool:
+        return any(
+            branch is not None and branch.has_any_input()
+            for branch in (
+                self.pinnacle_1x2,
+                self.bet365_1x2,
+                self.pinnacle_ah,
+                self.bet365_ah,
+            )
+        )
+
+    def input_values(self) -> dict[str, Decimal | None]:
+        values = {name: None for name in FIRST_HALF_SIDE_SCOPE.input_names()}
+        branches = (
+            (self.pinnacle_1x2, None, "PIN_HOME_1X2_1H_ODDS_PRICE", "PIN_AWAY_1X2_1H_ODDS_PRICE"),
+            (self.bet365_1x2, None, "B365_HOME_1X2_1H_ODDS_PRICE", "B365_AWAY_1X2_1H_ODDS_PRICE"),
+            (self.pinnacle_ah, "PIN_AH_1H_LINE", "PIN_AH_1H_HOME_PRICE", "PIN_AH_1H_AWAY_PRICE"),
+            (self.bet365_ah, "B365_AH_1H_LINE", "B365_AH_1H_HOME_PRICE", "B365_AH_1H_AWAY_PRICE"),
+        )
+        for branch, line_name, home_name, away_name in branches:
+            if branch is None:
+                continue
+            values[home_name] = None if branch.home is None else branch.home.odds_price
+            values[away_name] = None if branch.away is None else branch.away.odds_price
+            if line_name is not None:
+                assert isinstance(branch, PartialAsianHandicapSnapshot)
+                values[line_name] = branch.home_line
+        return values
 
     def input_trace(self) -> dict[str, dict[str, Any]]:
-        points = {
-            "PIN_HOME_1X2_1H_ODDS_PRICE": self.pinnacle_1x2.home,
-            "PIN_AWAY_1X2_1H_ODDS_PRICE": self.pinnacle_1x2.away,
-            "B365_HOME_1X2_1H_ODDS_PRICE": self.bet365_1x2.home,
-            "B365_AWAY_1X2_1H_ODDS_PRICE": self.bet365_1x2.away,
-            "PIN_AH_1H_LINE": self.pinnacle_ah.home,
-            "PIN_AH_1H_HOME_PRICE": self.pinnacle_ah.home,
-            "PIN_AH_1H_AWAY_PRICE": self.pinnacle_ah.away,
-            "B365_AH_1H_LINE": self.bet365_ah.home,
-            "B365_AH_1H_HOME_PRICE": self.bet365_ah.home,
-            "B365_AH_1H_AWAY_PRICE": self.bet365_ah.away,
-        }
-        return {name: point.trace.to_dict() for name, point in points.items()}
+        traces: dict[str, dict[str, Any]] = {}
+        branches = (
+            (self.pinnacle_1x2, None, "PIN_HOME_1X2_1H_ODDS_PRICE", "PIN_AWAY_1X2_1H_ODDS_PRICE"),
+            (self.bet365_1x2, None, "B365_HOME_1X2_1H_ODDS_PRICE", "B365_AWAY_1X2_1H_ODDS_PRICE"),
+            (self.pinnacle_ah, "PIN_AH_1H_LINE", "PIN_AH_1H_HOME_PRICE", "PIN_AH_1H_AWAY_PRICE"),
+            (self.bet365_ah, "B365_AH_1H_LINE", "B365_AH_1H_HOME_PRICE", "B365_AH_1H_AWAY_PRICE"),
+        )
+        for branch, line_name, home_name, away_name in branches:
+            if branch is None:
+                continue
+            if branch.home is not None:
+                traces[home_name] = branch.home.trace.to_dict()
+            if branch.away is not None:
+                traces[away_name] = branch.away.trace.to_dict()
+            line_anchor = branch.home or branch.away
+            if line_name is not None and line_anchor is not None:
+                traces[line_name] = line_anchor.trace.to_dict()
+        return traces
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +271,7 @@ class P2MarketSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class P2ExtractionResult:
-    """Outcome of the independent Full Time and First Half completeness gates."""
+    """Outcome of strict Full Time validation and granular First Half extraction."""
 
     target_minute: int | None
     full_time: PeriodDiagnostics

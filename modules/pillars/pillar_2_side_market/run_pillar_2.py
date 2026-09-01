@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from modules.pillars.context import EventContext
+from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
 from .periods import P2_SIDE_PERIOD_SCOPES, resolve_pillar_status
@@ -58,7 +59,7 @@ def _raw_audit(
 
 
 def _debug_snapshot_inputs(snapshot: Any) -> None:
-    """Log the complete selected input assignment and source lineage."""
+    """Log every selected input assignment and its available source lineage."""
     values = snapshot.input_values()
     traces = snapshot.input_trace()
     logger.info("P2 DEBUG | snapshot | target_minute=%s", snapshot.target_minute)
@@ -107,8 +108,14 @@ def _debug_snapshot_inputs(snapshot: Any) -> None:
 
 
 def _log_signal_profile(profile: dict[str, Any]) -> None:
-    def log_block(block_name: str, block: dict[str, Any]) -> None:
+    def log_block(block_name: str, block: dict[str, Any] | None) -> None:
         logger.info("P2 SIGNAL | %s | begin", block_name)
+        if block is None:
+            logger.info(
+                "P2 SIGNAL | %s | unavailable because required dependencies are incomplete",
+                block_name,
+            )
+            return
         for field_name, value in block.items():
             if isinstance(value, dict):
                 for nested_name, nested_value in value.items():
@@ -142,6 +149,8 @@ def _log_signal_profile(profile: dict[str, Any]) -> None:
 def calculate_pillar_2(
     event_context: EventContext,
     odds_trajectory_context: OddsTrajectoryContext | None = None,
+    *,
+    target_selection: TargetMinuteSelection,
     debug_mode: bool = False,
 ) -> dict[str, Any]:
     """Extract one canonical minute and return its structural signal profile.
@@ -153,7 +162,11 @@ def calculate_pillar_2(
         odds_trajectory_context
         or getattr(event_context, "odds_trajectory_context", None)
     )
-    extraction = extract_p2_market_snapshot(event_context.event_id, odds_context)
+    extraction = extract_p2_market_snapshot(
+        event_context.event_id,
+        odds_context,
+        target_selection,
+    )
     periods = extraction.period_diagnostics()
     if debug_mode:
         logger.info(
@@ -227,7 +240,7 @@ def calculate_pillar_2(
         _debug_snapshot_inputs(snapshot)
     profile_dto = build_p2_signal_profile(snapshot, debug_mode=debug_mode)
     profile = profile_dto.to_dict()
-    optional_complete = snapshot.first_half is not None
+    optional_complete = extraction.first_half.status == "COMPLETE"
     status = resolve_pillar_status(
         required_complete=True,
         optional_complete=optional_complete,

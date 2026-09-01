@@ -27,6 +27,7 @@ from modules.pillars.context import (
     summarize_number_of_teams_from_streak_analysis,
 )
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
+from modules.pillars.market_snapshot_extractor import select_target_minute
 from modules.pillars.competition_metadata_resolver import (
     apply_competition_metadata_resolution,
     resolve_competition_metadata,
@@ -45,12 +46,7 @@ from modules.pillars.pillar_3_totals_market_context.run_pillar_3 import (
     ENGINE_VERSION as P3_ENGINE_VERSION,
     calculate_pillar_3,
 )
-from modules.pillars.pillar_3_totals_market_context.periods import (
-    DEFAULT_P3_TOTALS_PERIOD_SCOPE,
-    derived_metric_names,
-    period_scope_from_token,
-)
-from modules.pillars.mining.adapters import P2MiningAdapter
+from modules.pillars.mining.adapters import P2MiningAdapter, P3MiningAdapter
 from modules.pillars.mining.service import PillarMiningService
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
@@ -59,6 +55,8 @@ from modules.pillars.pillar_1_team_structure.totals import (
 )
 
 logger = logging.getLogger(__name__)
+
+CANONICAL_SIGNAL_FLOW_ID = "pre_start_signal_profile"
 
 
 def _serialize_p1_totals_output(output: P1TotalsOutput) -> dict:
@@ -118,7 +116,12 @@ def _build_p4_error_result(event_context, odds_trajectory_context, exc: Exceptio
     }
 
 
-def _build_p2_error_result(event_context, odds_trajectory_context, exc: Exception) -> dict:
+def _build_p2_error_result(
+    event_context,
+    odds_trajectory_context,
+    exc: Exception,
+    target_selection=None,
+) -> dict:
     return {
         "pillar_id": "pillar_2_side_market",
         "pillar_name": "Side Market Signal Engine",
@@ -127,7 +130,8 @@ def _build_p2_error_result(event_context, odds_trajectory_context, exc: Exceptio
         "participants": getattr(event_context, "participants_label", None),
         "P2_STATUS": "ERROR",
         "status": "ERROR",
-        "P2_TARGET_MINUTE": None,
+        "P2_TARGET_MINUTE": getattr(target_selection, "target_minute", None),
+        "P2_SIGNAL_PROFILE": None,
         "modules": [],
         "error": str(exc),
         "raw": {
@@ -238,29 +242,132 @@ def _log_p2_signal_profile_summary(participants: str, result: dict[str, Any]) ->
         )
 
 
-def _build_p3_error_result(event_context, odds_trajectory_context, exc: Exception) -> dict:
+def _build_p3_error_result(
+    event_context,
+    odds_trajectory_context,
+    exc: Exception,
+    target_selection=None,
+) -> dict:
     return {
         "pillar_id": "pillar_3_totals_market_context",
-        "pillar_name": "Totals Market / Context RAW",
+        "pillar_name": "Over/Under Market Signal Profile",
         "engine_version": P3_ENGINE_VERSION,
         "event_id": getattr(event_context, "event_id", None),
         "participants": getattr(event_context, "participants_label", None),
-        "EVENT_ID": getattr(event_context, "event_id", None),
-        "PERIOD": None,
-        "PERIOD_SCOPE": DEFAULT_P3_TOTALS_PERIOD_SCOPE.metric_token,
-        "TARGET_MINUTE": None,
+        "P3_TARGET_MINUTE": getattr(target_selection, "target_minute", None),
         "P3_STATUS": "ERROR",
         "status": "ERROR",
+        "PERIODS": {},
+        "MISSING_INPUTS": [],
+        "INVALID_INPUTS": [],
+        "AMBIGUOUS_INPUTS": [],
+        "P3_SIGNAL_PROFILE": None,
         "modules": [],
         "error": str(exc),
         "raw": {
             "reason": "pillar_3_exception",
+            "target_selection": getattr(target_selection, "diagnostics", {}),
             "odds_trajectory_available": getattr(odds_trajectory_context, "available", False),
             "target_minutes_expected": getattr(odds_trajectory_context, "target_minutes_expected", []),
             "target_minutes_present": getattr(odds_trajectory_context, "target_minutes_present", []),
             "missing_target_minutes": getattr(odds_trajectory_context, "missing_target_minutes", []),
         },
     }
+
+
+def _p3_profile_value(profile: Any, *path: str) -> Any:
+    value = profile
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _log_p3_signal_profile_summary(participants: str, result: dict[str, Any]) -> None:
+    profile = result.get("P3_SIGNAL_PROFILE")
+    logger.info(
+        "P3 calculated for %s: status=%s target_minute=%s signal_profile=%s",
+        participants,
+        result.get("P3_STATUS"),
+        result.get("P3_TARGET_MINUTE"),
+        "AVAILABLE" if isinstance(profile, dict) else "UNAVAILABLE",
+    )
+    if not isinstance(profile, dict):
+        return
+
+    summaries = (
+        (
+            "FT.PINNACLE",
+            ("FT", "PINNACLE"),
+            ("line", "LINE"),
+            ("edge", "EDGE"),
+            ("direction", "DIRECTION"),
+        ),
+        (
+            "FT.BET365",
+            ("FT", "BET365"),
+            ("line", "LINE"),
+            ("edge", "EDGE"),
+            ("direction", "DIRECTION"),
+        ),
+        (
+            "FT.BOOK_RELATION",
+            ("FT", "BOOK_RELATION"),
+            ("relation", "RELATION"),
+            ("gap", "GAP"),
+        ),
+        (
+            "FT.REPRESENTATIVE",
+            ("FT", "REPRESENTATIVE"),
+            ("edge", "EDGE"),
+            ("direction", "DIRECTION"),
+        ),
+        (
+            "1H.PINNACLE",
+            ("1H", "PINNACLE"),
+            ("line", "LINE"),
+            ("edge", "EDGE"),
+            ("direction", "DIRECTION"),
+        ),
+        (
+            "1H.BET365",
+            ("1H", "BET365"),
+            ("line", "LINE"),
+            ("edge", "EDGE"),
+            ("direction", "DIRECTION"),
+        ),
+        (
+            "1H.BOOK_RELATION",
+            ("1H", "BOOK_RELATION"),
+            ("relation", "RELATION"),
+            ("gap", "GAP"),
+        ),
+        (
+            "1H.REPRESENTATIVE",
+            ("1H", "REPRESENTATIVE"),
+            ("edge", "EDGE"),
+            ("direction", "DIRECTION"),
+        ),
+        (
+            "FT_1H",
+            ("FT_1H",),
+            ("relation", "FT_1H_OU_RELATION"),
+            ("gap", "FT_1H_OU_GAP"),
+        ),
+    )
+    for section, section_path, *fields in summaries:
+        values = " ".join(
+            f"{label}={_p3_profile_value(profile, *section_path, key)}"
+            for label, key in fields
+        )
+        logger.info(
+            "P3 SIGNAL PROFILE | event_id=%s | participants=%s | section=%s | %s",
+            result.get("event_id"),
+            participants,
+            section,
+            values,
+        )
 
 
 def _build_p5_error_result(event_context, ft_1x2_odds_trajectory, exc: Exception) -> dict:
@@ -416,9 +523,9 @@ class EventPillarProcessor:
         if self.mining_service is None:
             return
 
-        target_minute = result.get("TARGET_MINUTE")
+        target_minute = result.get("P2_TARGET_MINUTE")
         if target_minute is None:
-            target_minute = result.get("P2_TARGET_MINUTE")
+            target_minute = result.get("P3_TARGET_MINUTE")
 
         try:
             persisted = self.mining_service.persist(
@@ -493,6 +600,12 @@ class EventPillarProcessor:
         odds_trajectory = getattr(event_context, "odds_trajectory", [])
         odds_trajectory_context = build_odds_trajectory_context(odds_trajectory)
         event_context.odds_trajectory_context = odds_trajectory_context
+        target_selection = select_target_minute(
+            odds_trajectory_context,
+            flow_id=CANONICAL_SIGNAL_FLOW_ID,
+            expected_event_id=event_context.event_id,
+            allowed_target_minutes=Config.PRE_START_ODDS_MOMENTS,
+        )
 
         logger.info(
             "Pillar odds trajectory context for event %s: available=%s market_groups=%s present_minutes=%s missing_minutes=%s",
@@ -501,6 +614,13 @@ class EventPillarProcessor:
             len(odds_trajectory_context.markets),
             odds_trajectory_context.target_minutes_present,
             odds_trajectory_context.missing_target_minutes,
+        )
+        logger.info(
+            "Canonical structural target selected for event %s: target_minute=%s reason=%s diagnostics=%s",
+            event_id,
+            target_selection.target_minute,
+            target_selection.reason,
+            target_selection.diagnostics,
         )
         if self.debug_mode and odds_trajectory_context.available:
             trajectory_keys = []
@@ -525,6 +645,7 @@ class EventPillarProcessor:
                 p2_result = calculate_pillar_2(
                     event_context=event_context,
                     odds_trajectory_context=odds_trajectory_context,
+                    target_selection=target_selection,
                     debug_mode=self.debug_mode,
                 )
             except Exception as exc:
@@ -538,6 +659,7 @@ class EventPillarProcessor:
                     event_context,
                     odds_trajectory_context,
                     exc,
+                    target_selection,
                 )
 
             _log_p2_signal_profile_summary(
@@ -561,6 +683,7 @@ class EventPillarProcessor:
                 p3_result = calculate_pillar_3(
                     event_context=event_context,
                     odds_trajectory_context=odds_trajectory_context,
+                    target_selection=target_selection,
                     debug_mode=self.debug_mode,
                 )
             except Exception as exc:
@@ -574,28 +697,21 @@ class EventPillarProcessor:
                     event_context,
                     odds_trajectory_context,
                     exc,
+                    target_selection,
                 )
 
-            p3_period_scope = (
-                period_scope_from_token(p3_result.get("PERIOD_SCOPE"))
-                or DEFAULT_P3_TOTALS_PERIOD_SCOPE
-            )
-            p3_metric_names = derived_metric_names(p3_period_scope)
-            logger.info(
-                "P3 calculated for %s: status=%s target_minute=%s period_scope=%s period=%s direction=%s edge=%s completeness=%s",
+            _log_p3_signal_profile_summary(
                 event_context.participants_label,
-                p3_result.get("P3_STATUS"),
-                p3_result.get("TARGET_MINUTE"),
-                p3_period_scope.metric_token,
-                p3_result.get("PERIOD"),
-                p3_result.get(p3_metric_names.p3_direction),
-                p3_result.get(p3_metric_names.market_edge),
-                p3_result.get(p3_metric_names.completeness),
+                p3_result,
             )
-            # Mining persistence for P3 is pending. Only P2 is registered.
+            self._persist_mining_result(
+                "pillar_3_totals_market_context",
+                event_context,
+                p3_result,
+            )
         else:
             logger.info(
-                "Pillar 3 (Totals Market / Context RAW) skipped for %s (disabled by toggle)",
+                "Pillar 3 (Over/Under Market Signal Engine) skipped for %s (disabled by toggle)",
                 event_context.participants_label,
             )
 
@@ -1107,14 +1223,14 @@ class EventPillarProcessor:
         }
 
 
-def _registered_mining_adapters() -> dict[str, P2MiningAdapter]:
-    """Composition root for mining writers.
-
-    Only P2 is registered. P1/P3/P4/P5 adapters stay pending until their
-    producer contracts expose the identities required by mining-persistence.md.
-    """
+def _registered_mining_adapters() -> dict[
+    str,
+    P2MiningAdapter | P3MiningAdapter,
+]:
+    """Composition root for structural signal-profile mining writers."""
     return {
         "pillar_2_side_market": P2MiningAdapter(),
+        "pillar_3_totals_market_context": P3MiningAdapter(),
     }
 
 

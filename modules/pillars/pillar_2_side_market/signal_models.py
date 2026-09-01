@@ -15,14 +15,14 @@ def _number(value: Decimal | None) -> float | None:
 
 @dataclass(frozen=True, slots=True)
 class BookMarketSignal:
-    pin_edge: Decimal
-    pin_direction: Direction
-    b365_edge: Decimal
-    b365_direction: Direction
-    book_relation: Relation
-    book_gap: Decimal
-    rep_edge: Decimal
-    direction: Direction
+    pin_edge: Decimal | None
+    pin_direction: Direction | None
+    b365_edge: Decimal | None
+    b365_direction: Direction | None
+    book_relation: Relation | None
+    book_gap: Decimal | None
+    rep_edge: Decimal | None
+    direction: Direction | None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -39,14 +39,14 @@ class BookMarketSignal:
 
 @dataclass(frozen=True, slots=True)
 class AsianHandicapSignal:
-    pin_line: Decimal
-    b365_line: Decimal
-    pin_edge: Decimal
-    pin_direction: Direction
-    b365_edge: Decimal
-    b365_direction: Direction
+    pin_line: Decimal | None
+    b365_line: Decimal | None
+    pin_edge: Decimal | None
+    pin_direction: Direction | None
+    b365_edge: Decimal | None
+    b365_direction: Direction | None
     book_relation: Relation | None
-    line_gap: Decimal
+    line_gap: Decimal | None
     price_gap: Decimal | None
     rep_edge: Decimal | None
     direction: Direction | None

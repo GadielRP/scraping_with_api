@@ -1,4 +1,4 @@
-"""Pillar 3 - Totals Market Context orchestrator."""
+"""Thin orchestrator for the Pillar 3 Over/Under Signal Profile."""
 
 from __future__ import annotations
 
@@ -7,236 +7,279 @@ from decimal import Decimal
 from typing import Any
 
 from modules.pillars.context import EventContext
+from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
-from .periods import DEFAULT_P3_TOTALS_PERIOD_SCOPE, derived_metric_names, resolve_pillar_status
-from .raw_engine import ENGINE_VERSION, calculate_p3_raw
+from .periods import P3_TOTALS_PERIOD_SCOPES, resolve_pillar_status
+from .signal_engine import ENGINE_VERSION, build_p3_signal_profile
 from .snapshot_policy import extract_p3_market_snapshot
 
 
 logger = logging.getLogger(__name__)
 
 
-def _debug(message: str, *args: Any) -> None:
-    logger.info("P3_TOTALS_MARKET DEBUG | " + message, *args)
-
-
 def _number(value: Decimal | None) -> float | None:
     return None if value is None else float(value)
 
 
-def _mining_context(
-    event_context: EventContext,
-    target_minute: int | None,
-    period: str | None,
-    period_scope_token: str,
-) -> dict[str, Any]:
-    competition = getattr(event_context, "competition", None)
+def _json_inputs(values: dict[str, Decimal | None]) -> dict[str, float | None]:
+    return {name: _number(value) for name, value in values.items()}
+
+
+def _empty_inputs() -> dict[str, float | None]:
     return {
-        "event_id": event_context.event_id,
-        "sport": event_context.sport,
-        "competition_id": getattr(competition, "competition_id", None),
-        "competition": getattr(competition, "display_name", None),
-        "season_id": getattr(event_context, "season_id", None),
-        "season_name": getattr(event_context, "season_name", None),
-        "season_year": getattr(event_context, "season_year", None),
-        "market_group": "Over/Under",
-        "period": period,
-        "period_scope": period_scope_token,
-        "minutes_to_start": event_context.minutes_until_start,
-        "TARGET_MINUTE": target_minute,
+        name: None
+        for scope in P3_TOTALS_PERIOD_SCOPES
+        for name in scope.input_names()
     }
+
+
+def _raw_audit(
+    *,
+    odds_context: OddsTrajectoryContext | None,
+    periods: dict[str, Any],
+    inputs: dict[str, float | None],
+    input_trace: dict[str, dict[str, Any]],
+    extraction_diagnostics: dict[str, Any],
+    reason: str | None,
+) -> dict[str, Any]:
+    raw = {
+        "inputs": inputs,
+        "input_trace": input_trace,
+        "periods": periods,
+        "extraction_diagnostics": extraction_diagnostics,
+        "target_minutes_expected": list(
+            getattr(odds_context, "target_minutes_expected", [])
+        ),
+        "target_minutes_present": list(
+            getattr(odds_context, "target_minutes_present", [])
+        ),
+    }
+    if reason is not None:
+        raw["reason"] = reason
+    return raw
+
+
+def _debug_snapshot_inputs(snapshot: Any) -> None:
+    values = snapshot.input_values()
+    traces = snapshot.input_trace()
+    logger.info("P3 DEBUG | snapshot | target_minute=%s", snapshot.target_minute)
+    for name, value in values.items():
+        trace = traces.get(name)
+        logger.info("P3 DEBUG | input assignment | name=%s | value=%s", name, value)
+        if trace is None:
+            logger.info(
+                "P3 DEBUG | input lineage | name=%s | unavailable=true",
+                name,
+            )
+            continue
+        logger.info(
+            "P3 DEBUG | input lineage | name=%s | target=%s | snapshot=%s | quote=%s",
+            name,
+            trace.get("target_minute"),
+            trace.get("snapshot_id"),
+            trace.get("quote_id"),
+        )
+        logger.info(
+            "P3 DEBUG | input lineage | name=%s | bookie_id=%s | bookie=%s | source=%s",
+            name,
+            trace.get("bookie_id"),
+            trace.get("bookie_name"),
+            trace.get("source"),
+        )
+        logger.info(
+            "P3 DEBUG | input lineage | name=%s | market_group=%s | period=%s | market_name=%s",
+            name,
+            trace.get("market_group"),
+            trace.get("market_period"),
+            trace.get("market_name"),
+        )
+        logger.info(
+            "P3 DEBUG | input lineage | name=%s | choice=%s | choice_group=%s",
+            name,
+            trace.get("choice_name"),
+            trace.get("choice_group"),
+        )
+
+
+def _log_signal_profile(profile: dict[str, Any]) -> None:
+    for period in ("FT", "1H"):
+        block = profile.get(period)
+        if not isinstance(block, dict):
+            logger.info("P3 SIGNAL | %s | value=None", period)
+            continue
+        for section, values in block.items():
+            if isinstance(values, dict):
+                for field, value in values.items():
+                    logger.info(
+                        "P3 SIGNAL | %s.%s | field=%s | value=%s",
+                        period,
+                        section,
+                        field,
+                        value,
+                    )
+            else:
+                logger.info(
+                    "P3 SIGNAL | %s | field=%s | value=%s",
+                    period,
+                    section,
+                    values,
+                )
+    ft_1h = profile.get("FT_1H")
+    if not isinstance(ft_1h, dict):
+        logger.info("P3 SIGNAL | FT_1H | value=None")
+        return
+    for field, value in ft_1h.items():
+        if isinstance(value, dict):
+            for nested_field, nested_value in value.items():
+                logger.info(
+                    "P3 SIGNAL | FT_1H | field=%s.%s | value=%s",
+                    field,
+                    nested_field,
+                    nested_value,
+                )
+        else:
+            logger.info(
+                "P3 SIGNAL | FT_1H | field=%s | value=%s",
+                field,
+                value,
+            )
 
 
 def calculate_pillar_3(
     event_context: EventContext,
     odds_trajectory_context: OddsTrajectoryContext | None = None,
+    *,
+    target_selection: TargetMinuteSelection,
     debug_mode: bool = False,
 ) -> dict[str, Any]:
-    """Calculate P3 RAW with independent period gates over the registered scopes."""
-    metric_names = derived_metric_names(DEFAULT_P3_TOTALS_PERIOD_SCOPE)
-    context = odds_trajectory_context or getattr(
+    """Return the structural P3 profile for one pipeline-selected minute.
+
+    The returned dict is the mining producer output. The pipeline persists it
+    through ``P3MiningAdapter`` immediately after this function returns.
+    """
+    odds_context = odds_trajectory_context or getattr(
         event_context,
         "odds_trajectory_context",
         None,
     )
+    extraction = extract_p3_market_snapshot(
+        event_context.event_id,
+        odds_context,
+        target_selection,
+    )
+    periods = extraction.period_diagnostics()
     if debug_mode:
-        _debug("========== Inicio de Pillar 3 Totals Market Context RAW ==========")
-        _debug(
-            "Evento=%s (%s); PERIOD_SCOPE=%s; available=%s; trajectory_event_id=%s; minutos presentes=%s.",
+        logger.info(
+            "P3 DEBUG | extraction | event_id=%s | target_minute=%s | abort_reason=%s",
             event_context.event_id,
-            event_context.participants_label,
-            DEFAULT_P3_TOTALS_PERIOD_SCOPE.metric_token,
-            getattr(context, "available", False),
-            getattr(context, "event_id", None),
-            getattr(context, "target_minutes_present", []),
+            extraction.target_minute,
+            extraction.abort_reason,
+        )
+        logger.info(
+            "P3 DEBUG | period gates | full_time=%s | first_half=%s",
+            extraction.full_time.status,
+            extraction.first_half.status,
+        )
+        logger.info(
+            "P3 DEBUG | period gates | missing=%s | invalid=%s | ambiguous=%s",
+            extraction.missing_inputs,
+            extraction.invalid_inputs,
+            extraction.ambiguous_inputs,
         )
 
-    extraction = extract_p3_market_snapshot(event_context.event_id, context)
-    period_diagnostics = extraction.period_diagnostics()
     base = {
         "pillar_id": "pillar_3_totals_market_context",
-        "pillar_name": "Totals Market / Context RAW",
+        "pillar_name": "Over/Under Market Signal Profile",
         "engine_version": ENGINE_VERSION,
         "event_id": event_context.event_id,
         "participants": event_context.participants_label,
-        "EVENT_ID": event_context.event_id,
-        "PERIOD_SCOPE": DEFAULT_P3_TOTALS_PERIOD_SCOPE.metric_token,
-        "TARGET_MINUTE": extraction.target_minute,
-        "PERIODS": period_diagnostics,
+        "P3_TARGET_MINUTE": extraction.target_minute,
+        "PERIODS": periods,
         "MISSING_INPUTS": list(extraction.missing_inputs),
         "INVALID_INPUTS": list(extraction.invalid_inputs),
         "AMBIGUOUS_INPUTS": list(extraction.ambiguous_inputs),
     }
 
-    if extraction.snapshot is None:
-        if debug_mode:
-            _debug(
-                "Full Time no superó su gate. razón=%s; target=%s; faltantes=%s; inválidos=%s; ambiguos=%s; diagnóstico=%s.",
-                extraction.abort_reason,
-                extraction.target_minute,
-                extraction.missing_inputs,
-                extraction.invalid_inputs,
-                extraction.ambiguous_inputs,
-                extraction.extraction_diagnostics,
-            )
+    snapshot = extraction.snapshot
+    if snapshot is None:
+        inputs = _empty_inputs()
+        traces: dict[str, dict[str, Any]] = {}
+        for period_snapshot in (
+            extraction.full_time_snapshot,
+            extraction.first_half_snapshot,
+        ):
+            if period_snapshot is not None:
+                inputs.update(_json_inputs(period_snapshot.input_values()))
+                traces.update(period_snapshot.input_trace())
+        raw = _raw_audit(
+            odds_context=odds_context,
+            periods=periods,
+            inputs=inputs,
+            input_trace=traces,
+            extraction_diagnostics=extraction.extraction_diagnostics,
+            reason=extraction.abort_reason or "full_time_completeness_gate_failed",
+        )
         logger.info(
-            "P3 RAW aborted for event_id=%s target_minute=%s reason=%s missing=%s invalid=%s ambiguous=%s periods=%s",
+            "P3 signal profile unavailable for event_id=%s target_minute=%s reason=%s",
             event_context.event_id,
             extraction.target_minute,
-            extraction.abort_reason,
-            extraction.missing_inputs,
-            extraction.invalid_inputs,
-            extraction.ambiguous_inputs,
-            period_diagnostics,
+            raw.get("reason"),
         )
         return {
             **base,
-            "PERIOD": None,
             "P3_STATUS": "INSUFFICIENT_DATA",
             "status": "INSUFFICIENT_DATA",
+            "P3_SIGNAL_PROFILE": None,
             "modules": [],
-            "raw": {
-                "reason": extraction.abort_reason,
-                "mining_context": _mining_context(
-                    event_context,
-                    extraction.target_minute,
-                    None,
-                    DEFAULT_P3_TOTALS_PERIOD_SCOPE.metric_token,
-                ),
-                "periods": period_diagnostics,
-                "extraction_diagnostics": extraction.extraction_diagnostics,
-                "target_minutes_expected": list(
-                    getattr(context, "target_minutes_expected", [])
-                ),
-                "target_minutes_present": list(
-                    getattr(context, "target_minutes_present", [])
-                ),
-            },
+            "raw": raw,
         }
 
-    snapshot = extraction.snapshot
     if debug_mode:
-        _debug("TARGET_MINUTE=%s.", snapshot.target_minute)
-        _debug("PERIOD resuelto=%s.", snapshot.full_time.period)
-        values = snapshot.input_values()
-        traces = snapshot.input_trace()
-        for name, value in values.items():
-            trace = traces.get(name)
-            if trace:
-                _debug(
-                    "Asignación %s=%s desde bookie_id=%s, nombre=%s, source=%s, línea=%s, snapshot_id=%s, quote_id=%s, target=%s.",
-                    name,
-                    value,
-                    trace.get("bookie_id"),
-                    trace.get("bookie_name"),
-                    trace.get("source"),
-                    trace.get("choice_group"),
-                    trace.get("snapshot_id"),
-                    trace.get("quote_id"),
-                    trace.get("target_minute"),
-                )
-            else:
-                _debug("Asignación %s=%s; no existe quote trazable para este input.", name, value)
-
-    metrics = calculate_p3_raw(snapshot, debug_mode=debug_mode)
-    available_count = sum(value is not None for value in snapshot.input_values().values())
+        _debug_snapshot_inputs(snapshot)
+    profile_dto = build_p3_signal_profile(snapshot, debug_mode=debug_mode)
+    profile = profile_dto.to_dict()
+    optional_complete = extraction.first_half.status == "COMPLETE"
     status = resolve_pillar_status(
         required_complete=True,
-        optional_complete=True,
-        signal_present=metrics[metric_names.market_edge] is not None,
-        available_input_count=available_count,
+        optional_complete=optional_complete,
     )
-
-    engine_raw = {
-        "baseline_weights": {
-            metric_names.pin_weight: metrics[metric_names.pin_weight],
-            metric_names.b365_weight: metrics[metric_names.b365_weight],
-        },
-        "mining_context": _mining_context(
-            event_context,
-            snapshot.target_minute,
-            snapshot.full_time.period,
-            snapshot.full_time.period_scope.metric_token,
-        ),
-        "inputs": {
-            name: _number(value) for name, value in snapshot.input_values().items()
-        },
-        "input_trace": snapshot.input_trace(),
-        "periods": period_diagnostics,
-        "extraction_diagnostics": extraction.extraction_diagnostics,
-    }
+    raw = _raw_audit(
+        odds_context=odds_context,
+        periods=periods,
+        inputs=_json_inputs(snapshot.input_values()),
+        input_trace=snapshot.input_trace(),
+        extraction_diagnostics=extraction.extraction_diagnostics,
+        reason=None if optional_complete else "first_half_incomplete",
+    )
     module = {
         "pillar_id": "pillar_3_totals_market_context",
-        "module_id": "p3_raw_engine",
-        "module_name": "Totals Market Context RAW Engine",
+        "module_id": "p3_signal_engine",
+        "module_name": "Over/Under Market Signal Engine",
         "engine_version": ENGINE_VERSION,
         "P3_STATUS": status,
         "status": status,
-        "EVENT_ID": event_context.event_id,
-        "PERIOD": snapshot.full_time.period,
-        "PERIOD_SCOPE": snapshot.full_time.period_scope.metric_token,
-        "TARGET_MINUTE": snapshot.target_minute,
-        "PERIODS": period_diagnostics,
-        **metrics,
-        "raw": engine_raw,
+        "P3_TARGET_MINUTE": extraction.target_minute,
+        "PERIODS": periods,
+        "P3_SIGNAL_PROFILE": profile,
+        "raw": raw,
     }
-
     if debug_mode:
-        _debug(
-            "Estado final P3=%s; dirección=%s; contexto=%s; edge=%s; completitud=%s.",
-            status,
-            metrics[metric_names.p3_direction],
-            metrics[metric_names.context_direction],
-            metrics[metric_names.market_edge],
-            metrics[metric_names.completeness],
-        )
-
+        _log_signal_profile(profile)
     logger.info(
-        "P3 RAW calculated for event_id=%s target_minute=%s period_scope=%s period=%s status=%s direction=%s edge=%s completeness=%.3f debug_mode=%s",
+        "P3 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s",
         event_context.event_id,
-        snapshot.target_minute,
-        snapshot.full_time.period_scope.metric_token,
-        snapshot.full_time.period,
+        extraction.target_minute,
         status,
-        metrics[metric_names.p3_direction],
-        metrics[metric_names.market_edge],
-        metrics[metric_names.completeness],
-        debug_mode,
+        extraction.first_half.status,
     )
     return {
         **base,
-        "PERIOD": snapshot.full_time.period,
         "P3_STATUS": status,
         "status": status,
+        "P3_SIGNAL_PROFILE": profile,
         "modules": [module],
-        **metrics,
-        "raw": {
-            "module_count": 1,
-            "module_ids": ["p3_raw_engine"],
-            "periods": period_diagnostics,
-            "p3_raw_engine": engine_raw,
-        },
+        "raw": raw,
     }
 
 

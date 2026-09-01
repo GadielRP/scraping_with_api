@@ -26,7 +26,7 @@ TARGET_MINUTES = [120, 30, 5, 1, 0, -5]
 def _default_target_selection(monkeypatch) -> None:
     monkeypatch.setitem(
         market_snapshot_extractor.HARDCODED_TARGET_MINUTE_BY_FLOW,
-        "pillar_2",
+        "pre_start_signal_profile",
         None,
     )
 
@@ -198,7 +198,18 @@ def _complete_rows(
 
 def _calculate(rows: list[dict], *, debug_mode: bool = False) -> dict:
     context = build_odds_trajectory_context(rows, target_minutes_expected=TARGET_MINUTES)
-    return calculate_pillar_2(_event_context(), context, debug_mode=debug_mode)
+    target_selection = market_snapshot_extractor.select_target_minute(
+        context,
+        flow_id="pre_start_signal_profile",
+        expected_event_id=2002,
+        allowed_target_minutes=TARGET_MINUTES,
+    )
+    return calculate_pillar_2(
+        _event_context(),
+        context,
+        target_selection=target_selection,
+        debug_mode=debug_mode,
+    )
 
 
 def _profile(result: dict) -> dict:
@@ -233,7 +244,7 @@ def test_full_time_and_first_half_complete_produce_exact_active_contract() -> No
     assert result["raw"] is result["modules"][0]["raw"]
 
 
-def test_full_time_complete_first_half_missing_is_partial_without_null_metric_fanout() -> None:
+def test_full_time_complete_and_first_half_absent_keeps_ft_and_marks_partial() -> None:
     result = _calculate(_complete_rows(include_first_half=False))
     profile = _profile(result)
 
@@ -394,6 +405,122 @@ def test_one_strict_target_minute_has_no_per_market_fallback() -> None:
     assert result["P2_TARGET_MINUTE"] == 5
     assert result["P2_STATUS"] == "PARTIAL"
     assert {trace["target_minute"] for trace in result["raw"]["input_trace"].values()} == {5}
+    assert result["raw"]["inputs"]["B365_HOME_1X2_1H_ODDS_PRICE"] == pytest.approx(2.30)
+    assert result["raw"]["inputs"]["B365_AWAY_1X2_1H_ODDS_PRICE"] is None
+    assert _profile(result)["1H"] is not None
+
+
+def test_partial_first_half_1x2_preserves_valid_branch_without_changing_full_time(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
+    complete = _calculate(_complete_rows())
+    rows = [
+        row for row in _complete_rows()
+        if not (
+            row["market_period"] == "1st Half"
+            and row["market_group"] == "1X2"
+            and row["bookie_id"] == 302
+            and row["choice_name"] == "2"
+        )
+    ]
+    result = _calculate(rows, debug_mode=True)
+    profile = _profile(result)
+    one_x_two = profile["1H"]["1X2"]
+
+    assert result["P2_STATUS"] == "PARTIAL"
+    assert result["PERIODS"]["first_half"]["status"] == "INCOMPLETE"
+    assert profile["FT"] == _profile(complete)["FT"]
+    assert one_x_two["PIN_EDGE"] is None
+    assert one_x_two["PIN_DIRECTION"] is None
+    assert one_x_two["B365_EDGE"] is not None
+    assert one_x_two["B365_DIRECTION"] is not None
+    assert one_x_two["BOOK_RELATION"] is None
+    assert one_x_two["BOOK_GAP"] is None
+    assert one_x_two["REP_EDGE"] is None
+    assert one_x_two["DIRECTION"] is None
+    assert profile["1H"]["AH"]["REP_EDGE"] is not None
+    assert profile["1H"]["CROSS_MARKET"]["1H_1X2_AH_RELATION"] is None
+    assert profile["FT_1H"] is None
+    assert result["raw"]["inputs"]["PIN_HOME_1X2_1H_ODDS_PRICE"] == pytest.approx(2.20)
+    assert result["raw"]["inputs"]["PIN_AWAY_1X2_1H_ODDS_PRICE"] is None
+    assert "P2 SIGNAL | FT_1H | unavailable because required dependencies are incomplete" in caplog.text
+
+
+def test_partial_first_half_ah_does_not_remove_complete_1x2_or_ft_1h() -> None:
+    rows = [
+        row for row in _complete_rows()
+        if not (
+            row["market_period"] == "1st Half"
+            and row["market_group"] == "Asian Handicap"
+            and row["bookie_id"] == 302
+            and row["choice_name"] == "2"
+        )
+    ]
+    result = _calculate(rows)
+    profile = _profile(result)
+    asian_handicap = profile["1H"]["AH"]
+
+    assert result["P2_STATUS"] == "PARTIAL"
+    assert profile["1H"]["1X2"]["REP_EDGE"] is not None
+    assert profile["FT_1H"] is not None
+    assert asian_handicap["PIN_LINE"] == pytest.approx(-0.25)
+    assert asian_handicap["B365_LINE"] == pytest.approx(-0.25)
+    assert asian_handicap["LINE_GAP"] == pytest.approx(0)
+    assert asian_handicap["PIN_EDGE"] is None
+    assert asian_handicap["B365_EDGE"] is not None
+    assert asian_handicap["REP_EDGE"] is None
+    assert profile["1H"]["CROSS_MARKET"]["1H_1X2_AH_RELATION"] is None
+
+
+def test_partial_first_half_ah_line_preserves_individual_price_edges() -> None:
+    rows = _complete_rows()
+    for row in rows:
+        if (
+            row["market_period"] == "1st Half"
+            and row["market_group"] == "Asian Handicap"
+            and row["bookie_id"] == 302
+        ):
+            row["choice_group"] = None
+    result = _calculate(rows)
+    asian_handicap = _profile(result)["1H"]["AH"]
+
+    assert result["P2_STATUS"] == "PARTIAL"
+    assert asian_handicap["PIN_LINE"] is None
+    assert asian_handicap["PIN_EDGE"] is not None
+    assert asian_handicap["PIN_DIRECTION"] is not None
+    assert asian_handicap["B365_EDGE"] is not None
+    assert asian_handicap["LINE_GAP"] is None
+    assert asian_handicap["BOOK_RELATION"] is None
+    assert asian_handicap["REP_EDGE"] is None
+
+
+def test_multiple_partial_first_half_candidates_remain_ambiguous() -> None:
+    rows = [
+        row for row in _complete_rows()
+        if not (
+            row["market_period"] == "1st Half"
+            and row["market_group"] == "Asian Handicap"
+            and row["bookie_id"] == 302
+            and row["choice_name"] == "2"
+        )
+    ]
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Asian Handicap",
+        market_period="1st Half",
+        market_name="Asian Handicap 1st Half",
+        choice_group="-0.75",
+        bookie_id=302,
+        prices={"1": 1.91},
+    )
+    result = _calculate(rows)
+
+    assert result["P2_STATUS"] == "PARTIAL"
+    assert result["PERIODS"]["first_half"]["status"] == "AMBIGUOUS"
+    assert _profile(result)["1H"] is None
+    assert "PIN_AH_1H_LINE" in result["AMBIGUOUS_INPUTS"]
 
 
 def test_multiple_complete_ah_candidates_remain_ambiguous() -> None:

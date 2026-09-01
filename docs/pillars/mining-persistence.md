@@ -186,34 +186,36 @@ GROUP BY r.sport, r.producer_status, r.diagnostics->>'reason'
 ORDER BY observations DESC;
 ```
 
-### 6.4 Distribución de `TOTALS_MARKET_FULL_TIME_EDGE` de P3
+### 6.4 Lectura del perfil estructural de P3
 
-P3 publica `PERIOD_SCOPE=FULL_TIME` para declarar el enfoque calculado y
-`PERIOD` para conservar el período canónico realmente resuelto. Sus métricas
-derivadas incorporan el token del scope, por ejemplo
-`PIN_TOTAL_FULL_TIME_EDGE`, `TOTAL_FULL_TIME_LINE_GAP` y
-`P3_FULL_TIME_DIRECTION_RAW`. Cada scope futuro genera su vocabulario desde la
-misma definición de período, por lo que las consultas deben filtrar el nombre
-periodizado y no una clave genérica.
+P3 sigue el mismo contrato de persistencia que P2: no publica un score escalar
+ni una dirección global. La unidad de minería conserva el perfil completo en
+`payload->'P3_SIGNAL_PROFILE'`. Sus bloques `FT`, `1H` y `FT_1H` contienen las
+lecturas individuales, relaciones entre books y representatives que existían
+en el momento canónico evaluado.
 
 ```sql
 SELECT
     r.sport,
     r.competition_id,
-    u.market_period,
     r.target_minute,
-    percentile_cont(0.5) WITHIN GROUP (ORDER BY m.numeric_value) AS median_edge,
-    percentile_cont(0.9) WITHIN GROUP (ORDER BY m.numeric_value) AS p90_edge,
+    u.payload->'P3_SIGNAL_PROFILE' AS signal_profile,
     count(*) AS observations
-FROM pillar_mining_metric_values m
-JOIN pillar_mining_units u ON u.id = m.unit_id
+FROM pillar_mining_units u
 JOIN pillar_mining_runs r ON r.id = u.run_id
 WHERE r.pillar_id = 'pillar_3_totals_market_context'
-  AND u.unit_type = 'module'
-  AND m.metric_name = 'TOTALS_MARKET_FULL_TIME_EDGE'
+  AND u.unit_type = 'summary'
   AND r.canonical_status = 'SUCCESS'
-GROUP BY r.sport, r.competition_id, u.market_period, r.target_minute;
+GROUP BY
+    r.sport,
+    r.competition_id,
+    r.target_minute,
+    u.payload->'P3_SIGNAL_PROFILE';
 ```
+
+Una evaluación posterior debe seleccionar explícitamente el branch del perfil
+que se desea estudiar. No debe sintetizar un resultado global para P3 durante
+la persistencia.
 
 No se debe calcular hit rate de cualquier `direction` sin mirar `signal_axis`.
 `SIDE` puede contrastarse con ganador; `IMPLIED_PROBABILITY_MOVE` describe un
@@ -226,11 +228,11 @@ movimiento de mercado y no es automáticamente una predicción del partido.
 | P1 Side | `side` | summary → M1–M7 → components |
 | P1 Totals | `totals` | summary → structural/temporal/trend layers |
 | P2 | `side_market` | summary → `p2_signal_engine` |
-| P3 | `totals_market_context_<period_key>` | summary → `p3_raw_engine` |
+| P3 | `totals_market_context` | summary → `p3_signal_engine` |
 | P4 | `temporal_drift` | summary → market periods → choices |
 | P5 | `exact_price_memory` | summary → exact price memory module |
 
-Solo P2 está registrado para escritura actualmente. P1, P3, P4 y P5 quedan
+P2 y P3 están registrados para escritura actualmente. P1, P4 y P5 quedan
 pendientes. P4 y P5 deben exponer `bookie_id` en sus outputs antes de activar
 sus adaptadores. El adaptador no debe resolver IDs por nombre. La misma regla
 aplica a cualquier identidad canónica: si no viene del productor o del contexto,
@@ -278,6 +280,7 @@ validación del contrato y finalmente la conectividad/transacción del repositor
 - `modules/pillars/mining/contracts.py`: contrato y validación del grafo.
 - `modules/pillars/mining/service.py`: política de aplicación.
 - `modules/pillars/mining/adapters/pillar_2.py`: traducción de P2.
+- `modules/pillars/mining/adapters/pillar_3.py`: traducción estructural de P3.
 - `infrastructure/persistence/models.py`: esquema SQLAlchemy.
 - `infrastructure/persistence/repositories/pillar_mining_repository.py`: transacción.
 - `infrastructure/persistence/database.py`: migración de esquema.

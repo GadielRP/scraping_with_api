@@ -24,8 +24,7 @@ from modules.pillars.odds_trajectory_context import (
 # Hardcoded development/simulation overrides. ``None`` preserves the flow's
 # normal selection policy. A configured minute is strict and never falls back.
 HARDCODED_TARGET_MINUTE_BY_FLOW: dict[str, int | None] = {
-    "pillar_2": None,
-    "pillar_3": None,
+    "pre_start_signal_profile": None,
 }
 
 

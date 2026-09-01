@@ -11,6 +11,8 @@ from .models import (
     P2FirstHalfSnapshot,
     P2FullTimeSnapshot,
     P2MarketSnapshot,
+    PartialAsianHandicapSnapshot,
+    PartialTwoWayMarketSnapshot,
     TwoWayMarketSnapshot,
 )
 from .relations import direction, relation
@@ -58,7 +60,13 @@ def _log_formula(
         logger.info("P2 FORMULA | %s | result=%s", name, _fmt(result))
 
 
-def _log_direction(name: str, edge: Decimal, value: str, *, debug_mode: bool) -> None:
+def _log_direction(
+    name: str,
+    edge: Decimal | None,
+    value: str | None,
+    *,
+    debug_mode: bool,
+) -> None:
     if debug_mode:
         logger.info(
             "P2 FORMULA | %s | direction(edge=%s) -> %s",
@@ -70,8 +78,8 @@ def _log_direction(name: str, edge: Decimal, value: str, *, debug_mode: bool) ->
 
 def _log_relation(
     name: str,
-    left: str,
-    right: str,
+    left: str | None,
+    right: str | None,
     value: str | None,
     *,
     debug_mode: bool,
@@ -86,38 +94,80 @@ def _log_relation(
         )
 
 
+def _market_prices(
+    snapshot: TwoWayMarketSnapshot | PartialTwoWayMarketSnapshot | None,
+) -> tuple[Decimal | None, Decimal | None]:
+    if snapshot is None:
+        return None, None
+    return (
+        None if snapshot.home is None else snapshot.home.odds_price,
+        None if snapshot.away is None else snapshot.away.odds_price,
+    )
+
+
+def _edge_if_available(
+    home_price: Decimal | None,
+    away_price: Decimal | None,
+) -> Decimal | None:
+    if home_price is None or away_price is None:
+        return None
+    return side_edge(home_price, away_price)
+
+
 def _build_book_1x2_signal(
-    pinnacle: TwoWayMarketSnapshot,
-    bet365: TwoWayMarketSnapshot,
+    pinnacle: TwoWayMarketSnapshot | PartialTwoWayMarketSnapshot | None,
+    bet365: TwoWayMarketSnapshot | PartialTwoWayMarketSnapshot | None,
     *,
     label: str,
     debug_mode: bool,
 ) -> BookMarketSignal:
+    pin_home, pin_away = _market_prices(pinnacle)
+    b365_home, b365_away = _market_prices(bet365)
     if debug_mode:
         logger.info("P2 FORMULA | %s | begin bookmaker 1X2 calculation", label)
-        _log_assignment(f"{label}.PIN_HOME_PRICE", pinnacle.home.odds_price, debug_mode=debug_mode)
-        _log_assignment(f"{label}.PIN_AWAY_PRICE", pinnacle.away.odds_price, debug_mode=debug_mode)
-        _log_assignment(f"{label}.B365_HOME_PRICE", bet365.home.odds_price, debug_mode=debug_mode)
-        _log_assignment(f"{label}.B365_AWAY_PRICE", bet365.away.odds_price, debug_mode=debug_mode)
-    pin_edge = side_edge(pinnacle.home.odds_price, pinnacle.away.odds_price)
-    b365_edge = side_edge(bet365.home.odds_price, bet365.away.odds_price)
-    pin_direction = direction(pin_edge)
-    b365_direction = direction(b365_edge)
-    rep_edge = pair_mean(pin_edge, b365_edge)
-    book_gap = absolute_gap(pin_edge, b365_edge)
-    book_relation = relation(pin_direction, b365_direction)
-    representative_direction = direction(rep_edge)
+        _log_assignment(f"{label}.PIN_HOME_PRICE", pin_home, debug_mode=debug_mode)
+        _log_assignment(f"{label}.PIN_AWAY_PRICE", pin_away, debug_mode=debug_mode)
+        _log_assignment(f"{label}.B365_HOME_PRICE", b365_home, debug_mode=debug_mode)
+        _log_assignment(f"{label}.B365_AWAY_PRICE", b365_away, debug_mode=debug_mode)
+    pin_edge = _edge_if_available(pin_home, pin_away)
+    b365_edge = _edge_if_available(b365_home, b365_away)
+    pin_direction = direction(pin_edge) if pin_edge is not None else None
+    b365_direction = direction(b365_edge) if b365_edge is not None else None
+    comparable = (
+        pin_edge is not None
+        and b365_edge is not None
+        and pin_direction is not None
+        and b365_direction is not None
+    )
+    if comparable:
+        rep_edge = pair_mean(pin_edge, b365_edge)
+        book_gap = absolute_gap(pin_edge, b365_edge)
+        book_relation = relation(pin_direction, b365_direction)
+        representative_direction = direction(rep_edge)
+    else:
+        rep_edge = None
+        book_gap = None
+        book_relation = None
+        representative_direction = None
     _log_formula(
         f"{label}.PIN_EDGE",
         "(1 / home_price - 1 / away_price) / ((1 / home_price) + (1 / away_price))",
-        f"(1 / {_fmt(pinnacle.home.odds_price)} - 1 / {_fmt(pinnacle.away.odds_price)}) / ((1 / {_fmt(pinnacle.home.odds_price)}) + (1 / {_fmt(pinnacle.away.odds_price)}))",
+        (
+            "unavailable because PIN_HOME_PRICE or PIN_AWAY_PRICE is None"
+            if pin_edge is None
+            else f"(1 / {_fmt(pin_home)} - 1 / {_fmt(pin_away)}) / ((1 / {_fmt(pin_home)}) + (1 / {_fmt(pin_away)}))"
+        ),
         pin_edge,
         debug_mode=debug_mode,
     )
     _log_formula(
         f"{label}.B365_EDGE",
         "(1 / home_price - 1 / away_price) / ((1 / home_price) + (1 / away_price))",
-        f"(1 / {_fmt(bet365.home.odds_price)} - 1 / {_fmt(bet365.away.odds_price)}) / ((1 / {_fmt(bet365.home.odds_price)}) + (1 / {_fmt(bet365.away.odds_price)}))",
+        (
+            "unavailable because B365_HOME_PRICE or B365_AWAY_PRICE is None"
+            if b365_edge is None
+            else f"(1 / {_fmt(b365_home)} - 1 / {_fmt(b365_away)}) / ((1 / {_fmt(b365_home)}) + (1 / {_fmt(b365_away)}))"
+        ),
         b365_edge,
         debug_mode=debug_mode,
     )
@@ -152,41 +202,60 @@ def _build_book_1x2_signal(
 
 
 def _build_ah_signal(
-    pinnacle: AsianHandicapSnapshot,
-    bet365: AsianHandicapSnapshot,
+    pinnacle: AsianHandicapSnapshot | PartialAsianHandicapSnapshot | None,
+    bet365: AsianHandicapSnapshot | PartialAsianHandicapSnapshot | None,
     *,
     label: str,
     debug_mode: bool,
 ) -> AsianHandicapSignal:
+    pin_line = None if pinnacle is None else pinnacle.home_line
+    b365_line = None if bet365 is None else bet365.home_line
+    pin_home, pin_away = _market_prices(pinnacle)
+    b365_home, b365_away = _market_prices(bet365)
     if debug_mode:
         logger.info("P2 FORMULA | %s | begin Asian Handicap calculation", label)
-        _log_assignment(f"{label}.PIN_LINE", pinnacle.home_line, debug_mode=debug_mode)
-        _log_assignment(f"{label}.B365_LINE", bet365.home_line, debug_mode=debug_mode)
-        _log_assignment(f"{label}.PIN_HOME_PRICE", pinnacle.home.odds_price, debug_mode=debug_mode)
-        _log_assignment(f"{label}.PIN_AWAY_PRICE", pinnacle.away.odds_price, debug_mode=debug_mode)
-        _log_assignment(f"{label}.B365_HOME_PRICE", bet365.home.odds_price, debug_mode=debug_mode)
-        _log_assignment(f"{label}.B365_AWAY_PRICE", bet365.away.odds_price, debug_mode=debug_mode)
-    pin_edge = side_edge(pinnacle.home.odds_price, pinnacle.away.odds_price)
-    b365_edge = side_edge(bet365.home.odds_price, bet365.away.odds_price)
-    pin_direction = direction(pin_edge)
-    b365_direction = direction(b365_edge)
-    same_line = pinnacle.home_line == bet365.home_line
-    rep_edge = pair_mean(pin_edge, b365_edge) if same_line else None
-    line_gap = absolute_gap(pinnacle.home_line, bet365.home_line)
-    price_gap = absolute_gap(pin_edge, b365_edge) if same_line else None
-    book_relation = relation(pin_direction, b365_direction) if same_line else None
+        _log_assignment(f"{label}.PIN_LINE", pin_line, debug_mode=debug_mode)
+        _log_assignment(f"{label}.B365_LINE", b365_line, debug_mode=debug_mode)
+        _log_assignment(f"{label}.PIN_HOME_PRICE", pin_home, debug_mode=debug_mode)
+        _log_assignment(f"{label}.PIN_AWAY_PRICE", pin_away, debug_mode=debug_mode)
+        _log_assignment(f"{label}.B365_HOME_PRICE", b365_home, debug_mode=debug_mode)
+        _log_assignment(f"{label}.B365_AWAY_PRICE", b365_away, debug_mode=debug_mode)
+    pin_edge = _edge_if_available(pin_home, pin_away)
+    b365_edge = _edge_if_available(b365_home, b365_away)
+    pin_direction = direction(pin_edge) if pin_edge is not None else None
+    b365_direction = direction(b365_edge) if b365_edge is not None else None
+    same_line = pin_line is not None and b365_line is not None and pin_line == b365_line
+    comparable = (
+        same_line
+        and pin_edge is not None
+        and b365_edge is not None
+        and pin_direction is not None
+        and b365_direction is not None
+    )
+    rep_edge = pair_mean(pin_edge, b365_edge) if comparable else None
+    line_gap = absolute_gap(pin_line, b365_line) if pin_line is not None and b365_line is not None else None
+    price_gap = absolute_gap(pin_edge, b365_edge) if comparable else None
+    book_relation = relation(pin_direction, b365_direction) if comparable else None
     representative_direction = direction(rep_edge) if rep_edge is not None else None
     _log_formula(
         f"{label}.PIN_EDGE",
         "side_edge(PIN_HOME_PRICE, PIN_AWAY_PRICE)",
-        f"side_edge({_fmt(pinnacle.home.odds_price)}, {_fmt(pinnacle.away.odds_price)})",
+        (
+            "unavailable because PIN_HOME_PRICE or PIN_AWAY_PRICE is None"
+            if pin_edge is None
+            else f"side_edge({_fmt(pin_home)}, {_fmt(pin_away)})"
+        ),
         pin_edge,
         debug_mode=debug_mode,
     )
     _log_formula(
         f"{label}.B365_EDGE",
         "side_edge(B365_HOME_PRICE, B365_AWAY_PRICE)",
-        f"side_edge({_fmt(bet365.home.odds_price)}, {_fmt(bet365.away.odds_price)})",
+        (
+            "unavailable because B365_HOME_PRICE or B365_AWAY_PRICE is None"
+            if b365_edge is None
+            else f"side_edge({_fmt(b365_home)}, {_fmt(b365_away)})"
+        ),
         b365_edge,
         debug_mode=debug_mode,
     )
@@ -195,13 +264,19 @@ def _build_ah_signal(
     _log_formula(
         f"{label}.LINE_GAP",
         "abs(PIN_LINE - B365_LINE)",
-        f"abs({_fmt(pinnacle.home_line)} - {_fmt(bet365.home_line)})",
+        f"abs({_fmt(pin_line)} - {_fmt(b365_line)})",
         line_gap,
         debug_mode=debug_mode,
     )
     if debug_mode:
-        logger.info("P2 FORMULA | %s | comparable_contract=%s", label, same_line)
-    if same_line:
+        logger.info(
+            "P2 FORMULA | %s | same_line=%s | both_edges=%s | comparable_contract=%s",
+            label,
+            same_line,
+            pin_edge is not None and b365_edge is not None,
+            comparable,
+        )
+    if comparable:
         _log_relation(f"{label}.BOOK_RELATION", pin_direction, b365_direction, book_relation, debug_mode=debug_mode)
         _log_formula(
             f"{label}.PRICE_GAP",
@@ -219,10 +294,13 @@ def _build_ah_signal(
         )
         _log_direction(f"{label}.DIRECTION", rep_edge, representative_direction, debug_mode=debug_mode)
     elif debug_mode:
-        logger.info("P2 FORMULA | %s | direct price comparison unavailable: lines differ", label)
+        logger.info(
+            "P2 FORMULA | %s | direct price comparison unavailable: equal non-null lines and both edges are required",
+            label,
+        )
     return AsianHandicapSignal(
-        pin_line=pinnacle.home_line,
-        b365_line=bet365.home_line,
+        pin_line=pin_line,
+        b365_line=b365_line,
         pin_edge=pin_edge,
         pin_direction=pin_direction,
         b365_edge=b365_edge,
@@ -242,9 +320,17 @@ def _build_cross_market_signal(
     label: str,
     debug_mode: bool,
 ) -> CrossMarketSignal:
-    if asian_handicap.rep_edge is None or asian_handicap.direction is None:
+    if (
+        one_x_two.rep_edge is None
+        or one_x_two.direction is None
+        or asian_handicap.rep_edge is None
+        or asian_handicap.direction is None
+    ):
         if debug_mode:
-            logger.info("P2 FORMULA | %s | comparison unavailable because AH representative is None", label)
+            logger.info(
+                "P2 FORMULA | %s | comparison unavailable because both market representatives are required",
+                label,
+            )
         return CrossMarketSignal(relation=None, gap=None)
     cross_gap = absolute_gap(one_x_two.rep_edge, asian_handicap.rep_edge)
     cross_relation = relation(one_x_two.direction, asian_handicap.direction)
@@ -390,6 +476,8 @@ def _build_book_exchange_signal(
     *,
     debug_mode: bool,
 ) -> BookExchangeSignal:
+    assert full_time.one_x_two.rep_edge is not None
+    assert full_time.one_x_two.direction is not None
     gap = absolute_gap(full_time.one_x_two.rep_edge, exchange.rep_edge)
     book_exchange_relation = relation(full_time.one_x_two.direction, exchange.direction)
     _log_formula(
@@ -419,7 +507,18 @@ def _build_ft_1h_signal(
     first_half: PeriodSignal,
     *,
     debug_mode: bool,
-) -> FirstHalfRelationSignal:
+) -> FirstHalfRelationSignal | None:
+    if (
+        full_time.one_x_two.rep_edge is None
+        or full_time.one_x_two.direction is None
+        or first_half.one_x_two.rep_edge is None
+        or first_half.one_x_two.direction is None
+    ):
+        if debug_mode:
+            logger.info(
+                "P2 FORMULA | FT_1H | unavailable because both 1X2 representatives are required"
+            )
+        return None
     gap = absolute_gap(full_time.one_x_two.rep_edge, first_half.one_x_two.rep_edge)
     ft_1h_relation = relation(full_time.one_x_two.direction, first_half.one_x_two.direction)
     _log_formula(

@@ -1,8 +1,7 @@
-"""Pillar 3 - Totals Market Context RAW package."""
+"""Pillar 3 - Over/Under Market Signal Profile."""
 
 from .periods import P3_TOTALS_PERIOD_SCOPES, TotalsPeriodScope
-from .raw_engine import ENGINE_VERSION
-from .run_pillar_3 import calculate_pillar_3
+from .run_pillar_3 import ENGINE_VERSION, calculate_pillar_3
 
 __all__ = [
     "ENGINE_VERSION",

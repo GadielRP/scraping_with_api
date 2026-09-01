@@ -152,10 +152,12 @@ tests/pillars/*.pyc
 !tests/pillars/pillar_2_side_market/test_pillar_2_raw.py
 !tests/pillars/pillar_3_totals_market_context/
 !tests/pillars/pillar_3_totals_market_context/__init__.py
-!tests/pillars/pillar_3_totals_market_context/test_pillar_3_raw.py
+!tests/pillars/pillar_3_totals_market_context/test_pillar_3_signal_profile.py
+!tests/pillars/test_structural_target_selection.py
 !tests/pillars/mining/
 !tests/pillars/mining/__init__.py
 !tests/pillars/mining/test_pillar_2_mining.py
+!tests/pillars/mining/test_pillar_2_signal_profile_mining.py
 !tests/pillars/mining/test_pillar_3_mining.py
 !tests/oddspapi/
 !tests/oddspapi/test_fixture_discovery_job.py
