@@ -378,6 +378,40 @@ LIGA_PROFESIONAL_DE_ARGENTINA_CLAUSURA_CONFIG = LeagueConfig(
     standings_grouping="single_table",
 )
 
+# EuroLeague ranks by victories, then a head-to-head mini-table among teams
+# tied on wins. Official overtime-point exclusion is not modeled.
+EUROLEAGUE_CONFIG = LeagueConfig(
+    code="euroleague",
+    display_name="Euroleague",
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=138,
+        source_tournament_id=42527,
+    ),
+    collected=True,
+    standings_method="wins_h2h",
+    grouping_method="league_wide",
+    number_of_teams=20,
+    total_regular_season_games=38,
+    standings_grouping="single_table",
+)
+
+# Liiga uses 3-2-1-0. Official last-resort H2H / even-strength H2H goals
+# after regulation wins, goal difference, and goals for are not modeled.
+LIIGA_CONFIG = LeagueConfig(
+    code="liiga",
+    display_name="Liiga",
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=134,
+        source_tournament_id=108,
+    ),
+    collected=True,
+    standings_method="hockey_3_2_1_0",
+    grouping_method="league_wide",
+    number_of_teams=17,
+    total_regular_season_games=64,
+    standings_grouping="single_table",
+)
+
 LEAGUE_CONFIGS: Tuple[LeagueConfig, ...] = (
     NBA_CONFIG,
     LALIGA_CONFIG,
@@ -396,6 +430,8 @@ LEAGUE_CONFIGS: Tuple[LeagueConfig, ...] = (
     LIGA_MX_APERTURA_CONFIG,
     LIGA_MX_CLAUSURA_CONFIG,
     BRASILEIRAO_CONFIG,
+    EUROLEAGUE_CONFIG,
+    LIIGA_CONFIG,
 )
 
 _LEAGUE_CONFIGS_BY_UNIQUE_TOURNAMENT_ID: Dict[int, list[LeagueConfig]] = {}

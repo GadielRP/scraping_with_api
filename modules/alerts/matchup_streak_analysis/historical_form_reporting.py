@@ -36,7 +36,7 @@ def _format_standing_line(team_name: str, stats: Dict, standings_method: str = N
     gf = stats.get("goals_for", 0)
     ga = stats.get("goals_against", 0)
 
-    if pct is not None and method == "win_pct":
+    if pct is not None and method in {"win_pct", "wins_h2h"}:
         return f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L) GP:{games} GF:{gf} GA:{ga} DIFF:{gd_str}"
     if pct is not None and method == "win_pct_half_tie":
         return f"#{pos} {team_name}: .{int(pct * 1000):03d} ({wins}W-{losses}L-{ties}T) GP:{games} GF:{gf} GA:{ga} DIFF:{gd_str}"

@@ -26,6 +26,7 @@ from .standings_rules import (
     build_display_sort_key,
     normalize_result_subtype,
     sort_football_h2h_items,
+    sort_wins_h2h_items,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ def _finalize_team_stats(stats: Dict[str, object], standings_method: str) -> Non
     if standings_method in {"football_3_1_0", "football_3_1_0_h2h"}:
         stats["points"] = (stats["wins"] * 3) + stats["draws"]
         stats["pct"] = None
-    elif standings_method == "win_pct":
+    elif standings_method in {"win_pct", "wins_h2h"}:
         stats["points"] = stats["wins"]
         stats["pct"] = stats["wins"] / stats["games_played"] if stats["games_played"] > 0 else 0.0
     elif standings_method == "win_pct_half_tie":
@@ -132,7 +133,7 @@ def _apply_game_result(
             team_stats[home_team]["draws"] += 1
             team_stats[away_team]["draws"] += 1
 
-    elif standings_method == "win_pct":
+    elif standings_method in {"win_pct", "wins_h2h"}:
         if winner == "1":
             team_stats[home_team]["wins"] += 1
             team_stats[away_team]["losses"] += 1
@@ -266,6 +267,24 @@ def _finalize_standings_snapshot(
     return _build_standings_payload(finalized_stats, standings_method, grouping_method, match_records)
 
 
+def _sort_standings_items(
+    items,
+    standings_method: str,
+    match_records: Optional[List[Dict[str, object]]],
+) -> Tuple[List[Tuple[str, Dict[str, object]]], Optional[Dict[str, Tuple]]]:
+    if standings_method == "football_3_1_0_h2h":
+        return sort_football_h2h_items(items, match_records or [])
+    if standings_method == "wins_h2h":
+        return sort_wins_h2h_items(items, match_records or [])
+
+    sorted_teams = sorted(
+        items,
+        key=lambda item: build_display_sort_key(item[0], item[1], standings_method),
+        reverse=True,
+    )
+    return sorted_teams, None
+
+
 def _build_standings_payload(
     team_stats: Dict[str, Dict[str, object]],
     standings_method: str,
@@ -275,19 +294,12 @@ def _build_standings_payload(
     standings: Dict[str, Dict] = {}
 
     if grouping_method == "league_wide":
-        if standings_method == "football_3_1_0_h2h":
-            sorted_teams, rank_key_by_team = sort_football_h2h_items(
-                team_stats.items(),
-                match_records or [],
-            )
-            positions = assign_positions_with_ties(sorted_teams, standings_method, rank_key_by_team)
-        else:
-            sorted_teams = sorted(
-                team_stats.items(),
-                key=lambda item: build_display_sort_key(item[0], item[1], standings_method),
-                reverse=True,
-            )
-            positions = assign_positions_with_ties(sorted_teams, standings_method)
+        sorted_teams, rank_key_by_team = _sort_standings_items(
+            team_stats.items(),
+            standings_method,
+            match_records,
+        )
+        positions = assign_positions_with_ties(sorted_teams, standings_method, rank_key_by_team)
 
         for team_name, stats in sorted_teams:
             pos_meta = positions[team_name]
@@ -300,19 +312,12 @@ def _build_standings_payload(
         grouped_teams.setdefault(group_name, []).append((team_name, stats))
 
     for group_name, teams in grouped_teams.items():
-        if standings_method == "football_3_1_0_h2h":
-            sorted_teams, rank_key_by_team = sort_football_h2h_items(
-                teams,
-                match_records or [],
-            )
-            positions = assign_positions_with_ties(sorted_teams, standings_method, rank_key_by_team)
-        else:
-            sorted_teams = sorted(
-                teams,
-                key=lambda item: build_display_sort_key(item[0], item[1], standings_method),
-                reverse=True,
-            )
-            positions = assign_positions_with_ties(sorted_teams, standings_method)
+        sorted_teams, rank_key_by_team = _sort_standings_items(
+            teams,
+            standings_method,
+            match_records,
+        )
+        positions = assign_positions_with_ties(sorted_teams, standings_method, rank_key_by_team)
 
         for team_name, stats in sorted_teams:
             pos_meta = positions[team_name]
@@ -760,7 +765,7 @@ class HistoricalStandingsCalculator:
             season_year=season_year,
         )
         record_timestamps = [record["start_time_utc"].timestamp() for record in match_records]
-        needs_h2h_records = standings_method == "football_3_1_0_h2h"
+        needs_h2h_records = standings_method in {"football_3_1_0_h2h", "wins_h2h"}
 
         snapshots: Dict[float, Dict[str, Dict]] = {}
         team_stats: Dict[str, Dict[str, object]] = {}

@@ -52,6 +52,18 @@ def build_sort_key(stats: Dict, standings_method: str) -> Tuple:
             stats.get("goal_diff", 0),
         )
 
+    if standings_method == "wins_h2h":
+        # EuroLeague-style ranking: victories first. Same-win teams with
+        # fewer games played rank higher. Remaining H2H/PD details are
+        # applied by sort_wins_h2h_items when match records are available.
+        games_played = stats.get("games_played", 0) or 0
+        return (
+            stats.get("wins", 0),
+            -int(games_played),
+            stats.get("goal_diff", 0),
+            stats.get("goals_for", 0),
+        )
+
     if standings_method == "nhl_2_1_0_otl":
         # TODO: For full NHL exactness, separate ROW/OT/SO wins and other
         # official tie-break details when the source data supports them.
@@ -71,11 +83,14 @@ def build_sort_key(stats: Dict, standings_method: str) -> Tuple:
         )
 
     if standings_method == "hockey_3_2_1_0":
+        # Liiga/SHL-style 3-2-1-0: points, then regulation wins, then GD/GF.
+        # Last-resort official H2H (and Liiga even-strength H2H goals) are
+        # not modeled.
         return (
             stats.get("points", 0),
             stats.get("regulation_wins", 0),
-            stats.get("wins", 0),
             stats.get("goal_diff", 0),
+            stats.get("goals_for", 0),
         )
 
     return (
@@ -266,6 +281,134 @@ def sort_football_h2h_items(items, match_records):
     return sorted_items, rank_key_by_team
 
 
+def build_wins_h2h_stats(team_names, match_records) -> Dict[str, Dict[str, int]]:
+    """Build a wins-based mini-table among a cluster of tied teams."""
+    team_set = set(team_names)
+    h2h_stats = {}
+    for name in team_names:
+        h2h_stats[name] = {
+            "wins": 0,
+            "goal_diff": 0,
+            "goals_for": 0,
+            "matches": 0,
+        }
+
+    for match in match_records:
+        home = match["home_team"]
+        away = match["away_team"]
+        if home in team_set and away in team_set:
+            home_score = match["home_score"]
+            away_score = match["away_score"]
+
+            h2h_stats[home]["goals_for"] += home_score
+            h2h_stats[home]["goal_diff"] += (home_score - away_score)
+            h2h_stats[home]["matches"] += 1
+
+            h2h_stats[away]["goals_for"] += away_score
+            h2h_stats[away]["goal_diff"] += (away_score - home_score)
+            h2h_stats[away]["matches"] += 1
+
+            if home_score > away_score:
+                h2h_stats[home]["wins"] += 1
+            elif away_score > home_score:
+                h2h_stats[away]["wins"] += 1
+
+    return h2h_stats
+
+
+def sort_wins_h2h_items(items, match_records):
+    """Rank by victories, then EuroLeague-style H2H among same-win clusters.
+
+    Official EuroLeague order among teams tied on victories:
+    1. Fewer games played ranks higher
+    2. If all tied teams have met home and away, H2H wins then H2H point
+       difference
+    3. Overall point difference, then points scored
+    """
+    by_wins: Dict[int, List[Tuple[str, Dict]]] = {}
+    for team_name, stats in items:
+        wins = stats.get("wins", 0)
+        by_wins.setdefault(wins, []).append((team_name, stats))
+
+    sorted_items = []
+    rank_key_by_team = {}
+
+    for wins in sorted(by_wins.keys(), reverse=True):
+        cluster = by_wins[wins]
+        by_games_played: Dict[int, List[Tuple[str, Dict]]] = {}
+        for name, stats in cluster:
+            games_played = stats.get("games_played", 0) or 0
+            by_games_played.setdefault(int(games_played), []).append((name, stats))
+
+        for games_played in sorted(by_games_played.keys()):
+            gp_cluster = by_games_played[games_played]
+            if len(gp_cluster) == 1:
+                name, stats = gp_cluster[0]
+                sorted_items.append((name, stats))
+                rank_key_by_team[name] = (
+                    wins,
+                    -int(games_played),
+                    "H2H_COMPLETE",
+                    0,
+                    0,
+                    stats.get("goal_diff", 0),
+                    stats.get("goals_for", 0),
+                )
+                continue
+
+            cluster_team_names = [name for name, _ in gp_cluster]
+            h2h_stats = build_wins_h2h_stats(cluster_team_names, match_records)
+
+            if is_football_h2h_cluster_complete(cluster_team_names, h2h_stats):
+                def cluster_sort_key(item):
+                    name, stats = item
+                    h2h = h2h_stats[name]
+                    inverted_name = tuple(-ord(c) for c in _normalize_team_name_for_sort(name))
+                    return (
+                        h2h["wins"],
+                        h2h["goal_diff"],
+                        stats.get("goal_diff", 0),
+                        stats.get("goals_for", 0),
+                        inverted_name,
+                    )
+
+                sorted_cluster = sorted(gp_cluster, key=cluster_sort_key, reverse=True)
+                for name, stats in sorted_cluster:
+                    sorted_items.append((name, stats))
+                    h2h = h2h_stats[name]
+                    rank_key_by_team[name] = (
+                        wins,
+                        -int(games_played),
+                        "H2H_COMPLETE",
+                        h2h["wins"],
+                        h2h["goal_diff"],
+                        stats.get("goal_diff", 0),
+                        stats.get("goals_for", 0),
+                    )
+            else:
+                def fallback_sort_key(item):
+                    name, stats = item
+                    inverted_name = tuple(-ord(c) for c in _normalize_team_name_for_sort(name))
+                    return (
+                        stats.get("goal_diff", 0),
+                        stats.get("goals_for", 0),
+                        inverted_name,
+                    )
+
+                sorted_cluster = sorted(gp_cluster, key=fallback_sort_key, reverse=True)
+                for name, stats in sorted_cluster:
+                    sorted_items.append((name, stats))
+                    rank_key_by_team[name] = (
+                        wins,
+                        -int(games_played),
+                        "H2H_INCOMPLETE",
+                        stats.get("goal_diff", 0),
+                        stats.get("goals_for", 0),
+                    )
+
+    return sorted_items, rank_key_by_team
+
+
 __all__ = [
     "assign_positions_with_ties",
     "build_display_sort_key",
@@ -273,6 +416,8 @@ __all__ = [
     "build_sort_key",
     "normalize_result_subtype",
     "build_football_h2h_stats",
+    "build_wins_h2h_stats",
     "sort_football_h2h_items",
+    "sort_wins_h2h_items",
     "is_football_h2h_cluster_complete",
 ]
