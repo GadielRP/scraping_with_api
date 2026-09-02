@@ -258,8 +258,8 @@ def _log_p2_signal_profile_summary(participants: str, result: dict[str, Any]) ->
       )
     for section, section_path, *fields in summaries:
         values = " ".join(
-            f"{label}={_p2_profile_value(profile, *section_path, key)}"
-            for label, key in fields
+            f"{field[0]}={_p2_profile_value(profile, *section_path, *field[1:])}"
+            for field in fields
         )
         logger.info(
             "P2 SIGNAL PROFILE | event_id=%s | participants=%s | section=%s | %s",
@@ -412,8 +412,8 @@ def _log_p3_signal_profile_summary(participants: str, result: dict[str, Any]) ->
     )
     for section, section_path, *fields in summaries:
         values = " ".join(
-            f"{label}={_p3_profile_value(profile, *section_path, key)}"
-            for label, key in fields
+            f"{field[0]}={_p3_profile_value(profile, *section_path, *field[1:])}"
+            for field in fields
         )
         logger.info(
             "P3 SIGNAL PROFILE | event_id=%s | participants=%s | section=%s | %s",
