@@ -46,7 +46,12 @@ from modules.pillars.pillar_3_totals_market_context.run_pillar_3 import (
     ENGINE_VERSION as P3_ENGINE_VERSION,
     calculate_pillar_3,
 )
-from modules.pillars.mining.adapters import P2MiningAdapter, P3MiningAdapter
+from modules.pillars.mining.adapters import (
+    P1SideMiningAdapter,
+    P1TotalsMiningAdapter,
+    P2MiningAdapter,
+    P3MiningAdapter,
+)
 from modules.pillars.mining.service import PillarMiningService
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
@@ -577,9 +582,14 @@ class EventPillarProcessor:
         if self.mining_service is None:
             return
 
-        target_minute = result.get("P2_TARGET_MINUTE")
+        target_minute = result.get("P1_TARGET_MINUTE")
+        if target_minute is None:
+            target_minute = result.get("P2_TARGET_MINUTE")
         if target_minute is None:
             target_minute = result.get("P3_TARGET_MINUTE")
+        engine_version = result.get("engine_version") or result.get("raw", {}).get(
+            "engine_version"
+        )
 
         try:
             persisted = self.mining_service.persist(
@@ -594,7 +604,7 @@ class EventPillarProcessor:
                     event_context.event_id,
                     result.get("status"),
                     target_minute,
-                    result.get("engine_version"),
+                    engine_version,
                 )
         except Exception:
             # Mining is an analytical side effect. Its failure must be visible,
@@ -605,7 +615,7 @@ class EventPillarProcessor:
                 event_context.event_id,
                 result.get("status"),
                 target_minute,
-                result.get("engine_version"),
+                engine_version,
             )
 
     def process_event(self, event_context: EventContext) -> Optional[dict]:
@@ -1261,15 +1271,28 @@ class EventPillarProcessor:
             }
         )
 
+        p1_totals_serialized = (
+            _serialize_p1_totals_output(p1_totals_result)
+            if p1_totals_result is not None
+            else None
+        )
+        self._persist_mining_result(
+            "pillar_1_team_structure_side",
+            event_context,
+            p1_result,
+        )
+        if p1_totals_serialized is not None:
+            self._persist_mining_result(
+                "pillar_1_team_structure_totals",
+                event_context,
+                p1_totals_serialized,
+            )
+
         return {
             "event_id": event_id,
             "participants": participants,
             "pillar_1": p1_result,
-            "pillar_1_totals": (
-                _serialize_p1_totals_output(p1_totals_result)
-                if p1_totals_result is not None
-                else None
-            ),
+            "pillar_1_totals": p1_totals_serialized,
             "pillar_2": p2_result,
             "pillar_3": p3_result,
             "pillar_4": p4_result,
@@ -1279,10 +1302,12 @@ class EventPillarProcessor:
 
 def _registered_mining_adapters() -> dict[
     str,
-    P2MiningAdapter | P3MiningAdapter,
+    P1SideMiningAdapter | P1TotalsMiningAdapter | P2MiningAdapter | P3MiningAdapter,
 ]:
     """Composition root for structural signal-profile mining writers."""
     return {
+        "pillar_1_team_structure_side": P1SideMiningAdapter(),
+        "pillar_1_team_structure_totals": P1TotalsMiningAdapter(),
         "pillar_2_side_market": P2MiningAdapter(),
         "pillar_3_totals_market_context": P3MiningAdapter(),
     }

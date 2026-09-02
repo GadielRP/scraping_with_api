@@ -19,7 +19,11 @@ from modules.oddspapi.runtime import (
     refresh_oddspapi_account_usage_if_due,
 )
 
-from .event_selector import _canonical_event_id, select_oddspapi_pre_start_candidates
+from .event_selector import (
+    _canonical_event_id,
+    restrict_candidates_to_allowed_moments,
+    select_oddspapi_pre_start_candidates,
+)
 from .odds_batch_processor import (
     OddspapiPreStartOddsBatchProcessor,
     OddspapiPreStartOddsEventResult,
@@ -122,6 +126,13 @@ def run_oddspapi_pre_start_odds(
     events_to_process = restrict_candidates_to_tracked_competitions(
         events_to_process,
         tracked_competition_ids,
+        provider="Oddspapi",
+    )
+    # TEMPORARY: skip Oddspapi fetches outside ODDSPAPI_PRE_START_ALLOWED_MOMENTS
+    # (currently T-5). Local to this phase so the shared pre-start plan is unchanged.
+    events_to_process = restrict_candidates_to_allowed_moments(
+        events_to_process,
+        getattr(Config, "ODDSPAPI_PRE_START_ALLOWED_MOMENTS", None),
         provider="Oddspapi",
     )
     if not getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", True):

@@ -65,6 +65,8 @@ class OddspapiPreStartSettings:
     # Operational toggles for reconstructing key-moment prices from live
     # /historical-odds (ENABLE_ODDSPAPI_HISTORICAL_AS_OF_*) and restricting
     # paid /odds to T-1 (ODDSPAPI_PRE_START_CLOSING_ONLY) live in Config.
+    # TEMPORARY: ODDSPAPI_PRE_START_ALLOWED_MOMENTS also lives in Config and
+    # currently limits Oddspapi pre-start fetches to T-5.
 
     # Optional allowlists; empty means "no extra filter".
     allowed_market_keys: tuple[str, ...] = ()

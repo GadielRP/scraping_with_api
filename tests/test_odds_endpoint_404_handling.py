@@ -1179,6 +1179,11 @@ def test_oddspapi_missing_api_key_skips_mapping_query(monkeypatch):
     monkeypatch.setattr(oddspapi_odds_phase.Config, "ODDSPAPI_PAID_KEY", "")
     monkeypatch.setattr(oddspapi_odds_phase.Config, "ODDSPAPI_FREE_KEYS", [])
     monkeypatch.setattr(
+        oddspapi_odds_phase.Config,
+        "ODDSPAPI_PRE_START_ALLOWED_MOMENTS",
+        [],
+    )
+    monkeypatch.setattr(
         oddspapi_odds_phase.EventSourceMappingRepository,
         "get_odds_source_states",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
@@ -1514,6 +1519,11 @@ def test_oddspapi_entry_skips_untracked_competition(monkeypatch, caplog):
         True,
     )
     monkeypatch.setattr(
+        oddspapi_odds_phase.Config,
+        "ODDSPAPI_PRE_START_ALLOWED_MOMENTS",
+        [],
+    )
+    monkeypatch.setattr(
         oddspapi_odds_phase,
         "select_oddspapi_pre_start_candidates",
         lambda events, source_states=None: seen.append(events) or [],
@@ -1528,6 +1538,44 @@ def test_oddspapi_entry_skips_untracked_competition(monkeypatch, caplog):
 
     assert seen == [[tracked]]
     assert "Skipping 1 Oddspapi odds extraction for untracked competitions" in caplog.text
+
+
+def test_oddspapi_entry_skips_moments_outside_allowlist(monkeypatch, caplog):
+    # TEMPORARY: covers ODDSPAPI_PRE_START_ALLOWED_MOMENTS T-5-only gate.
+    seen = []
+    opening = _event_info(101)
+    opening["minutes_until_start"] = 120
+    current = _event_info(102)
+    current["minutes_until_start"] = 30
+    live = _event_info(103)
+    live["minutes_until_start"] = 5
+    monkeypatch.setattr(
+        oddspapi_odds_phase.Config,
+        "ENABLE_ODDSPAPI_PRE_START_ODDS",
+        True,
+    )
+    monkeypatch.setattr(
+        oddspapi_odds_phase.Config,
+        "ODDSPAPI_PRE_START_ALLOWED_MOMENTS",
+        [5],
+    )
+    monkeypatch.setattr(
+        oddspapi_odds_phase,
+        "select_oddspapi_pre_start_candidates",
+        lambda events, source_states=None: seen.append(events) or [],
+    )
+
+    with caplog.at_level(logging.INFO):
+        oddspapi_odds_phase.run_oddspapi_pre_start_odds(
+            [opening, current, live],
+            {},
+        )
+
+    assert seen == [[live]]
+    assert (
+        "Skipping 2 Oddspapi odds extraction outside allowed moments [5]"
+        in caplog.text
+    )
 
 
 def test_ingest_forwards_tracked_ids_only_to_gated_providers(monkeypatch):

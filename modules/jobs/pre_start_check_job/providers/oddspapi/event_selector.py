@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -10,6 +12,8 @@ from modules.jobs.pre_start_check_job.moment_policy import is_live_odds_moment
 from modules.odds_ingestion import should_extract_odds
 
 from .constants import ODDSPAPI_SOURCE
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,49 @@ def _canonical_event_id(event_info: dict) -> int | None:
 
 def _is_live_moment(minutes_until_start: int | float | None) -> bool:
     return is_live_odds_moment(minutes_until_start)
+
+
+def _moment_value(minutes_until_start) -> int | None:
+    if minutes_until_start is None or isinstance(minutes_until_start, bool):
+        return None
+    try:
+        return int(minutes_until_start)
+    except (TypeError, ValueError):
+        return None
+
+
+def restrict_candidates_to_allowed_moments(
+    candidates: list[dict],
+    allowed_moments: Collection[int] | None,
+    *,
+    provider: str = "Oddspapi",
+) -> list[dict]:
+    """TEMPORARY: keep extractable events outside a provider moment allowlist out.
+
+    ``None`` or an empty collection means this extra gate is off. The shared
+    candidate plan is not mutated, so SofaScore and key-moment evaluation still
+    see every orchestrator-eligible moment.
+    """
+    if not allowed_moments:
+        return candidates
+
+    allowed = {int(moment) for moment in allowed_moments}
+    eligible: list[dict] = []
+    skipped = 0
+    for candidate in candidates:
+        if _moment_value(candidate.get("minutes_until_start")) in allowed:
+            eligible.append(candidate)
+            continue
+        if should_extract_odds(candidate):
+            skipped += 1
+    if skipped:
+        logger.info(
+            "🚫 Skipping %s %s odds extraction outside allowed moments %s",
+            skipped,
+            provider,
+            sorted(allowed),
+        )
+    return eligible
 
 
 def select_oddspapi_pre_start_candidates(

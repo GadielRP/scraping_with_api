@@ -237,6 +237,8 @@ def test_pipeline_registers_structural_signal_profile_adapters() -> None:
 
     adapters = _registered_mining_adapters()
     assert set(adapters) == {
+        "pillar_1_team_structure_side",
+        "pillar_1_team_structure_totals",
         "pillar_2_side_market",
         "pillar_3_totals_market_context",
     }

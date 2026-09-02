@@ -530,12 +530,12 @@ Security invariants:
 
 ### 6.1 Which moments actually fetch (this is the gate)
 
-Configured key moments are `PRE_START_ODDS_MOMENTS` (default `[120, 30, 5, 1, 0, -5]`). The main pre-start job runs `regular_pre_start_moments()` (`120, 30, 5, 0, -5`).
+Configured key moments are `PRE_START_ODDS_MOMENTS` (default `[120, 30, 5, 1, 0]`). The main pre-start job runs `regular_pre_start_moments()` (`120, 30, 5, 0`).
 
 - **Minute 1 ($T-1$)**: The dedicated critical lane (`run_t_minus_one_odds_job`) is disabled by default via `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`. Minute `1` remains in `PRE_START_ODDS_MOMENTS` so that when the event reaches $T-0$, the live historical as-of engine reconstructs and persists the $T-1$ closing snapshot automatically.
 - **Positive moments ($T-120, T-30, T-5$)**: `ODDSPAPI_PRE_START_CLOSING_ONLY` (default `false`) controls positive-minute `/odds` acquisition.
 
-| Flag | T-120 / T-30 / T-5 (main job) | T-1 (critical job) | T-0 / T-minus-5 / live (`minutes <= 0`) |
+| Flag | T-120 / T-30 / T-5 (main job) | T-1 (critical job) | T-0 / live (`minutes <= 0`) |
 |---|---|---|---|
 | `false` (Config default) | `/odds` via `_acquire_pre_start` at each positive moment | Skipped when `ENABLE_PRE_START_T_MINUS_ONE_JOB=false` | `/historical-odds` via `_acquire_live` + reconstructs $T-1$ and reconciles $T-120/30/5$ |
 | `true` | **no request** (`oddspapi_closing_only`) | `/odds` via `_acquire_pre_start` (if T-1 job enabled) | `/historical-odds` via `_acquire_live` |
