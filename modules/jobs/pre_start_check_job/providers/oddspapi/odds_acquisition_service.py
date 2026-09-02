@@ -287,7 +287,7 @@ class OddspapiPreStartOddsAcquisitionService:
         enable_exchange_historical: bool,
         regular: list[str],
         exchange: list[str],
-        exchange_market_keys: Sequence[str] | None = None,
+        exchange_market_keys: list[str] | None = None,
         exchange_max_outcomes_per_event: int,
         exchange_request_budget: int | None,
         minimum_initial_span_minutes: float,
