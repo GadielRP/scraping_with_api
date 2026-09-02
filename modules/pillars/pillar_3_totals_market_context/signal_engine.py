@@ -6,11 +6,19 @@ import logging
 from decimal import Decimal
 
 from .metrics import absolute_gap, ou_edge, pair_mean
-from .models import P3MarketSnapshot, P3PeriodSnapshot, TotalsBookSnapshot
+from .models import (
+    P3MarketSnapshot,
+    P3PeriodSnapshot,
+    TotalsBookSnapshot,
+    TotalsExchangeSnapshot,
+)
 from .relations import context_direction, direction, relation
 from .signal_models import (
     BookOUReading,
     BookRelationSignal,
+    BookExchangeOUSignal,
+    ExchangeOUReading,
+    ExchangeOUSignal,
     FT1HSignal,
     LineStructureSignal,
     P3SignalProfile,
@@ -45,6 +53,24 @@ def _log_formula(
         logger.info("P3 FORMULA | %s | formula=%s", name, formula)
         logger.info("P3 FORMULA | %s | substitution=%s", name, substitution)
         logger.info("P3 FORMULA | %s | result=%s", name, _fmt(result))
+
+
+def _log_relation(
+    name: str,
+    left: str | None,
+    right: str | None,
+    value: str | None,
+    *,
+    debug_mode: bool,
+) -> None:
+    if debug_mode:
+        logger.info(
+            "P3 FORMULA | %s | relation(left=%s, right=%s) -> %s",
+            name,
+            left,
+            right,
+            value,
+        )
 
 
 def _edge_if_available(
@@ -241,6 +267,221 @@ def _build_period_signal(
     )
 
 
+def _build_exchange_ou_reading(
+    snapshot: TotalsBookSnapshot | None,
+    *,
+    label: str,
+    debug_mode: bool,
+) -> ExchangeOUReading | None:
+    if snapshot is None:
+        if debug_mode:
+            logger.info("P3 FORMULA | %s | unavailable: branch not present", label)
+        return None
+    over_odds = None if snapshot.over is None else snapshot.over.odds_price
+    under_odds = None if snapshot.under is None else snapshot.under.odds_price
+    over_size = None if snapshot.over is None else snapshot.over.exchange_size
+    under_size = None if snapshot.under is None else snapshot.under.exchange_size
+    _log_assignment(f"{label}.OVER_ODDS", over_odds, debug_mode=debug_mode)
+    _log_assignment(f"{label}.UNDER_ODDS", under_odds, debug_mode=debug_mode)
+    _log_assignment(f"{label}.OVER_SIZE", over_size, debug_mode=debug_mode)
+    _log_assignment(f"{label}.UNDER_SIZE", under_size, debug_mode=debug_mode)
+    edge = _edge_if_available(over_odds, under_odds)
+    reading_direction = direction(edge) if edge is not None else None
+    _log_formula(
+        f"{label}.EDGE",
+        "((1 / OVER_ODDS) - (1 / UNDER_ODDS)) / ((1 / OVER_ODDS) + (1 / UNDER_ODDS))",
+        "unavailable because OVER_ODDS or UNDER_ODDS is None"
+        if edge is None
+        else f"((1 / {_fmt(over_odds)}) - (1 / {_fmt(under_odds)})) / ((1 / {_fmt(over_odds)}) + (1 / {_fmt(under_odds)}))",
+        edge,
+        debug_mode=debug_mode,
+    )
+    if debug_mode:
+        logger.info(
+            "P3 FORMULA | %s.DIRECTION | direction(edge=%s) -> %s",
+            label,
+            _fmt(edge),
+            reading_direction,
+        )
+    return ExchangeOUReading(
+        over_odds=over_odds,
+        under_odds=under_odds,
+        over_size=over_size,
+        under_size=under_size,
+        edge=edge,
+        direction=reading_direction,
+    )
+
+
+def _build_exchange_ou_signal(
+    snapshot: TotalsExchangeSnapshot | None,
+    *,
+    period_label: str = "FT",
+    debug_mode: bool,
+) -> ExchangeOUSignal | None:
+    prefix = f"{period_label}.BETFAIR_OU"
+    if snapshot is None:
+        if debug_mode:
+            logger.info("P3 FORMULA | %s | unavailable: market not present", prefix)
+        return None
+    back = _build_exchange_ou_reading(
+        snapshot.back,
+        label=f"{prefix}.BACK",
+        debug_mode=debug_mode,
+    )
+    lay = _build_exchange_ou_reading(
+        snapshot.lay,
+        label=f"{prefix}.LAY",
+        debug_mode=debug_mode,
+    )
+    comparable = (
+        snapshot.lines_match
+        and back is not None
+        and lay is not None
+        and back.edge is not None
+        and lay.edge is not None
+        and back.direction is not None
+        and lay.direction is not None
+    )
+    internal_gap = absolute_gap(back.edge, lay.edge) if comparable else None
+    back_lay_relation = relation(back.direction, lay.direction) if comparable else None
+    representative_edge = pair_mean(back.edge, lay.edge) if comparable else None
+    representative_direction = direction(representative_edge) if representative_edge is not None else None
+    _log_assignment(f"{prefix}.LINE", snapshot.line, debug_mode=debug_mode)
+    if debug_mode:
+        logger.info(
+            "P3 FORMULA | %s.COMPARABLE | same_line=%s both_edges=%s -> %s",
+            prefix,
+            snapshot.lines_match,
+            back is not None and back.edge is not None and lay is not None and lay.edge is not None,
+            comparable,
+        )
+    _log_formula(
+        f"{prefix}.EXCHANGE_INTERNAL_GAP",
+        "abs(BACK_EDGE - LAY_EDGE)",
+        "unavailable because matching complete BACK/LAY contracts are required"
+        if internal_gap is None
+        else f"abs({_fmt(back.edge)} - {_fmt(lay.edge)})",
+        internal_gap,
+        debug_mode=debug_mode,
+    )
+    _log_relation(
+        f"{prefix}.BACK_LAY_RELATION",
+        None if back is None else back.direction,
+        None if lay is None else lay.direction,
+        back_lay_relation,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{prefix}.REPRESENTATIVE.EDGE",
+        "(BACK_EDGE + LAY_EDGE) / 2",
+        "unavailable because matching complete BACK/LAY contracts are required"
+        if representative_edge is None
+        else f"({_fmt(back.edge)} + {_fmt(lay.edge)}) / 2",
+        representative_edge,
+        debug_mode=debug_mode,
+    )
+    if debug_mode:
+        logger.info(
+            "P3 FORMULA | %s.REPRESENTATIVE.DIRECTION | direction(edge=%s) -> %s",
+            prefix,
+            _fmt(representative_edge),
+            representative_direction,
+        )
+    return ExchangeOUSignal(
+        line=snapshot.line,
+        back=back,
+        lay=lay,
+        back_lay_relation=back_lay_relation,
+        exchange_internal_gap=internal_gap,
+        representative=RepresentativeSignal(
+            edge=representative_edge,
+            direction=representative_direction,
+        ),
+    )
+
+
+def _build_book_exchange_ou_signal(
+    full_time: PeriodOUSignal,
+    exchange_ou: ExchangeOUSignal | None,
+    *,
+    period_label: str = "FT",
+    debug_mode: bool,
+) -> BookExchangeOUSignal | None:
+    prefix = f"{period_label}.BOOK_EXCHANGE_OU"
+    if exchange_ou is None:
+        if debug_mode:
+            logger.info("P3 FORMULA | %s | unavailable: Betfair O/U absent", prefix)
+        return None
+    books_line = (
+        full_time.pinnacle.line
+        if full_time.pinnacle.line is not None
+        and full_time.pinnacle.line == full_time.bet365.line
+        else None
+    )
+    line_diff_raw = (
+        None if books_line is None or exchange_ou.line is None else books_line - exchange_ou.line
+    )
+    line_gap = abs(line_diff_raw) if line_diff_raw is not None else None
+    comparable = (
+        line_diff_raw == Decimal(0)
+        and full_time.representative.edge is not None
+        and full_time.representative.direction is not None
+        and exchange_ou.representative.edge is not None
+        and exchange_ou.representative.direction is not None
+    )
+    gap = (
+        absolute_gap(full_time.representative.edge, exchange_ou.representative.edge)
+        if comparable
+        else None
+    )
+    comparison = (
+        relation(full_time.representative.direction, exchange_ou.representative.direction)
+        if comparable
+        else None
+    )
+    _log_formula(
+        f"{prefix}.LINE_DIFF_RAW",
+        "BOOK_OU_LINE - BETFAIR_OU_LINE",
+        "unavailable because one unique bookmaker line and the Betfair line are required"
+        if line_diff_raw is None
+        else f"{_fmt(books_line)} - {_fmt(exchange_ou.line)}",
+        line_diff_raw,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{prefix}.LINE_GAP",
+        "abs(LINE_DIFF_RAW)",
+        "unavailable because LINE_DIFF_RAW is unavailable"
+        if line_gap is None
+        else f"abs({_fmt(line_diff_raw)})",
+        line_gap,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{prefix}.GAP",
+        "abs(BOOK_OU_REP_EDGE - BETFAIR_OU_REP_EDGE)",
+        "unavailable because same-line representatives are required"
+        if gap is None
+        else f"abs({_fmt(full_time.representative.edge)} - {_fmt(exchange_ou.representative.edge)})",
+        gap,
+        debug_mode=debug_mode,
+    )
+    _log_relation(
+        f"{prefix}.RELATION",
+        full_time.representative.direction,
+        exchange_ou.representative.direction,
+        comparison,
+        debug_mode=debug_mode,
+    )
+    return BookExchangeOUSignal(
+        line_diff_raw=line_diff_raw,
+        line_gap=line_gap,
+        relation=comparison,
+        gap=gap,
+    )
+
+
 def _build_ft_1h_signal(
     full_time: PeriodOUSignal,
     first_half: PeriodOUSignal | None,
@@ -313,6 +554,15 @@ def build_p3_signal_profile(
             debug_mode=debug_mode,
         )
     )
+    exchange_ou = _build_exchange_ou_signal(
+        snapshot.exchange_ou,
+        debug_mode=debug_mode,
+    )
+    exchange_ou_1h = _build_exchange_ou_signal(
+        snapshot.exchange_ou_1h,
+        period_label="1H",
+        debug_mode=debug_mode,
+    )
     return P3SignalProfile(
         full_time=full_time,
         first_half=first_half,
@@ -320,6 +570,23 @@ def build_p3_signal_profile(
             full_time,
             first_half,
             debug_mode=debug_mode,
+        ),
+        exchange_ou=exchange_ou,
+        book_exchange_ou=_build_book_exchange_ou_signal(
+            full_time,
+            exchange_ou,
+            debug_mode=debug_mode,
+        ),
+        exchange_ou_1h=exchange_ou_1h,
+        book_exchange_ou_1h=(
+            None
+            if first_half is None
+            else _build_book_exchange_ou_signal(
+                first_half,
+                exchange_ou_1h,
+                period_label="1H",
+                debug_mode=debug_mode,
+            )
         ),
     )
 

@@ -99,6 +99,53 @@ def _book_rows(
     return rows
 
 
+def _exchange_rows(
+    *,
+    exchange_side: str,
+    line: object = "2.5",
+    over: object | None = 1.85,
+    under: object | None = 2.15,
+    over_size: object | None = 100,
+    under_size: object | None = 80,
+    target_minute: int = 5,
+    market_id: int = 4000,
+    first_half: bool = False,
+) -> list[dict]:
+    rows: list[dict] = []
+    for index, (choice_name, price, size) in enumerate(
+        (("over", over, over_size), ("under", under, under_size)),
+        1,
+    ):
+        if price is None:
+            continue
+        rows.append(
+            {
+                "event_id": EVENT_ID,
+                "market_id": market_id,
+                "market_group": "Over/Under",
+                "market_period": "1st Half" if first_half else "Full Time",
+                "market_name": "Over/Under 1st Half" if first_half else "Over/Under Full Time",
+                "choice_group": line,
+                "bookie_id": 4,
+                "bookie_name": "Betfair",
+                "source": "oddspapi",
+                "exchange_side": exchange_side,
+                "exchange_level": 0,
+                "choice_id": market_id * 10 + index,
+                "choice_name": choice_name,
+                "quote_id": market_id * 100 + index,
+                "odds_value": price,
+                "exchange_size": size,
+                "snapshot_id": market_id * 1000 + index,
+                "collected_at": datetime(2026, 8, 27, 17, 59, tzinfo=timezone.utc),
+                "minutes_before_start": target_minute,
+                "target_minute": target_minute,
+                "distance_from_target": 0,
+            }
+        )
+    return rows
+
+
 def _period_rows(
     *,
     first_half: bool,
@@ -140,15 +187,26 @@ def _period_rows(
     ]
 
 
-def _complete_rows(*, target_minute: int = 5, **kwargs) -> list[dict]:
+def _complete_rows(*, target_minute: int = 5, include_betfair_ou: bool = False, include_betfair_1h_ou: bool = False, **kwargs) -> list[dict]:
     ft_keys = {key[3:]: value for key, value in kwargs.items() if key.startswith("ft_")}
     first_half_keys = {
         key[3:]: value for key, value in kwargs.items() if key.startswith("1h_")
     }
-    return [
+    rows = [
         *_period_rows(first_half=False, target_minute=target_minute, **ft_keys),
         *_period_rows(first_half=True, target_minute=target_minute, **first_half_keys),
     ]
+    if include_betfair_ou:
+        rows.extend(
+            _exchange_rows(exchange_side="back", target_minute=target_minute)
+            + _exchange_rows(exchange_side="lay", target_minute=target_minute, market_id=4010)
+        )
+    if include_betfair_1h_ou:
+        rows.extend(
+            _exchange_rows(exchange_side="back", target_minute=target_minute, first_half=True, market_id=5000)
+            + _exchange_rows(exchange_side="lay", target_minute=target_minute, first_half=True, market_id=5010)
+        )
+    return rows
 
 
 def _calculate(rows: list[dict], *, debug_mode: bool = False) -> dict:
@@ -195,7 +253,10 @@ def test_ft_and_first_half_complete_produce_active_structural_contract() -> None
     assert result["P3_TARGET_MINUTE"] == 5
     assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
     assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
-    assert set(profile) == {"FT", "1H", "FT_1H"}
+    assert set(profile) == {
+        "FT", "1H", "FT_1H", "BETFAIR_FT_OU", "BOOK_EXCHANGE_OU",
+        "BETFAIR_1H_OU", "BOOK_EXCHANGE_1H_OU"
+    }
     assert set(profile["FT"]) == {
         "PINNACLE",
         "BET365",
@@ -305,6 +366,76 @@ def test_different_first_half_lines_remain_complete_without_representative() -> 
     assert first_half["BOOK_RELATION"]["RELATION"] is None
     assert first_half["REPRESENTATIVE"]["EDGE"] is None
     assert _profile(result)["FT_1H"] is None
+
+
+def test_betfair_ft_ou_is_optional_and_persisted() -> None:
+    result = _calculate(_complete_rows(include_betfair_ou=True))
+    profile = _profile(result)
+
+    assert result["P3_STATUS"] == "ACTIVE"
+    assert result["PERIODS"]["exchange_ou"]["status"] == "COMPLETE"
+    exchange = profile["BETFAIR_FT_OU"]
+    assert exchange["LINE"] == pytest.approx(2.5)
+    assert exchange["BACK"]["OVER_ODDS"] == pytest.approx(1.85)
+    assert exchange["BACK"]["OVER_SIZE"] == pytest.approx(100)
+    assert exchange["LAY"]["UNDER_ODDS"] == pytest.approx(2.15)
+    assert exchange["LAY"]["UNDER_SIZE"] == pytest.approx(80)
+    assert exchange["REPRESENTATIVE"]["EDGE"] is not None
+    assert exchange["BACK_LAY_RELATION"] is not None
+    assert profile["BOOK_EXCHANGE_OU"]["LINE_GAP"] == pytest.approx(0)
+    assert profile["BOOK_EXCHANGE_OU"]["RELATION"] is not None
+    assert result["raw"]["inputs"]["BF_OU_BACK_OVER_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.85)
+    assert result["raw"]["inputs"]["BF_OU_BACK_OVER_FULL_TIME_EXCHANGE_SIZE"] == pytest.approx(100)
+
+
+def test_betfair_ft_ou_absence_does_not_abort_p3() -> None:
+    result = _calculate(_complete_rows())
+
+    assert result["P3_STATUS"] == "ACTIVE"
+    assert result["P3_SIGNAL_PROFILE"]["BETFAIR_FT_OU"] is None
+    assert result["P3_SIGNAL_PROFILE"]["BOOK_EXCHANGE_OU"] is None
+    assert result["P3_SIGNAL_PROFILE"]["BETFAIR_1H_OU"] is None
+    assert result["P3_SIGNAL_PROFILE"]["BOOK_EXCHANGE_1H_OU"] is None
+    assert result["PERIODS"]["exchange_ou"]["status"] == "INCOMPLETE"
+    assert result["raw"]["inputs"]["BF_OU_FULL_TIME_LINE"] is None
+
+
+def test_betfair_first_half_ou_is_optional_and_persisted() -> None:
+    result = _calculate(_complete_rows(include_betfair_1h_ou=True))
+    profile = _profile(result)
+
+    assert result["P3_STATUS"] == "ACTIVE"
+    assert result["PERIODS"]["exchange_ou_1h"]["status"] == "COMPLETE"
+    assert profile["BETFAIR_1H_OU"]["LINE"] == pytest.approx(2.5)
+    assert profile["BETFAIR_1H_OU"]["REPRESENTATIVE"]["EDGE"] is not None
+    assert profile["BOOK_EXCHANGE_1H_OU"]["LINE_GAP"] == pytest.approx(0)
+    assert profile["BOOK_EXCHANGE_1H_OU"]["RELATION"] is not None
+    assert result["raw"]["inputs"]["BF_OU_BACK_OVER_1H_ODDS_PRICE"] == pytest.approx(1.85)
+
+
+def test_betfair_first_half_ou_survives_without_first_half_bookmakers() -> None:
+    result = _calculate(_complete_rows(include_betfair_1h_ou=True, **{"1h_pin_over": None, "1h_pin_under": None, "1h_b365_over": None, "1h_b365_under": None}))
+    assert result["P3_STATUS"] == "PARTIAL"
+    assert result["P3_SIGNAL_PROFILE"]["BETFAIR_1H_OU"] is not None
+    assert result["P3_SIGNAL_PROFILE"]["BOOK_EXCHANGE_1H_OU"] is None
+
+
+def test_betfair_ft_ou_different_line_keeps_readings_but_cross_comparison_is_null() -> None:
+    rows = _complete_rows(include_betfair_ou=True)
+    rows = [
+        {**row, "choice_group": "3.0"}
+        if row.get("bookie_id") == 4
+        else row
+        for row in rows
+    ]
+    profile = _profile(_calculate(rows))
+
+    assert profile["BETFAIR_FT_OU"]["REPRESENTATIVE"]["EDGE"] is not None
+    comparison = profile["BOOK_EXCHANGE_OU"]
+    assert comparison["LINE_DIFF_RAW"] == pytest.approx(-0.5)
+    assert comparison["LINE_GAP"] == pytest.approx(0.5)
+    assert comparison["RELATION"] is None
+    assert comparison["GAP"] is None
 
 
 def test_representative_is_exact_unweighted_pair_mean() -> None:
@@ -516,6 +647,24 @@ def test_output_has_exact_structural_envelope_and_inputs() -> None:
         "B365_1H_OU_LINE",
         "B365_1H_OVER_ODDS",
         "B365_1H_UNDER_ODDS",
+        "BF_OU_FULL_TIME_LINE",
+        "BF_OU_BACK_OVER_FULL_TIME_ODDS_PRICE",
+        "BF_OU_BACK_UNDER_FULL_TIME_ODDS_PRICE",
+        "BF_OU_LAY_OVER_FULL_TIME_ODDS_PRICE",
+        "BF_OU_LAY_UNDER_FULL_TIME_ODDS_PRICE",
+        "BF_OU_BACK_OVER_FULL_TIME_EXCHANGE_SIZE",
+        "BF_OU_BACK_UNDER_FULL_TIME_EXCHANGE_SIZE",
+        "BF_OU_LAY_OVER_FULL_TIME_EXCHANGE_SIZE",
+            "BF_OU_LAY_UNDER_FULL_TIME_EXCHANGE_SIZE",
+            "BF_OU_1H_LINE",
+            "BF_OU_BACK_OVER_1H_ODDS_PRICE",
+            "BF_OU_BACK_UNDER_1H_ODDS_PRICE",
+            "BF_OU_LAY_OVER_1H_ODDS_PRICE",
+            "BF_OU_LAY_UNDER_1H_ODDS_PRICE",
+            "BF_OU_BACK_OVER_1H_EXCHANGE_SIZE",
+            "BF_OU_BACK_UNDER_1H_EXCHANGE_SIZE",
+            "BF_OU_LAY_OVER_1H_EXCHANGE_SIZE",
+            "BF_OU_LAY_UNDER_1H_EXCHANGE_SIZE",
     }
 
 

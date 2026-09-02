@@ -21,15 +21,19 @@ from .models import (
     P2FirstHalfSnapshot,
     P2FullTimeSnapshot,
     PartialAsianHandicapSnapshot,
+    PartialAsianHandicapExchangeSnapshot,
     PartialTwoWayMarketSnapshot,
     PeriodDiagnostics,
     ThreeWayMarketSnapshot,
     TwoWayMarketSnapshot,
 )
 from .periods import (
+    EXCHANGE_AH_1H_LINE_INPUT_NAME,
+    EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
     FIRST_HALF_SIDE_SCOPE,
     FULL_TIME_SIDE_SCOPE,
-    P2_SIDE_PERIOD_SCOPES,
+    EXCHANGE_AH_LINE_INPUT_NAME,
+    EXCHANGE_AH_ODDS_INPUT_NAMES,
     TwoWayMarketSpec,
 )
 
@@ -117,6 +121,30 @@ def _exchange_request(exchange_side: str) -> MarketSnapshotRequest:
     )
 
 
+def _exchange_ah_request(
+    exchange_side: str,
+    *,
+    scope=FULL_TIME_SIDE_SCOPE,
+    line_name: str = EXCHANGE_AH_LINE_INPUT_NAME,
+    odds_names: tuple[str, ...] = EXCHANGE_AH_ODDS_INPUT_NAMES,
+) -> MarketSnapshotRequest:
+    names = {
+        "1": odds_names[0 if exchange_side == "back" else 2],
+        "2": odds_names[1 if exchange_side == "back" else 3],
+    }
+    return MarketSnapshotRequest(
+        identities=scope.asian_handicap.identities,
+        bookie_id=BETFAIR_EXCHANGE_BOOKIE_ID,
+        line_input_name=line_name,
+        exchange_side=exchange_side,
+        exchange_level=0,
+        choices=tuple(
+            ChoiceRequest(key=choice_name, choice_name=choice_name, input_name=input_name)
+            for choice_name, input_name in names.items()
+        ),
+    )
+
+
 def _unique_required_candidate(
     extraction: MarketSnapshotExtraction,
     request: MarketSnapshotRequest,
@@ -155,8 +183,11 @@ def _partial_snapshot(
     candidate: MarketCandidate,
     request: MarketSnapshotRequest,
 ) -> PartialTwoWayMarketSnapshot | PartialAsianHandicapSnapshot:
-    home = candidate.choices.get("home")
-    away = candidate.choices.get("away")
+    # Book requests use semantic ``home``/``away`` keys, while exchange
+    # requests use the source choice labels ``1``/``2``.  Both map to the
+    # canonical home/away DTO fields.
+    home = candidate.choices.get("home") or candidate.choices.get("1")
+    away = candidate.choices.get("away") or candidate.choices.get("2")
     if request.line_input_name is not None:
         return PartialAsianHandicapSnapshot(
             home=home,
@@ -358,6 +389,7 @@ def _extract_required_book_pair(
 def _extract_full_time(
     context: OddsTrajectoryContext,
     target_minute: int,
+    betfair_ah: PartialAsianHandicapExchangeSnapshot | None = None,
 ) -> tuple[P2FullTimeSnapshot | None, PeriodDiagnostics]:
     gate = _PeriodGate()
     pin_1x2, b365_1x2 = _extract_required_book_pair(
@@ -399,6 +431,7 @@ def _extract_full_time(
         pinnacle_ah=pin_ah,
         bet365_ah=b365_ah,
         betfair_1x2=ExchangeSnapshot(back=bf_back, lay=bf_lay),
+        betfair_ah=betfair_ah,
     )
     return snapshot, gate.diagnostics(complete=True)
 
@@ -462,14 +495,59 @@ def _extract_first_half(
     return snapshot, gate.diagnostics(complete=snapshot.is_complete())
 
 
+def _extract_optional_exchange_ah(
+    context: OddsTrajectoryContext,
+    target_minute: int,
+    *,
+    scope=FULL_TIME_SIDE_SCOPE,
+    line_name: str = EXCHANGE_AH_LINE_INPUT_NAME,
+    odds_names: tuple[str, ...] = EXCHANGE_AH_ODDS_INPUT_NAMES,
+) -> tuple[PartialAsianHandicapExchangeSnapshot | None, PeriodDiagnostics]:
+    """Extract optional Betfair AH for the requested period."""
+    back_gate = _PeriodGate()
+    lay_gate = _PeriodGate()
+    back = _extract_partial_two_way(
+        context,
+        target_minute=target_minute,
+        request=_exchange_ah_request(
+            "back", scope=scope, line_name=line_name, odds_names=odds_names
+        ),
+        gate=back_gate,
+    )
+    lay = _extract_partial_two_way(
+        context,
+        target_minute=target_minute,
+        request=_exchange_ah_request(
+            "lay", scope=scope, line_name=line_name, odds_names=odds_names
+        ),
+        gate=lay_gate,
+    )
+    gate = _PeriodGate(
+        missing=back_gate.missing | lay_gate.missing,
+        invalid=back_gate.invalid | lay_gate.invalid,
+        ambiguous=back_gate.ambiguous | lay_gate.ambiguous,
+    )
+    if gate.ambiguous:
+        return None, gate.diagnostics(complete=False)
+    assert back is None or isinstance(back, PartialAsianHandicapSnapshot)
+    assert lay is None or isinstance(lay, PartialAsianHandicapSnapshot)
+    snapshot = PartialAsianHandicapExchangeSnapshot(back=back, lay=lay)
+    if not snapshot.has_any_input():
+        return None, gate.diagnostics(complete=False)
+    complete = (
+        back is not None
+        and lay is not None
+        and back.is_complete()
+        and lay.is_complete()
+        and snapshot.lines_match
+        and not gate.missing
+        and not gate.invalid
+    )
+    return snapshot, gate.diagnostics(complete=complete)
+
+
 def _empty_period_diagnostics() -> PeriodDiagnostics:
     return PeriodDiagnostics.empty()
-
-
-_PERIOD_EXTRACTORS = {
-    FULL_TIME_SIDE_SCOPE.key: _extract_full_time,
-    FIRST_HALF_SIDE_SCOPE.key: _extract_first_half,
-}
 
 
 def extract_p2_market_snapshot(
@@ -483,32 +561,59 @@ def extract_p2_market_snapshot(
             target_minute=None,
             full_time=_empty_period_diagnostics(),
             first_half=_empty_period_diagnostics(),
+            exchange_ah=_empty_period_diagnostics(),
+            exchange_ah_1h=_empty_period_diagnostics(),
             abort_reason=target_selection.reason,
         )
 
     target_minute = target_selection.target_minute
-    extracted: dict[str, tuple[object | None, PeriodDiagnostics]] = {}
-    for scope in P2_SIDE_PERIOD_SCOPES:
-        extracted[scope.key] = _PERIOD_EXTRACTORS[scope.key](context, target_minute)
-
-    full_time, full_time_diagnostics = extracted[FULL_TIME_SIDE_SCOPE.key]
-    first_half, first_half_diagnostics = extracted[FIRST_HALF_SIDE_SCOPE.key]
+    exchange_ah, exchange_ah_diagnostics = _extract_optional_exchange_ah(context, target_minute)
+    exchange_ah_1h, exchange_ah_1h_diagnostics = _extract_optional_exchange_ah(
+        context,
+        target_minute,
+        scope=FIRST_HALF_SIDE_SCOPE,
+        line_name=EXCHANGE_AH_1H_LINE_INPUT_NAME,
+        odds_names=EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
+    )
+    full_time, full_time_diagnostics = _extract_full_time(
+        context,
+        target_minute,
+        betfair_ah=exchange_ah,
+    )
+    first_half, first_half_diagnostics = _extract_first_half(context, target_minute)
+    if exchange_ah_1h is not None:
+        if first_half is None:
+            first_half = P2FirstHalfSnapshot(None, None, None, None, exchange_ah_1h)
+        else:
+            first_half = P2FirstHalfSnapshot(
+                first_half.pinnacle_1x2,
+                first_half.bet365_1x2,
+                first_half.pinnacle_ah,
+                first_half.bet365_ah,
+                exchange_ah_1h,
+            )
 
     if full_time is None:
         return P2ExtractionResult(
             target_minute=target_minute,
             full_time=full_time_diagnostics,
             first_half=first_half_diagnostics,
+            exchange_ah=exchange_ah_diagnostics,
+            exchange_ah_1h=exchange_ah_1h_diagnostics,
             first_half_snapshot=first_half,  # type: ignore[arg-type]
+            exchange_ah_snapshot=exchange_ah,
             abort_reason="full_time_completeness_gate_failed",
         )
 
     return P2ExtractionResult(
         target_minute=target_minute,
         full_time=full_time_diagnostics,
-        first_half=first_half_diagnostics,
+            first_half=first_half_diagnostics,
+            exchange_ah=exchange_ah_diagnostics,
+            exchange_ah_1h=exchange_ah_1h_diagnostics,
         full_time_snapshot=full_time,  # type: ignore[arg-type]
         first_half_snapshot=first_half,  # type: ignore[arg-type]
+        exchange_ah_snapshot=exchange_ah,
     )
 
 

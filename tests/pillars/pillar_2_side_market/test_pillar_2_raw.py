@@ -149,6 +149,16 @@ def _complete_rows(
     lay_prices: tuple[float, float, float] = (2.50, 3.30, 3.10),
     back_sizes: tuple[float | None, float | None, float | None] = (100, 80, 120),
     lay_sizes: tuple[float | None, float | None, float | None] = (90, 70, 110),
+    include_betfair_ah: bool = False,
+    betfair_ah_line: str = "-0.5",
+    betfair_ah_back: tuple[float, float] = (1.98, 2.00),
+    betfair_ah_lay: tuple[float, float] = (2.00, 2.02),
+    betfair_ah_back_sizes: tuple[float | None, float | None] = (355, 240),
+    betfair_ah_lay_sizes: tuple[float | None, float | None] = (240, 348),
+    include_betfair_1h_ah: bool = False,
+    betfair_1h_ah_line: str = "-0.25",
+    betfair_1h_ah_back: tuple[float, float] = (1.99, 2.01),
+    betfair_1h_ah_lay: tuple[float, float] = (2.01, 2.03),
 ) -> list[dict]:
     rows: list[dict] = []
     markets = [
@@ -193,6 +203,37 @@ def _complete_rows(
             exchange_side=exchange_side,
             exchange_sizes={"1": sizes[0], "x": sizes[1], "2": sizes[2]},
         )
+    if include_betfair_ah:
+        for exchange_side, prices, sizes in (
+            ("back", betfair_ah_back, betfair_ah_back_sizes),
+            ("lay", betfair_ah_lay, betfair_ah_lay_sizes),
+        ):
+            _add_market(
+                rows,
+                minute=minute,
+                market_group="Asian Handicap",
+                market_period="Full Time",
+                market_name="Asian Handicap Full Time",
+                choice_group=betfair_ah_line,
+                bookie_id=4,
+                prices={"1": prices[0], "2": prices[1]},
+                exchange_side=exchange_side,
+                exchange_sizes={"1": sizes[0], "2": sizes[1]},
+            )
+    if include_betfair_1h_ah:
+        for exchange_side, prices in (("back", betfair_1h_ah_back), ("lay", betfair_1h_ah_lay)):
+            _add_market(
+                rows,
+                minute=minute,
+                market_group="Asian Handicap",
+                market_period="1st Half",
+                market_name="Asian Handicap 1st Half",
+                choice_group=betfair_1h_ah_line,
+                bookie_id=4,
+                prices={"1": prices[0], "2": prices[1]},
+                exchange_side=exchange_side,
+                exchange_sizes={"1": 120, "2": 110},
+            )
     return rows
 
 
@@ -232,7 +273,10 @@ def test_full_time_and_first_half_complete_produce_exact_active_contract() -> No
 
     assert result["P2_STATUS"] == "ACTIVE"
     assert result["engine_version"] == "p2-signal-profile-v1"
-    assert set(profile) == {"FT", "1H", "FT_1H", "EXCHANGE", "BOOK_EXCHANGE"}
+    assert set(profile) == {
+        "FT", "1H", "FT_1H", "EXCHANGE", "BOOK_EXCHANGE",
+        "BETFAIR_FT_AH", "BOOK_EXCHANGE_AH", "BETFAIR_1H_AH", "BOOK_EXCHANGE_1H_AH",
+    }
     assert set(profile["FT"]) == {"1X2", "AH", "CROSS_MARKET"}
     assert set(profile["FT"]["1X2"]) == {
         "PIN_EDGE", "PIN_DIRECTION", "B365_EDGE", "B365_DIRECTION",
@@ -344,6 +388,74 @@ def test_ah_different_lines_preserves_individuals_but_marks_comparison_unavailab
         "FT_1X2_AH_RELATION": None,
         "FT_CROSS_MARKET_GAP": None,
     }
+
+
+def test_betfair_full_time_ah_is_optional_and_persisted() -> None:
+    result = _calculate(_complete_rows(include_betfair_ah=True))
+    profile = _profile(result)
+    ah = profile["BETFAIR_FT_AH"]
+
+    assert result["P2_STATUS"] == "ACTIVE"
+    assert result["PERIODS"]["exchange_ah"]["status"] == "COMPLETE"
+    assert ah["LINE"] == pytest.approx(-0.5)
+    assert ah["BACK_HOME_ODDS"] == pytest.approx(1.98)
+    assert ah["BACK_HOME_SIZE"] == pytest.approx(355)
+    assert ah["LAY_AWAY_ODDS"] == pytest.approx(2.02)
+    assert ah["LAY_AWAY_SIZE"] == pytest.approx(348)
+    assert ah["REP_EDGE"] is not None
+    assert ah["BACK_LAY_RELATION"] is not None
+    assert profile["BOOK_EXCHANGE_AH"]["LINE_GAP"] == pytest.approx(0)
+    assert profile["BOOK_EXCHANGE_AH"]["RELATION"] is not None
+    assert result["raw"]["inputs"]["BF_AH_BACK_HOME_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.98)
+    assert result["raw"]["inputs"]["BF_AH_BACK_HOME_FULL_TIME_EXCHANGE_SIZE"] == pytest.approx(355)
+
+
+def test_betfair_full_time_ah_absence_does_not_abort_p2() -> None:
+    result = _calculate(_complete_rows())
+
+    assert result["P2_STATUS"] == "ACTIVE"
+    assert result["P2_SIGNAL_PROFILE"]["BETFAIR_FT_AH"] is None
+    assert result["P2_SIGNAL_PROFILE"]["BOOK_EXCHANGE_AH"] is None
+    assert result["P2_SIGNAL_PROFILE"]["BETFAIR_1H_AH"] is None
+    assert result["P2_SIGNAL_PROFILE"]["BOOK_EXCHANGE_1H_AH"] is None
+    assert result["PERIODS"]["exchange_ah"]["status"] == "INCOMPLETE"
+    assert result["raw"]["inputs"]["BF_AH_FULL_TIME_LINE"] is None
+    assert "BF_AH_FULL_TIME_LINE" in result["MISSING_INPUTS"]
+
+
+def test_betfair_first_half_ah_is_optional_and_persisted() -> None:
+    result = _calculate(_complete_rows(include_betfair_1h_ah=True))
+    profile = _profile(result)
+
+    assert result["P2_STATUS"] == "ACTIVE"
+    assert result["PERIODS"]["exchange_ah_1h"]["status"] == "COMPLETE"
+    assert profile["BETFAIR_1H_AH"]["LINE"] == pytest.approx(-0.25)
+    assert profile["BETFAIR_1H_AH"]["BACK_HOME_ODDS"] == pytest.approx(1.99)
+    assert profile["BETFAIR_1H_AH"]["REP_EDGE"] is not None
+    assert profile["BOOK_EXCHANGE_1H_AH"]["LINE_GAP"] == pytest.approx(0)
+    assert profile["BOOK_EXCHANGE_1H_AH"]["RELATION"] is not None
+    assert result["raw"]["inputs"]["BF_AH_BACK_HOME_1H_ODDS_PRICE"] == pytest.approx(1.99)
+
+
+def test_betfair_first_half_ah_survives_without_first_half_bookmakers() -> None:
+    result = _calculate(_complete_rows(include_first_half=False, include_betfair_1h_ah=True))
+    assert result["P2_STATUS"] == "PARTIAL"
+    assert result["P2_SIGNAL_PROFILE"]["BETFAIR_1H_AH"] is not None
+    assert result["P2_SIGNAL_PROFILE"]["BOOK_EXCHANGE_1H_AH"]["RELATION"] is None
+
+
+def test_betfair_ah_different_line_keeps_readings_but_cross_comparison_is_null() -> None:
+    profile = _profile(_calculate(_complete_rows(include_betfair_ah=True, betfair_ah_line="-0.75")))
+    ah = profile["BETFAIR_FT_AH"]
+    comparison = profile["BOOK_EXCHANGE_AH"]
+
+    assert ah["BACK_EDGE"] is not None
+    assert ah["LAY_EDGE"] is not None
+    assert ah["REP_EDGE"] is not None
+    assert comparison["LINE_DIFF_RAW"] == pytest.approx(0.25)
+    assert comparison["LINE_GAP"] == pytest.approx(0.25)
+    assert comparison["RELATION"] is None
+    assert comparison["GAP"] is None
 
 
 def test_ft_cross_market_divergence_is_preserved_without_global_score() -> None:
@@ -548,6 +660,8 @@ def test_period_scope_separates_required_inputs_from_trace_inputs() -> None:
     assert set(EXCHANGE_ODDS_INPUT_NAMES) <= set(FULL_TIME_SIDE_SCOPE.required_input_names())
     assert set(EXCHANGE_SIZE_TRACE_INPUT_NAMES) == set(FULL_TIME_SIDE_SCOPE.trace_input_names())
     assert not (set(EXCHANGE_SIZE_TRACE_INPUT_NAMES) & set(FULL_TIME_SIDE_SCOPE.required_input_names()))
+    assert "BF_AH_FULL_TIME_LINE" not in FULL_TIME_SIDE_SCOPE.required_input_names()
+    assert "BF_AH_FULL_TIME_LINE" in FULL_TIME_SIDE_SCOPE.optional_input_names()
     assert not hasattr(FULL_TIME_SIDE_SCOPE, "metric_names")
 
 

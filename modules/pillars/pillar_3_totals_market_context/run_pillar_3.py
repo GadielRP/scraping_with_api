@@ -10,7 +10,16 @@ from modules.pillars.context import EventContext
 from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
-from .periods import P3_TOTALS_PERIOD_SCOPES, resolve_pillar_status
+from .periods import (
+    EXCHANGE_OU_1H_LINE_INPUT_NAME,
+    EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
+    EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
+    EXCHANGE_OU_LINE_INPUT_NAME,
+    EXCHANGE_OU_ODDS_INPUT_NAMES,
+    EXCHANGE_OU_SIZE_TRACE_INPUT_NAMES,
+    P3_TOTALS_PERIOD_SCOPES,
+    resolve_pillar_status,
+)
 from .signal_engine import ENGINE_VERSION, build_p3_signal_profile
 from .snapshot_policy import extract_p3_market_snapshot
 
@@ -27,11 +36,30 @@ def _json_inputs(values: dict[str, Decimal | None]) -> dict[str, float | None]:
 
 
 def _empty_inputs() -> dict[str, float | None]:
-    return {
+    values = {
         name: None
         for scope in P3_TOTALS_PERIOD_SCOPES
         for name in scope.input_names()
     }
+    values.update(
+        {
+            name: None
+            for name in (
+                EXCHANGE_OU_LINE_INPUT_NAME,
+                *EXCHANGE_OU_ODDS_INPUT_NAMES,
+                *EXCHANGE_OU_SIZE_TRACE_INPUT_NAMES,
+            )
+        }
+    )
+    values.update({
+        name: None
+        for name in (
+            EXCHANGE_OU_1H_LINE_INPUT_NAME,
+            *EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
+            *EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
+        )
+    })
+    return values
 
 
 def _raw_audit(
@@ -177,9 +205,11 @@ def calculate_pillar_3(
             extraction.abort_reason,
         )
         logger.info(
-            "P3 DEBUG | period gates | full_time=%s | first_half=%s",
+            "P3 DEBUG | period gates | full_time=%s | first_half=%s | betfair_ou_ft=%s | betfair_ou_1h=%s",
             extraction.full_time.status,
             extraction.first_half.status,
+            extraction.exchange_ou.status,
+            extraction.exchange_ou_1h.status,
         )
         logger.info(
             "P3 DEBUG | period gates | missing=%s | invalid=%s | ambiguous=%s",
@@ -212,6 +242,20 @@ def calculate_pillar_3(
             if period_snapshot is not None:
                 inputs.update(_json_inputs(period_snapshot.input_values()))
                 traces.update(period_snapshot.input_trace())
+        if extraction.exchange_ou_snapshot is not None:
+            inputs.update(_json_inputs(extraction.exchange_ou_snapshot.input_values()))
+            traces.update(extraction.exchange_ou_snapshot.input_trace())
+        if extraction.exchange_ou_1h_snapshot is not None:
+            inputs.update(_json_inputs(extraction.exchange_ou_1h_snapshot.input_values(
+                line_name=EXCHANGE_OU_1H_LINE_INPUT_NAME,
+                odds_names=EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
+                size_names=EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
+            )))
+            traces.update(extraction.exchange_ou_1h_snapshot.input_trace(
+                line_name=EXCHANGE_OU_1H_LINE_INPUT_NAME,
+                odds_names=EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
+                size_names=EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
+            ))
         raw = _raw_audit(
             odds_context=odds_context,
             periods=periods,
@@ -267,11 +311,13 @@ def calculate_pillar_3(
     if debug_mode:
         _log_signal_profile(profile)
     logger.info(
-        "P3 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s",
+        "P3 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s betfair_ou_ft=%s betfair_ou_1h=%s",
         event_context.event_id,
         extraction.target_minute,
         status,
         extraction.first_half.status,
+        extraction.exchange_ou.status,
+        extraction.exchange_ou_1h.status,
     )
     return {
         **base,

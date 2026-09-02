@@ -140,6 +140,74 @@ class BookExchangeSignal:
 
 
 @dataclass(frozen=True, slots=True)
+class AsianHandicapExchangeReading:
+    home_odds: Decimal | None
+    away_odds: Decimal | None
+    home_size: Decimal | None
+    away_size: Decimal | None
+    edge: Decimal | None
+    direction: Direction | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "HOME_ODDS": _number(self.home_odds),
+            "AWAY_ODDS": _number(self.away_odds),
+            "HOME_SIZE": _number(self.home_size),
+            "AWAY_SIZE": _number(self.away_size),
+            "EDGE": _number(self.edge),
+            "DIRECTION": self.direction,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AsianHandicapExchangeSignal:
+    line: Decimal | None
+    back: AsianHandicapExchangeReading | None
+    lay: AsianHandicapExchangeReading | None
+    back_lay_relation: Relation | None
+    internal_gap: Decimal | None
+    rep_edge: Decimal | None
+    direction: Direction | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "LINE": _number(self.line),
+            "BACK_HOME_ODDS": None if self.back is None else _number(self.back.home_odds),
+            "BACK_AWAY_ODDS": None if self.back is None else _number(self.back.away_odds),
+            "BACK_HOME_SIZE": None if self.back is None else _number(self.back.home_size),
+            "BACK_AWAY_SIZE": None if self.back is None else _number(self.back.away_size),
+            "BACK_EDGE": None if self.back is None else _number(self.back.edge),
+            "BACK_DIRECTION": None if self.back is None else self.back.direction,
+            "LAY_HOME_ODDS": None if self.lay is None else _number(self.lay.home_odds),
+            "LAY_AWAY_ODDS": None if self.lay is None else _number(self.lay.away_odds),
+            "LAY_HOME_SIZE": None if self.lay is None else _number(self.lay.home_size),
+            "LAY_AWAY_SIZE": None if self.lay is None else _number(self.lay.away_size),
+            "LAY_EDGE": None if self.lay is None else _number(self.lay.edge),
+            "LAY_DIRECTION": None if self.lay is None else self.lay.direction,
+            "BACK_LAY_RELATION": self.back_lay_relation,
+            "EXCHANGE_INTERNAL_GAP": _number(self.internal_gap),
+            "REP_EDGE": _number(self.rep_edge),
+            "DIRECTION": self.direction,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AsianHandicapBookExchangeSignal:
+    line_diff_raw: Decimal | None
+    line_gap: Decimal | None
+    relation: Relation | None
+    gap: Decimal | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "LINE_DIFF_RAW": _number(self.line_diff_raw),
+            "LINE_GAP": _number(self.line_gap),
+            "RELATION": self.relation,
+            "GAP": _number(self.gap),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class FirstHalfRelationSignal:
     relation: Relation
     gap: Decimal
@@ -164,6 +232,10 @@ class P2SignalProfile:
     ft_1h: FirstHalfRelationSignal | None
     exchange: ExchangeSignal
     book_exchange: BookExchangeSignal
+    exchange_ah: AsianHandicapExchangeSignal | None = None
+    book_exchange_ah: AsianHandicapBookExchangeSignal | None = None
+    exchange_ah_1h: AsianHandicapExchangeSignal | None = None
+    book_exchange_ah_1h: AsianHandicapBookExchangeSignal | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -182,11 +254,18 @@ class P2SignalProfile:
             "FT_1H": None if self.ft_1h is None else self.ft_1h.to_dict(),
             "EXCHANGE": self.exchange.to_dict(),
             "BOOK_EXCHANGE": self.book_exchange.to_dict(),
+            "BETFAIR_FT_AH": None if self.exchange_ah is None else self.exchange_ah.to_dict(),
+            "BOOK_EXCHANGE_AH": None if self.book_exchange_ah is None else self.book_exchange_ah.to_dict(),
+            "BETFAIR_1H_AH": None if self.exchange_ah_1h is None else self.exchange_ah_1h.to_dict(),
+            "BOOK_EXCHANGE_1H_AH": None if self.book_exchange_ah_1h is None else self.book_exchange_ah_1h.to_dict(),
         }
 
 
 __all__ = [
     "AsianHandicapSignal",
+    "AsianHandicapExchangeReading",
+    "AsianHandicapExchangeSignal",
+    "AsianHandicapBookExchangeSignal",
     "BookExchangeSignal",
     "BookMarketSignal",
     "CrossMarketSignal",

@@ -10,7 +10,13 @@ from modules.pillars.context import EventContext
 from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
-from .periods import P2_SIDE_PERIOD_SCOPES, resolve_pillar_status
+from .periods import (
+    EXCHANGE_AH_1H_LINE_INPUT_NAME,
+    EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
+    EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
+    P2_SIDE_PERIOD_SCOPES,
+    resolve_pillar_status,
+)
 from .signal_engine import ENGINE_VERSION, build_p2_signal_profile
 from .snapshot_policy import extract_p2_market_snapshot
 
@@ -27,11 +33,20 @@ def _json_inputs(values: dict[str, Decimal | None]) -> dict[str, float | None]:
 
 
 def _empty_inputs() -> dict[str, float | None]:
-    return {
+    values = {
         name: None
         for scope in P2_SIDE_PERIOD_SCOPES
         for name in scope.input_names()
     }
+    values.update({
+        name: None
+        for name in (
+            EXCHANGE_AH_1H_LINE_INPUT_NAME,
+            *EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
+            *EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
+        )
+    })
+    return values
 
 
 def _raw_audit(
@@ -144,6 +159,10 @@ def _log_signal_profile(profile: dict[str, Any]) -> None:
         log_block("FT_1H", profile["FT_1H"])
     log_block("EXCHANGE", profile["EXCHANGE"])
     log_block("BOOK_EXCHANGE", profile["BOOK_EXCHANGE"])
+    log_block("BETFAIR_FT_AH", profile.get("BETFAIR_FT_AH"))
+    log_block("BOOK_EXCHANGE_AH", profile.get("BOOK_EXCHANGE_AH"))
+    log_block("BETFAIR_1H_AH", profile.get("BETFAIR_1H_AH"))
+    log_block("BOOK_EXCHANGE_1H_AH", profile.get("BOOK_EXCHANGE_1H_AH"))
 
 
 def calculate_pillar_2(
@@ -184,6 +203,11 @@ def calculate_pillar_2(
             extraction.first_half.status,
         )
         logger.info(
+            "P2 DEBUG | period gates | betfair_ah_ft=%s | betfair_ah_1h=%s",
+            extraction.exchange_ah.status,
+            extraction.exchange_ah_1h.status,
+        )
+        logger.info(
             "P2 DEBUG | period gates | missing=%s | invalid=%s",
             extraction.missing_inputs,
             extraction.invalid_inputs,
@@ -212,6 +236,10 @@ def calculate_pillar_2(
         if extraction.first_half_snapshot is not None:
             inputs.update(_json_inputs(extraction.first_half_snapshot.input_values()))
             traces.update(extraction.first_half_snapshot.input_trace())
+        if extraction.exchange_ah_snapshot is not None:
+            optional = extraction.exchange_ah_snapshot
+            inputs.update(_json_inputs(optional.input_values()))
+            traces.update(optional.input_trace())
         raw = _raw_audit(
             odds_context=odds_context,
             periods=periods,
@@ -267,11 +295,13 @@ def calculate_pillar_2(
     if debug_mode:
         _log_signal_profile(profile)
     logger.info(
-        "P2 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s",
+        "P2 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s betfair_ah_ft=%s betfair_ah_1h=%s",
         event_context.event_id,
         extraction.target_minute,
         status,
         extraction.first_half.status,
+        extraction.exchange_ah.status,
+        extraction.exchange_ah_1h.status,
     )
     return {
         **base,

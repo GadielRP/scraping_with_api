@@ -221,13 +221,41 @@ def _log_p2_signal_profile_summary(participants: str, result: dict[str, Any]) ->
             ("relation", "BACK_LAY_RELATION"),
             ("rep_edge", "REP_EDGE"),
         ),
-        (
-            "BOOK_EXCHANGE",
-            ("BOOK_EXCHANGE",),
-            ("relation", "RELATION"),
-            ("gap", "GAP"),
-        ),
-    )
+          (
+              "BOOK_EXCHANGE",
+              ("BOOK_EXCHANGE",),
+              ("relation", "RELATION"),
+              ("gap", "GAP"),
+          ),
+          (
+              "BETFAIR_FT_AH",
+              ("BETFAIR_FT_AH",),
+              ("direction", "DIRECTION"),
+              ("relation", "BACK_LAY_RELATION"),
+              ("rep_edge", "REP_EDGE"),
+          ),
+          (
+              "BOOK_EXCHANGE_AH",
+              ("BOOK_EXCHANGE_AH",),
+              ("relation", "RELATION"),
+              ("gap", "GAP"),
+              ("line_gap", "LINE_GAP"),
+          ),
+          (
+              "BETFAIR_1H_AH",
+              ("BETFAIR_1H_AH",),
+              ("direction", "DIRECTION"),
+              ("relation", "BACK_LAY_RELATION"),
+              ("rep_edge", "REP_EDGE"),
+          ),
+          (
+              "BOOK_EXCHANGE_1H_AH",
+              ("BOOK_EXCHANGE_1H_AH",),
+              ("relation", "RELATION"),
+              ("gap", "GAP"),
+              ("line_gap", "LINE_GAP"),
+          ),
+      )
     for section, section_path, *fields in summaries:
         values = " ".join(
             f"{label}={_p2_profile_value(profile, *section_path, key)}"
@@ -354,6 +382,32 @@ def _log_p3_signal_profile_summary(participants: str, result: dict[str, Any]) ->
             ("FT_1H",),
             ("relation", "FT_1H_OU_RELATION"),
             ("gap", "FT_1H_OU_GAP"),
+        ),
+        (
+            "BETFAIR_FT_OU",
+            ("BETFAIR_FT_OU",),
+            ("relation", "BACK_LAY_RELATION"),
+            ("rep_edge", "REPRESENTATIVE", "EDGE"),
+        ),
+        (
+            "BOOK_EXCHANGE_OU",
+            ("BOOK_EXCHANGE_OU",),
+            ("relation", "RELATION"),
+            ("gap", "GAP"),
+            ("line_gap", "LINE_GAP"),
+        ),
+        (
+            "BETFAIR_1H_OU",
+            ("BETFAIR_1H_OU",),
+            ("relation", "BACK_LAY_RELATION"),
+            ("rep_edge", "REPRESENTATIVE", "EDGE"),
+        ),
+        (
+            "BOOK_EXCHANGE_1H_OU",
+            ("BOOK_EXCHANGE_1H_OU",),
+            ("relation", "RELATION"),
+            ("gap", "GAP"),
+            ("line_gap", "LINE_GAP"),
         ),
     )
     for section, section_path, *fields in summaries:

@@ -19,8 +19,14 @@ from .models import (
     P3PeriodSnapshot,
     PeriodDiagnostics,
     TotalsBookSnapshot,
+    TotalsExchangeSnapshot,
 )
 from .periods import (
+    EXCHANGE_OU_1H_LINE_INPUT_NAME,
+    EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
+    EXCHANGE_OU_LINE_INPUT_NAME,
+    EXCHANGE_OU_ODDS_INPUT_NAMES,
+    EXCHANGE_OU_SIZE_TRACE_INPUT_NAMES,
     FIRST_HALF_TOTALS_SCOPE,
     FULL_TIME_TOTALS_SCOPE,
     P3_TOTALS_PERIOD_SCOPES,
@@ -31,6 +37,7 @@ from .periods import (
 
 PINNACLE_BOOKIE_ID = 302
 BET365_BOOKIE_ID = 3
+BETFAIR_EXCHANGE_BOOKIE_ID = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +59,31 @@ def _request(
         identities=period_scope.identities,
         bookie_id=bookie_id,
         line_input_name=inputs.line,
+        choices=(
+            ChoiceRequest("over", "over", inputs.over),
+            ChoiceRequest("under", "under", inputs.under),
+        ),
+    )
+
+
+def _exchange_request(
+    exchange_side: str,
+    *,
+    period_scope: TotalsPeriodScope = FULL_TIME_TOTALS_SCOPE,
+    line_name: str = EXCHANGE_OU_LINE_INPUT_NAME,
+    odds_names: tuple[str, ...] = EXCHANGE_OU_ODDS_INPUT_NAMES,
+) -> MarketSnapshotRequest:
+    inputs = TotalsBookInputSpec(
+        line=line_name,
+        over=odds_names[0 if exchange_side == "back" else 2],
+        under=odds_names[1 if exchange_side == "back" else 3],
+    )
+    return MarketSnapshotRequest(
+        identities=period_scope.identities,
+        bookie_id=BETFAIR_EXCHANGE_BOOKIE_ID,
+        line_input_name=inputs.line,
+        exchange_side=exchange_side,
+        exchange_level=0,
         choices=(
             ChoiceRequest("over", "over", inputs.over),
             ChoiceRequest("under", "under", inputs.under),
@@ -214,6 +246,89 @@ def _extract_book(
     return _select_book_candidate(extraction, request)
 
 
+def _extract_exchange_side(
+    context: OddsTrajectoryContext,
+    *,
+    target_minute: int,
+    exchange_side: str,
+    period_scope: TotalsPeriodScope = FULL_TIME_TOTALS_SCOPE,
+    line_name: str = EXCHANGE_OU_LINE_INPUT_NAME,
+    odds_names: tuple[str, ...] = EXCHANGE_OU_ODDS_INPUT_NAMES,
+) -> _BookSelection:
+    request = _exchange_request(
+        exchange_side,
+        period_scope=period_scope,
+        line_name=line_name,
+        odds_names=odds_names,
+    )
+    extraction = extract_market_snapshot(
+        context,
+        target_minute=target_minute,
+        request=request,
+    )
+    return _select_book_candidate(extraction, request)
+
+
+def _extract_optional_exchange_ou(
+    context: OddsTrajectoryContext,
+    target_minute: int,
+    *,
+    period_scope: TotalsPeriodScope = FULL_TIME_TOTALS_SCOPE,
+    line_name: str = EXCHANGE_OU_LINE_INPUT_NAME,
+    odds_names: tuple[str, ...] = EXCHANGE_OU_ODDS_INPUT_NAMES,
+) -> tuple[TotalsExchangeSnapshot | None, PeriodDiagnostics]:
+    back = _extract_exchange_side(
+        context,
+        target_minute=target_minute,
+        exchange_side="back",
+        period_scope=period_scope,
+        line_name=line_name,
+        odds_names=odds_names,
+    )
+    lay = _extract_exchange_side(
+        context,
+        target_minute=target_minute,
+        exchange_side="lay",
+        period_scope=period_scope,
+        line_name=line_name,
+        odds_names=odds_names,
+    )
+    missing = set(back.missing | lay.missing)
+    invalid = set(back.invalid | lay.invalid)
+    ambiguous = set(back.ambiguous | lay.ambiguous)
+    if ambiguous:
+        return None, PeriodDiagnostics.from_gate(
+            complete=False,
+            missing_inputs=missing,
+            invalid_inputs=invalid,
+            ambiguous_inputs=ambiguous,
+        )
+    snapshot = TotalsExchangeSnapshot(
+        back=back.snapshot,
+        lay=lay.snapshot,
+    )
+    if not snapshot.has_any_input():
+        return None, PeriodDiagnostics.from_gate(
+            complete=False,
+            missing_inputs=missing,
+            invalid_inputs=invalid,
+        )
+    complete = (
+        snapshot.back is not None
+        and snapshot.lay is not None
+        and snapshot.back.is_complete()
+        and snapshot.lay.is_complete()
+        and snapshot.lines_match
+        and not missing
+        and not invalid
+    )
+    return snapshot, PeriodDiagnostics.from_gate(
+        complete=complete,
+        missing_inputs=missing,
+        invalid_inputs=invalid,
+    )
+
+
 def _extract_period(
     context: OddsTrajectoryContext,
     *,
@@ -310,6 +425,8 @@ def extract_p3_market_snapshot(
             target_minute=None,
             full_time=PeriodDiagnostics.empty(),
             first_half=PeriodDiagnostics.empty(),
+            exchange_ou=PeriodDiagnostics.empty(),
+            exchange_ou_1h=PeriodDiagnostics.empty(),
             abort_reason=target_selection.reason,
             extraction_diagnostics={
                 "target_selection": target_selection.diagnostics,
@@ -317,6 +434,17 @@ def extract_p3_market_snapshot(
         )
 
     target_minute = target_selection.target_minute
+    exchange_ou_snapshot, exchange_ou_diagnostics = _extract_optional_exchange_ou(
+        context,
+        target_minute,
+    )
+    exchange_ou_1h_snapshot, exchange_ou_1h_diagnostics = _extract_optional_exchange_ou(
+        context,
+        target_minute,
+        period_scope=FIRST_HALF_TOTALS_SCOPE,
+        line_name=EXCHANGE_OU_1H_LINE_INPUT_NAME,
+        odds_names=EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
+    )
     extracted = {
         scope.key: _extract_period(
             context,
@@ -341,6 +469,10 @@ def extract_p3_market_snapshot(
         first_half=first_half_diagnostics,
         full_time_snapshot=full_time_snapshot,
         first_half_snapshot=first_half_snapshot,
+        exchange_ou_snapshot=exchange_ou_snapshot,
+        exchange_ou=exchange_ou_diagnostics,
+        exchange_ou_1h_snapshot=exchange_ou_1h_snapshot,
+        exchange_ou_1h=exchange_ou_1h_diagnostics,
         abort_reason=(
             None
             if full_time_complete

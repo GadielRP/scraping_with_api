@@ -32,6 +32,36 @@ EXCHANGE_SIZE_TRACE_INPUT_NAMES = (
     "BF_AWAY_LAY_1X2_FULL_TIME_EXCHANGE_SIZE",
 )
 
+# Optional Betfair Full Time Asian Handicap layer.  These names are deliberately
+# separate from the required 1X2 exchange inputs: absence of this market must
+# never fail the Full Time P2 gate.
+EXCHANGE_AH_LINE_INPUT_NAME = "BF_AH_FULL_TIME_LINE"
+EXCHANGE_AH_ODDS_INPUT_NAMES = (
+    "BF_AH_BACK_HOME_FULL_TIME_ODDS_PRICE",
+    "BF_AH_BACK_AWAY_FULL_TIME_ODDS_PRICE",
+    "BF_AH_LAY_HOME_FULL_TIME_ODDS_PRICE",
+    "BF_AH_LAY_AWAY_FULL_TIME_ODDS_PRICE",
+)
+EXCHANGE_AH_SIZE_TRACE_INPUT_NAMES = (
+    "BF_AH_BACK_HOME_FULL_TIME_EXCHANGE_SIZE",
+    "BF_AH_BACK_AWAY_FULL_TIME_EXCHANGE_SIZE",
+    "BF_AH_LAY_HOME_FULL_TIME_EXCHANGE_SIZE",
+    "BF_AH_LAY_AWAY_FULL_TIME_EXCHANGE_SIZE",
+)
+EXCHANGE_AH_1H_LINE_INPUT_NAME = "BF_AH_1H_LINE"
+EXCHANGE_AH_1H_ODDS_INPUT_NAMES = (
+    "BF_AH_BACK_HOME_1H_ODDS_PRICE",
+    "BF_AH_BACK_AWAY_1H_ODDS_PRICE",
+    "BF_AH_LAY_HOME_1H_ODDS_PRICE",
+    "BF_AH_LAY_AWAY_1H_ODDS_PRICE",
+)
+EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES = (
+    "BF_AH_BACK_HOME_1H_EXCHANGE_SIZE",
+    "BF_AH_BACK_AWAY_1H_EXCHANGE_SIZE",
+    "BF_AH_LAY_HOME_1H_EXCHANGE_SIZE",
+    "BF_AH_LAY_AWAY_1H_EXCHANGE_SIZE",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class TwoWayMarketSpec:
@@ -81,8 +111,21 @@ class SidePeriodScope:
     def trace_input_names(self) -> tuple[str, ...]:
         return EXCHANGE_SIZE_TRACE_INPUT_NAMES if self.includes_exchange else ()
 
+    def optional_input_names(self) -> tuple[str, ...]:
+        if not self.includes_exchange:
+            return ()
+        return (EXCHANGE_AH_LINE_INPUT_NAME, *EXCHANGE_AH_ODDS_INPUT_NAMES)
+
+    def optional_trace_input_names(self) -> tuple[str, ...]:
+        return EXCHANGE_AH_SIZE_TRACE_INPUT_NAMES if self.includes_exchange else ()
+
     def input_names(self) -> tuple[str, ...]:
-        return self.required_input_names() + self.trace_input_names()
+        return (
+            self.required_input_names()
+            + self.trace_input_names()
+            + self.optional_input_names()
+            + self.optional_trace_input_names()
+        )
 
 
 FULL_TIME_SIDE_SCOPE = SidePeriodScope(
@@ -184,6 +227,12 @@ __all__ = [
     "DEFAULT_P2_SIDE_PERIOD_SCOPE",
     "EXCHANGE_ODDS_INPUT_NAMES",
     "EXCHANGE_SIZE_TRACE_INPUT_NAMES",
+    "EXCHANGE_AH_LINE_INPUT_NAME",
+    "EXCHANGE_AH_ODDS_INPUT_NAMES",
+    "EXCHANGE_AH_SIZE_TRACE_INPUT_NAMES",
+    "EXCHANGE_AH_1H_LINE_INPUT_NAME",
+    "EXCHANGE_AH_1H_ODDS_INPUT_NAMES",
+    "EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES",
     "FIRST_HALF_SIDE_SCOPE",
     "FULL_TIME_SIDE_SCOPE",
     "P2_SIDE_PERIOD_SCOPES",

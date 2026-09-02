@@ -11,6 +11,7 @@ from .models import (
     P2FirstHalfSnapshot,
     P2FullTimeSnapshot,
     P2MarketSnapshot,
+    PartialAsianHandicapExchangeSnapshot,
     PartialAsianHandicapSnapshot,
     PartialTwoWayMarketSnapshot,
     TwoWayMarketSnapshot,
@@ -18,6 +19,9 @@ from .models import (
 from .relations import direction, relation
 from .signal_models import (
     AsianHandicapSignal,
+    AsianHandicapBookExchangeSignal,
+    AsianHandicapExchangeReading,
+    AsianHandicapExchangeSignal,
     BookExchangeSignal,
     BookMarketSignal,
     CrossMarketSignal,
@@ -470,6 +474,196 @@ def _build_exchange_signal(snapshot: P2FullTimeSnapshot, *, debug_mode: bool) ->
     )
 
 
+def _build_exchange_ah_reading(
+    branch: PartialAsianHandicapSnapshot | None,
+    *,
+    label: str,
+    debug_mode: bool,
+) -> AsianHandicapExchangeReading | None:
+    if branch is None:
+        if debug_mode:
+            logger.info("P2 FORMULA | %s | unavailable: branch not present", label)
+        return None
+    home = None if branch.home is None else branch.home.odds_price
+    away = None if branch.away is None else branch.away.odds_price
+    home_size = None if branch.home is None else branch.home.exchange_size
+    away_size = None if branch.away is None else branch.away.exchange_size
+    _log_assignment(f"{label}.HOME_ODDS", home, debug_mode=debug_mode)
+    _log_assignment(f"{label}.AWAY_ODDS", away, debug_mode=debug_mode)
+    _log_assignment(f"{label}.HOME_SIZE", home_size, debug_mode=debug_mode)
+    _log_assignment(f"{label}.AWAY_SIZE", away_size, debug_mode=debug_mode)
+    edge = _edge_if_available(home, away)
+    edge_direction = direction(edge) if edge is not None else None
+    _log_formula(
+        f"{label}.EDGE",
+        "(1 / HOME_ODDS - 1 / AWAY_ODDS) / ((1 / HOME_ODDS) + (1 / AWAY_ODDS))",
+        "unavailable because both HOME_ODDS and AWAY_ODDS are required"
+        if edge is None
+        else f"(1 / {_fmt(home)} - 1 / {_fmt(away)}) / ((1 / {_fmt(home)}) + (1 / {_fmt(away)}))",
+        edge,
+        debug_mode=debug_mode,
+    )
+    _log_direction(f"{label}.DIRECTION", edge, edge_direction, debug_mode=debug_mode)
+    return AsianHandicapExchangeReading(
+        home_odds=home,
+        away_odds=away,
+        home_size=home_size,
+        away_size=away_size,
+        edge=edge,
+        direction=edge_direction,
+    )
+
+
+def _build_exchange_ah_signal(
+    snapshot: PartialAsianHandicapExchangeSnapshot | None,
+    *,
+    period_label: str = "FT",
+    debug_mode: bool,
+) -> AsianHandicapExchangeSignal | None:
+    prefix = f"{period_label}.BETFAIR_AH"
+    if snapshot is None:
+        if debug_mode:
+            logger.info("P2 FORMULA | %s | unavailable: market not present", prefix)
+        return None
+    line = snapshot.line
+    back = _build_exchange_ah_reading(snapshot.back, label=f"{prefix}.BACK", debug_mode=debug_mode)
+    lay = _build_exchange_ah_reading(snapshot.lay, label=f"{prefix}.LAY", debug_mode=debug_mode)
+    back_edge = None if back is None else back.edge
+    lay_edge = None if lay is None else lay.edge
+    back_direction = None if back is None else back.direction
+    lay_direction = None if lay is None else lay.direction
+    comparable = (
+        snapshot.lines_match
+        and back_edge is not None
+        and lay_edge is not None
+        and back_direction is not None
+        and lay_direction is not None
+    )
+    internal_gap = absolute_gap(back_edge, lay_edge) if comparable else None
+    back_lay_relation = relation(back_direction, lay_direction) if comparable else None
+    rep_edge = pair_mean(back_edge, lay_edge) if comparable else None
+    representative_direction = direction(rep_edge) if rep_edge is not None else None
+    _log_assignment(f"{prefix}.LINE", line, debug_mode=debug_mode)
+    if debug_mode:
+        logger.info(
+            "P2 FORMULA | %s | lines_match=%s | comparable=%s",
+            prefix,
+            snapshot.lines_match,
+            comparable,
+        )
+    _log_formula(
+        f"{prefix}.INTERNAL_GAP",
+        "abs(BACK_EDGE - LAY_EDGE)",
+        f"abs({_fmt(back_edge)} - {_fmt(lay_edge)})",
+        internal_gap,
+        debug_mode=debug_mode,
+    )
+    _log_relation(
+        f"{prefix}.BACK_LAY_RELATION",
+        back_direction,
+        lay_direction,
+        back_lay_relation,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{prefix}.REP_EDGE",
+        "(BACK_EDGE + LAY_EDGE) / 2",
+        f"({_fmt(back_edge)} + {_fmt(lay_edge)}) / 2",
+        rep_edge,
+        debug_mode=debug_mode,
+    )
+    _log_direction(f"{prefix}.DIRECTION", rep_edge, representative_direction, debug_mode=debug_mode)
+    return AsianHandicapExchangeSignal(
+        line=line,
+        back=back,
+        lay=lay,
+        back_lay_relation=back_lay_relation,
+        internal_gap=internal_gap,
+        rep_edge=rep_edge,
+        direction=representative_direction,
+    )
+
+
+def _build_book_exchange_ah_signal(
+    full_time: PeriodSignal,
+    exchange_ah: AsianHandicapExchangeSignal | None,
+    *,
+    period_label: str = "FT",
+    debug_mode: bool,
+) -> AsianHandicapBookExchangeSignal | None:
+    prefix = f"{period_label}.BOOK_EXCHANGE_AH"
+    if exchange_ah is None:
+        if debug_mode:
+            logger.info("P2 FORMULA | %s | unavailable: Betfair AH absent", prefix)
+        return None
+    pin_line = full_time.asian_handicap.pin_line
+    b365_line = full_time.asian_handicap.b365_line
+    books_line = pin_line if pin_line is not None and pin_line == b365_line else None
+    line_diff_raw = (
+        None if books_line is None or exchange_ah.line is None else books_line - exchange_ah.line
+    )
+    line_gap = absolute_gap(line_diff_raw, Decimal(0)) if line_diff_raw is not None else None
+    comparable = (
+        line_diff_raw == Decimal(0)
+        and full_time.asian_handicap.rep_edge is not None
+        and full_time.asian_handicap.direction is not None
+        and exchange_ah.rep_edge is not None
+        and exchange_ah.direction is not None
+    )
+    gap = (
+        absolute_gap(full_time.asian_handicap.rep_edge, exchange_ah.rep_edge)
+        if comparable
+        else None
+    )
+    comparison = (
+        relation(full_time.asian_handicap.direction, exchange_ah.direction)
+        if comparable
+        else None
+    )
+    _log_assignment(f"{prefix}.BOOK_LINE", books_line, debug_mode=debug_mode)
+    _log_assignment(f"{prefix}.BETFAIR_LINE", exchange_ah.line, debug_mode=debug_mode)
+    _log_formula(
+        f"{prefix}.LINE_DIFF_RAW",
+        "BOOK_AH_LINE - BETFAIR_AH_LINE",
+        "unavailable because both representative lines are required"
+        if line_diff_raw is None
+        else f"{_fmt(books_line)} - {_fmt(exchange_ah.line)}",
+        line_diff_raw,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{prefix}.LINE_GAP",
+        "abs(LINE_DIFF_RAW)",
+        "unavailable because LINE_DIFF_RAW is unavailable"
+        if line_gap is None
+        else f"abs({_fmt(line_diff_raw)})",
+        line_gap,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{prefix}.GAP",
+        "abs(BOOK_AH_REP_EDGE - BETFAIR_AH_REP_EDGE)",
+        "unavailable because same-line representatives are required"
+        if gap is None
+        else f"abs({_fmt(full_time.asian_handicap.rep_edge)} - {_fmt(exchange_ah.rep_edge)})",
+        gap,
+        debug_mode=debug_mode,
+    )
+    _log_relation(
+        f"{prefix}.RELATION",
+        full_time.asian_handicap.direction,
+        exchange_ah.direction,
+        comparison,
+        debug_mode=debug_mode,
+    )
+    return AsianHandicapBookExchangeSignal(
+        line_diff_raw=line_diff_raw,
+        line_gap=line_gap,
+        relation=comparison,
+        gap=gap,
+    )
+
+
 def _build_book_exchange_signal(
     full_time: PeriodSignal,
     exchange: ExchangeSignal,
@@ -576,12 +770,40 @@ def build_p2_signal_profile(
         exchange,
         debug_mode=debug_mode,
     )
+    exchange_ah = _build_exchange_ah_signal(
+        snapshot.full_time.betfair_ah,
+        debug_mode=debug_mode,
+    )
+    book_exchange_ah = _build_book_exchange_ah_signal(
+        full_time,
+        exchange_ah,
+        debug_mode=debug_mode,
+    )
+    exchange_ah_1h = _build_exchange_ah_signal(
+        None if snapshot.first_half is None else snapshot.first_half.betfair_ah,
+        period_label="1H",
+        debug_mode=debug_mode,
+    )
+    book_exchange_ah_1h = (
+        None
+        if first_half is None
+        else _build_book_exchange_ah_signal(
+            first_half,
+            exchange_ah_1h,
+            period_label="1H",
+            debug_mode=debug_mode,
+        )
+    )
     profile = P2SignalProfile(
         full_time=full_time,
         first_half=first_half,
         ft_1h=ft_1h,
         exchange=exchange,
         book_exchange=book_exchange,
+        exchange_ah=exchange_ah,
+        book_exchange_ah=book_exchange_ah,
+        exchange_ah_1h=exchange_ah_1h,
+        book_exchange_ah_1h=book_exchange_ah_1h,
     )
     if debug_mode:
         logger.info(
