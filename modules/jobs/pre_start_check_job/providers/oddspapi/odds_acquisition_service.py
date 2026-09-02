@@ -30,6 +30,7 @@ from .exchange_outcome_selector import (
 from .historical_odds_enricher import OddspapiHistoricalOddsEnricher
 from .mainline_outcome_extractor import OddspapiMainlineOutcomeExtractor
 from .odds_fetcher import OddspapiOddsFetcher
+from .settings import ODDSPAPI_PRE_START_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -91,26 +92,21 @@ class OddspapiPreStartOddsAcquisitionService:
             )
 
     @staticmethod
-    def _opening_moment_minutes(
-        exchange_historical_moments: list[int] | None,
-    ) -> int:
-        moments = [
-            int(moment)
-            for moment in (exchange_historical_moments or [120])
-            if moment is not None
-        ]
-        return max(moments) if moments else 120
-
-    @classmethod
     def _should_enrich_opening_odds(
-        cls,
         minutes_until_start: int | float | None,
         exchange_historical_moments: list[int] | None,
     ) -> bool:
         if minutes_until_start is None:
             return False
-        opening_moment = cls._opening_moment_minutes(exchange_historical_moments)
-        return float(minutes_until_start) >= float(opening_moment)
+        moments = set(
+            ODDSPAPI_PRE_START_SETTINGS.resolved_opening_historical_moments(
+                exchange_historical_moments
+            )
+        )
+        try:
+            return int(minutes_until_start) in moments
+        except (TypeError, ValueError):
+            return False
 
     def _fetch(
         self,

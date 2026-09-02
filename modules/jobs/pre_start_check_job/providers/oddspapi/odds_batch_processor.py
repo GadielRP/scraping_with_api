@@ -51,6 +51,7 @@ from .exchange_historical_fetch_executor import (
 from .odds_fetcher import OddspapiOddsFetcher
 from .odds_acquisition_service import OddspapiPreStartOddsAcquisitionService
 from .historical_odds_as_of_shadow import log_historical_odds_as_of_shadow
+from .settings import ODDSPAPI_PRE_START_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -569,7 +570,11 @@ class OddspapiPreStartOddsBatchProcessor:
             else scheduler.available_key_count(ODDSPAPI_HISTORICAL_ODDS_ENDPOINT)
         )
         bounded_workers = max(1, int(max_workers or 1))
-        historical_moments = set(exchange_historical_moments or [120])
+        historical_moments = set(
+            ODDSPAPI_PRE_START_SETTINGS.resolved_opening_historical_moments(
+                exchange_historical_moments
+            )
+        )
         requires_exchange_history = (
             bool(exchange_bookmakers)
             and enable_exchange_historical
@@ -748,10 +753,13 @@ class OddspapiPreStartOddsBatchProcessor:
                     # Tracked leagues get openings via OddsPortal at T-120; skip
                     # exchange historical only at that opening moment. Live still
                     # uses the mainline cache for exchange outcome fetches.
-                    at_opening_moment = candidate.minutes_until_start in set(
-                        exchange_historical_moments
-                        if exchange_historical_moments is not None
-                        else [120]
+                    opening_historical_moments = (
+                        ODDSPAPI_PRE_START_SETTINGS.resolved_opening_historical_moments(
+                            exchange_historical_moments
+                        )
+                    )
+                    at_opening_moment = (
+                        candidate.minutes_until_start in set(opening_historical_moments)
                     )
                     acquisition_result = acquisition_service.acquire(
                         candidate.fixture_id,
@@ -774,11 +782,7 @@ class OddspapiPreStartOddsBatchProcessor:
                         exchange_include_player_props=(
                             exchange_include_player_props
                         ),
-                        exchange_historical_moments=(
-                            exchange_historical_moments
-                            if exchange_historical_moments is not None
-                            else [120]
-                        ),
+                        exchange_historical_moments=opening_historical_moments,
                         exchange_max_outcomes_per_event=(
                             exchange_max_outcomes_per_event
                         ),

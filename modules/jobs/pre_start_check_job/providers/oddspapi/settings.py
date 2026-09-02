@@ -24,9 +24,10 @@ class OddspapiPreStartSettings:
     # retained only as the default label/fallback for legacy callers.
     default_endpoint: str = "odds"
 
-    # Regular-bookmaker opening enrichment uses historical quotes only when the
-    # key moment is at/above this opening mark (also used as exchange moment).
-    opening_historical_moments: tuple[int, ...] = (120,)
+    # Minutes-until-start key moments where both /odds and /historical-odds
+    # are fetched so opening prices can be merged from the historical
+    # response. Also used as the exchange historical moment list.
+    opening_historical_moments: tuple[int, ...] = (5,)
 
     # Historical opening quotes must span at least this many minutes to count.
     initial_odds_min_span_minutes: float = 60.0
@@ -82,6 +83,14 @@ class OddspapiPreStartSettings:
             raise ValueError("exchange_max_requests_per_run must be non-negative")
         if not self.opening_historical_moments:
             raise ValueError("opening_historical_moments cannot be empty")
+
+    def resolved_opening_historical_moments(
+        self,
+        moments: Sequence[int] | None = None,
+    ) -> list[int]:
+        """Return an explicit override, otherwise the versioned setting."""
+        source = moments or self.opening_historical_moments
+        return [int(moment) for moment in source if moment is not None]
 
     def as_list(self, values: Sequence[str] | None) -> list[str] | None:
         cleaned = [str(value).strip() for value in (values or ()) if str(value).strip()]

@@ -63,7 +63,7 @@ ENABLE_ODDSPAPI_ODDS_SIMULATION = False
 ENABLE_ODDSPORTAL_ODDS_SIMULATION = False
 
 # Simulation toggles - Individual Pillars (active when ENABLE_PILLAR_PIPELINE = True)
-ENABLE_PILLAR_1 = False  # Pillar 1 - Team Structure (Side & Totals: M1-M7)
+ENABLE_PILLAR_1 = True  # Pillar 1 - Team Structure (Side & Totals: M1-M7)
 ENABLE_PILLAR_2 = True  # Pillar 2 - Side Market Signal Profile
 ENABLE_PILLAR_3 = True  # Pillar 3 - Over/Under Market Signal Profile
 ENABLE_PILLAR_4 = False  # Pillar 4 - Temporal Market Drift
