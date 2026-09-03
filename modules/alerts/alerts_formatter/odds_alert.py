@@ -117,8 +117,6 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
 def create_odds_alert_message(event_data: Dict, markets: List[Dict], minutes_until_start: int = None) -> str:
     """Create formatted Telegram message for odds alert."""
 
-    # log market input object
-    logger.info(f" markets: {markets}")
     try:
         home_team = event_data.get('home_team', 'Unknown')
         away_team = event_data.get('away_team', 'Unknown')
