@@ -98,7 +98,7 @@ class P2MiningAdapter:
             }
         )
         dimensions = {
-            "market_types": ["1X2", "ASIAN_HANDICAP"],
+            "market_types": ["1X2", "ASIAN_HANDICAP", "HANDICAP"],
             "market_periods": market_periods,
         }
 

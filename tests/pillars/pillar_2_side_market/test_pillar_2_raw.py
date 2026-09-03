@@ -728,17 +728,44 @@ def test_p2_supports_home_away_and_handicap_with_2way_exchange() -> None:
     assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
     assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
     assert result["raw"]["inputs"]["PIN_HANDICAP_FULL_TIME_LINE"] == pytest.approx(-1.5)
-    assert result["raw"]["inputs"]["PIN_AH_FULL_TIME_LINE"] == pytest.approx(-1.5)
+    assert result["raw"]["inputs"]["PIN_AH_FULL_TIME_LINE"] is None
     assert result["raw"]["inputs"]["PIN_HANDICAP_1H_LINE"] == pytest.approx(0.0)
-    assert result["raw"]["inputs"]["PIN_AH_1H_LINE"] == pytest.approx(0.0)
+    assert result["raw"]["inputs"]["PIN_AH_1H_LINE"] is None
     assert result["raw"]["inputs"]["PIN_HOME_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.80)
     assert result["raw"]["inputs"]["BF_HOME_BACK_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.82)
     assert result["raw"]["inputs"]["BF_DRAW_BACK_1X2_FULL_TIME_ODDS_PRICE"] is None
     assert profile["FT"]["1X2"]["DIRECTION"] == "HOME"
-    assert profile["FT"]["AH"]["DIRECTION"] == "AWAY"
+    assert profile["FT"]["HANDICAP"]["DIRECTION"] == "AWAY"
     assert profile["EXCHANGE"]["BACK_DIRECTION"] == "HOME"
     assert profile["1H"]["1X2"]["DIRECTION"] == "HOME"
-    assert profile["1H"]["AH"]["DIRECTION"] == "HOME"
+    assert profile["1H"]["HANDICAP"]["DIRECTION"] == "HOME"
+
+
+def test_p2_keeps_asian_handicap_and_handicap_variables_independent() -> None:
+    rows = _complete_rows(include_first_half=False)
+    for bookie_id, prices in ((302, (2.45, 1.58)), (3, (2.50, 1.55))):
+        _add_market(
+            rows,
+            minute=5,
+            market_group="Handicap",
+            market_period="Full Time",
+            market_name="Handicap Full Time",
+            choice_group="-1.5",
+            bookie_id=bookie_id,
+            prices={"1": prices[0], "2": prices[1]},
+        )
+
+    result = _calculate(rows)
+    inputs = result["raw"]["inputs"]
+    profile = _profile(result)
+
+    assert inputs["PIN_AH_FULL_TIME_LINE"] == pytest.approx(-0.5)
+    assert inputs["PIN_HANDICAP_FULL_TIME_LINE"] == pytest.approx(-1.5)
+    assert inputs["B365_AH_FULL_TIME_LINE"] == pytest.approx(-0.5)
+    assert inputs["B365_HANDICAP_FULL_TIME_LINE"] == pytest.approx(-1.5)
+    assert profile["FT"]["AH"]["PIN_LINE"] == pytest.approx(-0.5)
+    assert profile["FT"]["HANDICAP"]["PIN_LINE"] == pytest.approx(-1.5)
+    assert profile["FT"]["CROSS_MARKET"]["FT_1X2_AH_RELATION"] is not None
 
 
 def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
@@ -861,7 +888,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         exchange_sizes={"1": 950.0, "2": 620.0},
     )
 
-    result = _calculate(rows)
+    result = _calculate(rows, debug_mode=True)
 
     assert result["P2_STATUS"] == "ACTIVE"
     assert result["P2_TARGET_MINUTE"] == 5
@@ -880,10 +907,10 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
     assert inputs["BF_DRAW_BACK_1X2_FULL_TIME_ODDS_PRICE"] is None
     assert inputs["BF_DRAW_LAY_1X2_FULL_TIME_ODDS_PRICE"] is None
 
-    # Asian Handicap alias inputs (backwards compatible)
-    assert inputs["PIN_AH_FULL_TIME_LINE"] == pytest.approx(-1.5)
-    assert inputs["PIN_AH_HOME_FULL_TIME_ODDS_PRICE"] == pytest.approx(2.45)
-    assert inputs["PIN_AH_AWAY_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.58)
+    # Asian Handicap variables remain empty; Handicap is not relabelled as AH.
+    assert inputs["PIN_AH_FULL_TIME_LINE"] is None
+    assert inputs["PIN_AH_HOME_FULL_TIME_ODDS_PRICE"] is None
+    assert inputs["PIN_AH_AWAY_FULL_TIME_ODDS_PRICE"] is None
 
     # Distinct Handicap derived inputs populated
     assert inputs["PIN_HANDICAP_FULL_TIME_LINE"] == pytest.approx(-1.5)
@@ -904,10 +931,8 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
     # Profile calculations completed
     profile = _profile(result)
     assert profile["FT"]["1X2"]["DIRECTION"] == "HOME"
-    assert profile["FT"]["AH"]["DIRECTION"] == "AWAY"
+    assert profile["FT"]["HANDICAP"]["DIRECTION"] == "AWAY"
     assert profile["EXCHANGE"]["BACK_DIRECTION"] == "HOME"
     assert profile["1H"]["1X2"]["DIRECTION"] == "HOME"
-    assert profile["1H"]["AH"]["DIRECTION"] == "AWAY"
+    assert profile["1H"]["HANDICAP"]["DIRECTION"] == "AWAY"
     assert profile["FT_1H"]["FT_1H_1X2_RELATION"] is not None
-
-

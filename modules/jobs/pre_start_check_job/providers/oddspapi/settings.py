@@ -41,7 +41,12 @@ class OddspapiPreStartSettings:
         "home_away_full_time_including_overtime",
         "over_under_full_time_including_overtime",
         "asian_handicap_full_time_including_overtime",
+        "handicap_full_time_including_overtime",
+        "handicap_first_to_fifth_inning",
+        "home_away_first_to_fifth_inning",
+        "1x2_first_to_fifth_inning",
     )
+
     exchange_main_line_only: bool = True
     exchange_include_player_props: bool = False
     exchange_max_outcomes_per_event: int = 8

@@ -62,6 +62,36 @@ EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES = (
     "BF_AH_LAY_AWAY_1H_EXCHANGE_SIZE",
 )
 
+# Optional Betfair standard Handicap layers.  These intentionally use a
+# different namespace from Asian Handicap: both markets can contribute to P2
+# completeness, but their observations must never be relabelled as each other.
+EXCHANGE_HANDICAP_LINE_INPUT_NAME = "BF_HANDICAP_FULL_TIME_LINE"
+EXCHANGE_HANDICAP_ODDS_INPUT_NAMES = (
+    "BF_HANDICAP_BACK_HOME_FULL_TIME_ODDS_PRICE",
+    "BF_HANDICAP_BACK_AWAY_FULL_TIME_ODDS_PRICE",
+    "BF_HANDICAP_LAY_HOME_FULL_TIME_ODDS_PRICE",
+    "BF_HANDICAP_LAY_AWAY_FULL_TIME_ODDS_PRICE",
+)
+EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES = (
+    "BF_HANDICAP_BACK_HOME_FULL_TIME_EXCHANGE_SIZE",
+    "BF_HANDICAP_BACK_AWAY_FULL_TIME_EXCHANGE_SIZE",
+    "BF_HANDICAP_LAY_HOME_FULL_TIME_EXCHANGE_SIZE",
+    "BF_HANDICAP_LAY_AWAY_FULL_TIME_EXCHANGE_SIZE",
+)
+EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME = "BF_HANDICAP_1H_LINE"
+EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES = (
+    "BF_HANDICAP_BACK_HOME_1H_ODDS_PRICE",
+    "BF_HANDICAP_BACK_AWAY_1H_ODDS_PRICE",
+    "BF_HANDICAP_LAY_HOME_1H_ODDS_PRICE",
+    "BF_HANDICAP_LAY_AWAY_1H_ODDS_PRICE",
+)
+EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES = (
+    "BF_HANDICAP_BACK_HOME_1H_EXCHANGE_SIZE",
+    "BF_HANDICAP_BACK_AWAY_1H_EXCHANGE_SIZE",
+    "BF_HANDICAP_LAY_HOME_1H_EXCHANGE_SIZE",
+    "BF_HANDICAP_LAY_AWAY_1H_EXCHANGE_SIZE",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class TwoWayMarketSpec:
@@ -129,6 +159,14 @@ class SidePeriodScope:
         )
         if self.handicap is not None:
             names.extend(self.handicap.input_names())
+        if self.includes_exchange:
+            names.extend(
+                (
+                    EXCHANGE_HANDICAP_LINE_INPUT_NAME,
+                    *EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
+                    *EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES,
+                )
+            )
         return tuple(names)
 
 
@@ -210,7 +248,9 @@ FIRST_HALF_SIDE_SCOPE = SidePeriodScope(
             MarketIdentity("1X2", "1st Half", "1X2 1st Half"),
             MarketIdentity("Home/Away", "1st Half", "Home/Away 1st Half"),
             MarketIdentity("Home/Away", "1st to 5th Inning", "Home/Away First To Fifth Inning"),
+            MarketIdentity("1X2", "1st to 5th Inning", "1X2 First To Fifth Inning"),
         ),
+
         pinnacle_home="PIN_HOME_1X2_1H_ODDS_PRICE",
         pinnacle_away="PIN_AWAY_1X2_1H_ODDS_PRICE",
         bet365_home="B365_HOME_1X2_1H_ODDS_PRICE",
@@ -281,6 +321,12 @@ __all__ = [
     "EXCHANGE_AH_1H_LINE_INPUT_NAME",
     "EXCHANGE_AH_1H_ODDS_INPUT_NAMES",
     "EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES",
+    "EXCHANGE_HANDICAP_LINE_INPUT_NAME",
+    "EXCHANGE_HANDICAP_ODDS_INPUT_NAMES",
+    "EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES",
+    "EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME",
+    "EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES",
+    "EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES",
     "FIRST_HALF_SIDE_SCOPE",
     "FULL_TIME_SIDE_SCOPE",
     "P2_SIDE_PERIOD_SCOPES",

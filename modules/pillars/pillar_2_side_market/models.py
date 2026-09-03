@@ -15,7 +15,14 @@ from .periods import (
     EXCHANGE_AH_1H_LINE_INPUT_NAME,
     EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
     EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
+    EXCHANGE_HANDICAP_LINE_INPUT_NAME,
+    EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
+    EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES,
+    EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME,
+    EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES,
+    EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES,
     FIRST_HALF_SIDE_SCOPE,
+    FULL_TIME_SIDE_SCOPE,
     resolve_period_status,
 )
 
@@ -217,10 +224,13 @@ class P2FullTimeSnapshot:
 
     pinnacle_1x2: TwoWayMarketSnapshot # PIN
     bet365_1x2: TwoWayMarketSnapshot # B365
-    pinnacle_ah: AsianHandicapSnapshot
-    bet365_ah: AsianHandicapSnapshot
+    pinnacle_ah: AsianHandicapSnapshot | None
+    bet365_ah: AsianHandicapSnapshot | None
+    pinnacle_handicap: HandicapSnapshot | None
+    bet365_handicap: HandicapSnapshot | None
     betfair_1x2: ExchangeSnapshot # BF
     betfair_ah: PartialAsianHandicapExchangeSnapshot | None = None
+    betfair_handicap: PartialAsianHandicapExchangeSnapshot | None = None
     spread_market_type: str = "asian_handicap"
 
     def input_values(self) -> dict[str, Decimal | None]:
@@ -235,12 +245,6 @@ class P2FullTimeSnapshot:
             "PIN_AWAY_1X2_FULL_TIME_ODDS_PRICE": self.pinnacle_1x2.away.odds_price,
             "B365_HOME_1X2_FULL_TIME_ODDS_PRICE": self.bet365_1x2.home.odds_price,
             "B365_AWAY_1X2_FULL_TIME_ODDS_PRICE": self.bet365_1x2.away.odds_price,
-            "PIN_AH_FULL_TIME_LINE": self.pinnacle_ah.home_line,
-            "PIN_AH_HOME_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.home.odds_price,
-            "PIN_AH_AWAY_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.away.odds_price,
-            "B365_AH_FULL_TIME_LINE": self.bet365_ah.home_line,
-            "B365_AH_HOME_FULL_TIME_ODDS_PRICE": self.bet365_ah.home.odds_price,
-            "B365_AH_AWAY_FULL_TIME_ODDS_PRICE": self.bet365_ah.away.odds_price,
             "BF_HOME_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_back.home.odds_price,
             "BF_HOME_LAY_1X2_FULL_TIME_ODDS_PRICE": bf_lay.home.odds_price,
             "BF_DRAW_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_draw_back_odds,
@@ -254,28 +258,33 @@ class P2FullTimeSnapshot:
             "BF_AWAY_BACK_1X2_FULL_TIME_EXCHANGE_SIZE": bf_back.away.exchange_size,
             "BF_AWAY_LAY_1X2_FULL_TIME_EXCHANGE_SIZE": bf_lay.away.exchange_size,
         }
-        if self.spread_market_type == "handicap" or isinstance(self.pinnacle_ah, HandicapSnapshot):
+        values.update({name: None for name in FULL_TIME_SIDE_SCOPE.input_names() if name not in values})
+        if self.pinnacle_ah is not None:
             values.update({
-                "PIN_HANDICAP_FULL_TIME_LINE": self.pinnacle_ah.home_line,
-                "PIN_HANDICAP_HOME_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.home.odds_price,
-                "PIN_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.away.odds_price,
-                "B365_HANDICAP_FULL_TIME_LINE": self.bet365_ah.home_line,
-                "B365_HANDICAP_HOME_FULL_TIME_ODDS_PRICE": self.bet365_ah.home.odds_price,
-                "B365_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE": self.bet365_ah.away.odds_price,
+                "PIN_AH_FULL_TIME_LINE": self.pinnacle_ah.home_line,
+                "PIN_AH_HOME_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.home.odds_price,
+                "PIN_AH_AWAY_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.away.odds_price,
             })
-        ah = self.betfair_ah
-        values.update(
-            ah.input_values()
-            if ah is not None
-            else {
-                name: None
-                for name in (
-                    EXCHANGE_AH_LINE_INPUT_NAME,
-                    *EXCHANGE_AH_ODDS_INPUT_NAMES,
-                    *EXCHANGE_AH_SIZE_TRACE_INPUT_NAMES,
-                )
-            }
-        )
+        if self.bet365_ah is not None:
+            values.update({
+                "B365_AH_FULL_TIME_LINE": self.bet365_ah.home_line,
+                "B365_AH_HOME_FULL_TIME_ODDS_PRICE": self.bet365_ah.home.odds_price,
+                "B365_AH_AWAY_FULL_TIME_ODDS_PRICE": self.bet365_ah.away.odds_price,
+            })
+        if self.pinnacle_handicap is not None and self.bet365_handicap is not None:
+            values.update({
+                "PIN_HANDICAP_FULL_TIME_LINE": self.pinnacle_handicap.home_line,
+                "PIN_HANDICAP_HOME_FULL_TIME_ODDS_PRICE": self.pinnacle_handicap.home.odds_price,
+                "PIN_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE": self.pinnacle_handicap.away.odds_price,
+                "B365_HANDICAP_FULL_TIME_LINE": self.bet365_handicap.home_line,
+                "B365_HANDICAP_HOME_FULL_TIME_ODDS_PRICE": self.bet365_handicap.home.odds_price,
+                "B365_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE": self.bet365_handicap.away.odds_price,
+            })
+        for exchange, line, odds, sizes in (
+            (self.betfair_ah, EXCHANGE_AH_LINE_INPUT_NAME, EXCHANGE_AH_ODDS_INPUT_NAMES, EXCHANGE_AH_SIZE_TRACE_INPUT_NAMES),
+            (self.betfair_handicap, EXCHANGE_HANDICAP_LINE_INPUT_NAME, EXCHANGE_HANDICAP_ODDS_INPUT_NAMES, EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES),
+        ):
+            values.update(exchange.input_values(line_name=line, odds_names=odds, size_names=sizes) if exchange else {name: None for name in (line, *odds, *sizes)})
         return values
 
     def input_trace(self) -> dict[str, dict[str, Any]]:
@@ -286,12 +295,6 @@ class P2FullTimeSnapshot:
             "PIN_AWAY_1X2_FULL_TIME_ODDS_PRICE": self.pinnacle_1x2.away,
             "B365_HOME_1X2_FULL_TIME_ODDS_PRICE": self.bet365_1x2.home,
             "B365_AWAY_1X2_FULL_TIME_ODDS_PRICE": self.bet365_1x2.away,
-            "PIN_AH_FULL_TIME_LINE": self.pinnacle_ah.home,
-            "PIN_AH_HOME_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.home,
-            "PIN_AH_AWAY_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.away,
-            "B365_AH_FULL_TIME_LINE": self.bet365_ah.home,
-            "B365_AH_HOME_FULL_TIME_ODDS_PRICE": self.bet365_ah.home,
-            "B365_AH_AWAY_FULL_TIME_ODDS_PRICE": self.bet365_ah.away,
             "BF_HOME_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_back.home,
             "BF_HOME_LAY_1X2_FULL_TIME_ODDS_PRICE": bf_lay.home,
             "BF_AWAY_BACK_1X2_FULL_TIME_ODDS_PRICE": bf_back.away,
@@ -308,19 +311,27 @@ class P2FullTimeSnapshot:
             points["BF_DRAW_LAY_1X2_FULL_TIME_ODDS_PRICE"] = bf_lay.draw
             points["BF_DRAW_LAY_1X2_FULL_TIME_EXCHANGE_SIZE"] = bf_lay.draw
 
-        if self.spread_market_type == "handicap" or isinstance(self.pinnacle_ah, HandicapSnapshot):
+        for branch, line_name, home_name, away_name in (
+            (self.pinnacle_ah, "PIN_AH_FULL_TIME_LINE", "PIN_AH_HOME_FULL_TIME_ODDS_PRICE", "PIN_AH_AWAY_FULL_TIME_ODDS_PRICE"),
+            (self.bet365_ah, "B365_AH_FULL_TIME_LINE", "B365_AH_HOME_FULL_TIME_ODDS_PRICE", "B365_AH_AWAY_FULL_TIME_ODDS_PRICE"),
+            (self.pinnacle_handicap, "PIN_HANDICAP_FULL_TIME_LINE", "PIN_HANDICAP_HOME_FULL_TIME_ODDS_PRICE", "PIN_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE"),
+            (self.bet365_handicap, "B365_HANDICAP_FULL_TIME_LINE", "B365_HANDICAP_HOME_FULL_TIME_ODDS_PRICE", "B365_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE"),
+        ):
+            if branch is None:
+                continue
             points.update({
-                "PIN_HANDICAP_FULL_TIME_LINE": self.pinnacle_ah.home,
-                "PIN_HANDICAP_HOME_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.home,
-                "PIN_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE": self.pinnacle_ah.away,
-                "B365_HANDICAP_FULL_TIME_LINE": self.bet365_ah.home,
-                "B365_HANDICAP_HOME_FULL_TIME_ODDS_PRICE": self.bet365_ah.home,
-                "B365_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE": self.bet365_ah.away,
+                line_name: branch.home,
+                home_name: branch.home,
+                away_name: branch.away,
             })
-        ah = self.betfair_ah
-        if ah is not None:
-            return {**{name: point.trace.to_dict() for name, point in points.items()}, **ah.input_trace()}
-        return {name: point.trace.to_dict() for name, point in points.items()}
+        traces = {name: point.trace.to_dict() for name, point in points.items()}
+        for exchange, line, odds, sizes in (
+            (self.betfair_ah, EXCHANGE_AH_LINE_INPUT_NAME, EXCHANGE_AH_ODDS_INPUT_NAMES, EXCHANGE_AH_SIZE_TRACE_INPUT_NAMES),
+            (self.betfair_handicap, EXCHANGE_HANDICAP_LINE_INPUT_NAME, EXCHANGE_HANDICAP_ODDS_INPUT_NAMES, EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES),
+        ):
+            if exchange is not None:
+                traces.update(exchange.input_trace(line_name=line, odds_names=odds, size_names=sizes))
+        return traces
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,7 +342,10 @@ class P2FirstHalfSnapshot:
     bet365_1x2: PartialTwoWayMarketSnapshot | None
     pinnacle_ah: PartialAsianHandicapSnapshot | None
     bet365_ah: PartialAsianHandicapSnapshot | None
+    pinnacle_handicap: PartialHandicapSnapshot | None
+    bet365_handicap: PartialHandicapSnapshot | None
     betfair_ah: PartialAsianHandicapExchangeSnapshot | None = None
+    betfair_handicap: PartialAsianHandicapExchangeSnapshot | None = None
     spread_market_type: str = "asian_handicap"
 
     def is_complete(self) -> bool:
@@ -340,8 +354,8 @@ class P2FirstHalfSnapshot:
             for branch in (
                 self.pinnacle_1x2,
                 self.bet365_1x2,
-                self.pinnacle_ah,
-                self.bet365_ah,
+                self.pinnacle_ah if self.spread_market_type == "asian_handicap" else self.pinnacle_handicap,
+                self.bet365_ah if self.spread_market_type == "asian_handicap" else self.bet365_handicap,
             )
         )
 
@@ -353,7 +367,10 @@ class P2FirstHalfSnapshot:
                 self.bet365_1x2,
                 self.pinnacle_ah,
                 self.bet365_ah,
+                self.pinnacle_handicap,
+                self.bet365_handicap,
                 self.betfair_ah,
+                self.betfair_handicap,
             )
         )
 
@@ -364,6 +381,8 @@ class P2FirstHalfSnapshot:
             (self.bet365_1x2, None, "B365_HOME_1X2_1H_ODDS_PRICE", "B365_AWAY_1X2_1H_ODDS_PRICE"),
             (self.pinnacle_ah, "PIN_AH_1H_LINE", "PIN_AH_1H_HOME_PRICE", "PIN_AH_1H_AWAY_PRICE"),
             (self.bet365_ah, "B365_AH_1H_LINE", "B365_AH_1H_HOME_PRICE", "B365_AH_1H_AWAY_PRICE"),
+            (self.pinnacle_handicap, "PIN_HANDICAP_1H_LINE", "PIN_HANDICAP_1H_HOME_PRICE", "PIN_HANDICAP_1H_AWAY_PRICE"),
+            (self.bet365_handicap, "B365_HANDICAP_1H_LINE", "B365_HANDICAP_1H_HOME_PRICE", "B365_HANDICAP_1H_AWAY_PRICE"),
         )
         for branch, line_name, home_name, away_name in branches:
             if branch is None:
@@ -371,36 +390,13 @@ class P2FirstHalfSnapshot:
             values[home_name] = None if branch.home is None else branch.home.odds_price
             values[away_name] = None if branch.away is None else branch.away.odds_price
             if line_name is not None:
-                assert isinstance(branch, PartialAsianHandicapSnapshot)
                 values[line_name] = branch.home_line
 
-        if self.spread_market_type == "handicap" or isinstance(self.pinnacle_ah, PartialHandicapSnapshot):
-            if self.pinnacle_ah is not None:
-                values["PIN_HANDICAP_1H_HOME_PRICE"] = None if self.pinnacle_ah.home is None else self.pinnacle_ah.home.odds_price
-                values["PIN_HANDICAP_1H_AWAY_PRICE"] = None if self.pinnacle_ah.away is None else self.pinnacle_ah.away.odds_price
-                values["PIN_HANDICAP_1H_LINE"] = self.pinnacle_ah.home_line
-            if self.bet365_ah is not None:
-                values["B365_HANDICAP_1H_HOME_PRICE"] = None if self.bet365_ah.home is None else self.bet365_ah.home.odds_price
-                values["B365_HANDICAP_1H_AWAY_PRICE"] = None if self.bet365_ah.away is None else self.bet365_ah.away.odds_price
-                values["B365_HANDICAP_1H_LINE"] = self.bet365_ah.home_line
-
-        if self.betfair_ah is not None:
-            values.update(
-                self.betfair_ah.input_values(
-                    line_name=EXCHANGE_AH_1H_LINE_INPUT_NAME,
-                    odds_names=EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
-                    size_names=EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
-                )
-            )
-        else:
-            values.update({
-                name: None
-                for name in (
-                    EXCHANGE_AH_1H_LINE_INPUT_NAME,
-                    *EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
-                    *EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
-                )
-            })
+        for exchange, line, odds, sizes in (
+            (self.betfair_ah, EXCHANGE_AH_1H_LINE_INPUT_NAME, EXCHANGE_AH_1H_ODDS_INPUT_NAMES, EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES),
+            (self.betfair_handicap, EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME, EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES, EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES),
+        ):
+            values.update(exchange.input_values(line_name=line, odds_names=odds, size_names=sizes) if exchange else {name: None for name in (line, *odds, *sizes)})
         return values
 
     def input_trace(self) -> dict[str, dict[str, Any]]:
@@ -410,6 +406,8 @@ class P2FirstHalfSnapshot:
             (self.bet365_1x2, None, "B365_HOME_1X2_1H_ODDS_PRICE", "B365_AWAY_1X2_1H_ODDS_PRICE"),
             (self.pinnacle_ah, "PIN_AH_1H_LINE", "PIN_AH_1H_HOME_PRICE", "PIN_AH_1H_AWAY_PRICE"),
             (self.bet365_ah, "B365_AH_1H_LINE", "B365_AH_1H_HOME_PRICE", "B365_AH_1H_AWAY_PRICE"),
+            (self.pinnacle_handicap, "PIN_HANDICAP_1H_LINE", "PIN_HANDICAP_1H_HOME_PRICE", "PIN_HANDICAP_1H_AWAY_PRICE"),
+            (self.bet365_handicap, "B365_HANDICAP_1H_LINE", "B365_HANDICAP_1H_HOME_PRICE", "B365_HANDICAP_1H_AWAY_PRICE"),
         )
         for branch, line_name, home_name, away_name in branches:
             if branch is None:
@@ -422,32 +420,12 @@ class P2FirstHalfSnapshot:
             if line_name is not None and line_anchor is not None:
                 traces[line_name] = line_anchor.trace.to_dict()
 
-        if self.spread_market_type == "handicap" or isinstance(self.pinnacle_ah, PartialHandicapSnapshot):
-            if self.pinnacle_ah is not None:
-                if self.pinnacle_ah.home is not None:
-                    traces["PIN_HANDICAP_1H_HOME_PRICE"] = self.pinnacle_ah.home.trace.to_dict()
-                if self.pinnacle_ah.away is not None:
-                    traces["PIN_HANDICAP_1H_AWAY_PRICE"] = self.pinnacle_ah.away.trace.to_dict()
-                pin_anchor = self.pinnacle_ah.home or self.pinnacle_ah.away
-                if pin_anchor is not None:
-                    traces["PIN_HANDICAP_1H_LINE"] = pin_anchor.trace.to_dict()
-            if self.bet365_ah is not None:
-                if self.bet365_ah.home is not None:
-                    traces["B365_HANDICAP_1H_HOME_PRICE"] = self.bet365_ah.home.trace.to_dict()
-                if self.bet365_ah.away is not None:
-                    traces["B365_HANDICAP_1H_AWAY_PRICE"] = self.bet365_ah.away.trace.to_dict()
-                b365_anchor = self.bet365_ah.home or self.bet365_ah.away
-                if b365_anchor is not None:
-                    traces["B365_HANDICAP_1H_LINE"] = b365_anchor.trace.to_dict()
-
-        if self.betfair_ah is not None:
-            traces.update(
-                self.betfair_ah.input_trace(
-                    line_name=EXCHANGE_AH_1H_LINE_INPUT_NAME,
-                    odds_names=EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
-                    size_names=EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
-                )
-            )
+        for exchange, line, odds, sizes in (
+            (self.betfair_ah, EXCHANGE_AH_1H_LINE_INPUT_NAME, EXCHANGE_AH_1H_ODDS_INPUT_NAMES, EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES),
+            (self.betfair_handicap, EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME, EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES, EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES),
+        ):
+            if exchange is not None:
+                traces.update(exchange.input_trace(line_name=line, odds_names=odds, size_names=sizes))
         return traces
 
 
@@ -471,6 +449,9 @@ class P2MarketSnapshot:
             EXCHANGE_AH_1H_LINE_INPUT_NAME,
             *EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
             *EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
+            EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME,
+            *EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES,
+            *EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES,
         ):
             values[name] = None
         return values
@@ -491,9 +472,12 @@ class P2ExtractionResult:
     first_half: PeriodDiagnostics
     exchange_ah: PeriodDiagnostics = field(default_factory=PeriodDiagnostics.empty)
     exchange_ah_1h: PeriodDiagnostics = field(default_factory=PeriodDiagnostics.empty)
+    exchange_handicap: PeriodDiagnostics = field(default_factory=PeriodDiagnostics.empty)
+    exchange_handicap_1h: PeriodDiagnostics = field(default_factory=PeriodDiagnostics.empty)
     full_time_snapshot: P2FullTimeSnapshot | None = None
     first_half_snapshot: P2FirstHalfSnapshot | None = None
     exchange_ah_snapshot: PartialAsianHandicapExchangeSnapshot | None = None
+    exchange_handicap_snapshot: PartialAsianHandicapExchangeSnapshot | None = None
     abort_reason: str | None = None
 
     @property
@@ -512,18 +496,20 @@ class P2ExtractionResult:
             "first_half": self.first_half.to_dict(),
             "exchange_ah": self.exchange_ah.to_dict(),
             "exchange_ah_1h": self.exchange_ah_1h.to_dict(),
+            "exchange_handicap": self.exchange_handicap.to_dict(),
+            "exchange_handicap_1h": self.exchange_handicap_1h.to_dict(),
         }
 
     @property
     def missing_inputs(self) -> tuple[str, ...]:
         return tuple(
-            sorted(set(self.full_time.missing_inputs) | set(self.first_half.missing_inputs) | set(self.exchange_ah.missing_inputs) | set(self.exchange_ah_1h.missing_inputs))
+            sorted(set(self.full_time.missing_inputs) | set(self.first_half.missing_inputs) | set(self.exchange_ah.missing_inputs) | set(self.exchange_ah_1h.missing_inputs) | set(self.exchange_handicap.missing_inputs) | set(self.exchange_handicap_1h.missing_inputs))
         )
 
     @property
     def invalid_inputs(self) -> tuple[str, ...]:
         return tuple(
-            sorted(set(self.full_time.invalid_inputs) | set(self.first_half.invalid_inputs) | set(self.exchange_ah.invalid_inputs) | set(self.exchange_ah_1h.invalid_inputs))
+            sorted(set(self.full_time.invalid_inputs) | set(self.first_half.invalid_inputs) | set(self.exchange_ah.invalid_inputs) | set(self.exchange_ah_1h.invalid_inputs) | set(self.exchange_handicap.invalid_inputs) | set(self.exchange_handicap_1h.invalid_inputs))
         )
 
     @property
@@ -534,5 +520,7 @@ class P2ExtractionResult:
                 | set(self.first_half.ambiguous_inputs)
                 | set(self.exchange_ah.ambiguous_inputs)
                 | set(self.exchange_ah_1h.ambiguous_inputs)
+                | set(self.exchange_handicap.ambiguous_inputs)
+                | set(self.exchange_handicap_1h.ambiguous_inputs)
             )
         )

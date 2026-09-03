@@ -116,9 +116,9 @@ def resolve_canonical_period(item: dict) -> tuple[str | None, str | None]:
         return None, "unsupported_period_context"
 
     if period_compact == "p1+p2+p3+p4+p5":
-        if sport_id == "13" or "inning" in market_name_compact:
+        if sport_id == "13":
             return "1st to 5th Inning", "1st_to_5th_inning"
-        return "1st to 5th Inning", "1st_to_5th_inning"
+        return None, "unsupported_period_context"
 
 
     # Static/explicit period name matching

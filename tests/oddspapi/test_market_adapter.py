@@ -1323,3 +1323,37 @@ def test_resolve_oddspapi_key_handicap_asian_european_distinction() -> None:
     assert reason == "unsupported_market_type"
 
 
+def test_p1_to_p5_period_is_baseball_only() -> None:
+    key, reason = resolve_oddspapi_key({
+        "sportId": "10",
+        "marketType": "spreads",
+        "period": "p1+p2+p3+p4+p5",
+        "marketName": "Handicap First To Fifth Inning",
+        "outcomes": [{"name": "1"}, {"name": "2"}],
+    })
+    assert key is None
+    assert reason == "unsupported_period_context"
+
+
+def test_resolve_oddspapi_key_first_to_fifth_inning_winner_and_result():
+    """Verify distinct resolution for 2-way Winner vs 3-way Result for 1st to 5th Inning."""
+    # 1. 2-way Moneyline / Winner First To Fifth Inning (e.g. marketId 131256)
+    res_winner, _ = resolve_oddspapi_key({
+        "sportId": "13",
+        "marketType": "moneyline",
+        "period": "p1+p2+p3+p4+p5",
+        "marketName": "Winner First To Fifth Inning",
+        "outcomes": [{"name": "1"}, {"name": "2"}],
+    })
+    assert res_winner == "home_away_first_to_fifth_inning"
+
+    # 2. 3-way 1X2 First To Fifth Inning Result (e.g. marketId 131258)
+    res_result, _ = resolve_oddspapi_key({
+        "sportId": "13",
+        "marketType": "1x2",
+        "period": "p1+p2+p3+p4+p5",
+        "marketName": "First To Fifth Inning Result",
+        "outcomes": [{"name": "1"}, {"name": "X"}, {"name": "2"}],
+    })
+    assert res_result == "1x2_first_to_fifth_inning"
+

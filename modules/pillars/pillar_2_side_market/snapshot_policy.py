@@ -32,6 +32,12 @@ from .models import (
 from .periods import (
     EXCHANGE_AH_1H_LINE_INPUT_NAME,
     EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
+    EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME,
+    EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES,
+    EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES,
+    EXCHANGE_HANDICAP_LINE_INPUT_NAME,
+    EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
+    EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES,
     FIRST_HALF_SIDE_SCOPE,
     FULL_TIME_SIDE_SCOPE,
     EXCHANGE_AH_LINE_INPUT_NAME,
@@ -415,6 +421,7 @@ def _extract_full_time(
     context: OddsTrajectoryContext,
     target_minute: int,
     betfair_ah: PartialAsianHandicapExchangeSnapshot | None = None,
+    betfair_handicap: PartialAsianHandicapExchangeSnapshot | None = None,
 ) -> tuple[P2FullTimeSnapshot | None, PeriodDiagnostics]:
     gate = _PeriodGate()
     pin_1x2, b365_1x2 = _extract_required_book_pair(
@@ -424,7 +431,8 @@ def _extract_full_time(
         gate=gate,
     )
 
-    # Spread layer: try Asian Handicap first; fallback to Handicap if not found
+    # Extract both spread families independently.  They are alternatives for
+    # the completeness gate, never aliases of one another.
     ah_gate = _PeriodGate()
     pin_ah, b365_ah = _extract_required_book_pair(
         context,
@@ -432,45 +440,35 @@ def _extract_full_time(
         spec=FULL_TIME_SIDE_SCOPE.asian_handicap,
         gate=ah_gate,
     )
-    spread_market_type = "asian_handicap"
-    if (
+    hc_gate = _PeriodGate()
+    pin_hc, b365_hc = _extract_required_book_pair(
+        context,
+        target_minute=target_minute,
+        spec=FULL_TIME_SIDE_SCOPE.handicap,
+        gate=hc_gate,
+    )
+    ah_complete = (
         pin_ah is not None
         and b365_ah is not None
         and not ah_gate.missing
         and not ah_gate.invalid
         and not ah_gate.ambiguous
-    ):
+    )
+    hc_complete = (
+        pin_hc is not None
+        and b365_hc is not None
+        and not hc_gate.missing
+        and not hc_gate.invalid
+        and not hc_gate.ambiguous
+    )
+    if not ah_complete and not hc_complete:
         gate.missing.update(ah_gate.missing)
         gate.invalid.update(ah_gate.invalid)
         gate.ambiguous.update(ah_gate.ambiguous)
-    elif FULL_TIME_SIDE_SCOPE.handicap is not None:
-        hc_gate = _PeriodGate()
-        pin_hc, b365_hc = _extract_required_book_pair(
-            context,
-            target_minute=target_minute,
-            spec=FULL_TIME_SIDE_SCOPE.handicap,
-            gate=hc_gate,
-        )
-        if (
-            pin_hc is not None
-            and b365_hc is not None
-            and not hc_gate.missing
-            and not hc_gate.invalid
-            and not hc_gate.ambiguous
-        ):
-            pin_ah, b365_ah = pin_hc, b365_hc
-            spread_market_type = "handicap"
-            gate.missing.update(hc_gate.missing)
-            gate.invalid.update(hc_gate.invalid)
-            gate.ambiguous.update(hc_gate.ambiguous)
-        else:
-            gate.missing.update(ah_gate.missing)
-            gate.invalid.update(ah_gate.invalid)
-            gate.ambiguous.update(ah_gate.ambiguous)
-    else:
-        gate.missing.update(ah_gate.missing)
-        gate.invalid.update(ah_gate.invalid)
-        gate.ambiguous.update(ah_gate.ambiguous)
+        gate.missing.update(hc_gate.missing)
+        gate.invalid.update(hc_gate.invalid)
+        gate.ambiguous.update(hc_gate.ambiguous)
+    spread_market_type = "asian_handicap" if ah_complete else "handicap"
 
     # Exchange layer: detect whether side market is 2-way
     is_2way = (
@@ -521,14 +519,15 @@ def _extract_full_time(
     gate.invalid.update(bf_back_gate.invalid | bf_lay_gate.invalid)
     gate.ambiguous.update(bf_back_gate.ambiguous | bf_lay_gate.ambiguous)
 
-    components = (pin_1x2, b365_1x2, pin_ah, b365_ah, bf_back, bf_lay)
+    selected_spread = (pin_ah, b365_ah) if ah_complete else (pin_hc, b365_hc)
+    components = (pin_1x2, b365_1x2, *selected_spread, bf_back, bf_lay)
     if not _required_full_time_is_complete(components, gate):
         return None, gate.diagnostics(complete=False)
 
     assert isinstance(pin_1x2, TwoWayMarketSnapshot)
     assert isinstance(b365_1x2, TwoWayMarketSnapshot)
-    assert isinstance(pin_ah, AsianHandicapSnapshot)
-    assert isinstance(b365_ah, AsianHandicapSnapshot)
+    assert isinstance(pin_ah, AsianHandicapSnapshot) if ah_complete else isinstance(pin_hc, HandicapSnapshot)
+    assert isinstance(b365_ah, AsianHandicapSnapshot) if ah_complete else isinstance(b365_hc, HandicapSnapshot)
     assert bf_back is not None and bf_lay is not None
     snapshot = P2FullTimeSnapshot(
         pinnacle_1x2=pin_1x2,
@@ -537,6 +536,9 @@ def _extract_full_time(
         bet365_ah=b365_ah,
         betfair_1x2=ExchangeSnapshot(back=bf_back, lay=bf_lay),
         betfair_ah=betfair_ah,
+        pinnacle_handicap=pin_hc if hc_complete else None,
+        bet365_handicap=b365_hc if hc_complete else None,
+        betfair_handicap=betfair_handicap,
         spread_market_type=spread_market_type,
     )
     return snapshot, gate.diagnostics(complete=True)
@@ -585,45 +587,45 @@ def _extract_first_half(
         ),
         gate=ah_gate,
     )
+    hc_gate = _PeriodGate()
+    pin_hc = _extract_partial_two_way(
+        context,
+        target_minute=target_minute,
+        request=_two_way_request(FIRST_HALF_SIDE_SCOPE.handicap, bookie_id=PINNACLE_BOOKIE_ID),
+        gate=hc_gate,
+    )
+    b365_hc = _extract_partial_two_way(
+        context,
+        target_minute=target_minute,
+        request=_two_way_request(FIRST_HALF_SIDE_SCOPE.handicap, bookie_id=BET365_BOOKIE_ID),
+        gate=hc_gate,
+    )
+    ah_complete = (
+        pin_ah is not None and b365_ah is not None
+        and pin_ah.is_complete() and b365_ah.is_complete()
+    )
+    hc_complete = (
+        pin_hc is not None and b365_hc is not None
+        and pin_hc.is_complete() and b365_hc.is_complete()
+    )
     spread_market_type = "asian_handicap"
-    if (pin_ah is not None and pin_ah.has_any_input()) or (b365_ah is not None and b365_ah.has_any_input()):
+    if ah_complete or (not hc_complete and (pin_ah is not None or b365_ah is not None)):
         gate.missing.update(ah_gate.missing)
         gate.invalid.update(ah_gate.invalid)
         gate.ambiguous.update(ah_gate.ambiguous)
-    elif FIRST_HALF_SIDE_SCOPE.handicap is not None:
-        hc_gate = _PeriodGate()
-        pin_hc = _extract_partial_two_way(
-            context,
-            target_minute=target_minute,
-            request=_two_way_request(
-                FIRST_HALF_SIDE_SCOPE.handicap,
-                bookie_id=PINNACLE_BOOKIE_ID,
-            ),
-            gate=hc_gate,
-        )
-        b365_hc = _extract_partial_two_way(
-            context,
-            target_minute=target_minute,
-            request=_two_way_request(
-                FIRST_HALF_SIDE_SCOPE.handicap,
-                bookie_id=BET365_BOOKIE_ID,
-            ),
-            gate=hc_gate,
-        )
-        if (pin_hc is not None and pin_hc.has_any_input()) or (b365_hc is not None and b365_hc.has_any_input()):
-            pin_ah, b365_ah = pin_hc, b365_hc
-            spread_market_type = "handicap"
-            gate.missing.update(hc_gate.missing)
-            gate.invalid.update(hc_gate.invalid)
-            gate.ambiguous.update(hc_gate.ambiguous)
-        else:
-            gate.missing.update(ah_gate.missing)
-            gate.invalid.update(ah_gate.invalid)
-            gate.ambiguous.update(ah_gate.ambiguous)
+    elif hc_complete or (pin_hc is not None or b365_hc is not None):
+        spread_market_type = "handicap"
+        gate.missing.update(hc_gate.missing)
+        gate.invalid.update(hc_gate.invalid)
+        gate.ambiguous.update(hc_gate.ambiguous)
     else:
         gate.missing.update(ah_gate.missing)
         gate.invalid.update(ah_gate.invalid)
         gate.ambiguous.update(ah_gate.ambiguous)
+        gate.missing.update(hc_gate.missing)
+        gate.invalid.update(hc_gate.invalid)
+        gate.ambiguous.update(hc_gate.ambiguous)
+
 
     if gate.ambiguous:
         return None, gate.diagnostics(complete=False)
@@ -632,11 +634,15 @@ def _extract_first_half(
     assert b365_1x2 is None or isinstance(b365_1x2, PartialTwoWayMarketSnapshot)
     assert pin_ah is None or isinstance(pin_ah, PartialAsianHandicapSnapshot)
     assert b365_ah is None or isinstance(b365_ah, PartialAsianHandicapSnapshot)
+    assert pin_hc is None or isinstance(pin_hc, PartialHandicapSnapshot)
+    assert b365_hc is None or isinstance(b365_hc, PartialHandicapSnapshot)
     snapshot = P2FirstHalfSnapshot(
         pinnacle_1x2=pin_1x2,
         bet365_1x2=b365_1x2,
         pinnacle_ah=pin_ah,
         bet365_ah=b365_ah,
+        pinnacle_handicap=pin_hc,
+        bet365_handicap=b365_hc,
         spread_market_type=spread_market_type,
     )
     if not snapshot.has_any_input():
@@ -644,75 +650,56 @@ def _extract_first_half(
     return snapshot, gate.diagnostics(complete=snapshot.is_complete())
 
 
-def _extract_optional_exchange_ah(
+def _extract_optional_exchange_spread(
     context: OddsTrajectoryContext,
     target_minute: int,
     *,
     scope=FULL_TIME_SIDE_SCOPE,
+    spec: TwoWayMarketSpec,
     line_name: str = EXCHANGE_AH_LINE_INPUT_NAME,
     odds_names: tuple[str, ...] = EXCHANGE_AH_ODDS_INPUT_NAMES,
 ) -> tuple[PartialAsianHandicapExchangeSnapshot | None, PeriodDiagnostics]:
-    """Extract optional Betfair AH for the requested period."""
-    def try_extract(spec_to_use: TwoWayMarketSpec):
-        back_gate = _PeriodGate()
-        lay_gate = _PeriodGate()
-        back = _extract_partial_two_way(
-            context,
-            target_minute=target_minute,
-            request=_exchange_ah_request(
-                "back",
-                scope=scope,
-                line_name=line_name,
-                odds_names=odds_names,
-                spec=spec_to_use,
-            ),
-            gate=back_gate,
-        )
-        lay = _extract_partial_two_way(
-            context,
-            target_minute=target_minute,
-            request=_exchange_ah_request(
-                "lay",
-                scope=scope,
-                line_name=line_name,
-                odds_names=odds_names,
-                spec=spec_to_use,
-            ),
-            gate=lay_gate,
-        )
-        gate = _PeriodGate(
-            missing=back_gate.missing | lay_gate.missing,
-            invalid=back_gate.invalid | lay_gate.invalid,
-            ambiguous=back_gate.ambiguous | lay_gate.ambiguous,
-        )
-        if gate.ambiguous:
-            return None, gate.diagnostics(complete=False)
-        assert back is None or isinstance(back, PartialAsianHandicapSnapshot)
-        assert lay is None or isinstance(lay, PartialAsianHandicapSnapshot)
-        snapshot = PartialAsianHandicapExchangeSnapshot(back=back, lay=lay)
-        if not snapshot.has_any_input():
-            return None, gate.diagnostics(complete=False)
-        complete = (
-            back is not None
-            and lay is not None
-            and back.is_complete()
-            and lay.is_complete()
-            and snapshot.lines_match
-            and not gate.missing
-            and not gate.invalid
-        )
-        return snapshot, gate.diagnostics(complete=complete)
-
-    ah_snap, ah_diag = try_extract(scope.asian_handicap)
-    if ah_snap is not None and ah_snap.has_any_input():
-        return ah_snap, ah_diag
-
-    if getattr(scope, "handicap", None) is not None:
-        hc_snap, hc_diag = try_extract(scope.handicap)
-        if hc_snap is not None and hc_snap.has_any_input():
-            return hc_snap, hc_diag
-
-    return None, ah_diag
+    """Extract one optional Betfair spread family without relabelling it."""
+    back_gate = _PeriodGate()
+    lay_gate = _PeriodGate()
+    back = _extract_partial_two_way(
+        context,
+        target_minute=target_minute,
+        request=_exchange_ah_request(
+            "back", scope=scope, line_name=line_name, odds_names=odds_names, spec=spec
+        ),
+        gate=back_gate,
+    )
+    lay = _extract_partial_two_way(
+        context,
+        target_minute=target_minute,
+        request=_exchange_ah_request(
+            "lay", scope=scope, line_name=line_name, odds_names=odds_names, spec=spec
+        ),
+        gate=lay_gate,
+    )
+    gate = _PeriodGate(
+        missing=back_gate.missing | lay_gate.missing,
+        invalid=back_gate.invalid | lay_gate.invalid,
+        ambiguous=back_gate.ambiguous | lay_gate.ambiguous,
+    )
+    if gate.ambiguous:
+        return None, gate.diagnostics(complete=False)
+    assert back is None or isinstance(back, PartialAsianHandicapSnapshot)
+    assert lay is None or isinstance(lay, PartialAsianHandicapSnapshot)
+    snapshot = PartialAsianHandicapExchangeSnapshot(back=back, lay=lay)
+    if not snapshot.has_any_input():
+        return None, gate.diagnostics(complete=False)
+    complete = (
+        back is not None
+        and lay is not None
+        and back.is_complete()
+        and lay.is_complete()
+        and snapshot.lines_match
+        and not gate.missing
+        and not gate.invalid
+    )
+    return snapshot, gate.diagnostics(complete=complete)
 
 
 
@@ -737,30 +724,57 @@ def extract_p2_market_snapshot(
         )
 
     target_minute = target_selection.target_minute
-    exchange_ah, exchange_ah_diagnostics = _extract_optional_exchange_ah(context, target_minute)
-    exchange_ah_1h, exchange_ah_1h_diagnostics = _extract_optional_exchange_ah(
+    exchange_ah, exchange_ah_diagnostics = _extract_optional_exchange_spread(
         context,
         target_minute,
+        spec=FULL_TIME_SIDE_SCOPE.asian_handicap,
+    )
+    exchange_handicap, exchange_handicap_diagnostics = _extract_optional_exchange_spread(
+        context,
+        target_minute,
+        spec=FULL_TIME_SIDE_SCOPE.handicap,
+        line_name=EXCHANGE_HANDICAP_LINE_INPUT_NAME,
+        odds_names=EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
+    )
+    exchange_ah_1h, exchange_ah_1h_diagnostics = _extract_optional_exchange_spread(
+        context,
+        target_minute,
+        spec=FIRST_HALF_SIDE_SCOPE.asian_handicap,
         scope=FIRST_HALF_SIDE_SCOPE,
         line_name=EXCHANGE_AH_1H_LINE_INPUT_NAME,
         odds_names=EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
+    )
+    exchange_handicap_1h, exchange_handicap_1h_diagnostics = _extract_optional_exchange_spread(
+        context,
+        target_minute,
+        spec=FIRST_HALF_SIDE_SCOPE.handicap,
+        scope=FIRST_HALF_SIDE_SCOPE,
+        line_name=EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME,
+        odds_names=EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES,
     )
     full_time, full_time_diagnostics = _extract_full_time(
         context,
         target_minute,
         betfair_ah=exchange_ah,
+        betfair_handicap=exchange_handicap,
     )
     first_half, first_half_diagnostics = _extract_first_half(context, target_minute)
-    if exchange_ah_1h is not None:
+    if exchange_ah_1h is not None or exchange_handicap_1h is not None:
         if first_half is None:
-            first_half = P2FirstHalfSnapshot(None, None, None, None, exchange_ah_1h)
+            first_half = P2FirstHalfSnapshot(
+                None, None, None, None, None, None, exchange_ah_1h, exchange_handicap_1h
+            )
         else:
             first_half = P2FirstHalfSnapshot(
                 first_half.pinnacle_1x2,
                 first_half.bet365_1x2,
                 first_half.pinnacle_ah,
                 first_half.bet365_ah,
+                first_half.pinnacle_handicap,
+                first_half.bet365_handicap,
                 exchange_ah_1h,
+                exchange_handicap_1h,
+                first_half.spread_market_type,
             )
 
     if full_time is None:
@@ -770,20 +784,26 @@ def extract_p2_market_snapshot(
             first_half=first_half_diagnostics,
             exchange_ah=exchange_ah_diagnostics,
             exchange_ah_1h=exchange_ah_1h_diagnostics,
+            exchange_handicap=exchange_handicap_diagnostics,
+            exchange_handicap_1h=exchange_handicap_1h_diagnostics,
             first_half_snapshot=first_half,  # type: ignore[arg-type]
             exchange_ah_snapshot=exchange_ah,
+            exchange_handicap_snapshot=exchange_handicap,
             abort_reason="full_time_completeness_gate_failed",
         )
 
     return P2ExtractionResult(
         target_minute=target_minute,
         full_time=full_time_diagnostics,
-            first_half=first_half_diagnostics,
-            exchange_ah=exchange_ah_diagnostics,
-            exchange_ah_1h=exchange_ah_1h_diagnostics,
+        first_half=first_half_diagnostics,
+        exchange_ah=exchange_ah_diagnostics,
+        exchange_ah_1h=exchange_ah_1h_diagnostics,
+        exchange_handicap=exchange_handicap_diagnostics,
+        exchange_handicap_1h=exchange_handicap_1h_diagnostics,
         full_time_snapshot=full_time,  # type: ignore[arg-type]
         first_half_snapshot=first_half,  # type: ignore[arg-type]
         exchange_ah_snapshot=exchange_ah,
+        exchange_handicap_snapshot=exchange_handicap,
     )
 
 

@@ -14,6 +14,12 @@ from .periods import (
     EXCHANGE_AH_1H_LINE_INPUT_NAME,
     EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
     EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
+    EXCHANGE_HANDICAP_LINE_INPUT_NAME,
+    EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
+    EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES,
+    EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME,
+    EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES,
+    EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES,
     P2_SIDE_PERIOD_SCOPES,
     resolve_pillar_status,
 )
@@ -44,6 +50,9 @@ def _empty_inputs() -> dict[str, float | None]:
             EXCHANGE_AH_1H_LINE_INPUT_NAME,
             *EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
             *EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
+            EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME,
+            *EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES,
+            *EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES,
         )
     })
     return values
@@ -150,11 +159,11 @@ def _log_signal_profile(profile: dict[str, Any]) -> None:
                 )
 
     log_block("FT 1X2", profile["FT"]["1X2"])
-    log_block("FT AH", profile["FT"]["AH"])
+    log_block("FT SPREAD", profile["FT"].get("AH") or profile["FT"].get("HANDICAP"))
     log_block("FT CROSS MARKET", profile["FT"]["CROSS_MARKET"])
     if profile["1H"] is not None:
         log_block("1H 1X2", profile["1H"]["1X2"])
-        log_block("1H AH", profile["1H"]["AH"])
+        log_block("1H SPREAD", profile["1H"].get("AH") or profile["1H"].get("HANDICAP"))
         log_block("1H CROSS MARKET", profile["1H"]["CROSS_MARKET"])
         log_block("FT_1H", profile["FT_1H"])
     log_block("EXCHANGE", profile["EXCHANGE"])
@@ -163,6 +172,10 @@ def _log_signal_profile(profile: dict[str, Any]) -> None:
     log_block("BOOK_EXCHANGE_AH", profile.get("BOOK_EXCHANGE_AH"))
     log_block("BETFAIR_1H_AH", profile.get("BETFAIR_1H_AH"))
     log_block("BOOK_EXCHANGE_1H_AH", profile.get("BOOK_EXCHANGE_1H_AH"))
+    log_block("BETFAIR_FT_HANDICAP", profile.get("BETFAIR_FT_HANDICAP"))
+    log_block("BOOK_EXCHANGE_HANDICAP", profile.get("BOOK_EXCHANGE_HANDICAP"))
+    log_block("BETFAIR_1H_HANDICAP", profile.get("BETFAIR_1H_HANDICAP"))
+    log_block("BOOK_EXCHANGE_1H_HANDICAP", profile.get("BOOK_EXCHANGE_1H_HANDICAP"))
 
 
 def calculate_pillar_2(
@@ -203,9 +216,11 @@ def calculate_pillar_2(
             extraction.first_half.status,
         )
         logger.info(
-            "P2 DEBUG | period gates | betfair_ah_ft=%s | betfair_ah_1h=%s",
+            "P2 DEBUG | period gates | betfair_ah_ft=%s | betfair_ah_1h=%s | betfair_handicap_ft=%s | betfair_handicap_1h=%s",
             extraction.exchange_ah.status,
             extraction.exchange_ah_1h.status,
+            extraction.exchange_handicap.status,
+            extraction.exchange_handicap_1h.status,
         )
         logger.info(
             "P2 DEBUG | period gates | missing=%s | invalid=%s",
@@ -240,6 +255,21 @@ def calculate_pillar_2(
             optional = extraction.exchange_ah_snapshot
             inputs.update(_json_inputs(optional.input_values()))
             traces.update(optional.input_trace())
+        if extraction.exchange_handicap_snapshot is not None:
+            optional = extraction.exchange_handicap_snapshot
+            optional_inputs = optional.input_values(
+                line_name=EXCHANGE_HANDICAP_LINE_INPUT_NAME,
+                odds_names=EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
+                size_names=EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES,
+            )
+            inputs.update(_json_inputs(optional_inputs))
+            optional_traces = optional.input_trace(
+                line_name=EXCHANGE_HANDICAP_LINE_INPUT_NAME,
+                odds_names=EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
+                size_names=EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES,
+            )
+            traces.update(optional_traces)
+
         raw = _raw_audit(
             odds_context=odds_context,
             periods=periods,
@@ -295,13 +325,15 @@ def calculate_pillar_2(
     if debug_mode:
         _log_signal_profile(profile)
     logger.info(
-        "P2 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s betfair_ah_ft=%s betfair_ah_1h=%s",
+        "P2 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s betfair_ah_ft=%s betfair_ah_1h=%s betfair_handicap_ft=%s betfair_handicap_1h=%s",
         event_context.event_id,
         extraction.target_minute,
         status,
         extraction.first_half.status,
         extraction.exchange_ah.status,
         extraction.exchange_ah_1h.status,
+        extraction.exchange_handicap.status,
+        extraction.exchange_handicap_1h.status,
     )
     return {
         **base,

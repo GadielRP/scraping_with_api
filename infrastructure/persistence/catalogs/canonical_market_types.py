@@ -121,6 +121,24 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "period_lock": "1st Quarter",
         },
     ),
+    "1x2_first_to_fifth_inning": _seed(
+        name="1X2 First To Fifth Inning",
+        group="1X2",
+        period="1st to 5th Inning",
+        family="side_3way",
+        requires_group=False,
+        trajectory=True,
+        order=13,
+        oddspapi_match={
+            "market_type": {"1x2"},
+            "market_name": {
+                "first to fifth inning result",
+                "1x2 first to fifth inning",
+            },
+            "period_lock": "1st to 5th Inning",
+        },
+    ),
+
     "home_away_full_time": _seed(
         name="Home/Away Full Time",
         group="Home/Away",
@@ -248,6 +266,24 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "period_lock": "Current Set",
         },
     ),
+    "home_away_first_to_fifth_inning": _seed(
+        name="Home/Away First To Fifth Inning",
+        group="Home/Away",
+        period="1st to 5th Inning",
+        family="side_2way",
+        requires_group=False,
+        trajectory=True,
+        order=26,
+        oddspapi_match={
+            "market_type": {"moneyline", "winner"},
+            "market_name": {
+                "winner first to fifth inning",
+                "home/away first to fifth inning",
+            },
+            "period_lock": "1st to 5th Inning",
+        },
+    ),
+
     "over_under_full_time": _seed(
         name="Over/Under Full Time",
         group="Over/Under",
