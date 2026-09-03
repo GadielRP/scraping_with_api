@@ -596,14 +596,6 @@ class MarketRepository:
                     current_captured_at=collected_at,
                 )
 
-                if choice_data.get("mainLine") is True:
-                    MarketRepository._demote_superseded_mainlines(
-                        market=market,
-                        market_index=market_index,
-                        quote_index=quote_index,
-                        source=source,
-                    )
-
                 exchange_quotes = choice_data.get("exchangeQuotes")
                 explicit_exchange_quotes = {
                     identity: quote
@@ -816,6 +808,13 @@ class MarketRepository:
                         moment_snapshot_source_keys[snapshot_key] = incoming_src_ts_for_write
                         result.snapshots_saved += 1
 
+            MarketRepository._demote_superseded_mainlines(
+                market_index=market_index,
+                quote_index=quote_index,
+                prepared_choices=prepared_choices,
+                source=source,
+            )
+
             # Persist the complete quote/snapshot graph in one flush. Snapshot
             # relationships can reference pending quotes; SQLAlchemy orders the
             # INSERTs by FK dependency without a per-choice round trip.
@@ -852,35 +851,38 @@ class MarketRepository:
     @staticmethod
     def _demote_superseded_mainlines(
         *,
-        market: Market,
         market_index: dict,
         quote_index: dict,
+        prepared_choices: list,
         source: str,
     ) -> None:
-        """Demote main_line to False on previous lines for the same bookie/market/period."""
-        if market.choice_group is None:
-            return
+        """Reconcile mainlines once per batch, including choices created this ingest.
 
-        for other_market in market_index.values():
-            if other_market is market or (
-                other_market.market_id is not None
-                and other_market.market_id == market.market_id
-            ):
+        The provider adapter owns selection. If a caller supplies several selected
+        lines, preserve that ambiguity instead of inventing an order-based winner.
+        All state is already loaded; this is linear work with no extra queries.
+        """
+        def family(market):
+            return (market.bookie_id, market.market_name, market.market_period, market.is_live)
+
+        market_by_choice = {
+            choice.choice_id: market
+            for market in market_index.values()
+            for choice in market.choices
+        }
+        selected_lines: dict[tuple, set] = {}
+        for market, choice, choice_data, *_ in prepared_choices:
+            market_by_choice[choice.choice_id] = market
+            if market.choice_group is not None and choice_data.get("mainLine") is True:
+                selected_lines.setdefault(family(market), set()).add(market.choice_group)
+
+        for (choice_id, quote_source, _, _), quote in quote_index.items():
+            market = market_by_choice.get(choice_id)
+            if quote_source != source or market is None or quote.main_line is not True:
                 continue
-            if (
-                other_market.bookie_id == market.bookie_id
-                and other_market.market_name == market.market_name
-                and other_market.market_period == market.market_period
-                and other_market.is_live == market.is_live
-                and other_market.choice_group != market.choice_group
-            ):
-                for other_choice in other_market.choices:
-                    if other_choice.choice_id is None:
-                        continue
-                    for (c_id, src, _, _), quote in quote_index.items():
-                        if c_id == other_choice.choice_id and src == source:
-                            if getattr(quote, "main_line", None) is True:
-                                quote.main_line = False
+            selected = selected_lines.get(family(market), set())
+            if len(selected) == 1 and market.choice_group not in selected:
+                quote.main_line = False
 
     @staticmethod
     def _upsert_choice_quotes(

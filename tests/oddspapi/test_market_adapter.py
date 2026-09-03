@@ -475,7 +475,7 @@ def test_incomplete_market_is_skipped_after_inactive_and_invalid_choices_are_rem
     assert incomplete["missingChoices"] == ["2"]
 
 
-def test_active_non_main_line_choices_are_kept_when_market_is_complete():
+def test_complete_active_line_is_promoted_when_no_provider_mainline_exists():
     over = player("2.5/over", 1.91)
     under = player("2.5/under", 1.93)
     over["mainLine"] = False
@@ -497,7 +497,7 @@ def test_active_non_main_line_choices_are_kept_when_market_is_complete():
 
     choices = adapted["bookmakers"][0]["markets"][0]["choices"]
     assert [choice["name"] for choice in choices] == ["over", "under"]
-    assert [choice["mainLine"] for choice in choices] == [False, False]
+    assert [choice["mainLine"] for choice in choices] == [True, True]
 
 
 def test_historical_initial_price_is_forwarded_to_repository_contract():

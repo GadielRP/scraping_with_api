@@ -145,6 +145,7 @@ tests/*
 tests/pillars/*.pyc
 !tests/pillars/test_odds_trajectory_context.py
 !tests/pillars/test_market_snapshot_extractor.py
+!tests/pillars/test_extraction_logging.py
 !tests/pillars/test_exact_price_memory_quote_context.py
 !tests/pillars/test_drift_engine_quote_identity.py
 !tests/pillars/pillar_2_side_market/
@@ -160,6 +161,7 @@ tests/pillars/*.pyc
 !tests/pillars/mining/test_pillar_2_signal_profile_mining.py
 !tests/pillars/mining/test_pillar_3_mining.py
 !tests/oddspapi/
+!tests/oddspapi/test_line_selection.py
 !tests/oddspapi/test_fixture_discovery_job.py
 !tests/oddspapi/test_pre_start_odds_job.py
 !tests/oddspapi/test_pre_start_odds_batch_processor.py

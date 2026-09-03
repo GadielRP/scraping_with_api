@@ -537,8 +537,25 @@ class MarketOddsIngestionService:
                 fallback_used.get("bookmakerSlug"),
                 fallback_used.get("cacheSourceSlug"),
             )
-        #if diagnostics and debug_mode:
-        #    logger.info("OddsPapi market mapping diagnostics: %s", diagnostics)
+        for decision in diagnostics.get("line_selection", []):
+            selected = decision.get("selected")
+            report_selection = (
+                debug_mode or decision.get("discarded") or selected is None
+                or not selected.get("providerMainLine")
+            )
+            if report_selection:
+                logger.info(
+                    "Oddspapi line selection event_id=%s bookmaker=%s market=%s "
+                    "period=%s reason=%s selected=%s discarded=%s source_market_id=%s",
+                    resolution.canonical_event_id,
+                    decision.get("bookmakerSlug"),
+                    decision.get("canonicalMarketKey"),
+                    decision.get("marketPeriod"),
+                    decision.get("reason"),
+                    selected,
+                    decision.get("discarded", []),
+                    decision.get("sourceMarketId"),
+                )
         bookmakers = adapted.get("bookmakers", [])
         markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in bookmakers)
         choices_detected = sum(

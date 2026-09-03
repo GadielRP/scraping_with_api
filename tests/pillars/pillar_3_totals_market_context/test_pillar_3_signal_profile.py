@@ -523,7 +523,8 @@ def test_selected_target_has_no_fallback_to_another_minute() -> None:
     } == {5}
 
 
-def test_multiple_complete_lines_are_ambiguous() -> None:
+def test_multiple_complete_lines_are_ambiguous(caplog) -> None:
+    caplog.set_level(logging.INFO)
     rows = _complete_rows()
     rows.extend(
         _book_rows(
@@ -543,6 +544,11 @@ def test_multiple_complete_lines_are_ambiguous() -> None:
     assert result["P3_STATUS"] == "INSUFFICIENT_DATA"
     assert result["PERIODS"]["full_time"]["status"] == "AMBIGUOUS"
     assert result["P3_SIGNAL_PROFILE"] is None
+    required_log = next(record.getMessage() for record in caplog.records
+                        if "P3 EXTRACTION" in record.getMessage() and "period=full_time" in record.getMessage())
+    assert "blocks_profile=True | status=AMBIGUOUS" in required_log
+    assert "BF_" not in required_log
+    assert "P3 DEBUG | period gates | missing=" not in caplog.text
 
 
 def test_unique_partial_first_half_candidate_is_preserved() -> None:

@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from modules.pillars.context import EventContext
+from modules.pillars.extraction_logging import log_extraction_diagnostics
 from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
@@ -159,11 +160,15 @@ def _log_signal_profile(profile: dict[str, Any]) -> None:
                 )
 
     log_block("FT 1X2", profile["FT"]["1X2"])
-    log_block("FT SPREAD", profile["FT"].get("AH") or profile["FT"].get("HANDICAP"))
+    for family in ("AH", "HANDICAP"):
+        if family in profile["FT"]:
+            log_block(f"FT {family}", profile["FT"][family])
     log_block("FT CROSS MARKET", profile["FT"]["CROSS_MARKET"])
     if profile["1H"] is not None:
         log_block("1H 1X2", profile["1H"]["1X2"])
-        log_block("1H SPREAD", profile["1H"].get("AH") or profile["1H"].get("HANDICAP"))
+        for family in ("AH", "HANDICAP"):
+            if family in profile["1H"]:
+                log_block(f"1H {family}", profile["1H"][family])
         log_block("1H CROSS MARKET", profile["1H"]["CROSS_MARKET"])
         log_block("FT_1H", profile["FT_1H"])
     log_block("EXCHANGE", profile["EXCHANGE"])
@@ -200,6 +205,12 @@ def calculate_pillar_2(
         target_selection,
     )
     periods = extraction.period_diagnostics()
+    log_extraction_diagnostics(
+        logger, pillar="P2", event_id=event_context.event_id,
+        target_minute=extraction.target_minute, periods=periods,
+        full_time_requirement="books_1x2 + (books_AH OR books_Handicap) + exchange_1x2",
+        debug_mode=debug_mode,
+    )
     if debug_mode:
         logger.info(
             "P2 DEBUG | extraction | event_id=%s | target_minute=%s",
@@ -209,27 +220,6 @@ def calculate_pillar_2(
         logger.info(
             "P2 DEBUG | extraction | abort_reason=%s",
             extraction.abort_reason,
-        )
-        logger.info(
-            "P2 DEBUG | period gates | full_time=%s | first_half=%s",
-            extraction.full_time.status,
-            extraction.first_half.status,
-        )
-        logger.info(
-            "P2 DEBUG | period gates | betfair_ah_ft=%s | betfair_ah_1h=%s | betfair_handicap_ft=%s | betfair_handicap_1h=%s",
-            extraction.exchange_ah.status,
-            extraction.exchange_ah_1h.status,
-            extraction.exchange_handicap.status,
-            extraction.exchange_handicap_1h.status,
-        )
-        logger.info(
-            "P2 DEBUG | period gates | missing=%s | invalid=%s",
-            extraction.missing_inputs,
-            extraction.invalid_inputs,
-        )
-        logger.info(
-            "P2 DEBUG | period gates | ambiguous=%s",
-            extraction.ambiguous_inputs,
         )
     base = {
         "pillar_id": "pillar_2_side_market",
@@ -278,12 +268,11 @@ def calculate_pillar_2(
             reason=extraction.abort_reason or "full_time_completeness_gate_failed",
         )
         logger.info(
-            "P2 signal profile unavailable for event_id=%s target_minute=%s missing=%s invalid=%s ambiguous=%s",
+            "P2 signal profile unavailable for event_id=%s target_minute=%s reason=%s required_full_time_status=%s",
             event_context.event_id,
             extraction.target_minute,
-            extraction.missing_inputs,
-            extraction.invalid_inputs,
-            extraction.ambiguous_inputs,
+            raw.get("reason"),
+            extraction.full_time.status,
         )
         return {
             **base,

@@ -635,7 +635,8 @@ def test_multiple_partial_first_half_candidates_remain_ambiguous() -> None:
     assert "PIN_AH_1H_LINE" in result["AMBIGUOUS_INPUTS"]
 
 
-def test_multiple_complete_ah_candidates_remain_ambiguous() -> None:
+def test_multiple_complete_ah_candidates_remain_ambiguous(caplog) -> None:
+    caplog.set_level(logging.INFO)
     rows = _complete_rows()
     _add_market(
         rows,
@@ -652,6 +653,30 @@ def test_multiple_complete_ah_candidates_remain_ambiguous() -> None:
     assert result["P2_STATUS"] == "INSUFFICIENT_DATA"
     assert result["PERIODS"]["full_time"]["status"] == "AMBIGUOUS"
     assert "PIN_AH_FULL_TIME_LINE" in result["AMBIGUOUS_INPUTS"]
+    required_log = next(record.getMessage() for record in caplog.records
+                        if "P2 EXTRACTION" in record.getMessage() and "period=full_time" in record.getMessage())
+    assert "blocks_profile=True | status=AMBIGUOUS" in required_log
+    assert "books_AH OR books_Handicap" in required_log
+    assert "BF_AH_FULL_TIME_LINE" not in required_log
+    assert "P2 DEBUG | period gates | missing=" not in caplog.text
+
+
+def test_unique_handicap_lines_from_ingestion_can_differ_between_books():
+    rows = _complete_rows(include_first_half=False)
+    for row in rows:
+        if row["market_group"] == "Asian Handicap":
+            row["market_group"] = "Handicap"
+            row["market_name"] = "Handicap Full Time"
+            row["choice_group"] = "-1.5" if row["bookie_id"] == 302 else "1.5"
+    result = _calculate(rows)
+    handicap = result["P2_SIGNAL_PROFILE"]["FT"]["HANDICAP"]
+    assert result["P2_STATUS"] == "PARTIAL"
+    assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
+    assert handicap["LINE_GAP"] == 3
+    assert handicap["PIN_EDGE"] is not None
+    assert handicap["B365_EDGE"] is not None
+    assert handicap["REP_EDGE"] is None
+    assert handicap["BOOK_RELATION"] is None
 
 
 def test_period_scope_separates_required_inputs_from_trace_inputs() -> None:

@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from modules.pillars.context import EventContext
+from modules.pillars.extraction_logging import log_extraction_diagnostics
 from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
@@ -197,25 +198,18 @@ def calculate_pillar_3(
         target_selection,
     )
     periods = extraction.period_diagnostics()
+    log_extraction_diagnostics(
+        logger, pillar="P3", event_id=event_context.event_id,
+        target_minute=extraction.target_minute, periods=periods,
+        full_time_requirement="books_OverUnder",
+        debug_mode=debug_mode,
+    )
     if debug_mode:
         logger.info(
             "P3 DEBUG | extraction | event_id=%s | target_minute=%s | abort_reason=%s",
             event_context.event_id,
             extraction.target_minute,
             extraction.abort_reason,
-        )
-        logger.info(
-            "P3 DEBUG | period gates | full_time=%s | first_half=%s | betfair_ou_ft=%s | betfair_ou_1h=%s",
-            extraction.full_time.status,
-            extraction.first_half.status,
-            extraction.exchange_ou.status,
-            extraction.exchange_ou_1h.status,
-        )
-        logger.info(
-            "P3 DEBUG | period gates | missing=%s | invalid=%s | ambiguous=%s",
-            extraction.missing_inputs,
-            extraction.invalid_inputs,
-            extraction.ambiguous_inputs,
         )
 
     base = {
@@ -265,10 +259,11 @@ def calculate_pillar_3(
             reason=extraction.abort_reason or "full_time_completeness_gate_failed",
         )
         logger.info(
-            "P3 signal profile unavailable for event_id=%s target_minute=%s reason=%s",
+            "P3 signal profile unavailable for event_id=%s target_minute=%s reason=%s required_full_time_status=%s",
             event_context.event_id,
             extraction.target_minute,
             raw.get("reason"),
+            extraction.full_time.status,
         )
         return {
             **base,

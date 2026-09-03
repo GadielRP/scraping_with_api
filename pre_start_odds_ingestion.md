@@ -552,7 +552,7 @@ HTTP `/odds` is **not** filtered by market key. The client sends `fixtureId`, `b
 Used at T-1 when `CLOSING_ONLY` is on; used at T-120/T-30/T-5/T-1 when the flag is off.
 
 1. Call `/odds` for regular + exchange bookmakers (`ODDSPAPI_PRE_START_BOOKMAKERS` + `ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS`; local env uses `pinnacle,bet365` and `betfair-ex`).
-2. Extract outcomes with `mainLine=true` and upsert `oddspapi_mainline_outcome_cache`. Live `/historical-odds` has no `mainLine` flag; this cache is how later ticks know which outcome is the main line.
+2. Select one complete active line per bookmaker/canonical market/period using `modules/odds_ingestion/oddspapi_line_selection.py`, then cache its outcomes in `oddspapi_mainline_outcome_cache`. Non-line markets retain their provider flags. Live `/historical-odds` has no `mainLine` flag and uses this cached selection without ranking lines again.
 3. Opening merge from `/historical-odds` for **regular** bookmakers only runs if `minutes_until_start >= 120` (and the opening span is ≥ 60 minutes). With `CLOSING_ONLY=true` this branch **never runs**, because T-120 never requests. Max 3 regular slugs (API limit).
 4. Optional exchange historical fan-out only at the opening moment (default T-120), **skipped for tracked competitions** (those openings come from OddsPortal). Same consequence: with `CLOSING_ONLY=true` this fan-out does not run. Caps: 8 outcomes/event, 40 exchange historical requests/run. Exchange historical requires `betfair-ex` alone plus one `outcome_id` per request.
 
@@ -593,7 +593,7 @@ Not persisted as OddspAPI prices:
 - Markets with `marketActive=false`.
 - Incomplete markets (mapped market whose expected choices are not all present).
 - Quotes with empty/`null` `price`.
-- Non-main-line outcomes when `ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY=true` (current local env).
+- Non-selected current lines, regardless of `ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY`. For non-line/historical observations, that flag still drops choices whose resolved `mainLine` is not true.
 - Inactive player ticks when `ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES=true` (local env is `false`, so inactive ticks **are** eligible).
 - Post-kickoff ticks when `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS=true` (default and local env). Setting it to `false` restores latest-tick selection without a kickoff cutoff.
 - Bookmakers without a pre-existing `bookie_source_mappings` row (`allow_create=False`).
@@ -614,6 +614,54 @@ Exchange historical **planning** is narrower: `exchange_market_keys` in `setting
 
 `MARKETS_DUAL_PROCESS` / `PERIODS_DUAL_PROCESS` do **not** filter OddspAPI writes. They only affect the dual-process **read** view (and that view currently prefers SofaScore quotes).
 
+### 6.3.1 Current line selection and reconciliation
+
+The pure ingestion policy `oddspapi_line_selection.py` owns selection for `/odds`
+markets with `requires_choice_group=True`. The adapter, mainline cache extractor,
+and mainline-only exchange historical request planner use the same decision.
+Selection is independent per bookmaker, canonical market and period; it does not
+force different bookmakers to share a line.
+
+1. Require a finite line and the complete catalog-defined set of choices (at least
+   two). Reject ambiguous choices, explicitly inactive markets/players, and prices
+   that are not finite decimal odds greater than one. This current-line requirement
+   applies even when `REQUIRE_ACTIVE_QUOTES=false` allows suspended observations
+   for non-line or historical markets.
+2. Prefer candidates whose **every choice** has provider `mainLine=true`.
+   If none qualify, a complete valid active alternative can be selected.
+3. Minimize `max(prices) - min(prices)` using Decimal at source precision. This is
+   the absolute difference for two choices and the largest pairwise separation
+   for three choices.
+4. On a price-gap tie, maximize normalized liquidity:
+   `base_limit = limit * min(1, price - 1)` for each choice;
+   `line_base_limit = median(base_limits)`;
+   `consistency = min(base_limits) / max(base_limits)`;
+   `effective_base_limit = line_base_limit * consistency`.
+   Do not sum limits. Any missing, negative, boolean or non-finite limit makes the
+   entire line's liquidity unavailable; available liquidity wins over unavailable.
+   All-zero limits give effective liquidity zero, without division by zero.
+5. Remaining exact ties use ascending numeric line, then source market ID for a
+   stable result independent of JSON iteration order.
+
+Only the selected current line reaches persistence, with `mainLine=true` on all
+choices; the input payload and provider prices/limits remain unchanged. Diagnostics
+record the original mainline flag, price gap, normalized liquidity and discarded
+candidates. Historical ingestion retains the cached line even if subsequent prices
+would favor a different one.
+
+`MarketRepository` reconciles superseded quote flags once per batch using indexed
+in-memory state, including newly created choices. It demotes other lines only when
+the incoming family has one selected line, without additional SQL lookups or deleting
+market rows/history. A previously demoted line can become mainline again on a normal
+ingest; fill-only backfills cannot overwrite the current selection. Existing duplicates
+are reconciled on the next successful ingest for that family, not by a database migration.
+
+P2/P3 still reject ambiguous required snapshots. Their `EXTRACTION` logs report
+each period independently with `required`, `blocks_profile`, `missing_only`,
+`invalid` and `ambiguous`. P2 explicitly labels the full-time spread requirement as
+`AH OR Handicap`. Optional first-half/exchange absence is not reported as a profile
+blocker; persisted aggregate diagnostic fields retain their existing contract.
+
 ### 6.4 Adapter field mapping (payload → persist dict)
 
 `OddspapiMarketAdapter.from_odds_response` turns one fixture payload into bookmaker batches. Per choice:
@@ -625,7 +673,7 @@ Exchange historical **planning** is narrower: `exchange_market_keys` in `setting
 | `initialDecimalValue` | `player.initialPrice` (from `/odds` or merged `/historical-odds`) | quote `initial_odds` + opening snapshot |
 | `initialChangedAt` | `player.initialChangedAt` (UTC, converted) | quote `initial_captured_at` + opening snapshot `source_collected_at` |
 | `changedAt` | `player.changedAt` | current snapshot `source_collected_at` |
-| `mainLine` | `player.mainLine`, else cache membership | quote `main_line` |
+| `mainLine` | Current selected line → true; otherwise provider flag or historical cache membership | quote `main_line` |
 | `sourceMarketId` | OddsPapi market id | quote `source_market_id` |
 | `sourceOutcomeId` | OddsPapi outcome id | quote `source_outcome_id` |
 | `bookmakerOutcomeId` | `player.bookmakerOutcomeId` | quote `bookmaker_outcome_id` |

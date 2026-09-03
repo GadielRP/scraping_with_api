@@ -602,3 +602,37 @@ def test_line_shift_demotes_superseded_mainline(tmp_path):
             # New active line -2.25 must be mainline True
             assert all(q.main_line is True for q in quotes_225)
 
+
+def test_selected_line_can_return_and_cleans_preexisting_ambiguous_lines(tmp_path):
+    manager = _make_manager(tmp_path, "mainline-round-trip.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+
+    def batches(lines):
+        return [{"bookie_id": bookie_id, "markets": [
+            {"marketName": "Handicap Full Time", "marketGroup": "Handicap",
+             "marketPeriod": "Full Time", "choiceGroup": line,
+             "choices": [{"name": side, "currentOdds": 1.95, "mainLine": True}
+                         for side in ("1", "2")]}
+            for line in lines
+        ]}]
+
+    def flags():
+        with manager.get_session() as session:
+            return {market.choice_group: {quote.main_line for choice in market.choices for quote in choice.quotes}
+                    for market in session.query(Market).all()}
+
+    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
+        # Simulate the old ambiguous state, including new choices in one batch.
+        MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["-1.5", "1.5"]), source="oddspapi")
+        assert flags() == {"-1.5": {True}, "1.5": {True}}
+        MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["1.5"]), source="oddspapi")
+        assert flags() == {"-1.5": {False}, "1.5": {True}}
+        MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["-1.5"]), source="oddspapi")
+        assert flags() == {"-1.5": {True}, "1.5": {False}}
+        MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["-0.5"]), source="oddspapi")
+        assert flags() == {"-1.5": {False}, "1.5": {False}, "-0.5": {True}}
+
+    with manager.get_session() as session:
+        # Selection changes must preserve the history on demoted quotes.
+        assert session.query(MarketChoiceSnapshot).count() == 10
+

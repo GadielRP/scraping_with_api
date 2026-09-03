@@ -53,8 +53,8 @@ from shared.runtime_observability import observe_operation
 
 # Simulation toggles - Pipeline flows
 ENABLE_ODDS_INGESTION_SIMULATION = True
-ENABLE_ALERT_PIPELINE = False
-ENABLE_PILLAR_PIPELINE = True
+ENABLE_ALERT_PIPELINE = True
+ENABLE_PILLAR_PIPELINE = False
 SHOW_MARKET_PERSISTENCE_REPORT = False
 
 # Simulation toggles - Providers (active when ENABLE_ODDS_INGESTION_SIMULATION = True)

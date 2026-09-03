@@ -11,6 +11,7 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
 )
 from modules.oddspapi.format_utils import normalize_source_id
 from modules.oddspapi.quote_activity import should_skip_inactive_market
+from modules.odds_ingestion.oddspapi_line_selection import LineSelection, select_current_lines
 
 from .constants import ODDSPAPI_SOURCE
 
@@ -120,6 +121,15 @@ class OddspapiExchangeOutcomeSelector:
             if slug not in requested_bookmakers:
                 continue
 
+            line_selection = LineSelection()
+            if main_line_only:
+                line_selection = select_current_lines(
+                    bookmaker_data.get("markets", {}),
+                    market_mapping_index=market_mapping_index,
+                    source_sport_id=source_sport_id,
+                    is_live=bool(payload.get("isLive", False)),
+                )
+
             for source_market_id, market_data in cls._entries(
                 bookmaker_data.get("markets", {})
             ):
@@ -148,6 +158,9 @@ class OddspapiExchangeOutcomeSelector:
                 if normalized_market_id is None:
                     result.skipped_unmapped_markets += 1
                     continue
+                if normalized_market_id in line_selection.excluded_market_ids:
+                    result.skipped_non_main_line += len(market_data.get("outcomes", {}))
+                    continue
 
                 for source_outcome_id, outcome_data in cls._entries(
                     market_data.get("outcomes", {})
@@ -173,6 +186,7 @@ class OddspapiExchangeOutcomeSelector:
                     if (
                         main_line_only
                         and market_resolution.requires_choice_group
+                        and normalized_market_id not in line_selection.selected_market_ids
                         and not any(player.get("mainLine") is True for _, player in players)
                     ):
                         result.skipped_non_main_line += 1

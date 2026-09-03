@@ -20,6 +20,16 @@ T1 = T0 + timedelta(minutes=5)
 T2 = T0 + timedelta(minutes=10)
 
 
+def test_live_mainline_is_mutable_but_backfill_preserves_current_selection():
+    existing = QuoteExistingState(exists=True, current_odds=2, main_line=False)
+    candidate = QuoteCandidateState(current_price=2, main_line=True)
+    live = decide_quote_merge(existing=existing, candidate=candidate, mode=QuoteMergeMode.LIVE)
+    backfill = decide_quote_merge(existing=existing, candidate=candidate, mode=QuoteMergeMode.BACKFILL_FILL_ONLY)
+    assert live.metadata_updates["main_line"] is True
+    assert "main_line" not in backfill.metadata_updates
+    assert "metadata_main_line" in backfill.conflicts
+
+
 def test_live_applies_current_when_existing_is_null():
     decision = decide_quote_merge(
         existing=QuoteExistingState(exists=True),

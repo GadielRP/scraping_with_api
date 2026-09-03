@@ -234,6 +234,13 @@ def decide_quote_merge(
             candidate.bookmaker_outcome_id,
         ),
     ):
+        # main_line is current selection state, unlike immutable source lineage.
+        # A previously demoted line may become selected again on the next poll.
+        if field_name == "main_line" and mode is QuoteMergeMode.LIVE:
+            if candidate_value is not None and candidate_value != existing_value:
+                metadata_updates[field_name] = candidate_value
+                applied.append(field_name)
+            continue
         update_value, conflict = _decide_metadata_field(
             field_name=field_name,
             existing_value=existing_value,

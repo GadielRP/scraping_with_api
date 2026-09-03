@@ -1,4 +1,4 @@
-"""Extract mainLine=true outcomes from an OddsPapi /odds payload."""
+"""Extract selected current lines and provider mainlines for historical lookup."""
 
 from __future__ import annotations
 
@@ -9,10 +9,8 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
     MarketMappingRepository,
 )
 from modules.oddspapi.format_utils import normalize_source_id
-from modules.oddspapi.quote_activity import (
-    find_stale_inactive_duplicate_mainline_market_ids,
-    should_skip_inactive_market,
-)
+from modules.oddspapi.quote_activity import should_skip_inactive_market
+from modules.odds_ingestion.oddspapi_line_selection import select_current_lines
 
 
 class OddspapiMainlineOutcomeExtractor:
@@ -72,11 +70,12 @@ class OddspapiMainlineOutcomeExtractor:
                 continue
             is_exchange = slug in exchange_slugs
             markets_data = bookmaker_data.get("markets", {})
-            stale_market_ids = find_stale_inactive_duplicate_mainline_market_ids(
+            selection = select_current_lines(
                 markets_data,
                 market_mapping_index=market_mapping_index,
                 source_sport_id=source_sport_id,
                 source="oddspapi",
+                is_live=bool(payload.get("isLive", False)),
             )
 
             for source_market_id, market_data in cls._entries(markets_data):
@@ -86,9 +85,11 @@ class OddspapiMainlineOutcomeExtractor:
                 ):
                     continue
                 normalized_market_id = normalize_source_id(source_market_id)
-                if normalized_market_id is None or normalized_market_id in stale_market_ids:
+                if (
+                    normalized_market_id is None
+                    or normalized_market_id in selection.excluded_market_ids
+                ):
                     continue
-
 
                 canonical_market_key = None
                 if market_mapping_index is not None:
@@ -106,7 +107,16 @@ class OddspapiMainlineOutcomeExtractor:
                     market_data.get("outcomes", {})
                 ):
                     players = cls._players(outcome_data)
-                    if not any(player.get("mainLine") is True for player in players):
+                    selected_line = normalized_market_id in selection.selected_market_ids
+                    if selected_line:
+                        outcome_resolution = MarketMappingRepository.resolve_outcome(
+                            market_mapping_index,
+                            market_source_mapping_id=market_resolution.mapping_id,
+                            source_outcome_id=source_outcome_id,
+                        )
+                        if not outcome_resolution.resolved:
+                            continue
+                    elif not any(player.get("mainLine") is True for player in players):
                         continue
                     normalized_outcome_id = normalize_source_id(source_outcome_id)
                     if normalized_outcome_id is None:

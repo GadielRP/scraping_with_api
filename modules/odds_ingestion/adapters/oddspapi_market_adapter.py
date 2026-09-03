@@ -12,9 +12,10 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
 from modules.oddspapi.exchange_quotes import best_exchange_quotes
 from modules.oddspapi.format_utils import format_line, normalize_source_id
 from modules.oddspapi.mainline_cache_ids import resolve_mainline_outcome_ids
-from modules.oddspapi.quote_activity import (
-    find_stale_inactive_duplicate_mainline_market_ids,
-    should_skip_inactive_market,
+from modules.oddspapi.quote_activity import should_skip_inactive_market
+from modules.odds_ingestion.oddspapi_line_selection import (
+    LineSelection,
+    select_current_lines,
 )
 
 
@@ -178,12 +179,23 @@ class OddspapiMarketAdapter:
                         },
                     )
 
-            stale_mainline_market_ids = find_stale_inactive_duplicate_mainline_market_ids(
-                markets_data,
-                market_mapping_index=market_mapping_index,
-                source_sport_id=source_sport_id,
-                source=source,
-            )
+            selection = LineSelection()
+            if (
+                not use_mainline_cache
+                and not global_mainline_ids
+                and mainline_outcome_ids_by_bookmaker is None
+            ):
+                selection = select_current_lines(
+                    markets_data,
+                    market_mapping_index=market_mapping_index,
+                    source_sport_id=source_sport_id,
+                    source=source,
+                    is_live=bool(payload.get("isLive", False)),
+                )
+                for decision in selection.diagnostics:
+                    OddspapiMarketAdapter._append_diagnostic(
+                        diagnostics, "line_selection", {"bookmakerSlug": slug, **decision},
+                    )
 
             grouped_markets: dict[tuple, dict] = {}
             for source_market_id, market_data in OddspapiMarketAdapter._entries(markets_data):
@@ -236,7 +248,17 @@ class OddspapiMarketAdapter:
                     choice_group,
                     bool(market_data.get("isLive", payload.get("isLive", False))),
                 )
+
+                # Current-line selection already classified this source market.
+                # Do not run the completeness diagnostic again for a discarded
+                # alternative: its non-mainline choices are intentionally not
+                # collected when persist_main_line_only is enabled. A rejected
+                # candidate remains represented by line_selection diagnostics.
+                if normalized_market_id in selection.excluded_market_ids:
+                    continue
+
                 source_market_choices = []
+                available_choice_names = set()
 
                 for source_outcome_id, outcome_data in OddspapiMarketAdapter._entries(
                     market_data.get("outcomes", {})
@@ -285,6 +307,11 @@ class OddspapiMarketAdapter:
                                 initial_decimal_value = None
 
                         choice_name = outcome_resolution.canonical_choice_name
+                        # Completeness describes the provider payload, not the
+                        # later mainLine persistence policy. Keep this separate
+                        # from source_market_choices, which may intentionally
+                        # omit non-mainline choices.
+                        available_choice_names.add(str(choice_name))
                         if any(
                             choice["name"] == choice_name
                             for choice in source_market_choices
@@ -292,8 +319,8 @@ class OddspapiMarketAdapter:
                             continue
 
                         main_line = player.get("mainLine")
-                        if normalized_market_id in stale_mainline_market_ids:
-                            main_line = False
+                        if normalized_market_id in selection.selected_market_ids:
+                            main_line = True
                         elif (
                             main_line is None
                             and normalized_outcome_id in cached_mainline_ids
@@ -350,8 +377,8 @@ class OddspapiMarketAdapter:
                     market_resolution.mapping_id,
                 )
                 detected_choice_names = {
-                    str(choice["name"])
-                    for choice in source_market_choices
+                    str(choice_name)
+                    for choice_name in available_choice_names
                 }
                 missing_choice_names = sorted(
                     expected_choice_names - detected_choice_names
@@ -374,7 +401,6 @@ class OddspapiMarketAdapter:
                     continue
                 if not source_market_choices:
                     continue
-
                 normalized_market = grouped_markets.setdefault(
                     market_key,
                     {
