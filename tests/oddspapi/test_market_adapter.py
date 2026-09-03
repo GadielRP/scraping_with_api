@@ -1268,3 +1268,58 @@ def test_sofascore_adapter_leaves_team_semantics_for_canonical_normalizer():
         "(-1.5) HJK",
     ]
     assert market["choices"][0]["sourceOutcomeId"] == "11"
+
+
+def test_resolve_oddspapi_key_handicap_asian_european_distinction() -> None:
+    # 1. MLB Winner (incl. extra innings)
+    res_winner, _ = resolve_oddspapi_key({
+        "sportId": "13",
+        "marketType": "moneyline",
+        "period": "result",
+        "marketName": "Winner (incl. extra innings)",
+        "outcomes": [{"name": "1"}, {"name": "2"}],
+    })
+    assert res_winner == "home_away_full_time_including_overtime"
+
+    # 2. MLB Handicap (incl. extra innings)
+    res_hc_ot, _ = resolve_oddspapi_key({
+        "sportId": "13",
+        "marketType": "spreads",
+        "period": "result",
+        "marketName": "Handicap (incl. extra innings)",
+        "outcomes": [{"name": "1"}, {"name": "2"}],
+    })
+    assert res_hc_ot == "handicap_full_time_including_overtime"
+
+    # 3. MLB Handicap First To Fifth Inning with period p1+p2+p3+p4+p5
+    res_hc_f5, _ = resolve_oddspapi_key({
+        "sportId": "13",
+        "marketType": "spreads",
+        "period": "p1+p2+p3+p4+p5",
+        "marketName": "Handicap First To Fifth Inning",
+        "outcomes": [{"name": "1"}, {"name": "2"}],
+    })
+    assert res_hc_f5 == "handicap_first_to_fifth_inning"
+
+    # 4. Asian Handicap Full Time
+    res_ah, _ = resolve_oddspapi_key({
+        "sportId": "10",
+        "marketType": "spreads",
+        "period": "result",
+        "marketName": "Asian Handicap",
+        "outcomes": [{"name": "1"}, {"name": "2"}],
+    })
+    assert res_ah == "asian_handicap_full_time"
+
+    # 5. European Handicap Full Time (3-way, spreads-european) -> rejected (not seeded)
+    res_eh, reason = resolve_oddspapi_key({
+        "sportId": "10",
+        "marketType": "spreads-european",
+        "period": "result",
+        "marketName": "Handicap",
+        "outcomes": [{"name": "1"}, {"name": "x"}, {"name": "2"}],
+    })
+    assert res_eh is None
+    assert reason == "unsupported_market_type"
+
+

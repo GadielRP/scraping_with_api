@@ -679,3 +679,235 @@ def test_debug_logging_reports_structural_blocks_only(caplog) -> None:
     assert "P2 FORMULA | FT.1X2.PIN_EDGE | result=" in caplog.text
     assert "P2 FORMULA | FT.CROSS_MARKET.RELATION" in caplog.text
     assert "P2 FORMULA | FT.EXCHANGE.SIDE_SPREAD | substitution=" in caplog.text
+
+
+def test_p2_supports_home_away_and_handicap_with_2way_exchange() -> None:
+    rows: list[dict] = []
+    markets = [
+        ("Home/Away", "Full Time Including Overtime", "Home/Away Full Time Including Overtime", None, 302, (1.80, 2.10)),
+        ("Home/Away", "Full Time Including Overtime", "Home/Away Full Time Including Overtime", None, 3, (1.85, 2.05)),
+        ("Handicap", "Full Time Including Overtime", "Handicap Full Time Including Overtime", "-1.5", 302, (2.40, 1.60)),
+        ("Handicap", "Full Time Including Overtime", "Handicap Full Time Including Overtime", "-1.5", 3, (2.45, 1.58)),
+        ("Home/Away", "1st Half", "Home/Away 1st Half", None, 302, (1.75, 2.15)),
+        ("Home/Away", "1st Half", "Home/Away 1st Half", None, 3, (1.78, 2.10)),
+        ("Handicap", "1st to 5th Inning", "Handicap First To Fifth Inning", "0.0", 302, (1.90, 1.95)),
+        ("Handicap", "1st to 5th Inning", "Handicap First To Fifth Inning", "0.0", 3, (1.92, 1.93)),
+    ]
+    for group, period, name, line, bookie_id, prices in markets:
+        _add_market(
+            rows,
+            minute=5,
+            market_group=group,
+            market_period=period,
+            market_name=name,
+            choice_group=line,
+            bookie_id=bookie_id,
+            prices={"1": prices[0], "2": prices[1]},
+        )
+    for exchange_side, prices, sizes in (
+        ("back", {"1": 1.82, "2": 2.12}, {"1": 500, "2": 450}),
+        ("lay", {"1": 1.84, "2": 2.15}, {"1": 400, "2": 350}),
+    ):
+        _add_market(
+            rows,
+            minute=5,
+            market_group="Home/Away",
+            market_period="Full Time Including Overtime",
+            market_name="Home/Away Full Time Including Overtime",
+            choice_group=None,
+            bookie_id=4,
+            prices=prices,
+            exchange_side=exchange_side,
+            exchange_sizes=sizes,
+        )
+
+    result = _calculate(rows)
+    profile = _profile(result)
+
+    assert result["P2_STATUS"] == "ACTIVE"
+    assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
+    assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
+    assert result["raw"]["inputs"]["PIN_HANDICAP_FULL_TIME_LINE"] == pytest.approx(-1.5)
+    assert result["raw"]["inputs"]["PIN_AH_FULL_TIME_LINE"] == pytest.approx(-1.5)
+    assert result["raw"]["inputs"]["PIN_HANDICAP_1H_LINE"] == pytest.approx(0.0)
+    assert result["raw"]["inputs"]["PIN_AH_1H_LINE"] == pytest.approx(0.0)
+    assert result["raw"]["inputs"]["PIN_HOME_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.80)
+    assert result["raw"]["inputs"]["BF_HOME_BACK_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.82)
+    assert result["raw"]["inputs"]["BF_DRAW_BACK_1X2_FULL_TIME_ODDS_PRICE"] is None
+    assert profile["FT"]["1X2"]["DIRECTION"] == "HOME"
+    assert profile["FT"]["AH"]["DIRECTION"] == "AWAY"
+    assert profile["EXCHANGE"]["BACK_DIRECTION"] == "HOME"
+    assert profile["1H"]["1X2"]["DIRECTION"] == "HOME"
+    assert profile["1H"]["AH"]["DIRECTION"] == "HOME"
+
+
+def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
+    """Event 230168 (Boston Red Sox vs Seattle Mariners) contains:
+    - Home/Away Full Time Including Overtime (Pinnacle + Bet365)
+    - Handicap Full Time Including Overtime (Pinnacle + Bet365)
+    - Betfair Exchange 2-way Winner (back + lay, no draw)
+    - Home/Away 1st Half (Pinnacle + Bet365)
+    - Handicap First To Fifth Inning (Pinnacle + Bet365)
+    Verify that P2 calculates ACTIVE with COMPLETE periods, derived handicap variables, and no missing exchange draw.
+    """
+    rows: list[dict] = []
+    # Pinnacle 302
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Home/Away",
+        market_period="Full Time Including Overtime",
+        market_name="Home/Away Full Time Including Overtime",
+        choice_group=None,
+        bookie_id=302,
+        prices={"1": 1.74, "2": 2.18},
+    )
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Handicap",
+        market_period="Full Time Including Overtime",
+        market_name="Handicap Full Time Including Overtime",
+        choice_group="-1.5",
+        bookie_id=302,
+        prices={"1": 2.45, "2": 1.58},
+    )
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Home/Away",
+        market_period="1st Half",
+        market_name="Home/Away 1st Half",
+        choice_group=None,
+        bookie_id=302,
+        prices={"1": 1.78, "2": 2.10},
+    )
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Handicap",
+        market_period="1st to 5th Inning",
+        market_name="Handicap First To Fifth Inning",
+        choice_group="-0.5",
+        bookie_id=302,
+        prices={"1": 1.95, "2": 1.88},
+    )
+
+    # Bet365 3
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Home/Away",
+        market_period="Full Time Including Overtime",
+        market_name="Home/Away Full Time Including Overtime",
+        choice_group=None,
+        bookie_id=3,
+        prices={"1": 1.72, "2": 2.20},
+    )
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Handicap",
+        market_period="Full Time Including Overtime",
+        market_name="Handicap Full Time Including Overtime",
+        choice_group="-1.5",
+        bookie_id=3,
+        prices={"1": 2.50, "2": 1.55},
+    )
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Home/Away",
+        market_period="1st Half",
+        market_name="Home/Away 1st Half",
+        choice_group=None,
+        bookie_id=3,
+        prices={"1": 1.75, "2": 2.15},
+    )
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Handicap",
+        market_period="1st to 5th Inning",
+        market_name="Handicap First To Fifth Inning",
+        choice_group="-0.5",
+        bookie_id=3,
+        prices={"1": 1.98, "2": 1.85},
+    )
+
+    # Betfair Exchange 4 (2-way Winner, no draw)
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Home/Away",
+        market_period="Full Time Including Overtime",
+        market_name="Home/Away Full Time Including Overtime",
+        choice_group=None,
+        bookie_id=4,
+        prices={"1": 1.75, "2": 2.22},
+        exchange_side="back",
+        exchange_sizes={"1": 1250.0, "2": 850.0},
+    )
+    _add_market(
+        rows,
+        minute=5,
+        market_group="Home/Away",
+        market_period="Full Time Including Overtime",
+        market_name="Home/Away Full Time Including Overtime",
+        choice_group=None,
+        bookie_id=4,
+        prices={"1": 1.77, "2": 2.26},
+        exchange_side="lay",
+        exchange_sizes={"1": 950.0, "2": 620.0},
+    )
+
+    result = _calculate(rows)
+
+    assert result["P2_STATUS"] == "ACTIVE"
+    assert result["P2_TARGET_MINUTE"] == 5
+    assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
+    assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
+
+    inputs = result["raw"]["inputs"]
+    assert inputs["PIN_HOME_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.74)
+    assert inputs["PIN_AWAY_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(2.18)
+    assert inputs["B365_HOME_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.72)
+    assert inputs["B365_AWAY_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(2.20)
+
+    # 2-way exchange populated, Draw is None
+    assert inputs["BF_HOME_BACK_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.75)
+    assert inputs["BF_AWAY_BACK_1X2_FULL_TIME_ODDS_PRICE"] == pytest.approx(2.22)
+    assert inputs["BF_DRAW_BACK_1X2_FULL_TIME_ODDS_PRICE"] is None
+    assert inputs["BF_DRAW_LAY_1X2_FULL_TIME_ODDS_PRICE"] is None
+
+    # Asian Handicap alias inputs (backwards compatible)
+    assert inputs["PIN_AH_FULL_TIME_LINE"] == pytest.approx(-1.5)
+    assert inputs["PIN_AH_HOME_FULL_TIME_ODDS_PRICE"] == pytest.approx(2.45)
+    assert inputs["PIN_AH_AWAY_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.58)
+
+    # Distinct Handicap derived inputs populated
+    assert inputs["PIN_HANDICAP_FULL_TIME_LINE"] == pytest.approx(-1.5)
+    assert inputs["PIN_HANDICAP_HOME_FULL_TIME_ODDS_PRICE"] == pytest.approx(2.45)
+    assert inputs["PIN_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.58)
+    assert inputs["B365_HANDICAP_FULL_TIME_LINE"] == pytest.approx(-1.5)
+    assert inputs["B365_HANDICAP_HOME_FULL_TIME_ODDS_PRICE"] == pytest.approx(2.50)
+    assert inputs["B365_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE"] == pytest.approx(1.55)
+
+    # 1H / 1st to 5th Inning handicap populated
+    assert inputs["PIN_HANDICAP_1H_LINE"] == pytest.approx(-0.5)
+    assert inputs["PIN_HANDICAP_1H_HOME_PRICE"] == pytest.approx(1.95)
+    assert inputs["PIN_HANDICAP_1H_AWAY_PRICE"] == pytest.approx(1.88)
+    assert inputs["B365_HANDICAP_1H_LINE"] == pytest.approx(-0.5)
+    assert inputs["B365_HANDICAP_1H_HOME_PRICE"] == pytest.approx(1.98)
+    assert inputs["B365_HANDICAP_1H_AWAY_PRICE"] == pytest.approx(1.85)
+
+    # Profile calculations completed
+    profile = _profile(result)
+    assert profile["FT"]["1X2"]["DIRECTION"] == "HOME"
+    assert profile["FT"]["AH"]["DIRECTION"] == "AWAY"
+    assert profile["EXCHANGE"]["BACK_DIRECTION"] == "HOME"
+    assert profile["1H"]["1X2"]["DIRECTION"] == "HOME"
+    assert profile["1H"]["AH"]["DIRECTION"] == "AWAY"
+    assert profile["FT_1H"]["FT_1H_1X2_RELATION"] is not None
+
+

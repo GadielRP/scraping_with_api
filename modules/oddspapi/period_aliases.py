@@ -36,10 +36,13 @@ def resolve_canonical_period(item: dict) -> tuple[str | None, str | None]:
             return "1st Set", "1st_set"
         if "firstperiod" in market_name_compact or "1stperiod" in market_name_compact:
             return "1st Period", "1st_period"
+        if "firsttofifthinning" in market_name_compact or "1stto5thinning" in market_name_compact:
+            return "1st to 5th Inning", "1st_to_5th_inning"
         if "firstinning" in market_name_compact or "1stinning" in market_name_compact:
             return "1st Inning", "1st_inning"
         if "fulltime" in market_name_compact or "full-time" in market_name_compact or "match" in market_name_compact:
             return "Full Time", "full_time"
+
 
     if period_compact in FULL_TIME_PERIOD_ALIASES:
         return "Full Time", "full_time"
@@ -111,6 +114,12 @@ def resolve_canonical_period(item: dict) -> tuple[str | None, str | None]:
         if sport_id in {"11", "14"}:
             return "2nd Half", "2nd_half"
         return None, "unsupported_period_context"
+
+    if period_compact == "p1+p2+p3+p4+p5":
+        if sport_id == "13" or "inning" in market_name_compact:
+            return "1st to 5th Inning", "1st_to_5th_inning"
+        return "1st to 5th Inning", "1st_to_5th_inning"
+
 
     # Static/explicit period name matching
     if period_compact in FIRST_QUARTER_PERIOD_ALIASES:

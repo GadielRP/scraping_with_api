@@ -95,6 +95,7 @@ class SidePeriodScope:
     one_x_two: TwoWayMarketSpec
     asian_handicap: TwoWayMarketSpec
     includes_exchange: bool
+    handicap: TwoWayMarketSpec | None = None
 
     def __post_init__(self) -> None:
         if not self.key or self.key != self.key.casefold():
@@ -120,12 +121,45 @@ class SidePeriodScope:
         return EXCHANGE_AH_SIZE_TRACE_INPUT_NAMES if self.includes_exchange else ()
 
     def input_names(self) -> tuple[str, ...]:
-        return (
+        names = list(
             self.required_input_names()
             + self.trace_input_names()
             + self.optional_input_names()
             + self.optional_trace_input_names()
         )
+        if self.handicap is not None:
+            names.extend(self.handicap.input_names())
+        return tuple(names)
+
+
+HANDICAP_FULL_TIME_SPEC = TwoWayMarketSpec(
+    identities=(
+        MarketIdentity("Handicap", "Full Time", "Handicap Full Time"),
+        MarketIdentity("Handicap", "Full Time Including Overtime", "Handicap Full Time Including Overtime"),
+        MarketIdentity("Handicap", "Full Time Including Overtime", "Handicap Full Time"),
+        MarketIdentity("Handicap", "Full Time", "Handicap Full Time Including Overtime"),
+    ),
+    pinnacle_home="PIN_HANDICAP_HOME_FULL_TIME_ODDS_PRICE",
+    pinnacle_away="PIN_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE",
+    bet365_home="B365_HANDICAP_HOME_FULL_TIME_ODDS_PRICE",
+    bet365_away="B365_HANDICAP_AWAY_FULL_TIME_ODDS_PRICE",
+    pinnacle_line="PIN_HANDICAP_FULL_TIME_LINE",
+    bet365_line="B365_HANDICAP_FULL_TIME_LINE",
+)
+
+HANDICAP_1H_SPEC = TwoWayMarketSpec(
+    identities=(
+        MarketIdentity("Handicap", "1st Half", "Handicap 1st Half"),
+        MarketIdentity("Handicap", "1st to 5th Inning", "Handicap First To Fifth Inning"),
+        MarketIdentity("Handicap", "1st Half", "Handicap First To Fifth Inning"),
+    ),
+    pinnacle_home="PIN_HANDICAP_1H_HOME_PRICE",
+    pinnacle_away="PIN_HANDICAP_1H_AWAY_PRICE",
+    bet365_home="B365_HANDICAP_1H_HOME_PRICE",
+    bet365_away="B365_HANDICAP_1H_AWAY_PRICE",
+    pinnacle_line="PIN_HANDICAP_1H_LINE",
+    bet365_line="B365_HANDICAP_1H_LINE",
+)
 
 
 FULL_TIME_SIDE_SCOPE = SidePeriodScope(
@@ -134,9 +168,14 @@ FULL_TIME_SIDE_SCOPE = SidePeriodScope(
     metric_token="FULL_TIME",
     required=True,
     one_x_two=TwoWayMarketSpec(
-        identities=tuple(
-            MarketIdentity("1X2", period, "1X2 Full Time")
-            for period in ("Full Time", "Full Time Including Overtime")
+        identities=(
+            MarketIdentity("1X2", "Full Time", "1X2 Full Time"),
+            MarketIdentity("1X2", "Full Time Including Overtime", "1X2 Full Time"),
+            MarketIdentity("1X2", "Full Time Including Overtime", "1X2 Full Time Including Overtime"),
+            MarketIdentity("Home/Away", "Full Time", "Home/Away Full Time"),
+            MarketIdentity("Home/Away", "Full Time Including Overtime", "Home/Away Full Time Including Overtime"),
+            MarketIdentity("Home/Away", "Full Time Including Overtime", "Home/Away Full Time"),
+            MarketIdentity("Home/Away", "Full Time", "Home/Away Full Time Including Overtime"),
         ),
         pinnacle_home="PIN_HOME_1X2_FULL_TIME_ODDS_PRICE",
         pinnacle_away="PIN_AWAY_1X2_FULL_TIME_ODDS_PRICE",
@@ -144,9 +183,11 @@ FULL_TIME_SIDE_SCOPE = SidePeriodScope(
         bet365_away="B365_AWAY_1X2_FULL_TIME_ODDS_PRICE",
     ),
     asian_handicap=TwoWayMarketSpec(
-        identities=tuple(
-            MarketIdentity("Asian Handicap", period, "Asian Handicap Full Time")
-            for period in ("Full Time", "Full Time Including Overtime")
+        identities=(
+            MarketIdentity("Asian Handicap", "Full Time", "Asian Handicap Full Time"),
+            MarketIdentity("Asian Handicap", "Full Time Including Overtime", "Asian Handicap Full Time"),
+            MarketIdentity("Asian Handicap", "Full Time Including Overtime", "Asian Handicap Full Time Including Overtime"),
+            MarketIdentity("Asian Handicap", "Full Time", "Asian Handicap Full Time Including Overtime"),
         ),
         pinnacle_home="PIN_AH_HOME_FULL_TIME_ODDS_PRICE",
         pinnacle_away="PIN_AH_AWAY_FULL_TIME_ODDS_PRICE",
@@ -156,6 +197,7 @@ FULL_TIME_SIDE_SCOPE = SidePeriodScope(
         bet365_line="B365_AH_FULL_TIME_LINE",
     ),
     includes_exchange=True,
+    handicap=HANDICAP_FULL_TIME_SPEC,
 )
 
 FIRST_HALF_SIDE_SCOPE = SidePeriodScope(
@@ -164,7 +206,11 @@ FIRST_HALF_SIDE_SCOPE = SidePeriodScope(
     metric_token="FIRST_HALF",
     required=False,
     one_x_two=TwoWayMarketSpec(
-        identities=(MarketIdentity("1X2", "1st Half", "1X2 1st Half"),),
+        identities=(
+            MarketIdentity("1X2", "1st Half", "1X2 1st Half"),
+            MarketIdentity("Home/Away", "1st Half", "Home/Away 1st Half"),
+            MarketIdentity("Home/Away", "1st to 5th Inning", "Home/Away First To Fifth Inning"),
+        ),
         pinnacle_home="PIN_HOME_1X2_1H_ODDS_PRICE",
         pinnacle_away="PIN_AWAY_1X2_1H_ODDS_PRICE",
         bet365_home="B365_HOME_1X2_1H_ODDS_PRICE",
@@ -180,7 +226,9 @@ FIRST_HALF_SIDE_SCOPE = SidePeriodScope(
         bet365_line="B365_AH_1H_LINE",
     ),
     includes_exchange=False,
+    handicap=HANDICAP_1H_SPEC,
 )
+
 
 P2_SIDE_PERIOD_SCOPES: tuple[SidePeriodScope, ...] = (
     FULL_TIME_SIDE_SCOPE,

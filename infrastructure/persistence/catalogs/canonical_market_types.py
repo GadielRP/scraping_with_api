@@ -538,12 +538,44 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"spreads"},
             "market_name": {
                 "asian handicap (incl. overtime)",
-                # Baseball run line uses "Handicap (incl. extra innings)".
+            },
+            "period_lock": "Full Time",
+        },
+    ),
+    "handicap_full_time_including_overtime": _seed(
+        name="Handicap Full Time Including Overtime",
+        group="Handicap",
+        period="Full Time Including Overtime",
+        family="spread_2way",
+        requires_group=True,
+        trajectory=True,
+        order=53,
+        oddspapi_match={
+            "market_type": {"spreads"},
+            "market_name": {
+                "handicap (incl. overtime)",
                 "handicap (incl. extra innings)",
             },
             "period_lock": "Full Time",
         },
     ),
+    "handicap_first_to_fifth_inning": _seed(
+        name="Handicap First To Fifth Inning",
+        group="Handicap",
+        period="1st to 5th Inning",
+        family="spread_2way",
+        requires_group=True,
+        trajectory=True,
+        order=54,
+        oddspapi_match={
+            "market_type": {"spreads"},
+            "market_name": {
+                "handicap first to fifth inning",
+            },
+            "period_lock": "1st to 5th Inning",
+        },
+    ),
+
     "european_handicap_full_time": _seed(
         name="European Handicap Full Time",
         group="European Handicap",
