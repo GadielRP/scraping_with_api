@@ -158,12 +158,12 @@ def run_oddspapi_pre_start_odds(
         else None
     )
     tracked_cands = (
-        [c for c in candidates if (c.event_data.get("competition_id") in tracked_set)]
+        [c for c in candidates if c.competition_id in tracked_set]
         if tracked_set is not None
         else candidates
     )
     untracked_cands = (
-        [c for c in candidates if (c.event_data.get("competition_id") not in tracked_set)]
+        [c for c in candidates if c.competition_id not in tracked_set]
         if tracked_set is not None
         else []
     )

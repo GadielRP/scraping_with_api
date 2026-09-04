@@ -1540,6 +1540,46 @@ def test_oddspapi_entry_skips_untracked_competition(monkeypatch, caplog):
     assert "Skipping 1 Oddspapi odds extraction for untracked competitions" in caplog.text
 
 
+def test_oddspapi_entry_splits_selected_candidate_by_competition(monkeypatch):
+    event = _event_info()
+    event["event_data"]["competition_id"] = 176
+    candidate = OddspapiPreStartCandidate(
+        event_id=101,
+        fixture_id="fixture-1",
+        minutes_until_start=5,
+        competition_id=176,
+    )
+    monkeypatch.setattr(
+        oddspapi_odds_phase,
+        "select_oddspapi_pre_start_candidates",
+        lambda events, source_states=None: [candidate],
+    )
+    monkeypatch.setattr(
+        oddspapi_odds_phase,
+        "configured_api_keys",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        oddspapi_odds_phase.Config,
+        "ENABLE_ODDSPAPI_PRE_START_ODDS",
+        True,
+    )
+    monkeypatch.setattr(
+        oddspapi_odds_phase.Config,
+        "ODDSPAPI_PRE_START_ALLOWED_MOMENTS",
+        [],
+    )
+
+    summary = oddspapi_odds_phase.run_oddspapi_pre_start_odds(
+        [event],
+        {},
+        tracked_competition_ids={176},
+    )
+
+    assert summary.events_skipped == 1
+    assert summary.results[0].skip_reason == "missing_oddspapi_api_key"
+
+
 def test_oddspapi_entry_skips_moments_outside_allowlist(monkeypatch, caplog):
     # TEMPORARY: covers ODDSPAPI_PRE_START_ALLOWED_MOMENTS T-5-only gate.
     seen = []

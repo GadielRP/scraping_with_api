@@ -253,8 +253,8 @@ def test_forced_significant_change_routes_non_live_candidate_to_historical_lane(
         ),
     )
 
-    assert calls[0][0] == "historical"
-    assert calls[0][1]["force_significant_changes"] is True
+    assert [kind for kind, _ in calls] == ["classic", "historical"]
+    assert calls[1][1]["force_significant_changes"] is True
 
 
 def test_forced_significant_change_overrides_global_flag(monkeypatch):
@@ -272,11 +272,16 @@ def test_forced_significant_change_overrides_global_flag(monkeypatch):
             is_live=False,
             start_time_utc=KICKOFF,
             exchange_bookmakers=None,
+            current_odds_available=False,
             force_significant_changes=True,
         ),
     )
 
-    assert fetcher.calls[0]["enable_significant_changes"] is True
+    assert [call["endpoint"] for call in fetcher.calls] == [
+        ODDSPAPI_CURRENT_ODDS_ENDPOINT,
+        ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
+    ]
+    assert fetcher.calls[1]["enable_significant_changes"] is True
 
 
 @pytest.mark.parametrize("concurrent", [False, True])

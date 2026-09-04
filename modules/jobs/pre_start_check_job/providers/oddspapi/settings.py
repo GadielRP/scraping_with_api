@@ -29,12 +29,12 @@ class OddspapiPreStartSettings:
     # classic non-live opening-enrichment flow. An empty tuple intentionally
     # disables that second request. Also used as the exchange historical
     # moment list.
-    opening_historical_moments: tuple[int, ...] = (5,)
+    opening_historical_moments: tuple[int, ...] = ()
 
     # Optional non-live key moments that deliberately use the significant
     # change historical as-of strategy. Empty preserves the normal live-only
     # activation of that strategy.
-    significant_change_forced_moments: tuple[int, ...] = ()
+    significant_change_forced_moments: tuple[int, ...] = (5,)
 
     # Historical opening quotes must span at least this many minutes to count.
     initial_odds_min_span_minutes: float = 60.0

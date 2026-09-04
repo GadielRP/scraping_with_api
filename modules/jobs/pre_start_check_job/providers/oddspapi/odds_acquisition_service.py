@@ -475,6 +475,87 @@ class OddspapiPreStartOddsAcquisitionService:
         result.endpoint_missing = historical_missing and payload is None
         return result
 
+    def _acquire_forced_significant_change(
+        self,
+        fixture_id: str,
+        *,
+        event_id: int,
+        source_sport_id: str | int | None,
+        enable_exchange_historical: bool,
+        regular: list[str],
+        exchange: list[str],
+        market_mapping_index: MarketMappingIndex,
+        exchange_market_keys: list[str] | None,
+        exchange_main_line_only: bool,
+        exchange_include_player_props: bool,
+        exchange_max_outcomes_per_event: int,
+        exchange_request_budget: int | None,
+        minimum_initial_span_minutes: float,
+        require_active_quotes: bool,
+        filter_post_kickoff_ticks: bool,
+        debug_mode: bool,
+        fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None,
+        start_time_utc: datetime,
+        as_of_moments: list[int] | None,
+        attach_as_of: bool,
+    ) -> OddspapiOddsAcquisitionResult:
+        """Prime the mainline cache, then run historical significant as-of."""
+        logger.info(
+            "Oddspapi forced significant-change acquisition priming current odds "
+            "fixture_id=%s event_id=%s",
+            fixture_id,
+            event_id,
+        )
+        result = OddspapiOddsAcquisitionResult()
+        requested_bookmakers: set[str] = set()
+        self._acquire_pre_start(
+            fixture_id,
+            event_id=event_id,
+            source_sport_id=source_sport_id,
+            minutes_until_start=None,
+            enable_exchange_historical=False,
+            regular=regular,
+            exchange=exchange,
+            market_mapping_index=market_mapping_index,
+            exchange_market_keys=exchange_market_keys,
+            exchange_main_line_only=exchange_main_line_only,
+            exchange_include_player_props=exchange_include_player_props,
+            exchange_historical_moments=[],
+            exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
+            exchange_request_budget=exchange_request_budget,
+            minimum_initial_span_minutes=minimum_initial_span_minutes,
+            # A forced strategy explicitly primes /odds. The endpoint may still
+            # answer 404, but the request must not be suppressed by has_odds.
+            current_odds_available=True,
+            require_active_quotes=require_active_quotes,
+            debug_mode=debug_mode,
+            result=result,
+            requested_bookmakers=requested_bookmakers,
+            fetch_executor=fetch_executor,
+        )
+        return self._acquire_live(
+            fixture_id,
+            event_id=event_id,
+            source_sport_id=source_sport_id,
+            enable_exchange_historical=enable_exchange_historical,
+            regular=regular,
+            exchange=exchange,
+            exchange_market_keys=exchange_market_keys,
+            exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
+            exchange_request_budget=exchange_request_budget,
+            minimum_initial_span_minutes=minimum_initial_span_minutes,
+            require_active_quotes=require_active_quotes,
+            filter_post_kickoff_ticks=filter_post_kickoff_ticks,
+            debug_mode=debug_mode,
+            result=result,
+            requested_bookmakers=requested_bookmakers,
+            fetch_executor=fetch_executor,
+            start_time_utc=start_time_utc,
+            as_of_moments=as_of_moments,
+            attach_as_of=attach_as_of,
+            force_significant_changes=True,
+        )
+
     def _acquire_pre_start(
         self,
         fixture_id: str,
@@ -672,7 +753,31 @@ class OddspapiPreStartOddsAcquisitionService:
         result = OddspapiOddsAcquisitionResult()
         requested_bookmakers: set[str] = set()
 
-        if is_live or (force_significant_changes and start_time_utc is not None):
+        if force_significant_changes and not is_live and start_time_utc is not None:
+            return self._acquire_forced_significant_change(
+                fixture_id,
+                event_id=event_id,
+                source_sport_id=source_sport_id,
+                enable_exchange_historical=enable_exchange_historical,
+                regular=regular,
+                exchange=exchange,
+                market_mapping_index=market_mapping_index,
+                exchange_market_keys=exchange_market_keys,
+                exchange_main_line_only=exchange_main_line_only,
+                exchange_include_player_props=exchange_include_player_props,
+                exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
+                exchange_request_budget=exchange_request_budget,
+                minimum_initial_span_minutes=minimum_initial_span_minutes,
+                require_active_quotes=require_active_quotes,
+                filter_post_kickoff_ticks=filter_post_kickoff_ticks,
+                debug_mode=debug_mode,
+                fetch_executor=exchange_fetch_executor,
+                start_time_utc=start_time_utc,
+                as_of_moments=as_of_moments,
+                attach_as_of=attach_as_of,
+            )
+
+        if is_live:
             return self._acquire_live(
                 fixture_id,
                 event_id=event_id,

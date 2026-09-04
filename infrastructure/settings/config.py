@@ -482,7 +482,7 @@ class Config:
     # then delete the allowlist helper in the Oddspapi odds phase.
     ODDSPAPI_PRE_START_ALLOWED_MOMENTS = _parse_env_int_list(
         'ODDSPAPI_PRE_START_ALLOWED_MOMENTS',
-        [5,0],
+        [5],
     )
     # Reconstruct T-120/T-30/T-5/T-1 from the same live /historical-odds
     # read that produces opening/latest. Shadow compares; persist writes.
