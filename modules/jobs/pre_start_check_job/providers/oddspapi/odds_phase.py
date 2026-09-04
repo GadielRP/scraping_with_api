@@ -148,6 +148,8 @@ def run_oddspapi_pre_start_odds(
         _log_summary(summary)
         return summary
 
+    logger.info("🟡 START Oddspapi pre-start odds processing (%s candidates)", len(candidates))
+
     api_keys = configured_api_keys()
     if not api_keys:
         logger.warning(
@@ -273,6 +275,7 @@ def run_oddspapi_pre_start_odds(
         if count - diagnostics_before.get(diagnostic, 0) > 0
     }
     _log_summary(summary)
+    logger.info("🟡 END Oddspapi pre-start odds processing")
     if debug_mode:
         for result in summary.results:
             logger.debug(

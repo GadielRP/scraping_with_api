@@ -278,16 +278,7 @@ def run_pre_start_odds_moments(
     restrict_oddspapi_odds_extraction = (
         Config.ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY
     )
-    tracked_ids = (
-        set(tracked_competition_ids())
-        if (
-            restrict_timestamp_corrections
-            or restrict_general_odds_extraction
-            or restrict_sofascore_odds_extraction
-            or restrict_oddspapi_odds_extraction
-        )
-        else None
-    )
+    tracked_ids = set(tracked_competition_ids())
 
     if restrict_timestamp_corrections:
         ts_events = [e for e in upcoming_events if e.get("competition_id") in tracked_ids]
@@ -300,6 +291,11 @@ def run_pre_start_odds_moments(
         tracked_ids if restrict_general_odds_extraction else None
     )
 
+    if ts_events:
+        logger.info(
+            "⏱️ [TRACKED] START candidate build & timestamp verification (%s events)",
+            len(ts_events),
+        )
     plan_ts = build_pre_start_event_candidates(
         scheduler,
         ts_events,
@@ -307,12 +303,18 @@ def run_pre_start_odds_moments(
         source_states,
         key_moments=key_moments,
         timestamp_correction_enabled=global_ts_correction,
+        fetch_alert_metadata=True,
         general_odds_extraction_competition_ids=general_odds_extraction_competition_ids,
     )
+    if ts_events:
+        logger.info(
+            "⏱️ [TRACKED] END candidate build & timestamp verification (%s candidates)",
+            len(plan_ts.candidates),
+        )
 
     if no_ts_events:
         logger.info(
-            "🚫 Skipping timestamp corrections for %s events from untracked competitions",
+            "🚫 [UNTRACKED] START candidate build (%s events, timestamp corrections bypassed)",
             len(no_ts_events),
         )
         plan_no_ts = build_pre_start_event_candidates(
@@ -322,7 +324,12 @@ def run_pre_start_odds_moments(
             source_states,
             key_moments=key_moments,
             timestamp_correction_enabled=False,
+            fetch_alert_metadata=False,
             general_odds_extraction_competition_ids=general_odds_extraction_competition_ids,
+        )
+        logger.info(
+            "🚫 [UNTRACKED] END candidate build (%s candidates)",
+            len(plan_no_ts.candidates),
         )
         event_plan = PreStartEventPlan(
             candidates=plan_ts.candidates + plan_no_ts.candidates,

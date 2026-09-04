@@ -40,6 +40,7 @@ def should_extract_odds_for_event(
     *,
     key_moments: Collection[int] | None = None,
     timestamp_correction_enabled: bool | None = None,
+    fetch_alert_metadata: bool = True,
 ):
     """Determine whether odds should be extracted at this moment.
     Returns:
@@ -74,8 +75,7 @@ def should_extract_odds_for_event(
         else timestamp_correction_enabled
     )
     if not timestamp_correction_enabled:
-        
-        if minutes_until == 30:
+        if minutes_until == 30 and fetch_alert_metadata:
             logger.info(f"🎯 Key moment detected for event {event_id}: {minutes_until} minutes until start - WILL EXTRACT ODDS (Running timestamp flow to fetch alert metadata)")
             is_timing_consistent, metadata_snapshot = api_client.get_event_results(
                 sofascore_event_id,

@@ -35,6 +35,7 @@ def build_pre_start_event_candidates(
     *,
     key_moments: Collection[int] | None = None,
     timestamp_correction_enabled: bool | None = None,
+    fetch_alert_metadata: bool = True,
     general_odds_extraction_competition_ids: Collection[int] | None = None,
 ) -> PreStartEventPlan:
     """Apply timing decisions and return the shared provider work payloads."""
@@ -66,6 +67,7 @@ def build_pre_start_event_candidates(
                 sofascore_event_id=preloaded_sofascore_event_id,
                 key_moments=key_moments,
                 timestamp_correction_enabled=timestamp_correction_enabled,
+                fetch_alert_metadata=fetch_alert_metadata,
             )
 
             if (
