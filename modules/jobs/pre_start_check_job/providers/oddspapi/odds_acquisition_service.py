@@ -330,6 +330,7 @@ class OddspapiPreStartOddsAcquisitionService:
         start_time_utc: datetime | None = None,
         as_of_moments: list[int] | None = None,
         attach_as_of: bool = False,
+        force_significant_changes: bool = False,
     ) -> OddspapiOddsAcquisitionResult:
         payload: dict | None = None
         historical_missing = False
@@ -356,7 +357,7 @@ class OddspapiPreStartOddsAcquisitionService:
             as_of_moments or [],
         )
         kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(start_time_utc)
-        enable_significant_changes = bool(
+        enable_significant_changes = force_significant_changes or bool(
             getattr(Config, "ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS", False)
         )
         min_change_magnitude_pct = (
@@ -663,6 +664,7 @@ class OddspapiPreStartOddsAcquisitionService:
         start_time_utc: datetime | None = None,
         as_of_moments: list[int] | None = None,
         attach_as_of: bool = False,
+        force_significant_changes: bool = False,
     ) -> OddspapiOddsAcquisitionResult:
         regular = self._unique_bookmakers(regular_bookmakers)
         exchange = self._unique_bookmakers(exchange_bookmakers)
@@ -670,7 +672,7 @@ class OddspapiPreStartOddsAcquisitionService:
         result = OddspapiOddsAcquisitionResult()
         requested_bookmakers: set[str] = set()
 
-        if is_live:
+        if is_live or (force_significant_changes and start_time_utc is not None):
             return self._acquire_live(
                 fixture_id,
                 event_id=event_id,
@@ -691,6 +693,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 start_time_utc=start_time_utc,
                 as_of_moments=as_of_moments,
                 attach_as_of=attach_as_of,
+                force_significant_changes=force_significant_changes,
             )
 
         return self._acquire_pre_start(

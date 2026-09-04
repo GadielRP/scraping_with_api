@@ -510,16 +510,22 @@ class OddspapiPreStartOddsBatchProcessor:
         summary = OddspapiPreStartOddsSummary(candidates_seen=len(candidates or []))
         mapped_candidates = [candidate for candidate in candidates or [] if candidate.fixture_id]
         summary.candidates_with_mapping = len(mapped_candidates)
-        live_event_ids = [
+        historical_event_ids = [
             candidate.event_id
             for candidate in mapped_candidates
             if self._is_live_candidate(candidate)
+            or (
+                candidate.start_time_utc is not None
+                and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
+                    candidate.minutes_until_start
+                )
+            )
         ]
-        # /historical-odds has no mainLine flags. Live/in-play quotes cannot be
-        # parsed unless /odds previously populated oddspapi_mainline_outcome_cache.
+        # /historical-odds has no mainLine flags. Live and explicitly forced
+        # historical quotes require the cache populated by /odds earlier.
         cached_live_event_ids = (
-            OddspapiMainlineCacheRepository.event_ids_with_cache(live_event_ids)
-            if live_event_ids
+            OddspapiMainlineCacheRepository.event_ids_with_cache(historical_event_ids)
+            if historical_event_ids
             else set()
         )
         closing_only = getattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False)
@@ -527,14 +533,37 @@ class OddspapiPreStartOddsBatchProcessor:
             candidate
             for candidate in mapped_candidates
             if (
-                (candidate.has_odds or self._is_live_candidate(candidate))
+                (
+                    candidate.has_odds
+                    or self._is_live_candidate(candidate)
+                    or (
+                        candidate.start_time_utc is not None
+                        and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
+                            candidate.minutes_until_start
+                        )
+                    )
+                )
                 and (
-                    not self._is_live_candidate(candidate)
+                    not (
+                        self._is_live_candidate(candidate)
+                        or (
+                            candidate.start_time_utc is not None
+                            and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
+                                candidate.minutes_until_start
+                            )
+                        )
+                    )
                     or candidate.event_id in cached_live_event_ids
                 )
                 and (
                     not closing_only
                     or self._is_live_candidate(candidate)
+                    or (
+                        candidate.start_time_utc is not None
+                        and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
+                            candidate.minutes_until_start
+                        )
+                    )
                     or is_closing_odds_moment(candidate.minutes_until_start)
                 )
             )
@@ -706,17 +735,36 @@ class OddspapiPreStartOddsBatchProcessor:
                 event_result = self._event_result(candidate)
                 summary.results.append(event_result)
                 is_live = self._is_live_candidate(candidate)
+                configured_significant_change = (
+                    ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
+                        candidate.minutes_until_start
+                    )
+                )
+                force_significant_changes = configured_significant_change and (
+                    candidate.start_time_utc is not None
+                )
+                if configured_significant_change and not force_significant_changes:
+                    logger.info(
+                        "🚫 Oddspapi significant-change force skipped: missing kickoff "
+                        "event_id=%s fixture_id=%s minutes_until_start=%s",
+                        candidate.event_id,
+                        candidate.fixture_id,
+                        candidate.minutes_until_start,
+                    )
                 if not candidate.fixture_id:
                     event_result.skipped = True
                     event_result.skip_reason = "missing_oddspapi_mapping"
                     summary.events_skipped += 1
                     continue
-                if not candidate.has_odds and not is_live:
+                if not candidate.has_odds and not (is_live or force_significant_changes):
                     event_result.skipped = True
                     event_result.skip_reason = "oddspapi_odds_unavailable"
                     summary.events_skipped += 1
                     continue
-                if is_live and candidate.event_id not in cached_live_event_ids:
+                if (
+                    (is_live or force_significant_changes)
+                    and candidate.event_id not in cached_live_event_ids
+                ):
                     event_result.skipped = True
                     event_result.skip_reason = "missing_mainline_cache"
                     summary.events_skipped += 1
@@ -731,6 +779,7 @@ class OddspapiPreStartOddsBatchProcessor:
                 if (
                     closing_only
                     and not is_live
+                    and not force_significant_changes
                     and not is_closing_odds_moment(candidate.minutes_until_start)
                 ):
                     event_result.skipped = True
@@ -771,6 +820,7 @@ class OddspapiPreStartOddsBatchProcessor:
                             enable_exchange_historical
                             and not (
                                 at_opening_moment
+                                and not force_significant_changes
                                 and is_tracked_competition(candidate.competition_id)
                             )
                         ),
@@ -817,6 +867,7 @@ class OddspapiPreStartOddsBatchProcessor:
                             "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
                             False,
                         ),
+                        force_significant_changes=force_significant_changes,
                     )
                     save_odds_responses = getattr(
                         Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False

@@ -149,3 +149,18 @@ def test_empty_opening_historical_moments_disable_classic_enrichment():
 
     assert settings.resolved_opening_historical_moments() == []
     assert settings.resolved_opening_historical_moments([]) == []
+
+
+def test_significant_change_forced_moments_select_only_integer_key_moments():
+    settings = OddspapiPreStartSettings(significant_change_forced_moments=(5, 0))
+
+    assert settings.is_significant_change_forced(5)
+    assert settings.is_significant_change_forced(0.0)
+    assert not settings.is_significant_change_forced(5.5)
+    assert not settings.is_significant_change_forced(None)
+
+
+@pytest.mark.parametrize("value", [(-1,), (1.5,), (True,)])
+def test_invalid_significant_change_forced_moments(value):
+    with pytest.raises(ValueError):
+        OddspapiPreStartSettings(significant_change_forced_moments=value)

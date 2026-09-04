@@ -31,6 +31,11 @@ class OddspapiPreStartSettings:
     # moment list.
     opening_historical_moments: tuple[int, ...] = (5,)
 
+    # Optional non-live key moments that deliberately use the significant
+    # change historical as-of strategy. Empty preserves the normal live-only
+    # activation of that strategy.
+    significant_change_forced_moments: tuple[int, ...] = ()
+
     # Historical opening quotes must span at least this many minutes to count.
     initial_odds_min_span_minutes: float = 60.0
 
@@ -106,6 +111,11 @@ class OddspapiPreStartSettings:
             raise ValueError("significant_change_min_price must be at least 1.01")
         if self.initial_odds_min_span_minutes < 0:
             raise ValueError("initial_odds_min_span_minutes must be non-negative")
+        for moment in self.significant_change_forced_moments:
+            if isinstance(moment, bool) or not isinstance(moment, int) or moment < 0:
+                raise ValueError(
+                    "significant_change_forced_moments must contain non-negative integers"
+                )
         if self.exchange_max_outcomes_per_event < 0:
             raise ValueError("exchange_max_outcomes_per_event must be non-negative")
         if self.exchange_max_requests_per_run < 0:
@@ -119,6 +129,21 @@ class OddspapiPreStartSettings:
         # explicit request to disable classic opening enrichment.
         source = self.opening_historical_moments if moments is None else moments
         return [int(moment) for moment in source if moment is not None]
+
+    def is_significant_change_forced(
+        self,
+        minutes_until_start: int | float | None,
+    ) -> bool:
+        """Return whether a key moment explicitly selects the detector lane."""
+        if minutes_until_start is None:
+            return False
+        try:
+            minute = float(minutes_until_start)
+        except (TypeError, ValueError):
+            return False
+        return minute.is_integer() and int(minute) in set(
+            self.significant_change_forced_moments
+        )
 
     def as_list(self, values: Sequence[str] | None) -> list[str] | None:
         cleaned = [str(value).strip() for value in (values or ()) if str(value).strip()]

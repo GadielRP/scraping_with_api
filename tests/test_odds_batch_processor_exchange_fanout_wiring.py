@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pytest
 from dataclasses import replace
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from infrastructure.settings.config import Config
@@ -23,6 +24,7 @@ from modules.jobs.pre_start_check_job.providers.oddspapi.odds_acquisition_servic
 from modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor import (
     OddspapiPreStartOddsBatchProcessor,
 )
+from modules.jobs.pre_start_check_job.providers.oddspapi import odds_batch_processor as batch_module
 
 
 @pytest.fixture(autouse=True)
@@ -127,6 +129,45 @@ def test_change_flag_does_not_override_shadow_or_persist_controls(monkeypatch, p
     _process(candidate)
     assert calls[0]["attach_as_of"] is persist
     assert calls[0]["as_of_moments"] == (list(Config.PRE_START_ODDS_MOMENTS) if persist or shadow else None)
+
+
+def test_forced_key_moment_routes_non_live_candidate_to_significant_change(monkeypatch):
+    monkeypatch.setattr(
+        batch_module,
+        "ODDSPAPI_PRE_START_SETTINGS",
+        replace(batch_module.ODDSPAPI_PRE_START_SETTINGS, significant_change_forced_moments=(5,)),
+    )
+    calls = _capture_acquire_calls(monkeypatch)
+    candidate = replace(
+        _candidate(),
+        minutes_until_start=5,
+        start_time_utc=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
+    )
+
+    _process(candidate)
+
+    assert calls[0]["is_live"] is False
+    assert calls[0]["force_significant_changes"] is True
+
+
+def test_forced_key_moment_bypasses_closing_only_gate(monkeypatch):
+    monkeypatch.setattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", True)
+    monkeypatch.setattr(
+        batch_module,
+        "ODDSPAPI_PRE_START_SETTINGS",
+        replace(batch_module.ODDSPAPI_PRE_START_SETTINGS, significant_change_forced_moments=(5,)),
+    )
+    calls = _capture_acquire_calls(monkeypatch)
+    candidate = replace(
+        _candidate(),
+        minutes_until_start=5,
+        start_time_utc=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
+    )
+
+    _process(candidate)
+
+    assert len(calls) == 1
+    assert calls[0]["force_significant_changes"] is True
 
 
 def test_custom_pipeline_never_builds_an_executor_even_with_multiple_keys():

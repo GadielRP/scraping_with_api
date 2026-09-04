@@ -569,7 +569,7 @@ Independent of `CLOSING_ONLY` (the skip does not apply to live).
 There are two deliberately named historical flows:
 
 - **Classic historical opening-enrichment flow**: used by non-live moments such as T−5 when `opening_historical_moments` contains that minute. It calls `/historical-odds` after `/odds` and uses the historical response to merge `initialPrice`; the current price remains the value returned by `/odds`. It does not run the significant-change detector.
-- **Significant-change historical as-of flow**: used by the live historical lane at T−0 and later when the feature flag and kickoff are available. It calls `/historical-odds` without `/odds`, obtains opening and latest pre-kickoff canonical prices from the historical response, and produces dynamic `momentQuotes` or the per-series fixed-moment fallback.
+- **Significant-change historical as-of flow**: used by the live historical lane at T−0 and later when the feature flag and kickoff are available. It can also be selected at configured non-live moments through `significant_change_forced_moments`. It calls `/historical-odds` without `/odds`, obtains opening and latest pre-kickoff canonical prices from the historical response, and produces dynamic `momentQuotes` or the per-series fixed-moment fallback.
 
 The reader itself still normalizes every historical payload to opening plus latest pre-cutoff price. The distinction above describes how acquisition consumes that normalized result: classic enrichment uses it as an opening donor, while the live as-of flow uses it as the complete canonical response and attaches historical observations.
 
@@ -586,7 +586,7 @@ If the series has no valid ticks, its as-of selection is empty. If its history s
 
 `as_of_quotes` therefore contains detector-selected changes for sufficient series, or fallback moment observations for short series. It does not replace the normalized opening/current fields. The adapter attaches these values under `momentQuotes`; the repository persists ordinary opening/current snapshots and the attached moment snapshots independently.
 
-If a simulator or a future ingestion mode must use significant-change reconstruction at a non-live key moment, keep the `is_live` timing classification unchanged. The low-risk extension is an explicit acquisition strategy (for example `auto`, `classic`, or `significant_change`) passed in the acquisition context. `auto` preserves the current production routing; `classic` selects opening enrichment; `significant_change` reuses the live historical reader options and requires an explicit kickoff. A small shared historical-fetch helper can serve both callers, while the caller continues to own whether `/odds` is requested. This avoids overloading `is_live` with two meanings and keeps transport timing separate from historical reduction policy.
+If a simulator or an ingestion mode must use significant-change reconstruction at a non-live key moment, add that integer minute to `significant_change_forced_moments`. The candidate keeps its `is_live` timing classification, while acquisition receives an explicit `force_significant_changes` strategy flag and reuses the historical lane. This means `/historical-odds` is requested without a second `/odds` call, the kickoff is required, and the existing shadow/persistence flags still decide whether `momentQuotes` are attached or written. An empty tuple preserves live-only activation. A configured forced moment without kickoff is logged and falls back to the normal non-live route.
 
 Other OddspAPI skips: `ENABLE_ODDSPAPI_PRE_START_ODDS`, missing API key, missing fixture mapping, `has_odds=False`, `max_events`, 404 / empty payload, tracked-competition provider gate.
 
@@ -860,6 +860,7 @@ The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a calle
 | `ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES` | `60` | Backoff after a failed account refresh while stale estimates remain usable. |
 | `ODDSPAPI_PRE_START_BOOKMAKERS` | `pinnacle, bet365` | Which regular `/odds` books are requested and stored. |
 | `opening_historical_moments` | `(5,)` | Versioned non-live moments that trigger the classic `/historical-odds` opening-enrichment request after `/odds`. Empty tuple disables that second request; T−0 live historical acquisition is independent of this setting. |
+| `significant_change_forced_moments` | `()` | Versioned non-live key moments that route acquisition through the significant-change historical as-of flow. Empty tuple preserves live-only activation; kickoff and the existing shadow/persistence controls remain required. |
 | `ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS` | `betfair-ex` | Exchange book requested; stored as back/lay quotes. |
 | `ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY` | `true` | Drop every choice whose `mainLine` is not `true`. |
 | `ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES` | `false` | `false` = persist even if `active=false`. |
@@ -929,6 +930,7 @@ Write ownership (`market_write_policy_for_source`):
 | `ODDSPAPI_PRE_START_WORKERS` | Configured maximum; code hard-caps effective concurrency at four and by work/key counts. |
 | `ODDSPAPI_PRE_START_CLOSING_ONLY` | When `false` (default), OddspAPI fetches `/odds` at positive moments (T-120, T-30, T-5). |
 | `opening_historical_moments` | Versioned non-live moments for the classic opening-enrichment `/historical-odds` request (default `(5,)`). Empty disables classic enrichment; it does not disable the T−0 live historical lane. |
+| `significant_change_forced_moments` | Versioned non-live moments that explicitly force the significant-change historical as-of flow (default `()`). Missing kickoff is logged and does not activate the forced lane. |
 | `ENABLE_PRE_START_T_MINUS_ONE_JOB` | When `false` (default), disables the dedicated T-1 critical scheduler job. |
 | `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | When `true` (default), reconstructs and persists all non-negative key-moment snapshots at T-0 with source dedup. |
 | `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS` | When `true`, uses adaptive significant-change `momentQuotes` for series meeting the configured history span; shorter series fall back to `PRE_START_ODDS_MOMENTS`. Requires an explicit kickoff and does not enable persistence by itself. |

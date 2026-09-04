@@ -20,6 +20,7 @@ from modules.jobs.pre_start_check_job.providers.oddspapi.exchange_outcome_select
     ExchangeHistoricalSelection,
 )
 from modules.jobs.pre_start_check_job.providers.oddspapi.odds_acquisition_service import (
+    OddspapiOddsAcquisitionResult,
     OddspapiPreStartOddsAcquisitionService,
 )
 from modules.jobs.pre_start_check_job.providers.oddspapi.odds_fetcher import (
@@ -222,6 +223,60 @@ def test_live_significant_changes_preserve_persistence_control(monkeypatch, atta
     assert player["price"] == 3.1
     assert [q.price for q in result.as_of_quotes] == [2.5, 3.1]
     assert ("momentQuotes" in player) is attach
+
+
+def test_forced_significant_change_routes_non_live_candidate_to_historical_lane(monkeypatch):
+    service = OddspapiPreStartOddsAcquisitionService(
+        fetcher=OddspapiOddsFetcher(client=SimpleNamespace()),
+        mainline_cache_repository=_FakeMainlineCache,
+    )
+    calls = []
+
+    def fake_live(*args, **kwargs):
+        calls.append(("historical", kwargs))
+        return OddspapiOddsAcquisitionResult()
+
+    def fake_pre_start(*args, **kwargs):
+        calls.append(("classic", kwargs))
+        return OddspapiOddsAcquisitionResult()
+
+    monkeypatch.setattr(service, "_acquire_live", fake_live)
+    monkeypatch.setattr(service, "_acquire_pre_start", fake_pre_start)
+
+    service.acquire(
+        "fixture-1",
+        **_acquire_kwargs(
+            minutes_until_start=5,
+            is_live=False,
+            start_time_utc=KICKOFF,
+            force_significant_changes=True,
+        ),
+    )
+
+    assert calls[0][0] == "historical"
+    assert calls[0][1]["force_significant_changes"] is True
+
+
+def test_forced_significant_change_overrides_global_flag(monkeypatch):
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS", False)
+    fetcher = _RecordingFetcher()
+    service = OddspapiPreStartOddsAcquisitionService(
+        fetcher=fetcher,
+        mainline_cache_repository=_FakeMainlineCache,
+    )
+
+    service.acquire(
+        "fixture-1",
+        **_acquire_kwargs(
+            minutes_until_start=5,
+            is_live=False,
+            start_time_utc=KICKOFF,
+            exchange_bookmakers=None,
+            force_significant_changes=True,
+        ),
+    )
+
+    assert fetcher.calls[0]["enable_significant_changes"] is True
 
 
 @pytest.mark.parametrize("concurrent", [False, True])
