@@ -57,10 +57,16 @@ def test_missing_kickoff_falls_back_to_legacy_and_logs_reason(caplog):
     assert "missing kickoff_utc" in caplog.text
 
 
-def test_sufficient_stable_history_does_not_invoke_fallback():
-    with patch.object(OddspapiHistoricalOddsAsOf, "from_ordered_ticks", side_effect=AssertionError("unexpected fallback")):
+def test_sufficient_stable_history_falls_back_when_detector_has_no_changes():
+    with patch.object(
+        OddspapiHistoricalOddsAsOf,
+        "from_ordered_ticks",
+        wraps=OddspapiHistoricalOddsAsOf.from_ordered_ticks,
+    ) as fallback:
         result = read([tick(1440, 2), tick(0, 2.1)])
-    assert result.as_of_quotes == ()
+    fallback.assert_called_once()
+    assert [q.minutes_until_start for q in result.as_of_quotes] == [120, 30, 5, 1, 0]
+    assert [q.price for q in result.as_of_quotes] == [2, 2, 2, 2, 2.1]
     assert player(result)["price"] == 2.1
 
 

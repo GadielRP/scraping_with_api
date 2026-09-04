@@ -68,7 +68,13 @@ class OddspapiHistoricalOddsChangeDetector:
         min_history_hours: float = 24.0,
         flash_reversal_minutes: float = 3.0,
     ) -> list[HistoricalOddsAsOfQuote] | None:
-        """Consume already sanitized ticks; None requests fixed-moment fallback.
+        """Consume already sanitized ticks.
+
+        ``None`` indicates that the history span is below the configured
+        minimum. An empty list indicates that the span is sufficient but no
+        change qualified. The reader deliberately treats both outcomes as a
+        request for the fixed-moment fallback; an empty tick series remains
+        empty because there is no value to carry forward.
 
         Inspect reversal windows by index, without allocating slices. Rejected
         episodes resume at their reversal; confirmed ticks advance one position

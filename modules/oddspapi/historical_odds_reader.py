@@ -127,7 +127,14 @@ class OddspapiHistoricalOddsReader:
                                     min_history_hours=min_history_hours,
                                     flash_reversal_minutes=flash_reversal_minutes,
                                 )
-                            if quotes is None:
+                            # The adaptive reducer returns no moment quotes in
+                            # two cases: the series is too short for the
+                            # configured history window, or it has sufficient
+                            # history but no qualifying change.  Both cases
+                            # need the same fixed-moment representation.  An
+                            # empty tick series remains empty because the
+                            # fallback reducer has no value to carry forward.
+                            if quotes is None or not quotes:
                                 quotes = OddspapiHistoricalOddsAsOf.from_ordered_ticks(
                                     ticks,
                                     targets=as_of_targets,
