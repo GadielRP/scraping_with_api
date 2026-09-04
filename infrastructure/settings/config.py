@@ -484,7 +484,7 @@ class Config:
     # read that produces opening/latest. Shadow compares; persist writes.
     ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS = _parse_env_bool(
         'ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS',
-        False,
+        True,
     )
     ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW = _parse_env_bool(
         'ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW',
