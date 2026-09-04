@@ -378,6 +378,21 @@ LIGA_PROFESIONAL_DE_ARGENTINA_CLAUSURA_CONFIG = LeagueConfig(
     standings_grouping="single_table",
 )
 
+EREDIVISIE_CONFIG = LeagueConfig(
+    code="eredivisie",
+    display_name="Eredivisie",
+    primary_identity=CompetitionIdentity(
+        source_unique_tournament_id=37,
+        source_tournament_id=39,
+    ),
+    collected=True,
+    standings_method="football_3_1_0",
+    grouping_method="league_wide",
+    number_of_teams=18,
+    total_regular_season_games=34,
+    standings_grouping="single_table",
+)
+
 # EuroLeague ranks by victories, then a head-to-head mini-table among teams
 # tied on wins. Official overtime-point exclusion is not modeled.
 EUROLEAGUE_CONFIG = LeagueConfig(
@@ -430,6 +445,7 @@ LEAGUE_CONFIGS: Tuple[LeagueConfig, ...] = (
     LIGA_MX_APERTURA_CONFIG,
     LIGA_MX_CLAUSURA_CONFIG,
     BRASILEIRAO_CONFIG,
+    EREDIVISIE_CONFIG,
     EUROLEAGUE_CONFIG,
     LIIGA_CONFIG,
 )
