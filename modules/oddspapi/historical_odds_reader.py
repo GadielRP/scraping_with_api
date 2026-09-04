@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import logging
 from typing import Sequence
+
+from shared.timezone_utils import convert_utc_to_local
 
 from modules.oddspapi.historical_odds_as_of import (
     HistoricalOddsAsOfQuote,
@@ -13,6 +16,11 @@ from modules.oddspapi.historical_odds_as_of import (
 from modules.oddspapi.historical_odds_normalizer import (
     OddspapiHistoricalOddsNormalizer,
 )
+from modules.oddspapi.historical_odds_change_detector import (
+    OddspapiHistoricalOddsChangeDetector,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -36,13 +44,22 @@ class OddspapiHistoricalOddsReader:
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
         current_cutoff_utc: datetime | None = None,
+        enable_significant_changes: bool = False,
+        min_change_magnitude_pct: float = 20.0,
+        min_history_hours: float = 24.0,
+        flash_reversal_minutes: float = 3.0,
+        min_price: float = 1.01,
+        kickoff_utc: datetime | None = None,
     ) -> HistoricalOddsReadResult:
         payload = historical_response if isinstance(historical_response, dict) else {}
         bookmakers = payload.get("bookmakers")
         if not isinstance(bookmakers, dict):
             bookmakers = {}
 
-        extract_as_of = bool(as_of_targets)
+        if enable_significant_changes and kickoff_utc is None:
+            logger.warning("Significant-change extraction disabled: missing kickoff_utc")
+            enable_significant_changes = False
+        extract_as_of = bool(as_of_targets) or enable_significant_changes
         as_of_quotes: list[HistoricalOddsAsOfQuote] = []
         normalized_bookmakers: dict[str, dict] = {}
 
@@ -78,6 +95,10 @@ class OddspapiHistoricalOddsReader:
                         ticks = OddspapiHistoricalOddsNormalizer.ordered_priced_ticks(
                             history
                         )
+                        if enable_significant_changes:
+                            ticks = OddspapiHistoricalOddsChangeDetector.sanitize_ticks(
+                                ticks, kickoff_utc=kickoff_utc, min_price=min_price
+                            )
                         player_key = str(player_id)
                         normalized = (
                             OddspapiHistoricalOddsNormalizer.from_ordered_ticks(
@@ -92,8 +113,22 @@ class OddspapiHistoricalOddsReader:
                         if normalized is not None:
                             normalized_players[player_key] = normalized
                         if extract_as_of and as_of_slug:
-                            as_of_quotes.extend(
-                                OddspapiHistoricalOddsAsOf.from_ordered_ticks(
+                            quotes = None
+                            if enable_significant_changes:
+                                quotes = OddspapiHistoricalOddsChangeDetector.detect_significant_changes(
+                                    ticks,
+                                    kickoff_utc=kickoff_utc,
+                                    bookmaker_slug=as_of_slug,
+                                    source_market_id=source_market_id,
+                                    source_outcome_id=source_outcome_id,
+                                    player_id=player_key,
+                                    to_local=convert_utc_to_local,
+                                    min_change_magnitude_pct=min_change_magnitude_pct,
+                                    min_history_hours=min_history_hours,
+                                    flash_reversal_minutes=flash_reversal_minutes,
+                                )
+                            if quotes is None:
+                                quotes = OddspapiHistoricalOddsAsOf.from_ordered_ticks(
                                     ticks,
                                     targets=as_of_targets,
                                     bookmaker_slug=as_of_slug,
@@ -102,7 +137,7 @@ class OddspapiHistoricalOddsReader:
                                     player_id=player_key,
                                     require_active_quotes=require_active_quotes,
                                 )
-                            )
+                            as_of_quotes.extend(quotes)
 
                     if normalized_players:
                         normalized_outcomes[source_outcome_id] = {

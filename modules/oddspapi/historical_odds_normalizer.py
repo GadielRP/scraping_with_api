@@ -84,24 +84,18 @@ class OddspapiHistoricalOddsNormalizer:
         not become the canonical pre-match ``current`` price.
         """
         cutoff_utc = cls._parse_timestamp(current_cutoff_utc)
-        eligible_ticks = [
-            (created_at, quote)
-            for created_at, quote in ticks
-            if cutoff_utc is None or created_at <= cutoff_utc
-        ]
-        if require_active_quotes:
-            candidate_quotes = [
-                quote
-                for _, quote in eligible_ticks
-                if quote.get("active") is not False
-            ]
-        else:
-            candidate_quotes = [quote for _, quote in eligible_ticks]
-        if not candidate_quotes:
+        opening = latest = None
+        for created_at, quote in ticks:
+            if cutoff_utc is not None and created_at > cutoff_utc:
+                break
+            if require_active_quotes and quote.get("active") is False:
+                continue
+            if opening is None:
+                opening = quote
+            latest = quote
+        if latest is None:
             return None
 
-        opening = candidate_quotes[0]
-        latest = candidate_quotes[-1]
         normalized = dict(latest)
         if require_active_quotes:
             # Selected from the active pool; keep the current-odds contract.

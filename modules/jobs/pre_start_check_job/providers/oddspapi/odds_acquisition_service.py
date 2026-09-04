@@ -121,6 +121,12 @@ class OddspapiPreStartOddsAcquisitionService:
         capture_raw_response: bool = False,
         as_of_targets: list[tuple[int, datetime, datetime]] | None = None,
         current_cutoff_utc: datetime | None = None,
+        enable_significant_changes: bool = False,
+        min_change_magnitude_pct: float = 20.0,
+        min_history_hours: float = 24.0,
+        flash_reversal_minutes: float = 3.0,
+        min_price: float = 1.01,
+        kickoff_utc: datetime | None = None,
     ) -> OddsFetchResult:
         return self.fetcher.fetch_odds(
             fixture_id,
@@ -133,6 +139,12 @@ class OddspapiPreStartOddsAcquisitionService:
             capture_raw_response=capture_raw_response,
             as_of_targets=as_of_targets,
             current_cutoff_utc=current_cutoff_utc,
+            enable_significant_changes=enable_significant_changes,
+            min_change_magnitude_pct=min_change_magnitude_pct,
+            min_history_hours=min_history_hours,
+            flash_reversal_minutes=flash_reversal_minutes,
+            min_price=min_price,
+            kickoff_utc=kickoff_utc,
         )
 
     @staticmethod
@@ -218,6 +230,12 @@ class OddspapiPreStartOddsAcquisitionService:
         capture_raw_response: bool = False,
         as_of_targets: list[tuple[int, datetime, datetime]] | None = None,
         current_cutoff_utc: datetime | None = None,
+        enable_significant_changes: bool = False,
+        min_change_magnitude_pct: float = 20.0,
+        min_history_hours: float = 24.0,
+        flash_reversal_minutes: float = 3.0,
+        min_price: float = 1.01,
+        kickoff_utc: datetime | None = None,
     ) -> dict | None:
         for selection in selections:
             requested_bookmakers.add(selection.bookmaker_slug)
@@ -234,6 +252,12 @@ class OddspapiPreStartOddsAcquisitionService:
                 capture_raw_response=capture_raw_response,
                 as_of_targets=as_of_targets,
                 current_cutoff_utc=current_cutoff_utc,
+                enable_significant_changes=enable_significant_changes,
+                min_change_magnitude_pct=min_change_magnitude_pct,
+                min_history_hours=min_history_hours,
+                flash_reversal_minutes=flash_reversal_minutes,
+                min_price=min_price,
+                kickoff_utc=kickoff_utc,
             )
             for outcome in outcomes:
                 payload = self._apply_exchange_historical_result(
@@ -264,6 +288,12 @@ class OddspapiPreStartOddsAcquisitionService:
                     capture_raw_response=capture_raw_response,
                     as_of_targets=as_of_targets,
                     current_cutoff_utc=current_cutoff_utc,
+                    enable_significant_changes=enable_significant_changes,
+                    min_change_magnitude_pct=min_change_magnitude_pct,
+                    min_history_hours=min_history_hours,
+                    flash_reversal_minutes=flash_reversal_minutes,
+                    min_price=min_price,
+                    kickoff_utc=kickoff_utc,
                 )
             except Exception as exc:
                 error = exc
@@ -325,11 +355,21 @@ class OddspapiPreStartOddsAcquisitionService:
             start_time_utc,
             as_of_moments or [],
         )
-        current_cutoff_utc = (
-            OddspapiHistoricalOddsAsOf.start_time_as_utc(start_time_utc)
-            if filter_post_kickoff_ticks
-            else None
+        kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(start_time_utc)
+        enable_significant_changes = bool(
+            getattr(Config, "ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS", False)
         )
+        min_change_magnitude_pct = (
+            ODDSPAPI_PRE_START_SETTINGS.significant_change_min_magnitude_pct
+        )
+        min_history_hours = (
+            ODDSPAPI_PRE_START_SETTINGS.significant_change_min_history_hours
+        )
+        flash_reversal_minutes = (
+            ODDSPAPI_PRE_START_SETTINGS.significant_change_flash_reversal_minutes
+        )
+        min_price = ODDSPAPI_PRE_START_SETTINGS.significant_change_min_price
+        current_cutoff_utc = kickoff_utc if filter_post_kickoff_ticks else None
         save_odds_responses = getattr(
             Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False
         )
@@ -347,6 +387,12 @@ class OddspapiPreStartOddsAcquisitionService:
                 capture_raw_response=capture_raw,
                 as_of_targets=as_of_targets,
                 current_cutoff_utc=current_cutoff_utc,
+                enable_significant_changes=enable_significant_changes,
+                min_change_magnitude_pct=min_change_magnitude_pct,
+                min_history_hours=min_history_hours,
+                flash_reversal_minutes=flash_reversal_minutes,
+                min_price=min_price,
+                kickoff_utc=kickoff_utc,
             )
             historical_missing = historical_result.endpoint_missing
             payload = historical_result.payload
@@ -408,6 +454,12 @@ class OddspapiPreStartOddsAcquisitionService:
                 capture_raw_response=capture_raw,
                 as_of_targets=as_of_targets,
                 current_cutoff_utc=current_cutoff_utc,
+                enable_significant_changes=enable_significant_changes,
+                min_change_magnitude_pct=min_change_magnitude_pct,
+                min_history_hours=min_history_hours,
+                flash_reversal_minutes=flash_reversal_minutes,
+                min_price=min_price,
+                kickoff_utc=kickoff_utc,
             )
 
         if attach_as_of and result.as_of_quotes:

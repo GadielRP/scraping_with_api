@@ -482,6 +482,10 @@ class Config:
     )
     # Reconstruct T-120/T-30/T-5/T-1 from the same live /historical-odds
     # read that produces opening/latest. Shadow compares; persist writes.
+    ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS = _parse_env_bool(
+        'ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS',
+        False,
+    )
     ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW = _parse_env_bool(
         'ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW',
         False,

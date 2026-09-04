@@ -13,6 +13,7 @@ ingestion. Deployment concerns stay in environment-backed Config:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from typing import Sequence
 
 
@@ -31,6 +32,11 @@ class OddspapiPreStartSettings:
 
     # Historical opening quotes must span at least this many minutes to count.
     initial_odds_min_span_minutes: float = 60.0
+
+    significant_change_min_magnitude_pct: float = 15.0
+    significant_change_min_history_hours: float = 20.0
+    significant_change_flash_reversal_minutes: float = 3.0
+    significant_change_min_price: float = 1.01
 
     # Exchange historical request planning.
     exchange_market_keys: tuple[str, ...] = (
@@ -80,6 +86,23 @@ class OddspapiPreStartSettings:
     allowed_market_periods: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        for name in (
+            "significant_change_min_magnitude_pct",
+            "significant_change_min_history_hours",
+            "significant_change_flash_reversal_minutes",
+            "significant_change_min_price",
+        ):
+            value = getattr(self, name)
+            if not isfinite(value):
+                raise ValueError(f"{name} must be finite")
+        if self.significant_change_min_magnitude_pct <= 0:
+            raise ValueError("significant_change_min_magnitude_pct must be positive")
+        if self.significant_change_min_history_hours < 0:
+            raise ValueError("significant_change_min_history_hours must be non-negative")
+        if self.significant_change_flash_reversal_minutes < 0:
+            raise ValueError("significant_change_flash_reversal_minutes must be non-negative")
+        if self.significant_change_min_price < 1.01:
+            raise ValueError("significant_change_min_price must be at least 1.01")
         if self.initial_odds_min_span_minutes < 0:
             raise ValueError("initial_odds_min_span_minutes must be non-negative")
         if self.exchange_max_outcomes_per_event < 0:

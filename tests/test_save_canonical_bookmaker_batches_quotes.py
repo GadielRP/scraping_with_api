@@ -10,8 +10,10 @@ docs/refactors/db-schema-odds-refactor.md (Fase 2).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
+
+import pytest
 
 from sqlalchemy import event as sqlalchemy_event
 
@@ -428,6 +430,69 @@ def test_moment_quotes_write_snapshots_with_their_collected_at_and_dedup(tmp_pat
         assert len(moment_ticks) == 1
         assert float(moment_ticks[0].odds_value) == 1.95
     assert first.snapshots_saved >= 2
+    assert second.snapshots_saved == 1
+
+
+@pytest.mark.parametrize("dynamic_timestamp", [True, False])
+def test_replay_keeps_all_source_ticks_within_one_second(tmp_path, dynamic_timestamp):
+    manager = _make_manager(tmp_path, "subsecond.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    base = datetime(2026, 6, 20, 10)
+    moments = [
+        {
+            "price": price,
+            "collectedAt": base.replace(microsecond=micros) if dynamic_timestamp else base,
+            "createdAt": f"2026-06-20T16:00:00.{micros:06d}Z",
+        }
+        for micros, price in [(100000, 2.4), (200000, 2.9), (900000, 3.5)]
+    ]
+    batches = _batch(current_odds=3.5)
+    batches[0]["bookie_id"] = bookie_id
+    choices = batches[0]["markets"][0]["choices"]
+    choices[0]["momentQuotes"] = moments + [moments[0]]
+    choices.append(dict(choices[0], name="2"))
+    selects = []
+    def record(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT") and "market_choice_snapshots" in statement:
+            selects.append(statement)
+
+    sqlalchemy_event.listen(manager.engine, "before_cursor_execute", record)
+    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
+        first = MarketRepository.save_canonical_bookmaker_batches(event_id, batches, source="oddspapi")
+        second = MarketRepository.save_canonical_bookmaker_batches(event_id, batches, source="oddspapi")
+    sqlalchemy_event.remove(manager.engine, "before_cursor_execute", record)
+    assert first.snapshots_saved == 8  # Two current observations plus 3 ticks per choice.
+    assert second.snapshots_saved == 2  # Ordinary current snapshots are unchanged.
+    assert len(selects) == 2  # One projected lookup per batch, independent of tick count.
+    assert all("market_choice_snapshots.collected_at >=" in sql for sql in selects)
+    assert all("market_choice_snapshots.collected_at <" in sql for sql in selects)
+    with manager.get_session() as session:
+        rows = session.query(MarketChoiceSnapshot).filter(
+            MarketChoiceSnapshot.collected_at >= base,
+            MarketChoiceSnapshot.collected_at < base + timedelta(seconds=1),
+        ).all()
+        assert len(rows) == 6
+        assert len({row.quote_id for row in rows}) == 2
+        assert {row.source_collected_at.microsecond for row in rows} == {100000, 200000, 900000}
+        if dynamic_timestamp:
+            assert all(row.collected_at == row.source_collected_at for row in rows)
+
+
+@pytest.mark.parametrize("missing_first", [True, False])
+def test_moment_dedup_preserves_missing_source_timestamp_wildcard(tmp_path, missing_first):
+    manager = _make_manager(tmp_path, "missing-source.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    moment = {"price": 2.5, "collectedAt": datetime(2026, 6, 20, 10)}
+    source_time = "2026-06-20T16:00:00Z"
+    moment["createdAt"] = None if missing_first else source_time
+    batches = _batch(current_odds=2.5)
+    batches[0]["bookie_id"] = bookie_id
+    batches[0]["markets"][0]["choices"][0]["momentQuotes"] = [moment]
+    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
+        first = MarketRepository.save_canonical_bookmaker_batches(event_id, batches, source="oddspapi")
+        moment["createdAt"] = source_time if missing_first else None
+        second = MarketRepository.save_canonical_bookmaker_batches(event_id, batches, source="oddspapi")
+    assert first.snapshots_saved == 2
     assert second.snapshots_saved == 1
 
 

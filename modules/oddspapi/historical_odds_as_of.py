@@ -7,27 +7,14 @@ traverse raw payloads.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Sequence
+from typing import Sequence
+
+# Re-export the existing public name while keeping the DTO independent of
+# project timezone/configuration for the dynamic domain reducer.
+from modules.oddspapi.historical_odds_quote import HistoricalOddsAsOfQuote
 
 from shared.timezone_utils import convert_local_to_utc, convert_utc_to_local
-
-
-@dataclass(frozen=True)
-class HistoricalOddsAsOfQuote:
-    """One reconstructed observation for a single outcome at one key moment."""
-
-    bookmaker_slug: str
-    source_market_id: str
-    source_outcome_id: str
-    player_id: str
-    minutes_until_start: int
-    price: float
-    created_at: str
-    collected_at: datetime
-    limit: Any = None
-    active: Any = None
 
 
 class OddspapiHistoricalOddsAsOf:
@@ -154,15 +141,7 @@ class OddspapiHistoricalOddsAsOf:
         """Select last-in-force quotes from an already-ordered tick series."""
         if not targets:
             return []
-        if require_active_quotes:
-            filtered = [
-                (created_at, quote)
-                for created_at, quote in ticks
-                if quote.get("active") is not False
-            ]
-        else:
-            filtered = list(ticks)
-        if not filtered:
+        if not ticks:
             return []
 
         selected: list[HistoricalOddsAsOfQuote] = []
@@ -170,8 +149,10 @@ class OddspapiHistoricalOddsAsOf:
         current: tuple[datetime, dict] | None = None
         ordered_targets = sorted(targets, key=lambda item: item[1])
         for minutes, target_utc, collected_at in ordered_targets:
-            while tick_index < len(filtered) and filtered[tick_index][0] <= target_utc:
-                current = filtered[tick_index]
+            while tick_index < len(ticks) and ticks[tick_index][0] <= target_utc:
+                tick = ticks[tick_index]
+                if not require_active_quotes or tick[1].get("active") is not False:
+                    current = tick
                 tick_index += 1
             if current is None:
                 continue

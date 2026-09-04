@@ -98,6 +98,7 @@ copies/
 !docs/refactors/db-schema-odds-refactor.md
 !docs/refactors/db-schema-odds-refactor-phase-4b.md
 !docs/pre-start-closing-minute-contract-mismatch.md
+!docs/odds-significant-change-snapshots.md
 !docs/pillars/mining-persistence.md
 
 test_*.py
@@ -108,6 +109,12 @@ odds_papi/*.json
 # Phase 1 OddsPapi offline ingestion verification
 !tests/
 tests/*
+!tests/__init__.py
+!tests/test_historical_odds_change_detector.py
+!tests/test_historical_odds_reader_change_fallback.py
+!tests/test_odds_acquisition_service.py
+!tests/test_exchange_historical_fetch_executor.py
+!tests/test_odds_batch_processor_exchange_fanout_wiring.py
 !tests/test_oddspapi_fixture_discovery_recovery.py
 !tests/test_pre_start_memory_limits.py
 !tests/test_key_moment_trajectory_loading.py

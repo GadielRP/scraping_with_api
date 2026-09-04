@@ -83,6 +83,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
         current_cutoff_utc: datetime | None = None,
+        enable_significant_changes: bool = False,
+        min_change_magnitude_pct: float = 20.0,
+        min_history_hours: float = 24.0,
+        flash_reversal_minutes: float = 3.0,
+        min_price: float = 1.01,
+        kickoff_utc: datetime | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         if not selections:
             return []
@@ -108,6 +114,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 capture_raw_response=capture_raw_response,
                 as_of_targets=as_of_targets,
                 current_cutoff_utc=current_cutoff_utc,
+                enable_significant_changes=enable_significant_changes,
+                min_change_magnitude_pct=min_change_magnitude_pct,
+                min_history_hours=min_history_hours,
+                flash_reversal_minutes=flash_reversal_minutes,
+                min_price=min_price,
+                kickoff_utc=kickoff_utc,
             )
         return self._fetch_with_worker_pool(
             fixture_id,
@@ -119,6 +131,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
             worker_count=worker_count,
             as_of_targets=as_of_targets,
             current_cutoff_utc=current_cutoff_utc,
+            enable_significant_changes=enable_significant_changes,
+            min_change_magnitude_pct=min_change_magnitude_pct,
+            min_history_hours=min_history_hours,
+            flash_reversal_minutes=flash_reversal_minutes,
+            min_price=min_price,
+            kickoff_utc=kickoff_utc,
         )
 
     def _fetch_one(
@@ -133,6 +151,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
         current_cutoff_utc: datetime | None = None,
+        enable_significant_changes: bool = False,
+        min_change_magnitude_pct: float = 20.0,
+        min_history_hours: float = 24.0,
+        flash_reversal_minutes: float = 3.0,
+        min_price: float = 1.01,
+        kickoff_utc: datetime | None = None,
     ) -> ExchangeHistoricalFetchOutcome:
         try:
             result = fetcher.fetch_odds(
@@ -146,6 +170,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 capture_raw_response=capture_raw_response,
                 as_of_targets=as_of_targets,
                 current_cutoff_utc=current_cutoff_utc,
+                enable_significant_changes=enable_significant_changes,
+                min_change_magnitude_pct=min_change_magnitude_pct,
+                min_history_hours=min_history_hours,
+                flash_reversal_minutes=flash_reversal_minutes,
+                min_price=min_price,
+                kickoff_utc=kickoff_utc,
             )
             return ExchangeHistoricalFetchOutcome(selection=selection, result=result)
         except Exception as exc:  # noqa: BLE001 - surfaced for caller bookkeeping/logging
@@ -164,6 +194,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
         current_cutoff_utc: datetime | None = None,
+        enable_significant_changes: bool = False,
+        min_change_magnitude_pct: float = 20.0,
+        min_history_hours: float = 24.0,
+        flash_reversal_minutes: float = 3.0,
+        min_price: float = 1.01,
+        kickoff_utc: datetime | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         client = self._client_factory(key_scheduler=self._scheduler())
         fetcher = self._fetcher_factory(client)
@@ -179,6 +215,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
                     capture_raw_response=capture_raw_response,
                     as_of_targets=as_of_targets,
                     current_cutoff_utc=current_cutoff_utc,
+                    enable_significant_changes=enable_significant_changes,
+                    min_change_magnitude_pct=min_change_magnitude_pct,
+                    min_history_hours=min_history_hours,
+                    flash_reversal_minutes=flash_reversal_minutes,
+                    min_price=min_price,
+                    kickoff_utc=kickoff_utc,
                 )
                 for selection in selections
             ]
@@ -199,6 +241,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
         capture_raw_response: bool = False,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] | None = None,
         current_cutoff_utc: datetime | None = None,
+        enable_significant_changes: bool = False,
+        min_change_magnitude_pct: float = 20.0,
+        min_history_hours: float = 24.0,
+        flash_reversal_minutes: float = 3.0,
+        min_price: float = 1.01,
+        kickoff_utc: datetime | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         chunks = [selections[index::worker_count] for index in range(worker_count)]
 
@@ -217,6 +265,12 @@ class OddspapiExchangeHistoricalFetchExecutor:
                         capture_raw_response=capture_raw_response,
                         as_of_targets=as_of_targets,
                         current_cutoff_utc=current_cutoff_utc,
+                        enable_significant_changes=enable_significant_changes,
+                        min_change_magnitude_pct=min_change_magnitude_pct,
+                        min_history_hours=min_history_hours,
+                        flash_reversal_minutes=flash_reversal_minutes,
+                        min_price=min_price,
+                        kickoff_utc=kickoff_utc,
                     )
                     for selection in chunks[worker_index]
                 ]

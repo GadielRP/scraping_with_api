@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import and_
 from sqlalchemy.orm import selectinload
@@ -114,56 +114,19 @@ class MarketRepository:
         return collected_at.replace(microsecond=0)
 
     @staticmethod
-    def _existing_snapshot_keys(session, *, event_id: int, source: str) -> set[tuple[int, datetime]]:
-        rows = (
-            session.query(
-                MarketChoiceSnapshot.quote_id,
-                MarketChoiceSnapshot.collected_at,
-            )
-            .join(
-                MarketChoiceQuote,
-                MarketChoiceSnapshot.quote_id == MarketChoiceQuote.quote_id,
-            )
-            .join(MarketChoice, MarketChoiceQuote.choice_id == MarketChoice.choice_id)
-            .join(Market, MarketChoice.market_id == Market.market_id)
-            .filter(
-                Market.event_id == int(event_id),
-                MarketChoiceQuote.source == source,
-            )
-            .all()
-        )
-        keys: set[tuple[int, datetime]] = set()
-        for quote_id, collected_at in rows:
-            if quote_id is None or collected_at is None:
-                continue
-            keys.add(
-                (
-                    int(quote_id),
-                    MarketRepository._snapshot_collected_at_key(collected_at),
-                )
-            )
-        return keys
-
-    @staticmethod
     def _existing_moment_snapshot_source_keys(
         session,
         *,
         event_id: int,
         source: str,
-    ) -> dict[tuple[int, datetime], datetime | None]:
-        """Load existing moment-snapshot dedup keys keyed by source_collected_at.
+        earliest: datetime,
+        latest: datetime,
+    ) -> dict[tuple[int, datetime], set[datetime | None]]:
+        """Load all source ticks per second, restricted to the incoming interval.
 
-        Used exclusively by the momentQuotes persist section of
-        save_canonical_bookmaker_batches so that two runs for the same
-        theoretical moment (same ``collected_at = start_time - delta``) are
-        only considered duplicates when the bookmaker reported the same tick
-        (same ``source_collected_at`` / ``createdAt``).  A price that changed
-        by a few milliseconds will have a different ``source_collected_at`` and
-        will therefore produce a new snapshot row.
-
-        Returns a dict ``{(quote_id, collected_at_key): source_collected_at}``
-        where ``source_collected_at`` may be ``None`` when the original row
-        was persisted without a bookmaker timestamp.
+        A single value per key loses earlier ticks within the same second and
+        makes their next replay insert duplicates. None remains a wildcard for
+        legacy rows without provider timestamps.
         """
         rows = (
             session.query(
@@ -180,10 +143,12 @@ class MarketRepository:
             .filter(
                 Market.event_id == int(event_id),
                 MarketChoiceQuote.source == source,
+                MarketChoiceSnapshot.collected_at >= earliest,
+                MarketChoiceSnapshot.collected_at < latest + timedelta(seconds=1),
             )
-            .all()
+            .yield_per(1000)
         )
-        result: dict[tuple[int, datetime], datetime | None] = {}
+        result: dict[tuple[int, datetime], set[datetime | None]] = {}
         for quote_id, collected_at, source_collected_at in rows:
             if quote_id is None or collected_at is None:
                 continue
@@ -191,7 +156,7 @@ class MarketRepository:
                 int(quote_id),
                 MarketRepository._snapshot_collected_at_key(collected_at),
             )
-            result[key] = source_collected_at
+            result.setdefault(key, set()).add(source_collected_at)
         return result
 
     @staticmethod
@@ -550,23 +515,39 @@ class MarketRepository:
                 source
             )
             existing_snapshot_keys = set()
-            moment_snapshot_source_keys: dict[tuple[int, datetime], datetime | None] = {}
-            has_moment_quotes = any(
-                isinstance(choice_data.get("momentQuotes"), list)
-                and choice_data.get("momentQuotes")
-                for _, _, choice_data, _, _, _ in prepared_choices
-            )
-            if has_moment_quotes:
-                existing_snapshot_keys = MarketRepository._existing_snapshot_keys(
-                    session,
-                    event_id=event_id,
-                    source=source,
-                )
+            moment_snapshot_source_keys: dict[
+                tuple[int, datetime], set[datetime | None]
+            ] = {}
+            earliest_moment = latest_moment = None
+            for _, _, choice_data, _, _, _ in prepared_choices:
+                moments = choice_data.get("momentQuotes")
+                if not isinstance(moments, list):
+                    continue
+                for moment in moments:
+                    if not isinstance(moment, dict):
+                        continue
+                    moment_at = MarketRepository._parse_source_datetime(
+                        moment.get("collectedAt")
+                    )
+                    if moment_at is None:
+                        continue
+                    moment_at = MarketRepository._snapshot_collected_at_key(moment_at)
+                    earliest_moment = (
+                        moment_at if earliest_moment is None
+                        else min(earliest_moment, moment_at)
+                    )
+                    latest_moment = (
+                        moment_at if latest_moment is None
+                        else max(latest_moment, moment_at)
+                    )
+            if earliest_moment is not None:
                 moment_snapshot_source_keys = (
                     MarketRepository._existing_moment_snapshot_source_keys(
                         session,
                         event_id=event_id,
                         source=source,
+                        earliest=earliest_moment,
+                        latest=latest_moment,
                     )
                 )
             for market, choice, choice_data, current_odds, initial_odds, initial_was_set in prepared_choices:
@@ -761,20 +742,20 @@ class MarketRepository:
                                 moment_collected_at
                             ),
                         )
+                        incoming_src_ts_for_write = MarketRepository._parse_source_datetime(
+                            moment_quote.get("createdAt"),
+                            convert_to_project_timezone=uses_oddspapi_source_time,
+                        )
                         if snapshot_key in moment_snapshot_source_keys:
                             # A snapshot for this theoretical moment already exists.
                             # Only skip if the bookmaker timestamp is identical
                             # (same tick = same price). A different source_collected_at
                             # means the bookmaker updated the price; insert a new row.
-                            incoming_src_ts = MarketRepository._parse_source_datetime(
-                                moment_quote.get("createdAt"),
-                                convert_to_project_timezone=uses_oddspapi_source_time,
-                            )
-                            existing_src_ts = moment_snapshot_source_keys[snapshot_key]
+                            existing_src_times = moment_snapshot_source_keys[snapshot_key]
                             if (
-                                incoming_src_ts is None
-                                or existing_src_ts is None
-                                or incoming_src_ts == existing_src_ts
+                                incoming_src_ts_for_write is None
+                                or None in existing_src_times
+                                or incoming_src_ts_for_write in existing_src_times
                             ):
                                 # No bookmaker timestamp available on one side,
                                 # or both timestamps match: same tick, skip.
@@ -783,10 +764,6 @@ class MarketRepository:
                         elif snapshot_key in existing_snapshot_keys:
                             # Covered by the regular (non-moment) snapshot dedup.
                             continue
-                        incoming_src_ts_for_write = MarketRepository._parse_source_datetime(
-                            moment_quote.get("createdAt"),
-                            convert_to_project_timezone=uses_oddspapi_source_time,
-                        )
                         MarketChoiceSnapshotWriter.append(
                             session,
                             quote=moment_quote_row,
@@ -804,8 +781,9 @@ class MarketRepository:
                                 else None
                             ),
                         )
-                        existing_snapshot_keys.add(snapshot_key)
-                        moment_snapshot_source_keys[snapshot_key] = incoming_src_ts_for_write
+                        moment_snapshot_source_keys.setdefault(snapshot_key, set()).add(
+                            incoming_src_ts_for_write
+                        )
                         result.snapshots_saved += 1
 
             MarketRepository._demote_superseded_mainlines(

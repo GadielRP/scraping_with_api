@@ -2,7 +2,7 @@
 
 > Canonical implementation guide for the provider odds path started by the pre-start job.
 >
-> Last verified against the repository: **2026-08-20**.
+> Last verified against the repository: **2026-09-03**.
 >
 > Scope: SofaScore and OddspAPI odds acquisition/ingestion under `modules/jobs/pre_start_check_job/`, the shared orchestration contract in `modules/odds_ingestion/`, and the shared OddspAPI API-key/quota control plane under `modules/oddspapi/`. OddsPortal is a parallel opening-only path launched from the same job (see [`oddsportal_scraping.md`](oddsportal_scraping.md) if present).
 
@@ -543,7 +543,7 @@ Configured key moments are `PRE_START_ODDS_MOMENTS` (default `[120, 30, 5, 1, 0]
 With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` and `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`:
 1. OddspAPI fetches `/odds` in live at $T-120, T-30, T-5$, populating `oddspapi_mainline_outcome_cache` and persisting canonical quotes and snapshots.
 2. $T-1$ is skipped in real time.
-3. At $T-0$, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs snapshots for `[120, 30, 5, 1, 0]`. Deduplication uses `source_collected_at` (the bookmaker's price change timestamp): $T-1$ is inserted for the first time, and earlier moments ($120, 30, 5$) are only appended if the bookmaker reported a price update.
+3. At $T-0$, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs historical observations. When `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS=true` and an explicit kickoff is available, each sanitized series uses the adaptive significant-change detector. A series with at least `significant_change_min_history_hours` of history emits only selected changes at or above `significant_change_min_magnitude_pct`; its initial anchor is not emitted. A series below that boundary falls back to the configured moments `[120, 30, 5, 1, 0]` and selects the last valid price in force at each moment. Opening and current canonical prices are preserved separately in both strategies. Deduplication uses `source_collected_at` (the bookmaker's price-change timestamp), so repeated executions do not reinsert the same moment observation.
 
 HTTP `/odds` is **not** filtered by market key. The client sends `fixtureId`, `bookmakers`, `oddsFormat=decimal`, `language`, `verbosity=3`. Which markets survive later is mapping + persist policy. `ODDSPAPI_DEFAULT_MARKET_KEYS` is a discovery default, not this persist allowlist.
 
@@ -564,7 +564,20 @@ Independent of `CLOSING_ONLY` (the skip does not apply to live).
 2. Call `/historical-odds` only (no live `/odds`).
 3. When `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS=true` (default), convert the canonical event start (stored as Mexico-local naive time despite the legacy `start_time_utc` name) to UTC and pass it as the inclusive historical-current cutoff. Opening/current normalization ignores every tick with `createdAt > kickoff`. With the toggle disabled, no cutoff is passed and selection returns to the unbounded latest tick.
 4. Ingest with `use_mainline_cache=True` so choices can be tagged `mainLine` from cache.
-5. If `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` is on (default `true`), reconstructed key-moment prices for all configured non-negative moments (e.g. T-120, T-30, T-5, T-1, T-0) travel as `momentQuotes`. In `MarketRepository.save_canonical_bookmaker_batches`, snapshot deduplication checks `_existing_moment_snapshot_source_keys`: if a snapshot exists at that theoretical moment and its `source_collected_at` matches the bookmaker's `createdAt`, it is skipped; if the bookmaker changed the price, a new snapshot row is recorded.
+5. If `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` is on (default `true`), historical observations travel as `momentQuotes`. With significant-change mode enabled, a series with sufficient history uses only detector-selected changes; a series without sufficient history uses the configured fixed moments. If the flag is enabled without an explicit kickoff, the reader logs the reason and keeps the classic fixed-moment path. In `MarketRepository.save_canonical_bookmaker_batches`, snapshot deduplication checks `_existing_moment_snapshot_source_keys`: if a snapshot exists at that theoretical moment and its `source_collected_at` matches the bookmaker's `createdAt`, it is skipped; if the bookmaker changed the price, a new snapshot row is recorded.
+
+### 6.1.3 Historical significant-change strategy and fallback
+
+`OddspapiHistoricalOddsReader` performs two independent reductions for every bookmaker/market/outcome/player series:
+
+1. The normalizer keeps the canonical opening and latest valid pre-kickoff prices. These become `initialDecimalValue` and `decimalValue`, and are persisted as the ordinary opening/current snapshots.
+2. The as-of reduction produces `momentQuotes`. With `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS=true`, the reader sanitizes each ordered series once (valid timestamp, finite price strictly greater than `significant_change_min_price`, active unless explicitly inactive, and `createdAt <= kickoff`).
+
+For a sanitized series whose span from its first valid tick to kickoff is at least `significant_change_min_history_hours`, `OddspapiHistoricalOddsChangeDetector` starts from the first price as an adaptive anchor and returns **only** changes whose absolute movement from the current anchor reaches `significant_change_min_magnitude_pct`. A selected change moves the anchor forward. The initial anchor is not a `momentQuote`. Candidates before `kickoff - significant_change_flash_reversal_minutes` must survive the complete reversal window; candidates in the closing window are replaced by the latest valid tick through kickoff and are emitted only when that tick is significant. No post-kickoff tick is used.
+
+If the series has no valid ticks, its as-of selection is empty. If its history span is shorter than the configured minimum, the detector returns control to `OddspapiHistoricalOddsAsOf`, which uses the configured non-negative moments (currently `[120, 30, 5, 1, 0]`) and selects the last valid price in force at each theoretical target. This fallback is intentionally not a change detector: it can emit repeated prices at several moments. It applies per series, so one response may contain dynamic `momentQuotes` for long series and fixed-moment fallback quotes for short series.
+
+`as_of_quotes` therefore contains detector-selected changes for sufficient series, or fallback moment observations for short series. It does not replace the normalized opening/current fields. The adapter attaches these values under `momentQuotes`; the repository persists ordinary opening/current snapshots and the attached moment snapshots independently.
 
 Other OddspAPI skips: `ENABLE_ODDSPAPI_PRE_START_ODDS`, missing API key, missing fixture mapping, `has_odds=False`, `max_events`, 404 / empty payload, tracked-competition provider gate.
 
@@ -583,7 +596,7 @@ It does **not** write prices onto `market_choices.initial_odds` / `current_odds`
 | Canonical market shell | `markets` | Every mapped, complete market that survives adapter + bookie resolve. |
 | Canonical choice identity | `market_choices` | One row per `(market_id, choice_name)`. Name comes from `market_outcome_source_mappings.canonical_choice_name` (`1`/`x`/`2`, `over`/`under`, etc.). |
 | Current price instrument | `market_choice_quotes` | One row per `(choice_id, source='oddspapi', exchange_side, exchange_level)`. |
-| Price ticks | `market_choice_snapshots` | Opening tick when `initialPrice` is first set; current tick each ingest; exchange back/lay ticks; optional `momentQuotes`. |
+| Price ticks | `market_choice_snapshots` | Ordinary opening/current ticks; exchange back/lay ticks; detector-selected significant changes or configured-moment fallback `momentQuotes`. |
 | Mainline lookup for live | `oddspapi_mainline_outcome_cache` | On successful `/odds` only. Not a price table. |
 | 404 bookkeeping | `event_source_mappings.has_odds=false` | Confirmed missing `/odds` endpoint (not live historical 404s). |
 
@@ -845,6 +858,11 @@ The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a calle
 | `ENABLE_PRE_START_T_MINUS_ONE_JOB` | `false` | `false` = disables dedicated T-1 critical scheduler job. Minute 1 stays in `PRE_START_ODDS_MOMENTS` for T-0 as-of reconstruction. |
 | `ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS` | `true` | Extra Betfair historical at T-120 **if** that moment actually requests. Skipped for tracked competitions. |
 | `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | `true` | Reconstructs and persists key moments (T-1, T-0, and reconciles T-120/30/5) from live `/historical-odds`. |
+| `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS` | `false` by default | Selects the adaptive significant-change strategy for live historical ingestion when an explicit kickoff is present. It does not enable persistence by itself. |
+| `significant_change_min_magnitude_pct` | `20.0` | Minimum absolute movement from the adaptive anchor. Must be finite and positive. |
+| `significant_change_min_history_hours` | `24.0` | Minimum sanitized history span from first valid tick to kickoff. Must be finite and non-negative. Shorter series use the configured fixed-moment fallback. |
+| `significant_change_flash_reversal_minutes` | `3.0` | Reversal confirmation window for candidates before the closing window. Must be finite and non-negative. |
+| `significant_change_min_price` | `1.01` | Strict price floor for detector sanitation (`price > value`). Must be finite and at least `1.01`. |
 | `PILLAR_PIPELINE_EXECUTION_MOMENTS` | `[5]` | Only executes pillar calculations for events at the specified key moments (default: `[5]`). Empty = all configured moments. |
 | `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` | `0` | `0` = no cap. |
 | `ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY` | `true` | Skip untracked competitions at the OddspAPI entrypoint. |
@@ -902,6 +920,11 @@ Write ownership (`market_write_policy_for_source`):
 | `ODDSPAPI_PRE_START_CLOSING_ONLY` | When `false` (default), OddspAPI fetches `/odds` at positive moments (T-120, T-30, T-5). |
 | `ENABLE_PRE_START_T_MINUS_ONE_JOB` | When `false` (default), disables the dedicated T-1 critical scheduler job. |
 | `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | When `true` (default), reconstructs and persists all non-negative key-moment snapshots at T-0 with source dedup. |
+| `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS` | When `true`, uses adaptive significant-change `momentQuotes` for series meeting the configured history span; shorter series fall back to `PRE_START_ODDS_MOMENTS`. Requires an explicit kickoff and does not enable persistence by itself. |
+| `significant_change_min_magnitude_pct` | Minimum finite positive percentage movement from the current anchor (default `20.0`). |
+| `significant_change_min_history_hours` | Minimum finite non-negative span from the first sanitized tick to kickoff (default `24.0`); shorter series use fixed-moment fallback. |
+| `significant_change_flash_reversal_minutes` | Finite non-negative reversal window (default `3.0`). |
+| `significant_change_min_price` | Finite price floor, inclusive configuration with strict runtime comparison `price > value` (default `1.01`). |
 | `PILLAR_PIPELINE_EXECUTION_MOMENTS` | Key moments at which the pillar pipeline is allowed to execute (default `[5]`). |
 | `ODDSPAPI_PRE_START_*` | Bookmakers, exchange budgets, workers, market filters, persist-main-line-only. |
 | `ODDSPORTAL_SCRAPING_ENABLED` | OddsPortal worker on/off. |
