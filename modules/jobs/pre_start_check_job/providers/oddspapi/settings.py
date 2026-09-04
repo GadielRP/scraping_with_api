@@ -25,9 +25,10 @@ class OddspapiPreStartSettings:
     # retained only as the default label/fallback for legacy callers.
     default_endpoint: str = "odds"
 
-    # Minutes-until-start key moments where both /odds and /historical-odds
-    # are fetched so opening prices can be merged from the historical
-    # response. Also used as the exchange historical moment list.
+    # Minutes-until-start key moments where /historical-odds is fetched by the
+    # classic non-live opening-enrichment flow. An empty tuple intentionally
+    # disables that second request. Also used as the exchange historical
+    # moment list.
     opening_historical_moments: tuple[int, ...] = (5,)
 
     # Historical opening quotes must span at least this many minutes to count.
@@ -109,15 +110,14 @@ class OddspapiPreStartSettings:
             raise ValueError("exchange_max_outcomes_per_event must be non-negative")
         if self.exchange_max_requests_per_run < 0:
             raise ValueError("exchange_max_requests_per_run must be non-negative")
-        if not self.opening_historical_moments:
-            raise ValueError("opening_historical_moments cannot be empty")
-
     def resolved_opening_historical_moments(
         self,
         moments: Sequence[int] | None = None,
     ) -> list[int]:
         """Return an explicit override, otherwise the versioned setting."""
-        source = moments or self.opening_historical_moments
+        # ``None`` means "use the versioned setting"; an empty sequence is an
+        # explicit request to disable classic opening enrichment.
+        source = self.opening_historical_moments if moments is None else moments
         return [int(moment) for moment in source if moment is not None]
 
     def as_list(self, values: Sequence[str] | None) -> list[str] | None:

@@ -142,3 +142,10 @@ def test_setting_zero_boundaries():
         OddspapiPreStartSettings(significant_change_min_magnitude_pct=0)
     with pytest.raises(ValueError):
         OddspapiPreStartSettings(significant_change_min_price=1)
+
+
+def test_empty_opening_historical_moments_disable_classic_enrichment():
+    settings = OddspapiPreStartSettings(opening_historical_moments=())
+
+    assert settings.resolved_opening_historical_moments() == []
+    assert settings.resolved_opening_historical_moments([]) == []
