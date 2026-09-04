@@ -121,8 +121,11 @@ def run_oddspapi_pre_start_odds(
     dry_run: bool = False,
     tracked_competition_ids: Collection[int] | None = None,
 ) -> OddspapiPreStartOddsSummary:
-    """Ingest mapped Oddspapi odds without affecting the main pre-start job."""
-    logger.info("🟡 Oddspapi pre-start odds starting...")
+    has_active_candidates = any(
+        e.get("should_extract_odds") for e in events_to_process or []
+    )
+    if has_active_candidates:
+        logger.info("🟡 Oddspapi pre-start odds starting...")
     events_to_process = restrict_candidates_to_tracked_competitions(
         events_to_process,
         tracked_competition_ids,
@@ -145,10 +148,30 @@ def run_oddspapi_pre_start_odds(
     candidates = select_oddspapi_pre_start_candidates(events_to_process, source_states=source_states)
     if not candidates:
         summary = OddspapiPreStartOddsSummary()
-        _log_summary(summary)
+        if has_active_candidates:
+            _log_summary(summary)
         return summary
 
-    logger.info("🟡 START Oddspapi pre-start odds processing (%s candidates)", len(candidates))
+    tracked_set = (
+        set(tracked_competition_ids)
+        if tracked_competition_ids is not None
+        else None
+    )
+    tracked_cands = (
+        [c for c in candidates if (c.event_data.get("competition_id") in tracked_set)]
+        if tracked_set is not None
+        else candidates
+    )
+    untracked_cands = (
+        [c for c in candidates if (c.event_data.get("competition_id") not in tracked_set)]
+        if tracked_set is not None
+        else []
+    )
+
+    if tracked_cands:
+        logger.info("🟡 [TRACKED] START Oddspapi pre-start odds processing (%s candidates)", len(tracked_cands))
+    if untracked_cands:
+        logger.info("⚪ [UNTRACKED] START Oddspapi pre-start odds processing (%s candidates)", len(untracked_cands))
 
     api_keys = configured_api_keys()
     if not api_keys:
@@ -275,7 +298,10 @@ def run_oddspapi_pre_start_odds(
         if count - diagnostics_before.get(diagnostic, 0) > 0
     }
     _log_summary(summary)
-    logger.info("🟡 END Oddspapi pre-start odds processing")
+    if tracked_cands:
+        logger.info("🟡 [TRACKED] END Oddspapi pre-start odds processing")
+    if untracked_cands:
+        logger.info("⚪ [UNTRACKED] END Oddspapi pre-start odds processing")
     if debug_mode:
         for result in summary.results:
             logger.debug(

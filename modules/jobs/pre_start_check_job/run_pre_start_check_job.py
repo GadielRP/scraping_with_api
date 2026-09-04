@@ -117,11 +117,22 @@ def _maintain_recently_started_events(
     )
 
     if Config.TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY:
-        timestamp_tracked_ids = set(tracked_competition_ids())
+        timestamp_tracked_ids = tracked_competition_ids()
+        include_all_tennis = getattr(
+            Config, "TIMESTAMP_CORRECTIONS_INCLUDE_ALL_TENNIS", True
+        )
         timestamp_candidates = [
             event
             for event in timestamp_candidates
             if event.get("competition_id") in timestamp_tracked_ids
+            or (
+                include_all_tennis
+                and (
+                    event.get("sport")
+                    or (event.get("event_data") or {}).get("sport")
+                )
+                in ["Tennis", "Tennis Doubles"]
+            )
         ]
 
     logger.info(
@@ -150,7 +161,7 @@ def _maintain_recently_started_events(
     ]
 
     if Config.INTRADAY_RESULT_FRESHNESS_TRACKED_COMPETITIONS_ONLY:
-        freshness_tracked_ids = set(tracked_competition_ids())
+        freshness_tracked_ids = tracked_competition_ids()
         result_freshness_candidates = [
             event
             for event in result_freshness_candidates
@@ -278,11 +289,28 @@ def run_pre_start_odds_moments(
     restrict_oddspapi_odds_extraction = (
         Config.ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY
     )
-    tracked_ids = set(tracked_competition_ids())
+    tracked_ids = tracked_competition_ids()
+    include_all_tennis = getattr(
+        Config, "TIMESTAMP_CORRECTIONS_INCLUDE_ALL_TENNIS", True
+    )
 
     if restrict_timestamp_corrections:
-        ts_events = [e for e in upcoming_events if e.get("competition_id") in tracked_ids]
-        no_ts_events = [e for e in upcoming_events if e.get("competition_id") not in tracked_ids]
+        def _is_ts_candidate(e: dict) -> bool:
+            if e.get("competition_id") in tracked_ids:
+                return True
+            if include_all_tennis:
+                sport = e.get("sport") or (e.get("event_data") or {}).get("sport")
+                if sport in ["Tennis", "Tennis Doubles"] and timings.get(e.get("id")) == 5:
+                    return True
+            return False
+
+        ts_events = []
+        no_ts_events = []
+        for e in upcoming_events:
+            if _is_ts_candidate(e):
+                ts_events.append(e)
+            else:
+                no_ts_events.append(e)
     else:
         ts_events = upcoming_events
         no_ts_events = []

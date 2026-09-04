@@ -135,11 +135,13 @@ def run_sofascore_pre_start_odds(
     ]
 
     summaries: list[ProviderOddsSummary] = []
+    has_active_tracked = any(e.get("should_extract_odds") for e in tracked_events)
     if tracked_events:
-        logger.info(
-            "🔵 [TRACKED] START SofaScore odds extraction (%s candidates)",
-            len(tracked_events),
-        )
+        if has_active_tracked:
+            logger.info(
+                "🔵 [TRACKED] START SofaScore odds extraction (%s candidates)",
+                len(tracked_events),
+            )
         s_tracked = run_provider_odds_phase(
             tracked_events,
             source_states,
@@ -149,19 +151,22 @@ def run_sofascore_pre_start_odds(
             ingest=_ingest_sofascore_odds,
             on_ingested=enrich_tennis_observations,
         )
-        logger.info(
-            "🔵 [TRACKED] END SofaScore odds extraction (ingested=%s skipped=%s failed=%s)",
-            s_tracked.events_ingested,
-            s_tracked.events_skipped,
-            s_tracked.events_failed,
-        )
+        if has_active_tracked:
+            logger.info(
+                "🔵 [TRACKED] END SofaScore odds extraction (ingested=%s skipped=%s failed=%s)",
+                s_tracked.events_ingested,
+                s_tracked.events_skipped,
+                s_tracked.events_failed,
+            )
         summaries.append(s_tracked)
 
+    has_active_untracked = any(e.get("should_extract_odds") for e in untracked_events)
     if untracked_events:
-        logger.info(
-            "⚪ [UNTRACKED] START SofaScore odds extraction (%s candidates)",
-            len(untracked_events),
-        )
+        if has_active_untracked:
+            logger.info(
+                "⚪ [UNTRACKED] START SofaScore odds extraction (%s candidates)",
+                len(untracked_events),
+            )
         s_untracked = run_provider_odds_phase(
             untracked_events,
             source_states,
@@ -171,12 +176,13 @@ def run_sofascore_pre_start_odds(
             ingest=_ingest_sofascore_odds,
             on_ingested=enrich_tennis_observations,
         )
-        logger.info(
-            "⚪ [UNTRACKED] END SofaScore odds extraction (ingested=%s skipped=%s failed=%s)",
-            s_untracked.events_ingested,
-            s_untracked.events_skipped,
-            s_untracked.events_failed,
-        )
+        if has_active_untracked:
+            logger.info(
+                "⚪ [UNTRACKED] END SofaScore odds extraction (ingested=%s skipped=%s failed=%s)",
+                s_untracked.events_ingested,
+                s_untracked.events_skipped,
+                s_untracked.events_failed,
+            )
         summaries.append(s_untracked)
 
     summary = _merge_summaries(*summaries) if summaries else ProviderOddsSummary()

@@ -253,6 +253,10 @@ class Config:
         'TIMESTAMP_CORRECTION_TRACKED_COMPETITIONS_ONLY',
         True,
     )
+    TIMESTAMP_CORRECTIONS_INCLUDE_ALL_TENNIS = _parse_env_bool(
+        'TIMESTAMP_CORRECTIONS_INCLUDE_ALL_TENNIS',
+        True,
+    )
     PRE_START_CLOSING_ODDS_MINUTE = int(
         os.getenv("PRE_START_CLOSING_ODDS_MINUTE", "1")
     )
