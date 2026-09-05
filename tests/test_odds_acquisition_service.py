@@ -109,13 +109,20 @@ class _RecordingFetcher:
     def __init__(self):
         self.calls = []
 
+    @staticmethod
+    def _result(payload, kwargs):
+        return OddsFetchResult.from_payload(
+            payload,
+            raw_payload=payload if kwargs.get("capture_raw_response") else None,
+        )
+
     def fetch_odds(self, fixture_id, **kwargs):
         self.calls.append({"fixture_id": fixture_id, **kwargs})
         endpoint = kwargs.get("endpoint")
         if endpoint == ODDSPAPI_CURRENT_ODDS_ENDPOINT:
-            return OddsFetchResult.from_payload(_current_payload())
+            return self._result(_current_payload(), kwargs)
         if kwargs.get("outcome_id") is not None:
-            return OddsFetchResult.from_payload(
+            return self._result(
                 {
                     "fixtureId": "fixture-1",
                     "sportId": "10",
@@ -139,9 +146,10 @@ class _RecordingFetcher:
                             }
                         }
                     },
-                }
+                },
+                kwargs,
             )
-        return OddsFetchResult.from_payload(_historical_payload())
+        return self._result(_historical_payload(), kwargs)
 
 
 class _FakeMainlineCache:
@@ -282,6 +290,68 @@ def test_forced_significant_change_overrides_global_flag(monkeypatch):
         ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
     ]
     assert fetcher.calls[1]["enable_significant_changes"] is True
+
+
+def test_forced_significant_change_retains_debug_payloads_for_both_endpoints(monkeypatch):
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False)
+    fetcher = _RecordingFetcher()
+    service = OddspapiPreStartOddsAcquisitionService(
+        fetcher=fetcher,
+        mainline_cache_repository=_FakeMainlineCache,
+    )
+
+    result = service.acquire(
+        "fixture-1",
+        **_acquire_kwargs(
+            minutes_until_start=5,
+            is_live=False,
+            start_time_utc=KICKOFF,
+            exchange_bookmakers=None,
+            current_odds_available=False,
+            debug_mode=True,
+            force_significant_changes=True,
+        ),
+    )
+
+    assert [response.endpoint for response in result.debug_responses] == [
+        ODDSPAPI_CURRENT_ODDS_ENDPOINT,
+        ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
+    ]
+
+
+@pytest.mark.parametrize("save_exchange_raw", [False, True])
+def test_exchange_historical_raw_capture_is_explicitly_configured(
+    monkeypatch, save_exchange_raw
+):
+    monkeypatch.setattr(
+        Config,
+        "ENABLE_ODDSPAPI_SAVE_EXCHANGE_HISTORICAL_RESPONSES",
+        save_exchange_raw,
+    )
+    fetcher = _RecordingFetcher()
+    service = OddspapiPreStartOddsAcquisitionService(
+        fetcher=fetcher,
+        mainline_cache_repository=_FakeMainlineCache,
+    )
+
+    result = service.acquire(
+        "fixture-1",
+        **_acquire_kwargs(
+            is_live=True,
+            start_time_utc=KICKOFF,
+            regular_bookmakers=None,
+            debug_mode=False,
+        ),
+    )
+
+    exchange_responses = [
+        response
+        for response in result.debug_responses
+        if response.is_exchange_historical
+    ]
+    assert bool(exchange_responses) is save_exchange_raw
+    if save_exchange_raw:
+        assert exchange_responses[0].outcome_id == "301"
 
 
 @pytest.mark.parametrize("concurrent", [False, True])

@@ -505,6 +505,12 @@ class Config:
         'ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES',
         True,
     )
+    # Exchange historical fan-out makes one request per selected outcome.
+    # Keep those raw responses disabled unless explicitly requested.
+    ENABLE_ODDSPAPI_SAVE_EXCHANGE_HISTORICAL_RESPONSES = _parse_env_bool(
+        'ENABLE_ODDSPAPI_SAVE_EXCHANGE_HISTORICAL_RESPONSES',
+        False,
+    )
     ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS = int(
         os.getenv('ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS', '2')
     )

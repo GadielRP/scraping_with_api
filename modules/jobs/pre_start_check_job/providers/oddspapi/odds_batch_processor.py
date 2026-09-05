@@ -49,7 +49,10 @@ from .exchange_historical_fetch_executor import (
     OddspapiExchangeHistoricalFetchExecutor,
 )
 from .odds_fetcher import OddspapiOddsFetcher
-from .odds_acquisition_service import OddspapiPreStartOddsAcquisitionService
+from .odds_acquisition_service import (
+    OddspapiOddsAcquisitionResult,
+    OddspapiPreStartOddsAcquisitionService,
+)
 from .historical_odds_as_of_shadow import log_historical_odds_as_of_shadow
 from .settings import ODDSPAPI_PRE_START_SETTINGS
 
@@ -229,6 +232,63 @@ class OddspapiPreStartOddsBatchProcessor:
             )
             summary.results.append(result)
         return summary
+
+    @staticmethod
+    def _save_debug_responses(
+        candidate: OddspapiPreStartCandidate,
+        acquisition_result: OddspapiOddsAcquisitionResult,
+        *,
+        save_odds_responses: bool,
+        save_exchange_historical_responses: bool,
+        debug_mode: bool,
+        fallback_bookmakers: list[str] | None,
+    ) -> None:
+        """Persist each retained raw endpoint response under its own filename."""
+        debug_responses = getattr(acquisition_result, "debug_responses", None) or []
+        if not debug_responses:
+            if not isinstance(
+                getattr(acquisition_result, "debug_raw_payload", None), dict
+            ):
+                return
+            debug_responses = [acquisition_result]
+
+        for debug_response in debug_responses:
+            endpoint = getattr(debug_response, "endpoint", None)
+            payload = getattr(debug_response, "payload", None)
+            response_bookmakers = getattr(debug_response, "bookmakers", None)
+            outcome_id = getattr(debug_response, "outcome_id", None)
+            if debug_response is acquisition_result:
+                endpoint = getattr(acquisition_result, "debug_endpoint", None)
+                payload = getattr(acquisition_result, "debug_raw_payload", None)
+                response_bookmakers = getattr(
+                    acquisition_result, "debug_bookmakers", None
+                )
+                outcome_id = None
+            if getattr(debug_response, "is_exchange_historical", False):
+                should_save = save_exchange_historical_responses
+            else:
+                should_save = (
+                    endpoint == ODDSPAPI_CURRENT_ODDS_ENDPOINT
+                    if save_odds_responses
+                    else debug_mode
+                )
+            if not should_save:
+                continue
+            OddspapiDebugResponseWriter.save(
+                event_id=candidate.event_id,
+                fixture_id=candidate.fixture_id,
+                bookmakers=(
+                    response_bookmakers
+                    or fallback_bookmakers
+                ),
+                payload=payload,
+                endpoint=endpoint,
+                outcome_id=outcome_id,
+                minutes_until_start=candidate.minutes_until_start,
+                home_participant=candidate.home_participant,
+                away_participant=candidate.away_participant,
+                event_label=candidate.event_label,
+            )
 
     @staticmethod
     def _non_requestable_summary(
@@ -864,43 +924,21 @@ class OddspapiPreStartOddsBatchProcessor:
                     save_odds_responses = getattr(
                         Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False
                     )
-                    should_save_debug_response = False
-                    if getattr(
+                    save_exchange_historical_responses = getattr(
+                        Config,
+                        "ENABLE_ODDSPAPI_SAVE_EXCHANGE_HISTORICAL_RESPONSES",
+                        False,
+                    )
+                    self._save_debug_responses(
+                        candidate,
                         acquisition_result,
-                        "debug_raw_payload",
-                        None,
-                    ) is not None:
-                        if save_odds_responses:
-                            endpoint = getattr(
-                                acquisition_result,
-                                "debug_endpoint",
-                                None,
-                            )
-                            if endpoint == ODDSPAPI_CURRENT_ODDS_ENDPOINT:
-                                should_save_debug_response = True
-                        elif debug_mode:
-                            should_save_debug_response = True
-
-                    if should_save_debug_response:
-                        OddspapiDebugResponseWriter.save(
-                            event_id=candidate.event_id,
-                            fixture_id=candidate.fixture_id,
-                            bookmakers=getattr(
-                                acquisition_result,
-                                "debug_bookmakers",
-                                None,
-                            ) or bookmakers,
-                            payload=acquisition_result.debug_raw_payload,
-                            endpoint=getattr(
-                                acquisition_result,
-                                "debug_endpoint",
-                                None,
-                            ),
-                            minutes_until_start=candidate.minutes_until_start,
-                            home_participant=candidate.home_participant,
-                            away_participant=candidate.away_participant,
-                            event_label=candidate.event_label,
-                        )
+                        save_odds_responses=save_odds_responses,
+                        save_exchange_historical_responses=(
+                            save_exchange_historical_responses
+                        ),
+                        debug_mode=debug_mode,
+                        fallback_bookmakers=bookmakers,
+                    )
                     self._copy_acquisition_stats(
                         event_result,
                         acquisition_result,

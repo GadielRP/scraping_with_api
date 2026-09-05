@@ -195,6 +195,104 @@ def test_forced_key_moment_can_prime_missing_mainline_cache(monkeypatch):
     assert calls[0]["force_significant_changes"] is True
 
 
+def test_debug_mode_saves_each_retained_endpoint_response(monkeypatch):
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False)
+    saved = []
+    monkeypatch.setattr(
+        batch_module.OddspapiDebugResponseWriter,
+        "save",
+        lambda **kwargs: saved.append(kwargs),
+    )
+
+    def fake_acquire(self, fixture_id, **kwargs):
+        return OddspapiOddsAcquisitionResult(
+            debug_responses=[
+                SimpleNamespace(
+                    payload={"endpoint": "odds"},
+                    endpoint="odds",
+                    bookmakers=["pinnacle", "bet365"],
+                ),
+                SimpleNamespace(
+                    payload={"endpoint": "historical-odds"},
+                    endpoint="historical-odds",
+                    bookmakers=["pinnacle", "bet365"],
+                ),
+            ]
+        )
+
+    monkeypatch.setattr(
+        OddspapiPreStartOddsAcquisitionService,
+        "acquire",
+        fake_acquire,
+    )
+    _process(_candidate(), debug_mode=True)
+
+    assert [item["endpoint"] for item in saved] == ["odds", "historical-odds"]
+
+
+def test_exchange_debug_responses_require_independent_flag(monkeypatch):
+    monkeypatch.setattr(
+        Config, "ENABLE_ODDSPAPI_SAVE_EXCHANGE_HISTORICAL_RESPONSES", True
+    )
+    saved = []
+    monkeypatch.setattr(
+        batch_module.OddspapiDebugResponseWriter,
+        "save",
+        lambda **kwargs: saved.append(kwargs),
+    )
+
+    def fake_acquire(self, fixture_id, **kwargs):
+        return OddspapiOddsAcquisitionResult(
+            debug_responses=[
+                SimpleNamespace(
+                    payload={"outcome": 301},
+                    endpoint="historical-odds",
+                    bookmakers=["betfair-ex"],
+                    is_exchange_historical=True,
+                    outcome_id="301",
+                )
+            ]
+        )
+
+    monkeypatch.setattr(
+        OddspapiPreStartOddsAcquisitionService,
+        "acquire",
+        fake_acquire,
+    )
+    _process(_candidate(), debug_mode=False)
+
+    assert len(saved) == 1
+    assert saved[0]["outcome_id"] == "301"
+
+
+def test_exchange_debug_files_are_unique_per_outcome(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    writer = batch_module.OddspapiDebugResponseWriter
+
+    first = writer.save(
+        event_id=101,
+        fixture_id="fixture-1",
+        bookmakers=["betfair-ex"],
+        payload={"outcome": 301},
+        endpoint="historical-odds",
+        outcome_id="301",
+        minutes_until_start=0,
+    )
+    second = writer.save(
+        event_id=101,
+        fixture_id="fixture-1",
+        bookmakers=["betfair-ex"],
+        payload={"outcome": 302},
+        endpoint="historical-odds",
+        outcome_id="302",
+        minutes_until_start=0,
+    )
+
+    assert first is not None and second is not None
+    assert first != second
+    assert first.exists() and second.exists()
+
+
 def test_custom_pipeline_never_builds_an_executor_even_with_multiple_keys():
     """A caller-supplied fetcher/acquisition_service marks a custom
     test/pipeline path; we must not silently spin up real OddsPapiClient

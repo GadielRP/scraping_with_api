@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class OddspapiDebugResponseWriter:
-    """Write one deterministic raw-response artifact per regular request."""
+    """Write one deterministic raw-response artifact per provider request."""
 
     OUTPUT_DIRECTORY = Path("debug") / "oddspapi_odds_responses"
     ENDPOINT_FILENAME_LABELS = {
@@ -62,6 +62,7 @@ class OddspapiDebugResponseWriter:
         bookmakers: Iterable[str] | None,
         payload: dict,
         endpoint: str | None = None,
+        outcome_id: str | int | None = None,
         minutes_until_start: int | None = None,
         home_participant: str | None = None,
         away_participant: str | None = None,
@@ -95,6 +96,10 @@ class OddspapiDebugResponseWriter:
             filename_parts.append(f"t_{minutes_until_start}")
         if endpoint_token:
             filename_parts.append(endpoint_token)
+        if outcome_id is not None:
+            filename_parts.append(
+                f"outcome_{cls._filename_token(outcome_id, fallback='id')}"
+            )
         filename_parts.append(bookmakers_token)
         filename = "_".join(filename_parts) + ".json"
         path = target_directory / filename

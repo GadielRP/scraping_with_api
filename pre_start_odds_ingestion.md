@@ -581,6 +581,10 @@ When a minute is listed in `significant_change_forced_moments` and the candidate
 
 The first step does not run classic opening enrichment or exchange historical fan-out; those are responsibilities of the second historical step. If `/odds` cannot populate a usable mainline cache, the historical step is refused by the same cache safety check used by live acquisition. Missing kickoff disables the forced strategy and leaves the normal non-live route in control.
 
+#### Raw debug response files
+
+The acquisition result retains raw responses independently by endpoint. This is important for the forced hybrid flow, which performs both `/odds` and `/historical-odds` in one acquisition. `ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES=true` captures and writes the `/odds` response; it does not enable regular historical raw-response files. When that flag is false, `debug_mode=true` captures and writes every retained regular endpoint response, including both files from the hybrid flow. Each endpoint receives its own filename token (`odds` or `historical`), so the historical response cannot overwrite the current response in memory or on disk. Exchange historical fan-out responses are controlled independently by `ENABLE_ODDSPAPI_SAVE_EXCHANGE_HISTORICAL_RESPONSES`, which defaults to `false`; enabling it writes one raw file per selected exchange `outcome_id`, regardless of the regular `/odds` debug policy. Keep it disabled by default because one exchange historical request is made for each selected outcome.
+
 There are two deliberately named historical flows:
 
 - **Classic historical opening-enrichment flow**: used by non-live moments such as T−5 when `opening_historical_moments` contains that minute. It calls `/historical-odds` after `/odds` and uses the historical response to merge `initialPrice`; the current price remains the value returned by `/odds`. It does not run the significant-change detector.

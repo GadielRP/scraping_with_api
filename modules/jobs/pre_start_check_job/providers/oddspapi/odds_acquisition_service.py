@@ -36,11 +36,23 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class OddspapiDebugResponse:
+    """Raw response metadata retained independently for each endpoint call."""
+
+    payload: dict
+    endpoint: str
+    bookmakers: list[str] = field(default_factory=list)
+    is_exchange_historical: bool = False
+    outcome_id: str | int | None = None
+
+
+@dataclass
 class OddspapiOddsAcquisitionResult:
     payload: dict | None = None
     debug_raw_payload: dict | None = None
     debug_endpoint: str | None = None
     debug_bookmakers: list[str] = field(default_factory=list)
+    debug_responses: list[OddspapiDebugResponse] = field(default_factory=list)
     bookies_requested: int = 0
     bookmaker_slugs_requested: list[str] = field(default_factory=list)
     endpoint_missing: bool = False
@@ -156,6 +168,29 @@ class OddspapiPreStartOddsAcquisitionService:
         if quotes:
             result.as_of_quotes.extend(quotes)
 
+    @staticmethod
+    def _record_debug_response(
+        result: OddspapiOddsAcquisitionResult,
+        fetch_result: OddsFetchResult | None,
+        *,
+        endpoint: str,
+        bookmakers: list[str],
+        is_exchange_historical: bool = False,
+        outcome_id: str | int | None = None,
+    ) -> None:
+        raw_payload = getattr(fetch_result, "raw_payload", None)
+        if not isinstance(raw_payload, dict):
+            return
+        result.debug_responses.append(
+            OddspapiDebugResponse(
+                payload=raw_payload,
+                endpoint=endpoint,
+                bookmakers=list(bookmakers),
+                is_exchange_historical=is_exchange_historical,
+                outcome_id=outcome_id,
+            )
+        )
+
     def _selection_limit(
         self,
         *,
@@ -201,6 +236,14 @@ class OddspapiPreStartOddsAcquisitionService:
         if historical_result is None or historical_result.endpoint_missing:
             result.exchange_historical_requests_failed += 1
             return payload
+        self._record_debug_response(
+            result,
+            historical_result,
+            endpoint=ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
+            bookmakers=[selection.bookmaker_slug],
+            is_exchange_historical=True,
+            outcome_id=selection.source_outcome_id,
+        )
         self._record_as_of_quotes(result, historical_result)
         if not historical_result.payload:
             return payload
@@ -375,6 +418,13 @@ class OddspapiPreStartOddsAcquisitionService:
             Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False
         )
         capture_raw = debug_mode and not save_odds_responses
+        capture_exchange_raw = bool(
+            getattr(
+                Config,
+                "ENABLE_ODDSPAPI_SAVE_EXCHANGE_HISTORICAL_RESPONSES",
+                False,
+            )
+        )
         if regular:
             requested_bookmakers.update(regular)
             result.http_requests_attempted += 1
@@ -400,6 +450,12 @@ class OddspapiPreStartOddsAcquisitionService:
             result.debug_raw_payload = historical_result.raw_payload
             result.debug_endpoint = ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
             result.debug_bookmakers = list(regular)
+            self._record_debug_response(
+                result,
+                historical_result,
+                endpoint=ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
+                bookmakers=list(regular),
+            )
             self._record_as_of_quotes(result, historical_result)
 
         if exchange and enable_exchange_historical:
@@ -452,7 +508,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 requested_bookmakers=requested_bookmakers,
                 merge_full_bookmakers=True,
                 fetch_executor=fetch_executor,
-                capture_raw_response=capture_raw,
+                capture_raw_response=capture_exchange_raw,
                 as_of_targets=as_of_targets,
                 current_cutoff_utc=current_cutoff_utc,
                 enable_significant_changes=enable_significant_changes,
@@ -605,6 +661,12 @@ class OddspapiPreStartOddsAcquisitionService:
             result.debug_raw_payload = current_result.raw_payload
             result.debug_endpoint = ODDSPAPI_CURRENT_ODDS_ENDPOINT
             result.debug_bookmakers = list(combined)
+            self._record_debug_response(
+                result,
+                current_result,
+                endpoint=ODDSPAPI_CURRENT_ODDS_ENDPOINT,
+                bookmakers=list(combined),
+            )
 
         payload = current_payload
         if current_payload:
@@ -710,6 +772,13 @@ class OddspapiPreStartOddsAcquisitionService:
                 requested_bookmakers=requested_bookmakers,
                 merge_full_bookmakers=False,
                 fetch_executor=fetch_executor,
+                capture_raw_response=bool(
+                    getattr(
+                        Config,
+                        "ENABLE_ODDSPAPI_SAVE_EXCHANGE_HISTORICAL_RESPONSES",
+                        False,
+                    )
+                ),
             )
 
         result.bookies_requested = len(requested_bookmakers)

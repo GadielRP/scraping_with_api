@@ -125,7 +125,7 @@ def run_oddspapi_pre_start_odds(
         e.get("should_extract_odds") for e in events_to_process or []
     )
     if has_active_candidates:
-        logger.info("🟡 Oddspapi pre-start odds starting...")
+        logger.info("👨 Oddspapi pre-start odds starting...")
     events_to_process = restrict_candidates_to_tracked_competitions(
         events_to_process,
         tracked_competition_ids,
