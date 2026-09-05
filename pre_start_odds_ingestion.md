@@ -18,7 +18,7 @@ An event reaches a provider HTTP request only when all of these are true:
 4. The general odds gate did not clear `should_extract_odds` for an untracked competition.
 5. The provider-specific tracked-competition gate did not drop it from that phase's local list.
 6. `should_extract_odds=True` and the provider's stored availability is not `has_odds=False` for ordinary acquisition; an explicitly forced significant-change moment still attempts `/odds` to refresh its cache.
-7. Provider-specific requestability holds (SofaScore external id, OddspAPI fixture mapping, API keys, mainline cache for live or forced historical acquisition, etc.).
+7. Provider-specific requestability holds (SofaScore external id, OddspAPI fixture mapping, API keys, mainline cache for live acquisition, etc.). A forced significant-change candidate is allowed to proceed without a pre-existing cache because its first step is `/odds` cache priming.
 
 Provider phases share one call shape:
 
@@ -603,7 +603,7 @@ If the series has no valid ticks, its as-of selection remains empty because ther
 
 If a simulator or an ingestion mode must use significant-change reconstruction at a non-live key moment, add that integer minute to `significant_change_forced_moments`. The candidate keeps its `is_live` timing classification, while acquisition receives an explicit `force_significant_changes` strategy flag. The forced strategy first calls `/odds` to refresh `oddspapi_mainline_outcome_cache`, then calls `/historical-odds` with the kickoff and detector options; the historical response supplies opening, current, and `momentQuotes`. The existing shadow/persistence flags still decide whether `momentQuotes` are attached or written. An empty tuple preserves live-only activation. A configured forced moment without kickoff is logged and falls back to the normal non-live route.
 
-Other OddspAPI skips: `ENABLE_ODDSPAPI_PRE_START_ODDS`, missing API key, missing fixture mapping, `has_odds=False` for ordinary non-live candidates, missing mainline cache for live/forced historical candidates, `max_events`, 404 / empty payload, tracked-competition provider gate.
+Other OddspAPI skips: `ENABLE_ODDSPAPI_PRE_START_ODDS`, missing API key, missing fixture mapping, `has_odds=False` for ordinary non-live candidates, missing mainline cache for live candidates (or a forced flow whose priming step did not produce one), `max_events`, 404 / empty payload, tracked-competition provider gate.
 
 ### 6.2 What is persisted (and what is not)
 

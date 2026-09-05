@@ -170,6 +170,31 @@ def test_forced_key_moment_bypasses_closing_only_gate(monkeypatch):
     assert calls[0]["force_significant_changes"] is True
 
 
+def test_forced_key_moment_can_prime_missing_mainline_cache(monkeypatch):
+    monkeypatch.setattr(
+        batch_module,
+        "ODDSPAPI_PRE_START_SETTINGS",
+        replace(batch_module.ODDSPAPI_PRE_START_SETTINGS, significant_change_forced_moments=(5,)),
+    )
+    monkeypatch.setattr(
+        batch_module.OddspapiMainlineCacheRepository,
+        "event_ids_with_cache",
+        lambda _event_ids: set(),
+    )
+    calls = _capture_acquire_calls(monkeypatch)
+    candidate = replace(
+        _candidate(),
+        minutes_until_start=5,
+        start_time_utc=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
+    )
+
+    _process(candidate)
+
+    assert len(calls) == 1
+    assert calls[0]["is_live"] is False
+    assert calls[0]["force_significant_changes"] is True
+
+
 def test_custom_pipeline_never_builds_an_executor_even_with_multiple_keys():
     """A caller-supplied fetcher/acquisition_service marks a custom
     test/pipeline path; we must not silently spin up real OddsPapiClient

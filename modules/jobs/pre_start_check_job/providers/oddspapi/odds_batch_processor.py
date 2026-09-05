@@ -521,8 +521,11 @@ class OddspapiPreStartOddsBatchProcessor:
                 )
             )
         ]
-        # /historical-odds has no mainLine flags. Live and explicitly forced
-        # historical quotes require the cache populated by /odds earlier.
+        # /historical-odds has no mainLine flags. A live historical request
+        # requires a cache populated by /odds earlier. A forced non-live
+        # significant-change request is different: its acquisition strategy
+        # primes that cache with /odds in the same call before requesting
+        # /historical-odds.
         cached_live_event_ids = (
             OddspapiMainlineCacheRepository.event_ids_with_cache(historical_event_ids)
             if historical_event_ids
@@ -544,15 +547,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     )
                 )
                 and (
-                    not (
-                        self._is_live_candidate(candidate)
-                        or (
-                            candidate.start_time_utc is not None
-                            and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
-                                candidate.minutes_until_start
-                            )
-                        )
-                    )
+                    not self._is_live_candidate(candidate)
                     or candidate.event_id in cached_live_event_ids
                 )
                 and (
@@ -761,10 +756,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     event_result.skip_reason = "oddspapi_odds_unavailable"
                     summary.events_skipped += 1
                     continue
-                if (
-                    (is_live or force_significant_changes)
-                    and candidate.event_id not in cached_live_event_ids
-                ):
+                if is_live and candidate.event_id not in cached_live_event_ids:
                     event_result.skipped = True
                     event_result.skip_reason = "missing_mainline_cache"
                     summary.events_skipped += 1
