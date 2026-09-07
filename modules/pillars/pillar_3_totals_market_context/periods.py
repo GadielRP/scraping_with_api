@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable
 
 from modules.pillars.market_snapshot_extractor import MarketIdentity
 
 
-PERIOD_STATUS_COMPLETE = "COMPLETE"
-PERIOD_STATUS_AMBIGUOUS = "AMBIGUOUS"
-PERIOD_STATUS_INVALID = "INVALID"
-PERIOD_STATUS_INCOMPLETE = "INCOMPLETE"
+from modules.pillars.market_coverage import (
+    PERIOD_STATUS_COMPLETE, PERIOD_STATUS_PARTIAL, PERIOD_STATUS_AMBIGUOUS,
+    PERIOD_STATUS_INVALID, PERIOD_STATUS_INCOMPLETE,
+    resolve_period_status, resolve_pillar_status,
+)
+
 
 EXCHANGE_OU_LINE_INPUT_NAME = "BF_OU_FULL_TIME_LINE"
 EXCHANGE_OU_ODDS_INPUT_NAMES = (
@@ -127,28 +128,6 @@ P3_TOTALS_PERIOD_SCOPES: tuple[TotalsPeriodScope, ...] = (
 )
 
 
-def resolve_period_status(
-    *,
-    complete: bool,
-    missing_inputs: Iterable[str],
-    invalid_inputs: Iterable[str],
-    ambiguous_inputs: Iterable[str],
-) -> str:
-    if complete:
-        return PERIOD_STATUS_COMPLETE
-    if any(ambiguous_inputs):
-        return PERIOD_STATUS_AMBIGUOUS
-    if any(invalid_inputs):
-        return PERIOD_STATUS_INVALID
-    return PERIOD_STATUS_INCOMPLETE
-
-
-def resolve_pillar_status(*, required_complete: bool, optional_complete: bool) -> str:
-    if not required_complete:
-        return "INSUFFICIENT_DATA"
-    return "ACTIVE" if optional_complete else "PARTIAL"
-
-
 __all__ = [
     "FIRST_HALF_TOTALS_SCOPE",
     "EXCHANGE_OU_LINE_INPUT_NAME",
@@ -161,6 +140,7 @@ __all__ = [
     "P3_TOTALS_PERIOD_SCOPES",
     "PERIOD_STATUS_AMBIGUOUS",
     "PERIOD_STATUS_COMPLETE",
+    "PERIOD_STATUS_PARTIAL",
     "PERIOD_STATUS_INCOMPLETE",
     "PERIOD_STATUS_INVALID",
     "TotalsBookInputSpec",

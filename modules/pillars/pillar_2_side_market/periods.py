@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable
 
 from modules.pillars.market_snapshot_extractor import MarketIdentity
 
 
-PERIOD_STATUS_COMPLETE = "COMPLETE"
-PERIOD_STATUS_AMBIGUOUS = "AMBIGUOUS"
-PERIOD_STATUS_INVALID = "INVALID"
-PERIOD_STATUS_INCOMPLETE = "INCOMPLETE"
+from modules.pillars.market_coverage import (
+    resolve_period_status, resolve_pillar_status,
+)
+
 
 EXCHANGE_ODDS_INPUT_NAMES = (
     "BF_HOME_BACK_1X2_FULL_TIME_ODDS_PRICE",
@@ -285,30 +284,6 @@ def period_scope_from_key(key: object) -> SidePeriodScope | None:
 def period_scope_from_token(token: object) -> SidePeriodScope | None:
     normalized = str(token or "").strip().upper()
     return next((scope for scope in P2_SIDE_PERIOD_SCOPES if scope.metric_token == normalized), None)
-
-
-def resolve_period_status(
-    *,
-    complete: bool,
-    missing_inputs: Iterable[str],
-    invalid_inputs: Iterable[str],
-    ambiguous_inputs: Iterable[str],
-) -> str:
-    if complete:
-        return PERIOD_STATUS_COMPLETE
-    if any(ambiguous_inputs):
-        return PERIOD_STATUS_AMBIGUOUS
-    if any(invalid_inputs):
-        return PERIOD_STATUS_INVALID
-    return PERIOD_STATUS_INCOMPLETE
-
-
-def resolve_pillar_status(*, required_complete: bool, optional_complete: bool) -> str:
-    if not required_complete:
-        return "INSUFFICIENT_DATA"
-    if not optional_complete:
-        return "PARTIAL"
-    return "ACTIVE"
 
 
 __all__ = [

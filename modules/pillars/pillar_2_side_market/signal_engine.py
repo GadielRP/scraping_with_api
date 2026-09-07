@@ -32,7 +32,7 @@ from .signal_models import (
 )
 
 
-ENGINE_VERSION = "p2-signal-profile-v1"
+ENGINE_VERSION = "p2-signal-profile-v2"
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,10 @@ def _build_book_1x2_signal(
     pin_direction = direction(pin_edge) if pin_edge is not None else None
     b365_direction = direction(b365_edge) if b365_edge is not None else None
     comparable = (
-        pin_edge is not None
+        pinnacle is not None and bet365 is not None
+        and pinnacle.home is not None and bet365.home is not None
+        and pinnacle.home.trace.market_period == bet365.home.trace.market_period
+        and pin_edge is not None
         and b365_edge is not None
         and pin_direction is not None
         and b365_direction is not None
@@ -231,6 +234,9 @@ def _build_ah_signal(
     same_line = pin_line is not None and b365_line is not None and pin_line == b365_line
     comparable = (
         same_line
+        and pinnacle is not None and bet365 is not None
+        and pinnacle.home is not None and bet365.home is not None
+        and pinnacle.home.trace.market_period == bet365.home.trace.market_period
         and pin_edge is not None
         and b365_edge is not None
         and pin_direction is not None
@@ -400,7 +406,9 @@ def _build_period_signal(
     )
 
 
-def _build_exchange_signal(snapshot: P2FullTimeSnapshot, *, debug_mode: bool) -> ExchangeSignal:
+def _build_exchange_signal(snapshot: P2FullTimeSnapshot, *, debug_mode: bool) -> ExchangeSignal | None:
+    if snapshot.betfair_1x2 is None:
+        return None
     back = snapshot.betfair_1x2.back
     lay = snapshot.betfair_1x2.lay
     if debug_mode:
@@ -704,12 +712,12 @@ def _build_book_exchange_ah_signal(
 
 def _build_book_exchange_signal(
     full_time: PeriodSignal,
-    exchange: ExchangeSignal,
+    exchange: ExchangeSignal | None,
     *,
     debug_mode: bool,
-) -> BookExchangeSignal:
-    assert full_time.one_x_two.rep_edge is not None
-    assert full_time.one_x_two.direction is not None
+) -> BookExchangeSignal | None:
+    if exchange is None or full_time.one_x_two.rep_edge is None or full_time.one_x_two.direction is None:
+        return None
     gap = absolute_gap(full_time.one_x_two.rep_edge, exchange.rep_edge)
     book_exchange_relation = relation(full_time.one_x_two.direction, exchange.direction)
     _log_formula(

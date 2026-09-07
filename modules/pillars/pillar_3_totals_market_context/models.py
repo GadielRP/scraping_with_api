@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from modules.pillars.market_snapshot_extractor import QuotePoint
+from modules.pillars.market_coverage import PeriodDiagnostics
 
 from .periods import (
     EXCHANGE_OU_LINE_INPUT_NAME,
@@ -18,52 +19,7 @@ from .periods import (
     FIRST_HALF_TOTALS_SCOPE,
     TotalsBookInputSpec,
     TotalsPeriodScope,
-    resolve_period_status,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class PeriodDiagnostics:
-    status: str
-    missing_inputs: tuple[str, ...] = ()
-    invalid_inputs: tuple[str, ...] = ()
-    ambiguous_inputs: tuple[str, ...] = ()
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "status": self.status,
-            "missing_inputs": list(self.missing_inputs),
-            "invalid_inputs": list(self.invalid_inputs),
-            "ambiguous_inputs": list(self.ambiguous_inputs),
-        }
-
-    @classmethod
-    def from_gate(
-        cls,
-        *,
-        complete: bool,
-        missing_inputs: tuple[str, ...] | list[str] | set[str] = (),
-        invalid_inputs: tuple[str, ...] | list[str] | set[str] = (),
-        ambiguous_inputs: tuple[str, ...] | list[str] | set[str] = (),
-    ) -> "PeriodDiagnostics":
-        missing = tuple(sorted(missing_inputs))
-        invalid = tuple(sorted(invalid_inputs))
-        ambiguous = tuple(sorted(ambiguous_inputs))
-        return cls(
-            status=resolve_period_status(
-                complete=complete,
-                missing_inputs=missing,
-                invalid_inputs=invalid,
-                ambiguous_inputs=ambiguous,
-            ),
-            missing_inputs=missing,
-            invalid_inputs=invalid,
-            ambiguous_inputs=ambiguous,
-        )
-
-    @classmethod
-    def empty(cls) -> "PeriodDiagnostics":
-        return cls.from_gate(complete=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +77,7 @@ class TotalsExchangeSnapshot:
             and self.lay is not None
             and self.back.line is not None
             and self.back.line == self.lay.line
+            and self.back.market_period == self.lay.market_period
         )
 
     def has_any_input(self) -> bool:
@@ -189,6 +146,9 @@ class P3PeriodSnapshot:
             and self.bet365 is not None
             and self.bet365.is_complete()
         )
+
+    def is_usable(self) -> bool:
+        return any(book is not None and book.is_complete() for book in (self.pinnacle, self.bet365))
 
     def has_any_input(self) -> bool:
         return any(
@@ -293,7 +253,7 @@ class P3ExtractionResult:
         if (
             self.target_minute is None
             or self.full_time_snapshot is None
-            or not self.full_time_snapshot.is_complete()
+            or not self.full_time.usable
         ):
             return None
         return P3MarketSnapshot(

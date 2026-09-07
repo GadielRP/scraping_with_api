@@ -27,7 +27,7 @@ from .signal_models import (
 )
 
 
-ENGINE_VERSION = "p3-signal-profile-v1"
+ENGINE_VERSION = "p3-signal-profile-v2"
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def _build_book_reading(
     _log_assignment(f"{label}.OVER_ODDS", over_odds, debug_mode=debug_mode)
     _log_assignment(f"{label}.UNDER_ODDS", under_odds, debug_mode=debug_mode)
 
-    edge = _edge_if_available(over_odds, under_odds)
+    edge = _edge_if_available(over_odds, under_odds) if snapshot is not None and snapshot.is_complete() else None
     reading_direction = direction(edge) if edge is not None else None
     substitution = (
         "unavailable because OVER_ODDS or UNDER_ODDS is None"
@@ -187,7 +187,9 @@ def _build_period_signal(
         debug_mode=debug_mode,
     )
     comparable = (
-        pinnacle.line is not None
+        snapshot.pinnacle is not None and snapshot.bet365 is not None
+        and snapshot.pinnacle.market_period == snapshot.bet365.market_period
+        and pinnacle.line is not None
         and bet365.line is not None
         and pinnacle.line == bet365.line
         and pinnacle.edge is not None
@@ -285,7 +287,7 @@ def _build_exchange_ou_reading(
     _log_assignment(f"{label}.UNDER_ODDS", under_odds, debug_mode=debug_mode)
     _log_assignment(f"{label}.OVER_SIZE", over_size, debug_mode=debug_mode)
     _log_assignment(f"{label}.UNDER_SIZE", under_size, debug_mode=debug_mode)
-    edge = _edge_if_available(over_odds, under_odds)
+    edge = _edge_if_available(over_odds, under_odds) if snapshot is not None and snapshot.is_complete() else None
     reading_direction = direction(edge) if edge is not None else None
     _log_formula(
         f"{label}.EDGE",

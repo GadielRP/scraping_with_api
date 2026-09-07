@@ -249,7 +249,7 @@ def test_ft_and_first_half_complete_produce_active_structural_contract() -> None
     profile = _profile(result)
 
     assert result["P3_STATUS"] == "ACTIVE"
-    assert result["engine_version"] == "p3-signal-profile-v1"
+    assert result["engine_version"] == "p3-signal-profile-v2"
     assert result["P3_TARGET_MINUTE"] == 5
     assert result["PERIODS"]["full_time"]["status"] == "COMPLETE"
     assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
@@ -280,15 +280,15 @@ def test_ft_complete_without_first_half_is_partial() -> None:
     assert profile["FT_1H"] is None
 
 
-def test_ft_incomplete_with_complete_first_half_is_insufficient() -> None:
+def test_ft_missing_pinnacle_input_preserves_complete_bet365() -> None:
     rows = [
         *_period_rows(first_half=False, pin_under=None),
         *_period_rows(first_half=True),
     ]
     result = _calculate(rows)
 
-    assert result["P3_STATUS"] == "INSUFFICIENT_DATA"
-    assert result["P3_SIGNAL_PROFILE"] is None
+    assert result["P3_STATUS"] == "PARTIAL"
+    assert result["P3_SIGNAL_PROFILE"]["FT"]["BET365"]["EDGE"] is not None
     assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
 
 
@@ -517,7 +517,7 @@ def test_selected_target_has_no_fallback_to_another_minute() -> None:
     result = _calculate(rows)
 
     assert result["P3_TARGET_MINUTE"] == 5
-    assert result["P3_STATUS"] == "INSUFFICIENT_DATA"
+    assert result["P3_STATUS"] == "PARTIAL"
     assert {
         trace["target_minute"] for trace in result["raw"]["input_trace"].values()
     } == {5}
@@ -541,12 +541,13 @@ def test_multiple_complete_lines_are_ambiguous(caplog) -> None:
     )
     result = _calculate(rows)
 
-    assert result["P3_STATUS"] == "INSUFFICIENT_DATA"
-    assert result["PERIODS"]["full_time"]["status"] == "AMBIGUOUS"
-    assert result["P3_SIGNAL_PROFILE"] is None
+    assert result["P3_STATUS"] == "PARTIAL"
+    assert result["PERIODS"]["full_time"]["status"] == "PARTIAL"
+    assert result["PERIODS"]["full_time"]["bookies"]["pinnacle"]["status"] == "AMBIGUOUS"
+    assert result["P3_SIGNAL_PROFILE"]["FT"]["BET365"]["EDGE"] is not None
     required_log = next(record.getMessage() for record in caplog.records
                         if "P3 EXTRACTION" in record.getMessage() and "period=full_time" in record.getMessage())
-    assert "blocks_profile=True | status=AMBIGUOUS" in required_log
+    assert "blocks_profile=False | status=PARTIAL" in required_log
     assert "BF_" not in required_log
     assert "P3 DEBUG | period gates | missing=" not in caplog.text
 
@@ -580,8 +581,9 @@ def test_multiple_partial_first_half_candidates_are_ambiguous() -> None:
     result = _calculate(rows)
 
     assert result["P3_STATUS"] == "PARTIAL"
-    assert result["PERIODS"]["first_half"]["status"] == "AMBIGUOUS"
-    assert _profile(result)["1H"] is None
+    assert result["PERIODS"]["first_half"]["status"] == "PARTIAL"
+    assert result["PERIODS"]["first_half"]["bookies"]["pinnacle"]["status"] == "AMBIGUOUS"
+    assert _profile(result)["1H"]["BET365"]["EDGE"] is not None
     assert _profile(result)["FT_1H"] is None
 
 

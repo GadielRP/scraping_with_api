@@ -1,0 +1,3 @@
+# Keep the market pillar contract alongside its implementation.
+!.gitignore
+!market_bookie_coverage.md

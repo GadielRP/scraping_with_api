@@ -237,8 +237,8 @@ class P2SignalProfile:
     full_time: PeriodSignal
     first_half: PeriodSignal | None
     ft_1h: FirstHalfRelationSignal | None
-    exchange: ExchangeSignal
-    book_exchange: BookExchangeSignal
+    exchange: ExchangeSignal | None
+    book_exchange: BookExchangeSignal | None
     exchange_ah: AsianHandicapExchangeSignal | None = None
     book_exchange_ah: AsianHandicapBookExchangeSignal | None = None
     exchange_ah_1h: AsianHandicapExchangeSignal | None = None
@@ -269,8 +269,8 @@ class P2SignalProfile:
                 )
             ),
             "FT_1H": None if self.ft_1h is None else self.ft_1h.to_dict(),
-            "EXCHANGE": self.exchange.to_dict(),
-            "BOOK_EXCHANGE": self.book_exchange.to_dict(),
+            "EXCHANGE": None if self.exchange is None else self.exchange.to_dict(),
+            "BOOK_EXCHANGE": None if self.book_exchange is None else self.book_exchange.to_dict(),
             "BETFAIR_FT_AH": None if self.exchange_ah is None else self.exchange_ah.to_dict(),
             "BOOK_EXCHANGE_AH": None if self.book_exchange_ah is None else self.book_exchange_ah.to_dict(),
             "BETFAIR_1H_AH": None if self.exchange_ah_1h is None else self.exchange_ah_1h.to_dict(),

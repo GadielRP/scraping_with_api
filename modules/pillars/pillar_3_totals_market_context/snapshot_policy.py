@@ -13,6 +13,7 @@ from modules.pillars.market_snapshot_extractor import (
     extract_market_snapshot,
 )
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
+from modules.pillars.market_candidate_selection import select_market_candidate
 
 from .models import (
     P3ExtractionResult,
@@ -26,7 +27,6 @@ from .periods import (
     EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
     EXCHANGE_OU_LINE_INPUT_NAME,
     EXCHANGE_OU_ODDS_INPUT_NAMES,
-    EXCHANGE_OU_SIZE_TRACE_INPUT_NAMES,
     FIRST_HALF_TOTALS_SCOPE,
     FULL_TIME_TOTALS_SCOPE,
     P3_TOTALS_PERIOD_SCOPES,
@@ -122,106 +122,18 @@ def _book_snapshot(candidate: MarketCandidate) -> TotalsBookSnapshot:
     )
 
 
-def _has_any_candidate_input(candidate: MarketCandidate) -> bool:
-    return candidate.line is not None or any(
-        point is not None for point in candidate.choices.values()
-    )
-
-
-def _all_input_names(request: MarketSnapshotRequest) -> set[str]:
-    names = {choice.input_name for choice in request.choices}
-    if request.line_input_name is not None:
-        names.add(request.line_input_name)
-    return names
-
-
-def _selected_input_diagnostics(
-    candidate: MarketCandidate,
-    request: MarketSnapshotRequest,
-    extraction: MarketSnapshotExtraction,
-) -> tuple[set[str], set[str]]:
-    invalid = set(extraction.invalid_inputs) & _all_input_names(request)
-    missing: set[str] = set()
-    if request.line_input_name is not None and candidate.line is None:
-        if request.line_input_name not in invalid:
-            missing.add(request.line_input_name)
-    for choice in request.choices:
-        if candidate.choices.get(choice.key) is None and choice.input_name not in invalid:
-            missing.add(choice.input_name)
-    return missing, invalid
-
-
 def _select_book_candidate(
-    extraction: MarketSnapshotExtraction,
-    request: MarketSnapshotRequest,
+    extraction: MarketSnapshotExtraction, request: MarketSnapshotRequest
 ) -> _BookSelection:
-    names = _all_input_names(request)
-    diagnostics = _candidate_diagnostics(extraction)
-    extractor_ambiguities = set(extraction.ambiguous_inputs) & names
-    if extraction.container_ambiguities or extractor_ambiguities:
-        return _BookSelection(
-            snapshot=None,
-            missing=frozenset(),
-            invalid=frozenset(),
-            ambiguous=frozenset(names | extractor_ambiguities),
-            diagnostics=diagnostics,
-        )
-
-    complete = [
-        candidate
-        for candidate in extraction.candidates
-        if candidate.is_complete(request)
-    ]
-    if len(complete) > 1:
-        return _BookSelection(
-            snapshot=None,
-            missing=frozenset(),
-            invalid=frozenset(),
-            ambiguous=frozenset(names),
-            diagnostics=diagnostics,
-        )
-    if len(complete) == 1:
-        return _BookSelection(
-            snapshot=_book_snapshot(complete[0]),
-            missing=frozenset(),
-            invalid=frozenset(),
-            ambiguous=frozenset(),
-            diagnostics=diagnostics,
-        )
-
-    partial = [
-        candidate
-        for candidate in extraction.candidates
-        if _has_any_candidate_input(candidate)
-    ]
-    if len(partial) > 1:
-        return _BookSelection(
-            snapshot=None,
-            missing=frozenset(),
-            invalid=frozenset(),
-            ambiguous=frozenset(names),
-            diagnostics=diagnostics,
-        )
-    if len(partial) == 1:
-        missing, invalid = _selected_input_diagnostics(
-            partial[0],
-            request,
-            extraction,
-        )
-        return _BookSelection(
-            snapshot=_book_snapshot(partial[0]),
-            missing=frozenset(missing),
-            invalid=frozenset(invalid),
-            ambiguous=frozenset(),
-            diagnostics=diagnostics,
-        )
-
+    selection = select_market_candidate(extraction, request)
     return _BookSelection(
-        snapshot=None,
-        missing=frozenset(names),
-        invalid=frozenset(),
-        ambiguous=frozenset(),
-        diagnostics=diagnostics,
+        snapshot=None
+        if selection.candidate is None
+        else _book_snapshot(selection.candidate),
+        missing=selection.missing,
+        invalid=selection.invalid,
+        ambiguous=selection.ambiguous,
+        diagnostics=_candidate_diagnostics(extraction),
     )
 
 
@@ -349,9 +261,6 @@ def _extract_period(
         bookie_id=BET365_BOOKIE_ID,
         inputs=period_scope.bet365,
     )
-    missing = set(pinnacle.missing | bet365.missing)
-    invalid = set(pinnacle.invalid | bet365.invalid)
-    ambiguous = set(pinnacle.ambiguous | bet365.ambiguous)
     diagnostics = {
         "period_scope": {
             "key": period_scope.key,
@@ -362,55 +271,35 @@ def _extract_period(
         "bet365": bet365.diagnostics,
     }
 
-    if ambiguous:
-        return (
-            None,
-            PeriodDiagnostics.from_gate(
-                complete=False,
-                missing_inputs=missing,
-                invalid_inputs=invalid,
-                ambiguous_inputs=ambiguous,
-            ),
-            "ambiguous_market_structure",
-            diagnostics,
-        )
-
+    # Period aliases identify independent contracts; a mismatch prevents
+    # comparison, not use of each complete bookmaker reading.
     periods = {
-        snapshot.market_period
-        for snapshot in (pinnacle.snapshot, bet365.snapshot)
-        if snapshot is not None
+        book.market_period
+        for book in (pinnacle.snapshot, bet365.snapshot)
+        if book is not None
     }
-    if len(periods) > 1:
-        all_names = set(period_scope.input_names())
-        diagnostics["selected_periods"] = sorted(periods)
-        return (
-            None,
-            PeriodDiagnostics.from_gate(
-                complete=False,
-                missing_inputs=missing,
-                invalid_inputs=invalid,
-                ambiguous_inputs=all_names,
-            ),
-            "bookmaker_period_mismatch",
-            diagnostics,
-        )
-
+    diagnostics["selected_periods"] = sorted(periods)
     snapshot = P3PeriodSnapshot(
-        period=next(iter(periods)) if periods else None,
+        period=next(iter(periods)) if len(periods) == 1 else None,
         period_scope=period_scope,
         pinnacle=pinnacle.snapshot,
         bet365=bet365.snapshot,
     )
     if not snapshot.has_any_input():
         snapshot = None
-    complete = snapshot is not None and snapshot.is_complete()
-    period_diagnostics = PeriodDiagnostics.from_gate(
-        complete=complete,
-        missing_inputs=missing,
-        invalid_inputs=invalid,
-        ambiguous_inputs=ambiguous,
+    period_diagnostics = PeriodDiagnostics.from_bookies(
+        {
+            name: PeriodDiagnostics.from_gate(
+                complete=selection.snapshot is not None
+                and selection.snapshot.is_complete(),
+                missing_inputs=selection.missing,
+                invalid_inputs=selection.invalid,
+                ambiguous_inputs=selection.ambiguous,
+            )
+            for name, selection in (("pinnacle", pinnacle), ("bet365", bet365))
+        }
     )
-    reason = None if complete else "period_completeness_gate_failed"
+    reason = None if period_diagnostics.usable else "period_completeness_gate_failed"
     return snapshot, period_diagnostics, reason, diagnostics
 
 
@@ -459,9 +348,23 @@ def extract_p3_market_snapshot(
     first_half_snapshot, first_half_diagnostics, _, first_half_extra = extracted[
         FIRST_HALF_TOTALS_SCOPE.key
     ]
-    full_time_complete = (
-        full_time_snapshot is not None and full_time_snapshot.is_complete()
+
+    def with_exchange(
+        diagnostics: PeriodDiagnostics, exchange: PeriodDiagnostics
+    ) -> PeriodDiagnostics:
+        return PeriodDiagnostics.from_bookies(
+            {**diagnostics.bookies, "betfair": exchange},
+            required=("pinnacle", "bet365"),
+        )
+
+    full_time_diagnostics = with_exchange(
+        full_time_diagnostics, exchange_ou_diagnostics
     )
+    first_half_diagnostics = with_exchange(
+        first_half_diagnostics, exchange_ou_1h_diagnostics
+    )
+    if full_time_snapshot is None and full_time_diagnostics.usable:
+        full_time_snapshot = P3PeriodSnapshot(None, FULL_TIME_TOTALS_SCOPE, None, None)
 
     return P3ExtractionResult(
         target_minute=target_minute,
@@ -475,7 +378,7 @@ def extract_p3_market_snapshot(
         exchange_ou_1h=exchange_ou_1h_diagnostics,
         abort_reason=(
             None
-            if full_time_complete
+            if full_time_diagnostics.usable
             else full_time_reason or "full_time_completeness_gate_failed"
         ),
         extraction_diagnostics={

@@ -272,7 +272,7 @@ def test_full_time_and_first_half_complete_produce_exact_active_contract() -> No
     profile = _profile(result)
 
     assert result["P2_STATUS"] == "ACTIVE"
-    assert result["engine_version"] == "p2-signal-profile-v1"
+    assert result["engine_version"] == "p2-signal-profile-v2"
     assert set(profile) == {
         "FT", "1H", "FT_1H", "EXCHANGE", "BOOK_EXCHANGE",
         "BETFAIR_FT_AH", "BOOK_EXCHANGE_AH", "BETFAIR_1H_AH", "BOOK_EXCHANGE_1H_AH",
@@ -301,17 +301,18 @@ def test_full_time_complete_and_first_half_absent_keeps_ft_and_marks_partial() -
     assert result["raw"]["reason"] == "first_half_incomplete"
 
 
-def test_full_time_incomplete_is_insufficient_even_with_complete_first_half() -> None:
+def test_full_time_missing_pinnacle_preserves_other_complete_bookies() -> None:
     rows = [
         row for row in _complete_rows()
         if not (row["market_period"] == "Full Time" and row["bookie_id"] == 302 and row["market_group"] == "1X2")
     ]
     result = _calculate(rows)
 
-    assert result["P2_STATUS"] == "INSUFFICIENT_DATA"
-    assert result["P2_SIGNAL_PROFILE"] is None
+    assert result["P2_STATUS"] == "PARTIAL"
+    assert result["P2_SIGNAL_PROFILE"]["FT"]["1X2"]["B365_EDGE"] is not None
     assert result["PERIODS"]["first_half"]["status"] == "COMPLETE"
-    assert result["modules"] == []
+    assert result["PERIODS"]["full_time"]["available_bookies"] == ["bet365", "betfair"]
+    assert len(result["modules"]) == 1
 
 
 @pytest.mark.parametrize(
@@ -541,7 +542,7 @@ def test_partial_first_half_1x2_preserves_valid_branch_without_changing_full_tim
     one_x_two = profile["1H"]["1X2"]
 
     assert result["P2_STATUS"] == "PARTIAL"
-    assert result["PERIODS"]["first_half"]["status"] == "INCOMPLETE"
+    assert result["PERIODS"]["first_half"]["status"] == "PARTIAL"
     assert profile["FT"] == _profile(complete)["FT"]
     assert one_x_two["PIN_EDGE"] is None
     assert one_x_two["PIN_DIRECTION"] is None
@@ -630,8 +631,9 @@ def test_multiple_partial_first_half_candidates_remain_ambiguous() -> None:
     result = _calculate(rows)
 
     assert result["P2_STATUS"] == "PARTIAL"
-    assert result["PERIODS"]["first_half"]["status"] == "AMBIGUOUS"
-    assert _profile(result)["1H"] is None
+    assert result["PERIODS"]["first_half"]["status"] == "PARTIAL"
+    assert result["PERIODS"]["first_half"]["bookies"]["pinnacle"]["status"] == "AMBIGUOUS"
+    assert _profile(result)["1H"]["AH"]["B365_EDGE"] is not None
     assert "PIN_AH_1H_LINE" in result["AMBIGUOUS_INPUTS"]
 
 
@@ -650,13 +652,15 @@ def test_multiple_complete_ah_candidates_remain_ambiguous(caplog) -> None:
     )
     result = _calculate(rows)
 
-    assert result["P2_STATUS"] == "INSUFFICIENT_DATA"
-    assert result["PERIODS"]["full_time"]["status"] == "AMBIGUOUS"
+    assert result["P2_STATUS"] == "PARTIAL"
+    assert result["PERIODS"]["full_time"]["status"] == "PARTIAL"
+    assert result["PERIODS"]["full_time"]["bookies"]["pinnacle"]["status"] == "AMBIGUOUS"
+    assert _profile(result)["FT"]["AH"]["B365_EDGE"] is not None
     assert "PIN_AH_FULL_TIME_LINE" in result["AMBIGUOUS_INPUTS"]
     required_log = next(record.getMessage() for record in caplog.records
                         if "P2 EXTRACTION" in record.getMessage() and "period=full_time" in record.getMessage())
-    assert "blocks_profile=True | status=AMBIGUOUS" in required_log
-    assert "books_AH OR books_Handicap" in required_log
+    assert "blocks_profile=False | status=PARTIAL" in required_log
+    assert "AH OR Handicap" in required_log
     assert "BF_AH_FULL_TIME_LINE" not in required_log
     assert "P2 DEBUG | period gates | missing=" not in caplog.text
 

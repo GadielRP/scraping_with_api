@@ -62,7 +62,7 @@ class P2MiningAdapter:
                 ("full_time", "FULL_TIME"),
                 ("first_half", "FIRST_HALF"),
             )
-            if period_statuses.get(period) == "COMPLETE"
+            if period_statuses.get(period) in {"COMPLETE", "PARTIAL"}
         ]
 
         diagnostics = to_json_value(

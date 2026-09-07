@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
 from typing import Any
 
 from modules.pillars.context import EventContext
-from modules.pillars.extraction_logging import log_extraction_diagnostics
+from modules.pillars.market_audit import build_raw_audit, json_inputs
+from modules.pillars.extraction_logging import log_extraction_diagnostics, log_snapshot_inputs
 from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
@@ -26,14 +26,6 @@ from .snapshot_policy import extract_p3_market_snapshot
 
 
 logger = logging.getLogger(__name__)
-
-
-def _number(value: Decimal | None) -> float | None:
-    return None if value is None else float(value)
-
-
-def _json_inputs(values: dict[str, Decimal | None]) -> dict[str, float | None]:
-    return {name: _number(value) for name, value in values.items()}
 
 
 def _empty_inputs() -> dict[str, float | None]:
@@ -61,74 +53,6 @@ def _empty_inputs() -> dict[str, float | None]:
         )
     })
     return values
-
-
-def _raw_audit(
-    *,
-    odds_context: OddsTrajectoryContext | None,
-    periods: dict[str, Any],
-    inputs: dict[str, float | None],
-    input_trace: dict[str, dict[str, Any]],
-    extraction_diagnostics: dict[str, Any],
-    reason: str | None,
-) -> dict[str, Any]:
-    raw = {
-        "inputs": inputs,
-        "input_trace": input_trace,
-        "periods": periods,
-        "extraction_diagnostics": extraction_diagnostics,
-        "target_minutes_expected": list(
-            getattr(odds_context, "target_minutes_expected", [])
-        ),
-        "target_minutes_present": list(
-            getattr(odds_context, "target_minutes_present", [])
-        ),
-    }
-    if reason is not None:
-        raw["reason"] = reason
-    return raw
-
-
-def _debug_snapshot_inputs(snapshot: Any) -> None:
-    values = snapshot.input_values()
-    traces = snapshot.input_trace()
-    logger.info("P3 DEBUG | snapshot | target_minute=%s", snapshot.target_minute)
-    for name, value in values.items():
-        trace = traces.get(name)
-        logger.info("P3 DEBUG | input assignment | name=%s | value=%s", name, value)
-        if trace is None:
-            logger.info(
-                "P3 DEBUG | input lineage | name=%s | unavailable=true",
-                name,
-            )
-            continue
-        logger.info(
-            "P3 DEBUG | input lineage | name=%s | target=%s | snapshot=%s | quote=%s",
-            name,
-            trace.get("target_minute"),
-            trace.get("snapshot_id"),
-            trace.get("quote_id"),
-        )
-        logger.info(
-            "P3 DEBUG | input lineage | name=%s | bookie_id=%s | bookie=%s | source=%s",
-            name,
-            trace.get("bookie_id"),
-            trace.get("bookie_name"),
-            trace.get("source"),
-        )
-        logger.info(
-            "P3 DEBUG | input lineage | name=%s | market_group=%s | period=%s | market_name=%s",
-            name,
-            trace.get("market_group"),
-            trace.get("market_period"),
-            trace.get("market_name"),
-        )
-        logger.info(
-            "P3 DEBUG | input lineage | name=%s | choice=%s | choice_group=%s",
-            name,
-            trace.get("choice_name"),
-            trace.get("choice_group"),
-        )
 
 
 def _log_signal_profile(profile: dict[str, Any]) -> None:
@@ -201,7 +125,7 @@ def calculate_pillar_3(
     log_extraction_diagnostics(
         logger, pillar="P3", event_id=event_context.event_id,
         target_minute=extraction.target_minute, periods=periods,
-        full_time_requirement="books_OverUnder",
+        full_time_requirement="any complete bookie: Over/Under line + both prices",
         debug_mode=debug_mode,
     )
     if debug_mode:
@@ -234,13 +158,13 @@ def calculate_pillar_3(
             extraction.first_half_snapshot,
         ):
             if period_snapshot is not None:
-                inputs.update(_json_inputs(period_snapshot.input_values()))
+                inputs.update(json_inputs(period_snapshot.input_values()))
                 traces.update(period_snapshot.input_trace())
         if extraction.exchange_ou_snapshot is not None:
-            inputs.update(_json_inputs(extraction.exchange_ou_snapshot.input_values()))
+            inputs.update(json_inputs(extraction.exchange_ou_snapshot.input_values()))
             traces.update(extraction.exchange_ou_snapshot.input_trace())
         if extraction.exchange_ou_1h_snapshot is not None:
-            inputs.update(_json_inputs(extraction.exchange_ou_1h_snapshot.input_values(
+            inputs.update(json_inputs(extraction.exchange_ou_1h_snapshot.input_values(
                 line_name=EXCHANGE_OU_1H_LINE_INPUT_NAME,
                 odds_names=EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
                 size_names=EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
@@ -250,7 +174,7 @@ def calculate_pillar_3(
                 odds_names=EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
                 size_names=EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
             ))
-        raw = _raw_audit(
+        raw = build_raw_audit(
             odds_context=odds_context,
             periods=periods,
             inputs=inputs,
@@ -275,21 +199,23 @@ def calculate_pillar_3(
         }
 
     if debug_mode:
-        _debug_snapshot_inputs(snapshot)
+        log_snapshot_inputs(logger, snapshot, pillar="P3")
     profile_dto = build_p3_signal_profile(snapshot, debug_mode=debug_mode)
     profile = profile_dto.to_dict()
     optional_complete = extraction.first_half.status == "COMPLETE"
     status = resolve_pillar_status(
-        required_complete=True,
+        required_complete=extraction.full_time.status == "COMPLETE",
+        required_usable=extraction.full_time.usable,
         optional_complete=optional_complete,
     )
-    raw = _raw_audit(
+    raw = build_raw_audit(
         odds_context=odds_context,
         periods=periods,
-        inputs=_json_inputs(snapshot.input_values()),
+        inputs=json_inputs(snapshot.input_values()),
         input_trace=snapshot.input_trace(),
         extraction_diagnostics=extraction.extraction_diagnostics,
-        reason=None if optional_complete else "first_half_incomplete",
+        reason=("full_time_bookies_incomplete" if extraction.full_time.status != "COMPLETE"
+                else None if optional_complete else "first_half_incomplete"),
     )
     module = {
         "pillar_id": "pillar_3_totals_market_context",

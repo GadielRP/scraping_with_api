@@ -1,0 +1,3 @@
+# Keep the shared P2/P3 coverage regression suite visible to Git.
+!.gitignore
+!test_market_bookie_coverage.py

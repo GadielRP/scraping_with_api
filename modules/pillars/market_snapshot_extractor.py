@@ -28,7 +28,7 @@ HARDCODED_TARGET_MINUTE_BY_FLOW: dict[str, int | None] = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class QuoteTrace:
     target_minute: int
     snapshot_id: int | None
@@ -68,7 +68,7 @@ class QuoteTrace:
         }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class QuotePoint:
     odds_price: Decimal
     exchange_size: Decimal | None
@@ -100,7 +100,7 @@ class MarketSnapshotRequest:
     exchange_level: int = 0
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class MarketCandidate:
     market_line: MarketLineOddsTrajectory
     bookie: BookieOddsTrajectory
@@ -204,24 +204,8 @@ def select_target_minute(
     )
 
 
-def _matches_identity(
-    market_line: MarketLineOddsTrajectory,
-    identities: tuple[MarketIdentity, ...],
-) -> bool:
-    actual = (
-        _normalize(market_line.market_group),
-        _normalize(market_line.market_period),
-        _normalize(market_line.market_name),
-    )
-    return any(
-        actual
-        == (
-            _normalize(identity.market_group),
-            _normalize(identity.market_period),
-            _normalize(identity.market_name),
-        )
-        for identity in identities
-    )
+def _identity_key(identity: MarketIdentity | MarketLineOddsTrajectory) -> tuple[str, str, str]:
+    return (_normalize(identity.market_group), _normalize(identity.market_period), _normalize(identity.market_name))
 
 
 def _iter_market_lines(
@@ -325,8 +309,10 @@ def extract_market_snapshot(
     candidates: list[MarketCandidate] = []
     container_ambiguities: list[dict[str, Any]] = []
 
+    # Normalize the small request vocabulary once, instead of once per line.
+    identities = {_identity_key(identity) for identity in request.identities}
     for market_line in _iter_market_lines(context):
-        if not _matches_identity(market_line, request.identities):
+        if _identity_key(market_line) not in identities:
             continue
         matching_bookies = [
             bookie
