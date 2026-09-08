@@ -142,7 +142,7 @@ def run_oddspapi_pre_start_odds(
     debug_mode: bool = False,
     dry_run: bool = False,
     tracked_competition_ids: Collection[int] | None = None,
-    available_through_utc: datetime | None = None,
+    available_through_utc: datetime | dict[int, datetime | None] | None = None,
 ) -> OddspapiPreStartOddsSummary:
     has_active_candidates = any(
         e.get("should_extract_odds") for e in events_to_process or []

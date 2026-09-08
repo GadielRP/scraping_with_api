@@ -5,7 +5,7 @@
 `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS=false` conserva la estrategia
 anterior. Al activarlo se seleccionan cambios adaptativos en la adquisición
 histórica live; `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` sigue controlando la
-escritura y `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW` la comparación.
+escritura en base de datos.
 El cambio no modifica el `.env` local ni los datos existentes.
 
 Los umbrales versionados están en `OddspapiPreStartSettings`: magnitud 20%,

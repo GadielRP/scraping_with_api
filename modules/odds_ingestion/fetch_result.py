@@ -24,6 +24,7 @@ class OddsFetchResult:
     # files from accidentally containing the normalized ingestion contract.
     raw_payload: dict | None = None
     as_of_quotes: tuple = ()
+    selection_diagnostics: dict | None = None
 
     @classmethod
     def from_payload(
@@ -32,6 +33,7 @@ class OddsFetchResult:
         *,
         raw_payload: object = None,
         as_of_quotes: Sequence | None = None,
+        selection_diagnostics: dict | None = None,
     ) -> "OddsFetchResult":
         quotes = tuple(as_of_quotes) if as_of_quotes else ()
         if isinstance(payload, dict) and payload:
@@ -40,6 +42,7 @@ class OddsFetchResult:
                 payload,
                 raw_payload if isinstance(raw_payload, dict) else None,
                 quotes,
+                selection_diagnostics,
             )
         return cls(OddsFetchStatus.EMPTY)
 

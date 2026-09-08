@@ -39,7 +39,7 @@ class OddspapiHistoricalOddsReader:
         cls,
         historical_response: dict | None,
         *,
-        source_sport_id: str | int | None,
+        source_sport_id: str | int | None = None,
         as_of_targets: Sequence[tuple[int, datetime, datetime]] = (),
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,

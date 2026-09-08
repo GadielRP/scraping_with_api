@@ -4,7 +4,8 @@ Real flow components used (no parallel mapping logic in this script):
 1. modules.oddspapi.OddspapiEventResolver
 2. infrastructure...MarketMappingRepository.build_index / resolve_*
 3. modules.odds_ingestion.OddspapiMarketAdapter  (uses format_utils + DB mappings)
-4. modules.odds_ingestion.MarketOddsIngestionService.save_from_oddspapi_response
+4. modules.odds_ingestion.OddspapiNormalizedMarketFilter
+5. modules.odds_ingestion.MarketOddsIngestionService.save_from_oddspapi_response
 
 Note: CanonicalMarketNormalizer is SofaScore-only. OddsPapi canonicalization happens via
 market_source_mappings loaded by MarketMappingRepository, not that normalizer.
@@ -42,6 +43,7 @@ from modules.odds_ingestion import (  # noqa: E402
     CanonicalMarketNormalizer,
     MarketOddsIngestionService,
     OddspapiMarketAdapter,
+    OddspapiNormalizedMarketFilter,
 )
 from modules.oddspapi import OddspapiEventResolver  # noqa: E402
 from modules.oddspapi.format_utils import normalize_source_id  # noqa: E402
@@ -537,12 +539,6 @@ def main() -> int:
         market_mapping_index=market_mapping_index,
         source="oddspapi",
     )
-    selected_adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response_by_groups_and_periods(
-        adapted,
-        allowed_market_groups=trajectory_market_groups,
-        allowed_market_periods=trajectory_market_periods,
-    )
-
     # 4) Real ingestion service (same path automation will call)
     result = MarketOddsIngestionService.save_from_oddspapi_response(
         odds_response,
@@ -556,6 +552,11 @@ def main() -> int:
     external_providers = odds_response.get("externalProviders") or {}
     payload_sofascore_id = external_providers.get("sofascoreId")
     bookmakers = adapted.get("bookmakers", [])
+    selected_adapted = OddspapiNormalizedMarketFilter.filter_response(
+        adapted,
+        allowed_market_groups=trajectory_market_groups,
+        allowed_market_periods=trajectory_market_periods,
+    )
     selected_bookmakers = selected_adapted.get("bookmakers", [])
     diagnostics = adapted.get("diagnostics") or {}
 

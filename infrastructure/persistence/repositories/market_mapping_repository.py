@@ -134,13 +134,20 @@ class MarketMappingRepository:
                 reason="invalid_market_lookup_key",
             )
 
+        mappings = getattr(index, "market_mappings", index if isinstance(index, dict) else None)
+        if mappings is None:
+            return CanonicalMarketResolution(
+                resolved=False,
+                reason="market_mapping_index_unavailable",
+            )
+
         exact_key = (normalized_source, normalized_sport_id, normalized_market_id)
-        resolved = index.market_mappings.get(exact_key)
+        resolved = mappings.get(exact_key)
         if resolved is not None:
             return resolved
 
         fallback_key = (normalized_source, None, normalized_market_id)
-        resolved = index.market_mappings.get(fallback_key)
+        resolved = mappings.get(fallback_key)
         if resolved is not None:
             return resolved
 
@@ -164,7 +171,14 @@ class MarketMappingRepository:
                 reason="invalid_outcome_lookup_key",
             )
 
-        resolved = index.outcome_mappings.get((market_source_mapping_id, normalized_outcome_id))
+        mappings = getattr(index, "outcome_mappings", index if isinstance(index, dict) else None)
+        if mappings is None:
+            return CanonicalOutcomeResolution(
+                resolved=False,
+                reason="market_mapping_index_unavailable",
+            )
+
+        resolved = mappings.get((market_source_mapping_id, normalized_outcome_id))
         if resolved is not None:
             return resolved
         return CanonicalOutcomeResolution(resolved=False, reason="outcome_mapping_not_found")

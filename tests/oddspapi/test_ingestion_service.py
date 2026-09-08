@@ -127,50 +127,7 @@ def test_unresolved_event_is_skipped_before_adaptation():
     assert result.reason == "sofascore_mapping_not_found"
 
 
-def test_filter_normalized_oddspapi_response_applies_cli_aliases():
-    adapted = {
-        "fixtureId": "fixture-1",
-        "bookmakers": [
-            {
-                "slug": "pinnacle",
-                "name": "Pinnacle Sports",
-                "markets": [
-                    {
-                        "canonicalMarketKey": "1x2_full_time",
-                        "marketName": "1X2 Full Time",
-                        "marketGroup": "1X2",
-                        "marketPeriod": "Full Time",
-                        "choiceGroup": None,
-                        "isLive": False,
-                        "choices": [{"name": "1", "decimalValue": 1.9}],
-                    },
-                    {
-                        "canonicalMarketKey": "home_away_full_time",
-                        "marketName": "Full time",
-                        "marketGroup": "Home/Away",
-                        "marketPeriod": "Full Time",
-                        "choiceGroup": None,
-                        "isLive": False,
-                        "choices": [{"name": "1", "decimalValue": 1.9}],
-                    },
-                ],
-            }
-        ],
-    }
-
-    filtered = MarketOddsIngestionService.filter_normalized_oddspapi_response(
-        adapted,
-        allowed_market_keys={"home_away_full_time"},
-        allowed_market_groups={"ml"},
-        allowed_market_periods={"Match"},
-    )
-
-    assert [bookmaker["slug"] for bookmaker in filtered["bookmakers"]] == ["pinnacle"]
-    assert [market["marketGroup"] for market in filtered["bookmakers"][0]["markets"]] == ["Home/Away"]
-    assert [market["marketPeriod"] for market in filtered["bookmakers"][0]["markets"]] == ["Full Time"]
-
-
-def test_filter_normalized_oddspapi_response_uses_canonical_market_keys():
+def test_save_from_oddspapi_response_keeps_current_endpoint_filters():
     adapted = {
         "fixtureId": "fixture-1",
         "bookmakers": [
@@ -181,26 +138,36 @@ def test_filter_normalized_oddspapi_response_uses_canonical_market_keys():
                         "canonicalMarketKey": "1x2_full_time",
                         "marketGroup": "1X2",
                         "marketPeriod": "Full Time",
+                        "choices": [{"name": "1", "decimalValue": 1.9}],
                     },
                     {
                         "canonicalMarketKey": "over_under_full_time",
                         "marketGroup": "Over/Under",
                         "marketPeriod": "Full Time",
+                        "choices": [{"name": "Over", "decimalValue": 1.9}],
                     },
                 ],
             }
         ],
     }
+    with patch(
+        f"{SERVICE}.OddspapiEventResolver.resolve_from_odds_response",
+        return_value=resolution(),
+    ), patch(
+        f"{SERVICE}.MarketMappingRepository.build_index",
+        return_value=type("Index", (), {"market_mappings": {("oddspapi", "10", "101"): object()}})(),
+    ), patch(
+        f"{SERVICE}.OddspapiMarketAdapter.from_odds_response",
+        return_value=adapted,
+    ):
+        result = MarketOddsIngestionService.save_from_oddspapi_response(
+            {},
+            dry_run=True,
+            allowed_market_keys={"over_under_full_time"},
+        )
 
-    filtered = MarketOddsIngestionService.filter_normalized_oddspapi_response(
-        adapted,
-        allowed_market_keys={"OVER_UNDER_FULL_TIME"},
-    )
-
-    assert [
-        market["canonicalMarketKey"]
-        for market in filtered["bookmakers"][0]["markets"]
-    ] == ["over_under_full_time"]
+    assert result.markets_detected == 1
+    assert result.choices_detected == 1
 
 
 def test_commit_uses_source_resolution_and_skips_unresolved_bookmaker():
@@ -311,6 +278,7 @@ def test_commit_skips_unmapped_markets_from_mapping_mode():
     assert result.skipped is True
     assert result.reason == "no normalized markets found"
     assert result.unmapped_markets_detected == 1
+    assert result.diagnostics == adapted["diagnostics"]
 
 
 def test_commit_passes_canonical_market_payload_to_repository():

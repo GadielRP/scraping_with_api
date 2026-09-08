@@ -8,6 +8,7 @@ from .market_odds_ingestion_service import (
 )
 from .canonical_market_normalizer import CanonicalMarketNormalizer, MarketNormalizationContext
 from .fetch_result import OddsFetchResult, OddsFetchStatus
+from .oddspapi_market_filter import OddspapiNormalizedMarketFilter
 from .provider_odds_phase import (
     ProviderOddsSummary,
     is_eligible_for_source,
@@ -30,6 +31,7 @@ __all__ = [
     "OddsPortalOddsResponse",
     "OddsFetchResult",
     "OddsFetchStatus",
+    "OddspapiNormalizedMarketFilter",
     "ProviderOddsSummary",
     "is_eligible_for_source",
     "mark_missing_endpoints_unavailable",

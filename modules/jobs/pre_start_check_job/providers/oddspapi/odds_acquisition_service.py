@@ -28,6 +28,9 @@ from .exchange_outcome_selector import (
     OddspapiExchangeOutcomeSelector,
 )
 from .historical_odds_enricher import OddspapiHistoricalOddsEnricher
+from .historical_payload_selector import (
+    HistoricalPayloadSelectionContext,
+)
 from .mainline_outcome_extractor import OddspapiMainlineOutcomeExtractor
 from .odds_fetcher import OddspapiOddsFetcher
 from .settings import ODDSPAPI_PRE_START_SETTINGS
@@ -64,6 +67,16 @@ class OddspapiOddsAcquisitionResult:
     exchange_selection_diagnostics: dict[str, int] = field(default_factory=dict)
     mainline_outcomes_cached: int = 0
     as_of_quotes: list = field(default_factory=list)
+    historical_raw_markets_seen: int = 0
+    historical_raw_outcomes_seen: int = 0
+    historical_preselected_markets: int = 0
+    historical_preselected_outcomes: int = 0
+    historical_markets_removed_unmapped: int = 0
+    historical_outcomes_removed_unmapped: int = 0
+    historical_markets_removed_non_mainline: int = 0
+    historical_preselection_bypassed: bool = False
+    historical_preselection_bypass_reason: str | None = None
+    historical_selection_diagnostics: list[dict] = field(default_factory=list)
 
 
 class OddspapiPreStartOddsAcquisitionService:
@@ -140,6 +153,7 @@ class OddspapiPreStartOddsAcquisitionService:
         min_price: float = 1.01,
         kickoff_utc: datetime | None = None,
         available_through_utc: datetime | None = None,
+        selection_context: HistoricalPayloadSelectionContext | None = None,
     ) -> OddsFetchResult:
         return self.fetcher.fetch_odds(
             fixture_id,
@@ -159,7 +173,34 @@ class OddspapiPreStartOddsAcquisitionService:
             min_price=min_price,
             kickoff_utc=kickoff_utc,
             available_through_utc=available_through_utc,
+            selection_context=selection_context,
         )
+
+    @staticmethod
+    def _record_selection_diagnostics(
+        result: OddspapiOddsAcquisitionResult,
+        fetch_result: OddsFetchResult | None,
+    ) -> None:
+        diag = getattr(fetch_result, "selection_diagnostics", None)
+        if not isinstance(diag, dict):
+            return
+        result.historical_raw_markets_seen += int(diag.get("raw_markets_seen", 0) or 0)
+        result.historical_raw_outcomes_seen += int(diag.get("raw_outcomes_seen", 0) or 0)
+        result.historical_preselected_markets += int(diag.get("selected_markets", 0) or 0)
+        result.historical_preselected_outcomes += int(diag.get("selected_outcomes", 0) or 0)
+        result.historical_markets_removed_unmapped += int(
+            diag.get("skipped_unmapped_markets", 0) or 0
+        )
+        result.historical_outcomes_removed_unmapped += int(
+            diag.get("skipped_unmapped_outcomes", 0) or 0
+        )
+        result.historical_markets_removed_non_mainline += int(
+            diag.get("skipped_non_mainline_markets", 0) or 0
+        )
+        if diag.get("bypassed"):
+            result.historical_preselection_bypassed = True
+            result.historical_preselection_bypass_reason = diag.get("bypass_reason")
+        result.historical_selection_diagnostics.append(diag)
 
     @staticmethod
     def _record_as_of_quotes(
@@ -365,6 +406,12 @@ class OddspapiPreStartOddsAcquisitionService:
         enable_exchange_historical: bool,
         regular: list[str],
         exchange: list[str],
+        market_mapping_index: MarketMappingIndex | None = None,
+        allowed_market_keys: list[str] | None = None,
+        allowed_market_groups: list[str] | None = None,
+        allowed_market_periods: list[str] | None = None,
+        persist_main_line_only: bool = False,
+        mainline_fallback_bookmakers: list[str] | tuple[str, ...] | None = None,
         exchange_market_keys: list[str] | None = None,
         exchange_max_outcomes_per_event: int,
         exchange_request_budget: int | None,
@@ -440,6 +487,26 @@ class OddspapiPreStartOddsAcquisitionService:
         if regular:
             requested_bookmakers.update(regular)
             result.http_requests_attempted += 1
+            getter = getattr(
+                self.mainline_cache_repository,
+                "get_mainline_outcome_ids_by_bookmaker",
+                None,
+            )
+            cached_mainline_by_bookie = (
+                getter(event_id) if callable(getter) else {}
+            )
+            selection_context = HistoricalPayloadSelectionContext(
+                source_sport_id=source_sport_id,
+                market_mapping_index=market_mapping_index,
+                source="oddspapi",
+                allowed_market_keys=allowed_market_keys,
+                allowed_market_groups=allowed_market_groups,
+                allowed_market_periods=allowed_market_periods,
+                mainline_outcome_ids_by_bookmaker=cached_mainline_by_bookie,
+                mainline_fallback_bookmakers=mainline_fallback_bookmakers,
+                use_mainline_cache=True,
+                persist_main_line_only=persist_main_line_only,
+            )
             historical_result = self._fetch(
                 fixture_id,
                 bookmakers=regular,
@@ -457,7 +524,9 @@ class OddspapiPreStartOddsAcquisitionService:
                 min_price=min_price,
                 kickoff_utc=kickoff_utc,
                 available_through_utc=available_through_utc,
+                selection_context=selection_context,
             )
+            self._record_selection_diagnostics(result, historical_result)
             historical_missing = historical_result.endpoint_missing
             if payload:
                 if available_through_utc is not None:
@@ -576,6 +645,11 @@ class OddspapiPreStartOddsAcquisitionService:
         regular: list[str],
         exchange: list[str],
         market_mapping_index: MarketMappingIndex,
+        allowed_market_keys: list[str] | None = None,
+        allowed_market_groups: list[str] | None = None,
+        allowed_market_periods: list[str] | None = None,
+        persist_main_line_only: bool = False,
+        mainline_fallback_bookmakers: list[str] | tuple[str, ...] | None = None,
         exchange_market_keys: list[str] | None,
         exchange_main_line_only: bool,
         exchange_include_player_props: bool,
@@ -609,6 +683,11 @@ class OddspapiPreStartOddsAcquisitionService:
             regular=regular,
             exchange=exchange,
             market_mapping_index=market_mapping_index,
+            allowed_market_keys=allowed_market_keys,
+            allowed_market_groups=allowed_market_groups,
+            allowed_market_periods=allowed_market_periods,
+            persist_main_line_only=persist_main_line_only,
+            mainline_fallback_bookmakers=mainline_fallback_bookmakers,
             exchange_market_keys=exchange_market_keys,
             exchange_main_line_only=exchange_main_line_only,
             exchange_include_player_props=exchange_include_player_props,
@@ -632,6 +711,12 @@ class OddspapiPreStartOddsAcquisitionService:
             enable_exchange_historical=enable_exchange_historical,
             regular=regular,
             exchange=exchange,
+            market_mapping_index=market_mapping_index,
+            allowed_market_keys=allowed_market_keys,
+            allowed_market_groups=allowed_market_groups,
+            allowed_market_periods=allowed_market_periods,
+            persist_main_line_only=persist_main_line_only,
+            mainline_fallback_bookmakers=mainline_fallback_bookmakers,
             exchange_market_keys=exchange_market_keys,
             exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
             exchange_request_budget=exchange_request_budget,
@@ -660,6 +745,11 @@ class OddspapiPreStartOddsAcquisitionService:
         regular: list[str],
         exchange: list[str],
         market_mapping_index: MarketMappingIndex,
+        allowed_market_keys: list[str] | None = None,
+        allowed_market_groups: list[str] | None = None,
+        allowed_market_periods: list[str] | None = None,
+        persist_main_line_only: bool = False,
+        mainline_fallback_bookmakers: list[str] | tuple[str, ...] | None = None,
         exchange_market_keys: list[str] | None,
         exchange_main_line_only: bool,
         exchange_include_player_props: bool,
@@ -739,6 +829,26 @@ class OddspapiPreStartOddsAcquisitionService:
         ):
             requested_bookmakers.update(regular)
             result.http_requests_attempted += 1
+            getter = getattr(
+                self.mainline_cache_repository,
+                "get_mainline_outcome_ids_by_bookmaker",
+                None,
+            )
+            cached_mainline_by_bookie = (
+                getter(event_id) if (persist_main_line_only and callable(getter)) else {}
+            )
+            selection_context = HistoricalPayloadSelectionContext(
+                source_sport_id=source_sport_id,
+                market_mapping_index=market_mapping_index,
+                source="oddspapi",
+                allowed_market_keys=allowed_market_keys,
+                allowed_market_groups=allowed_market_groups,
+                allowed_market_periods=allowed_market_periods,
+                mainline_outcome_ids_by_bookmaker=cached_mainline_by_bookie,
+                mainline_fallback_bookmakers=mainline_fallback_bookmakers,
+                use_mainline_cache=persist_main_line_only,
+                persist_main_line_only=persist_main_line_only,
+            )
             historical_result = self._fetch(
                 fixture_id,
                 bookmakers=regular,
@@ -747,7 +857,9 @@ class OddspapiPreStartOddsAcquisitionService:
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
                 require_active_quotes=require_active_quotes,
                 available_through_utc=available_through_utc,
+                selection_context=selection_context,
             )
+            self._record_selection_diagnostics(result, historical_result)
             if historical_result.payload:
                 payload = OddspapiHistoricalOddsEnricher.merge_initial_prices(
                     current_payload,
@@ -839,6 +951,11 @@ class OddspapiPreStartOddsAcquisitionService:
         regular_bookmakers: list[str] | None,
         exchange_bookmakers: list[str] | None,
         market_mapping_index: MarketMappingIndex,
+        allowed_market_keys: list[str] | None = None,
+        allowed_market_groups: list[str] | None = None,
+        allowed_market_periods: list[str] | None = None,
+        persist_main_line_only: bool = False,
+        mainline_fallback_bookmakers: list[str] | tuple[str, ...] | None = None,
         exchange_market_keys: list[str] | None,
         exchange_main_line_only: bool,
         exchange_include_player_props: bool,
@@ -872,6 +989,11 @@ class OddspapiPreStartOddsAcquisitionService:
                 regular=regular,
                 exchange=exchange,
                 market_mapping_index=market_mapping_index,
+                allowed_market_keys=allowed_market_keys,
+                allowed_market_groups=allowed_market_groups,
+                allowed_market_periods=allowed_market_periods,
+                persist_main_line_only=persist_main_line_only,
+                mainline_fallback_bookmakers=mainline_fallback_bookmakers,
                 exchange_market_keys=exchange_market_keys,
                 exchange_main_line_only=exchange_main_line_only,
                 exchange_include_player_props=exchange_include_player_props,
@@ -896,6 +1018,12 @@ class OddspapiPreStartOddsAcquisitionService:
                 enable_exchange_historical=enable_exchange_historical,
                 regular=regular,
                 exchange=exchange,
+                market_mapping_index=market_mapping_index,
+                allowed_market_keys=allowed_market_keys,
+                allowed_market_groups=allowed_market_groups,
+                allowed_market_periods=allowed_market_periods,
+                persist_main_line_only=persist_main_line_only,
+                mainline_fallback_bookmakers=mainline_fallback_bookmakers,
                 exchange_market_keys=exchange_market_keys,
                 exchange_max_outcomes_per_event=exchange_max_outcomes_per_event,
                 exchange_request_budget=exchange_request_budget,
@@ -922,6 +1050,11 @@ class OddspapiPreStartOddsAcquisitionService:
             regular=regular,
             exchange=exchange,
             market_mapping_index=market_mapping_index,
+            allowed_market_keys=allowed_market_keys,
+            allowed_market_groups=allowed_market_groups,
+            allowed_market_periods=allowed_market_periods,
+            persist_main_line_only=persist_main_line_only,
+            mainline_fallback_bookmakers=mainline_fallback_bookmakers,
             exchange_market_keys=exchange_market_keys,
             exchange_main_line_only=exchange_main_line_only,
             exchange_include_player_props=exchange_include_player_props,

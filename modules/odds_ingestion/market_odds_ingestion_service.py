@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import pprint
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Collection, Dict, Mapping, Optional, Sequence
 
@@ -29,6 +29,7 @@ from .adapters.oddspapi_market_adapter import OddspapiMarketAdapter
 from .adapters.oddsportal_market_adapter import OddsPortalMarketAdapter
 from .adapters.sofascore_market_adapter import SofaScoreMarketAdapter
 from .canonical_market_normalizer import CanonicalMarketNormalizer
+from .oddspapi_market_filter import OddspapiNormalizedMarketFilter
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ class MarketIngestionResult:
     dual_process_market_available: bool = False
     skipped: bool = False
     reason: Optional[str] = None
+    diagnostics: dict = field(default_factory=dict)
 
     @property
     def mappings_created(self) -> int:
@@ -238,143 +240,6 @@ class MarketOddsIngestionService:
             reason=None if save_result.markets_saved > 0 else "no markets saved",
         )
 
-    @staticmethod
-    def filter_normalized_oddspapi_response(
-        normalized_response: Dict,
-        allowed_market_keys: Optional[list[str] | set[str] | tuple[str, ...]] = None,
-        allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
-        allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
-    ) -> Dict:
-        if not normalized_response or not normalized_response.get("bookmakers"):
-            return normalized_response
-
-        normalized_keys = (
-            MarketOddsIngestionService._normalize_market_key_filters(
-                allowed_market_keys
-            )
-        )
-        normalized_groups = (
-            MarketOddsIngestionService._normalize_market_group_filters(
-                allowed_market_groups
-            )
-        )
-        normalized_periods = (
-            MarketOddsIngestionService._normalize_market_period_filters(
-                allowed_market_periods
-            )
-        )
-
-        if (
-            normalized_keys is None
-            and normalized_groups is None
-            and normalized_periods is None
-        ):
-            return normalized_response
-
-        filtered_bookmakers = []
-        for bookmaker in normalized_response.get("bookmakers", []):
-            filtered_markets = []
-            for market in bookmaker.get("markets", []):
-                market_key = str(
-                    market.get("canonicalMarketKey") or ""
-                ).strip().lower()
-                market_group = str(market.get("marketGroup") or "").strip()
-                market_period = str(market.get("marketPeriod") or "").strip()
-
-                if normalized_keys is not None and market_key not in normalized_keys:
-                    continue
-                if normalized_groups is not None and market_group not in normalized_groups:
-                    continue
-                if normalized_periods is not None and market_period not in normalized_periods:
-                    continue
-                filtered_markets.append(market)
-
-            if filtered_markets:
-                filtered_bookmaker = dict(bookmaker)
-                filtered_bookmaker["markets"] = filtered_markets
-                filtered_bookmakers.append(filtered_bookmaker)
-
-        filtered = {
-            "fixtureId": normalized_response.get("fixtureId"),
-            "bookmakers": filtered_bookmakers,
-        }
-        if "diagnostics" in normalized_response:
-            filtered["diagnostics"] = normalized_response.get("diagnostics")
-        return filtered
-
-    @staticmethod
-    def filter_normalized_oddspapi_response_by_groups_and_periods(
-        normalized_response: Dict,
-        allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]] = None,
-        allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]] = None,
-    ) -> Dict:
-        """Backward-compatible wrapper for callers using the old filter name."""
-        return MarketOddsIngestionService.filter_normalized_oddspapi_response(
-            normalized_response,
-            allowed_market_groups=allowed_market_groups,
-            allowed_market_periods=allowed_market_periods,
-        )
-
-    @staticmethod
-    def _normalize_market_key_filters(
-        allowed_market_keys: Optional[list[str] | set[str] | tuple[str, ...]],
-    ) -> Optional[set[str]]:
-        if not allowed_market_keys:
-            return None
-        normalized = {
-            str(item).strip().lower()
-            for item in allowed_market_keys
-            if item is not None and str(item).strip()
-        }
-        return normalized or None
-
-    @staticmethod
-    def _normalize_market_group_filters(
-        allowed_market_groups: Optional[list[str] | set[str] | tuple[str, ...]],
-    ) -> Optional[set[str]]:
-        if not allowed_market_groups:
-            return None
-
-        normalized: set[str] = set()
-        for item in allowed_market_groups:
-            if item is None:
-                continue
-            text = str(item).strip()
-            if not text:
-                continue
-            lowered = text.lower()
-            if lowered == "1x2":
-                normalized.add("1X2")
-            elif lowered in {"home/away", "ml", "moneyline"}:
-                normalized.add("Home/Away")
-            elif lowered in {"over/under", "total", "totals"}:
-                normalized.add("Over/Under")
-            elif lowered in {"asian handicap", "ah", "spread"}:
-                normalized.add("Asian handicap")
-            else:
-                normalized.add(text)
-        return normalized or None
-
-    @staticmethod
-    def _normalize_market_period_filters(
-        allowed_market_periods: Optional[list[str] | set[str] | tuple[str, ...]],
-    ) -> Optional[set[str]]:
-        if not allowed_market_periods:
-            return None
-
-        normalized: set[str] = set()
-        for item in allowed_market_periods:
-            if item is None:
-                continue
-            text = str(item).strip()
-            if not text:
-                continue
-            lowered = text.lower()
-            if lowered in {"match", "ft", "full time", "fulltime"}:
-                normalized.add("Full Time")
-            else:
-                normalized.add(text)
-        return normalized or None
 
     @staticmethod
     def _payload_has_main_line_flags(odds_response: dict) -> bool:
@@ -450,7 +315,12 @@ class MarketOddsIngestionService:
                 source="oddspapi",
                 enabled_only=True,
             )
-        if not market_mapping_index.market_mappings:
+        market_mappings = getattr(
+            market_mapping_index,
+            "market_mappings",
+            market_mapping_index if isinstance(market_mapping_index, dict) else None,
+        )
+        if not market_mappings:
             logger.info(
                 "Skipping OddsPapi ingestion fixture_id=%s event_id=%s: "
                 "market mapping index is empty",
@@ -508,7 +378,12 @@ class MarketOddsIngestionService:
                 deduplicate_historical_current_snapshots
             ),
         )
-        adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response(
+        # Historical payloads are already preselected before the reader.  The
+        # shared post-adapter filter remains intentionally as a compatibility
+        # guard for the current /odds endpoint and direct service callers.
+        # Applying it to a historical payload is idempotent and does not
+        # reintroduce traversal of the original raw historical response.
+        adapted = OddspapiNormalizedMarketFilter.filter_response(
             adapted,
             allowed_market_keys=allowed_market_keys,
             allowed_market_groups=allowed_market_groups,
@@ -523,15 +398,6 @@ class MarketOddsIngestionService:
         skipped_incomplete_markets_detected = len(
             diagnostics.get("skipped_incomplete_markets") or []
         )
-        for skipped_bookmaker in diagnostics.get("skipped_missing_mainline_cache") or []:
-            logger.warning(
-                "Oddspapi historical persist skipped bookmaker without mainline cache "
-                "event_id=%s fixture_id=%s bookmaker=%s fallback_priority=%s",
-                resolution.canonical_event_id,
-                odds_response.get("fixtureId"),
-                skipped_bookmaker.get("bookmakerSlug"),
-                skipped_bookmaker.get("fallbackPriority"),
-            )
         for fallback_used in diagnostics.get("mainline_cache_fallbacks_used") or []:
             logger.info(
                 "Oddspapi historical persist using fallback mainline cache "
@@ -611,6 +477,7 @@ class MarketOddsIngestionService:
                 event_mappings_created=event_mappings_created,
                 skipped=True,
                 reason="no normalized markets found",
+                diagnostics=diagnostics,
             )
 
         if dry_run:
@@ -629,6 +496,7 @@ class MarketOddsIngestionService:
                     skipped_incomplete_markets_detected
                 ),
                 event_mappings_created=event_mappings_created,
+                diagnostics=diagnostics,
             )
 
         markets_saved = 0
@@ -720,6 +588,7 @@ class MarketOddsIngestionService:
                     dual_process_market_available=dual_process_available,
                     skipped=True,
                     reason="no resolved canonical bookies",
+                    diagnostics=diagnostics,
                 )
 
             dual_process_available = DualProcessOddsRepository.event_has_dual_process_odds(
@@ -751,6 +620,7 @@ class MarketOddsIngestionService:
                 dual_process_market_available=dual_process_available,
                 skipped=markets_saved <= 0,
                 reason=None if markets_saved > 0 else "no markets saved",
+                diagnostics=diagnostics,
             )
         except Exception as exc:
             logger.error(

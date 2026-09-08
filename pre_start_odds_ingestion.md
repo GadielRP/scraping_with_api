@@ -565,9 +565,10 @@ With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` and `ENABLE_PRE_START_T_MINUS_ONE_J
 2. $T-1$ is skipped in real time.
 3. At $T-0$ **only while `0` passes the provider-only gate**, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs historical observations. This lane is active under the temporary `[5,0]` deployment but is outside the T−5-only target. When significant changes are enabled and an explicit kickoff is available, each sanitized series uses the adaptive detector or its configured-moment fallback. Replay deduplication uses `source_collected_at` together with the temporal snapshot key. Current-vs-moment deduplication is a separate global OddspAPI adapter policy described in §6.1.3 and §6.2.1.
 
-HTTP `/odds` is **not** filtered by market key. The client sends `fixtureId`, `bookmakers`, `oddsFormat=decimal`, `language`, `verbosity=3`. Which markets survive later is mapping + persist policy. `ODDSPAPI_DEFAULT_MARKET_KEYS` is a discovery default, not this persist allowlist.
+HTTP `/odds` is **not** filtered by market key at the provider request boundary. The client sends `fixtureId`, `bookmakers`, `oddsFormat=decimal`, `language`, `verbosity=3`. After adaptation, the optional ingestion filters (`allowed_market_keys`, `allowed_market_groups`, and `allowed_market_periods`) still apply for compatibility. `ODDSPAPI_DEFAULT_MARKET_KEYS` is a discovery default, not this persist allowlist.
 
 ### 6.1.1 What `_acquire_pre_start` does when a positive-minute request is allowed
+
 
 Used for ordinary non-live candidates whenever the closing-only and provider-moment gates allow the request. Forced significant-change candidates use §6.1.2.1 instead.
 
@@ -582,9 +583,10 @@ Independent of `CLOSING_ONLY` (the skip does not apply to live).
 
 1. Refuse the request if the event has no mainline cache (`missing_mainline_cache`).
 2. For a live candidate, call `/historical-odds` only (no live `/odds`). A forced non-live candidate is handled by §6.1.2.1 and primes the cache first.
-3. When `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS=true` (default), convert the canonical event start (stored as Mexico-local naive time despite the legacy `start_time_utc` name) to UTC and pass it as the inclusive historical-current cutoff. Opening/current normalization ignores every tick with `createdAt > kickoff`. With the toggle disabled, no cutoff is passed and selection returns to the unbounded latest tick.
-4. Ingest with `use_mainline_cache=True` so choices can be tagged `mainLine` from cache.
-5. If `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` is on (default `true`), historical observations travel as `momentQuotes`. With significant-change mode enabled, a series uses detector-selected changes when any qualify; when the detector produces no moment quotes, the reader uses the configured fixed moments as a per-series fallback. If kickoff is missing, the reader logs the reason and disables significant-change extraction; because as-of targets are derived from kickoff, no fixed/dynamic `momentQuotes` are reconstructed for that read. The repository performs provider-neutral replay deduplication: if a moment snapshot already exists at the same temporal key with the same `source_collected_at`, it is skipped; a genuinely newer provider tick may be appended.
+3. Upstream pre-selection: before traversing and normalizing tick series, `HistoricalPayloadSelector` filters unmapped markets/outcomes, non-mainline markets (via cache), and applies allowed key/group/period filters directly in memory, retaining the unmutated `raw_payload` for debug and audit.
+4. When `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS=true` (default), convert the canonical event start (stored as Mexico-local naive time despite the legacy `start_time_utc` name) to UTC and pass it as the inclusive historical-current cutoff. Opening/current normalization ignores every tick with `createdAt > kickoff`. With the toggle disabled, no cutoff is passed and selection returns to the unbounded latest tick.
+5. Ingest with `use_mainline_cache=True` so choices can be tagged `mainLine` from cache.
+6. If `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` is on (default `true`), historical observations travel as `momentQuotes`. With significant-change mode enabled, a series uses detector-selected changes when any qualify; when the detector produces no moment quotes, the reader uses the configured fixed moments as a per-series fallback. If kickoff is missing, the reader logs the reason and disables significant-change extraction; because as-of targets are derived from kickoff, no fixed/dynamic `momentQuotes` are reconstructed for that read. The repository performs provider-neutral replay deduplication: if a moment snapshot already exists at the same temporal key with the same `source_collected_at`, it is skipped; a genuinely newer provider tick may be appended.
 
 ### 6.1.2.1 What a forced non-live significant-change moment does
 
@@ -669,14 +671,14 @@ Not persisted as OddspAPI prices:
 
 ### 6.3 Market limits: mapping catalog, not a hardcoded 1X2 list
 
-Pre-start persist does **not** hardcode “only 1X2 / Over-Under / AH”. `OddspapiPreStartSettings.allowed_market_keys` is empty, so `filter_normalized_oddspapi_response` is a no-op.
+Pre-start persist does **not** hardcode “only 1X2 / Over-Under / AH”. By default, `OddspapiPreStartSettings.allowed_market_keys`, `allowed_market_groups`, and `allowed_market_periods` are empty, so upstream selection retains all mapped markets.
 
 The real allowlist is the catalog in `market_source_mappings` where `source='oddspapi'`. A payload market survives only if:
 
-1. `(source, source_sport_id, source_market_id)` resolves to a canonical key (`1x2_full_time`, `over_under_full_time`, `asian_handicap_full_time`, `home_away_full_time`, …).
-2. Line markets (`requires_choice_group`) have a handicap that becomes `markets.choice_group` (e.g. `"2.5"`). Missing handicap → skip.
+1. `(source, source_sport_id, source_market_id)` resolves to a canonical key (`1x2_full_time`, `over_under_full_time`, `asian_handicap_full_time`, `home_away_full_time`, …). In historical flows, `HistoricalPayloadSelector` validates this mapping in memory before series normalization.
+2. Line markets (`requires_choice_group`) have a handicap that becomes `markets.choice_group` (e.g. `"2.5"`). Missing handicap → skip. In historical flows, `HistoricalPayloadSelector` ensures line markets match cached mainline selections.
 3. Every expected mapped outcome for that market is present after filtering. Missing `x` on a 1X2 market drops the **whole** market (`skipped_incomplete_markets`).
-4. Optional extra filters (all empty in product settings today): `allowed_market_keys` / `allowed_market_groups` / `allowed_market_periods`.
+4. Optional extra filters (all empty in product settings today): `allowed_market_keys` / `allowed_market_groups` / `allowed_market_periods` (enforced upstream in memory by `HistoricalPayloadSelector`).
 
 Exchange historical **planning** is narrower: `exchange_market_keys` in `settings.py` (1X2 / O-U / AH, with and without overtime). That only limits which Betfair outcomes get extra `/historical-odds` calls, not what `/odds` may persist.
 

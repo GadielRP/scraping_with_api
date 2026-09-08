@@ -15,6 +15,10 @@ from .constants import (
     ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
     ODDSPAPI_PRE_START_ODDS_ENDPOINTS,
 )
+from .historical_payload_selector import (
+    HistoricalPayloadSelectionContext,
+    HistoricalPayloadSelector,
+)
 
 
 class OddspapiOddsFetcher:
@@ -65,6 +69,7 @@ class OddspapiOddsFetcher:
         min_price: float = 1.01,
         kickoff_utc: datetime | None = None,
         available_through_utc: datetime | None = None,
+        selection_context: HistoricalPayloadSelectionContext | None = None,
     ) -> OddsFetchResult:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -76,6 +81,7 @@ class OddspapiOddsFetcher:
 
         raw_payload = None
         as_of_quotes: tuple = ()
+        selection_diagnostics: dict | None = None
         try:
             if selected_endpoint == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT:
                 # Treat the request start as the observation boundary.  A slow
@@ -91,8 +97,18 @@ class OddspapiOddsFetcher:
                 )
                 if capture_raw_response:
                     raw_payload = historical_payload
+
+                payload_for_reader = historical_payload
+                if selection_context is not None:
+                    selection_result = HistoricalPayloadSelector.select(
+                        historical_payload,
+                        context=selection_context,
+                    )
+                    payload_for_reader = selection_result.payload
+                    selection_diagnostics = selection_result.diagnostics
+
                 read_result = OddspapiHistoricalOddsReader.read(
-                    historical_payload,
+                    payload_for_reader,
                     source_sport_id=source_sport_id,
                     as_of_targets=as_of_targets or (),
                     minimum_initial_span_minutes=minimum_initial_span_minutes,
@@ -128,4 +144,5 @@ class OddspapiOddsFetcher:
             payload,
             raw_payload=raw_payload,
             as_of_quotes=as_of_quotes,
+            selection_diagnostics=selection_diagnostics,
         )

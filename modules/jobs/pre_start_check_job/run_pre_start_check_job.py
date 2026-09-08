@@ -289,7 +289,7 @@ def run_pre_start_odds_moments(
     restrict_oddspapi_odds_extraction = (
         Config.ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY
     )
-    tracked_ids = tracked_competition_ids()
+    tracked_ids = set(tracked_competition_ids())
     include_all_tennis = getattr(
         Config, "TIMESTAMP_CORRECTIONS_INCLUDE_ALL_TENNIS", True
     )

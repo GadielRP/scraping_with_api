@@ -54,7 +54,6 @@ from .odds_acquisition_service import (
     OddspapiOddsAcquisitionResult,
     OddspapiPreStartOddsAcquisitionService,
 )
-from .historical_odds_as_of_shadow import log_historical_odds_as_of_shadow
 from .settings import ODDSPAPI_PRE_START_SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -88,6 +87,15 @@ class OddspapiPreStartOddsEventResult:
     exchange_historical_requests_attempted: int = 0
     exchange_historical_requests_failed: int = 0
     exchange_outcomes_skipped_budget: int = 0
+    historical_raw_markets_seen: int = 0
+    historical_raw_outcomes_seen: int = 0
+    historical_preselected_markets: int = 0
+    historical_preselected_outcomes: int = 0
+    historical_markets_removed_unmapped: int = 0
+    historical_outcomes_removed_unmapped: int = 0
+    historical_markets_removed_non_mainline: int = 0
+    historical_preselection_bypassed: bool = False
+    historical_preselection_bypass_reason: str | None = None
     error: str | None = None
 
 
@@ -108,6 +116,13 @@ class OddspapiPreStartOddsSummary(ProviderOddsSummary):
     exchange_historical_requests_attempted: int = 0
     exchange_historical_requests_failed: int = 0
     exchange_outcomes_skipped_budget: int = 0
+    historical_raw_markets_seen: int = 0
+    historical_raw_outcomes_seen: int = 0
+    historical_preselected_markets: int = 0
+    historical_preselected_outcomes: int = 0
+    historical_markets_removed_unmapped: int = 0
+    historical_outcomes_removed_unmapped: int = 0
+    historical_markets_removed_non_mainline: int = 0
     api_key_assignments: dict[str, int] = field(default_factory=dict)
     api_key_diagnostics: dict[str, int] = field(default_factory=dict)
     disabled: bool = False
@@ -137,6 +152,13 @@ class OddspapiPreStartOddsBatchProcessor:
         "exchange_historical_requests_attempted",
         "exchange_historical_requests_failed",
         "exchange_outcomes_skipped_budget",
+        "historical_raw_markets_seen",
+        "historical_raw_outcomes_seen",
+        "historical_preselected_markets",
+        "historical_preselected_outcomes",
+        "historical_markets_removed_unmapped",
+        "historical_outcomes_removed_unmapped",
+        "historical_markets_removed_non_mainline",
     )
 
     def __init__(
@@ -434,6 +456,13 @@ class OddspapiPreStartOddsBatchProcessor:
             "exchange_historical_requests_attempted",
             "exchange_historical_requests_failed",
             "exchange_outcomes_skipped_budget",
+            "historical_raw_markets_seen",
+            "historical_raw_outcomes_seen",
+            "historical_preselected_markets",
+            "historical_preselected_outcomes",
+            "historical_markets_removed_unmapped",
+            "historical_outcomes_removed_unmapped",
+            "historical_markets_removed_non_mainline",
         ):
             setattr(summary, field_name, getattr(summary, field_name) + getattr(result, field_name))
 
@@ -446,12 +475,25 @@ class OddspapiPreStartOddsBatchProcessor:
             "exchange_historical_requests_attempted",
             "exchange_historical_requests_failed",
             "exchange_outcomes_skipped_budget",
+            "historical_raw_markets_seen",
+            "historical_raw_outcomes_seen",
+            "historical_preselected_markets",
+            "historical_preselected_outcomes",
+            "historical_markets_removed_unmapped",
+            "historical_outcomes_removed_unmapped",
+            "historical_markets_removed_non_mainline",
         ):
             setattr(
                 result,
                 field_name,
                 getattr(acquisition_result, field_name, 0) or 0,
             )
+        result.historical_preselection_bypassed = bool(
+            getattr(acquisition_result, "historical_preselection_bypassed", False)
+        )
+        result.historical_preselection_bypass_reason = getattr(
+            acquisition_result, "historical_preselection_bypass_reason", None
+        )
         result.bookmaker_slugs_requested = list(
             getattr(acquisition_result, "bookmaker_slugs_requested", None) or []
         )
@@ -559,7 +601,7 @@ class OddspapiPreStartOddsBatchProcessor:
         max_workers: int = 1,
         market_mapping_index: MarketMappingIndex | None = None,
         debug_mode: bool = False,
-        available_through_utc: datetime | None = None,
+        available_through_utc: datetime | dict[int, datetime | None] | None = None,
     ) -> OddspapiPreStartOddsSummary:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -882,6 +924,11 @@ class OddspapiPreStartOddsBatchProcessor:
                         regular_bookmakers=bookmakers,
                         exchange_bookmakers=exchange_bookmakers,
                         market_mapping_index=market_mapping_index,
+                        allowed_market_keys=allowed_market_keys,
+                        allowed_market_groups=allowed_market_groups,
+                        allowed_market_periods=allowed_market_periods,
+                        persist_main_line_only=persist_main_line_only,
+                        mainline_fallback_bookmakers=mainline_fallback_bookmakers,
                         exchange_market_keys=exchange_market_keys,
                         exchange_main_line_only=exchange_main_line_only,
                         exchange_include_player_props=(
@@ -903,17 +950,10 @@ class OddspapiPreStartOddsBatchProcessor:
                         start_time_utc=candidate.start_time_utc,
                         as_of_moments=(
                             list(Config.PRE_START_ODDS_MOMENTS)
-                            if (
-                                getattr(
-                                    Config,
-                                    "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW",
-                                    False,
-                                )
-                                or getattr(
-                                    Config,
-                                    "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
-                                    False,
-                                )
+                            if getattr(
+                                Config,
+                                "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
+                                False,
                             )
                             else None
                         ),
@@ -923,7 +963,11 @@ class OddspapiPreStartOddsBatchProcessor:
                             False,
                         ),
                         force_significant_changes=force_significant_changes,
-                        available_through_utc=available_through_utc,
+                        available_through_utc=(
+                            available_through_utc.get(candidate.event_id)
+                            if isinstance(available_through_utc, dict)
+                            else available_through_utc
+                        ),
                     )
                     save_odds_responses = getattr(
                         Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False
@@ -973,23 +1017,6 @@ class OddspapiPreStartOddsBatchProcessor:
                         )
                         continue
                     odds_response = acquisition_result.payload
-                    if (
-                        is_live
-                        and getattr(Config, "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW", False)
-                    ):
-                        log_historical_odds_as_of_shadow(
-                            event_id=candidate.event_id,
-                            fixture_id=candidate.fixture_id,
-                            as_of_quotes=getattr(
-                                acquisition_result, "as_of_quotes", None
-                            )
-                            or [],
-                            tolerance_minutes=getattr(
-                                Config,
-                                "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES",
-                                3,
-                            ),
-                        )
                     if not odds_response:
                         if not is_live:
                             odds_unavailable_event_ids.add(candidate.event_id)
@@ -1028,6 +1055,41 @@ class OddspapiPreStartOddsBatchProcessor:
                     )
                     self._copy_ingestion_stats(event_result, ingestion_result)
                     self._accumulate(summary, event_result)
+                    cache_used_detail = "none"
+                    ingestion_diagnostics = getattr(ingestion_result, "diagnostics", {}) or {}
+                    fallbacks = ingestion_diagnostics.get(
+                        "mainline_cache_fallbacks_used", []
+                    )
+                    if fallbacks:
+                        fallback_details = ",".join(
+                            f"{item.get('bookmakerSlug')}->{item.get('cacheSourceSlug')}"
+                            for item in fallbacks
+                        )
+                        cache_used_detail = f"fallback:{fallback_details}"
+                    elif is_live:
+                        cache_used_detail = "own_cache"
+
+                    logger.info(
+                        "Oddspapi preselection summary endpoint=%s bookmaker=%s "
+                        "raw_markets=%s preselected_markets=%s "
+                        "raw_outcomes=%s preselected_outcomes=%s "
+                        "bypassed=%s bypass_reason=%s cache_usage=%s "
+                        "markets_persisted=%s",
+                        (
+                            ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
+                            if is_live
+                            else ODDSPAPI_CURRENT_ODDS_ENDPOINT
+                        ),
+                        ",".join(event_result.bookmaker_slugs_requested) or "all",
+                        event_result.historical_raw_markets_seen,
+                        event_result.historical_preselected_markets,
+                        event_result.historical_raw_outcomes_seen,
+                        event_result.historical_preselected_outcomes,
+                        event_result.historical_preselection_bypassed,
+                        event_result.historical_preselection_bypass_reason,
+                        cache_used_detail,
+                        event_result.markets_saved,
+                    )
                     logger.info(
                         "Oddspapi pre-start response processed endpoint=%s event_id=%s fixture_id=%s "
                         "markets_detected=%s choices_detected=%s bookies_detected=%s "

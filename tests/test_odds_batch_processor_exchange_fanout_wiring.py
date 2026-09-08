@@ -119,16 +119,15 @@ def test_no_api_keys_does_not_build_an_executor(monkeypatch):
     assert calls[0]["exchange_fetch_executor"] is None
 
 
-@pytest.mark.parametrize("persist,shadow", [(False, False), (False, True), (True, False)])
-def test_change_flag_does_not_override_shadow_or_persist_controls(monkeypatch, persist, shadow):
+@pytest.mark.parametrize("persist", [False, True])
+def test_change_flag_does_not_override_persist_controls(monkeypatch, persist):
     monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS", True)
     monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST", persist)
-    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_SHADOW", shadow)
     calls = _capture_acquire_calls(monkeypatch)
     candidate = replace(_candidate(), minutes_until_start=0)
     _process(candidate)
     assert calls[0]["attach_as_of"] is persist
-    assert calls[0]["as_of_moments"] == (list(Config.PRE_START_ODDS_MOMENTS) if persist or shadow else None)
+    assert calls[0]["as_of_moments"] == (list(Config.PRE_START_ODDS_MOMENTS) if persist else None)
 
 
 def test_forced_key_moment_routes_non_live_candidate_to_significant_change(monkeypatch):
