@@ -223,6 +223,54 @@ def test_historical_ingestion_preserves_cached_line_despite_new_price_balance():
     assert [market["choiceGroup"] for market in adapted["bookmakers"][0]["markets"]] == ["1"]
 
 
+def test_adapter_marks_historical_current_tick_for_canonical_deduplication():
+    payload, index = _fixture([{}])
+    player = payload["bookmakerOdds"]["bet365"]["markets"]["1"]["outcomes"][
+        "1-0"
+    ]["players"]["0"]
+    player["changedAt"] = "2026-06-20T11:55:00Z"
+    player["momentQuotes"] = [
+        {
+            "minutesUntilStart": 5,
+            "price": player["price"],
+            "createdAt": "2026-06-20T11:55:00+00:00",
+        }
+    ]
+
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=index,
+    )
+    choices = adapted["bookmakers"][0]["markets"][0]["choices"]
+
+    assert choices[0]["persistCurrentSnapshot"] is False
+    assert choices[1]["persistCurrentSnapshot"] is True
+
+    without_deduplication = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=index,
+        deduplicate_historical_current_snapshots=False,
+    )
+    assert (
+        without_deduplication["bookmakers"][0]["markets"][0]["choices"][0][
+            "persistCurrentSnapshot"
+        ]
+        is True
+    )
+
+    player["momentQuotes"][0]["createdAt"] = "2026-06-20T11:54:00Z"
+    equal_price_from_another_tick = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=index,
+    )
+    assert (
+        equal_price_from_another_tick["bookmakers"][0]["markets"][0]["choices"][
+            0
+        ]["persistCurrentSnapshot"]
+        is True
+    )
+
+
 def test_exchange_history_budget_is_spent_only_on_selected_line():
     payload, index = _fixture([
         {"prices": [1.4, 3], "mainline": False},

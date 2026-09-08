@@ -70,6 +70,17 @@ def test_sufficient_stable_history_falls_back_when_detector_has_no_changes():
     assert player(result)["price"] == 2.1
 
 
+def test_fallback_does_not_project_into_future_configured_moments():
+    available_through = KICKOFF - timedelta(minutes=5)
+    result = read(
+        [tick(1440, 2), tick(0, 2.1)],
+        available_through_utc=available_through,
+    )
+
+    assert [q.minutes_until_start for q in result.as_of_quotes] == [120, 30, 5]
+    assert [q.price for q in result.as_of_quotes] == [2, 2, 2]
+
+
 def test_all_invalid_ticks_produce_no_player_or_quotes():
     result = read([tick(1440, 1), tick(0, 4, active=False)])
     assert result.as_of_quotes == ()

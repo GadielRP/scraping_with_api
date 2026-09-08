@@ -433,6 +433,74 @@ def test_moment_quotes_write_snapshots_with_their_collected_at_and_dedup(tmp_pat
     assert second.snapshots_saved == 1
 
 
+def test_canonical_flag_can_suppress_current_snapshot(
+    tmp_path,
+):
+    manager = _make_manager(tmp_path, "current-moment.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    batches = _batch(current_odds=2.10)
+    batches[0]["bookie_id"] = bookie_id
+    current_source_time = batches[0]["markets"][0]["choices"][0][
+        "sourceCollectedAt"
+    ]
+    batches[0]["markets"][0]["choices"][0]["momentQuotes"] = [
+        {
+            "minutesUntilStart": 5,
+            "price": 2.10,
+            "createdAt": current_source_time,
+            "collectedAt": datetime(2026, 6, 20, 11, 55),
+        }
+    ]
+    batches[0]["markets"][0]["choices"][0]["persistCurrentSnapshot"] = False
+
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager",
+        manager,
+    ):
+        result = MarketRepository.save_canonical_bookmaker_batches(
+            event_id,
+            batches,
+            source="oddspapi",
+        )
+
+    with manager.get_session() as session:
+        assert session.query(MarketChoiceSnapshot).count() == 1
+        snapshot = session.query(MarketChoiceSnapshot).one()
+        assert snapshot.collected_at == datetime(2026, 6, 20, 11, 55)
+    assert result.snapshots_saved == 1
+
+
+def test_repository_does_not_infer_current_deduplication_from_provider_fields(
+    tmp_path,
+):
+    manager = _make_manager(tmp_path, "current-moment-different-tick.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    batches = _batch(current_odds=2.10)
+    batches[0]["bookie_id"] = bookie_id
+    batches[0]["markets"][0]["choices"][0]["momentQuotes"] = [
+        {
+            "minutesUntilStart": 5,
+            "price": 2.10,
+            "createdAt": batches[0]["markets"][0]["choices"][0][
+                "sourceCollectedAt"
+            ],
+            "collectedAt": datetime(2026, 6, 20, 11, 55),
+        }
+    ]
+
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager",
+        manager,
+    ):
+        result = MarketRepository.save_canonical_bookmaker_batches(
+            event_id,
+            batches,
+            source="oddspapi",
+        )
+
+    assert result.snapshots_saved == 2
+
+
 @pytest.mark.parametrize("dynamic_timestamp", [True, False])
 def test_replay_keeps_all_source_ticks_within_one_second(tmp_path, dynamic_timestamp):
     manager = _make_manager(tmp_path, "subsecond.db")

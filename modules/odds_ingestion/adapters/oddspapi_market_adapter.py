@@ -11,6 +11,9 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
 )
 from modules.oddspapi.exchange_quotes import best_exchange_quotes
 from modules.oddspapi.format_utils import format_line, normalize_source_id
+from modules.oddspapi.historical_snapshot_policy import (
+    should_persist_current_snapshot,
+)
 from modules.oddspapi.mainline_cache_ids import resolve_mainline_outcome_ids
 from modules.oddspapi.quote_activity import should_skip_inactive_market
 from modules.odds_ingestion.oddspapi_line_selection import (
@@ -108,6 +111,7 @@ class OddspapiMarketAdapter:
         use_mainline_cache: bool = False,
         persist_main_line_only: bool = False,
         require_active_quotes: bool = True,
+        deduplicate_historical_current_snapshots: bool = True,
     ) -> dict:
         if market_mapping_index is None:
             raise ValueError("market_mapping_index is required")
@@ -341,6 +345,12 @@ class OddspapiMarketAdapter:
                             "changedAt": player.get("changedAt"),
                             "mainLine": main_line,
                             "limit": player.get("limit"),
+                            "persistCurrentSnapshot": should_persist_current_snapshot(
+                                player,
+                                deduplicate=(
+                                    deduplicate_historical_current_snapshots
+                                ),
+                            ),
                         }
                         moment_quotes = player.get("momentQuotes")
                         if isinstance(moment_quotes, list) and moment_quotes:

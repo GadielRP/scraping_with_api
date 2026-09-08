@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from dataclasses import replace
 
@@ -290,6 +290,68 @@ def test_forced_significant_change_overrides_global_flag(monkeypatch):
         ODDSPAPI_HISTORICAL_ODDS_ENDPOINT,
     ]
     assert fetcher.calls[1]["enable_significant_changes"] is True
+
+
+def test_forced_significant_change_preserves_current_exchange_bookmaker(monkeypatch):
+    """The historical regular response must not discard /odds bookmakers."""
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS", False)
+    fetcher = _RecordingFetcher()
+    service = OddspapiPreStartOddsAcquisitionService(
+        fetcher=fetcher,
+        mainline_cache_repository=_FakeMainlineCache,
+    )
+
+    result = service.acquire(
+        "fixture-1",
+        **_acquire_kwargs(
+            minutes_until_start=5,
+            is_live=False,
+            start_time_utc=KICKOFF,
+            current_odds_available=False,
+            force_significant_changes=True,
+        ),
+    )
+
+    assert set(result.payload["bookmakerOdds"]) == {"pinnacle", "betfair-ex"}
+    betfair_price = result.payload["bookmakerOdds"]["betfair-ex"]["markets"]["102"][
+        "outcomes"
+    ]["301"]["players"]["0"]["price"]
+    # The exchange historical overlay may update the current exchange price,
+    # but it must not remove the bookmaker from the final payload.
+    assert betfair_price == 2.2
+    assert (
+        result.payload["bookmakerOdds"]["pinnacle"]["markets"]["101"]
+        ["outcomes"]["201"]["players"]["0"]["initialPrice"]
+        == 2.05
+    )
+
+
+def test_forced_historical_simulation_uses_bounded_regular_current(monkeypatch):
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS", False)
+    fetcher = _RecordingFetcher()
+    service = OddspapiPreStartOddsAcquisitionService(
+        fetcher=fetcher,
+        mainline_cache_repository=_FakeMainlineCache,
+    )
+
+    result = service.acquire(
+        "fixture-1",
+        **_acquire_kwargs(
+            minutes_until_start=5,
+            is_live=False,
+            start_time_utc=KICKOFF,
+            exchange_bookmakers=None,
+            current_odds_available=False,
+            force_significant_changes=True,
+            available_through_utc=KICKOFF - timedelta(minutes=5),
+        ),
+    )
+
+    pinnacle = result.payload["bookmakerOdds"]["pinnacle"]["markets"]["101"][
+        "outcomes"
+    ]["201"]["players"]["0"]
+    assert pinnacle["price"] == 1.85
+    assert "betfair-ex" in result.payload["bookmakerOdds"]
 
 
 def test_forced_significant_change_retains_debug_payloads_for_both_endpoints(monkeypatch):

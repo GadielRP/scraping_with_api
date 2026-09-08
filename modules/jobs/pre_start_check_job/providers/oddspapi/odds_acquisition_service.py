@@ -139,6 +139,7 @@ class OddspapiPreStartOddsAcquisitionService:
         flash_reversal_minutes: float = 3.0,
         min_price: float = 1.01,
         kickoff_utc: datetime | None = None,
+        available_through_utc: datetime | None = None,
     ) -> OddsFetchResult:
         return self.fetcher.fetch_odds(
             fixture_id,
@@ -157,6 +158,7 @@ class OddspapiPreStartOddsAcquisitionService:
             flash_reversal_minutes=flash_reversal_minutes,
             min_price=min_price,
             kickoff_utc=kickoff_utc,
+            available_through_utc=available_through_utc,
         )
 
     @staticmethod
@@ -279,6 +281,7 @@ class OddspapiPreStartOddsAcquisitionService:
         flash_reversal_minutes: float = 3.0,
         min_price: float = 1.01,
         kickoff_utc: datetime | None = None,
+        available_through_utc: datetime | None = None,
     ) -> dict | None:
         for selection in selections:
             requested_bookmakers.add(selection.bookmaker_slug)
@@ -301,6 +304,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 flash_reversal_minutes=flash_reversal_minutes,
                 min_price=min_price,
                 kickoff_utc=kickoff_utc,
+                available_through_utc=available_through_utc,
             )
             for outcome in outcomes:
                 payload = self._apply_exchange_historical_result(
@@ -337,6 +341,7 @@ class OddspapiPreStartOddsAcquisitionService:
                     flash_reversal_minutes=flash_reversal_minutes,
                     min_price=min_price,
                     kickoff_utc=kickoff_utc,
+                    available_through_utc=available_through_utc,
                 )
             except Exception as exc:
                 error = exc
@@ -374,8 +379,15 @@ class OddspapiPreStartOddsAcquisitionService:
         as_of_moments: list[int] | None = None,
         attach_as_of: bool = False,
         force_significant_changes: bool = False,
+        available_through_utc: datetime | None = None,
     ) -> OddspapiOddsAcquisitionResult:
-        payload: dict | None = None
+        # A forced significant-change acquisition primes ``result.payload`` with
+        # the complete /odds response before entering this historical lane. Keep
+        # that payload as the base so bookmakers that are not requested from
+        # /historical-odds (notably exchange bookmakers) are not lost.
+        payload: dict | None = (
+            result.payload if isinstance(result.payload, dict) else None
+        )
         historical_missing = False
 
         # Safety net: /historical-odds cannot be parsed without cached mainLine
@@ -444,9 +456,31 @@ class OddspapiPreStartOddsAcquisitionService:
                 flash_reversal_minutes=flash_reversal_minutes,
                 min_price=min_price,
                 kickoff_utc=kickoff_utc,
+                available_through_utc=available_through_utc,
             )
             historical_missing = historical_result.endpoint_missing
-            payload = historical_result.payload
+            if payload:
+                if available_through_utc is not None:
+                    # A caller-supplied boundary requests a true historical
+                    # view. Replace matching regular players with their
+                    # bounded values while retaining bookmakers that were not
+                    # part of this historical request (notably exchanges).
+                    payload = OddspapiHistoricalOddsEnricher.merge_bookmaker_odds(
+                        payload,
+                        historical_result.payload,
+                    )
+                else:
+                    # In production the preceding /odds response remains the
+                    # authoritative current view; historical only contributes
+                    # opening fields.
+                    payload = OddspapiHistoricalOddsEnricher.merge_initial_prices(
+                        payload,
+                        historical_result.payload,
+                    )
+            else:
+                # Normal live acquisition has no current /odds base, so the
+                # historical response remains the complete payload in that lane.
+                payload = historical_result.payload
             result.debug_raw_payload = historical_result.raw_payload
             result.debug_endpoint = ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
             result.debug_bookmakers = list(regular)
@@ -517,6 +551,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 flash_reversal_minutes=flash_reversal_minutes,
                 min_price=min_price,
                 kickoff_utc=kickoff_utc,
+                available_through_utc=available_through_utc,
             )
 
         if attach_as_of and result.as_of_quotes:
@@ -554,6 +589,7 @@ class OddspapiPreStartOddsAcquisitionService:
         start_time_utc: datetime,
         as_of_moments: list[int] | None,
         attach_as_of: bool,
+        available_through_utc: datetime | None,
     ) -> OddspapiOddsAcquisitionResult:
         """Prime the mainline cache, then run historical significant as-of."""
         logger.info(
@@ -610,6 +646,7 @@ class OddspapiPreStartOddsAcquisitionService:
             as_of_moments=as_of_moments,
             attach_as_of=attach_as_of,
             force_significant_changes=True,
+            available_through_utc=available_through_utc,
         )
 
     def _acquire_pre_start(
@@ -636,6 +673,7 @@ class OddspapiPreStartOddsAcquisitionService:
         result: OddspapiOddsAcquisitionResult,
         requested_bookmakers: set[str],
         fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
+        available_through_utc: datetime | None = None,
     ) -> OddspapiOddsAcquisitionResult:
         combined = self._unique_bookmakers(regular, exchange)
         current_payload: dict | None = None
@@ -708,6 +746,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
                 require_active_quotes=require_active_quotes,
+                available_through_utc=available_through_utc,
             )
             if historical_result.payload:
                 payload = OddspapiHistoricalOddsEnricher.merge_initial_prices(
@@ -779,6 +818,7 @@ class OddspapiPreStartOddsAcquisitionService:
                         False,
                     )
                 ),
+                available_through_utc=available_through_utc,
             )
 
         result.bookies_requested = len(requested_bookmakers)
@@ -815,6 +855,7 @@ class OddspapiPreStartOddsAcquisitionService:
         as_of_moments: list[int] | None = None,
         attach_as_of: bool = False,
         force_significant_changes: bool = False,
+        available_through_utc: datetime | None = None,
     ) -> OddspapiOddsAcquisitionResult:
         regular = self._unique_bookmakers(regular_bookmakers)
         exchange = self._unique_bookmakers(exchange_bookmakers)
@@ -844,6 +885,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 start_time_utc=start_time_utc,
                 as_of_moments=as_of_moments,
                 attach_as_of=attach_as_of,
+                available_through_utc=available_through_utc,
             )
 
         if is_live:
@@ -868,6 +910,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 as_of_moments=as_of_moments,
                 attach_as_of=attach_as_of,
                 force_significant_changes=force_significant_changes,
+                available_through_utc=available_through_utc,
             )
 
         return self._acquire_pre_start(
@@ -892,4 +935,5 @@ class OddspapiPreStartOddsAcquisitionService:
             result=result,
             requested_bookmakers=requested_bookmakers,
             fetch_executor=exchange_fetch_executor,
+            available_through_utc=available_through_utc,
         )

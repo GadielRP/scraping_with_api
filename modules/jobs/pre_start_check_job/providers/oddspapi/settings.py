@@ -70,6 +70,15 @@ class OddspapiPreStartSettings:
     # exchange selector). Driven by Config.ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES.
     require_active_quotes: bool = True
     persist_main_line_only: bool = True
+    # Historical ``current`` is not persisted twice when an attached moment
+    # references the exact same provider tick. Price equality alone is never
+    # enough to deduplicate two observations.
+    deduplicate_historical_current_snapshots: bool = True
+
+    # When enabled, the pre-start phase removes stale rows from the
+    # oddspapi_mainline_outcome_cache table using the retention period in
+    # Config.ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS.
+    mainline_cache_cleanup_enabled: bool = False
 
     # Donor order when a bookmaker has no cached mainLine outcome ids of its
     # own. Historical persist uses the first donor that has rows. Own-cache

@@ -14,6 +14,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+from datetime import timedelta
 import logging
 import sys
 
@@ -44,6 +45,7 @@ from modules.jobs.pre_start_check_job.oddsportal_worker import (
 from modules.odds_ingestion.canonical_market_normalizer import (
     CanonicalMarketNormalizer,
 )
+from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.sofascore import api_client
 from scripts.development.pre_start_odds_simulation import (
@@ -59,7 +61,7 @@ SHOW_MARKET_PERSISTENCE_REPORT = False
 
 # Simulation toggles - Providers (active when ENABLE_ODDS_INGESTION_SIMULATION = True)
 ENABLE_SOFASCORE_ODDS_SIMULATION = False
-ENABLE_ODDSPAPI_ODDS_SIMULATION = False
+ENABLE_ODDSPAPI_ODDS_SIMULATION = True
 ENABLE_ODDSPORTAL_ODDS_SIMULATION = False
 
 # Simulation toggles - Individual Pillars (active when ENABLE_PILLAR_PIPELINE = True)
@@ -377,6 +379,18 @@ def _run_pre_start_check_simulation(
         event_obj.season_id,
         event_obj.start_time_utc,
     )
+    kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(
+        event_obj.start_time_utc
+    )
+    oddspapi_available_through_utc = (
+        kickoff_utc - timedelta(minutes=simulated_minutes)
+        if kickoff_utc is not None
+        else None
+    )
+    logger.info(
+        "Oddspapi historical observation boundary: %s",
+        oddspapi_available_through_utc,
+    )
     if not _log_pipeline_eligibility(event_obj):
         logger.info(
             "Simulation complete: production upcoming-event selection would "
@@ -427,6 +441,7 @@ def _run_pre_start_check_simulation(
             scheduler=scheduler,
             enable_sofascore=ENABLE_SOFASCORE_ODDS_SIMULATION,
             enable_oddspapi=ENABLE_ODDSPAPI_ODDS_SIMULATION,
+            oddspapi_available_through_utc=oddspapi_available_through_utc,
         )
         event_plan = odds_outcome.event_plan
     else:

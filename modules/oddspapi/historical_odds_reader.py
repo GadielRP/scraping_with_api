@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from typing import Sequence
 
@@ -44,6 +44,7 @@ class OddspapiHistoricalOddsReader:
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
         current_cutoff_utc: datetime | None = None,
+        available_through_utc: datetime | None = None,
         enable_significant_changes: bool = False,
         min_change_magnitude_pct: float = 20.0,
         min_history_hours: float = 24.0,
@@ -59,6 +60,22 @@ class OddspapiHistoricalOddsReader:
         if enable_significant_changes and kickoff_utc is None:
             logger.warning("Significant-change extraction disabled: missing kickoff_utc")
             enable_significant_changes = False
+        # A historical response is an as-of view of the provider at the time
+        # it was requested.  Do not carry its last known tick into configured
+        # moments that are still in the future relative to that observation.
+        # Carry-forward remains valid for moments that have already elapsed.
+        if available_through_utc is not None:
+            cutoff = available_through_utc
+            if cutoff.tzinfo is None:
+                cutoff = cutoff.replace(tzinfo=timezone.utc)
+            as_of_targets = tuple(
+                target
+                for target in as_of_targets
+                if OddspapiHistoricalOddsReader._is_available(
+                    target[1], cutoff
+                )
+            )
+
         extract_as_of = bool(as_of_targets) or enable_significant_changes
         as_of_quotes: list[HistoricalOddsAsOfQuote] = []
         normalized_bookmakers: dict[str, dict] = {}
@@ -95,9 +112,19 @@ class OddspapiHistoricalOddsReader:
                         ticks = OddspapiHistoricalOddsNormalizer.ordered_priced_ticks(
                             history
                         )
+                        if available_through_utc is not None:
+                            ticks = tuple(
+                                tick
+                                for tick in ticks
+                                if OddspapiHistoricalOddsReader._is_available(
+                                    tick[0], cutoff
+                                )
+                            )
                         if enable_significant_changes:
                             ticks = OddspapiHistoricalOddsChangeDetector.sanitize_ticks(
-                                ticks, kickoff_utc=kickoff_utc, min_price=min_price
+                                ticks,
+                                kickoff_utc=kickoff_utc,
+                                min_price=min_price,
                             )
                         player_key = str(player_id)
                         normalized = (
@@ -168,3 +195,14 @@ class OddspapiHistoricalOddsReader:
             },
             as_of_quotes=tuple(as_of_quotes),
         )
+
+    @staticmethod
+    def _is_available(
+        observed_at: datetime,
+        available_through_utc: datetime,
+    ) -> bool:
+        """Return whether a target or tick exists in the source view."""
+        observed_utc = observed_at
+        if observed_utc.tzinfo is None:
+            observed_utc = observed_utc.replace(tzinfo=timezone.utc)
+        return observed_utc <= available_through_utc

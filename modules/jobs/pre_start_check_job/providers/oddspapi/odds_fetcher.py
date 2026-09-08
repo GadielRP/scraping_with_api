@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Sequence
 
 from modules.odds_ingestion.fetch_result import OddsFetchResult
@@ -64,6 +64,7 @@ class OddspapiOddsFetcher:
         flash_reversal_minutes: float = 3.0,
         min_price: float = 1.01,
         kickoff_utc: datetime | None = None,
+        available_through_utc: datetime | None = None,
     ) -> OddsFetchResult:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -77,6 +78,12 @@ class OddspapiOddsFetcher:
         as_of_quotes: tuple = ()
         try:
             if selected_endpoint == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT:
+                # Treat the request start as the observation boundary.  A slow
+                # HTTP response must not make future configured moments look
+                # available merely because they elapsed while we waited.
+                observation_boundary = (
+                    available_through_utc or datetime.now(timezone.utc)
+                )
                 historical_payload = self.historical_client.get_historical_odds(
                     fixture_id=fixture_id,
                     bookmakers=bookmakers,
@@ -91,6 +98,7 @@ class OddspapiOddsFetcher:
                     minimum_initial_span_minutes=minimum_initial_span_minutes,
                     require_active_quotes=require_active_quotes,
                     current_cutoff_utc=current_cutoff_utc,
+                    available_through_utc=observation_boundary,
                     enable_significant_changes=enable_significant_changes,
                     min_change_magnitude_pct=min_change_magnitude_pct,
                     min_history_hours=min_history_hours,

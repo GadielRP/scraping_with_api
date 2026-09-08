@@ -89,6 +89,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         flash_reversal_minutes: float = 3.0,
         min_price: float = 1.01,
         kickoff_utc: datetime | None = None,
+        available_through_utc: datetime | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         if not selections:
             return []
@@ -120,6 +121,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 flash_reversal_minutes=flash_reversal_minutes,
                 min_price=min_price,
                 kickoff_utc=kickoff_utc,
+                available_through_utc=available_through_utc,
             )
         return self._fetch_with_worker_pool(
             fixture_id,
@@ -137,6 +139,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
             flash_reversal_minutes=flash_reversal_minutes,
             min_price=min_price,
             kickoff_utc=kickoff_utc,
+            available_through_utc=available_through_utc,
         )
 
     def _fetch_one(
@@ -157,6 +160,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         flash_reversal_minutes: float = 3.0,
         min_price: float = 1.01,
         kickoff_utc: datetime | None = None,
+        available_through_utc: datetime | None = None,
     ) -> ExchangeHistoricalFetchOutcome:
         try:
             result = fetcher.fetch_odds(
@@ -176,6 +180,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 flash_reversal_minutes=flash_reversal_minutes,
                 min_price=min_price,
                 kickoff_utc=kickoff_utc,
+                available_through_utc=available_through_utc,
             )
             return ExchangeHistoricalFetchOutcome(selection=selection, result=result)
         except Exception as exc:  # noqa: BLE001 - surfaced for caller bookkeeping/logging
@@ -200,6 +205,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         flash_reversal_minutes: float = 3.0,
         min_price: float = 1.01,
         kickoff_utc: datetime | None = None,
+        available_through_utc: datetime | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         client = self._client_factory(key_scheduler=self._scheduler())
         fetcher = self._fetcher_factory(client)
@@ -221,6 +227,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                     flash_reversal_minutes=flash_reversal_minutes,
                     min_price=min_price,
                     kickoff_utc=kickoff_utc,
+                    available_through_utc=available_through_utc,
                 )
                 for selection in selections
             ]
@@ -247,6 +254,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         flash_reversal_minutes: float = 3.0,
         min_price: float = 1.01,
         kickoff_utc: datetime | None = None,
+        available_through_utc: datetime | None = None,
     ) -> list[ExchangeHistoricalFetchOutcome]:
         chunks = [selections[index::worker_count] for index in range(worker_count)]
 
@@ -271,6 +279,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
                         flash_reversal_minutes=flash_reversal_minutes,
                         min_price=min_price,
                         kickoff_utc=kickoff_utc,
+                        available_through_utc=available_through_utc,
                     )
                     for selection in chunks[worker_index]
                 ]

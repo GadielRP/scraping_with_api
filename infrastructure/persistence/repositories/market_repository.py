@@ -576,6 +576,9 @@ class MarketRepository:
                     current_odds=current_odds,
                     current_captured_at=collected_at,
                 )
+                persist_current_snapshot = (
+                    choice_data.get("persistCurrentSnapshot", True) is not False
+                )
 
                 exchange_quotes = choice_data.get("exchangeQuotes")
                 explicit_exchange_quotes = {
@@ -654,6 +657,11 @@ class MarketRepository:
                                 f"choice_id={choice.choice_id}, "
                                 f"identity={(quote_side, quote_level)}"
                             )
+                        if (
+                            not persist_current_snapshot
+                            and (quote_side, quote_level) == primary_identity
+                        ):
+                            continue
                         MarketChoiceSnapshotWriter.append(
                             session,
                             quote=persisted_quote,
@@ -677,6 +685,7 @@ class MarketRepository:
                 elif (
                     write_policy.persist_current_snapshots
                     and current_odds is not None
+                    and persist_current_snapshot
                 ):
                     current_quote = quotes_by_identity.get(primary_identity)
                     if current_quote is None:

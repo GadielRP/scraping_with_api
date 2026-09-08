@@ -425,6 +425,7 @@ class MarketOddsIngestionService:
         mainline_outcome_ids_by_bookmaker: Mapping[str, Collection[str]] | None = None,
         mainline_fallback_bookmakers: Sequence[str] | None = None,
         debug_mode: bool = False,
+        deduplicate_historical_current_snapshots: bool = True,
     ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "oddspapi_odds")
         if dry_run:
@@ -503,6 +504,9 @@ class MarketOddsIngestionService:
             use_mainline_cache=bool(should_use_cache),
             persist_main_line_only=persist_main_line_only,
             require_active_quotes=require_active_quotes,
+            deduplicate_historical_current_snapshots=(
+                deduplicate_historical_current_snapshots
+            ),
         )
         adapted = MarketOddsIngestionService.filter_normalized_oddspapi_response(
             adapted,

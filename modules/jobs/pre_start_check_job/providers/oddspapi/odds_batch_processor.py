@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime
 import logging
 from typing import Callable
 
@@ -558,6 +559,7 @@ class OddspapiPreStartOddsBatchProcessor:
         max_workers: int = 1,
         market_mapping_index: MarketMappingIndex | None = None,
         debug_mode: bool = False,
+        available_through_utc: datetime | None = None,
     ) -> OddspapiPreStartOddsSummary:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -742,6 +744,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     "api_keys": None,
                     "max_workers": 1,
                     "debug_mode": debug_mode,
+                    "available_through_utc": available_through_utc,
                 },
             )
             non_requestable_candidates = [
@@ -920,6 +923,7 @@ class OddspapiPreStartOddsBatchProcessor:
                             False,
                         ),
                         force_significant_changes=force_significant_changes,
+                        available_through_utc=available_through_utc,
                     )
                     save_odds_responses = getattr(
                         Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False
@@ -1017,6 +1021,9 @@ class OddspapiPreStartOddsBatchProcessor:
                         require_active_quotes=require_active_quotes,
                         use_mainline_cache=is_live,
                         mainline_fallback_bookmakers=mainline_fallback_bookmakers,
+                        deduplicate_historical_current_snapshots=(
+                            ODDSPAPI_PRE_START_SETTINGS.deduplicate_historical_current_snapshots
+                        ),
                         debug_mode=debug_mode,
                     )
                     self._copy_ingestion_stats(event_result, ingestion_result)

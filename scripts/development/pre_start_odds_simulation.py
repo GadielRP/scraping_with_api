@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import logging
 from types import SimpleNamespace
 from typing import Callable
@@ -62,6 +63,7 @@ def run_production_odds_phase(
     scheduler=None,
     enable_sofascore: bool = True,
     enable_oddspapi: bool = True,
+    oddspapi_available_through_utc: datetime | None = None,
 ) -> SimulatedOddsOutcome:
     """Build the production candidate plan and run both provider processors."""
     event_id = int(event_obj.id)
@@ -221,6 +223,7 @@ def run_production_odds_phase(
             tracked_competition_ids=(
                 tracked_ids if restrict_oddspapi_odds_extraction else None
             ),
+            available_through_utc=oddspapi_available_through_utc,
         )
         logger.info(
             "  Oddspapi result: requests=%s ingested=%s skipped=%s failed=%s",

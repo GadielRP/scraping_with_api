@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from collections.abc import Collection
+from datetime import datetime
 
 from infrastructure.persistence.repositories import (
     EventOddsSourceState,
@@ -113,6 +114,27 @@ def _resolve_source_states(
     )
 
 
+def _cleanup_mainline_cache() -> int:
+    """Remove stale Oddspapi mainline cache rows when policy allows it."""
+    if not ODDSPAPI_PRE_START_SETTINGS.mainline_cache_cleanup_enabled:
+        logger.info("Oddspapi mainline cache cleanup disabled by provider settings")
+        return 0
+
+    retention_days = int(
+        getattr(Config, "ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS", 2) or 0
+    )
+    if retention_days <= 0:
+        return 0
+
+    deleted = OddspapiMainlineCacheRepository.purge_stale_cache(days=retention_days)
+    logger.info(
+        "Oddspapi mainline cache cleanup removed %s stale row(s) (retention_days=%s)",
+        deleted,
+        retention_days,
+    )
+    return deleted
+
+
 def run_oddspapi_pre_start_odds(
     events_to_process: list[dict],
     source_states: dict[int, dict[str, EventOddsSourceState]] | None = None,
@@ -120,6 +142,7 @@ def run_oddspapi_pre_start_odds(
     debug_mode: bool = False,
     dry_run: bool = False,
     tracked_competition_ids: Collection[int] | None = None,
+    available_through_utc: datetime | None = None,
 ) -> OddspapiPreStartOddsSummary:
     has_active_candidates = any(
         e.get("should_extract_odds") for e in events_to_process or []
@@ -194,9 +217,7 @@ def run_oddspapi_pre_start_odds(
     assignments_before = key_scheduler.assignment_counts()
     diagnostics_before = key_scheduler.diagnostic_counts()
 
-    retention_days = int(getattr(Config, "ODDSPAPI_MAINLINE_CACHE_RETENTION_DAYS", 2) or 0)
-    if retention_days > 0:
-        OddspapiMainlineCacheRepository.purge_stale_cache(days=retention_days)
+    _cleanup_mainline_cache()
 
     if source_states is None:
         try:
@@ -284,6 +305,7 @@ def run_oddspapi_pre_start_odds(
         max_events=getattr(Config, "ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN", 0),
         max_workers=getattr(Config, "ODDSPAPI_PRE_START_WORKERS", 1),
         debug_mode=debug_mode,
+        available_through_utc=available_through_utc,
     )
     assignments_after = key_scheduler.assignment_counts()
     summary.api_key_assignments = {
