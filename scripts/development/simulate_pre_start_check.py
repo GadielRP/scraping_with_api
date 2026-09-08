@@ -1,22 +1,28 @@
-"""Simulate the production pre-start check flow for one event.
+"""Simulate the production pre-start check flow for one or more events.
 
-The simulator forces one database event to the requested minutes-until-start,
+The simulator forces database events to the requested minutes-until-start,
 then delegates candidate selection, provider ingestion, OddsPortal selection,
 and key-moment evaluation to the same functions used by production.
 
 Usage:
     python -m scripts.development.simulate_pre_start_check <event_id> <minutes>
+    python -m scripts.development.simulate_pre_start_check <event_id_1> <event_id_2> ... <minutes>
+    python -m scripts.development.simulate_pre_start_check <event_ids> --minutes <minutes>
 
-Example:
+Examples:
     python -m scripts.development.simulate_pre_start_check 14083613 30
+    python -m scripts.development.simulate_pre_start_check 14083613 14083614 30
+    python -m scripts.development.simulate_pre_start_check 14083613,14083614 30
+    python -m scripts.development.simulate_pre_start_check 14083613 14083614 --minutes 30
 """
 
 from __future__ import annotations
 
 import argparse
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 import sys
+from typing import Sequence
 
 from sqlalchemy.orm import joinedload
 
@@ -55,14 +61,14 @@ from shared.runtime_observability import observe_operation
 
 # Simulation toggles - Pipeline flows
 ENABLE_ODDS_INGESTION_SIMULATION = True
-ENABLE_ALERT_PIPELINE = False
+ENABLE_ALERT_PIPELINE = True
 ENABLE_PILLAR_PIPELINE = True
 SHOW_MARKET_PERSISTENCE_REPORT = False
 
 # Simulation toggles - Providers (active when ENABLE_ODDS_INGESTION_SIMULATION = True)
-ENABLE_SOFASCORE_ODDS_SIMULATION = False
+ENABLE_SOFASCORE_ODDS_SIMULATION = True
 ENABLE_ODDSPAPI_ODDS_SIMULATION = True
-ENABLE_ODDSPORTAL_ODDS_SIMULATION = False
+ENABLE_ODDSPORTAL_ODDS_SIMULATION = True
 
 # Simulation toggles - Individual Pillars (active when ENABLE_PILLAR_PIPELINE = True)
 ENABLE_PILLAR_1 = False  # Pillar 1 - Team Structure (Side & Totals: M1-M7)
@@ -70,6 +76,7 @@ ENABLE_PILLAR_2 = True  # Pillar 2 - Side Market Signal Profile
 ENABLE_PILLAR_3 = True  # Pillar 3 - Over/Under Market Signal Profile
 ENABLE_PILLAR_4 = False  # Pillar 4 - Temporal Market Drift
 ENABLE_PILLAR_5 = False  # Pillar 5 - Exact Price Memory
+ENABLE_CUSTOM_PILLAR_FILTER = False  # Set True to override production pillar selection with the toggles above
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -84,6 +91,12 @@ class _SingleEventSimulationScheduler:
         self.event_repo = EventRepository()
         self.recently_rescheduled: set[int] = set()
         self._active_op_thread = None
+
+    def _cleanup_recently_rescheduled(self) -> None:
+        self.recently_rescheduled.clear()
+
+
+_SimulationScheduler = _SingleEventSimulationScheduler
 
 
 def _ensure_logging_configured() -> None:
@@ -329,8 +342,50 @@ def _log_persisted_market_odds(
         logger.info("=" * 100)
 
 
-def simulate_pre_start_check(event_id: int, simulated_minutes: int) -> bool:
-    """Run the single-event flow with production observability and debug mode."""
+def _parse_event_ids_and_minutes(
+    positional_args: list[str],
+    minutes_flag: int | None,
+) -> tuple[list[int], int]:
+    """Parse one or more event IDs and minutes from CLI arguments."""
+    if minutes_flag is not None:
+        simulated_minutes = minutes_flag
+        raw_id_tokens = positional_args
+    else:
+        if len(positional_args) < 2:
+            raise ValueError(
+                "When --minutes is omitted, you must provide at least one event ID "
+                "and the forced minutes as the final argument (e.g. <event_id> <minutes>)."
+            )
+        try:
+            simulated_minutes = int(positional_args[-1])
+        except ValueError:
+            raise ValueError(
+                f"Could not parse minutes from final argument '{positional_args[-1]}'. "
+                "Use --minutes/-m or provide an integer as the final argument."
+            )
+        raw_id_tokens = positional_args[:-1]
+
+    event_ids: list[int] = []
+    for token in raw_id_tokens:
+        for part in str(token).split(","):
+            part = part.strip()
+            if part:
+                try:
+                    event_ids.append(int(part))
+                except ValueError:
+                    raise ValueError(f"Invalid event ID: '{part}'")
+
+    if not event_ids:
+        raise ValueError("At least one event ID must be provided.")
+
+    return event_ids, simulated_minutes
+
+
+def simulate_pre_start_check(
+    event_ids: int | Sequence[int],
+    simulated_minutes: int,
+) -> bool:
+    """Run the pre-start flow for one or more events with production observability and debug mode."""
     _ensure_logging_configured()
     previous_evidence_mode = getattr(
         api_client,
@@ -341,7 +396,7 @@ def simulate_pre_start_check(event_id: int, simulated_minutes: int) -> bool:
     try:
         with observe_operation("pre_start_check"):
             return _run_pre_start_check_simulation(
-                event_id,
+                event_ids,
                 simulated_minutes,
             )
     finally:
@@ -350,9 +405,14 @@ def simulate_pre_start_check(event_id: int, simulated_minutes: int) -> bool:
 
 
 def _run_pre_start_check_simulation(
-    event_id: int,
+    event_ids: int | Sequence[int],
     simulated_minutes: int,
 ) -> bool:
+    if isinstance(event_ids, int):
+        event_id_list = [event_ids]
+    else:
+        event_id_list = list(event_ids)
+
     key_moments = Config.PRE_START_ODDS_MOMENTS
     debug_mode = True
     scheduler = _SingleEventSimulationScheduler()
@@ -360,62 +420,94 @@ def _run_pre_start_check_simulation(
     logger.info("=" * 80)
     logger.info("PRE-START CHECK DEVELOPMENT SIMULATION")
     logger.info("=" * 80)
-    logger.info("Event ID: %s", event_id)
+    logger.info("Event IDs: %s", event_id_list)
     logger.info("Simulated minutes: %s", simulated_minutes)
     logger.info("Is key moment: %s", simulated_minutes in key_moments)
     logger.info("=" * 80)
 
-    logger.info("Step 1: Loading event from database")
-    event_obj = scheduler.event_repo.get_event_by_id(event_id)
-    if event_obj is None:
-        logger.error("Event %s not found in database; aborting.", event_id)
+    logger.info("Step 1: Loading %s event(s) from database", len(event_id_list))
+    events_by_id: dict[int, Any] = {}
+    missing_ids: list[int] = []
+    for e_id in event_id_list:
+        event_obj = scheduler.event_repo.get_event_by_id(e_id)
+        if event_obj is None:
+            logger.error("Event %s not found in database.", e_id)
+            missing_ids.append(e_id)
+        else:
+            events_by_id[e_id] = event_obj
+
+    if not events_by_id:
+        logger.error("No requested event(s) found in database; aborting.")
         return False
 
-    logger.info(
-        "Event loaded: %s vs %s | sport=%s season_id=%s start=%s",
-        event_obj.home_team,
-        event_obj.away_team,
-        event_obj.sport,
-        event_obj.season_id,
-        event_obj.start_time_utc,
-    )
-    kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(
-        event_obj.start_time_utc
-    )
-    oddspapi_available_through_utc = (
-        kickoff_utc - timedelta(minutes=simulated_minutes)
-        if kickoff_utc is not None
-        else None
-    )
-    logger.info(
-        "Oddspapi historical observation boundary: %s",
-        oddspapi_available_through_utc,
-    )
-    if not _log_pipeline_eligibility(event_obj):
+    oddspapi_boundaries_by_event: dict[int, datetime | None] = {}
+    for e_id, event_obj in events_by_id.items():
+        logger.info(
+            "Event loaded: id=%s | %s vs %s | sport=%s season_id=%s start=%s",
+            e_id,
+            event_obj.home_team,
+            event_obj.away_team,
+            event_obj.sport,
+            event_obj.season_id,
+            event_obj.start_time_utc,
+        )
+        kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(
+            event_obj.start_time_utc
+        )
+        boundary = (
+            kickoff_utc - timedelta(minutes=simulated_minutes)
+            if kickoff_utc is not None
+            else None
+        )
+        oddspapi_boundaries_by_event[e_id] = boundary
+        logger.info(
+            "Event %s Oddspapi historical observation boundary: %s",
+            e_id,
+            boundary,
+        )
+
+    eligible_events: list = []
+    for e_id, event_obj in events_by_id.items():
+        if not _log_pipeline_eligibility(event_obj):
+            logger.info(
+                "Production upcoming-event selection would exclude event %s.",
+                e_id,
+            )
+        else:
+            eligible_events.append(event_obj)
+
+    if not eligible_events:
         logger.info(
             "Simulation complete: production upcoming-event selection would "
-            "exclude event %s.",
-            event_id,
+            "exclude all requested event(s).",
         )
         return True
 
-    if event_obj.sport in Config.EXCLUDED_SPORTS:
-        logger.warning(
-            "Event sport %r is excluded from production alert/pillar "
-            "evaluation; provider ingestion can still run.",
-            event_obj.sport,
-        )
+    for event_obj in eligible_events:
+        if event_obj.sport in Config.EXCLUDED_SPORTS:
+            logger.warning(
+                "Event %s sport %r is excluded from production alert/pillar "
+                "evaluation; provider ingestion can still run.",
+                event_obj.id,
+                event_obj.sport,
+            )
 
-    event_data = EventRepository._build_event_data_with_legacy_fallback(
-        event_obj
-    )
+    events_data = [
+        EventRepository._build_event_data_with_legacy_fallback(event_obj)
+        for event_obj in eligible_events
+    ]
+    timings = {int(e["id"]): simulated_minutes for e in events_data}
+
     if ENABLE_ODDS_INGESTION_SIMULATION:
         if ENABLE_ODDSPORTAL_ODDS_SIMULATION:
-            logger.info("Step 2: Starting production OddsPortal candidate selection")
+            logger.info(
+                "Step 2: Starting production OddsPortal candidate selection (%s events)",
+                len(events_data),
+            )
             oddsportal_context = start_oddsportal_scrape_for_events(
                 scheduler,
-                [event_data],
-                {event_id: simulated_minutes},
+                events_data,
+                timings,
                 debug_mode=debug_mode,
             )
         else:
@@ -429,10 +521,16 @@ def _run_pre_start_check_simulation(
             )
 
         logger.info(
-            "Step 3: Running production candidate builder and provider ingestion"
+            "Step 3: Running production candidate builder and provider ingestion (%s events)",
+            len(eligible_events),
+        )
+        target_for_phase = (
+            eligible_events[0]
+            if len(eligible_events) == 1
+            else eligible_events
         )
         odds_outcome = run_production_odds_phase(
-            event_obj,
+            target_for_phase,
             simulated_minutes,
             key_moments,
             debug_mode=debug_mode,
@@ -441,7 +539,11 @@ def _run_pre_start_check_simulation(
             scheduler=scheduler,
             enable_sofascore=ENABLE_SOFASCORE_ODDS_SIMULATION,
             enable_oddspapi=ENABLE_ODDSPAPI_ODDS_SIMULATION,
-            oddspapi_available_through_utc=oddspapi_available_through_utc,
+            oddspapi_available_through_utc=(
+                oddspapi_boundaries_by_event.get(eligible_events[0].id)
+                if len(eligible_events) == 1
+                else oddspapi_boundaries_by_event
+            ),
         )
         event_plan = odds_outcome.event_plan
     else:
@@ -457,32 +559,40 @@ def _run_pre_start_check_simulation(
         logger.info(
             "Step 3: Skipping provider odds ingestion (ENABLE_ODDS_INGESTION_SIMULATION=False); building candidate plan only"
         )
-        source_states = load_pre_start_odds_source_states([event_data])
+        source_states = load_pre_start_odds_source_states(events_data)
         event_plan = build_pre_start_event_candidates(
             scheduler,
-            [event_data],
-            {event_id: simulated_minutes},
+            events_data,
+            timings,
             source_states,
             key_moments=key_moments,
         )
 
     if ENABLE_ALERT_PIPELINE or ENABLE_PILLAR_PIPELINE:
         logger.info("Step 4: Running production key-moment evaluation")
-        evaluate_pre_start_key_moments(
-            scheduler,
-            event_plan,
-            oddsportal_context,
-            debug_mode=debug_mode,
-            enable_alert_pipeline=ENABLE_ALERT_PIPELINE,
-            enable_pillar_pipeline=ENABLE_PILLAR_PIPELINE,
-            enabled_pillars={
-                "pillar_1": ENABLE_PILLAR_1,
-                "pillar_2": ENABLE_PILLAR_2,
-                "pillar_3": ENABLE_PILLAR_3,
-                "pillar_4": ENABLE_PILLAR_4,
-                "pillar_5": ENABLE_PILLAR_5,
-            },
-        )
+        if ENABLE_CUSTOM_PILLAR_FILTER:
+            evaluate_pre_start_key_moments(
+                scheduler,
+                event_plan,
+                oddsportal_context,
+                debug_mode=debug_mode,
+                enable_alert_pipeline=ENABLE_ALERT_PIPELINE,
+                enable_pillar_pipeline=ENABLE_PILLAR_PIPELINE,
+                enabled_pillars={
+                    "pillar_1": ENABLE_PILLAR_1,
+                    "pillar_2": ENABLE_PILLAR_2,
+                    "pillar_3": ENABLE_PILLAR_3,
+                    "pillar_4": ENABLE_PILLAR_4,
+                    "pillar_5": ENABLE_PILLAR_5,
+                },
+            )
+        else:
+            evaluate_pre_start_key_moments(
+                scheduler,
+                event_plan,
+                oddsportal_context,
+                debug_mode=debug_mode,
+            )
     else:
         logger.info(
             "Step 4: Skipping pillar and alert evaluation "
@@ -491,8 +601,8 @@ def _run_pre_start_check_simulation(
 
     logger.info("=" * 80)
     logger.info(
-        "SIMULATION COMPLETE for event %s at %s minutes",
-        event_id,
+        "SIMULATION COMPLETE for %s event(s) at %s minutes",
+        len(eligible_events),
         simulated_minutes,
     )
     logger.info("=" * 80)
@@ -502,22 +612,33 @@ def _run_pre_start_check_simulation(
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Simulate the production pre-start flow for one database event at "
+            "Simulate the production pre-start flow for one or more database events at "
             "a forced minutes-until-start value."
         ),
     )
     parser.add_argument(
-        "event_id",
-        type=int,
-        help="Canonical event ID (must exist in the database).",
+        "event_ids",
+        nargs="+",
+        help=(
+            "One or more canonical event IDs (e.g. 14083613 14083614 or 14083613,14083614). "
+            "If --minutes is omitted, the final argument is treated as minutes."
+        ),
     )
     parser.add_argument(
-        "minutes",
+        "--minutes",
+        "-m",
         type=int,
-        help="Forced minutes until start (configured key moments are used).",
+        default=None,
+        help="Forced minutes until start. If omitted, the last positional argument is used as minutes.",
     )
     args = parser.parse_args()
     _ensure_logging_configured()
+
+    try:
+        event_ids, minutes = _parse_event_ids_and_minutes(args.event_ids, args.minutes)
+    except ValueError as err:
+        logger.error("Argument error: %s", err)
+        return 1
 
     if not initialize_system():
         logger.error(
@@ -525,7 +646,7 @@ def main() -> int:
         )
         return 1
 
-    return 0 if simulate_pre_start_check(args.event_id, args.minutes) else 1
+    return 0 if simulate_pre_start_check(event_ids, minutes) else 1
 
 
 if __name__ == "__main__":
