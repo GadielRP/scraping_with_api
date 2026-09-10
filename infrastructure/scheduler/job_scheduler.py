@@ -37,7 +37,10 @@ from modules.jobs.results_collection_job import (
     run_results_collection_for_date,
     run_results_collection_previous_day,
 )
-from modules.oddspapi.runtime import refresh_oddspapi_account_usage_if_due
+from modules.oddspapi.runtime import (
+    oddspapi_account_usage_refresh_enabled,
+    refresh_oddspapi_account_usage_if_due,
+)
 from shared.runtime_observability import observe_operation
 from shared.timezone_utils import TIMEZONE, get_local_now
 
@@ -104,9 +107,10 @@ class JobScheduler:
                 _scheduled_time=time_str,
             )
 
-        schedule.every(
-            Config.ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS
-        ).hours.do(self.job_oddspapi_account_usage_refresh)
+        if oddspapi_account_usage_refresh_enabled():
+            schedule.every(
+                Config.ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS
+            ).hours.do(self.job_oddspapi_account_usage_refresh)
 
         logger.info("Jobs scheduled:")
         logger.info(f"  - Discovery: daily at {', '.join(Config.DISCOVERY_TIMES)}")
@@ -132,10 +136,17 @@ class JobScheduler:
             "  - Oddspapi fixture discovery: daily at %s (UTC calendar day)",
             ", ".join(oddspapi_fixture_discovery_times),
         )
-        logger.info(
-            "  - Oddspapi account usage refresh: every %s hour(s)",
-            Config.ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS,
-        )
+        if oddspapi_account_usage_refresh_enabled():
+            logger.info(
+                "  - Oddspapi account usage refresh: every %s hour(s)",
+                Config.ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS,
+            )
+        else:
+            logger.info(
+                "  - Oddspapi account usage refresh disabled: requires "
+                "ENABLE_ODDSPAPI_PRE_START_ODDS=true and "
+                "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH=true"
+            )
         logger.info("  - League cache cleanup: every 3 days at 05:00")
 
     def _setup_pre_start_jobs(self):
@@ -528,7 +539,7 @@ class JobScheduler:
 
     def job_oddspapi_account_usage_refresh(self):
         """Refresh key quotas only when the durable snapshot is due."""
-        if not getattr(Config, "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH", True):
+        if not oddspapi_account_usage_refresh_enabled():
             return False
         try:
             return refresh_oddspapi_account_usage_if_due()

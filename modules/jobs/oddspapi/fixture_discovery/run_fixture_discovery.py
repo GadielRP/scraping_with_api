@@ -9,7 +9,10 @@ import logging
 
 from modules.oddspapi.client import OddsPapiClient
 from infrastructure.settings import Config
-from modules.oddspapi.runtime import refresh_oddspapi_account_usage_if_due
+from modules.oddspapi.runtime import (
+    oddspapi_account_usage_refresh_enabled,
+    refresh_oddspapi_account_usage_if_due,
+)
 
 from .constants import (
     DEFAULT_LOOKAHEAD_DAYS,
@@ -123,11 +126,7 @@ def run_fixture_discovery_job(
     now: datetime | None = None,
 ):
     """Run discovery for a UTC calendar day using all configured sports by default."""
-    if client is None and getattr(
-        Config,
-        "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH",
-        True,
-    ):
+    if client is None and oddspapi_account_usage_refresh_enabled():
         try:
             refresh_oddspapi_account_usage_if_due()
         except Exception:

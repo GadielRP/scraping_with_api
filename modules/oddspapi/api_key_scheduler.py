@@ -10,6 +10,7 @@ import threading
 import time
 from typing import Protocol
 
+from infrastructure.settings import Config
 from modules.oddspapi.account_usage import (
     AccountUsageSnapshot,
     OddspapiAccountUsageService,
@@ -29,6 +30,19 @@ ACTIVE_STATUSES = {"unknown", "active"}
 DISABLED_STATUSES = {"exhausted", "invalid", "no_active_subscription"}
 QUOTA_EXHAUSTED_CODE = "REQUEST_LIMIT_EXCEEDED"
 INVALID_KEY_CODES = {"INVALID_API_KEY", "INVALID_KEY", "UNAUTHORIZED"}
+
+
+def _account_usage_refresh_enabled() -> bool:
+    """Return whether OddsPapi account/key usage refresh is allowed.
+
+    Account usage refresh is part of the pre-start OddsPapi feature. Keep the
+    primary feature flag as a hard prerequisite even when the dedicated
+    account-refresh flag is enabled.
+    """
+    return bool(
+        getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", False)
+        and getattr(Config, "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH", True)
+    )
 
 
 @dataclass(frozen=True)
@@ -157,7 +171,11 @@ class OddsPapiApiKeyScheduler:
                     credential.fingerprint,
                     _RuntimeKeyState(credential.fingerprint),
                 )
-        if self.store is None or not credentials:
+        if (
+            self.store is None
+            or not credentials
+            or not _account_usage_refresh_enabled()
+        ):
             return
         try:
             rows = self.store.load([item.fingerprint for item in credentials])
@@ -403,7 +421,10 @@ class OddsPapiApiKeyScheduler:
             )
 
     def refresh_if_due(self, *, force: bool = False) -> bool:
-        if self.account_usage_service is None:
+        if (
+            self.account_usage_service is None
+            or not _account_usage_refresh_enabled()
+        ):
             return False
         if not self._refresh_lock.acquire(blocking=False):
             return False
@@ -532,7 +553,7 @@ class OddsPapiApiKeyScheduler:
             }
 
     def _persist(self, operation: str, callback) -> None:
-        if self.store is None:
+        if self.store is None or not _account_usage_refresh_enabled():
             return
         try:
             callback()

@@ -8,6 +8,7 @@ import threading
 import pytest
 import requests
 
+from infrastructure.settings import Config
 from modules.oddspapi.account_usage import (
     AccountUsageSnapshot,
     OddspapiAccountUsageService,
@@ -30,6 +31,13 @@ from modules.jobs.pre_start_check_job.providers.oddspapi.exchange_outcome_select
     ExchangeHistoricalSelection,
 )
 from shared.timezone_utils import convert_utc_to_local, get_local_now
+
+
+@pytest.fixture(autouse=True)
+def _enable_oddspapi_usage_refresh_for_scheduler_tests(monkeypatch):
+    """Exercise scheduler behavior independently of production feature flags."""
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", True)
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH", True)
 
 
 class MemoryUsageStore:
@@ -329,6 +337,33 @@ def test_refresh_failure_keeps_stale_state_and_observes_retry_backoff():
         (api_key_fingerprint("key"), "ACCOUNT_REFRESH_TimeoutError")
     ]
     assert scheduler.acquire("odds").api_key == "key"
+
+
+def test_refresh_and_usage_persistence_are_disabled_with_pre_start_feature_off(
+    monkeypatch,
+):
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", False)
+    calls = []
+
+    class UsageService:
+        def fetch(self, api_key):
+            calls.append(api_key)
+            raise AssertionError("account endpoint must not be called")
+
+    scheduler, store = _scheduler(
+        ["key"],
+        account_usage_service=UsageService(),
+    )
+
+    assert scheduler.refresh_if_due(force=True) is False
+    lease = scheduler.acquire("odds")
+    scheduler.complete(
+        lease,
+        RequestOutcome(status_code=200, response_received=True),
+    )
+
+    assert calls == []
+    assert store.rows == {}
 
 
 def test_unknown_key_usage_advances_instead_of_receiving_permanent_priority():
